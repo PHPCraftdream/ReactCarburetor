@@ -2,6 +2,8 @@ import {
     Carburetor,
     CarburetorHistory,
     ComponentUpdateThrottle,
+    EDevToolsAction,
+    EDevToolsMessageType,
     connectDevTools,
     IDevToolsConnection,
     IDevToolsMessage,
@@ -219,8 +221,8 @@ describe('connectDevTools', () => {
         const sentAfterChange = fake.sent.length;
 
         fake.emit({
-            type: 'DISPATCH',
-            payload: {type: 'JUMP_TO_ACTION', actionId: 1},
+            type: EDevToolsMessageType.Dispatch,
+            payload: {type: EDevToolsAction.JumpToAction, actionId: 1},
             state: JSON.stringify({counter: {value: 1, label: 'start'}}),
         });
 

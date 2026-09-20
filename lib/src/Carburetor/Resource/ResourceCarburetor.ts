@@ -1,3 +1,4 @@
+import {EResourceStatus} from "../Models/Enums/EResourceStatus";
 import {IResourceData, TResourceLoader} from "../Models/Resource";
 import {IUpdateScheduler} from "../Models/Store";
 import {Carburetor} from "../Store/Carburetor";
@@ -41,11 +42,11 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     public suspend = (args: TArgs): T => {
         const state = this.data;
 
-        if (state.status === 'success') {
+        if (state.status === EResourceStatus.Success) {
             return state.data as T;
         }
 
-        if (state.status === 'error') {
+        if (state.status === EResourceStatus.Error) {
             throw this.lastError || new Error(state.error || 'Carburetor: resource failed');
         }
 
@@ -100,7 +101,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.pendingKey = key;
         this.lastArgs = args;
 
-        this.draft.status = 'pending';
+        this.draft.status = EResourceStatus.Pending;
         this.draft.error = undefined;
 
         if (deferNotification) {
@@ -138,7 +139,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.pendingRequest = undefined;
         this.lastError = undefined;
 
-        this.draft.status = 'success';
+        this.draft.status = EResourceStatus.Success;
         this.draft.data = data;
         this.draft.error = undefined;
         this.draft.updatedAt = Date.now();
@@ -154,7 +155,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.pendingRequest = undefined;
         this.lastError = error;
 
-        this.draft.status = 'error';
+        this.draft.status = EResourceStatus.Error;
         this.draft.error = describeError(error);
         this.draft.updatedAt = Date.now();
         this.emitUpdate();

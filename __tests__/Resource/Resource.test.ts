@@ -1,4 +1,4 @@
-import {ResourceCarburetor} from "../../lib/src/Carburetor";
+import {EResourceStatus, ResourceCarburetor} from "../../lib/src/Carburetor";
 
 interface IDeferred<T> {
     promise: Promise<T>;
@@ -25,15 +25,15 @@ describe('ResourceCarburetor', () => {
         const gate = deferred<string>();
         const resource = new ResourceCarburetor<string>(() => gate.promise);
 
-        expect(resource.getData().status).toEqual('idle');
+        expect(resource.getData().status).toEqual(EResourceStatus.Idle);
 
         const loading = resource.load(undefined);
-        expect(resource.getData().status).toEqual('pending');
+        expect(resource.getData().status).toEqual(EResourceStatus.Pending);
 
         gate.resolve('loaded');
         await loading;
 
-        expect(resource.getData().status).toEqual('success');
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
         expect(resource.getData().data).toEqual('loaded');
         expect(resource.getData().error).toEqual(undefined);
         expect(typeof resource.getData().updatedAt).toEqual('number');
@@ -45,7 +45,7 @@ describe('ResourceCarburetor', () => {
 
         await resource.load(undefined);
 
-        expect(resource.getData().status).toEqual('error');
+        expect(resource.getData().status).toEqual(EResourceStatus.Error);
         expect(resource.getData().error).toEqual('nope');
         expect(resource.getLastError()).toBe(failure);
         expect(JSON.stringify(resource.getData())).toContain('nope');
@@ -111,7 +111,7 @@ describe('ResourceCarburetor', () => {
         await loading;
         await flush();
 
-        expect(resource.getData().status).toEqual('pending');
+        expect(resource.getData().status).toEqual(EResourceStatus.Pending);
         expect(resource.getData().data).toEqual(undefined);
     });
 

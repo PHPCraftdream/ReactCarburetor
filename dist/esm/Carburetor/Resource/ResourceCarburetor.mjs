@@ -1,3 +1,4 @@
+import { EResourceStatus } from "../Models/Enums/EResourceStatus.mjs";
 import { Carburetor } from "../Store/Carburetor.mjs";
 import { getInitialResourceData } from "./getInitialResourceData.mjs";
 const describeError = (error)=>{
@@ -17,8 +18,8 @@ class ResourceCarburetor extends Carburetor {
     getLastError = ()=>this.lastError;
     suspend = (args)=>{
         const state = this.data;
-        if ('success' === state.status) return state.data;
-        if ('error' === state.status) throw this.lastError || new Error(state.error || 'Carburetor: resource failed');
+        if (state.status === EResourceStatus.Success) return state.data;
+        if (state.status === EResourceStatus.Error) throw this.lastError || new Error(state.error || 'Carburetor: resource failed');
         if (this.pendingRequest && this.pendingKey === this.keyOf(args)) throw this.pendingRequest;
         throw this.start(args, true);
     };
@@ -45,7 +46,7 @@ class ResourceCarburetor extends Carburetor {
         this.controller = controller;
         this.pendingKey = key;
         this.lastArgs = args;
-        this.draft.status = 'pending';
+        this.draft.status = EResourceStatus.Pending;
         this.draft.error = void 0;
         if (deferNotification) queueMicrotask(this.emitUpdate);
         else this.emitUpdate();
@@ -63,7 +64,7 @@ class ResourceCarburetor extends Carburetor {
         this.controller = void 0;
         this.pendingRequest = void 0;
         this.lastError = void 0;
-        this.draft.status = 'success';
+        this.draft.status = EResourceStatus.Success;
         this.draft.data = data;
         this.draft.error = void 0;
         this.draft.updatedAt = Date.now();
@@ -74,7 +75,7 @@ class ResourceCarburetor extends Carburetor {
         this.controller = void 0;
         this.pendingRequest = void 0;
         this.lastError = error;
-        this.draft.status = 'error';
+        this.draft.status = EResourceStatus.Error;
         this.draft.error = describeError(error);
         this.draft.updatedAt = Date.now();
         this.emitUpdate();

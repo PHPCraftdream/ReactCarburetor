@@ -1,4 +1,6 @@
 import {IDict, TDisposer} from "../Models/Base";
+import {EDevToolsAction} from "../Models/Enums/EDevToolsAction";
+import {EDevToolsMessageType} from "../Models/Enums/EDevToolsMessageType";
 import {IInspectable} from "../Models/Store";
 import {IDevToolsExtension, IDevToolsMessage, IDevToolsOptions} from "../Models/Tooling";
 import {getUid} from "../Store/getUid";
@@ -72,13 +74,15 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
     };
 
     const unsubscribeFromExtension = connection.subscribe((message: IDevToolsMessage) => {
-        if (message.type !== 'DISPATCH' || !message.payload) {
+        if (message.type !== EDevToolsMessageType.Dispatch || !message.payload) {
             return;
         }
 
         const action = message.payload.type;
 
-        if (action === 'JUMP_TO_ACTION' || action === 'JUMP_TO_STATE' || action === 'ROLLBACK') {
+        if (action === EDevToolsAction.JumpToAction
+            || action === EDevToolsAction.JumpToState
+            || action === EDevToolsAction.Rollback) {
             applyState(message.state);
         }
     });

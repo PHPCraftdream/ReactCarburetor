@@ -27,19 +27,19 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
+var EResourceStatus = /*#__PURE__*/ function(EResourceStatus) {
+    EResourceStatus["Idle"] = "idle";
+    EResourceStatus["Pending"] = "pending";
+    EResourceStatus["Success"] = "success";
+    EResourceStatus["Error"] = "error";
+    return EResourceStatus;
+}({});
 __webpack_require__.d(__webpack_exports__, {
-    getInitialResourceData: ()=>getInitialResourceData
+    EResourceStatus: ()=>EResourceStatus
 });
-const EResourceStatus_js_namespaceObject = require("../Models/Enums/EResourceStatus.js");
-const getInitialResourceData = ()=>({
-        status: EResourceStatus_js_namespaceObject.EResourceStatus.Idle,
-        data: void 0,
-        error: void 0,
-        updatedAt: void 0
-    });
-exports.getInitialResourceData = __webpack_exports__.getInitialResourceData;
+exports.EResourceStatus = __webpack_exports__.EResourceStatus;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
-    "getInitialResourceData"
+    "EResourceStatus"
 ].indexOf(__rspack_i)) exports[__rspack_i] = __webpack_exports__[__rspack_i];
 Object.defineProperty(exports, '__esModule', {
     value: true

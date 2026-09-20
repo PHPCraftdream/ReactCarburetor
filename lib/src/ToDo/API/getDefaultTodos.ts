@@ -1,4 +1,4 @@
-import {ITodoList} from "./IToDoModels";
+import {ITodoList} from "./Models";
 
 export const getDefaultTodos = (): ITodoList => ({
     items: {},

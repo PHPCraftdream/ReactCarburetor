@@ -1,6 +1,6 @@
-export type TResourceStatus = 'idle' | 'pending' | 'success' | 'error';
+import { EResourceStatus } from "./Enums/EResourceStatus.js";
 export interface IResourceData<T> {
-    status: TResourceStatus;
+    status: EResourceStatus;
     data: T | undefined;
     /** Message only: the resource state has to stay serializable for SSR and devtools. */
     error: string | undefined;

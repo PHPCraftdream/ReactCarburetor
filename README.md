@@ -163,7 +163,16 @@ export const profile = new ResourceCarburetor<IProfile, {id: string}>(
     ({id}, signal) => fetch(`/api/profile/${id}`, {signal}).then((response) => response.json())
 );
 
-await profile.load({id: 'a1'});   // status: 'pending' -> 'success' | 'error'
+await profile.load({id: 'a1'});   // EResourceStatus.Pending -> Success | Error
+```
+
+The status is an enum, `EResourceStatus`, not a bare string, so a typo in a comparison is a
+compile error rather than a branch that never runs:
+
+```ts
+if (profile.getData().status === EResourceStatus.Error) {
+    ...
+}
 ```
 
 Concurrent loads with the same arguments share one request; a load with different arguments

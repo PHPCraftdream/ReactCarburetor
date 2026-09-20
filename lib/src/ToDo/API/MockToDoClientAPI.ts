@@ -1,4 +1,4 @@
-import {IToDoClientAPI, ITodoList} from "./IToDoModels";
+import {IToDoClientAPI, ITodoList} from "./Models";
 
 let todoList: ITodoList = {
     items: {

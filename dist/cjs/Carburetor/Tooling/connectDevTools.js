@@ -30,6 +30,8 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     connectDevTools: ()=>connectDevTools
 });
+const EDevToolsAction_js_namespaceObject = require("../Models/Enums/EDevToolsAction.js");
+const EDevToolsMessageType_js_namespaceObject = require("../Models/Enums/EDevToolsMessageType.js");
 const getUid_js_namespaceObject = require("../Store/getUid.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const findExtension = ()=>{
@@ -75,9 +77,9 @@ const connectDevTools = (carburetors, options = {})=>{
         }
     };
     const unsubscribeFromExtension = connection.subscribe((message)=>{
-        if ('DISPATCH' !== message.type || !message.payload) return;
+        if (message.type !== EDevToolsMessageType_js_namespaceObject.EDevToolsMessageType.Dispatch || !message.payload) return;
         const action = message.payload.type;
-        if ('JUMP_TO_ACTION' === action || 'JUMP_TO_STATE' === action || 'ROLLBACK' === action) applyState(message.state);
+        if (action === EDevToolsAction_js_namespaceObject.EDevToolsAction.JumpToAction || action === EDevToolsAction_js_namespaceObject.EDevToolsAction.JumpToState || action === EDevToolsAction_js_namespaceObject.EDevToolsAction.Rollback) applyState(message.state);
     });
     return ()=>{
         names.forEach((name)=>carburetors[name].unsubscribe(subscriberId));

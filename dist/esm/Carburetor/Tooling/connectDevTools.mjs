@@ -1,3 +1,5 @@
+import { EDevToolsAction } from "../Models/Enums/EDevToolsAction.mjs";
+import { EDevToolsMessageType } from "../Models/Enums/EDevToolsMessageType.mjs";
 import { getUid } from "../Store/getUid.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 const findExtension = ()=>{
@@ -43,9 +45,9 @@ const connectDevTools = (carburetors, options = {})=>{
         }
     };
     const unsubscribeFromExtension = connection.subscribe((message)=>{
-        if ('DISPATCH' !== message.type || !message.payload) return;
+        if (message.type !== EDevToolsMessageType.Dispatch || !message.payload) return;
         const action = message.payload.type;
-        if ('JUMP_TO_ACTION' === action || 'JUMP_TO_STATE' === action || 'ROLLBACK' === action) applyState(message.state);
+        if (action === EDevToolsAction.JumpToAction || action === EDevToolsAction.JumpToState || action === EDevToolsAction.Rollback) applyState(message.state);
     });
     return ()=>{
         names.forEach((name)=>carburetors[name].unsubscribe(subscriberId));

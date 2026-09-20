@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
-import {AntiHookComponent, ResourceCarburetor} from "../../lib/src/Carburetor";
+import {AntiHookComponent, EResourceStatus, ResourceCarburetor} from "../../lib/src/Carburetor";
 
 interface IDeferred<T> {
     promise: Promise<T>;
@@ -66,7 +66,7 @@ describe('resource under Suspense', () => {
         );
 
         expect(container.querySelector('.fallback')).not.toBeNull();
-        expect(resource.getData().status).toEqual('pending');
+        expect(resource.getData().status).toEqual(EResourceStatus.Pending);
 
         await act(async () => {
             gate.resolve('loaded');
@@ -75,7 +75,7 @@ describe('resource under Suspense', () => {
 
         expect(container.querySelector('.value')?.textContent).toEqual('loaded');
         expect(container.querySelector('.fallback')).toBeNull();
-        expect(resource.getData().status).toEqual('success');
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
 
         unmount();
     });

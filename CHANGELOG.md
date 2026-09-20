@@ -47,6 +47,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Sources are laid out one export per file, with related types grouped in `Models/` and at
   most seven entries per directory. The engine now reads as `Models/`, `Store/`, `Derived/`,
   `Resource/`, `Component/` and `Tooling/`. The published entry points are unchanged.
+- Closed sets of values are enums rather than unions of string literals: `EResourceStatus`
+  replaces `TResourceStatus`, and the Redux DevTools protocol strings became
+  `EDevToolsMessageType` and `EDevToolsAction`. Enum values match the previous strings, so
+  serialized state stays compatible.
 - `ResourceCarburetor.load(args)` no longer takes the internal notification flag, and its
   argument type defaults to `void`, so a resource without arguments is loaded as `load()`.
 - Data read through a carburetor is typed deeply read-only, so the compiler rejects a write
