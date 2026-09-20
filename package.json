@@ -2,12 +2,29 @@
   "name": "react-carburetor",
   "version": "0.1.0",
   "description": "React state engine with anti-hook component: state lives outside the tree, components subscribe to the exact fields they read.",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "./dist/cjs/Carburetor/index.js",
+  "module": "./dist/esm/Carburetor/index.mjs",
+  "types": "./dist/cjs/Carburetor/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
+      "import": {
+        "types": "./dist/esm/Carburetor/index.d.mts",
+        "default": "./dist/esm/Carburetor/index.mjs"
+      },
+      "require": {
+        "types": "./dist/cjs/Carburetor/index.d.ts",
+        "default": "./dist/cjs/Carburetor/index.js"
+      }
+    },
+    "./interop": {
+      "import": {
+        "types": "./dist/esm/Interop/index.d.mts",
+        "default": "./dist/esm/Interop/index.mjs"
+      },
+      "require": {
+        "types": "./dist/cjs/Interop/index.d.ts",
+        "default": "./dist/cjs/Interop/index.js"
+      }
     }
   },
   "files": [
@@ -28,7 +45,7 @@
     "url": "git+https://github.com/PHPCraftdream/ReactCarburetor.git"
   },
   "peerDependencies": {
-    "react": "^19.3.0"
+    "react": "^18.0.0 || ^19.0.0"
   },
   "devDependencies": {
     "@rslib/core": "^1.0.0",

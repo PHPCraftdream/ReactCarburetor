@@ -1,5 +1,15 @@
 import * as React from "react";
-import {ICarburetor, ICarburetorSubscription, IDict, TEffect, TPath, TPathSet} from "./Models";
+import {
+    ICarburetor,
+    ICarburetorSubscription,
+    IComputed,
+    IDict,
+    TEffect,
+    TPath,
+    TPathSet,
+    TReadonly
+} from "./Models";
+import {WILDCARD_PATH} from "./Paths";
 import {getUid} from "./Utils/getUid";
 
 interface ITrackedCarburetor {
@@ -48,25 +58,41 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * subscribes to exactly the fields it actually reads, and re-renders only when
      * those fields change.
      */
-    public useCarburetor = <T extends {}>(carburetor: ICarburetor<T>): T => {
-        const cuid = carburetor.getUID();
-        const known = this.tracked[cuid];
-
-        const tracked: ITrackedCarburetor = known && known.generation === this.renderGeneration
-            ? known
-            : {
-                carburetor,
-                reads: new Set<TPath>(),
-                version: carburetor.getVersion(),
-                generation: this.renderGeneration
-            };
-
-        this.tracked[cuid] = tracked;
+    public useCarburetor = <T extends {}>(carburetor: ICarburetor<T>): TReadonly<T> => {
+        const tracked = this.track(carburetor);
 
         return carburetor.read((path: TPath) => {
             tracked.reads.add(path);
         });
     };
+
+    /**
+     * Reads a memoized derived value. The component subscribes to the computed itself,
+     * not to its inputs, so it re-renders only when the derived value changes.
+     */
+    public useComputed = <R extends unknown>(computed: IComputed<R>): R => {
+        this.track(computed).reads.add(WILDCARD_PATH);
+
+        return computed.get();
+    };
+
+    protected track(source: ICarburetorSubscription): ITrackedCarburetor {
+        const cuid = source.getUID();
+        const known = this.tracked[cuid];
+
+        const tracked: ITrackedCarburetor = known && known.generation === this.renderGeneration
+            ? known
+            : {
+                carburetor: source,
+                reads: new Set<TPath>(),
+                version: source.getVersion(),
+                generation: this.renderGeneration
+            };
+
+        this.tracked[cuid] = tracked;
+
+        return tracked;
+    }
 
     protected useEffects(): void {
     }

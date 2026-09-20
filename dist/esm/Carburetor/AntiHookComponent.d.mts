@@ -1,5 +1,5 @@
 import * as React from "react";
-import { ICarburetor, ICarburetorSubscription, IDict, TEffect, TPathSet } from "./Models.js";
+import { ICarburetor, ICarburetorSubscription, IComputed, IDict, TEffect, TPathSet, TReadonly } from "./Models.mjs";
 interface ITrackedCarburetor {
     carburetor: ICarburetorSubscription;
     reads: TPathSet;
@@ -29,7 +29,13 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * subscribes to exactly the fields it actually reads, and re-renders only when
      * those fields change.
      */
-    useCarburetor: <T extends {}>(carburetor: ICarburetor<T>) => T;
+    useCarburetor: <T extends {}>(carburetor: ICarburetor<T>) => TReadonly<T>;
+    /**
+     * Reads a memoized derived value. The component subscribes to the computed itself,
+     * not to its inputs, so it re-renders only when the derived value changes.
+     */
+    useComputed: <R extends unknown>(computed: IComputed<R>) => R;
+    protected track(source: ICarburetorSubscription): ITrackedCarburetor;
     protected useEffects(): void;
     protected unUseEffects(_prevProps: P): void;
     protected useEffect: <TDep extends unknown>(callBack: TEffect, name: string, lastValue: TDep) => void;

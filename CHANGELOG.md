@@ -9,6 +9,27 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `computed(body)`: a memoized derived value that tracks the paths its body reads, recomputes
+  only when one of them is written, and wakes subscribers only when the result changed.
+  `AntiHookComponent.useComputed` subscribes a component to the value rather than its inputs.
+- `transaction(body)`: writes made inside it are delivered as one update per carburetor,
+  however many stores were touched.
+- `snapshot()` / `restore()` and a type-erased `toJSON()` / `fromJSON()` bridge, plus
+  `watch(paths, callback)` for subscribing outside React.
+- `ResourceCarburetor`: async state with an explicit status, request deduplication, abort via
+  `AbortSignal`, a serializable error message and `suspend()` for Suspense — class components
+  do suspend on a thrown promise, which the test suite pins down.
+- Per-request stores: `CarburetorScope`, `carburetorToken`, `CarburetorProvider` and
+  `ScopedAntiHookComponent`, which resolves its carburetors through `contextType`, so server
+  rendering no longer has to rely on module singletons.
+- Tooling: `connectDevTools` (Redux DevTools protocol with time travel, injectable connector),
+  `persist` (injectable storage), `CarburetorHistory` (undo/redo over snapshots) and
+  `waitForUpdate` for tests.
+- Optional `react-carburetor/interop` entry point with `useCarburetorValue` and
+  `useComputedValue`, for embedding a carburetor into a hooks-based subtree. Built on
+  `useSyncExternalStore`, and it derives the subscription from the selector's read paths.
+- ESM output alongside CommonJS, with an `exports` map carrying per-condition types.
+
 - Path-level tracking: `useCarburetor` returns tracked data, and a component subscribes to
   exactly the fields it read. `emitUpdate` wakes only the subscribers whose read paths
   intersect the written ones.
@@ -23,6 +44,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Data read through a carburetor is typed deeply read-only, so the compiler rejects a write
+  instead of leaving it to the runtime guard.
+- `peerDependencies` widened to React 18 or 19.
 - Updates are delivered immediately by default. Previously every update was delayed by a
   global 40 ms throttle window.
 - `useCarburetor` returns tracked data instead of the carburetor instance. Data read this way
@@ -46,6 +70,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `componentDidUpdate`, which re-ran them.
 - A cached nested write proxy kept pointing at a replaced branch, so writes after a nested
   array or object was replaced went to the stale object.
+- Notification loops crashed when a subscriber unsubscribed another one while the batch was
+  being delivered.
 
 ### Removed
 

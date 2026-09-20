@@ -2,13 +2,17 @@ import {
     ICarburetor,
     IDict,
     IUpdateScheduler,
+    TDisposer,
     TPath,
     TPathRecorder,
     TPathSet,
+    TReadonly,
     TSubscriber
 } from "./Models";
 import {pathsIntersect, WILDCARD_PATH} from "./Paths";
+import {deepClone} from "./Snapshot";
 import {syncUpdateScheduler} from "./SyncUpdateScheduler";
+import {INotifiable, updateBatch} from "./Transaction";
 import {createReadProxy, createWriteProxy, isTrackable} from "./Tracking";
 import {getUid} from "./Utils/getUid";
 
@@ -17,7 +21,7 @@ interface ISubscriberRecord {
     reads: TPathSet;
 }
 
-export class Carburetor<T extends {}> implements ICarburetor<T> {
+export class Carburetor<T extends {}> implements ICarburetor<T>, INotifiable {
     protected subscribers: IDict<ISubscriberRecord> = {};
     protected uid: string = getUid();
     protected version: number = 0;
@@ -44,16 +48,16 @@ export class Carburetor<T extends {}> implements ICarburetor<T> {
         return this.data;
     };
 
-    public read = (record: TPathRecorder): T => {
+    public read = (record: TPathRecorder): TReadonly<T> => {
         const data: unknown = this.data;
 
         if (!isTrackable(data)) {
             record(WILDCARD_PATH);
 
-            return this.data;
+            return this.data as unknown as TReadonly<T>;
         }
 
-        return createReadProxy(data, record) as T;
+        return createReadProxy(data, record) as unknown as TReadonly<T>;
     };
 
     public setData = (data: T): T => {
@@ -64,6 +68,22 @@ export class Carburetor<T extends {}> implements ICarburetor<T> {
         this.emitUpdate();
 
         return data;
+    };
+
+    public snapshot = (): T => {
+        return deepClone(this.data);
+    };
+
+    public restore = (data: T): void => {
+        this.setData(deepClone(data));
+    };
+
+    public toJSON = (): unknown => {
+        return this.snapshot();
+    };
+
+    public fromJSON = (value: unknown): void => {
+        this.restore(value as T);
     };
 
     public subscribe = (callback: TSubscriber, customId?: string, reads?: TPathSet): string => {
@@ -81,6 +101,27 @@ export class Carburetor<T extends {}> implements ICarburetor<T> {
             this.scheduler.cancel(id);
             delete this.subscribers[id];
         }
+    };
+
+    /** Subscribes outside React — for persistence, logging, analytics. */
+    public watch = (reads: TPathSet, callback: TSubscriber): TDisposer => {
+        const id = this.subscribe(callback, undefined, new Set<TPath>(reads));
+
+        return () => {
+            this.unsubscribe(id);
+        };
+    };
+
+    /** Called by the batch coordinator when a transaction closes. */
+    public notifyWrites = (writes: TPathSet): void => {
+        Object.keys(this.subscribers).forEach((id: string) => {
+            // A subscriber may have unsubscribed while this batch was being delivered.
+            const record = this.subscribers[id];
+
+            if (record && pathsIntersect(record.reads, writes)) {
+                this.scheduler.schedule(id, record.callback);
+            }
+        });
     };
 
     /**
@@ -130,12 +171,12 @@ export class Carburetor<T extends {}> implements ICarburetor<T> {
         const writes = changed || new Set<TPath>([WILDCARD_PATH]);
         this.version++;
 
-        Object.keys(this.subscribers).forEach((id: string) => {
-            const record = this.subscribers[id];
+        if (updateBatch.isActive()) {
+            updateBatch.add(this, writes);
 
-            if (pathsIntersect(record.reads, writes)) {
-                this.scheduler.schedule(id, record.callback);
-            }
-        });
+            return;
+        }
+
+        this.notifyWrites(writes);
     };
 }

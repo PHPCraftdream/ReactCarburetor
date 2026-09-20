@@ -139,6 +139,17 @@ describe('Carburetor', () => {
         expect(calls).toEqual(1);
     });
 
+    test('survives a subscriber unsubscribing another during delivery', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let tail = 0;
+
+        carburetor.subscribe(() => carburetor.unsubscribe('tail'), 'head');
+        carburetor.subscribe(() => tail++, 'tail');
+
+        expect(() => carburetor.setA(1)).not.toThrow();
+        expect(tail).toEqual(0);
+    });
+
     test('version grows with every update', () => {
         const carburetor = new TestCarburetor(getTestData());
         const initial = carburetor.getVersion();
@@ -225,7 +236,9 @@ describe('Carburetor', () => {
 
     test('data read through the proxy cannot be mutated', () => {
         const carburetor = new TestCarburetor(getTestData());
-        const data = carburetor.read(() => undefined);
+        // The type is deeply read-only, so a write has to be forced past the compiler
+        // to reach the runtime guard at all.
+        const data = carburetor.read(() => undefined) as unknown as ITestData;
 
         expect(() => {
             data.a = 1;

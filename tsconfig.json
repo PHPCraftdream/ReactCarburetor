@@ -9,13 +9,13 @@
     "declarationMap": false,
     "sourceMap": false,
     "outDir": "./dist",
-    "rootDir": "./lib/src/Carburetor",
+    "rootDir": "./lib/src",
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["lib/src/Carburetor/**/*"],
+  "include": ["lib/src/Carburetor/**/*", "lib/src/Interop/**/*"],
   "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
 }

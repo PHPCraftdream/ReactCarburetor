@@ -38,7 +38,7 @@ only the intersecting paths.
 npm install react-carburetor
 ```
 
-React 19 is a peer dependency.
+React 18 or 19 is a peer dependency. The package ships both ESM and CommonJS.
 
 ## Core ideas
 
@@ -52,8 +52,8 @@ component's subscription.
 const {orderIds, activeCount} = this.useCarburetor(todoCarburetor);
 ```
 
-Data returned from `useCarburetor` is read-only — mutating it throws. Writes belong to the
-carburetor, through `draft`:
+Data returned from `useCarburetor` is deeply read-only: the compiler rejects a write, and the
+proxy throws if you force one past it. Writes belong to the carburetor, through `draft`:
 
 ```ts
 export class TodoCarburetor extends Carburetor<ITodoList> {
@@ -87,6 +87,42 @@ Two properties keep this honest:
 If a write bypasses `draft` (a direct `this.data.x = y`), the changed paths are unknown, so
 the whole store is treated as changed. Coarse, but never a missed update.
 
+### Derived values
+
+`computed` memoizes a derived value and tracks its own dependencies: the paths its body reads.
+It is recomputed only when one of them is written, and subscribers are woken only when the
+result actually changed.
+
+```ts
+export const activeCount = computed<number>((read) => {
+    const {items} = read(todoCarburetor);
+
+    return Object.keys(items).filter((id) => !items[id].done).length;
+});
+```
+
+```tsx
+render() {
+    return <span>{this.useComputed(activeCount)}</span>;
+}
+```
+
+Editing a todo's title invalidates `items.<id>`, so the computed recomputes — but the count
+comes out the same, so nothing re-renders. A computed stops observing its dependencies once
+its last subscriber leaves.
+
+### Transactions
+
+Writes inside `transaction` are delivered as one update per carburetor, however many stores
+were touched:
+
+```ts
+transaction(() => {
+    todoCarburetor.createTodo();
+    filterCarburetor.reset();
+});
+```
+
 ### Scheduling is a policy, not a constant
 
 By default updates are delivered immediately and React does the batching — no latency added
@@ -94,8 +130,6 @@ to a click or a keystroke. Throttling is opt-in, per carburetor, for streaming s
 coalescing actually helps:
 
 ```ts
-import {Carburetor, ComponentUpdateThrottle} from 'react-carburetor';
-
 // A socket pushing hundreds of messages per second: collapse them into ~25 renders/sec.
 export const presenceCarburetor = new PresenceCarburetor(initial, new ComponentUpdateThrottle(40));
 ```
@@ -116,65 +150,160 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
 }
 ```
 
-`useEffect(callback, name, dep)` runs `callback` when `dep` changes since the last run,
+`useEffect(callback, name, dep)` runs `callback` when `dep` changed since the last run,
 compared with `===`.
 
-## Lifecycle contract
+## Async resources
 
-The React lifecycle belongs to `AntiHookComponent`: it subscribes in the commit phase,
-prunes subscriptions that are no longer read, and releases everything on unmount.
+`ResourceCarburetor` turns a promise into state with an explicit status, request
+deduplication and cancellation:
 
-Override `useEffects` / `unUseEffects`. If you must override
-`componentDidMount` / `componentDidUpdate` / `componentWillUnmount`, call the `super`
-implementation — otherwise effects and subscription cleanup will not run.
+```ts
+export const profile = new ResourceCarburetor<IProfile, {id: string}>(
+    ({id}, signal) => fetch(`/api/profile/${id}`, {signal}).then((response) => response.json())
+);
 
-Render stays pure: nothing subscribes during render, so an abandoned concurrent render
-leaves nothing behind. The window between render and commit is closed by comparing the
-carburetor's version and re-rendering if data changed in between.
+await profile.load({id: 'a1'});   // status: 'pending' -> 'success' | 'error'
+```
+
+Concurrent loads with the same arguments share one request; a load with different arguments
+aborts the previous one. The state stays serializable — the failure is stored as a message,
+with the original rejection available through `getLastError()`.
+
+It also works under Suspense, which class components support by throwing the pending promise:
+
+```tsx
+render() {
+    this.useCarburetor(profile);
+
+    return <ProfileCard profile={profile.suspend({id: 'a1'})}/>;
+}
+```
+
+While the request is in flight the nearest `<Suspense>` fallback shows; a failure is rethrown
+so the nearest error boundary handles it.
+
+## Per-request stores
+
+A module-level singleton is shared by every request on a server, which leaks one user's state
+into another's render. A scope creates the instances per request instead, and components
+resolve them through context — no hooks involved.
+
+```ts
+export const todoToken = carburetorToken(() => new TodoCarburetor(new ToDoClientAPI()));
+```
+
+```tsx
+class TodoScreen extends ScopedAntiHookComponent {
+    render() {
+        const carburetor = this.resolve(todoToken);
+        const {orderIds} = this.useCarburetor(carburetor);
+        ...
+    }
+}
+
+// one scope per request
+render(<CarburetorProvider scope={new CarburetorScope()}><TodoScreen/></CarburetorProvider>);
+```
+
+For hydration, take `snapshot()` on the server, serialize it, and seed the client scope with
+a prepared store through `scope.set(token, carburetor)`.
+
+## Tooling
+
+```ts
+// Redux DevTools: state inspection plus time travel back onto the carburetors.
+connectDevTools({todos: todoCarburetor, filter: filterCarburetor});
+
+// Mirror a store in a storage; loads what was stored on connect.
+persist(settingsCarburetor, {key: 'settings', storage: localStorage});
+
+// Undo/redo built on snapshots.
+const history = new CarburetorHistory(todoCarburetor, {limit: 50});
+history.undo();
+history.redo();
+
+// Await the next update — for throttled stores and async resources in tests.
+await waitForUpdate(presenceCarburetor);
+```
+
+## Hooks interop
+
+The engine needs no hooks, but the ecosystem around it is hooks-first. An opt-in entry point
+bridges the boundary, with the same path precision: the selector is run through the tracking
+proxy to learn what it depends on.
+
+```tsx
+import {useCarburetorValue, useComputedValue} from 'react-carburetor/interop';
+
+const NameBadge = () => {
+    const name = useCarburetorValue(profileCarburetor, (data) => data.name);
+
+    return <span>{name}</span>;
+};
+```
+
+Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe. Pass an equality
+function as the third argument when the selector builds a new object.
 
 ## API
 
 ### `Carburetor<T>`
 
-| member                            | description                                                          |
-|-----------------------------------|----------------------------------------------------------------------|
-| `constructor(data, scheduler?)`   | Initial data and delivery policy (defaults to immediate delivery).   |
-| `getData(): T`                    | Untracked data, for code outside render.                             |
-| `read(record): T`                 | Tracked data; every read path goes to `record`. Used by components.   |
-| `setData(data): T`                | Replaces the data and invalidates everything.                        |
-| `getVersion(): number`            | Write counter.                                                       |
-| `subscribe(cb, id?, reads?)`      | Subscribes; without `reads` the subscriber receives every update.    |
-| `unsubscribe(id)`                 | Removes the subscription and cancels a pending update.               |
-| `draft: T` *(protected)*          | Write proxy that records changed paths.                              |
-| `preEmit()` *(protected)*         | Hook that runs before notification — derive state here.              |
-| `emitUpdate()` *(protected)*      | Notifies the subscribers whose read paths intersect the writes.      |
+| member                          | description                                                        |
+|---------------------------------|--------------------------------------------------------------------|
+| `constructor(data, scheduler?)` | Initial data and delivery policy (defaults to immediate delivery).  |
+| `getData(): T`                  | Untracked data, for code outside render.                           |
+| `read(record)`                  | Tracked, deeply read-only data; every read path goes to `record`.  |
+| `setData(data)`                 | Replaces the data and invalidates everything.                      |
+| `snapshot(): T`                 | Detached deep copy, safe to serialize or keep.                     |
+| `restore(data)`                 | Replaces the data with a snapshot.                                 |
+| `toJSON()` / `fromJSON(value)`  | Type-erased bridge for devtools, persistence and hydration.        |
+| `watch(paths, callback)`        | Subscribes outside React; returns a disposer.                      |
+| `getVersion(): number`          | Write counter.                                                     |
+| `subscribe(cb, id?, reads?)`    | Subscribes; without `reads` the subscriber receives every update.  |
+| `unsubscribe(id)`               | Removes the subscription and cancels a pending update.             |
+| `draft: T` *(protected)*        | Write proxy that records changed paths.                            |
+| `preEmit()` *(protected)*       | Runs before notification — derive state here.                      |
+| `emitUpdate()` *(protected)*    | Notifies subscribers whose read paths intersect the writes.        |
 
 ### `AntiHookComponent<P, S>`
 
-| member                          | description                                                       |
-|---------------------------------|-------------------------------------------------------------------|
-| `useCarburetor(carburetor): T`  | Tracked data for reading in render; establishes the subscription.  |
-| `useEffects()` *(protected)*    | Runs on mount and after every update.                             |
-| `unUseEffects(prevProps)`       | Runs before `useEffects` on update, and on unmount.                |
-| `useEffect(cb, name, dep)`      | Runs `cb` when `dep` changed since last time.                      |
+| member                         | description                                                       |
+|--------------------------------|-------------------------------------------------------------------|
+| `useCarburetor(carburetor)`    | Tracked data for reading in render; establishes the subscription.  |
+| `useComputed(computed)`        | Reads a derived value and subscribes to it, not to its inputs.     |
+| `useEffects()` *(protected)*   | Runs on mount and after every update.                             |
+| `unUseEffects(prevProps)`      | Runs before `useEffects` on update, and on unmount.                |
+| `useEffect(cb, name, dep)`     | Runs `cb` when `dep` changed since last time.                      |
 
-### Schedulers
+### Other exports
 
-| class                            | behaviour                                                        |
-|----------------------------------|------------------------------------------------------------------|
-| `SyncUpdateScheduler` *(default)*| Delivers immediately; React batches.                             |
-| `ComponentUpdateThrottle(ms)`    | Coalesces updates per component within an `ms` window (default 40). |
+| export                                        | purpose                                     |
+|-----------------------------------------------|---------------------------------------------|
+| `computed(body)`                              | Memoized derived value.                     |
+| `transaction(body)`                           | One notification pass for a group of writes. |
+| `SyncUpdateScheduler` *(default)*             | Immediate delivery; React batches.          |
+| `ComponentUpdateThrottle(ms)`                 | Coalescing for streaming sources.           |
+| `ResourceCarburetor(loader, scheduler?)`      | Async state with status and cancellation.    |
+| `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent` | Per-request stores. |
+| `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
+| `deepClone`, `pathsIntersect`, `isTrackable`  | Building blocks, exported for extensions.    |
 
 ## Caveats
 
 - Don't stash tracked data outside render. Reads happening after commit are not part of the
   subscription, and a proxy kept across renders may point at replaced data.
 - Tracking covers plain objects and arrays. `Map`, `Set`, `Date` and class instances are
-  returned as-is and are not tracked field by field.
+  handed over as they are: reading one is a leaf read, but mutating it in place is invisible,
+  so such a write falls back to invalidating the whole store. Replace the value instead of
+  mutating it, and keep plain data in stores you want precision on.
 - Path matching is a nested loop over read and write paths. That is fine for realistic sets;
   a store with thousands of tracked paths per component would want a smarter index.
-- Store instances are usually module singletons, which is not safe for server-side rendering
-  across requests. Create per-request carburetors if you render on a server.
+- Render stays pure — nothing subscribes during render — but a write that lands between
+  render and commit is only detected afterwards, by comparing the carburetor version, and
+  corrected with an extra render. There is no consistency guarantee *within* a single
+  concurrent render pass; don't write to stores from render.
 
 ## Demo
 
@@ -192,7 +321,7 @@ npm start
 
 ```bash
 npm install
-npm run build       # Rslib bundleless CJS + declarations via tsgo
+npm run build       # Rslib: ESM + CJS, declarations via tsgo
 npm run typecheck   # TypeScript 7
 npm run lint        # oxlint with type-aware rules
 npm test            # Rstest + @testing-library/react

@@ -31,7 +31,9 @@ __webpack_require__.d(__webpack_exports__, {
     Carburetor: ()=>Carburetor
 });
 const external_Paths_js_namespaceObject = require("./Paths.js");
+const external_Snapshot_js_namespaceObject = require("./Snapshot.js");
 const external_SyncUpdateScheduler_js_namespaceObject = require("./SyncUpdateScheduler.js");
+const external_Transaction_js_namespaceObject = require("./Transaction.js");
 const external_Tracking_js_namespaceObject = require("./Tracking.js");
 const getUid_js_namespaceObject = require("./Utils/getUid.js");
 class Carburetor {
@@ -65,6 +67,14 @@ class Carburetor {
         this.emitUpdate();
         return data;
     };
+    snapshot = ()=>(0, external_Snapshot_js_namespaceObject.deepClone)(this.data);
+    restore = (data)=>{
+        this.setData((0, external_Snapshot_js_namespaceObject.deepClone)(data));
+    };
+    toJSON = ()=>this.snapshot();
+    fromJSON = (value)=>{
+        this.restore(value);
+    };
     subscribe = (callback, customId, reads)=>{
         const id = customId || (0, getUid_js_namespaceObject.getUid)();
         this.subscribers[id] = {
@@ -80,6 +90,18 @@ class Carburetor {
             this.scheduler.cancel(id);
             delete this.subscribers[id];
         }
+    };
+    watch = (reads, callback)=>{
+        const id = this.subscribe(callback, void 0, new Set(reads));
+        return ()=>{
+            this.unsubscribe(id);
+        };
+    };
+    notifyWrites = (writes)=>{
+        Object.keys(this.subscribers).forEach((id)=>{
+            const record = this.subscribers[id];
+            if (record && (0, external_Paths_js_namespaceObject.pathsIntersect)(record.reads, writes)) this.scheduler.schedule(id, record.callback);
+        });
     };
     get draft() {
         const data = this.data;
@@ -103,10 +125,8 @@ class Carburetor {
             external_Paths_js_namespaceObject.WILDCARD_PATH
         ]);
         this.version++;
-        Object.keys(this.subscribers).forEach((id)=>{
-            const record = this.subscribers[id];
-            if ((0, external_Paths_js_namespaceObject.pathsIntersect)(record.reads, writes)) this.scheduler.schedule(id, record.callback);
-        });
+        if (external_Transaction_js_namespaceObject.updateBatch.isActive()) return void external_Transaction_js_namespaceObject.updateBatch.add(this, writes);
+        this.notifyWrites(writes);
     };
 }
 exports.Carburetor = __webpack_exports__.Carburetor;
