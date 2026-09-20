@@ -31,6 +31,7 @@ __webpack_require__.d(__webpack_exports__, {
     AntiHookComponent: ()=>AntiHookComponent
 });
 const external_react_namespaceObject = require("react");
+const EResourceStatus_js_namespaceObject = require("../Models/Enums/EResourceStatus.js");
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const external_shallowEqual_js_namespaceObject = require("./shallowEqual.js");
@@ -39,15 +40,18 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
     effects = {};
     tracked = {};
     renderGeneration = 0;
+    staleResources = [];
     shouldComponentUpdate(nextProps, nextState) {
         return !(0, external_shallowEqual_js_namespaceObject.shallowEqual)(this.props, nextProps) || !(0, external_shallowEqual_js_namespaceObject.shallowEqual)(this.state, nextState);
     }
     componentDidMount() {
         this.commitSubscriptions();
+        this.loadStaleResources();
         this.useEffects();
     }
     componentDidUpdate(prevProps) {
         this.commitSubscriptions();
+        this.loadStaleResources();
         this.unUseEffects(prevProps);
         this.useEffects();
     }
@@ -66,6 +70,20 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         this.track(computed).reads.add(WildcardPath_js_namespaceObject.WILDCARD_PATH);
         return computed.get();
     };
+    useResource = (source, args)=>{
+        this.track(source).reads.add(source.pathOf(args));
+        const view = source.getEntry(args);
+        const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus_js_namespaceObject.EResourceStatus.Error;
+        if (worthFetching) this.staleResources.push(()=>{
+            source.load(args);
+        });
+        return view;
+    };
+    loadStaleResources() {
+        const queued = this.staleResources;
+        this.staleResources = [];
+        queued.forEach((load)=>load());
+    }
     track(source) {
         const cuid = source.getUID();
         const known = this.tracked[cuid];

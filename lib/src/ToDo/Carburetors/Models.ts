@@ -1,4 +1,4 @@
-import {ITodo} from "../API/Models";
+import {ITodo} from "@/ToDo/API/Models";
 
 export type TUpdateTodo = (data: ITodo) => void;
 

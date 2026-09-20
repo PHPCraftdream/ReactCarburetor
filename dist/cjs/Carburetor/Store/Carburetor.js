@@ -117,13 +117,19 @@ class Carburetor {
     get draft() {
         const data = this.data;
         this.touchDraft();
-        if (!(0, isTrackable_js_namespaceObject.isTrackable)(data)) return this.data;
+        if (!(0, isTrackable_js_namespaceObject.isTrackable)(data)) {
+            this.recordWrite(WildcardPath_js_namespaceObject.WILDCARD_PATH);
+            return this.data;
+        }
         if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.recordWrite);
         return this.draftProxy;
     }
     update = (mutate)=>{
-        mutate(this.draft);
+        const result = mutate(this.draft);
         this.emitUpdate();
+        if ("u" > typeof process && 'production' !== process.env.NODE_ENV) {
+            if (result instanceof Promise) DiagnosticsInstance_js_namespaceObject.diagnostics.report("update(mutate) published before the mutation finished: the callback returned a promise, so writes made after its first await wake nobody. Keep the callback synchronous and publish after the await instead.");
+        }
     };
     emitSoon = ()=>{
         this.pendingEmit = true;

@@ -1,0 +1,1 @@
+let e=(e,t)=>{if("method"!==t.kind)throw Error("Carburetor: @bind applies to methods. A class property is already bound to its instance, and a getter has nothing to bind.");t.addInitializer(function(){Object.defineProperty(this,t.name,{value:e.bind(this),writable:!0,configurable:!0,enumerable:!1})})};export{e as bind};

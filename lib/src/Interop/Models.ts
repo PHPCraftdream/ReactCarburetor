@@ -1,4 +1,4 @@
-import {TReadonly} from "../Carburetor";
+import {TReadonly} from "@/Carburetor";
 
 /** Picks the part of the data a hooks-based component cares about. */
 export type TSelector<T, R> = (data: TReadonly<T>) => R;

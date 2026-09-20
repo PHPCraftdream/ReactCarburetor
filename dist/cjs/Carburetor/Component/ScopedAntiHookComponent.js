@@ -31,9 +31,9 @@ __webpack_require__.d(__webpack_exports__, {
     ScopedAntiHookComponent: ()=>ScopedAntiHookComponent
 });
 const external_AntiHookComponent_js_namespaceObject = require("./AntiHookComponent.js");
-const external_CarburetorContext_js_namespaceObject = require("./CarburetorContext.js");
+const CarburetorContext_js_namespaceObject = require("./Scope/CarburetorContext.js");
 class ScopedAntiHookComponent extends external_AntiHookComponent_js_namespaceObject.AntiHookComponent {
-    static contextType = external_CarburetorContext_js_namespaceObject.CarburetorContext;
+    static contextType = CarburetorContext_js_namespaceObject.CarburetorContext;
     scope() {
         if (!this.context) throw new Error("Carburetor: no scope found. Wrap the tree in <CarburetorProvider scope={...}> before using a scoped component.");
         return this.context;

@@ -1,6 +1,6 @@
-import {TPath, TPathRecorder} from "../../Models/Paths";
-import {joinPath} from "../Paths/joinPath";
-import {WILDCARD_PATH} from "../Paths/WildcardPath";
+import {TPath, TPathRecorder} from "@/Carburetor/Models/Paths";
+import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {createProxyCache} from "./createProxyCache";
 import {isTrackable} from "./isTrackable";
 

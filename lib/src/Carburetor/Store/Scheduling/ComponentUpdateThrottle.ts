@@ -1,5 +1,5 @@
-import {TTimerHandle, TUpdater} from "../../Models/Base";
-import {IUpdateScheduler} from "../../Models/Store";
+import {TTimerHandle, TUpdater} from "@/Carburetor/Models/Base";
+import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 
 /**
  * A policy for streaming sources: a socket pushing a thousand messages per second,

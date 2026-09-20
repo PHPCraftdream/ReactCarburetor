@@ -1,6 +1,6 @@
-import {IDict, TDisposer, TReadonly, TSubscriber} from "../Models/Base";
-import {TPath, TPathRecorder, TPathSet} from "../Models/Paths";
-import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler} from "../Models/Store";
+import {IDict, TDisposer, TReadonly, TSubscriber} from "@/Carburetor/Models/Base";
+import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
+import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {deepClone} from "./Utils/deepClone";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
@@ -145,6 +145,11 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         this.touchDraft();
 
         if (!isTrackable(data)) {
+            // The store itself cannot be wrapped (a Map or a class instance as the root),
+            // so a mutation through this reference is invisible. There is no path to be
+            // precise about either, which makes the whole store the honest answer.
+            this.recordWrite(WILDCARD_PATH);
+
             return this.data;
         }
 
@@ -160,9 +165,21 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * changes the data while nobody re-renders, which is why this is the recommended form.
      */
     protected update = (mutate: (draft: T) => void): void => {
-        mutate(this.draft);
+        const result: unknown = mutate(this.draft);
 
         this.emitUpdate();
+
+        // An async callback is accepted by a void-returning signature, and then everything it
+        // writes after the first await lands in the data long after this emitUpdate has run.
+        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+            if (result instanceof Promise) {
+                diagnostics.report(
+                    'update(mutate) published before the mutation finished: the callback returned ' +
+                    'a promise, so writes made after its first await wake nobody. Keep the ' +
+                    'callback synchronous and publish after the await instead.'
+                );
+            }
+        }
     };
 
     /** Publishes on the next microtask — for writes made where notifying now is unsafe. */

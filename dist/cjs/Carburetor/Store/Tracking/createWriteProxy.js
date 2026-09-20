@@ -37,26 +37,31 @@ const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
 const createWriteProxy = (target, record, basePath = '')=>{
     const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
     const isArray = Array.isArray(target);
-    const writtenPath = (key)=>isArray ? basePath || WildcardPath_js_namespaceObject.WILDCARD_PATH : (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
+    const writtenPath = (key)=>{
+        if ('symbol' == typeof key) return WildcardPath_js_namespaceObject.WILDCARD_PATH;
+        return isArray ? basePath || WildcardPath_js_namespaceObject.WILDCARD_PATH : (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
+    };
     return new Proxy(target, {
         get: (source, key)=>{
             const value = Reflect.get(source, key);
-            if ('symbol' == typeof key || 'function' == typeof value || !(0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return value;
+            if ('symbol' == typeof key || 'function' == typeof value) return value;
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
-            return cached(path, value, ()=>createWriteProxy(value, record, path));
+            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return cached(path, value, ()=>createWriteProxy(value, record, path));
+            if (null !== value && 'object' == typeof value) record(path);
+            return value;
         },
         set: (source, key, value)=>{
-            if ('string' == typeof key) {
-                if (Reflect.get(source, key) === value) return true;
-                record(writtenPath(key));
-            }
+            if (Reflect.get(source, key) === value) return true;
+            record(writtenPath(key));
             return Reflect.set(source, key, value);
         },
+        defineProperty: (source, key, descriptor)=>{
+            record(writtenPath(key));
+            return Reflect.defineProperty(source, key, descriptor);
+        },
         deleteProperty: (source, key)=>{
-            if ('string' == typeof key) {
-                if (!Reflect.has(source, key)) return true;
-                record(writtenPath(key));
-            }
+            if (!Reflect.has(source, key)) return true;
+            record(writtenPath(key));
             return Reflect.deleteProperty(source, key);
         }
     });

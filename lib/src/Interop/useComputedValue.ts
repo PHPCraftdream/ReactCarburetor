@@ -1,5 +1,5 @@
 import {useCallback, useSyncExternalStore} from "react";
-import {IComputed} from "../Carburetor";
+import {IComputed} from "@/Carburetor";
 
 /** Reads a memoized derived value from a hooks-based component. */
 export const useComputedValue = <R>(computed: IComputed<R>): R => {

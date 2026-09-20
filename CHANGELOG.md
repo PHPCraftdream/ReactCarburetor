@@ -21,6 +21,29 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   scope created and the client starts from the same data.
 - `SubscriberIndex`: read paths and their ancestors are indexed, so a write looks up the
   subscribers it concerns instead of scanning all of them.
+- `ResourceCache`: many async answers keyed by the arguments that produced them, with a lifetime per
+  entry, request deduplication, abort, explicit invalidation and a bound on how many are kept. Reads
+  are path-precise, so one entry answering does not re-render a component reading another. A failed
+  refresh keeps the last good answer instead of replacing it with an error, and refreshing an entry
+  that has data does not flash `Pending` over it. `AntiHookComponent.useResource` subscribes a
+  component to one entry and refetches a stale one after the commit rather than during render;
+  `suspend(args)` works per entry. Keys are escaped, because an unescaped one containing the path
+  separator made two unrelated entries wake each other — see `docs/promise-cache.md`.
+- `@bind`: a standard (Stage 3) decorator that binds a method once per instance. The method
+  stays on the prototype, so `super` and overriding keep working — unlike an arrow class
+  property — and the reference stays stable across renders, which is what the props gate needs:
+  a handler built in render makes a child's props compare as changed every time. Requires no
+  `experimentalDecorators`.
+- `react-carburetor/lint`: 22 lint rules for the ways consumer code can go wrong silently — a write
+  that reaches no subscriber, a component reading state it never subscribed to, an effect whose
+  cleanup is dropped, a computed that never invalidates. One plugin serves both hosts, since oxlint's
+  JS plugin API is ESLint's: oxlint consumers add one `extends` line pointing at the shipped
+  `recommended.oxlintrc.json`, ESLint v9 consumers spread `carburetor.configs.recommended` into a
+  flat config. Every rule is tested through oxlint's `RuleTester` and again through the real binary
+  over a fixture, and the packaged path is exercised in both hosts.
+- `docs/hazards.md`: the catalogue behind those rules — for each hazard, the code that triggers it,
+  why it is silent at runtime, the supported form, what the rule matches on, and where it can produce
+  a false positive.
 - `diagnostics` / `Diagnostics`: development-only warnings with an explicit on/off switch.
 - `benchmarks/pathsIntersect.mjs`, run against the built output and kept out of the test suite.
 - Pre-stripped production outputs (`dist/esm-prod`, `dist/cjs-prod`) selected by the `production`
@@ -66,6 +89,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Carburetor<T extends object>`: a primitive store silently degraded to wildcard tracking.
 - The public entry point exports a curated surface; the tracking proxies, proxy cache, path
   string plumbing and batch coordinator are no longer exported, and a test pins the surface.
+- Internal imports no longer reach up out of their directory: `../../Models/Paths` is now
+  `@/Carburetor/Models/Paths`, an alias resolved by TypeScript, Rstest and both bundlers, and
+  rewritten to a relative path in every published output — JavaScript and declarations alike, which
+  a build check confirms. An unpublished lint rule enforces the direction and rewrites offenders
+  under `oxlint --fix`. Consumers see no change.
+- The scope pieces (`CarburetorScope`, `carburetorToken`, `CarburetorProvider`,
+  `CarburetorContext`) moved into `Component/Scope/`. Import paths inside the package changed;
+  the published entry points did not.
 - Sources are laid out one export per file, with related types grouped in `Models/` and at
   most seven entries per directory. The engine now reads as `Models/`, `Store/`, `Derived/`,
   `Resource/`, `Component/` and `Tooling/`. The published entry points are unchanged.
@@ -112,6 +143,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Development diagnostics were guarded by a runtime lookup a bundler cannot substitute, so they
   shipped to production and ran there. The guard is now a literal `process.env.NODE_ENV`
   comparison with the message inside it, verified absent from a production bundle.
+- A write into an untrackable value through `draft` was lost silently: `this.draft.index.set(k, v)`
+  mutated a `Map` the proxy cannot wrap, recorded no path, and `emitUpdate` then concluded that
+  nothing had changed and woke nobody — not even the forgotten-`emitUpdate` warning fired.
+  Handing out such a reference now records the path it came from, so the subscribers of that
+  path are notified. The same held for a store whose root is untrackable, which now invalidates
+  everything.
+- `Object.defineProperty` on draft data never reached the set trap, so the write landed in the
+  data and woke nobody. It has a trap of its own now.
+- A write under a symbol key recorded no path and was dropped the same way; it now invalidates
+  everything, since a symbol cannot be expressed as a path.
+- `update(mutate)` given an `async` callback published at the first `await` and left every later
+  write unpublished with no warning; development now reports it.
 
 ### Removed
 

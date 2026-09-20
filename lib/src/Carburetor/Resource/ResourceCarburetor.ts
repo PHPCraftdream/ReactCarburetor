@@ -1,7 +1,7 @@
-import {EResourceStatus} from "../Models/Enums/EResourceStatus";
-import {IResourceData, TResourceLoader} from "../Models/Resource";
-import {IUpdateScheduler} from "../Models/Store";
-import {Carburetor} from "../Store/Carburetor";
+import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {IResourceData, TResourceLoader} from "@/Carburetor/Models/Resource";
+import {IUpdateScheduler} from "@/Carburetor/Models/Store";
+import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {getInitialResourceData} from "./getInitialResourceData";
 
 const describeError = (error: unknown): string => {

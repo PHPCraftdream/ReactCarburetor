@@ -16,6 +16,10 @@ contributions are the ones that sharpen it rather than widen it.
   `process.env.NODE_ENV !== 'production'` comparison and put the message *inside* that guard,
   never in a method of its own — a class member survives into a production bundle whatever the
   branch does. Report through `diagnostics.report` so users can switch them off.
+- **Handlers use `@bind`, lifecycle methods stay methods.** A class property shadows the
+  prototype, which breaks `super` and has silently disabled effects before. `typescript/unbound-method`
+  cannot see the decorator and is therefore off in `.oxlintrc.json`; `require-bind-for-passed-method`
+  in the lint plugin replaces it (see `docs/hazards.md`, H22).
 - **Optimize on measurements.** Performance work starts with a benchmark under
   `benchmarks/`, run against the built output, and the numbers go into the code comment or the
   README. Benchmarks stay out of the test suite so the test run stays fast.
@@ -35,6 +39,9 @@ Two structural rules keep the tree navigable:
 - **At most seven entries per directory.** When a folder outgrows that, its contents are
   regrouped into subfolders by meaning rather than left as a flat list.
 
+Both rules are checked by `npm run check:layout`, which runs in CI — they are enforced rather than
+remembered.
+
 Singletons live next to their class in a file suffixed with `Instance`
 (`SyncUpdateScheduler.ts` and `SyncUpdateSchedulerInstance.ts`) — two files differing only
 in the first letter's case would collide on case-insensitive filesystems.
@@ -44,14 +51,104 @@ paths, tracking proxies, transactions, schedulers), `Derived/` (computed values)
 `Resource/` (async state), `Component/` (React integration) and `Tooling/` (devtools,
 persistence, history, test helpers). The optional hooks bridge lives in `lib/src/Interop`.
 
+## The lint plugins
+
+There are two, and the line between them is what a rule is *about*.
+
+`plugin/src` — **shipped**, as `react-carburetor/lint`. These rules are about the safety of
+carburetor logic: a write nobody hears, a component that never subscribes, an effect whose cleanup
+is dropped. Those are the library's business wherever the code lives, so consumers get them. They
+are catalogued in `docs/hazards.md` and listed in `docs/rules.md`.
+
+`plugin/internal` — **not shipped**, loaded from source by `.oxlintrc.json` only. These rules are
+about how this repository is written: import direction, and the style rules that follow. That is
+house taste, and shipping it would impose this project's conventions on someone who asked for a
+state engine. A build only ever starts from `plugin/src`, so nothing internal can reach `dist` by
+accident — and a test asserts the bundle does not contain it.
+
+Both plugins share the types and AST helpers under `plugin/src`, reached through the `#src/*` map in
+`plugin/package.json`. A rule that fixes something puts the fix in the rule rather than in a script:
+`no-parent-import` rewrites `../../Models/Paths` to `@/Carburetor/Models/Paths` under
+`oxlint --fix`, which is why its tests assert the rewritten source and not just the report. A
+one-off script would have to be written again next time, and would never run on code that is still
+being typed.
+
+One implementation serves both hosts, because oxlint's JS plugin API is ESLint's: this repository
+loads both plugins through `jsPlugins` in `.oxlintrc.json`, and a consumer on ESLint v9 imports the
+shipped one into a flat config.
+
+Adding a rule: one file per rule next to the others, registered in `plugin/src/index.mts`, and
+tested twice — with oxlint's `RuleTester` (from `oxlint/plugins-dev`, so no extra dependency) for
+the rule's logic, and through the real binary over a fixture in `plugin/__fixtures__` for the
+host path. The second test exists because `RuleTester` drives `create` directly and cannot show
+that oxlint loads the plugin at all.
+
+Three host constraints are easy to trip over, all established by probing rather than by reading:
+
+- **`jsPlugins` paths resolve relative to the config file**, not to the working directory. The same
+  is true of a path in `extends`, and of the `jsPlugins` inside an extended config — which is what
+  lets a consumer point one `extends` line at `dist/lint/recommended.oxlintrc.json` and get the
+  bundled plugin next to it.
+- **Type-only imports must be written `import type`.** oxlint loads the plugin through Node,
+  which strips types but does not remove a value import of something that only exists as a type,
+  so a plain `import {IRule}` makes the whole plugin fail to load. `verbatimModuleSyntax` in
+  `plugin/tsconfig.json` turns that into a compile error instead of a runtime one.
+- **Linting this repository needs a Node that strips types**, because `.oxlintrc.json` loads the
+  plugin from `plugin/src` rather than from a build — so a rule edit takes effect immediately
+  instead of after a rebuild. That means Node 22.18+ or 24, which is why CI runs 24. Consumers are
+  unaffected: they get the compiled bundle.
+
+The published plugin is one bundled file per format under `dist/lint`, because the sources import
+each other through the `#src/*` map in `plugin/package.json`, which only resolves inside this
+repository. `plugin/src/recommended.mts` is the single source of severities, and
+`__tests__/Plugin/packaging.test.ts` pins the JSON preset and the flat config against it, then runs
+both hosts against the built bundle the way a consumer would.
+
+The oxlint documentation warns that a JS plugin costs noticeably more than a native rule, so the
+cost was measured on this repository rather than guessed (best of four runs each):
+
+| Configuration                      | Time   |
+|------------------------------------|--------|
+| native rules only                  | 315 ms |
+| plugin loaded, all 22 rules off    | 437 ms |
+| plugin active                      | 585 ms |
+
+So +122 ms is fixed — starting Node, stripping the types, loading the plugin — and +148 ms is the
+22 rules actually running over the whole tree. Under 0.6 s in total, which is why they stay on in
+the default lint run. Re-measure before adding a rule that walks much more than a few node types.
+
+oxlint has no native plugin API, which is worth writing down so nobody re-investigates: there are
+exactly two mechanisms — built-in plugins compiled into the binary, and `jsPlugins`. No dylib, no
+wasm, and the npm package installs a prebuilt platform binary. That is by design, since Rust has no
+stable ABI and oxc's AST types move between releases.
+
+So the native path is a **binary of our own**, in `native/`, called by the plugin once per lint run
+rather than compiled into the linter. It is 20 ms over this whole tree against the 270 ms the
+JavaScript rule layer costs — see `native/README.md` for the measurements and for why "once per run"
+is achievable in ESLint's multithreaded mode. The rules live there; the plugin becomes a bridge, so
+there is one implementation rather than two, and suppression comments, editor diagnostics and
+configuration keep working because the host still does the reporting.
+
+The one lever that does exist: pointing `jsPlugins` at the built bundle instead of the `.mts`
+sources measures 475 ms against 558 ms — 82 ms saved by skipping type stripping and thirty module
+resolutions. It is not taken, because CI would then lint with the bundle, which deliberately does
+not contain the internal plugin; building a second, unpublished bundle to get those 82 ms back costs
+more machinery than it saves.
+
+A rule that reports code the repository writes on purpose — a regression test that deliberately
+does the wrong thing — is silenced with a line comment explaining why, never by weakening the
+rule.
+
 ## Getting started
 
 ```bash
 npm install
-npm run build       # Rslib: bundleless CJS + declarations via tsgo
-npm run typecheck   # TypeScript 7
-npm run lint        # oxlint, including type-aware rules
-npm test            # Rstest + @testing-library/react
+npm run build        # Rslib: bundleless library, bundled lint plugin, declarations via tsgo
+npm run typecheck    # TypeScript 7, library and plugin
+npm run lint         # oxlint: native rules, type-aware rules, and this project's own 22
+npm run check:layout # the two structural rules above
+npm test             # Rstest + @testing-library/react
+npm run test:rules   # just the lint rules, when that is what you changed
 ```
 
 The demo app has its own package:

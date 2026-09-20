@@ -1,5 +1,5 @@
-import {TUpdater} from "../../Models/Base";
-import {IUpdateScheduler} from "../../Models/Store";
+import {TUpdater} from "@/Carburetor/Models/Base";
+import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 
 /**
  * The default policy: an update is delivered right away and React does the batching.

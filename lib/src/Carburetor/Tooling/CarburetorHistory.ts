@@ -1,7 +1,7 @@
-import {TDisposer} from "../Models/Base";
-import {ICarburetor} from "../Models/Store";
-import {IHistoryOptions} from "../Models/Tooling";
-import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
+import {TDisposer} from "@/Carburetor/Models/Base";
+import {ICarburetor} from "@/Carburetor/Models/Store";
+import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
 /**
  * Undo/redo for a carburetor, built on snapshots. Every change is recorded, except the

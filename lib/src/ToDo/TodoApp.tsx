@@ -1,5 +1,5 @@
 import * as React from "react";
-import {AntiHookComponent} from "../Carburetor";
+import {AntiHookComponent} from "@/Carburetor";
 import {EmitStatus} from "./Components/EmitStatus";
 import {TodoItem} from "./Components/TodoItem";
 import {someCarburetor} from "./Carburetors/SomeCarburetorInstance";
@@ -95,7 +95,7 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
                     )}
                 </div>
 
-                <ul className="divide-y divide-slate-200/70 border-y border-slate-200/70 dark:divide-slate-800 dark:border-slate-800">
+                <ul className="divide-y divide-slate-200/70 border-y dark:divide-slate-800 dark:border-slate-800">
                     {orderIds.length === 0
                         ? this.renderEmpty()
                         : orderIds.map((id: string) => (

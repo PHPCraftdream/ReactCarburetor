@@ -1,0 +1,26 @@
+[package]
+name = "carburetor-lint"
+version = "0.1.0"
+edition = "2021"
+description = "Native checks for React Carburetor consumer code"
+license = "MIT OR Apache-2.0"
+
+# Pinned exactly: oxc's AST types change between minor versions, and an unpinned parser would
+# break the rules silently rather than loudly.
+[dependencies]
+oxc_allocator = "=0.150.0"
+oxc_ast = "=0.150.0"
+oxc_ast_visit = "=0.150.0"
+oxc_parser = "=0.150.0"
+oxc_span = "=0.150.0"
+rayon = "=1.12.0"
+ignore = "=0.4.33"
+serde = { version = "=1.0.228", features = ["derive"] }
+serde_json = "=1.0.145"
+
+[profile.release]
+# A linter is short-lived: optimise for the run, not for the build.
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"

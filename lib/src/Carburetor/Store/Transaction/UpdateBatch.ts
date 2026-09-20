@@ -1,5 +1,5 @@
-import {TPath, TPathSet} from "../../Models/Paths";
-import {INotifiable} from "../../Models/Store";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
+import {INotifiable} from "@/Carburetor/Models/Store";
 
 /**
  * Collects writes while a transaction is open and delivers one notification pass per

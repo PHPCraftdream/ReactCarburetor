@@ -1,4 +1,4 @@
-import {TPath} from "../../Models/Paths";
+import {TPath} from "@/Carburetor/Models/Paths";
 
 interface IProxyCacheEntry {
     source: object;

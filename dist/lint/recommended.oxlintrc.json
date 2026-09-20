@@ -1,0 +1,27 @@
+{
+  "jsPlugins": ["./index.mjs"],
+  "rules": {
+    "carburetor/no-async-effect": "error",
+    "carburetor/no-async-transaction": "error",
+    "carburetor/no-computed-get-in-computed": "error",
+    "carburetor/no-computed-get-in-render": "error",
+    "carburetor/no-direct-data-write": "warn",
+    "carburetor/no-duplicate-effect-name": "error",
+    "carburetor/no-escaping-tracked-data": "warn",
+    "carburetor/no-external-data-mutation": "error",
+    "carburetor/no-get-data-in-render": "error",
+    "carburetor/no-handler-created-in-render": "warn",
+    "carburetor/no-lifecycle-class-property": "error",
+    "carburetor/no-module-level-store": "off",
+    "carburetor/no-store-write-in-render": "error",
+    "carburetor/no-tracked-data-mutation": "error",
+    "carburetor/no-untrackable-draft-mutation": "warn",
+    "carburetor/no-untrackable-store-data": "warn",
+    "carburetor/no-use-carburetor-outside-render": "error",
+    "carburetor/require-bind-for-passed-method": "error",
+    "carburetor/require-effect-deps": "warn",
+    "carburetor/require-emit-after-draft-write": "error",
+    "carburetor/require-subscription-disposal": "warn",
+    "carburetor/require-super-in-lifecycle": "error"
+  }
+}

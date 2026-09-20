@@ -1,10 +1,12 @@
 import * as React from "react";
-import {IDict, TEffect, TEffectCleanup, TEffectDeps, TReadonly} from "../Models/Base";
-import {IComputed} from "../Models/Derived";
-import {TPath, TPathSet} from "../Models/Paths";
-import {ICarburetor, ICarburetorSubscription} from "../Models/Store";
-import {getUid} from "../Store/Utils/getUid";
-import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
+import {IDict, TEffect, TEffectCleanup, TEffectDeps, TReadonly} from "@/Carburetor/Models/Base";
+import {IComputed} from "@/Carburetor/Models/Derived";
+import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
+import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {getUid} from "@/Carburetor/Store/Utils/getUid";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {shallowEqual} from "./shallowEqual";
 
 interface ITrackedCarburetor {
@@ -39,6 +41,9 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     /** Number of the current, not yet committed render. */
     protected renderGeneration: number = 0;
 
+    /** Stale entries this render found. Fetched after the commit — never during render. */
+    protected staleResources: (() => void)[] = [];
+
     /**
      * A re-render of the parent must not cascade down the tree. Precise invalidation only
      * governs updates coming from a carburetor; without this gate every parent render would
@@ -54,11 +59,13 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
 
     public componentDidMount(): void {
         this.commitSubscriptions();
+        this.loadStaleResources();
         this.useEffects();
     }
 
     public componentDidUpdate(prevProps: Readonly<P>): void {
         this.commitSubscriptions();
+        this.loadStaleResources();
         this.unUseEffects(prevProps);
         this.useEffects();
     }
@@ -91,6 +98,43 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
 
         return computed.get();
     };
+
+    /**
+     * Reads one entry of a resource cache, and subscribes to that entry alone.
+     *
+     * A stale entry is not fetched here: a write during render notifies subscribers mid-render, which
+     * is the hazard the rules report. The fetch is queued and runs after the commit, by which time
+     * the subscription exists — so the answer reaches this component.
+     *
+     * An entry that failed is left alone. Retrying it from render would loop: the failure re-renders
+     * the component, which would queue the same request again. A failed entry waits for an explicit
+     * `refresh`, which is what the documented behaviour promises.
+     */
+    public useResource = <T extends unknown, TArgs extends unknown>(
+        source: IResourceSource<T, TArgs>,
+        args: TArgs
+    ): IResourceView<T> => {
+        this.track(source).reads.add(source.pathOf(args));
+
+        const view = source.getEntry(args);
+        const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error;
+
+        if (worthFetching) {
+            this.staleResources.push(() => {
+                void source.load(args);
+            });
+        }
+
+        return view;
+    };
+
+    protected loadStaleResources(): void {
+        const queued = this.staleResources;
+
+        this.staleResources = [];
+
+        queued.forEach((load: () => void) => load());
+    }
 
     protected track(source: ICarburetorSubscription): ITrackedCarburetor {
         const cuid = source.getUID();

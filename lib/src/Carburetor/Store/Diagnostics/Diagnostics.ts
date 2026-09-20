@@ -1,4 +1,4 @@
-import {IS_DEVELOPMENT} from "../Utils/DevelopmentFlag";
+import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 
 /**
  * Development-only complaints about misuse — a write that was never published, a

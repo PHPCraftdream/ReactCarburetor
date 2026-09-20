@@ -33,7 +33,18 @@
         "development": "./dist/cjs/Interop/index.js",
         "default": "./dist/cjs/Interop/index.js"
       }
-    }
+    },
+    "./lint": {
+      "import": {
+        "types": "./dist/lint/index.d.mts",
+        "default": "./dist/lint/index.mjs"
+      },
+      "require": {
+        "types": "./dist/lint/index.d.cts",
+        "default": "./dist/lint/index.cjs"
+      }
+    },
+    "./lint/recommended.oxlintrc.json": "./dist/lint/recommended.oxlintrc.json"
   },
   "files": [
     "dist",
@@ -44,9 +55,11 @@
   "sideEffects": false,
   "scripts": {
     "build": "rslib build",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p plugin/tsconfig.json && tsc --noEmit -p plugin/internal/tsconfig.json",
     "lint": "oxlint --type-aware",
-    "test": "rstest run"
+    "check:layout": "node scripts/checkLayout.mjs",
+    "test": "rstest run",
+    "test:rules": "rstest run __tests__/Plugin"
   },
   "repository": {
     "type": "git",
@@ -63,6 +76,7 @@
     "@testing-library/react": "^16.3.3",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
+    "eslint": "^10.10.0",
     "jsdom": "^30.0.1",
     "oxlint": "^1.82.0",
     "oxlint-tsgolint": "^7.0.2001",

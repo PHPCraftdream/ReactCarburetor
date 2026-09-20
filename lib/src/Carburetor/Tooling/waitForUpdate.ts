@@ -1,5 +1,5 @@
-import {ICarburetorSubscription} from "../Models/Store";
-import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
+import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
 /**
  * Resolves on the next update of a carburetor or computed. Useful for throttled stores

@@ -31,12 +31,16 @@ export * from './Derived/computedFactory';
 
 export * from './Resource/getInitialResourceData';
 export * from './Resource/ResourceCarburetor';
+export * from './Resource/Cache/ResourceCache';
+export * from './Resource/Cache/encodeCacheKey';
+export * from './Resource/Cache/getInitialCacheEntry';
 
 export * from './Component/AntiHookComponent';
-export * from './Component/CarburetorContext';
-export * from './Component/CarburetorProvider';
-export * from './Component/CarburetorScope';
-export * from './Component/carburetorToken';
+export * from './Component/bind';
+export * from './Component/Scope/CarburetorContext';
+export * from './Component/Scope/CarburetorProvider';
+export * from './Component/Scope/CarburetorScope';
+export * from './Component/Scope/carburetorToken';
 export * from './Component/ScopedAntiHookComponent';
 export * from './Component/shallowEqual';
 

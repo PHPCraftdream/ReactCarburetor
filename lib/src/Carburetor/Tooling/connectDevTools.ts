@@ -1,10 +1,10 @@
-import {IDict, TDisposer} from "../Models/Base";
-import {EDevToolsAction} from "../Models/Enums/EDevToolsAction";
-import {EDevToolsMessageType} from "../Models/Enums/EDevToolsMessageType";
-import {IInspectable} from "../Models/Store";
-import {IDevToolsExtension, IDevToolsMessage, IDevToolsOptions} from "../Models/Tooling";
-import {getUid} from "../Store/Utils/getUid";
-import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
+import {IDict, TDisposer} from "@/Carburetor/Models/Base";
+import {EDevToolsAction} from "@/Carburetor/Models/Enums/EDevToolsAction";
+import {EDevToolsMessageType} from "@/Carburetor/Models/Enums/EDevToolsMessageType";
+import {IInspectable} from "@/Carburetor/Models/Store";
+import {IDevToolsExtension, IDevToolsMessage, IDevToolsOptions} from "@/Carburetor/Models/Tooling";
+import {getUid} from "@/Carburetor/Store/Utils/getUid";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
 const findExtension = (): IDevToolsExtension | undefined => {
     const host = globalThis as {__REDUX_DEVTOOLS_EXTENSION__?: IDevToolsExtension};

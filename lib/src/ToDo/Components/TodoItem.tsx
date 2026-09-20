@@ -1,6 +1,6 @@
 import * as React from "react";
-import {AntiHookComponent} from "../../Carburetor";
-import {TodoCarburetor} from "../Carburetors/TodoCarburetor";
+import {AntiHookComponent, bind} from "@/Carburetor";
+import {TodoCarburetor} from "@/ToDo/Carburetors/TodoCarburetor";
 
 interface ITodoItemProps {
     carburetor: TodoCarburetor;
@@ -15,28 +15,33 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
     /** Demo instrumentation: makes it visible that exactly this row re-rendered. */
     protected renders: number = 0;
 
-    public handleChangeTitle = (event: React.ChangeEvent<HTMLInputElement>) => {
+    // @bind keeps these on the prototype and their references stable across renders, so
+    // passing them down never defeats the props gate.
+    @bind
+    public handleChangeTitle(event: React.ChangeEvent<HTMLInputElement>): void {
         const {carburetor, id} = this.props;
         const todo = carburetor.getData().items[id];
 
         carburetor.updateTodo({...todo, title: event.target.value});
-    };
+    }
 
-    public handleChangeDone = (event: React.ChangeEvent<HTMLInputElement>) => {
+    @bind
+    public handleChangeDone(event: React.ChangeEvent<HTMLInputElement>): void {
         const {carburetor, id} = this.props;
         const todo = carburetor.getData().items[id];
 
         carburetor.updateTodo({...todo, done: event.target.checked});
-    };
+    }
 
-    public handleClickDelete = () => {
+    @bind
+    public handleClickDelete(): void {
         this.props.carburetor.deleteTodo(this.props.id);
-    };
+    }
 
     public renderCheckIcon() {
         return (
             <svg
-                className="pointer-events-none absolute left-1 size-3 text-white opacity-0 transition-opacity peer-checked:opacity-100 dark:text-slate-900"
+                className="pointer-events-none absolute left-1 size-3 text-white opacity-0 transition-opacity dark:text-slate-900"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
@@ -94,7 +99,7 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
                         checked={todo.done}
                         onChange={this.handleChangeDone}
                         data-testid="todo-done"
-                        className="peer size-5 shrink-0 cursor-pointer appearance-none rounded-md border border-slate-300 bg-white transition-colors checked:border-slate-900 checked:bg-slate-900 hover:border-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:checked:border-slate-100 dark:checked:bg-slate-100"
+                        className="peer size-5 shrink-0 cursor-pointer appearance-none rounded-md border border-slate-300 bg-white transition-colors hover:border-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:checked:border-slate-100 dark:checked:bg-slate-100"
                     />
                     {this.renderCheckIcon()}
                 </label>
@@ -121,7 +126,7 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
                     onClick={this.handleClickDelete}
                     aria-label="Delete todo"
                     data-testid="todo-delete"
-                    className="rounded-lg p-1.5 text-slate-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus-visible:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 group-hover:opacity-100 max-sm:opacity-100 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                    className="rounded-lg p-1.5 text-slate-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 group-hover:opacity-100 max-sm:opacity-100 dark:hover:bg-red-500/10 dark:hover:text-red-400"
                 >
                     {this.renderTrashIcon()}
                 </button>

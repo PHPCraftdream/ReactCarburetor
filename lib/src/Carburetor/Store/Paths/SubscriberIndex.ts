@@ -1,4 +1,4 @@
-import {TPath, TPathSet} from "../../Models/Paths";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {PATH_SEPARATOR} from "./PathSeparator";
 import {WILDCARD_PATH} from "./WildcardPath";
 

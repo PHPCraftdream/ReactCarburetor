@@ -1,5 +1,5 @@
 import {useCallback, useRef, useSyncExternalStore} from "react";
-import {ICarburetor, TPath} from "../Carburetor";
+import {ICarburetor, TPath} from "@/Carburetor";
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<R> {

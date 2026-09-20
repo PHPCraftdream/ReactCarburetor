@@ -1,7 +1,7 @@
-import {ICarburetorToken} from "../Models/Tooling";
+import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
 import {AntiHookComponent} from "./AntiHookComponent";
-import {CarburetorContext} from "./CarburetorContext";
-import {CarburetorScope} from "./CarburetorScope";
+import {CarburetorContext} from "./Scope/CarburetorContext";
+import {CarburetorScope} from "./Scope/CarburetorScope";
 
 /**
  * A component that resolves its carburetors from the surrounding scope rather than from

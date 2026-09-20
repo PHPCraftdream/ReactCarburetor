@@ -1,9 +1,9 @@
-import {IDict, TSubscriber} from "../Models/Base";
-import {IComputed, TComputeBody, TComputedReader} from "../Models/Derived";
-import {TPath, TPathSet} from "../Models/Paths";
-import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "../Models/Store";
-import {getUid} from "../Store/Utils/getUid";
-import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
+import {IDict, TSubscriber} from "@/Carburetor/Models/Base";
+import {IComputed, TComputeBody, TComputedReader} from "@/Carburetor/Models/Derived";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
+import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carburetor/Models/Store";
+import {getUid} from "@/Carburetor/Store/Utils/getUid";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
 interface IDependency {
     source: ICarburetorSubscription;

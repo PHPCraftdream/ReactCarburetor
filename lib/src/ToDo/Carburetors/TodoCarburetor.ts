@@ -1,6 +1,6 @@
-import {Carburetor, getUid} from "../../Carburetor";
-import {ITodo, IToDoClientAPI, ITodoList} from "../API/Models";
-import {getDefaultTodos} from "../API/getDefaultTodos";
+import {Carburetor, getUid} from "@/Carburetor";
+import {ITodo, IToDoClientAPI, ITodoList} from "@/ToDo/API/Models";
+import {getDefaultTodos} from "@/ToDo/API/getDefaultTodos";
 import {TDeleteTodo, TUpdateTodo} from "./Models";
 import {someCarburetor} from "./SomeCarburetorInstance";
 

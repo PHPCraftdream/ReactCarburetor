@@ -1,6 +1,7 @@
 import * as React from "react";
 import { IDict, TEffect, TEffectCleanup, TEffectDeps, TReadonly } from "../Models/Base.mjs";
 import { IComputed } from "../Models/Derived.mjs";
+import { IResourceSource, IResourceView } from "../Models/Resource.mjs";
 import { TPathSet } from "../Models/Paths.mjs";
 import { ICarburetor, ICarburetorSubscription } from "../Models/Store.mjs";
 interface ITrackedCarburetor {
@@ -29,6 +30,8 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
     protected tracked: IDict<ITrackedCarburetor>;
     /** Number of the current, not yet committed render. */
     protected renderGeneration: number;
+    /** Stale entries this render found. Fetched after the commit — never during render. */
+    protected staleResources: (() => void)[];
     /**
      * A re-render of the parent must not cascade down the tree. Precise invalidation only
      * governs updates coming from a carburetor; without this gate every parent render would
@@ -53,6 +56,19 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * not to its inputs, so it re-renders only when the derived value changes.
      */
     useComputed: <R extends unknown>(computed: IComputed<R>) => R;
+    /**
+     * Reads one entry of a resource cache, and subscribes to that entry alone.
+     *
+     * A stale entry is not fetched here: a write during render notifies subscribers mid-render, which
+     * is the hazard the rules report. The fetch is queued and runs after the commit, by which time
+     * the subscription exists — so the answer reaches this component.
+     *
+     * An entry that failed is left alone. Retrying it from render would loop: the failure re-renders
+     * the component, which would queue the same request again. A failed entry waits for an explicit
+     * `refresh`, which is what the documented behaviour promises.
+     */
+    useResource: <T extends unknown, TArgs extends unknown>(source: IResourceSource<T, TArgs>, args: TArgs) => IResourceView<T>;
+    protected loadStaleResources(): void;
     protected track(source: ICarburetorSubscription): ITrackedCarburetor;
     protected useEffects(): void;
     protected unUseEffects(_prevProps: P): void;

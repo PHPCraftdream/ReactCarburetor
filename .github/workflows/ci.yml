@@ -14,7 +14,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Install
         run: npm install
@@ -28,6 +28,15 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check layout rules
+        run: npm run check:layout
+
+      # Run the rule tests on their own first, so a broken rule is distinguishable from a
+      # broken engine at a glance. They run again as part of the full suite, which costs
+      # seconds and is worth the clearer signal.
+      - name: Test lint rules
+        run: npm run test:rules
+
       - name: Test
         run: npm test
 
@@ -39,7 +48,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
 
       - name: Install
         working-directory: lib

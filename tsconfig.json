@@ -3,7 +3,21 @@
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2020", "DOM"],
+    "paths": {
+      "@/*": [
+        "./lib/src/*"
+      ],
+      "@plugin/*": [
+        "./plugin/src/*"
+      ],
+      "@plugin-internal/*": [
+        "./plugin/internal/*"
+      ]
+    },
+    "lib": [
+      "ES2020",
+      "DOM"
+    ],
     "jsx": "react-jsx",
     "declaration": true,
     "declarationMap": false,
@@ -16,6 +30,14 @@
     "resolveJsonModule": true,
     "skipLibCheck": true
   },
-  "include": ["lib/src/Carburetor/**/*", "lib/src/Interop/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts", "**/*.test.tsx"]
+  "include": [
+    "lib/src/Carburetor/**/*",
+    "lib/src/Interop/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "**/*.test.ts",
+    "**/*.test.tsx"
+  ]
 }

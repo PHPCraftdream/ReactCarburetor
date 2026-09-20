@@ -1,5 +1,5 @@
 import { AntiHookComponent } from "./AntiHookComponent.mjs";
-import { CarburetorContext } from "./CarburetorContext.mjs";
+import { CarburetorContext } from "./Scope/CarburetorContext.mjs";
 class ScopedAntiHookComponent extends AntiHookComponent {
     static contextType = CarburetorContext;
     scope() {

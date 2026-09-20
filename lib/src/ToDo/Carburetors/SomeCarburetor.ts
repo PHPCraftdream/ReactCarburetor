@@ -1,4 +1,4 @@
-import {Carburetor} from "../../Carburetor";
+import {Carburetor} from "@/Carburetor";
 import {ISomeCarburetor} from "./Models";
 
 export class SomeCarburetor extends Carburetor<ISomeCarburetor> {

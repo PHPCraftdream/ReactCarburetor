@@ -1,9 +1,9 @@
 import * as React from 'react';
 import {act} from 'react';
 import {fireEvent, render} from '@testing-library/react';
-import {MockToDoClientAPI} from "../../lib/src/ToDo/API/MockToDoClientAPI";
-import {TodoApp} from "../../lib/src/ToDo/TodoApp";
-import {TodoCarburetor} from "../../lib/src/ToDo/Carburetors/TodoCarburetor";
+import {MockToDoClientAPI} from "@/ToDo/API/MockToDoClientAPI";
+import {TodoApp} from "@/ToDo/TodoApp";
+import {TodoCarburetor} from "@/ToDo/Carburetors/TodoCarburetor";
 
 const renderApp = async () => {
     const carburetor = new TodoCarburetor(new MockToDoClientAPI());

@@ -1,0 +1,84 @@
+import {readdirSync, readFileSync, statSync} from 'node:fs';
+import {join, relative, sep} from 'node:path';
+
+/**
+ * Checks the two structural rules CONTRIBUTING states, so they are enforced rather than remembered:
+ *
+ *   - at most seven entries per directory, files and subdirectories together;
+ *   - one export per file, except type files — named `Models.*` or living in a `Models/` directory —
+ *     and `index` barrels, which group types and re-exports respectively.
+ *
+ * Both are about navigability, and both are easy to break by accident while adding a file. The
+ * export count is counted syntactically — `export const`, `export class`, `export function`,
+ * `export default`, `export type`, `export interface`, `export enum` at the start of a line — which
+ * is enough for the conventions this repository actually follows.
+ */
+const ROOTS = ['lib/src', 'plugin/src', 'plugin/internal', '__tests__'];
+const MAX_ENTRIES = 7;
+const TYPE_FILES = /^Models\.(ts|mts)$/;
+const BARREL_FILES = /^index\.(ts|tsx|mts)$/;
+const SOURCE_FILES = /\.(ts|tsx|mts)$/;
+const EXPORT_LINE = /^export\s+(const|class|function|default|type|interface|enum|abstract)\b/;
+
+const problems = [];
+
+const countExports = (file) => {
+    const source = readFileSync(file, 'utf8');
+    const names = new Set();
+
+    source.split('\n').forEach((line) => {
+        const match = EXPORT_LINE.exec(line);
+
+        if (!match) {
+            return;
+        }
+
+        // A declaration split over lines still starts on one; the name follows the keyword.
+        const name = line.replace(/^export\s+(abstract\s+)?(const|class|function|type|interface|enum)\s+/, '')
+            .replace(/^default\s+/, 'default ')
+            .split(/[\s<(:={]/)[0];
+
+        names.add(name || match[1]);
+    });
+
+    return names.size;
+};
+
+const walk = (directory) => {
+    const entries = readdirSync(directory).filter((entry) => entry !== 'node_modules');
+
+    if (entries.length > MAX_ENTRIES) {
+        problems.push(`${relative('.', directory).split(sep).join('/')}: ${entries.length} entries, at most ${MAX_ENTRIES} allowed`);
+    }
+
+    entries.forEach((entry) => {
+        const full = join(directory, entry);
+
+        if (statSync(full).isDirectory()) {
+            walk(full);
+
+            return;
+        }
+
+        const inTypeDirectory = relative('.', directory).split(sep).includes('Models');
+
+        if (!SOURCE_FILES.test(entry) || TYPE_FILES.test(entry) || BARREL_FILES.test(entry) || inTypeDirectory) {
+            return;
+        }
+
+        const exported = countExports(full);
+
+        if (exported > 1) {
+            problems.push(`${relative('.', full).split(sep).join('/')}: ${exported} exports, expected one`);
+        }
+    });
+};
+
+ROOTS.forEach(walk);
+
+if (problems.length > 0) {
+    console.error(`Layout check failed:\n  ${problems.join('\n  ')}`);
+    process.exit(1);
+}
+
+console.log(`Layout check passed: at most ${MAX_ENTRIES} entries per directory, one export per file.`);

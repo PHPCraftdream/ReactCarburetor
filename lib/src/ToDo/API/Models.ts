@@ -1,4 +1,4 @@
-import {IDict} from "../../Carburetor";
+import {IDict} from "@/Carburetor";
 
 export interface ITodo {
     id: string;

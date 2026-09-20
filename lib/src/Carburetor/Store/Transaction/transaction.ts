@@ -1,4 +1,4 @@
-import {diagnostics} from "../Diagnostics/DiagnosticsInstance";
+import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {updateBatch} from "./UpdateBatchInstance";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.

@@ -1,6 +1,6 @@
 import * as React from "react";
-import {AntiHookComponent} from "../../Carburetor";
-import {someCarburetor} from "../Carburetors/SomeCarburetorInstance";
+import {AntiHookComponent} from "@/Carburetor";
+import {someCarburetor} from "@/ToDo/Carburetors/SomeCarburetorInstance";
 
 /**
  * The last emit timestamp changes on every write to the list, so it has to be read by

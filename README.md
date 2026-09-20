@@ -111,6 +111,39 @@ changes it re-renders itself, and that path bypasses the comparison. Two consequ
 knowing: a prop rebuilt on every parent render (an inline object or arrow function) counts as
 changed, and a re-render with identical props is skipped entirely, effects included.
 
+### Handlers that survive the gate: `@bind`
+
+The gate above makes handler identity load-bearing. `onPress={() => this.toggle()}` and
+`onPress={this.toggle.bind(this)}` build a new function on every render, so the child's props
+always compare as changed and the bail-out never happens — the re-render this engine exists to
+avoid comes back through the props.
+
+`@bind` binds a method once, when the instance is constructed:
+
+```tsx
+class TodoRow extends AntiHookComponent<IProps> {
+    @bind
+    protected onToggle(): void {
+        todoCarburetor.toggle(this.props.id);
+    }
+
+    public render() {
+        return <button onClick={this.onToggle}>toggle</button>;
+    }
+}
+```
+
+The reference is then stable for the component's lifetime, and — unlike an arrow class
+property — the method stays on the prototype, so a subclass can still override it and call
+`super`. That is why the base class's lifecycle methods are methods and not properties: a
+property would shadow them for good.
+
+It is a standard (Stage 3) decorator, so no `experimentalDecorators` and no `reflect-metadata`;
+TypeScript 5+, SWC, Babel 7.20+ and esbuild 0.21+ compile it as is. One rough edge worth
+knowing: `@typescript-eslint/unbound-method` (and oxlint's `typescript/unbound-method`) cannot
+see the decorator, so it reports `this.onToggle` passed as a value. Disable that rule where you
+use `@bind`, or silence it per line.
+
 ### Derived values
 
 `computed` memoizes a derived value and tracks its own dependencies: the paths its body reads.
@@ -252,6 +285,58 @@ render() {
 While the request is in flight the nearest `<Suspense>` fallback shows; a failure is rethrown
 so the nearest error boundary handles it.
 
+### Cached resources
+
+`ResourceCarburetor` holds one value. An API layer needs many — the same loader called with different
+arguments, each answer worth keeping — which is what `ResourceCache` is:
+
+```tsx
+export const userCache = new ResourceCache<IUser, string>(
+    (id, signal) => fetch(`/api/users/${id}`, {signal}).then(response => response.json()),
+    {ttl: 30_000, maxEntries: 200}
+);
+
+class UserBadge extends AntiHookComponent<{id: string}> {
+    public render() {
+        const user = this.useResource(userCache, this.props.id);
+
+        if (user.status === EResourceStatus.Pending) {
+            return <Spinner/>;
+        }
+
+        return <span>{user.data?.name}{user.refreshing ? <Dot/> : null}</span>;
+    }
+}
+```
+
+`useResource` subscribes the component to that one entry, so another user's answer arriving does not
+re-render this badge. A stale entry is refetched **after** the commit, never during render — a write
+from render would notify subscribers mid-render.
+
+Three decisions are worth knowing because they differ from the hooks libraries:
+
+- **A failed refresh keeps the good data.** The entry stays `Success` with what it had, and the error
+  sits beside it, so the interface can show both. Only an entry that never succeeded becomes `Error`.
+- **Refreshing does not flash `Pending`.** An entry with data raises `refreshing` instead, because
+  there is nothing to show in place of data the user is reading.
+- **`invalidate` does not refetch.** It marks entries stale; the ones on screen refetch themselves on
+  the next render. A cache of two hundred entries should not fire two hundred requests because one
+  mutation succeeded.
+
+A failed entry is not retried automatically — that would loop, since the failure re-renders the
+component that asked. Call `refresh(args)` to try again. And the cache is bounded: the least recently
+used entries are dropped past `maxEntries`, never one with a request in flight or one a component is
+reading.
+
+`suspend(args)` throws for a Suspense boundary, per entry. Server rendering needs nothing extra: a
+scope's `dehydrate()` carries the entries, and a hydrated entry counts as fresh for the rest of its
+lifetime rather than being refetched on mount.
+
+Explicit non-goals, so the shape is clear: no retries with backoff, no refetch on window focus or
+interval, no pagination, no normalisation, no optimistic updates. See
+[docs/promise-cache.md](docs/promise-cache.md) for the reasoning behind the key encoding, the lifetime
+semantics and the eviction rules.
+
 ## Per-request stores
 
 A module-level singleton is shared by every request on a server, which leaks one user's state
@@ -327,6 +412,60 @@ const NameBadge = () => {
 Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe. Pass an equality
 function as the third argument when the selector builds a new object.
 
+## Lint rules
+
+The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
+for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
+subscribed to, or when an effect's cleanup is silently dropped. The package ships 22 rules for
+exactly those. [docs/rules.md](docs/rules.md) is the reference by rule name — what each catches, its
+options, how to switch one off — and [docs/hazards.md](docs/hazards.md) is the same material by
+mistake, with the code that triggers it, why it is silent at runtime, and where the rule can be
+wrong.
+
+One plugin serves both hosts, because oxlint's JS plugin API is ESLint's.
+
+**oxlint** — one `extends` line; the plugin travels next to the preset:
+
+```json
+{
+  "extends": ["./node_modules/react-carburetor/dist/lint/recommended.oxlintrc.json"]
+}
+```
+
+**ESLint v9+** — spread the shareable config into a flat config:
+
+```js
+import carburetor from 'react-carburetor/lint';
+
+export default [
+    {...carburetor.configs.recommended, files: ['src/**/*.{ts,tsx}']},
+];
+```
+
+In the recommended preset, `error` marks a hazard that silently loses an update, a subscription or a
+re-render; `warn` marks the rules that rest on a heuristic — a method name, a dependency array — where
+you have to judge the report. `no-module-level-store` is **off**: a module-level store is the right
+pattern in a client-only application, and the rule only makes sense once you render on a server, so
+switch it on then.
+
+Every rule takes `componentBases`, `carburetorBases` and `renderMethods`, because detection is
+syntactic: a project with its own base class or its own render helpers is invisible to the rules
+until it names them.
+
+```json
+{
+  "rules": {
+    "carburetor/no-module-level-store": "error",
+    "carburetor/no-get-data-in-render": ["error", {"componentBases": ["AppComponent"]}]
+  }
+}
+```
+
+One rule replaces a built-in: `typescript/unbound-method` (and `@typescript-eslint/unbound-method`)
+cannot see `@bind` and reports correct usage as an error, so turn it off and rely on
+`carburetor/require-bind-for-passed-method`, which is decorator-aware and also catches the reverse
+case.
+
 ## API
 
 ### `Carburetor<T>`
@@ -360,6 +499,7 @@ function as the third argument when the selector builds a new object.
 | `unUseEffects(prevProps)`         | Component-wide teardown, before every `useEffects` pass and on unmount. |
 | `useEffect(cb, name, deps)`       | Runs `cb` when `deps` changed; its return value is that effect's cleanup. |
 | `shouldComponentUpdate(…)`        | The props/state gate. Override only with a `super` call.        |
+| `@bind` *(decorator)*             | Binds a method once per instance, keeping it on the prototype and its reference stable. |
 
 ### Other exports
 
@@ -385,10 +525,18 @@ the exported surface so one does not slip in by accident.
 
 - Don't stash tracked data outside render. Reads happening after commit are not part of the
   subscription, and a proxy kept across renders may point at replaced data.
-- Tracking covers plain objects and arrays. `Map`, `Set`, `Date` and class instances are
-  handed over as they are: reading one is a leaf read, but mutating it in place is invisible,
-  so such a write falls back to invalidating the whole store. Replace the value instead of
-  mutating it, and keep plain data in stores you want precision on.
+- Tracking covers plain objects and arrays. `Map`, `Set`, `Date` and class instances are handed
+  over as they are: reading one is a leaf read, and mutating it in place is invisible to the
+  proxy. No update is lost over it — reaching for such a value through `draft` counts as writing
+  the path it came from, so `this.draft.index.set(k, v)` wakes the subscribers of `index` —
+  but the granularity stops there, and a mutation of `this.data` bypassing `draft` still
+  invalidates the whole store. Replace the value instead of mutating it, and keep plain data in
+  stores you want precision on. A store whose root is untrackable has no path to be precise
+  about at all: every write to it invalidates everything.
+- A write under a symbol key cannot be expressed as a path, so it invalidates the whole store.
+- `update(mutate)` publishes when `mutate` returns. An `async` callback is accepted by its
+  `void`-returning signature and publishes at the first `await`, leaving everything written
+  afterwards unpublished — development warns about it. Do the async work first, then write.
 - Render stays pure — nothing subscribes during render — but a write that lands between
   render and commit is only detected afterwards, by comparing the carburetor version, and
   corrected with an extra render. There is no consistency guarantee *within* a single

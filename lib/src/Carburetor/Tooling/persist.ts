@@ -1,7 +1,7 @@
-import {TDisposer} from "../Models/Base";
-import {ICarburetor} from "../Models/Store";
-import {IPersistOptions} from "../Models/Tooling";
-import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
+import {TDisposer} from "@/Carburetor/Models/Base";
+import {ICarburetor} from "@/Carburetor/Models/Store";
+import {IPersistOptions} from "@/Carburetor/Models/Tooling";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
 /**
  * Keeps a carburetor mirrored in a storage: loads the stored state once on connect, then

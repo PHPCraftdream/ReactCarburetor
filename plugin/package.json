@@ -1,0 +1,9 @@
+{
+  "name": "eslint-plugin-carburetor",
+  "private": true,
+  "type": "module",
+  "imports": {
+    "#src/*": "./src/*",
+    "#internal/*": "./internal/*"
+  }
+}

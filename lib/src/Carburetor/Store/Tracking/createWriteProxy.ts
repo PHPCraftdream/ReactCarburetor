@@ -1,6 +1,6 @@
-import {TPath, TPathRecorder} from "../../Models/Paths";
-import {joinPath} from "../Paths/joinPath";
-import {WILDCARD_PATH} from "../Paths/WildcardPath";
+import {TPath, TPathRecorder} from "@/Carburetor/Models/Paths";
+import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {createProxyCache} from "./createProxyCache";
 import {isTrackable} from "./isTrackable";
 
@@ -12,8 +12,14 @@ export const createWriteProxy = <T extends object>(target: T, record: TPathRecor
     const cached = createProxyCache();
     const isArray: boolean = Array.isArray(target);
 
-    // Writing an index or `length` changes the array as a whole, not one separate path.
-    const writtenPath = (key: string): TPath => {
+    const writtenPath = (key: string | symbol): TPath => {
+        // A symbol has no place in a dotted path, so a write through one cannot be
+        // attributed. Everything is treated as changed rather than the write lost.
+        if (typeof key === 'symbol') {
+            return WILDCARD_PATH;
+        }
+
+        // Writing an index or `length` changes the array as a whole, not one separate path.
         return isArray ? (basePath || WILDCARD_PATH) : joinPath(basePath, key);
     };
 
@@ -21,34 +27,50 @@ export const createWriteProxy = <T extends object>(target: T, record: TPathRecor
         get: (source: T, key: string | symbol): unknown => {
             const value: unknown = Reflect.get(source, key);
 
-            if (typeof key === 'symbol' || typeof value === 'function' || !isTrackable(value)) {
+            if (typeof key === 'symbol' || typeof value === 'function') {
                 return value;
             }
 
             const path = joinPath(basePath, key);
 
-            return cached(path, value, () => createWriteProxy(value, record, path));
+            if (isTrackable(value)) {
+                return cached(path, value, () => createWriteProxy(value, record, path));
+            }
+
+            // A Map, Set, Date or class instance cannot be wrapped, so `draft.index.set(...)`
+            // mutates the real object behind the engine's back: no path is recorded and
+            // emitUpdate concludes nothing changed. Handing out that reference is therefore
+            // counted as writing the path it came from — imprecise, but never a lost update.
+            // Primitives are left alone: they are copied, not mutated.
+            if (value !== null && typeof value === 'object') {
+                record(path);
+            }
+
+            return value;
         },
         set: (source: T, key: string | symbol, value: unknown): boolean => {
-            if (typeof key === 'string') {
-                // Writing the same value changes nothing and must wake nobody.
-                if (Reflect.get(source, key) === value) {
-                    return true;
-                }
-
-                record(writtenPath(key));
+            // Writing the same value changes nothing and must wake nobody.
+            if (Reflect.get(source, key) === value) {
+                return true;
             }
+
+            record(writtenPath(key));
 
             return Reflect.set(source, key, value);
         },
-        deleteProperty: (source: T, key: string | symbol): boolean => {
-            if (typeof key === 'string') {
-                if (!Reflect.has(source, key)) {
-                    return true;
-                }
+        // Object.defineProperty never reaches the set trap, so without this the write
+        // would land in the data and wake nobody.
+        defineProperty: (source: T, key: string | symbol, descriptor: PropertyDescriptor): boolean => {
+            record(writtenPath(key));
 
-                record(writtenPath(key));
+            return Reflect.defineProperty(source, key, descriptor);
+        },
+        deleteProperty: (source: T, key: string | symbol): boolean => {
+            if (!Reflect.has(source, key)) {
+                return true;
             }
+
+            record(writtenPath(key));
 
             return Reflect.deleteProperty(source, key);
         },

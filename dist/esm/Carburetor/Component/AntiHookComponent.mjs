@@ -1,3 +1,4 @@
+import { EResourceStatus } from "../Models/Enums/EResourceStatus.mjs";
 import { getUid } from "../Store/Utils/getUid.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 import { shallowEqual } from "./shallowEqual.mjs";
@@ -7,15 +8,18 @@ class AntiHookComponent extends __rspack_external_react.Component {
     effects = {};
     tracked = {};
     renderGeneration = 0;
+    staleResources = [];
     shouldComponentUpdate(nextProps, nextState) {
         return !shallowEqual(this.props, nextProps) || !shallowEqual(this.state, nextState);
     }
     componentDidMount() {
         this.commitSubscriptions();
+        this.loadStaleResources();
         this.useEffects();
     }
     componentDidUpdate(prevProps) {
         this.commitSubscriptions();
+        this.loadStaleResources();
         this.unUseEffects(prevProps);
         this.useEffects();
     }
@@ -34,6 +38,20 @@ class AntiHookComponent extends __rspack_external_react.Component {
         this.track(computed).reads.add(WILDCARD_PATH);
         return computed.get();
     };
+    useResource = (source, args)=>{
+        this.track(source).reads.add(source.pathOf(args));
+        const view = source.getEntry(args);
+        const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error;
+        if (worthFetching) this.staleResources.push(()=>{
+            source.load(args);
+        });
+        return view;
+    };
+    loadStaleResources() {
+        const queued = this.staleResources;
+        this.staleResources = [];
+        queued.forEach((load)=>load());
+    }
     track(source) {
         const cuid = source.getUID();
         const known = this.tracked[cuid];

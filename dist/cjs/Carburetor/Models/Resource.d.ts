@@ -1,3 +1,6 @@
+import { IDict } from "./Base.js";
+import { TPath } from "./Paths.js";
+import { ICarburetorSubscription, IUpdateScheduler } from "./Store.js";
 import { EResourceStatus } from "./Enums/EResourceStatus.js";
 export interface IResourceData<T> {
     status: EResourceStatus;
@@ -7,3 +10,50 @@ export interface IResourceData<T> {
     updatedAt: number | undefined;
 }
 export type TResourceLoader<T, TArgs> = (args: TArgs, signal: AbortSignal) => Promise<T>;
+/**
+ * One cached answer.
+ *
+ * `refreshing` is separate from `status` on purpose: an entry that already has data must not fall
+ * back to `Pending` while it is being refreshed, because there is nothing to show in place of the
+ * data and flashing a spinner over what the user is reading is a regression, not a loading state.
+ *
+ * Everything here is serializable, so a scope can dehydrate it. Bookkeeping that is not state —
+ * when an entry was last used, which request is in flight — lives outside the store.
+ */
+export interface IResourceEntry<T> extends IResourceData<T> {
+    refreshing: boolean;
+    /**
+     * Set by an explicit `invalidate`, cleared by the next successful answer.
+     *
+     * Separate from `updatedAt` so invalidating does not have to lie about when the data was
+     * obtained: the entry is stale because someone said so, not because it aged.
+     */
+    invalidated: boolean;
+}
+/** The cache's state: entries under keys produced by `encodeCacheKey`. */
+export interface IResourceCacheData<T> {
+    entries: IDict<IResourceEntry<T>>;
+}
+/** An entry as a caller sees it, with the freshness verdict computed at read time. */
+export interface IResourceView<T> extends IResourceEntry<T> {
+    stale: boolean;
+}
+export interface IResourceCacheOptions {
+    /** How long an answer counts as fresh, in milliseconds. `Infinity` never goes stale. */
+    ttl?: number;
+    /** Upper bound on kept entries; the least recently used go first. */
+    maxEntries?: number;
+    scheduler?: IUpdateScheduler;
+}
+/**
+ * What a component needs from a cache, and nothing more.
+ *
+ * Declared as an interface so `AntiHookComponent` can read a cache without importing one: the
+ * component layer depends on this shape, the cache implements it, and neither imports the other.
+ */
+export interface IResourceSource<T, TArgs> extends ICarburetorSubscription {
+    /** The read path for one entry, so a component subscribes to that entry and nothing else. */
+    pathOf(args: TArgs): TPath;
+    getEntry(args: TArgs): IResourceView<T>;
+    load(args: TArgs): Promise<void>;
+}
