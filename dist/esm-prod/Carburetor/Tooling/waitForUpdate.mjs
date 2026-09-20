@@ -1,0 +1,1 @@
+import{WILDCARD_PATH as e}from"../Store/Paths/WildcardPath.mjs";let t=(t,r=1e3)=>new Promise((i,s)=>{let o=t.subscribe(()=>{clearTimeout(a),t.unsubscribe(o),i()},{reads:new Set([e])}),a=setTimeout(()=>{t.unsubscribe(o),s(Error("waitForUpdate: no update within "+r+"ms"))},r)});export{t as waitForUpdate};

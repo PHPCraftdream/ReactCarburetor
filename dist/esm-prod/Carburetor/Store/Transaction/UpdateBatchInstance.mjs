@@ -1,0 +1,1 @@
+import{UpdateBatch as t}from"./UpdateBatch.mjs";let e=new t;export{e as updateBatch};

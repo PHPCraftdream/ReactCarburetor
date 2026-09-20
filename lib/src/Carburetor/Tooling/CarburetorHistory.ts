@@ -6,8 +6,13 @@ import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
 /**
  * Undo/redo for a carburetor, built on snapshots. Every change is recorded, except the
  * ones this class applies itself — otherwise undo would keep re-recording its own work.
+ *
+ * Cost: one deep copy of the state per change, which is the floor for snapshot-based
+ * history — the previous state has to be captured while it still exists. For a large store
+ * written on every keystroke that is measurable; narrow what history observes, or keep the
+ * limit low.
  */
-export class CarburetorHistory<T extends {}> {
+export class CarburetorHistory<T extends object> {
     protected past: T[] = [];
     protected future: T[] = [];
     protected current: T;
@@ -83,8 +88,11 @@ export class CarburetorHistory<T extends {}> {
         this.applying = true;
 
         try {
+            // `restore` copies what it is given, so the store never aliases this entry and
+            // the entry can become `current` as it is. Taking another snapshot here would
+            // deep-copy the whole state a second time for nothing.
             this.carburetor.restore(state);
-            this.current = this.carburetor.snapshot();
+            this.current = state;
         } finally {
             this.applying = false;
         }

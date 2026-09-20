@@ -38,7 +38,8 @@ only the intersecting paths.
 npm install react-carburetor
 ```
 
-React 18 or 19 is a peer dependency. The package ships both ESM and CommonJS.
+React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal
+build and in a pre-stripped production build that the `production` export condition selects.
 
 ## Core ideas
 
@@ -53,17 +54,22 @@ const {orderIds, activeCount} = this.useCarburetor(todoCarburetor);
 ```
 
 Data returned from `useCarburetor` is deeply read-only: the compiler rejects a write, and the
-proxy throws if you force one past it. Writes belong to the carburetor, through `draft`:
+proxy throws if you force one past it. Writes belong to the carburetor, through `update`:
 
 ```ts
 export class TodoCarburetor extends Carburetor<ITodoList> {
     public updateTodo = (todo: ITodo) => {
-        this.draft.items[todo.id] = todo;   // records the changed path: items.<id>
-
-        this.emitUpdate();
+        this.update((draft) => {
+            draft.items[todo.id] = todo;   // records the changed path: items.<id>
+        });
     };
 }
 ```
+
+`update` mutates through `draft` and publishes in one step. You can also write to `this.draft`
+directly and call `this.emitUpdate()` yourself, but forgetting the second half changes the data
+while nobody re-renders — so in development the carburetor reports that mistake rather than
+letting it pass silently.
 
 ### Precise invalidation
 
@@ -86,6 +92,24 @@ Two properties keep this honest:
 
 If a write bypasses `draft` (a direct `this.data.x = y`), the changed paths are unknown, so
 the whole store is treated as changed. Coarse, but never a missed update.
+
+Matching is indexed rather than scanned: read paths and their ancestors are kept in maps, so a
+write looks up the subscribers it concerns instead of comparing itself against all of them. On
+1000 subscribers one changed path costs 0.0009 ms, and a transaction touching 500 paths costs
+0.47 ms — the same cases took 0.39 ms and 110 ms before the index
+(`benchmarks/pathsIntersect.mjs`).
+
+### A parent re-render does not cascade
+
+Precise invalidation governs updates coming from a carburetor. React itself still re-renders
+children whenever a parent renders, which would undo the whole point, so `AntiHookComponent`
+compares props and state one level deep and skips a re-render that changes neither — the same
+bail-out `React.memo` gives function components.
+
+This is safe because a component does not learn about state from its parent: when its own data
+changes it re-renders itself, and that path bypasses the comparison. Two consequences worth
+knowing: a prop rebuilt on every parent render (an inline object or arrow function) counts as
+changed, and a re-render with identical props is skipped entirely, effects included.
 
 ### Derived values
 
@@ -110,6 +134,15 @@ render() {
 Editing a todo's title invalidates `items.<id>`, so the computed recomputes — but the count
 comes out the same, so nothing re-renders. A computed stops observing its dependencies once
 its last subscriber leaves.
+
+Computeds compose, as long as you read them through `read` as well:
+
+```ts
+export const summary = computed<string>((read) => `${read(activeCount)} left`);
+```
+
+Calling `activeCount.get()` inside the body instead would register no dependency and leave
+`summary` stale — the reader is what records it.
 
 ### Transactions
 
@@ -136,22 +169,49 @@ export const presenceCarburetor = new PresenceCarburetor(initial, new ComponentU
 
 ### Effects without hooks
 
-Override `useEffects` / `unUseEffects`, and gate individual effects on a dependency value:
+Override `useEffects`, and declare each effect with a name and its dependencies:
 
 ```tsx
 export class TodoApp extends AntiHookComponent<ITodoProps> {
     protected useEffects(): void {
-        this.useEffect(this.props.carburetor.loadData, 'loadData', 1);
-    }
+        this.useEffect(this.props.carburetor.loadData, 'loadData', []);
 
-    protected unUseEffects(prevProps: ITodoProps): void {
-        // cleanup
+        this.useEffect(
+            () => {
+                const socket = connect(this.props.channel);
+
+                return () => socket.close();
+            },
+            'channel',
+            [this.props.channel]
+        );
     }
 }
 ```
 
-`useEffect(callback, name, dep)` runs `callback` when `dep` changed since the last run,
-compared with `===`.
+`useEffect(callback, name, deps)` runs `callback` when `deps` changed since the last run,
+compared element by element with `Object.is`. Whatever the callback returns is its cleanup: it
+runs before that same effect runs again, and on unmount. Setup and teardown therefore stay
+paired per effect — a changed dependency of one effect does not tear down the others.
+
+An empty `deps` array means "once, on mount". `unUseEffects(prevProps)` is still available as a
+component-wide hook that runs before every `useEffects` pass and on unmount, for teardown that
+is not tied to one effect.
+
+### Diagnostics
+
+The engine complains about a few kinds of misuse — a write that was never published, a
+`transaction` handed an async body. Those complaints are development-only and switchable:
+
+```ts
+diagnostics.setEnabled(false);   // silence them anywhere
+diagnostics.isEnabled();
+```
+
+They are guarded by a literal `process.env.NODE_ENV` comparison with the message inside the
+guard, so a bundler drops the whole block — strings included — from a production build. The
+package also ships pre-stripped outputs selected by the `production` condition in `exports`,
+for toolchains that do not substitute `NODE_ENV` themselves.
 
 ## Async resources
 
@@ -215,8 +275,20 @@ class TodoScreen extends ScopedAntiHookComponent {
 render(<CarburetorProvider scope={new CarburetorScope()}><TodoScreen/></CarburetorProvider>);
 ```
 
-For hydration, take `snapshot()` on the server, serialize it, and seed the client scope with
-a prepared store through `scope.set(token, carburetor)`.
+For hydration, the scope serializes and restores itself:
+
+```ts
+// server, after rendering
+const state = scope.dehydrate();          // plain object keyed by token
+
+// client, before the first render
+const scope = new CarburetorScope();
+scope.hydrate(state, [todoToken, filterToken]);
+```
+
+`dehydrate` covers every carburetor the scope actually created; `hydrate` instantiates the
+tokens whose state is present and leaves the rest to be created on demand. A single store can
+also be seeded directly with `scope.set(token, carburetor)`.
 
 ## Tooling
 
@@ -270,21 +342,24 @@ function as the third argument when the selector builds a new object.
 | `toJSON()` / `fromJSON(value)`  | Type-erased bridge for devtools, persistence and hydration.        |
 | `watch(paths, callback)`        | Subscribes outside React; returns a disposer.                      |
 | `getVersion(): number`          | Write counter.                                                     |
-| `subscribe(cb, id?, reads?)`    | Subscribes; without `reads` the subscriber receives every update.  |
+| `subscribe(cb, options?)`       | Subscribes. `options.reads` narrows it to paths, `options.id` reuses a stable id so re-subscribing replaces the previous registration. |
 | `unsubscribe(id)`               | Removes the subscription and cancels a pending update.             |
+| `update(mutate)` *(protected)*  | Mutates through `draft` and publishes — the recommended write form. |
 | `draft: T` *(protected)*        | Write proxy that records changed paths.                            |
+| `emitSoon()` *(protected)*      | Publishes on the next microtask, for writes made where notifying now is unsafe. |
 | `preEmit()` *(protected)*       | Runs before notification — derive state here.                      |
 | `emitUpdate()` *(protected)*    | Notifies subscribers whose read paths intersect the writes.        |
 
 ### `AntiHookComponent<P, S>`
 
-| member                         | description                                                       |
-|--------------------------------|-------------------------------------------------------------------|
-| `useCarburetor(carburetor)`    | Tracked data for reading in render; establishes the subscription.  |
-| `useComputed(computed)`        | Reads a derived value and subscribes to it, not to its inputs.     |
-| `useEffects()` *(protected)*   | Runs on mount and after every update.                             |
-| `unUseEffects(prevProps)`      | Runs before `useEffects` on update, and on unmount.                |
-| `useEffect(cb, name, dep)`     | Runs `cb` when `dep` changed since last time.                      |
+| member                            | description                                                    |
+|-----------------------------------|----------------------------------------------------------------|
+| `useCarburetor(carburetor)`       | Tracked data for reading in render; establishes the subscription. |
+| `useComputed(computed)`           | Reads a derived value and subscribes to it, not to its inputs.  |
+| `useEffects()` *(protected)*      | Declares the component's effects; runs on mount and after every committed update. |
+| `unUseEffects(prevProps)`         | Component-wide teardown, before every `useEffects` pass and on unmount. |
+| `useEffect(cb, name, deps)`       | Runs `cb` when `deps` changed; its return value is that effect's cleanup. |
+| `shouldComponentUpdate(…)`        | The props/state gate. Override only with a `super` call.        |
 
 ### Other exports
 
@@ -297,7 +372,14 @@ function as the third argument when the selector builds a new object.
 | `ResourceCarburetor(loader, scheduler?)`      | Async state with status and cancellation.    |
 | `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent` | Per-request stores. |
 | `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
-| `deepClone`, `pathsIntersect`, `isTrackable`  | Building blocks, exported for extensions.    |
+| `diagnostics`, `Diagnostics`                  | The development-only warning switch.         |
+| `EResourceStatus`, `EDevToolsAction`, `EDevToolsMessageType` | Enums for the resource status and the DevTools protocol. |
+| `syncUpdateScheduler`, `getInitialResourceData`, `CarburetorContext` | The default scheduler instance, the initial resource state, and the context a scope is provided through. |
+| `deepClone`, `pathsIntersect`, `isTrackable`, `shallowEqual`, `SubscriberIndex`, `getUid`, `WILDCARD_PATH` | Building blocks, exported for extensions. |
+
+Internals — the tracking proxies, the proxy cache, path string plumbing and the batch
+coordinator — are deliberately not exported: they are implementation details, and a test pins
+the exported surface so one does not slip in by accident.
 
 ## Caveats
 
@@ -307,12 +389,17 @@ function as the third argument when the selector builds a new object.
   handed over as they are: reading one is a leaf read, but mutating it in place is invisible,
   so such a write falls back to invalidating the whole store. Replace the value instead of
   mutating it, and keep plain data in stores you want precision on.
-- Path matching is a nested loop over read and write paths. That is fine for realistic sets;
-  a store with thousands of tracked paths per component would want a smarter index.
 - Render stays pure — nothing subscribes during render — but a write that lands between
   render and commit is only detected afterwards, by comparing the carburetor version, and
   corrected with an extra render. There is no consistency guarantee *within* a single
   concurrent render pass; don't write to stores from render.
+- The props gate means a component that relied on its parent re-rendering to pick up data it
+  never read will stop updating. Read what you render, through `useCarburetor`.
+- Undo/redo costs one deep copy of the state per change — the floor for snapshot-based history,
+  since the previous state has to be captured while it still exists. On a large store written
+  on every keystroke that is measurable: narrow what history observes, or keep the limit low.
+- Overriding a lifecycle method without calling `super` silently disables effects, subscription
+  cleanup or the props gate. Override `useEffects` / `unUseEffects` instead.
 
 ## Demo
 
@@ -330,11 +417,16 @@ npm start
 
 ```bash
 npm install
-npm run build       # Rslib: ESM + CJS, declarations via tsgo
+npm run build       # Rslib: ESM + CJS, plus pre-stripped production outputs, dts via tsgo
 npm run typecheck   # TypeScript 7
 npm run lint        # oxlint with type-aware rules
 npm test            # Rstest + @testing-library/react
+
+node benchmarks/pathsIntersect.mjs   # path matching, against the built output
 ```
+
+Benchmarks live outside the test suite on purpose: the test run has to stay fast enough to
+be run on every change.
 
 ## License
 

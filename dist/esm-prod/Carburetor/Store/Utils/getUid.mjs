@@ -1,0 +1,1 @@
+let e;let t=(e=0,()=>"carburetor-uid-"+ ++e);export{t as getUid};

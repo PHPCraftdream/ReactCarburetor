@@ -30,7 +30,7 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     deepClone: ()=>deepClone
 });
-const isTrackable_js_namespaceObject = require("./Tracking/isTrackable.js");
+const isTrackable_js_namespaceObject = require("../Tracking/isTrackable.js");
 const deepClone = (value)=>{
     if (!(0, isTrackable_js_namespaceObject.isTrackable)(value)) return value;
     if (Array.isArray(value)) return value.map((item)=>deepClone(item));

@@ -1,0 +1,1 @@
+var e,s=((e={}).Idle="idle",e.Pending="pending",e.Success="success",e.Error="error",e);export{s as EResourceStatus};

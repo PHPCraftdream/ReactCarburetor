@@ -30,7 +30,7 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     carburetorToken: ()=>carburetorToken
 });
-const getUid_js_namespaceObject = require("../Store/getUid.js");
+const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const carburetorToken = (create)=>({
         id: (0, getUid_js_namespaceObject.getUid)(),
         create

@@ -8,7 +8,9 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const subscribe = useCallback((onStoreChange)=>{
         const reads = new Set();
         select(carburetor.read((path)=>reads.add(path)));
-        const id = carburetor.subscribe(onStoreChange, void 0, reads);
+        const id = carburetor.subscribe(onStoreChange, {
+            reads
+        });
         return ()=>carburetor.unsubscribe(id);
     }, [
         carburetor,

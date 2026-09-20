@@ -1,0 +1,1 @@
+import*as t from"react";let e=t.createContext(null);export{e as CarburetorContext};

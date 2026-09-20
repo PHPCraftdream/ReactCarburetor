@@ -81,7 +81,7 @@ class CarburetorHistory {
         this.applying = true;
         try {
             this.carburetor.restore(state);
-            this.current = this.carburetor.snapshot();
+            this.current = state;
         } finally{
             this.applying = false;
         }

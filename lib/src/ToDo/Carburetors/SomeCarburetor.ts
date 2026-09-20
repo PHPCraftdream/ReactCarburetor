@@ -12,9 +12,9 @@ export class SomeCarburetor extends Carburetor<ISomeCarburetor> {
     };
 
     public setEmittedMessage = (emittedMessage: string): ISomeCarburetor => {
-        this.draft.emittedMessage = emittedMessage;
-
-        this.emitUpdate();
+        this.update((draft: ISomeCarburetor) => {
+            draft.emittedMessage = emittedMessage;
+        });
 
         return this.data;
     };

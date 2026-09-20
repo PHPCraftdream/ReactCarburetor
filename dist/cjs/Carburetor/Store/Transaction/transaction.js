@@ -30,11 +30,18 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     transaction: ()=>transaction
 });
+const DiagnosticsInstance_js_namespaceObject = require("../Diagnostics/DiagnosticsInstance.js");
 const external_UpdateBatchInstance_js_namespaceObject = require("./UpdateBatchInstance.js");
+const isThenable = (value)=>{
+    if ('object' != typeof value || null === value) return false;
+    return 'function' == typeof value.then;
+};
 const transaction = (body)=>{
     external_UpdateBatchInstance_js_namespaceObject.updateBatch.begin();
     try {
-        return body();
+        const result = body();
+        if ("u" > typeof process && 'production' !== process.env.NODE_ENV && isThenable(result)) DiagnosticsInstance_js_namespaceObject.diagnostics.report("transaction() was given an async body. The batch closes when the body returns, so only the writes before its first await are batched. Wrap the synchronous write block in transaction() instead.");
+        return result;
     } finally{
         external_UpdateBatchInstance_js_namespaceObject.updateBatch.end();
     }

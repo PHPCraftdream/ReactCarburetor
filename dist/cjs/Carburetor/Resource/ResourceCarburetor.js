@@ -80,7 +80,7 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
         this.lastArgs = args;
         this.draft.status = EResourceStatus_js_namespaceObject.EResourceStatus.Pending;
         this.draft.error = void 0;
-        if (deferNotification) queueMicrotask(this.emitUpdate);
+        if (deferNotification) this.emitSoon();
         else this.emitUpdate();
         this.pendingRequest = this.loader(args, controller.signal).then((data)=>{
             this.settleSuccess(controller, data);

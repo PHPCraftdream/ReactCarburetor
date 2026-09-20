@@ -43,7 +43,7 @@ describe('snapshot / restore', () => {
         let calls = 0;
 
         carburetor.setA(5);
-        carburetor.subscribe(() => calls++, 'watcher');
+        carburetor.subscribe(() => calls++, {id: 'watcher'});
 
         carburetor.restore(taken);
 
@@ -106,7 +106,7 @@ describe('transaction', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        carburetor.subscribe(() => calls++, 'watcher');
+        carburetor.subscribe(() => calls++, {id: 'watcher'});
 
         transaction(() => {
             carburetor.setA(1);
@@ -124,8 +124,8 @@ describe('transaction', () => {
         let readerOfA = 0;
         let readerOfList = 0;
 
-        carburetor.subscribe(() => readerOfA++, 'a-reader', new Set<TPath>(['a']));
-        carburetor.subscribe(() => readerOfList++, 'list-reader', new Set<TPath>(['nested.list']));
+        carburetor.subscribe(() => readerOfA++, {id: 'a-reader', reads: new Set<TPath>(['a'])});
+        carburetor.subscribe(() => readerOfList++, {id: 'list-reader', reads: new Set<TPath>(['nested.list'])});
 
         transaction(() => {
             carburetor.setA(1);
@@ -140,8 +140,8 @@ describe('transaction', () => {
         const second = new TestCarburetor(getTestData());
         const order: string[] = [];
 
-        first.subscribe(() => order.push('first'), 'w1');
-        second.subscribe(() => order.push('second'), 'w2');
+        first.subscribe(() => order.push('first'), {id: 'w1'});
+        second.subscribe(() => order.push('second'), {id: 'w2'});
 
         transaction(() => {
             first.setA(1);
@@ -156,7 +156,7 @@ describe('transaction', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        carburetor.subscribe(() => calls++, 'watcher');
+        carburetor.subscribe(() => calls++, {id: 'watcher'});
 
         transaction(() => {
             carburetor.setA(1);
@@ -171,11 +171,48 @@ describe('transaction', () => {
         expect(calls).toEqual(1);
     });
 
+    test('reports an async body, which the batch cannot cover', async () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+
+        console.error = (message: string) => reported.push(message);
+
+        try {
+            await transaction(async () => {
+                carburetor.setA(1);
+            });
+        } finally {
+            console.error = original;
+        }
+
+        expect(reported.length).toEqual(1);
+        expect(reported[0]).toContain('async body');
+    });
+
+    test('stays quiet for a synchronous body', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+
+        console.error = (message: string) => reported.push(message);
+
+        try {
+            transaction(() => {
+                carburetor.setA(1);
+            });
+        } finally {
+            console.error = original;
+        }
+
+        expect(reported).toEqual([]);
+    });
+
     test('notifies even when the body throws', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        carburetor.subscribe(() => calls++, 'watcher');
+        carburetor.subscribe(() => calls++, {id: 'watcher'});
 
         expect(() => {
             transaction(() => {

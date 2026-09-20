@@ -1,0 +1,1 @@
+import{PATH_SEPARATOR as t}from"./PathSeparator.mjs";import{WILDCARD_PATH as r}from"./WildcardPath.mjs";let a=(r,a)=>r===a||r.startsWith(a+t)||a.startsWith(r+t),e=(t,e)=>{if(t.has(r)||e.has(r))return!0;for(let r of e)for(let e of t)if(a(e,r))return!0;return!1};export{e as pathsIntersect};

@@ -103,6 +103,70 @@ describe('CarburetorScope', () => {
         unmount();
     });
 
+    test('dehydrate and hydrate carry state from one scope to another', () => {
+        const server = new CarburetorScope();
+        server.get(counterToken).inc();
+        server.get(counterToken).inc();
+
+        // What a server would embed into the page.
+        const wire = JSON.stringify(server.dehydrate());
+
+        const client = new CarburetorScope();
+        client.hydrate(JSON.parse(wire), [counterToken]);
+
+        expect(client.get(counterToken).getData().value).toEqual(2);
+    });
+
+    test('hydrated scopes stay independent afterwards', () => {
+        const server = new CarburetorScope();
+        server.get(counterToken).inc();
+
+        const state = server.dehydrate();
+
+        const first = new CarburetorScope();
+        const second = new CarburetorScope();
+        first.hydrate(state, [counterToken]);
+        second.hydrate(state, [counterToken]);
+
+        first.get(counterToken).inc();
+
+        expect(first.get(counterToken).getData().value).toEqual(2);
+        expect(second.get(counterToken).getData().value).toEqual(1);
+        expect(server.get(counterToken).getData().value).toEqual(1);
+    });
+
+    test('dehydrate only covers carburetors the scope actually created', () => {
+        const scope = new CarburetorScope();
+
+        expect(scope.dehydrate()).toEqual({});
+
+        scope.get(counterToken);
+
+        expect(Object.keys(scope.dehydrate())).toEqual([counterToken.id]);
+    });
+
+    test('hydrate ignores tokens missing from the payload', () => {
+        const scope = new CarburetorScope();
+
+        scope.hydrate({}, [counterToken]);
+
+        expect(scope.has(counterToken)).toBeFalsy();
+    });
+
+    test('a hydrated component renders the server state', () => {
+        const server = new CarburetorScope();
+        server.get(counterToken).inc();
+
+        const client = new CarburetorScope();
+        client.hydrate(JSON.parse(JSON.stringify(server.dehydrate())), [counterToken]);
+
+        const {container, unmount} = renderInScope(client);
+
+        expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+        unmount();
+    });
+
     test('a scoped component without a provider fails loudly', () => {
         const failing = () => render(<ScopedCounter/>);
 

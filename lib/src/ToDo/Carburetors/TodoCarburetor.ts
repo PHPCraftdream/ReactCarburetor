@@ -11,9 +11,9 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
 
     /** Writing through draft records the changed path, here `items.<id>`. */
     public updateTodo: TUpdateTodo = (data: ITodo) => {
-        this.draft.items[data.id] = data;
-
-        this.emitUpdate();
+        this.update((draft: ITodoList) => {
+            draft.items[data.id] = data;
+        });
     };
 
     public loadData = () => {
@@ -27,22 +27,22 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
             title: ''
         };
 
-        this.draft.items[todo.id] = todo;
-        this.draft.orderIds.unshift(todo.id);
-
-        this.emitUpdate();
+        this.update((draft: ITodoList) => {
+            draft.items[todo.id] = todo;
+            draft.orderIds.unshift(todo.id);
+        });
     };
 
     public deleteTodo: TDeleteTodo = (id: string) => {
         const {items} = this.data;
 
         if (id in items) {
-            delete this.draft.items[id];
-
             const filterId = (listId: string) => id !== listId;
-            this.draft.orderIds = this.data.orderIds.filter(filterId);
 
-            this.emitUpdate();
+            this.update((draft: ITodoList) => {
+                delete draft.items[id];
+                draft.orderIds = this.data.orderIds.filter(filterId);
+            });
         }
     };
 

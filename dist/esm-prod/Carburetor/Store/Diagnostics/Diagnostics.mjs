@@ -1,0 +1,1 @@
+import{IS_DEVELOPMENT as e}from"../Utils/DevelopmentFlag.mjs";class s{enabled=e;isEnabled=()=>this.enabled;setEnabled=e=>{this.enabled=e};report=e=>{this.enabled&&console.error("Carburetor: "+e)}}export{s as Diagnostics};

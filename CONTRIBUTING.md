@@ -12,6 +12,13 @@ contributions are the ones that sharpen it rather than widen it.
 - **Render stays pure.** Subscriptions are established in the commit phase, never during render.
 - **Never miss an update.** When the changed paths cannot be known, fall back to invalidating
   everything rather than guessing.
+- **Diagnostics are development-only and strippable.** Guard them with a literal
+  `process.env.NODE_ENV !== 'production'` comparison and put the message *inside* that guard,
+  never in a method of its own — a class member survives into a production bundle whatever the
+  branch does. Report through `diagnostics.report` so users can switch them off.
+- **Optimize on measurements.** Performance work starts with a benchmark under
+  `benchmarks/`, run against the built output, and the numbers go into the code comment or the
+  README. Benchmarks stay out of the test suite so the test run stays fast.
 
 ## Project layout
 

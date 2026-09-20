@@ -18,6 +18,9 @@ var __webpack_modules__ = {
     "./Component/carburetorToken" (module) {
         module.exports = require("./Component/carburetorToken.js");
     },
+    "./Component/shallowEqual" (module) {
+        module.exports = require("./Component/shallowEqual.js");
+    },
     "./Derived/Computed" (module) {
         module.exports = require("./Derived/Computed.js");
     },
@@ -60,14 +63,17 @@ var __webpack_modules__ = {
     "./Store/Carburetor" (module) {
         module.exports = require("./Store/Carburetor.js");
     },
-    "./Store/Paths/PathSeparator" (module) {
-        module.exports = require("./Store/Paths/PathSeparator.js");
+    "./Store/Diagnostics/Diagnostics" (module) {
+        module.exports = require("./Store/Diagnostics/Diagnostics.js");
+    },
+    "./Store/Diagnostics/DiagnosticsInstance" (module) {
+        module.exports = require("./Store/Diagnostics/DiagnosticsInstance.js");
+    },
+    "./Store/Paths/SubscriberIndex" (module) {
+        module.exports = require("./Store/Paths/SubscriberIndex.js");
     },
     "./Store/Paths/WildcardPath" (module) {
         module.exports = require("./Store/Paths/WildcardPath.js");
-    },
-    "./Store/Paths/joinPath" (module) {
-        module.exports = require("./Store/Paths/joinPath.js");
     },
     "./Store/Paths/pathsIntersect" (module) {
         module.exports = require("./Store/Paths/pathsIntersect.js");
@@ -81,32 +87,17 @@ var __webpack_modules__ = {
     "./Store/Scheduling/SyncUpdateSchedulerInstance" (module) {
         module.exports = require("./Store/Scheduling/SyncUpdateSchedulerInstance.js");
     },
-    "./Store/Tracking/createProxyCache" (module) {
-        module.exports = require("./Store/Tracking/createProxyCache.js");
-    },
-    "./Store/Tracking/createReadProxy" (module) {
-        module.exports = require("./Store/Tracking/createReadProxy.js");
-    },
-    "./Store/Tracking/createWriteProxy" (module) {
-        module.exports = require("./Store/Tracking/createWriteProxy.js");
-    },
     "./Store/Tracking/isTrackable" (module) {
         module.exports = require("./Store/Tracking/isTrackable.js");
-    },
-    "./Store/Transaction/UpdateBatch" (module) {
-        module.exports = require("./Store/Transaction/UpdateBatch.js");
-    },
-    "./Store/Transaction/UpdateBatchInstance" (module) {
-        module.exports = require("./Store/Transaction/UpdateBatchInstance.js");
     },
     "./Store/Transaction/transaction" (module) {
         module.exports = require("./Store/Transaction/transaction.js");
     },
-    "./Store/deepClone" (module) {
-        module.exports = require("./Store/deepClone.js");
+    "./Store/Utils/deepClone" (module) {
+        module.exports = require("./Store/Utils/deepClone.js");
     },
-    "./Store/getUid" (module) {
-        module.exports = require("./Store/getUid.js");
+    "./Store/Utils/getUid" (module) {
+        module.exports = require("./Store/Utils/getUid.js");
     },
     "./Tooling/CarburetorHistory" (module) {
         module.exports = require("./Tooling/CarburetorHistory.js");
@@ -195,66 +186,60 @@ var __webpack_exports__ = {};
     __webpack_require__.re(__webpack_exports__, _Models_Tooling__rspack_import_8, "default");
     var _Store_Carburetor__rspack_import_9 = __webpack_require__("./Store/Carburetor");
     __webpack_require__.re(__webpack_exports__, _Store_Carburetor__rspack_import_9, "default");
-    var _Store_deepClone__rspack_import_10 = __webpack_require__("./Store/deepClone");
-    __webpack_require__.re(__webpack_exports__, _Store_deepClone__rspack_import_10, "default");
-    var _Store_getUid__rspack_import_11 = __webpack_require__("./Store/getUid");
-    __webpack_require__.re(__webpack_exports__, _Store_getUid__rspack_import_11, "default");
-    var _Store_Paths_joinPath__rspack_import_12 = __webpack_require__("./Store/Paths/joinPath");
-    __webpack_require__.re(__webpack_exports__, _Store_Paths_joinPath__rspack_import_12, "default");
-    var _Store_Paths_PathSeparator__rspack_import_13 = __webpack_require__("./Store/Paths/PathSeparator");
-    __webpack_require__.re(__webpack_exports__, _Store_Paths_PathSeparator__rspack_import_13, "default");
-    var _Store_Paths_pathsIntersect__rspack_import_14 = __webpack_require__("./Store/Paths/pathsIntersect");
-    __webpack_require__.re(__webpack_exports__, _Store_Paths_pathsIntersect__rspack_import_14, "default");
-    var _Store_Paths_WildcardPath__rspack_import_15 = __webpack_require__("./Store/Paths/WildcardPath");
-    __webpack_require__.re(__webpack_exports__, _Store_Paths_WildcardPath__rspack_import_15, "default");
-    var _Store_Scheduling_ComponentUpdateThrottle__rspack_import_16 = __webpack_require__("./Store/Scheduling/ComponentUpdateThrottle");
-    __webpack_require__.re(__webpack_exports__, _Store_Scheduling_ComponentUpdateThrottle__rspack_import_16, "default");
-    var _Store_Scheduling_SyncUpdateScheduler__rspack_import_17 = __webpack_require__("./Store/Scheduling/SyncUpdateScheduler");
-    __webpack_require__.re(__webpack_exports__, _Store_Scheduling_SyncUpdateScheduler__rspack_import_17, "default");
-    var _Store_Scheduling_SyncUpdateSchedulerInstance__rspack_import_18 = __webpack_require__("./Store/Scheduling/SyncUpdateSchedulerInstance");
-    __webpack_require__.re(__webpack_exports__, _Store_Scheduling_SyncUpdateSchedulerInstance__rspack_import_18, "default");
-    var _Store_Tracking_createProxyCache__rspack_import_19 = __webpack_require__("./Store/Tracking/createProxyCache");
-    __webpack_require__.re(__webpack_exports__, _Store_Tracking_createProxyCache__rspack_import_19, "default");
-    var _Store_Tracking_createReadProxy__rspack_import_20 = __webpack_require__("./Store/Tracking/createReadProxy");
-    __webpack_require__.re(__webpack_exports__, _Store_Tracking_createReadProxy__rspack_import_20, "default");
-    var _Store_Tracking_createWriteProxy__rspack_import_21 = __webpack_require__("./Store/Tracking/createWriteProxy");
-    __webpack_require__.re(__webpack_exports__, _Store_Tracking_createWriteProxy__rspack_import_21, "default");
-    var _Store_Tracking_isTrackable__rspack_import_22 = __webpack_require__("./Store/Tracking/isTrackable");
-    __webpack_require__.re(__webpack_exports__, _Store_Tracking_isTrackable__rspack_import_22, "default");
-    var _Store_Transaction_transaction__rspack_import_23 = __webpack_require__("./Store/Transaction/transaction");
-    __webpack_require__.re(__webpack_exports__, _Store_Transaction_transaction__rspack_import_23, "default");
-    var _Store_Transaction_UpdateBatch__rspack_import_24 = __webpack_require__("./Store/Transaction/UpdateBatch");
-    __webpack_require__.re(__webpack_exports__, _Store_Transaction_UpdateBatch__rspack_import_24, "default");
-    var _Store_Transaction_UpdateBatchInstance__rspack_import_25 = __webpack_require__("./Store/Transaction/UpdateBatchInstance");
-    __webpack_require__.re(__webpack_exports__, _Store_Transaction_UpdateBatchInstance__rspack_import_25, "default");
-    var _Derived_Computed__rspack_import_26 = __webpack_require__("./Derived/Computed");
-    __webpack_require__.re(__webpack_exports__, _Derived_Computed__rspack_import_26, "default");
-    var _Derived_computedFactory__rspack_import_27 = __webpack_require__("./Derived/computedFactory");
-    __webpack_require__.re(__webpack_exports__, _Derived_computedFactory__rspack_import_27, "default");
-    var _Resource_getInitialResourceData__rspack_import_28 = __webpack_require__("./Resource/getInitialResourceData");
-    __webpack_require__.re(__webpack_exports__, _Resource_getInitialResourceData__rspack_import_28, "default");
-    var _Resource_ResourceCarburetor__rspack_import_29 = __webpack_require__("./Resource/ResourceCarburetor");
-    __webpack_require__.re(__webpack_exports__, _Resource_ResourceCarburetor__rspack_import_29, "default");
-    var _Component_AntiHookComponent__rspack_import_30 = __webpack_require__("./Component/AntiHookComponent");
-    __webpack_require__.re(__webpack_exports__, _Component_AntiHookComponent__rspack_import_30, "default");
-    var _Component_CarburetorContext__rspack_import_31 = __webpack_require__("./Component/CarburetorContext");
-    __webpack_require__.re(__webpack_exports__, _Component_CarburetorContext__rspack_import_31, "default");
-    var _Component_CarburetorProvider__rspack_import_32 = __webpack_require__("./Component/CarburetorProvider");
-    __webpack_require__.re(__webpack_exports__, _Component_CarburetorProvider__rspack_import_32, "default");
-    var _Component_CarburetorScope__rspack_import_33 = __webpack_require__("./Component/CarburetorScope");
-    __webpack_require__.re(__webpack_exports__, _Component_CarburetorScope__rspack_import_33, "default");
-    var _Component_carburetorToken__rspack_import_34 = __webpack_require__("./Component/carburetorToken");
-    __webpack_require__.re(__webpack_exports__, _Component_carburetorToken__rspack_import_34, "default");
-    var _Component_ScopedAntiHookComponent__rspack_import_35 = __webpack_require__("./Component/ScopedAntiHookComponent");
-    __webpack_require__.re(__webpack_exports__, _Component_ScopedAntiHookComponent__rspack_import_35, "default");
-    var _Tooling_CarburetorHistory__rspack_import_36 = __webpack_require__("./Tooling/CarburetorHistory");
-    __webpack_require__.re(__webpack_exports__, _Tooling_CarburetorHistory__rspack_import_36, "default");
-    var _Tooling_connectDevTools__rspack_import_37 = __webpack_require__("./Tooling/connectDevTools");
-    __webpack_require__.re(__webpack_exports__, _Tooling_connectDevTools__rspack_import_37, "default");
-    var _Tooling_persist__rspack_import_38 = __webpack_require__("./Tooling/persist");
-    __webpack_require__.re(__webpack_exports__, _Tooling_persist__rspack_import_38, "default");
-    var _Tooling_waitForUpdate__rspack_import_39 = __webpack_require__("./Tooling/waitForUpdate");
-    __webpack_require__.re(__webpack_exports__, _Tooling_waitForUpdate__rspack_import_39, "default");
+    var _Store_Diagnostics_Diagnostics__rspack_import_10 = __webpack_require__("./Store/Diagnostics/Diagnostics");
+    __webpack_require__.re(__webpack_exports__, _Store_Diagnostics_Diagnostics__rspack_import_10, "default");
+    var _Store_Diagnostics_DiagnosticsInstance__rspack_import_11 = __webpack_require__("./Store/Diagnostics/DiagnosticsInstance");
+    __webpack_require__.re(__webpack_exports__, _Store_Diagnostics_DiagnosticsInstance__rspack_import_11, "default");
+    var _Store_Paths_pathsIntersect__rspack_import_12 = __webpack_require__("./Store/Paths/pathsIntersect");
+    __webpack_require__.re(__webpack_exports__, _Store_Paths_pathsIntersect__rspack_import_12, "default");
+    var _Store_Paths_SubscriberIndex__rspack_import_13 = __webpack_require__("./Store/Paths/SubscriberIndex");
+    __webpack_require__.re(__webpack_exports__, _Store_Paths_SubscriberIndex__rspack_import_13, "default");
+    var _Store_Paths_WildcardPath__rspack_import_14 = __webpack_require__("./Store/Paths/WildcardPath");
+    __webpack_require__.re(__webpack_exports__, _Store_Paths_WildcardPath__rspack_import_14, "default");
+    var _Store_Scheduling_ComponentUpdateThrottle__rspack_import_15 = __webpack_require__("./Store/Scheduling/ComponentUpdateThrottle");
+    __webpack_require__.re(__webpack_exports__, _Store_Scheduling_ComponentUpdateThrottle__rspack_import_15, "default");
+    var _Store_Scheduling_SyncUpdateScheduler__rspack_import_16 = __webpack_require__("./Store/Scheduling/SyncUpdateScheduler");
+    __webpack_require__.re(__webpack_exports__, _Store_Scheduling_SyncUpdateScheduler__rspack_import_16, "default");
+    var _Store_Scheduling_SyncUpdateSchedulerInstance__rspack_import_17 = __webpack_require__("./Store/Scheduling/SyncUpdateSchedulerInstance");
+    __webpack_require__.re(__webpack_exports__, _Store_Scheduling_SyncUpdateSchedulerInstance__rspack_import_17, "default");
+    var _Store_Tracking_isTrackable__rspack_import_18 = __webpack_require__("./Store/Tracking/isTrackable");
+    __webpack_require__.re(__webpack_exports__, _Store_Tracking_isTrackable__rspack_import_18, "default");
+    var _Store_Transaction_transaction__rspack_import_19 = __webpack_require__("./Store/Transaction/transaction");
+    __webpack_require__.re(__webpack_exports__, _Store_Transaction_transaction__rspack_import_19, "default");
+    var _Store_Utils_deepClone__rspack_import_20 = __webpack_require__("./Store/Utils/deepClone");
+    __webpack_require__.re(__webpack_exports__, _Store_Utils_deepClone__rspack_import_20, "default");
+    var _Store_Utils_getUid__rspack_import_21 = __webpack_require__("./Store/Utils/getUid");
+    __webpack_require__.re(__webpack_exports__, _Store_Utils_getUid__rspack_import_21, "default");
+    var _Derived_Computed__rspack_import_22 = __webpack_require__("./Derived/Computed");
+    __webpack_require__.re(__webpack_exports__, _Derived_Computed__rspack_import_22, "default");
+    var _Derived_computedFactory__rspack_import_23 = __webpack_require__("./Derived/computedFactory");
+    __webpack_require__.re(__webpack_exports__, _Derived_computedFactory__rspack_import_23, "default");
+    var _Resource_getInitialResourceData__rspack_import_24 = __webpack_require__("./Resource/getInitialResourceData");
+    __webpack_require__.re(__webpack_exports__, _Resource_getInitialResourceData__rspack_import_24, "default");
+    var _Resource_ResourceCarburetor__rspack_import_25 = __webpack_require__("./Resource/ResourceCarburetor");
+    __webpack_require__.re(__webpack_exports__, _Resource_ResourceCarburetor__rspack_import_25, "default");
+    var _Component_AntiHookComponent__rspack_import_26 = __webpack_require__("./Component/AntiHookComponent");
+    __webpack_require__.re(__webpack_exports__, _Component_AntiHookComponent__rspack_import_26, "default");
+    var _Component_CarburetorContext__rspack_import_27 = __webpack_require__("./Component/CarburetorContext");
+    __webpack_require__.re(__webpack_exports__, _Component_CarburetorContext__rspack_import_27, "default");
+    var _Component_CarburetorProvider__rspack_import_28 = __webpack_require__("./Component/CarburetorProvider");
+    __webpack_require__.re(__webpack_exports__, _Component_CarburetorProvider__rspack_import_28, "default");
+    var _Component_CarburetorScope__rspack_import_29 = __webpack_require__("./Component/CarburetorScope");
+    __webpack_require__.re(__webpack_exports__, _Component_CarburetorScope__rspack_import_29, "default");
+    var _Component_carburetorToken__rspack_import_30 = __webpack_require__("./Component/carburetorToken");
+    __webpack_require__.re(__webpack_exports__, _Component_carburetorToken__rspack_import_30, "default");
+    var _Component_ScopedAntiHookComponent__rspack_import_31 = __webpack_require__("./Component/ScopedAntiHookComponent");
+    __webpack_require__.re(__webpack_exports__, _Component_ScopedAntiHookComponent__rspack_import_31, "default");
+    var _Component_shallowEqual__rspack_import_32 = __webpack_require__("./Component/shallowEqual");
+    __webpack_require__.re(__webpack_exports__, _Component_shallowEqual__rspack_import_32, "default");
+    var _Tooling_CarburetorHistory__rspack_import_33 = __webpack_require__("./Tooling/CarburetorHistory");
+    __webpack_require__.re(__webpack_exports__, _Tooling_CarburetorHistory__rspack_import_33, "default");
+    var _Tooling_connectDevTools__rspack_import_34 = __webpack_require__("./Tooling/connectDevTools");
+    __webpack_require__.re(__webpack_exports__, _Tooling_connectDevTools__rspack_import_34, "default");
+    var _Tooling_persist__rspack_import_35 = __webpack_require__("./Tooling/persist");
+    __webpack_require__.re(__webpack_exports__, _Tooling_persist__rspack_import_35, "default");
+    var _Tooling_waitForUpdate__rspack_import_36 = __webpack_require__("./Tooling/waitForUpdate");
+    __webpack_require__.re(__webpack_exports__, _Tooling_waitForUpdate__rspack_import_36, "default");
 })();
 for(var __rspack_i in __webpack_exports__)exports[__rspack_i] = __webpack_exports__[__rspack_i];
 Object.defineProperty(exports, '__esModule', {

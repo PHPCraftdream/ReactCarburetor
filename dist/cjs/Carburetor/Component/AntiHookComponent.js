@@ -31,13 +31,17 @@ __webpack_require__.d(__webpack_exports__, {
     AntiHookComponent: ()=>AntiHookComponent
 });
 const external_react_namespaceObject = require("react");
-const getUid_js_namespaceObject = require("../Store/getUid.js");
+const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
+const external_shallowEqual_js_namespaceObject = require("./shallowEqual.js");
 class AntiHookComponent extends external_react_namespaceObject.Component {
     uid = (0, getUid_js_namespaceObject.getUid)();
-    lastValues = {};
+    effects = {};
     tracked = {};
     renderGeneration = 0;
+    shouldComponentUpdate(nextProps, nextState) {
+        return !(0, external_shallowEqual_js_namespaceObject.shallowEqual)(this.props, nextProps) || !(0, external_shallowEqual_js_namespaceObject.shallowEqual)(this.state, nextState);
+    }
     componentDidMount() {
         this.commitSubscriptions();
         this.useEffects();
@@ -49,6 +53,7 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
     }
     componentWillUnmount() {
         this.unUseEffects(this.props);
+        this.releaseEffects();
         this.releaseSubscriptions();
     }
     useCarburetor = (carburetor)=>{
@@ -75,13 +80,23 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
     }
     useEffects() {}
     unUseEffects(_prevProps) {}
-    useEffect = (callBack, name, lastValue)=>{
-        if (name in this.lastValues) {
-            if (this.lastValues[name] === lastValue) return;
-        }
-        this.lastValues[name] = lastValue;
-        callBack();
+    useEffect = (callBack, name, deps)=>{
+        const known = this.effects[name];
+        if (known && (0, external_shallowEqual_js_namespaceObject.shallowEqual)(known.deps, deps)) return;
+        if (known && known.cleanup) known.cleanup();
+        const cleanup = callBack();
+        this.effects[name] = {
+            deps,
+            cleanup: 'function' == typeof cleanup ? cleanup : void 0
+        };
     };
+    releaseEffects() {
+        Object.keys(this.effects).forEach((name)=>{
+            const cleanup = this.effects[name].cleanup;
+            if (cleanup) cleanup();
+        });
+        this.effects = {};
+    }
     onCarburetorUpdate = ()=>{
         this.forceUpdate();
     };
@@ -95,7 +110,10 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
                 delete this.tracked[cuid];
                 return;
             }
-            tracked.carburetor.subscribe(this.onCarburetorUpdate, this.uid, new Set(tracked.reads));
+            tracked.carburetor.subscribe(this.onCarburetorUpdate, {
+                id: this.uid,
+                reads: tracked.reads
+            });
             if (tracked.carburetor.getVersion() !== tracked.version) changedDuringRender = true;
         });
         this.renderGeneration = generation + 1;

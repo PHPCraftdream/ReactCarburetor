@@ -1,0 +1,1 @@
+import{Diagnostics as i}from"./Diagnostics.mjs";let o=new i;export{o as diagnostics};

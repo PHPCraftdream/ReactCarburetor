@@ -1,0 +1,1 @@
+let A=".";export{A as PATH_SEPARATOR};

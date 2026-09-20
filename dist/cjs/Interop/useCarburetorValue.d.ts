@@ -5,4 +5,4 @@ import { TSelector, TValueComparator } from "./Models.js";
  * gets. The selector result is cached per store version, so useSyncExternalStore sees a
  * stable snapshot even when the selector builds a new object.
  */
-export declare const useCarburetorValue: <T extends {}, R>(carburetor: ICarburetor<T>, select: TSelector<T, R>, isEqual?: TValueComparator<R>) => R;
+export declare const useCarburetorValue: <T extends object, R>(carburetor: ICarburetor<T>, select: TSelector<T, R>, isEqual?: TValueComparator<R>) => R;

@@ -1,0 +1,1 @@
+import{Computed as e}from"./Computed.mjs";let m=m=>new e(m);export{m as computed};

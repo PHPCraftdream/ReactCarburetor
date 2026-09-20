@@ -9,6 +9,16 @@ export interface IUpdateScheduler {
     schedule: (uid: string, updater: TUpdater) => void;
     cancel: (uid: string) => void;
 }
+export interface ISubscribeOptions {
+    /**
+     * A stable id of your own. Subscribing again with the same id replaces the previous
+     * registration instead of adding a second one — that is how a component keeps exactly
+     * one subscription across renders. Omit it to get a generated one.
+     */
+    id?: string;
+    /** Paths the subscriber depends on. Omitted means every update reaches it. */
+    reads?: TPathSet;
+}
 /**
  * The part of the carburetor API that does not depend on the data type.
  * A component only needs the subscription surface, never the data itself, so it keeps
@@ -19,7 +29,7 @@ export interface ICarburetorSubscription {
     getUID: () => string;
     /** Write counter: lets a component detect data changes between render and commit. */
     getVersion: () => number;
-    subscribe: (callback: TSubscriber, customId?: string, reads?: TPathSet) => string;
+    subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
     unsubscribe: (id: string) => void;
 }
 /**

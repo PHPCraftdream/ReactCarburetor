@@ -1,4 +1,4 @@
-import {Carburetor, TPath, TPathSet, WILDCARD_PATH} from "../../lib/src/Carburetor";
+import {Carburetor, diagnostics, TPath, TPathSet, WILDCARD_PATH} from "../../lib/src/Carburetor";
 
 interface ITestData {
     a: number;
@@ -29,6 +29,18 @@ class TestCarburetor extends Carburetor<ITestData> {
         this.emitUpdate();
     };
 
+    /** The recommended form: mutate and publish in one step. */
+    public setAThroughUpdate = (a: number) => {
+        this.update((draft: ITestData) => {
+            draft.a = a;
+        });
+    };
+
+    /** Writes through draft and never publishes — the mistake the dev check reports. */
+    public setAWithoutEmit = (a: number) => {
+        this.draft.a = a;
+    };
+
     /** A write bypassing draft: the carburetor cannot know the changed paths and must wake everyone. */
     public setAUntracked = (a: number) => {
         this.data.a = a;
@@ -44,7 +56,7 @@ describe('Carburetor', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        carburetor.subscribe(() => calls++, 'subscriber', readsOf('a'));
+        carburetor.subscribe(() => calls++, {id: 'subscriber', reads: readsOf('a')});
 
         carburetor.setA(1);
 
@@ -57,8 +69,8 @@ describe('Carburetor', () => {
         let readerOfA = 0;
         let readerOfB = 0;
 
-        carburetor.subscribe(() => readerOfA++, 'a-reader', readsOf('a'));
-        carburetor.subscribe(() => readerOfB++, 'b-reader', readsOf('b'));
+        carburetor.subscribe(() => readerOfA++, {id: 'a-reader', reads: readsOf('a')});
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
 
         carburetor.setA(1);
 
@@ -77,9 +89,9 @@ describe('Carburetor', () => {
         let containerReader = 0;
         let unrelatedReader = 0;
 
-        carburetor.subscribe(() => deepReader++, 'deep', readsOf('nested.value'));
-        carburetor.subscribe(() => containerReader++, 'container', readsOf('nested'));
-        carburetor.subscribe(() => unrelatedReader++, 'unrelated', readsOf('a'));
+        carburetor.subscribe(() => deepReader++, {id: 'deep', reads: readsOf('nested.value')});
+        carburetor.subscribe(() => containerReader++, {id: 'container', reads: readsOf('nested')});
+        carburetor.subscribe(() => unrelatedReader++, {id: 'unrelated', reads: readsOf('a')});
 
         carburetor.setNestedValue(1);
 
@@ -92,7 +104,7 @@ describe('Carburetor', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        carburetor.subscribe(() => calls++, 'wildcard');
+        carburetor.subscribe(() => calls++, {id: 'wildcard'});
 
         carburetor.setA(1);
         carburetor.setB(2);
@@ -104,7 +116,7 @@ describe('Carburetor', () => {
         const carburetor = new TestCarburetor(getTestData());
         let readerOfB = 0;
 
-        carburetor.subscribe(() => readerOfB++, 'b-reader', readsOf('b'));
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
 
         carburetor.setAUntracked(1);
 
@@ -115,7 +127,7 @@ describe('Carburetor', () => {
         const carburetor = new TestCarburetor(getTestData());
         let readerOfB = 0;
 
-        carburetor.subscribe(() => readerOfB++, 'b-reader', readsOf('b'));
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
 
         const next = getTestData();
         next.a = 5;
@@ -129,7 +141,7 @@ describe('Carburetor', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        carburetor.subscribe(() => calls++, 'subscriber', readsOf('a'));
+        carburetor.subscribe(() => calls++, {id: 'subscriber', reads: readsOf('a')});
         carburetor.setA(1);
         expect(calls).toEqual(1);
 
@@ -139,15 +151,123 @@ describe('Carburetor', () => {
         expect(calls).toEqual(1);
     });
 
+    test('update mutates and publishes once, keeping path precision', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let readerOfA = 0;
+        let readerOfB = 0;
+
+        carburetor.subscribe(() => readerOfA++, {id: 'a-reader', reads: readsOf('a')});
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
+
+        carburetor.setAThroughUpdate(1);
+
+        expect(carburetor.getData().a).toEqual(1);
+        expect(readerOfA).toEqual(1);
+        expect(readerOfB).toEqual(0);
+    });
+
+    test('reports a draft write that was never published', async () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+
+        console.error = (message: string) => reported.push(message);
+
+        try {
+            carburetor.setAWithoutEmit(1);
+
+            await new Promise(resolve => queueMicrotask(() => resolve(undefined)));
+        } finally {
+            console.error = original;
+        }
+
+        expect(reported.length).toEqual(1);
+        expect(reported[0]).toContain('emitUpdate');
+    });
+
+    test('stays quiet when the write is published', async () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+
+        console.error = (message: string) => reported.push(message);
+
+        try {
+            carburetor.setAThroughUpdate(1);
+            carburetor.setA(2);
+
+            await new Promise(resolve => queueMicrotask(() => resolve(undefined)));
+        } finally {
+            console.error = original;
+        }
+
+        expect(reported).toEqual([]);
+    });
+
+    test('diagnostics can be switched off', async () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+
+        console.error = (message: string) => reported.push(message);
+        diagnostics.setEnabled(false);
+
+        try {
+            carburetor.setAWithoutEmit(1);
+
+            await new Promise(resolve => queueMicrotask(() => resolve(undefined)));
+        } finally {
+            diagnostics.setEnabled(true);
+            console.error = original;
+        }
+
+        expect(reported).toEqual([]);
+    });
+
+    test('diagnostics are on by default outside production', () => {
+        expect(diagnostics.isEnabled()).toBeTruthy();
+    });
+
     test('survives a subscriber unsubscribing another during delivery', () => {
         const carburetor = new TestCarburetor(getTestData());
         let tail = 0;
 
-        carburetor.subscribe(() => carburetor.unsubscribe('tail'), 'head');
-        carburetor.subscribe(() => tail++, 'tail');
+        carburetor.subscribe(() => carburetor.unsubscribe('tail'), {id: 'head'});
+        carburetor.subscribe(() => tail++, {id: 'tail'});
 
         expect(() => carburetor.setA(1)).not.toThrow();
         expect(tail).toEqual(0);
+    });
+
+    test('subscribing with the same id replaces the previous registration', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let first = 0;
+        let second = 0;
+
+        carburetor.subscribe(() => first++, {id: 'same', reads: readsOf('a')});
+        carburetor.subscribe(() => second++, {id: 'same', reads: readsOf('a')});
+
+        carburetor.setA(1);
+
+        expect(first).toEqual(0);
+        expect(second).toEqual(1);
+    });
+
+    test('the read set handed to subscribe is copied, not held live', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const reads = readsOf('a');
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'subscriber', reads});
+
+        // Extending the caller's set afterwards must not widen the subscription.
+        reads.add('b');
+        carburetor.setB(1);
+
+        expect(calls).toEqual(0);
+
+        carburetor.setA(1);
+        expect(calls).toEqual(1);
     });
 
     test('version grows with every update', () => {
@@ -191,7 +311,7 @@ describe('Carburetor', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        carburetor.subscribe(() => calls++, 'a-reader', readsOf('a'));
+        carburetor.subscribe(() => calls++, {id: 'a-reader', reads: readsOf('a')});
 
         carburetor.setA(1);
         expect(calls).toEqual(1);

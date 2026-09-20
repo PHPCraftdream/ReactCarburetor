@@ -1,4 +1,4 @@
-import {getUid, IDict} from '../../lib/src/Carburetor';
+import {getUid, IDict} from '../../../lib/src/Carburetor';
 import {isString} from "./isString";
 
 describe('getUid', () => {

@@ -1,20 +1,23 @@
-import { deepClone } from "./deepClone.mjs";
-import { pathsIntersect } from "./Paths/pathsIntersect.mjs";
+import { deepClone } from "./Utils/deepClone.mjs";
+import { SubscriberIndex } from "./Paths/SubscriberIndex.mjs";
 import { WILDCARD_PATH } from "./Paths/WildcardPath.mjs";
 import { syncUpdateScheduler } from "./Scheduling/SyncUpdateSchedulerInstance.mjs";
 import { createReadProxy } from "./Tracking/createReadProxy.mjs";
 import { createWriteProxy } from "./Tracking/createWriteProxy.mjs";
 import { isTrackable } from "./Tracking/isTrackable.mjs";
 import { updateBatch } from "./Transaction/UpdateBatchInstance.mjs";
-import { getUid } from "./getUid.mjs";
+import { getUid } from "./Utils/getUid.mjs";
+import { diagnostics } from "./Diagnostics/DiagnosticsInstance.mjs";
 class Carburetor {
     data;
     scheduler;
     subscribers = {};
+    subscriberIndex = new SubscriberIndex();
     uid = getUid();
     version = 0;
     writes = new Set();
     draftTouched = false;
+    pendingEmit = false;
     draftProxy = void 0;
     constructor(data, scheduler = syncUpdateScheduler){
         this.data = data;
@@ -46,41 +49,65 @@ class Carburetor {
     fromJSON = (value)=>{
         this.restore(value);
     };
-    subscribe = (callback, customId, reads)=>{
-        const id = customId || getUid();
+    subscribe = (callback, options = {})=>{
+        const id = options.id || getUid();
+        const reads = options.reads ? new Set(options.reads) : new Set([
+            WILDCARD_PATH
+        ]);
         this.subscribers[id] = {
             callback,
-            reads: reads || new Set([
-                WILDCARD_PATH
-            ])
+            reads
         };
+        this.subscriberIndex.add(id, reads);
         return id;
     };
     unsubscribe = (id)=>{
         if (id in this.subscribers) {
             this.scheduler.cancel(id);
+            this.subscriberIndex.remove(id);
             delete this.subscribers[id];
         }
     };
     watch = (reads, callback)=>{
-        const id = this.subscribe(callback, void 0, new Set(reads));
+        const id = this.subscribe(callback, {
+            reads
+        });
         return ()=>{
             this.unsubscribe(id);
         };
     };
     notifyWrites = (writes)=>{
-        Object.keys(this.subscribers).forEach((id)=>{
+        this.subscriberIndex.match(writes).forEach((id)=>{
             const record = this.subscribers[id];
-            if (record && pathsIntersect(record.reads, writes)) this.scheduler.schedule(id, record.callback);
+            if (record) this.scheduler.schedule(id, record.callback);
         });
     };
     get draft() {
         const data = this.data;
-        this.draftTouched = true;
+        this.touchDraft();
         if (!isTrackable(data)) return this.data;
         if (!this.draftProxy) this.draftProxy = createWriteProxy(data, this.recordWrite);
         return this.draftProxy;
     }
+    update = (mutate)=>{
+        mutate(this.draft);
+        this.emitUpdate();
+    };
+    emitSoon = ()=>{
+        this.pendingEmit = true;
+        queueMicrotask(()=>{
+            this.pendingEmit = false;
+            this.emitUpdate();
+        });
+    };
+    touchDraft = ()=>{
+        if (this.draftTouched) return;
+        this.draftTouched = true;
+        if ("u" > typeof process && 'production' !== process.env.NODE_ENV) queueMicrotask(()=>{
+            if (!this.draftTouched || this.pendingEmit) return;
+            diagnostics.report("a write went through draft, but emitUpdate() was never called, so no subscriber was notified. Prefer this.update(draft => ...), which does both.");
+        });
+    };
     recordWrite = (path)=>{
         this.writes.add(path);
     };

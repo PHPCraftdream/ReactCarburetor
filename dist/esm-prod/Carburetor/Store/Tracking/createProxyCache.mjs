@@ -1,0 +1,1 @@
+let e=()=>{let e=new Map;return(r,t,l)=>{let n=e.get(r);if(n&&n.source===t)return n.proxy;let o=l();return e.set(r,{source:t,proxy:o}),o}};export{e as createProxyCache};

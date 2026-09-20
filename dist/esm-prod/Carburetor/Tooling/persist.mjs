@@ -1,0 +1,1 @@
+import{WILDCARD_PATH as r}from"../Store/Paths/WildcardPath.mjs";let t=(t,e)=>{let{key:o,storage:s}=e,a=s.getItem(o);if(null!==a)try{t.restore(JSON.parse(a))}catch(r){s.removeItem(o),e.onError&&e.onError(r)}return t.watch(new Set([r]),()=>{s.setItem(o,JSON.stringify(t.snapshot()))})};export{t as persist};

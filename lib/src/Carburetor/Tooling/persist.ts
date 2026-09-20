@@ -7,7 +7,7 @@ import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
  * Keeps a carburetor mirrored in a storage: loads the stored state once on connect, then
  * writes a snapshot on every change. Returns a disposer that stops the mirroring.
  */
-export const persist = <T extends {}>(carburetor: ICarburetor<T>, options: IPersistOptions): TDisposer => {
+export const persist = <T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions): TDisposer => {
     const {key, storage} = options;
     const stored = storage.getItem(key);
 

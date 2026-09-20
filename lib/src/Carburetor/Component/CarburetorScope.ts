@@ -1,3 +1,5 @@
+import {IDict} from "../Models/Base";
+import {IInspectable} from "../Models/Store";
 import {ICarburetorToken} from "../Models/Tooling";
 
 /**
@@ -26,5 +28,50 @@ export class CarburetorScope {
 
     public has = <T extends unknown>(token: ICarburetorToken<T>): boolean => {
         return this.instances.has(token.id);
+    };
+
+    /**
+     * Serializable state of every carburetor created in this scope, keyed by token id.
+     * Take this after rendering on the server and send it to the client.
+     */
+    public dehydrate = (): IDict<unknown> => {
+        const state: IDict<unknown> = {};
+
+        this.instances.forEach((instance: unknown, id: string) => {
+            if (this.isInspectable(instance)) {
+                state[id] = instance.toJSON();
+            }
+        });
+
+        return state;
+    };
+
+    /**
+     * Restores state produced by dehydrate. Tokens whose state is present are instantiated,
+     * so the client starts from the same data the server rendered; anything not mentioned in
+     * the payload is left to be created on demand.
+     */
+    public hydrate = (state: IDict<unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>): void => {
+        tokens.forEach((token: ICarburetorToken<unknown>) => {
+            if (!(token.id in state)) {
+                return;
+            }
+
+            const instance = this.get(token);
+
+            if (this.isInspectable(instance)) {
+                instance.fromJSON(state[token.id]);
+            }
+        });
+    };
+
+    protected isInspectable = (instance: unknown): instance is IInspectable => {
+        if (typeof instance !== 'object' || instance === null) {
+            return false;
+        }
+
+        const candidate = instance as {toJSON?: unknown; fromJSON?: unknown};
+
+        return typeof candidate.toJSON === 'function' && typeof candidate.fromJSON === 'function';
     };
 }

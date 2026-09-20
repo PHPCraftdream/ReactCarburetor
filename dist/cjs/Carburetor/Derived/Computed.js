@@ -30,7 +30,8 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     Computed: ()=>Computed
 });
-const getUid_js_namespaceObject = require("../Store/getUid.js");
+const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
+const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 class Computed {
     body;
     uid = (0, getUid_js_namespaceObject.getUid)();
@@ -48,8 +49,8 @@ class Computed {
         if (!this.valid) this.recompute();
         return this.value;
     };
-    subscribe = (callback, customId)=>{
-        const id = customId || (0, getUid_js_namespaceObject.getUid)();
+    subscribe = (callback, options = {})=>{
+        const id = options.id || (0, getUid_js_namespaceObject.getUid)();
         const wasUnobserved = 0 === Object.keys(this.subscribers).length;
         this.subscribers[id] = callback;
         if (this.valid) {
@@ -67,18 +68,20 @@ class Computed {
     };
     recompute = ()=>{
         const collected = {};
-        const read = (carburetor)=>{
-            const cuid = carburetor.getUID();
+        const track = (source)=>{
+            const cuid = source.getUID();
             const dependency = collected[cuid] || {
-                source: carburetor,
+                source,
                 reads: new Set()
             };
             collected[cuid] = dependency;
-            return carburetor.read((path)=>{
+            if ('read' in source) return source.read((path)=>{
                 dependency.reads.add(path);
             });
+            dependency.reads.add(WildcardPath_js_namespaceObject.WILDCARD_PATH);
+            return source.get();
         };
-        this.value = this.body(read);
+        this.value = this.body(track);
         this.valid = true;
         this.attachDependencies(collected);
     };
@@ -91,7 +94,10 @@ class Computed {
     observeDependencies = ()=>{
         Object.keys(this.dependencies).forEach((cuid)=>{
             const dependency = this.dependencies[cuid];
-            dependency.source.subscribe(this.onDependencyChanged, this.uid, new Set(dependency.reads));
+            dependency.source.subscribe(this.onDependencyChanged, {
+                id: this.uid,
+                reads: dependency.reads
+            });
         });
     };
     releaseDependencies = ()=>{

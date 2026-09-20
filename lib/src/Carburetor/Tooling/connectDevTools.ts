@@ -3,7 +3,7 @@ import {EDevToolsAction} from "../Models/Enums/EDevToolsAction";
 import {EDevToolsMessageType} from "../Models/Enums/EDevToolsMessageType";
 import {IInspectable} from "../Models/Store";
 import {IDevToolsExtension, IDevToolsMessage, IDevToolsOptions} from "../Models/Tooling";
-import {getUid} from "../Store/getUid";
+import {getUid} from "../Store/Utils/getUid";
 import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
 
 const findExtension = (): IDevToolsExtension | undefined => {
@@ -50,7 +50,7 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
     };
 
     names.forEach((name: string) => {
-        carburetors[name].subscribe(() => publish(name), subscriberId, new Set([WILDCARD_PATH]));
+        carburetors[name].subscribe(() => publish(name), {id: subscriberId, reads: new Set([WILDCARD_PATH])});
     });
 
     const applyState = (serialized: string | undefined) => {

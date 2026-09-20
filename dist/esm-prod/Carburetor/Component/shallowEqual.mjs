@@ -1,0 +1,1 @@
+let e=(e,t)=>{if(Object.is(e,t))return!0;if("object"!=typeof e||"object"!=typeof t||null===e||null===t)return!1;let l=Object.keys(e);return l.length===Object.keys(t).length&&l.every(l=>l in t&&Object.is(e[l],t[l]))};export{e as shallowEqual};

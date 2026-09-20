@@ -32,7 +32,7 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const EDevToolsAction_js_namespaceObject = require("../Models/Enums/EDevToolsAction.js");
 const EDevToolsMessageType_js_namespaceObject = require("../Models/Enums/EDevToolsMessageType.js");
-const getUid_js_namespaceObject = require("../Store/getUid.js");
+const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const findExtension = ()=>{
     const host = globalThis;
@@ -60,9 +60,12 @@ const connectDevTools = (carburetors, options = {})=>{
         connection.send(name + '/update', composeState(carburetors));
     };
     names.forEach((name)=>{
-        carburetors[name].subscribe(()=>publish(name), subscriberId, new Set([
-            WildcardPath_js_namespaceObject.WILDCARD_PATH
-        ]));
+        carburetors[name].subscribe(()=>publish(name), {
+            id: subscriberId,
+            reads: new Set([
+                WildcardPath_js_namespaceObject.WILDCARD_PATH
+            ])
+        });
     });
     const applyState = (serialized)=>{
         if (!serialized) return;

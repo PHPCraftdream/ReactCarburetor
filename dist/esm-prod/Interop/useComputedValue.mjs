@@ -1,0 +1,1 @@
+import{useCallback as e,useSyncExternalStore as r}from"react";let t=t=>{let u=e(e=>{let r=t.subscribe(e);return()=>t.unsubscribe(r)},[t]),s=e(()=>t.get(),[t]);return r(u,s,s)};export{t as useComputedValue};

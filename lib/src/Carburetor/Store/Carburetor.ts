@@ -1,23 +1,31 @@
 import {IDict, TDisposer, TReadonly, TSubscriber} from "../Models/Base";
 import {TPath, TPathRecorder, TPathSet} from "../Models/Paths";
-import {ICarburetor, INotifiable, IUpdateScheduler} from "../Models/Store";
-import {deepClone} from "./deepClone";
-import {pathsIntersect} from "./Paths/pathsIntersect";
+import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler} from "../Models/Store";
+import {deepClone} from "./Utils/deepClone";
+import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
 import {syncUpdateScheduler} from "./Scheduling/SyncUpdateSchedulerInstance";
 import {createReadProxy} from "./Tracking/createReadProxy";
 import {createWriteProxy} from "./Tracking/createWriteProxy";
 import {isTrackable} from "./Tracking/isTrackable";
 import {updateBatch} from "./Transaction/UpdateBatchInstance";
-import {getUid} from "./getUid";
+import {getUid} from "./Utils/getUid";
+import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
+
+// Declared locally rather than through @types/node: bundlers substitute this exact member
+// expression at build time, which is what lets the guarded blocks below be dropped whole.
+declare const process: {env: {NODE_ENV?: string}} | undefined;
 
 interface ISubscriberRecord {
     callback: TSubscriber;
     reads: TPathSet;
 }
 
-export class Carburetor<T extends {}> implements ICarburetor<T>, INotifiable {
+export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable {
     protected subscribers: IDict<ISubscriberRecord> = {};
+
+    /** Finds the subscribers a write concerns without scanning all of them. */
+    protected subscriberIndex: SubscriberIndex = new SubscriberIndex();
     protected uid: string = getUid();
     protected version: number = 0;
 
@@ -26,6 +34,9 @@ export class Carburetor<T extends {}> implements ICarburetor<T>, INotifiable {
 
     /** Whether draft was touched: it tells an empty write set from "nothing changed". */
     protected draftTouched: boolean = false;
+
+    /** An emit already scheduled for a later microtask, so the dev check stays quiet. */
+    protected pendingEmit: boolean = false;
     protected draftProxy: T | undefined = undefined;
 
     constructor(protected data: T, protected scheduler: IUpdateScheduler = syncUpdateScheduler) {
@@ -81,12 +92,15 @@ export class Carburetor<T extends {}> implements ICarburetor<T>, INotifiable {
         this.restore(value as T);
     };
 
-    public subscribe = (callback: TSubscriber, customId?: string, reads?: TPathSet): string => {
-        const id = customId || getUid();
+    public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
+        const id = options.id || getUid();
 
         // A subscription without a path set is a subscription to everything: coarse,
         // but no update can be missed.
-        this.subscribers[id] = {callback, reads: reads || new Set<TPath>([WILDCARD_PATH])};
+        const reads = options.reads ? new Set<TPath>(options.reads) : new Set<TPath>([WILDCARD_PATH]);
+
+        this.subscribers[id] = {callback, reads};
+        this.subscriberIndex.add(id, reads);
 
         return id;
     };
@@ -94,13 +108,14 @@ export class Carburetor<T extends {}> implements ICarburetor<T>, INotifiable {
     public unsubscribe = (id: string) => {
         if (id in this.subscribers) {
             this.scheduler.cancel(id);
+            this.subscriberIndex.remove(id);
             delete this.subscribers[id];
         }
     };
 
     /** Subscribes outside React — for persistence, logging, analytics. */
     public watch = (reads: TPathSet, callback: TSubscriber): TDisposer => {
-        const id = this.subscribe(callback, undefined, new Set<TPath>(reads));
+        const id = this.subscribe(callback, {reads});
 
         return () => {
             this.unsubscribe(id);
@@ -109,11 +124,11 @@ export class Carburetor<T extends {}> implements ICarburetor<T>, INotifiable {
 
     /** Called by the batch coordinator when a transaction closes. */
     public notifyWrites = (writes: TPathSet): void => {
-        Object.keys(this.subscribers).forEach((id: string) => {
+        this.subscriberIndex.match(writes).forEach((id: string) => {
             // A subscriber may have unsubscribed while this batch was being delivered.
             const record = this.subscribers[id];
 
-            if (record && pathsIntersect(record.reads, writes)) {
+            if (record) {
                 this.scheduler.schedule(id, record.callback);
             }
         });
@@ -127,7 +142,7 @@ export class Carburetor<T extends {}> implements ICarburetor<T>, INotifiable {
     protected get draft(): T {
         const data: unknown = this.data;
 
-        this.draftTouched = true;
+        this.touchDraft();
 
         if (!isTrackable(data)) {
             return this.data;
@@ -139,6 +154,50 @@ export class Carburetor<T extends {}> implements ICarburetor<T>, INotifiable {
 
         return this.draftProxy;
     }
+
+    /**
+     * Mutates and publishes in one step. Writing to `draft` and forgetting `emitUpdate()`
+     * changes the data while nobody re-renders, which is why this is the recommended form.
+     */
+    protected update = (mutate: (draft: T) => void): void => {
+        mutate(this.draft);
+
+        this.emitUpdate();
+    };
+
+    /** Publishes on the next microtask — for writes made where notifying now is unsafe. */
+    protected emitSoon = (): void => {
+        this.pendingEmit = true;
+
+        queueMicrotask(() => {
+            this.pendingEmit = false;
+            this.emitUpdate();
+        });
+    };
+
+    protected touchDraft = (): void => {
+        if (this.draftTouched) {
+            return;
+        }
+
+        this.draftTouched = true;
+
+        // The message lives inside the guard, not in a method of its own: a class member
+        // stays reachable whatever the branch does, so its string would survive into a
+        // production bundle.
+        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+            queueMicrotask(() => {
+                if (!this.draftTouched || this.pendingEmit) {
+                    return;
+                }
+
+                diagnostics.report(
+                    'a write went through draft, but emitUpdate() was never called, so no ' +
+                    'subscriber was notified. Prefer this.update(draft => ...), which does both.'
+                );
+            });
+        }
+    };
 
     protected recordWrite = (path: TPath) => {
         this.writes.add(path);

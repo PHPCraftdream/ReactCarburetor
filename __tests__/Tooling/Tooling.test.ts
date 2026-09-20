@@ -148,6 +148,78 @@ describe('CarburetorHistory', () => {
     });
 });
 
+describe('CarburetorHistory isolation', () => {
+    interface INestedData {
+        list: number[];
+        meta: {
+            title: string;
+        };
+    }
+
+    class NestedCarburetor extends Carburetor<INestedData> {
+        public push = (value: number) => {
+            this.update((draft: INestedData) => {
+                draft.list.push(value);
+            });
+        };
+
+        public setTitle = (title: string) => {
+            this.update((draft: INestedData) => {
+                draft.meta.title = title;
+            });
+        };
+    }
+
+    const getNested = (): INestedData => ({list: [1], meta: {title: 'start'}});
+
+    test('a recorded entry is not disturbed by later deep writes', () => {
+        const carburetor = new NestedCarburetor(getNested());
+        const history = new CarburetorHistory<INestedData>(carburetor);
+
+        carburetor.push(2);
+        carburetor.setTitle('changed');
+
+        history.undo();
+        history.undo();
+
+        expect(carburetor.getData()).toEqual({list: [1], meta: {title: 'start'}});
+
+        history.disconnect();
+    });
+
+    test('an entry on the redo stack survives writes made after undo', () => {
+        const carburetor = new NestedCarburetor(getNested());
+        const history = new CarburetorHistory<INestedData>(carburetor);
+
+        carburetor.push(2);
+        history.undo();
+
+        expect(carburetor.getData().list).toEqual([1]);
+
+        // Redo must bring back [1, 2] even though the store object was rebuilt meanwhile.
+        expect(history.redo()).toBeTruthy();
+        expect(carburetor.getData().list).toEqual([1, 2]);
+
+        history.disconnect();
+    });
+
+    test('the restored state is not aliased by the store', () => {
+        const carburetor = new NestedCarburetor(getNested());
+        const history = new CarburetorHistory<INestedData>(carburetor);
+
+        carburetor.push(2);
+        history.undo();
+
+        // Writing after an undo must not mutate the entry sitting on the redo stack.
+        carburetor.push(9);
+
+        expect(carburetor.getData().list).toEqual([1, 9]);
+        expect(history.canRedo()).toBeFalsy();
+
+        history.disconnect();
+    });
+});
+
 describe('connectDevTools', () => {
     interface IFakeExtension {
         connection: IDevToolsConnection;

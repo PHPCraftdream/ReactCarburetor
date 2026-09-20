@@ -1,0 +1,1 @@
+import{SyncUpdateScheduler as e}from"./SyncUpdateScheduler.mjs";let r=new e;export{r as syncUpdateScheduler};

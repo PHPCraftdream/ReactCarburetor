@@ -1,0 +1,1 @@
+import{isTrackable as r}from"../Tracking/isTrackable.mjs";let e=t=>{if(!r(t))return t;if(Array.isArray(t))return t.map(r=>e(r));let a={};return Object.keys(t).forEach(r=>{a[r]=e(t[r])}),a};export{e as deepClone};

@@ -65,7 +65,7 @@ describe('computed', () => {
             return Object.keys(items).filter((id: string) => items[id].done).length;
         });
 
-        doneCount.subscribe(() => undefined, 'listener');
+        doneCount.subscribe(() => undefined, {id: 'listener'});
         expect(runs).toEqual(1);
 
         carburetor.setDone('a', true);
@@ -83,7 +83,7 @@ describe('computed', () => {
             return Object.keys(items).filter((id: string) => items[id].done).length;
         });
 
-        doneCount.subscribe(() => notified++, 'listener');
+        doneCount.subscribe(() => notified++, {id: 'listener'});
 
         carburetor.setTitle('a', 'renamed');
         expect(notified).toEqual(0);
@@ -103,7 +103,7 @@ describe('computed', () => {
             return Object.keys(items).filter((id: string) => items[id].done).length;
         });
 
-        doneCount.subscribe(() => undefined, 'listener');
+        doneCount.subscribe(() => undefined, {id: 'listener'});
         expect(runs).toEqual(1);
 
         doneCount.unsubscribe('listener');
@@ -123,7 +123,7 @@ describe('computed', () => {
             return Object.keys(items).filter((id: string) => items[id].done).length;
         });
 
-        doneCount.subscribe(() => undefined, 'listener');
+        doneCount.subscribe(() => undefined, {id: 'listener'});
         expect(runs).toEqual(1);
 
         transaction(() => {
@@ -133,6 +133,89 @@ describe('computed', () => {
         });
 
         expect(runs).toEqual(2);
+    });
+
+    test('a computed reading another computed tracks it as a dependency', () => {
+        const carburetor = new ListCarburetor(getData());
+
+        const doneCount = computed<number>((read) => {
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        const label = computed<string>((read) => 'done: ' + read(doneCount));
+
+        let notified = 0;
+        label.subscribe(() => notified++, {id: 'listener'});
+
+        expect(label.get()).toEqual('done: 1');
+
+        carburetor.setDone('a', true);
+
+        expect(label.get()).toEqual('done: 2');
+        expect(notified).toEqual(1);
+    });
+
+    test('a chain of computeds stays quiet when the inner value does not move', () => {
+        const carburetor = new ListCarburetor(getData());
+        let innerRuns = 0;
+        let outerRuns = 0;
+
+        const doneCount = computed<number>((read) => {
+            innerRuns++;
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        const label = computed<string>((read) => {
+            outerRuns++;
+
+            return 'done: ' + read(doneCount);
+        });
+
+        let notified = 0;
+        label.subscribe(() => notified++, {id: 'listener'});
+
+        expect(innerRuns).toEqual(1);
+        expect(outerRuns).toEqual(1);
+
+        // A title change invalidates the inner computed but does not move its value,
+        // so the outer one is never asked to recompute.
+        carburetor.setTitle('a', 'renamed');
+
+        expect(innerRuns).toEqual(2);
+        expect(outerRuns).toEqual(1);
+        expect(notified).toEqual(0);
+
+        carburetor.setDone('a', true);
+
+        expect(outerRuns).toEqual(2);
+        expect(notified).toEqual(1);
+    });
+
+    test('dropping the outer computed releases the whole chain', () => {
+        const carburetor = new ListCarburetor(getData());
+        let innerRuns = 0;
+
+        const doneCount = computed<number>((read) => {
+            innerRuns++;
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        const label = computed<string>((read) => 'done: ' + read(doneCount));
+
+        label.subscribe(() => undefined, {id: 'listener'});
+        expect(innerRuns).toEqual(1);
+
+        label.unsubscribe('listener');
+
+        carburetor.setDone('a', true);
+
+        expect(innerRuns).toEqual(1);
     });
 
     test('component reading a computed re-renders only when it changes', () => {

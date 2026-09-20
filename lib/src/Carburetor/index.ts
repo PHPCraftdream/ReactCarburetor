@@ -1,3 +1,7 @@
+// The public surface of the package. Internals — the tracking proxies, the proxy cache,
+// path string plumbing and the batch coordinator — are deliberately absent: they are
+// implementation details, and exporting them would put them under the semver contract.
+
 export * from './Models/Base';
 export * from './Models/Derived';
 export * from './Models/Enums/EDevToolsAction';
@@ -9,22 +13,18 @@ export * from './Models/Store';
 export * from './Models/Tooling';
 
 export * from './Store/Carburetor';
-export * from './Store/deepClone';
-export * from './Store/getUid';
-export * from './Store/Paths/joinPath';
-export * from './Store/Paths/PathSeparator';
+export * from './Store/Diagnostics/Diagnostics';
+export * from './Store/Diagnostics/DiagnosticsInstance';
 export * from './Store/Paths/pathsIntersect';
+export * from './Store/Paths/SubscriberIndex';
 export * from './Store/Paths/WildcardPath';
 export * from './Store/Scheduling/ComponentUpdateThrottle';
 export * from './Store/Scheduling/SyncUpdateScheduler';
 export * from './Store/Scheduling/SyncUpdateSchedulerInstance';
-export * from './Store/Tracking/createProxyCache';
-export * from './Store/Tracking/createReadProxy';
-export * from './Store/Tracking/createWriteProxy';
 export * from './Store/Tracking/isTrackable';
 export * from './Store/Transaction/transaction';
-export * from './Store/Transaction/UpdateBatch';
-export * from './Store/Transaction/UpdateBatchInstance';
+export * from './Store/Utils/deepClone';
+export * from './Store/Utils/getUid';
 
 export * from './Derived/Computed';
 export * from './Derived/computedFactory';
@@ -38,6 +38,7 @@ export * from './Component/CarburetorProvider';
 export * from './Component/CarburetorScope';
 export * from './Component/carburetorToken';
 export * from './Component/ScopedAntiHookComponent';
+export * from './Component/shallowEqual';
 
 export * from './Tooling/CarburetorHistory';
 export * from './Tooling/connectDevTools';

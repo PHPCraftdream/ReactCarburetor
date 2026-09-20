@@ -1,4 +1,4 @@
-import { isTrackable } from "./Tracking/isTrackable.mjs";
+import { isTrackable } from "../Tracking/isTrackable.mjs";
 const deepClone = (value)=>{
     if (!isTrackable(value)) return value;
     if (Array.isArray(value)) return value.map((item)=>deepClone(item));

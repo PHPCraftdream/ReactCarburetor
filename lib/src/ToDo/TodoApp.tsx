@@ -15,7 +15,7 @@ interface ITodoProps {
  */
 export class TodoApp extends AntiHookComponent<ITodoProps> {
     protected useEffects(): void {
-        this.useEffect(this.props.carburetor.loadData, "loadData", 1);
+        this.useEffect(this.props.carburetor.loadData, "loadData", []);
     }
 
     public renderPlusIcon() {

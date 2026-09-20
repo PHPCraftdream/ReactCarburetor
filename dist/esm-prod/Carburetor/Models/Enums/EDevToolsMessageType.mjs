@@ -1,0 +1,1 @@
+var e,s=((e={}).Dispatch="DISPATCH",e);export{s as EDevToolsMessageType};

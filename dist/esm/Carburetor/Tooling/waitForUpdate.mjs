@@ -4,9 +4,11 @@ const waitForUpdate = (source, timeout = 1000)=>new Promise((resolve, reject)=>{
             clearTimeout(timer);
             source.unsubscribe(id);
             resolve();
-        }, void 0, new Set([
-            WILDCARD_PATH
-        ]));
+        }, {
+            reads: new Set([
+                WILDCARD_PATH
+            ])
+        });
         const timer = setTimeout(()=>{
             source.unsubscribe(id);
             reject(new Error('waitForUpdate: no update within ' + timeout + 'ms'));

@@ -8,8 +8,14 @@ export type TSubscriber = () => void;
 /** A component update queued by a scheduler. */
 export type TUpdater = () => void;
 
-/** Body of a component effect. */
-export type TEffect = () => void;
+/** Undoes what an effect did; runs before the effect re-runs and on unmount. */
+export type TEffectCleanup = () => void;
+
+/** Body of a component effect. It may return its own cleanup. */
+export type TEffect = () => TEffectCleanup | void;
+
+/** Values an effect depends on; compared element by element with Object.is. */
+export type TEffectDeps = ReadonlyArray<unknown>;
 
 /** Removes a subscription established outside React. */
 export type TDisposer = () => void;

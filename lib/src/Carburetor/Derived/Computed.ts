@@ -1,8 +1,9 @@
-import {IDict, TReadonly, TSubscriber} from "../Models/Base";
-import {TComputeBody, TComputedReader, IComputed} from "../Models/Derived";
+import {IDict, TSubscriber} from "../Models/Base";
+import {IComputed, TComputeBody, TComputedReader} from "../Models/Derived";
 import {TPath, TPathSet} from "../Models/Paths";
-import {ICarburetor, ICarburetorSubscription} from "../Models/Store";
-import {getUid} from "../Store/getUid";
+import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "../Models/Store";
+import {getUid} from "../Store/Utils/getUid";
+import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
 
 interface IDependency {
     source: ICarburetorSubscription;
@@ -42,8 +43,13 @@ export class Computed<R> implements IComputed<R> {
         return this.value as R;
     };
 
-    public subscribe = (callback: TSubscriber, customId?: string): string => {
-        const id = customId || getUid();
+    /**
+     * `options.reads` is accepted for interface compatibility and deliberately ignored:
+     * a computed notifies at the granularity of its whole value, so there is no finer
+     * path inside it to depend on.
+     */
+    public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
+        const id = options.id || getUid();
         const wasUnobserved = Object.keys(this.subscribers).length === 0;
 
         this.subscribers[id] = callback;
@@ -76,18 +82,26 @@ export class Computed<R> implements IComputed<R> {
     protected recompute = (): void => {
         const collected: IDict<IDependency> = {};
 
-        const read: TComputedReader = <T extends {}>(carburetor: ICarburetor<T>): TReadonly<T> => {
-            const cuid = carburetor.getUID();
-            const dependency = collected[cuid] || {source: carburetor, reads: new Set<TPath>()};
+        const track = (source: ICarburetor<object> | IComputed<unknown>): unknown => {
+            const cuid = source.getUID();
+            const dependency = collected[cuid] || {source, reads: new Set<TPath>()};
 
             collected[cuid] = dependency;
 
-            return carburetor.read((path: TPath) => {
-                dependency.reads.add(path);
-            });
+            if ('read' in source) {
+                return source.read((path: TPath) => {
+                    dependency.reads.add(path);
+                });
+            }
+
+            // Another computed notifies at the granularity of its whole value,
+            // so there is no finer path to depend on than "it changed".
+            dependency.reads.add(WILDCARD_PATH);
+
+            return source.get();
         };
 
-        this.value = this.body(read);
+        this.value = this.body(track as TComputedReader);
         this.valid = true;
 
         this.attachDependencies(collected);
@@ -109,7 +123,7 @@ export class Computed<R> implements IComputed<R> {
         Object.keys(this.dependencies).forEach((cuid: string) => {
             const dependency = this.dependencies[cuid];
 
-            dependency.source.subscribe(this.onDependencyChanged, this.uid, new Set<TPath>(dependency.reads));
+            dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
         });
     };
 

@@ -105,7 +105,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.draft.error = undefined;
 
         if (deferNotification) {
-            queueMicrotask(this.emitUpdate);
+            this.emitSoon();
         } else {
             this.emitUpdate();
         }

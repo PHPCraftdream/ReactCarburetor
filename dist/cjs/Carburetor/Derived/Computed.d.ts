@@ -1,7 +1,7 @@
 import { IDict, TSubscriber } from "../Models/Base.js";
-import { TComputeBody, IComputed } from "../Models/Derived.js";
+import { IComputed, TComputeBody } from "../Models/Derived.js";
 import { TPathSet } from "../Models/Paths.js";
-import { ICarburetorSubscription } from "../Models/Store.js";
+import { ICarburetorSubscription, ISubscribeOptions } from "../Models/Store.js";
 interface IDependency {
     source: ICarburetorSubscription;
     reads: TPathSet;
@@ -24,7 +24,12 @@ export declare class Computed<R> implements IComputed<R> {
     getUID: () => string;
     getVersion: () => number;
     get: () => R;
-    subscribe: (callback: TSubscriber, customId?: string) => string;
+    /**
+     * `options.reads` is accepted for interface compatibility and deliberately ignored:
+     * a computed notifies at the granularity of its whole value, so there is no finer
+     * path inside it to depend on.
+     */
+    subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
     unsubscribe: (id: string) => void;
     protected recompute: () => void;
     protected attachDependencies: (collected: IDict<IDependency>) => void;

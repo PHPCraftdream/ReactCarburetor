@@ -1,0 +1,1 @@
+import{PATH_SEPARATOR as t}from"./PathSeparator.mjs";let o=(o,r)=>o?o+t+r:r;export{o as joinPath};

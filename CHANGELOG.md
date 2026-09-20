@@ -9,6 +9,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `Carburetor.update(mutate)`: mutates through `draft` and publishes in one step, so a write
+  cannot be left unpublished. A draft write that never reaches `emitUpdate` is reported in
+  development, and `emitSoon()` covers the case where notifying immediately is unsafe.
+- Per-effect cleanup: `useEffect(callback, name, deps)` takes a dependency array and treats the
+  callback's return value as that effect's cleanup, run before the effect re-runs and on unmount.
+- A props/state gate on `AntiHookComponent`: a parent re-render no longer cascades into children
+  whose props did not change, the bail-out `React.memo` gives function components. Exported
+  `shallowEqual` is the comparator.
+- `CarburetorScope.dehydrate()` / `hydrate(state, tokens)`: the server serializes every store the
+  scope created and the client starts from the same data.
+- `SubscriberIndex`: read paths and their ancestors are indexed, so a write looks up the
+  subscribers it concerns instead of scanning all of them.
+- `diagnostics` / `Diagnostics`: development-only warnings with an explicit on/off switch.
+- `benchmarks/pathsIntersect.mjs`, run against the built output and kept out of the test suite.
+- Pre-stripped production outputs (`dist/esm-prod`, `dist/cjs-prod`) selected by the `production`
+  condition in `exports`, for toolchains that do not substitute `NODE_ENV` themselves.
+
 - `computed(body)`: a memoized derived value that tracks the paths its body reads, recomputes
   only when one of them is written, and wakes subscribers only when the result changed.
   `AntiHookComponent.useComputed` subscribes a component to the value rather than its inputs.
@@ -44,6 +61,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `subscribe(callback, options)` takes an options object instead of positional `customId` and
+  `reads`, and copies the read set it is given.
+- `Carburetor<T extends object>`: a primitive store silently degraded to wildcard tracking.
+- The public entry point exports a curated surface; the tracking proxies, proxy cache, path
+  string plumbing and batch coordinator are no longer exported, and a test pins the surface.
 - Sources are laid out one export per file, with related types grouped in `Models/` and at
   most seven entries per directory. The engine now reads as `Models/`, `Store/`, `Derived/`,
   `Resource/`, `Component/` and `Tooling/`. The published entry points are unchanged.
@@ -81,6 +103,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   array or object was replaced went to the stale object.
 - Notification loops crashed when a subscriber unsubscribed another one while the batch was
   being delivered.
+- A computed that read another computed registered no dependency and returned a stale value:
+  the reader now accepts computeds, and a chain propagates.
+- A computed read before anyone subscribed collected its dependencies but never observed them,
+  so it silently stopped updating.
+- Undo/redo deep-copied the whole state twice per step; `restore` already copies what it is
+  given, so the recorded entry becomes the current state as it is.
+- Development diagnostics were guarded by a runtime lookup a bundler cannot substitute, so they
+  shipped to production and ran there. The guard is now a literal `process.env.NODE_ENV`
+  comparison with the message inside it, verified absent from a production bundle.
 
 ### Removed
 

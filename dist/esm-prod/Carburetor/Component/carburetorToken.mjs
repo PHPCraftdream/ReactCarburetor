@@ -1,0 +1,1 @@
+import{getUid as r}from"../Store/Utils/getUid.mjs";let t=t=>({id:r(),create:t});export{t as carburetorToken};

@@ -13,8 +13,7 @@ export const waitForUpdate = (source: ICarburetorSubscription, timeout: number =
                 source.unsubscribe(id);
                 resolve();
             },
-            undefined,
-            new Set([WILDCARD_PATH])
+            {reads: new Set([WILDCARD_PATH])}
         );
 
         const timer = setTimeout(() => {

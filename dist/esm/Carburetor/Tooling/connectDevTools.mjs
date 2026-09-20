@@ -1,6 +1,6 @@
 import { EDevToolsAction } from "../Models/Enums/EDevToolsAction.mjs";
 import { EDevToolsMessageType } from "../Models/Enums/EDevToolsMessageType.mjs";
-import { getUid } from "../Store/getUid.mjs";
+import { getUid } from "../Store/Utils/getUid.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 const findExtension = ()=>{
     const host = globalThis;
@@ -28,9 +28,12 @@ const connectDevTools = (carburetors, options = {})=>{
         connection.send(name + '/update', composeState(carburetors));
     };
     names.forEach((name)=>{
-        carburetors[name].subscribe(()=>publish(name), subscriberId, new Set([
-            WILDCARD_PATH
-        ]));
+        carburetors[name].subscribe(()=>publish(name), {
+            id: subscriberId,
+            reads: new Set([
+                WILDCARD_PATH
+            ])
+        });
     });
     const applyState = (serialized)=>{
         if (!serialized) return;

@@ -1,11 +1,15 @@
-import { getUid } from "../Store/getUid.mjs";
+import { getUid } from "../Store/Utils/getUid.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
+import { shallowEqual } from "./shallowEqual.mjs";
 import * as __rspack_external_react from "react";
 class AntiHookComponent extends __rspack_external_react.Component {
     uid = getUid();
-    lastValues = {};
+    effects = {};
     tracked = {};
     renderGeneration = 0;
+    shouldComponentUpdate(nextProps, nextState) {
+        return !shallowEqual(this.props, nextProps) || !shallowEqual(this.state, nextState);
+    }
     componentDidMount() {
         this.commitSubscriptions();
         this.useEffects();
@@ -17,6 +21,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
     }
     componentWillUnmount() {
         this.unUseEffects(this.props);
+        this.releaseEffects();
         this.releaseSubscriptions();
     }
     useCarburetor = (carburetor)=>{
@@ -43,13 +48,23 @@ class AntiHookComponent extends __rspack_external_react.Component {
     }
     useEffects() {}
     unUseEffects(_prevProps) {}
-    useEffect = (callBack, name, lastValue)=>{
-        if (name in this.lastValues) {
-            if (this.lastValues[name] === lastValue) return;
-        }
-        this.lastValues[name] = lastValue;
-        callBack();
+    useEffect = (callBack, name, deps)=>{
+        const known = this.effects[name];
+        if (known && shallowEqual(known.deps, deps)) return;
+        if (known && known.cleanup) known.cleanup();
+        const cleanup = callBack();
+        this.effects[name] = {
+            deps,
+            cleanup: 'function' == typeof cleanup ? cleanup : void 0
+        };
     };
+    releaseEffects() {
+        Object.keys(this.effects).forEach((name)=>{
+            const cleanup = this.effects[name].cleanup;
+            if (cleanup) cleanup();
+        });
+        this.effects = {};
+    }
     onCarburetorUpdate = ()=>{
         this.forceUpdate();
     };
@@ -63,7 +78,10 @@ class AntiHookComponent extends __rspack_external_react.Component {
                 delete this.tracked[cuid];
                 return;
             }
-            tracked.carburetor.subscribe(this.onCarburetorUpdate, this.uid, new Set(tracked.reads));
+            tracked.carburetor.subscribe(this.onCarburetorUpdate, {
+                id: this.uid,
+                reads: tracked.reads
+            });
             if (tracked.carburetor.getVersion() !== tracked.version) changedDuringRender = true;
         });
         this.renderGeneration = generation + 1;

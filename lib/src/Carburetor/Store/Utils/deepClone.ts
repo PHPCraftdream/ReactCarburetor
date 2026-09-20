@@ -1,4 +1,4 @@
-import {isTrackable} from "./Tracking/isTrackable";
+import {isTrackable} from "../Tracking/isTrackable";
 
 /**
  * Detached copy of plain data. Only plain objects and arrays are copied — the same

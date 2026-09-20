@@ -30,23 +30,26 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     Carburetor: ()=>Carburetor
 });
-const external_deepClone_js_namespaceObject = require("./deepClone.js");
-const pathsIntersect_js_namespaceObject = require("./Paths/pathsIntersect.js");
+const deepClone_js_namespaceObject = require("./Utils/deepClone.js");
+const SubscriberIndex_js_namespaceObject = require("./Paths/SubscriberIndex.js");
 const WildcardPath_js_namespaceObject = require("./Paths/WildcardPath.js");
 const SyncUpdateSchedulerInstance_js_namespaceObject = require("./Scheduling/SyncUpdateSchedulerInstance.js");
 const createReadProxy_js_namespaceObject = require("./Tracking/createReadProxy.js");
 const createWriteProxy_js_namespaceObject = require("./Tracking/createWriteProxy.js");
 const isTrackable_js_namespaceObject = require("./Tracking/isTrackable.js");
 const UpdateBatchInstance_js_namespaceObject = require("./Transaction/UpdateBatchInstance.js");
-const external_getUid_js_namespaceObject = require("./getUid.js");
+const getUid_js_namespaceObject = require("./Utils/getUid.js");
+const DiagnosticsInstance_js_namespaceObject = require("./Diagnostics/DiagnosticsInstance.js");
 class Carburetor {
     data;
     scheduler;
     subscribers = {};
-    uid = (0, external_getUid_js_namespaceObject.getUid)();
+    subscriberIndex = new SubscriberIndex_js_namespaceObject.SubscriberIndex();
+    uid = (0, getUid_js_namespaceObject.getUid)();
     version = 0;
     writes = new Set();
     draftTouched = false;
+    pendingEmit = false;
     draftProxy = void 0;
     constructor(data, scheduler = SyncUpdateSchedulerInstance_js_namespaceObject.syncUpdateScheduler){
         this.data = data;
@@ -70,49 +73,73 @@ class Carburetor {
         this.emitUpdate();
         return data;
     };
-    snapshot = ()=>(0, external_deepClone_js_namespaceObject.deepClone)(this.data);
+    snapshot = ()=>(0, deepClone_js_namespaceObject.deepClone)(this.data);
     restore = (data)=>{
-        this.setData((0, external_deepClone_js_namespaceObject.deepClone)(data));
+        this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
     };
     toJSON = ()=>this.snapshot();
     fromJSON = (value)=>{
         this.restore(value);
     };
-    subscribe = (callback, customId, reads)=>{
-        const id = customId || (0, external_getUid_js_namespaceObject.getUid)();
+    subscribe = (callback, options = {})=>{
+        const id = options.id || (0, getUid_js_namespaceObject.getUid)();
+        const reads = options.reads ? new Set(options.reads) : new Set([
+            WildcardPath_js_namespaceObject.WILDCARD_PATH
+        ]);
         this.subscribers[id] = {
             callback,
-            reads: reads || new Set([
-                WildcardPath_js_namespaceObject.WILDCARD_PATH
-            ])
+            reads
         };
+        this.subscriberIndex.add(id, reads);
         return id;
     };
     unsubscribe = (id)=>{
         if (id in this.subscribers) {
             this.scheduler.cancel(id);
+            this.subscriberIndex.remove(id);
             delete this.subscribers[id];
         }
     };
     watch = (reads, callback)=>{
-        const id = this.subscribe(callback, void 0, new Set(reads));
+        const id = this.subscribe(callback, {
+            reads
+        });
         return ()=>{
             this.unsubscribe(id);
         };
     };
     notifyWrites = (writes)=>{
-        Object.keys(this.subscribers).forEach((id)=>{
+        this.subscriberIndex.match(writes).forEach((id)=>{
             const record = this.subscribers[id];
-            if (record && (0, pathsIntersect_js_namespaceObject.pathsIntersect)(record.reads, writes)) this.scheduler.schedule(id, record.callback);
+            if (record) this.scheduler.schedule(id, record.callback);
         });
     };
     get draft() {
         const data = this.data;
-        this.draftTouched = true;
+        this.touchDraft();
         if (!(0, isTrackable_js_namespaceObject.isTrackable)(data)) return this.data;
         if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.recordWrite);
         return this.draftProxy;
     }
+    update = (mutate)=>{
+        mutate(this.draft);
+        this.emitUpdate();
+    };
+    emitSoon = ()=>{
+        this.pendingEmit = true;
+        queueMicrotask(()=>{
+            this.pendingEmit = false;
+            this.emitUpdate();
+        });
+    };
+    touchDraft = ()=>{
+        if (this.draftTouched) return;
+        this.draftTouched = true;
+        if ("u" > typeof process && 'production' !== process.env.NODE_ENV) queueMicrotask(()=>{
+            if (!this.draftTouched || this.pendingEmit) return;
+            DiagnosticsInstance_js_namespaceObject.diagnostics.report("a write went through draft, but emitUpdate() was never called, so no subscriber was notified. Prefer this.update(draft => ...), which does both.");
+        });
+    };
     recordWrite = (path)=>{
         this.writes.add(path);
     };

@@ -64,7 +64,7 @@ describe('tracking boundary', () => {
         const carburetor = new MixedCarburetor(getData());
         let countReader = 0;
 
-        carburetor.subscribe(() => countReader++, 'count-reader', new Set<TPath>(['plain.count']));
+        carburetor.subscribe(() => countReader++, {id: 'count-reader', reads: new Set<TPath>(['plain.count'])});
 
         // The changed paths are unknown here, so the fallback is to treat all of them as changed.
         carburetor.mutateIndexInPlace('b', 2);

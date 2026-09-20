@@ -1,0 +1,1 @@
+let e="*";export{e as WILDCARD_PATH};

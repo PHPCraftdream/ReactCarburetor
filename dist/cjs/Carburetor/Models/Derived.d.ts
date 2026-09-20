@@ -4,7 +4,12 @@ import { ICarburetor, ICarburetorSubscription } from "./Store.js";
 export interface IComputed<R> extends ICarburetorSubscription {
     get: () => R;
 }
-/** Reads a carburetor with tracking; used inside a computed body. */
-export type TComputedReader = <T extends {}>(carburetor: ICarburetor<T>) => TReadonly<T>;
+/**
+ * Reads a dependency with tracking, from inside a computed body. A carburetor is tracked
+ * per path; another computed is tracked as a whole, because its value is the granularity
+ * it notifies at. Reading a computed any other way — calling `get()` on it directly —
+ * registers no dependency and leaves the outer value stale.
+ */
+export type TComputedReader = (<T extends object>(carburetor: ICarburetor<T>) => TReadonly<T>) & (<R>(computed: IComputed<R>) => R);
 /** Body of a computed: everything it reads through `read` becomes its dependency. */
 export type TComputeBody<R> = (read: TComputedReader) => R;
