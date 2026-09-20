@@ -2,7 +2,7 @@ import * as React from "react";
 import {createRoot} from "react-dom/client";
 import './styles.css';
 import {TodoApp} from "./ToDo/TodoApp";
-import {todoCarburetor} from "./ToDo/TodoCarburetor";
+import {todoCarburetor} from "./ToDo/Carburetors/TodoCarburetorInstance";
 
 class App extends React.Component {
     public render() {

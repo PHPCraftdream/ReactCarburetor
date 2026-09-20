@@ -2,8 +2,8 @@ import * as React from "react";
 import {AntiHookComponent} from "../Carburetor";
 import {EmitStatus} from "./Components/EmitStatus";
 import {TodoItem} from "./Components/TodoItem";
-import {someCarburetor} from "./SomeCarburetor";
-import {TodoCarburetor} from "./TodoCarburetor";
+import {someCarburetor} from "./Carburetors/SomeCarburetorInstance";
+import {TodoCarburetor} from "./Carburetors/TodoCarburetor";
 
 interface ITodoProps {
     carburetor: TodoCarburetor;

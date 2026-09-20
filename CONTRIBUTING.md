@@ -13,6 +13,25 @@ contributions are the ones that sharpen it rather than widen it.
 - **Never miss an update.** When the changed paths cannot be known, fall back to invalidating
   everything rather than guessing.
 
+## Project layout
+
+Two structural rules keep the tree navigable:
+
+- **One export per file.** A file carries a single class, function or constant, and is named
+  after it. The exceptions are `Models.ts` files (and the `Models/` folder), which group
+  related types and interfaces, and `index.ts` barrels, which only re-export.
+- **At most seven entries per directory.** When a folder outgrows that, its contents are
+  regrouped into subfolders by meaning rather than left as a flat list.
+
+Singletons live next to their class in a file suffixed with `Instance`
+(`SyncUpdateScheduler.ts` and `SyncUpdateSchedulerInstance.ts`) — two files differing only
+in the first letter's case would collide on case-insensitive filesystems.
+
+The engine is grouped as `Models/` (types), `Store/` (the carburetor and its machinery:
+paths, tracking proxies, transactions, schedulers), `Derived/` (computed values),
+`Resource/` (async state), `Component/` (React integration) and `Tooling/` (devtools,
+persistence, history, test helpers). The optional hooks bridge lives in `lib/src/Interop`.
+
 ## Getting started
 
 ```bash

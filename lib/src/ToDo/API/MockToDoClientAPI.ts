@@ -1,10 +1,5 @@
 import {IToDoClientAPI, ITodoList} from "./IToDoModels";
 
-export const getDefaultTodos = (): ITodoList => ({
-    items: {},
-    orderIds: [],
-});
-
 let todoList: ITodoList = {
     items: {
         workTodo1: {

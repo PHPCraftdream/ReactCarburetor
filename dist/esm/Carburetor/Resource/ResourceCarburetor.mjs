@@ -1,0 +1,83 @@
+import { Carburetor } from "../Store/Carburetor.mjs";
+import { getInitialResourceData } from "./getInitialResourceData.mjs";
+const describeError = (error)=>{
+    if (error instanceof Error) return error.message;
+    return String(error);
+};
+class ResourceCarburetor extends Carburetor {
+    loader;
+    controller = void 0;
+    pendingKey = void 0;
+    pendingRequest = void 0;
+    lastArgs = void 0;
+    lastError = void 0;
+    constructor(loader, scheduler){
+        super(getInitialResourceData(), scheduler), this.loader = loader;
+    }
+    getLastError = ()=>this.lastError;
+    suspend = (args)=>{
+        const state = this.data;
+        if ('success' === state.status) return state.data;
+        if ('error' === state.status) throw this.lastError || new Error(state.error || 'Carburetor: resource failed');
+        if (this.pendingRequest && this.pendingKey === this.keyOf(args)) throw this.pendingRequest;
+        throw this.start(args, true);
+    };
+    load = (args)=>this.start(args, false);
+    reload = ()=>{
+        if (void 0 === this.pendingKey) return Promise.resolve();
+        const args = this.lastArgs;
+        this.pendingKey = void 0;
+        this.pendingRequest = void 0;
+        return this.start(args, false);
+    };
+    abort = ()=>{
+        if (!this.controller) return;
+        this.controller.abort();
+        this.controller = void 0;
+        this.pendingRequest = void 0;
+        this.pendingKey = void 0;
+    };
+    start = (args, deferNotification)=>{
+        const key = this.keyOf(args);
+        if (this.pendingRequest && this.pendingKey === key) return this.pendingRequest;
+        this.abort();
+        const controller = new AbortController();
+        this.controller = controller;
+        this.pendingKey = key;
+        this.lastArgs = args;
+        this.draft.status = 'pending';
+        this.draft.error = void 0;
+        if (deferNotification) queueMicrotask(this.emitUpdate);
+        else this.emitUpdate();
+        this.pendingRequest = this.loader(args, controller.signal).then((data)=>{
+            this.settleSuccess(controller, data);
+        }, (error)=>{
+            this.settleError(controller, error);
+        });
+        return this.pendingRequest;
+    };
+    keyOf = (args)=>JSON.stringify(void 0 === args ? null : args);
+    isCurrent = (controller)=>this.controller === controller && !controller.signal.aborted;
+    settleSuccess = (controller, data)=>{
+        if (!this.isCurrent(controller)) return;
+        this.controller = void 0;
+        this.pendingRequest = void 0;
+        this.lastError = void 0;
+        this.draft.status = 'success';
+        this.draft.data = data;
+        this.draft.error = void 0;
+        this.draft.updatedAt = Date.now();
+        this.emitUpdate();
+    };
+    settleError = (controller, error)=>{
+        if (!this.isCurrent(controller)) return;
+        this.controller = void 0;
+        this.pendingRequest = void 0;
+        this.lastError = error;
+        this.draft.status = 'error';
+        this.draft.error = describeError(error);
+        this.draft.updatedAt = Date.now();
+        this.emitUpdate();
+    };
+}
+export { ResourceCarburetor };
