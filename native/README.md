@@ -39,10 +39,57 @@ multithreaded mode runs one process with several worker threads (shared `process
 `threadId`), so the bridge keys the run by pid, lets the first worker win an atomic lock, and has the
 others wait for its result.
 
+## Running it directly
+
+The binary is also usable on its own, so a CI job can check the carburetor rules without starting
+Node at all — which is the cheapest form of the same energy argument.
+
+```bash
+carburetor-lint [options] [paths...]
+```
+
+| Option | Meaning |
+|--------|---------|
+| `--config <path>` | configuration file; default `./.carburetorrc.json` when it exists |
+| `--rule <name>=<severity>` | override one rule: `error`, `warn` or `off` |
+| `--format <human\|json>` | output format; default human |
+| `--deny-warnings` | fail the run on warnings too |
+| `-h`, `--help` | print the usage |
+
+Every valued flag takes both spellings, `--flag value` and `--flag=value`.
+
+**Configuration.** JSON, because serde_json is already a dependency and oxlint, the ESLint host and
+this crate then share one format — one format, no second parser. Two keys, `rules` and `ignore`;
+anything else is rejected rather than ignored, so a typo fails loudly. A rule's value is a severity
+string or ESLint's `[severity, options]` pair. Rule names may be bare or carry the `carburetor/`
+prefix. A missing default config is not an error — the defaults apply — but a `--config` path that
+is not there is, because the caller asked for that exact file.
+
+The defaults mirror `../plugin/src/recommended.mts`, which is the single source of truth for
+strictness; a test in the JavaScript suite compares the two tables so the binary and the plugin
+cannot become two different products. A rule set to `off` never runs, so turning rules off makes the
+pass cheaper rather than only quieter.
+
+**Suppression comments.** `carburetor-disable-next-line <rules>` for the line below, and
+`carburetor-disable <rules>` for the whole file. The oxlint spellings `oxlint-disable-next-line` and
+`oxlint-disable` are honoured identically, so one comment silences a rule in both linters. With no
+rule list a directive silences every carburetor rule. A directive must be the whole comment: prose
+that merely mentions one silences nothing.
+
+**Exit codes.** `0` clean, `1` problems found, `2` the linter itself failed — an unreadable or
+malformed config, an invalid command line. CI has to tell a broken tool from a failing check.
+A warning alone does not fail the run, the line oxlint draws too; `--deny-warnings` opts in.
+
+**The walk** honours `.gitignore` and the config's `ignore` patterns, and never enters
+`node_modules`, `dist`, `target` or `worktrees` whatever the ignore files say.
+
 ## Layout
 
-- `src/main.rs` — the walk, the parallel parse, the output formats and the exit codes.
+- `src/main.rs` — the command line, the walk, the parallel parse, the output formats, the exit codes.
+- `src/config.rs` — severities per rule, per-rule options, ignore patterns.
+- `src/suppression.rs` — the disable directives one file carries.
 - `src/rules/` — one module per rule, named after it, with the hazard it detects in the header.
+- `tests/cli.rs` — the end-to-end tests, run against the built binary.
 
 Rules are specified in `../docs/hazards.md`: for each one, the code that triggers it, why it is
 silent at runtime, the supported form, and where the rule can be wrong. The specification is the

@@ -1,0 +1,5 @@
+{
+  "rules": {
+    "carburetor/no-lifecycle-class-property": "warn"
+  }
+}

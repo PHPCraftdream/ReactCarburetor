@@ -10,7 +10,8 @@ use oxc_ast_visit::Visit;
 use crate::rules::report;
 use crate::{Diagnostic, Source};
 
-const RULE: &str = "carburetor/no-lifecycle-class-property";
+/// The id this rule reports under; the registry keys its severity by it.
+pub const RULE: &str = "carburetor/no-lifecycle-class-property";
 
 const COMPONENT_BASES: [&str; 2] = ["AntiHookComponent", "ScopedAntiHookComponent"];
 

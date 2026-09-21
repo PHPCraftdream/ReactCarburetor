@@ -1,0 +1,26 @@
+{
+  "rules": {
+    "carburetor/no-async-effect": "error",
+    "carburetor/no-async-transaction": "error",
+    "carburetor/no-computed-get-in-computed": "error",
+    "carburetor/no-computed-get-in-render": "error",
+    "carburetor/no-direct-data-write": "error",
+    "carburetor/no-duplicate-effect-name": "error",
+    "carburetor/no-escaping-tracked-data": "error",
+    "carburetor/no-external-data-mutation": "error",
+    "carburetor/no-get-data-in-render": "error",
+    "carburetor/no-handler-created-in-render": "error",
+    "carburetor/no-lifecycle-class-property": "error",
+    "carburetor/no-module-level-store": "error",
+    "carburetor/no-store-write-in-render": "error",
+    "carburetor/no-tracked-data-mutation": "error",
+    "carburetor/no-untrackable-draft-mutation": "error",
+    "carburetor/no-untrackable-store-data": "error",
+    "carburetor/no-use-carburetor-outside-render": "error",
+    "carburetor/require-bind-for-passed-method": "error",
+    "carburetor/require-effect-deps": "error",
+    "carburetor/require-emit-after-draft-write": "error",
+    "carburetor/require-subscription-disposal": "error",
+    "carburetor/require-super-in-lifecycle": "error"
+  }
+}
