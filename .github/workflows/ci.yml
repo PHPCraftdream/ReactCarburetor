@@ -19,6 +19,22 @@ jobs:
       - name: Install
         run: npm install
 
+      # The 22 carburetor/* rules are a bridge now: `npm run lint` calls this binary to check its
+      # own tree, so it has to exist before anything below it runs, not only before the tests.
+      # ubuntu-latest ships a Rust toolchain already; the crate's own pins decide the rest.
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-${{ hashFiles('native/Cargo.lock') }}
+
+      - name: Build native linter
+        working-directory: native
+        run: cargo build --release
+
       - name: Build
         run: npm run build
 
@@ -31,9 +47,9 @@ jobs:
       - name: Check layout rules
         run: npm run check:layout
 
-      # Run the rule tests on their own first, so a broken rule is distinguishable from a
-      # broken engine at a glance. They run again as part of the full suite, which costs
-      # seconds and is worth the clearer signal.
+      # Run the plugin's own tests on their own first, so a broken bridge or a broken house-style
+      # rule is distinguishable from a broken engine at a glance. They run again as part of the
+      # full suite, which costs seconds and is worth the clearer signal.
       - name: Test lint rules
         run: npm run test:rules
 
@@ -57,3 +73,33 @@ jobs:
       - name: Build
         working-directory: lib
         run: npm run build
+
+  native:
+    name: Native linter
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The toolchain the image ships is enough: the crate pins its dependencies, not rustc.
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-${{ hashFiles('native/Cargo.lock') }}
+
+      - name: Build
+        working-directory: native
+        run: cargo build --release
+
+      # The integration tests run the built binary, so they cover the command line, the walk
+      # and the exit codes — the parts a unit test cannot see.
+      - name: Test
+        working-directory: native
+        run: cargo test
+
+      - name: Clippy
+        working-directory: native
+        run: cargo clippy --all-targets -- -D warnings

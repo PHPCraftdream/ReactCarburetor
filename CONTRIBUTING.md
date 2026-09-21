@@ -66,6 +66,25 @@ house taste, and shipping it would impose this project's conventions on someone 
 state engine. A build only ever starts from `plugin/src`, so nothing internal can reach `dist` by
 accident — and a test asserts the bundle does not contain it.
 
+The internal rules, and the two decisions inside them that are not obvious:
+
+| Rule | What it asks for |
+|------|------------------|
+| `no-parent-import` | no `../` — imports go down from `@`, and `--fix` rewrites the offenders |
+| `max-line-length` | 120 columns, a tab counting to its tab stop |
+| `require-tsdoc` | a `/** */` block on every function, method, function-valued property and exported `const` function |
+| `no-blank-line-after-tsdoc` | nothing between the closing `*/` and the declaration; `--fix` removes it |
+
+`max-line-length` **ignores string literals by default**, unlike `eslint/max-len`. The demo's long
+lines are all `className` attributes holding Tailwind class lists and one SVG path; wrapping them
+would make the classes ungreppable and inflate every diff that touches them, and the rule is meant
+to police logic lines rather than class lists.
+
+`require-tsdoc` measures **only the summary** against `maxLines` — the lines before the first blank
+one. Everything after that blank line is the rationale, which this repository wants written at
+length: "why, not what" produces paragraphs, and a limit on the whole comment would be a limit on
+explaining anything. It is off for `__tests__`, where a test's name is its documentation.
+
 Both plugins share the types and AST helpers under `plugin/src`, reached through the `#src/*` map in
 `plugin/package.json`. A rule that fixes something puts the fix in the rule rather than in a script:
 `no-parent-import` rewrites `../../Models/Paths` to `@/Carburetor/Models/Paths` under
@@ -124,10 +143,40 @@ stable ABI and oxc's AST types move between releases.
 
 So the native path is a **binary of our own**, in `native/`, called by the plugin once per lint run
 rather than compiled into the linter. It is 20 ms over this whole tree against the 270 ms the
-JavaScript rule layer costs — see `native/README.md` for the measurements and for why "once per run"
-is achievable in ESLint's multithreaded mode. The rules live there; the plugin becomes a bridge, so
-there is one implementation rather than two, and suppression comments, editor diagnostics and
-configuration keep working because the host still does the reporting.
+JavaScript rule layer used to cost — see `native/README.md` for the measurements and for why "once
+per run" is achievable in ESLint's multithreaded mode. All 22 rules under `plugin/src/Rules/` are
+now this bridge: each one is `nativeRule(id, description)`
+(`plugin/src/Utils/Native/nativeRule.mts`), a few lines that read the one shared result and report
+whatever belongs to that rule's own id. Detection lives only in `native/src/rules/` — one
+implementation, not two — and suppression comments, editor diagnostics and per-rule severity keep
+working because the host still owns every `context.report()` call; the bridge never decides
+severity or filters by config, it only tells each rule which of its own findings exist.
+
+`plugin/src/Utils/Native/nativeBridge.mts` is the "once" part: a module-scope cache means the
+first rule any file asks already answers for every rule and every file after it, within one
+process. ESLint's `--concurrency` workers are separate JS engines with separate module state, so
+the cross-worker half goes through the filesystem instead — the first worker to create a lock file
+in the OS temp directory runs the binary and writes a result file; the rest wait for that file to
+appear, sleeping via `Atomics.wait` because a rule's visitor cannot `await`. The bridge always
+forces every rule to `error` when it calls the binary, regardless of native's own defaults or this
+project's config: severity is the host's decision, made when it chooses whether to call a rule's
+`create()` at all, not native's, and a rule OFF in native's defaults but ON in a consumer's config
+must still be computed for that consumer to see it.
+
+Reporting through both hosts from one synthetic node needed two things neither host's docs led
+with, found by actually running each one over the built bundle: oxlint requires `range` on the
+node, and ESLint separately requires `loc` — it never derives one for a node its own parser did not
+produce, so a report with `range` alone crashes ESLint's formatter while working fine in oxlint. The
+synthetic node in `nativeRule.mts` carries both. The other trap: native walks from `.`, so its
+`file` field carries a leading `./` that `path.relative()` never produces — comparing the two
+without stripping it silently matches nothing and reports nothing, which looks exactly like a
+clean lint run.
+
+`resolveBinary()` finds the binary a workspace `cargo build` produces by walking upward from its
+own file until it finds `native/target/{release,debug}`, rather than a fixed number of `..`
+segments: this file sits four directories under the repo root as source
+(`plugin/src/Utils/Native/`) but one under it once bundled (`dist/lint/`), and a fixed depth is
+right for only one of those two shapes.
 
 The one lever that does exist: pointing `jsPlugins` at the built bundle instead of the `.mts`
 sources measures 475 ms against 558 ms — 82 ms saved by skipping type stripping and thirty module

@@ -78,12 +78,14 @@ assignment would miss three quarters of the hazard.
 **22 rules are implemented**, covering H1–H23 and H26: reads (H1–H5), writes (H6–H11), lifecycle
 (H12, H13, H21, H22), effects (H14–H16) and boundaries (H17–H20), with H23 and H26 folded into the
 rules they share. H24 and H25 are specified and named but not written yet; H27 cannot be a rule at
-all. The plugin lives in `plugin/src`, is
-loaded by this repository's own `.oxlintrc.json`, and each rule is tested twice — through oxlint's
-`RuleTester` for its logic, and through the real binary over a fixture in `plugin/__fixtures__`
-for the host path. The fixture run doubles as a positive control: a green lint proves nothing if
-the rules never see the file. See CONTRIBUTING for the layout and the two host constraints that
-are easy to trip over.
+all. Detection lives in `native/src/rules/`, tested there with oxc's own parser over hand-written
+edge cases; `plugin/src/Rules/` is now a thin bridge that calls that binary once per lint run and
+reports through whichever host is running, so oxlint's `RuleTester` — which never writes its
+synthetic snippets to disk — cannot exercise it. `__tests__/Native/conformance.test.ts` and
+`__tests__/Plugin/host.test.ts` cover that path instead: real fixtures in `plugin/__fixtures__`,
+run through the real binary and the real host together. The fixture run doubles as a positive
+control: a green lint proves nothing if the rules never see the file. See CONTRIBUTING for the
+bridge's mechanics and the host constraints that are easy to trip over.
 
 ## Reads
 

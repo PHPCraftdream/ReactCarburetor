@@ -39,8 +39,35 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cleanup is dropped, a computed that never invalidates. One plugin serves both hosts, since oxlint's
   JS plugin API is ESLint's: oxlint consumers add one `extends` line pointing at the shipped
   `recommended.oxlintrc.json`, ESLint v9 consumers spread `carburetor.configs.recommended` into a
-  flat config. Every rule is tested through oxlint's `RuleTester` and again through the real binary
-  over a fixture, and the packaged path is exercised in both hosts.
+  flat config.
+- A native Rust port of all 22 rules (`native/`), and the JavaScript plugin rewritten into a thin
+  bridge that calls it: the whole set of rules now has one implementation, not a JavaScript one and
+  a native one kept in sync by hand. Measured on this repository, the native pass takes 20 ms
+  against the 270 ms the 22 rules cost as a JavaScript plugin — the difference is multiplied by
+  every project that depends on this library, which is the reason it exists. The bridge spawns the
+  binary exactly once per lint run and shares that one result across every rule and every file,
+  including under ESLint's `--concurrency`, where several worker threads coordinate through a lock
+  file in the OS temp directory rather than each spawning their own copy. Every rule keeps
+  reporting through the host it always did — suppression comments, editor diagnostics and per-rule
+  severity all still work, because the bridge only tells a rule which of its own findings exist; it
+  never decides whether or how loudly to report them. A conformance suite runs both the native
+  binary and the (now retired) reference behaviour over one shared fixture corpus and requires
+  identical output, file by file, line by line, rule by rule.
+- House style rules in the unpublished plugin, on for the whole repository: `max-line-length`
+  (120 columns, a tab counted to its tab stop), `require-tsdoc` and `no-blank-line-after-tsdoc`,
+  which fixes itself under `oxlint --fix`. `max-line-length` ignores string literals by default,
+  because the demo's long lines are Tailwind class lists that are worse wrapped, and
+  `require-tsdoc` measures only the summary paragraph, so the rationale below it stays free to be
+  as long as it needs to be. Every function, method and function-valued property in the library,
+  the demo and the plugins now carries a doc comment.
+- `native/`: the configuration, suppression and output layer of the native linter. A
+  `.carburetorrc.json` with per-rule severities and ignore patterns, whose defaults mirror
+  `plugin/src/recommended.mts` — a test compares the two tables, since one product with two
+  strictness levels would be two products. `carburetor-disable[-next-line]` directives, and
+  oxlint's spellings honoured identically so one comment silences a rule in both linters. Human
+  and `--format=json` output, and exit codes that distinguish "problems found" (1) from "the
+  linter itself failed" (2). A rule set to `off` never runs rather than being filtered out
+  afterwards.
 - `docs/hazards.md`: the catalogue behind those rules — for each hazard, the code that triggers it,
   why it is silent at runtime, the supported form, what the rule matches on, and where it can produce
   a false positive.
@@ -122,6 +149,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `require-bind-for-passed-method` reported `this.method.bind(this)` as an unbound reference,
+  because it treated `this.method` as passed by value everywhere except a call's own callee or an
+  assignment's own target — missing that `this.method` sitting as the object of `.bind`'s property
+  access reaches through it the same way `this.x.y` does. Found by dogfooding the native port on
+  this repository's own tests, one of which uses exactly that pattern to demonstrate a different
+  hazard.
 - Subscriptions were never released on unmount, so a carburetor kept the component instance
   alive forever and the leak grew with every mount/unmount cycle.
 - Updates queued while the throttle was flushing (for example from an effect writing to a

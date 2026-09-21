@@ -2,12 +2,14 @@ import {execFileSync} from "node:child_process";
 import * as path from "node:path";
 
 /**
- * Proves the plugin works in the host that will actually run it.
+ * Proves the 22 carburetor rules work in the host that actually runs them.
  *
- * `RuleTester` drives a rule's `create` directly; it cannot show that oxlint loads the plugin,
- * resolves `jsPlugins`, strips the TypeScript types and applies the configured severity. That
- * whole path is what breaks when a detail of the alpha plugin API changes, so it is pinned by
- * running the real binary over a fixture.
+ * Detection lives in the native crate now; each rule here is a thin bridge that reports whatever
+ * the binary already found (see plugin/src/Utils/Native/nativeBridge.mts). A synthetic RuleTester
+ * snippet never touches disk, so it cannot exercise that path at all — this file is what pins the
+ * whole thing down instead: the real binary, spawned by the real host, over a real file on disk.
+ * native/src/rules/ carries the per-rule edge-case tests; this one is "does it fire, at the right
+ * place, through oxlint" for every rule, once each.
  */
 const ROOT: string = process.cwd();
 const OXLINT: string = path.join(ROOT, 'node_modules', 'oxlint', 'bin', 'oxlint');

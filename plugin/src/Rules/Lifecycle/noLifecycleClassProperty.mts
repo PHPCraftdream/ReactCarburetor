@@ -1,63 +1,14 @@
-import {findEnclosingClassExtending} from "#src/Utils/Ast/Find/findEnclosingClassExtending.mts";
-import {getPropertyKeyName} from "#src/Utils/Ast/getPropertyKeyName.mts";
-import {ruleOptions} from "#src/Utils/Carburetor/ruleOptions.mts";
-import type {IAstNode, IClassMemberNode, IRule, IRuleContext, TRuleVisitor} from "#src/Models.mts";
-
-const LIFECYCLE_NAMES: readonly string[] = [
-    'render',
-    'componentDidMount',
-    'componentDidUpdate',
-    'componentWillUnmount',
-    'shouldComponentUpdate',
-    'componentDidCatch',
-    'getSnapshotBeforeUpdate',
-];
+import {nativeRule} from "#src/Utils/Native/nativeRule.mts";
+import type {IRule} from "#src/Models.mts";
 
 /**
- * Reports a lifecycle method declared as a class property.
+ * Declare lifecycle methods as methods, not as class properties.
  *
- * A class field is installed on the instance and shadows the prototype method for good, so
- * the base implementation React would have called is gone: `AntiHookComponent` commits
- * subscriptions in `componentDidMount`, re-runs effects in `componentDidUpdate`, releases
- * both in `componentWillUnmount` and gates re-renders in `shouldComponentUpdate`. In an
- * earlier version of this library exactly this silently disabled every effect in a component,
- * and nothing about the code looked wrong.
- *
- * See docs/hazards.md, H13.
+ * Detection lives in the native crate now (native/src/rules/), which the JS plugin calls once
+ * per lint run and reports through -- see plugin/src/Utils/Native/nativeBridge.mts for why,
+ * and native/src/rules/ for the rule itself. See docs/hazards.md, H13.
  */
-export const noLifecycleClassProperty: IRule = {
-    meta: {
-        type: 'problem',
-        docs: {
-            description: 'Declare lifecycle methods as methods, not as class properties.',
-        },
-        schema: ruleOptions.schema(),
-    },
-
-    create(context: IRuleContext): TRuleVisitor {
-        const {componentBases} = ruleOptions.read(context);
-
-        return {
-            PropertyDefinition(node: IAstNode): void {
-                const property = node as IClassMemberNode;
-                const name = getPropertyKeyName(property.key);
-
-                if (!name || !LIFECYCLE_NAMES.includes(name) || property.static) {
-                    return;
-                }
-
-                if (!findEnclosingClassExtending(node, componentBases)) {
-                    return;
-                }
-
-                context.report({
-                    node,
-                    message: `"${name}" is declared as a class property, which shadows the base `
-                        + 'implementation on the prototype: effects, subscription cleanup or the '
-                        + 'props gate will silently stop working. Declare it as a method and call '
-                        + 'super, or override useEffects/unUseEffects instead.',
-                });
-            },
-        };
-    },
-};
+export const noLifecycleClassProperty: IRule = nativeRule(
+    'carburetor/no-lifecycle-class-property',
+    'Declare lifecycle methods as methods, not as class properties.'
+);

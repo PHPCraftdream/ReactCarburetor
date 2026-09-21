@@ -21,56 +21,6 @@ export interface IAstNode {
     parent?: IAstNode | null;
 }
 
-/** `f(a, b)` — the argument count matters to more than one rule. */
-export interface ICallExpressionNode extends IAstNode {
-    type: 'CallExpression';
-    callee: IAstNode;
-    arguments: readonly IAstNode[];
-}
-
-/** `const x = init` — where a rule learns what a name is bound to. */
-export interface IVariableDeclaratorNode extends IAstNode {
-    type: 'VariableDeclarator';
-    id: IAstNode;
-    init: IAstNode | null;
-}
-
-/** `a = b` and its compound forms. */
-export interface IAssignmentExpressionNode extends IAstNode {
-    type: 'AssignmentExpression';
-    left: IAstNode;
-    right: IAstNode;
-}
-
-/** A class member: a method definition or a property definition. */
-export interface IClassMemberNode extends IAstNode {
-    key: IAstNode;
-    static: boolean;
-}
-
-/** A function of any form; only the parameter list is of interest here. */
-export interface IFunctionNode extends IAstNode {
-    params: readonly IAstNode[];
-}
-
-/** `x++`, `--x`, `delete x`, `!x` — the operand is what a mutation rule looks at. */
-export interface IOperatorNode extends IAstNode {
-    operator: string;
-    argument: IAstNode;
-}
-
-/**
- * Where a member chain starts.
- *
- * `this.draft.items[id].done` has `this` at its base and `draft` as the property taken from it,
- * which is how a rule tells `this.draft` apart from `this.data` without walking the chain itself.
- * `store.getData().items[id]` has the `getData()` call as its base.
- */
-export interface IChainRoot {
-    base: IAstNode;
-    baseProperty: string | undefined;
-}
-
 /** An identifier, the node kind almost every rule has to look at. */
 export interface IIdentifierNode extends IAstNode {
     type: 'Identifier';
@@ -81,14 +31,6 @@ export interface IIdentifierNode extends IAstNode {
 export interface ILiteralNode extends IAstNode {
     type: 'Literal';
     value: unknown;
-}
-
-/** `a.b` / `a['b']`, used to recognise member chains such as `this.draft.items`. */
-export interface IMemberExpressionNode extends IAstNode {
-    type: 'MemberExpression';
-    object: IAstNode;
-    property: IAstNode;
-    computed: boolean;
 }
 
 /** The part of the host's fixer this plugin uses. */
@@ -103,9 +45,20 @@ export interface IDiagnostic {
     fix?: (fixer: IRuleFixer) => unknown;
 }
 
+/** A comment in the source, as `getCommentsBefore` hands it over. */
+export interface ICommentNode extends IAstNode {
+    type: 'Block' | 'Line';
+    /** The text between the delimiters; rules read the raw text through `getText` instead. */
+    value: string;
+    /** Start and end as a pair, the form the host requires on anything reported or fixed. */
+    range: [number, number];
+}
+
 /** The part of the host's source access this plugin uses. */
 export interface ISourceCode {
     getText(node?: IAstNode): string;
+    /** The comments between the previous token and `node`, in source order. */
+    getCommentsBefore(node: IAstNode): readonly ICommentNode[];
 }
 
 /** The part of the host's rule context this plugin uses. */
