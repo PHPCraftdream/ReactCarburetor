@@ -3,6 +3,7 @@
 use oxc_ast::ast::Program;
 
 use crate::config::{Config, Severity};
+use crate::fix::Fix;
 use crate::{Diagnostic, Source};
 
 mod boundaries;
@@ -62,6 +63,19 @@ pub fn locate(text: &str, offset: u32) -> (usize, usize) {
 /// Builds a diagnostic at a source offset. The severity is what a rule means when it reports at
 /// all; [`run`] stamps the configured one over it, because only the config knows how hard to say it.
 pub fn report(source: &Source, offset: u32, rule: &str, message: String) -> Diagnostic {
+    report_with_fix(source, offset, rule, message, None)
+}
+
+/// Builds a diagnostic that also carries a suggested edit, for a rule `--fix` can act on. `fix` is
+/// `None` for the same violation shape a rule cannot safely rewrite mechanically — the diagnostic
+/// still reports, there is just nothing to apply.
+pub fn report_with_fix(
+    source: &Source,
+    offset: u32,
+    rule: &str,
+    message: String,
+    fix: Option<Fix>,
+) -> Diagnostic {
     let (line, column) = locate(source.text, offset);
 
     Diagnostic {
@@ -71,6 +85,7 @@ pub fn report(source: &Source, offset: u32, rule: &str, message: String) -> Diag
         rule: rule.to_string(),
         message,
         severity: Severity::Error,
+        fix,
     }
 }
 

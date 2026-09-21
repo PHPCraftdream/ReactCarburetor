@@ -54,6 +54,8 @@ carburetor-lint [options] [paths...]
 | `--rule <name>=<severity>` | override one rule: `error`, `warn` or `off` |
 | `--format <human\|json>` | output format; default human |
 | `--deny-warnings` | fail the run on warnings too |
+| `--fix` | write every available fix to disk |
+| `--fix-dry-run` | print what `--fix` would change, without writing it |
 | `-h`, `--help` | print the usage |
 
 Every valued flag takes both spellings, `--flag value` and `--flag=value`.
@@ -83,11 +85,27 @@ A warning alone does not fail the run, the line oxlint draws too; `--deny-warnin
 **The walk** honours `.gitignore` and the config's `ignore` patterns, and never enters
 `node_modules`, `dist`, `target` or `worktrees` whatever the ignore files say.
 
+**Fixes.** A rule may attach a fix — a byte range and its replacement text — to a diagnostic;
+`--fix` applies every one it can and `--fix-dry-run` previews the same result as a diff without
+touching disk. Not every violation has one: a fix only exists where the rewrite is unambiguous, and
+a rule says nothing rather than guess. Two fixes that overlap in one file are resolved by keeping
+whichever starts first and leaving the other for a later pass, since applying it shifts the text the
+second fix's offsets were computed against; the file is re-parsed and re-checked after every change,
+up to ten passes, so a fix that turns out not to resolve its own violation cannot hang the tool. A
+fix that would leave the file unable to parse is discarded instead of published — the last text
+known to parse is what gets written, or previewed. Writing goes through a temporary file and a
+single rename, so a process killed mid-write leaves the original untouched. `no-lifecycle-class-property`
+is the first rule with one: a plain `name = () => body` property becomes `name() body`, the method
+form the base class actually dispatches to.
+
 ## Layout
 
-- `src/main.rs` — the command line, the walk, the parallel parse, the output formats, the exit codes.
+- `src/main.rs` — the command line, the walk, the parallel parse, the fix loop, the output formats,
+  the exit codes.
 - `src/config.rs` — severities per rule, per-rule options, ignore patterns.
 - `src/suppression.rs` — the disable directives one file carries.
+- `src/fix.rs` — applying a rule's suggested edit: overlap resolution, the atomic write, the dry-run
+  diff.
 - `src/rules/` — one module per rule, named after it, with the hazard it detects in the header.
 - `tests/cli.rs` — the end-to-end tests, run against the built binary.
 

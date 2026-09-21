@@ -68,6 +68,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and `--format=json` output, and exit codes that distinguish "problems found" (1) from "the
   linter itself failed" (2). A rule set to `off` never runs rather than being filtered out
   afterwards.
+- `carburetor-lint --fix` / `--fix-dry-run`: a rule may attach a fix to a diagnostic, which `--fix`
+  applies and `--fix-dry-run` previews as a diff without writing. Two fixes overlapping in one file
+  keep whichever starts first and leave the other for a later pass, and the file is re-parsed and
+  re-checked after every change (up to ten passes) so a fix that does not resolve its own violation
+  cannot hang the tool, and one that would leave the file unable to parse is discarded rather than
+  published. Writing goes through a temporary file and a single rename, so a process killed
+  mid-write leaves the original untouched. `no-lifecycle-class-property` is the first rule with a
+  fix: a plain `name = () => body` property becomes `name() body`, carrying over whatever
+  accessibility, `override`, `async`, generics or return type the arrow already had.
 - `docs/hazards.md`: the catalogue behind those rules — for each hazard, the code that triggers it,
   why it is silent at runtime, the supported form, what the rule matches on, and where it can produce
   a false positive.
