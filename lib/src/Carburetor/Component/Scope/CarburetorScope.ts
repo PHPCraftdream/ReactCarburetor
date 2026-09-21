@@ -10,6 +10,7 @@ import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
 export class CarburetorScope {
     protected instances: Map<string, unknown> = new Map<string, unknown>();
 
+    /** The instance this token stands for, created once per scope on first use. */
     public get = <T extends unknown>(token: ICarburetorToken<T>): T => {
         if (this.instances.has(token.id)) {
             return this.instances.get(token.id) as T;
@@ -26,6 +27,7 @@ export class CarburetorScope {
         this.instances.set(token.id, instance);
     };
 
+    /** Whether this scope already created an instance for the token. */
     public has = <T extends unknown>(token: ICarburetorToken<T>): boolean => {
         return this.instances.has(token.id);
     };
@@ -65,6 +67,7 @@ export class CarburetorScope {
         });
     };
 
+    /** Whether an instance can be serialized: a scope may hold things that cannot. */
     protected isInspectable = (instance: unknown): instance is IInspectable => {
         if (typeof instance !== 'object' || instance === null) {
             return false;

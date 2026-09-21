@@ -24,17 +24,21 @@ export class Computed<R> implements IComputed<R> {
     protected value: R | undefined = undefined;
     protected valid: boolean = false;
 
+    /** Takes the body whose reads become this value's dependencies. */
     constructor(protected body: TComputeBody<R>) {
     }
 
+    /** The identity a component or another computed subscribes by. */
     public getUID = (): string => {
         return this.uid;
     };
 
+    /** Bumped only when the value actually changed, not on every recompute. */
     public getVersion = (): number => {
         return this.version;
     };
 
+    /** The value, recomputing first if a dependency invalidated it. */
     public get = (): R => {
         if (!this.valid) {
             this.recompute();
@@ -66,6 +70,12 @@ export class Computed<R> implements IComputed<R> {
         return id;
     };
 
+    /**
+     * Drops a subscriber, and stops observing dependencies once the last one leaves.
+     *
+     * The value is invalidated at the same time: while unobserved it receives no
+     * invalidations, so what it holds cannot be trusted when someone subscribes again.
+     */
     public unsubscribe = (id: string) => {
         if (!(id in this.subscribers)) {
             return;
@@ -79,6 +89,7 @@ export class Computed<R> implements IComputed<R> {
         }
     };
 
+    /** Runs the body, collecting the paths it reads as this computed's dependencies. */
     protected recompute = (): void => {
         const collected: IDict<IDependency> = {};
 
@@ -107,6 +118,7 @@ export class Computed<R> implements IComputed<R> {
         this.attachDependencies(collected);
     };
 
+    /** Swaps in a fresh dependency set, releasing the previous one first. */
     protected attachDependencies = (collected: IDict<IDependency>): void => {
         this.releaseDependencies();
         this.dependencies = collected;
@@ -119,6 +131,7 @@ export class Computed<R> implements IComputed<R> {
         this.observeDependencies();
     };
 
+    /** Subscribes to every dependency under this computed's own id. */
     protected observeDependencies = (): void => {
         Object.keys(this.dependencies).forEach((cuid: string) => {
             const dependency = this.dependencies[cuid];
@@ -127,6 +140,7 @@ export class Computed<R> implements IComputed<R> {
         });
     };
 
+    /** Unsubscribes from every dependency and forgets them. */
     protected releaseDependencies = (): void => {
         Object.keys(this.dependencies).forEach((cuid: string) => {
             this.dependencies[cuid].source.unsubscribe(this.uid);
@@ -135,6 +149,7 @@ export class Computed<R> implements IComputed<R> {
         this.dependencies = {};
     };
 
+    /** Recomputes on a dependency write, and wakes subscribers only if the result moved. */
     protected onDependencyChanged = (): void => {
         const previous = this.value;
 

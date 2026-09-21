@@ -13,6 +13,7 @@ const pathsTouch = (readPath: TPath, writePath: TPath): boolean => {
         || writePath.startsWith(readPath + PATH_SEPARATOR);
 };
 
+/** Whether any written path touches any read path; a wildcard on either side matches all. */
 export const pathsIntersect = (reads: TPathSet, writes: TPathSet): boolean => {
     if (reads.has(WILDCARD_PATH) || writes.has(WILDCARD_PATH)) {
         return true;

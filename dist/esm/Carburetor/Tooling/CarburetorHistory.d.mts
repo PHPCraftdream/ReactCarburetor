@@ -18,13 +18,22 @@ export declare class CarburetorHistory<T extends object> {
     protected limit: number;
     protected applying: boolean;
     protected dispose: TDisposer;
+    /** Starts watching a carburetor, with the current state as the first entry. */
     constructor(carburetor: ICarburetor<T>, options?: IHistoryOptions);
+    /** Whether there is a past state to step back to. */
     canUndo: () => boolean;
+    /** Whether an undone state is waiting to be stepped forward into. */
     canRedo: () => boolean;
+    /** Steps one change back, or reports that there was nothing to step back to. */
     undo: () => boolean;
+    /** Steps one undone change forward again. */
     redo: () => boolean;
+    /** Forgets the recorded history, keeping the state as it is. */
     clear: () => void;
+    /** Stops watching the carburetor: nothing is recorded after this. */
     disconnect: () => void;
+    /** Records the state before a change, dropping the oldest entry past the limit. */
     protected record: () => void;
+    /** Installs a recorded state without recording the installation itself. */
     protected apply: (state: T) => void;
 }

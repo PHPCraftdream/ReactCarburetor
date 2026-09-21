@@ -7,6 +7,7 @@ import {Carburetor} from '../dist/esm/Carburetor/Store/Carburetor.mjs';
 import {pathsIntersect} from '../dist/esm/Carburetor/Store/Paths/pathsIntersect.mjs';
 
 class BenchCarburetor extends Carburetor {
+    /** Records a set of writes and publishes them in one pass, as a transaction would. */
     writePaths(paths) {
         paths.forEach((path) => this.recordWrite(path));
         this.emitUpdate();

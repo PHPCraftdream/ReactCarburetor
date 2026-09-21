@@ -5,6 +5,7 @@ import {TDeleteTodo, TUpdateTodo} from "./Models";
 import {someCarburetor} from "./SomeCarburetorInstance";
 
 export class TodoCarburetor extends Carburetor<ITodoList> {
+    /** Takes the API the list is loaded and saved through, plus the state to start from. */
     constructor(protected api: IToDoClientAPI, data: ITodoList = getDefaultTodos()) {
         super(data);
     }
@@ -16,10 +17,12 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
         });
     };
 
+    /** Replaces the whole list with what the API returns. */
     public loadData = () => {
         void this.api.getTodoList().then(this.setData);
     };
 
+    /** Adds an empty item at the top of the order. */
     public createTodo = () => {
         const todo: ITodo = {
             id: getUid(),
@@ -33,6 +36,7 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
         });
     };
 
+    /** Removes an item and its place in the order, if the id is there at all. */
     public deleteTodo: TDeleteTodo = (id: string) => {
         const {items} = this.data;
 
@@ -46,6 +50,7 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
         }
     };
 
+    /** Recomputes the derived fields before an update goes out, so they never lag the items. */
     protected preEmit = () => {
         this.countStats();
         this.sortItems();
@@ -53,6 +58,7 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
         someCarburetor.setEmittedMessage((new Date()).toISOString());
     };
 
+    /** Writes the done/active counters, which components read instead of counting again. */
     protected countStats = () => {
         const {items} = this.data;
         let doneCount = 0;
@@ -69,6 +75,7 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
         this.draft.activeCount = keys.length - doneCount;
     };
 
+    /** Keeps done items last in the display order, leaving their relative order alone. */
     protected sortItems = () => {
         const {items} = this.data;
 

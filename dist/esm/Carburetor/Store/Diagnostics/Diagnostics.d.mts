@@ -9,7 +9,10 @@
  */
 export declare class Diagnostics {
     protected enabled: boolean;
+    /** Whether complaints are currently reported. */
     isEnabled: () => boolean;
+    /** Turns complaints on or off, for a test that asserts one or a session tired of them. */
     setEnabled: (enabled: boolean) => void;
+    /** Reports one complaint, prefixed so its source is obvious in a console. */
     report: (message: string) => void;
 }

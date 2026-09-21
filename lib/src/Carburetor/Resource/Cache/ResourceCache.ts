@@ -50,6 +50,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
     protected lastUsed: Map<string, number> = new Map<string, number>();
     protected useTick: number = 0;
 
+    /** Takes the loader every entry is filled by, plus the lifetime and size bounds. */
     constructor(protected loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
         super({entries: {}}, options.scheduler);
 
@@ -195,6 +196,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         Object.keys(this.data.entries).forEach((key: string) => this.forgetKey(key));
     };
 
+    /** Removes one entry completely: request, failure, use order and the data itself. */
     protected forgetKey = (key: string): void => {
         this.abortKey(key);
         this.failures.delete(key);
@@ -209,6 +211,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         });
     };
 
+    /** Whether an entry has expired or was invalidated; an empty one is always stale. */
     protected isStale = (entry: IResourceEntry<T>): boolean => {
         if (entry.invalidated || entry.updatedAt === undefined) {
             return true;
@@ -275,6 +278,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         });
     };
 
+    /** Cancels the request for one key, leaving whatever data the entry already holds. */
     protected abortKey = (key: string): void => {
         const controller = this.controllers.get(key);
 
@@ -393,6 +397,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         return this.controllers.get(key) === controller && !controller.signal.aborted;
     };
 
+    /** Stores an answer, unless the entry is gone or a newer request has taken over. */
     protected settleSuccess = (key: string, controller: AbortController, data: T): void => {
         if (!this.isCurrent(key, controller) || !this.data.entries[key]) {
             return;

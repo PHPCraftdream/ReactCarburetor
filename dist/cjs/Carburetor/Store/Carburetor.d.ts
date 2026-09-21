@@ -21,17 +21,34 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     /** An emit already scheduled for a later microtask, so the dev check stays quiet. */
     protected pendingEmit: boolean;
     protected draftProxy: T | undefined;
+    /** Takes the initial state and the policy that decides when subscribers are woken. */
     constructor(data: T, scheduler?: IUpdateScheduler);
+    /** The store's identity, which subscriptions and dev tooling key on. */
     getUID: () => string;
+    /**
+     * The write counter, bumped on every emit.
+     *
+     * A component compares it between render and commit to notice a write that landed in
+     * between, which would otherwise leave it subscribed to stale paths.
+     */
     getVersion: () => number;
+    /** The state as it is, untracked: reads through it subscribe to nothing. */
     getData: () => T;
+    /** The state behind a read proxy that reports every path the caller touches. */
     read: (record: TPathRecorder) => TReadonly<T>;
+    /** Replaces the whole state and wakes everyone: no path survives a root swap. */
     setData: (data: T) => T;
+    /** A deep copy of the state, detached from further writes. */
     snapshot: () => T;
+    /** Installs a snapshot as the current state, copying it so the caller keeps its own. */
     restore: (data: T) => void;
+    /** The type-erased half of the snapshot bridge, for callers that do not know `T`. */
     toJSON: () => unknown;
+    /** The type-erased half of `restore`; the cast is the caller's promise about the shape. */
     fromJSON: (value: unknown) => void;
+    /** Registers a subscriber, returning the id it is cancelled and rescheduled by. */
     subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
+    /** Drops a subscriber, its index entries and any update already scheduled for it. */
     unsubscribe: (id: string) => void;
     /** Subscribes outside React — for persistence, logging, analytics. */
     watch: (reads: TPathSet, callback: TSubscriber) => TDisposer;
@@ -50,9 +67,13 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     protected update: (mutate: (draft: T) => void) => void;
     /** Publishes on the next microtask — for writes made where notifying now is unsafe. */
     protected emitSoon: () => void;
+    /** Marks draft as used and arms the development check for a write that never published. */
     protected touchDraft: () => void;
+    /** Remembers one changed path, so the emit wakes only the subscribers that read it. */
     protected recordWrite: (path: TPath) => void;
+    /** A hook for subclasses to write derived state before an emit goes out. */
     protected preEmit: () => void;
+    /** Publishes the writes recorded so far, alone or as part of an open transaction. */
     protected emitUpdate: () => void;
 }
 export {};

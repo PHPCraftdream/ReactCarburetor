@@ -1,0 +1,10 @@
+{
+  "jsPlugins": [
+    "../../internal/index.mts"
+  ],
+  "rules": {
+    "carburetor-internal/max-line-length": "error",
+    "carburetor-internal/require-tsdoc": "error",
+    "carburetor-internal/no-blank-line-after-tsdoc": "error"
+  }
+}

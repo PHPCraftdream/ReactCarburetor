@@ -42,8 +42,11 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * bypasses shouldComponentUpdate.
      */
     shouldComponentUpdate(nextProps: Readonly<P>, nextState: Readonly<S>): boolean;
+    /** Establishes the subscriptions this render collected, then fetches and runs effects. */
     componentDidMount(): void;
+    /** The same commit work as on mount, with the previous props' effects torn down first. */
     componentDidUpdate(prevProps: Readonly<P>): void;
+    /** Releases everything this component holds: effect cleanups first, subscriptions last. */
     componentWillUnmount(): void;
     /**
      * The only way to read state in render: returns tracked data. The component
@@ -68,26 +71,46 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * `refresh`, which is what the documented behaviour promises.
      */
     useResource: <T extends unknown, TArgs extends unknown>(source: IResourceSource<T, TArgs>, args: TArgs) => IResourceView<T>;
+    /** Runs the fetches render queued, now that the subscriptions they need exist. */
     protected loadStaleResources(): void;
+    /**
+     * The read record for one source in the current render.
+     *
+     * A record from an earlier generation is replaced rather than extended, so reads that are
+     * gone from this render do not keep the component subscribed to their paths.
+     */
     protected track(source: ICarburetorSubscription): ITrackedCarburetor;
+    /** Where a subclass declares its effects; called after every commit. */
     protected useEffects(): void;
+    /** Where a subclass tears down what the previous props' effects set up. */
     protected unUseEffects(_prevProps: P): void;
     /**
-     * Runs `callBack` when its dependencies changed since the last run. Whatever the effect
-     * returns is treated as its cleanup and is run before the effect runs again, and on
-     * unmount — so setup and teardown stay paired per effect rather than being one global
-     * hook for the whole component.
+     * Runs `callBack` when its dependencies changed since the last run.
+     *
+     * Whatever the effect returns is treated as its cleanup and is run before the effect runs
+     * again, and on unmount — so setup and teardown stay paired per effect rather than being
+     * one global hook for the whole component.
      */
     protected useEffect: (callBack: TEffect, name: string, deps: TEffectDeps) => void;
+    /** Runs every effect's cleanup once, on unmount, and forgets them. */
     protected releaseEffects(): void;
+    /**
+     * What a carburetor calls when a path this component read was written.
+     *
+     * `forceUpdate` deliberately skips `shouldComponentUpdate`: the props gate must not be able
+     * to swallow an update the component is itself subscribed to.
+     */
     protected onCarburetorUpdate: () => void;
     /**
-     * Subscribing happens here rather than in render: render has to stay pure, otherwise
-     * an abandoned concurrent render would leave subscriptions pointing at a component
-     * that was never committed. The price is the window between render and commit,
-     * which is closed by comparing the carburetor version.
+     * Establishes this render's subscriptions and drops the ones it no longer needs.
+     *
+     * Subscribing happens here rather than in render: render has to stay pure, otherwise an
+     * abandoned concurrent render would leave subscriptions pointing at a component that was
+     * never committed. The price is the window between render and commit, which is closed by
+     * comparing the carburetor version.
      */
     protected commitSubscriptions(): void;
+    /** Unsubscribes from every tracked source, so a carburetor stops holding this instance. */
     protected releaseSubscriptions(): void;
 }
 export {};

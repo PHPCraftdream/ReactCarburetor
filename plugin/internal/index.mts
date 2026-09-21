@@ -1,5 +1,8 @@
 import type {IPlugin} from "#src/Models.mts";
+import {maxLineLength} from "#internal/Rules/maxLineLength.mts";
+import {noBlankLineAfterTsdoc} from "#internal/Rules/noBlankLineAfterTsdoc.mts";
 import {noParentImport} from "#internal/Rules/noParentImport.mts";
+import {requireTsdoc} from "#internal/Rules/requireTsdoc.mts";
 
 /**
  * Rules for this repository's own code, which are deliberately **not** published.
@@ -18,7 +21,10 @@ const plugin: IPlugin = {
         name: 'carburetor-internal',
     },
     rules: {
+        'max-line-length': maxLineLength,
+        'no-blank-line-after-tsdoc': noBlankLineAfterTsdoc,
         'no-parent-import': noParentImport,
+        'require-tsdoc': requireTsdoc,
     },
 };
 

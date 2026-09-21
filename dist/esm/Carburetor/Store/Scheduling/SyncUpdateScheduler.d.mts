@@ -6,6 +6,8 @@ import { IUpdateScheduler } from "../../Models/Store.mjs";
  * so there is nothing to smooth out.
  */
 export declare class SyncUpdateScheduler implements IUpdateScheduler {
+    /** Runs the update immediately; React batches what happens in one event. */
     schedule: (_uid: string, updater: TUpdater) => void;
+    /** Nothing to cancel: an update was already delivered by the time this could be called. */
     cancel: (_uid: string) => void;
 }

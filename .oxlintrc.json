@@ -15,7 +15,10 @@
         "correctness": "error"
     },
     "rules": {
+        "carburetor-internal/max-line-length": "error",
+        "carburetor-internal/no-blank-line-after-tsdoc": "error",
         "carburetor-internal/no-parent-import": "error",
+        "carburetor-internal/require-tsdoc": "error",
         "carburetor/no-async-effect": "error",
         "carburetor/no-async-transaction": "error",
         "carburetor/no-computed-get-in-computed": "error",
@@ -44,12 +47,23 @@
         "browser": true,
         "node": true
     },
+    "overrides": [
+        {
+            "files": [
+                "__tests__/**"
+            ],
+            "rules": {
+                "carburetor-internal/require-tsdoc": "off"
+            }
+        }
+    ],
     "ignorePatterns": [
         "dist",
         "build",
         "node_modules",
         "lib/build",
         "lib/node_modules",
-        "plugin/__fixtures__"
+        "plugin/__fixtures__",
+        "native/tests/fixtures"
     ]
 }

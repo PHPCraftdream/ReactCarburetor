@@ -20,20 +20,24 @@ export class CarburetorHistory<T extends object> {
     protected applying: boolean = false;
     protected dispose: TDisposer;
 
+    /** Starts watching a carburetor, with the current state as the first entry. */
     constructor(protected carburetor: ICarburetor<T>, options: IHistoryOptions = {}) {
         this.limit = options.limit || 50;
         this.current = carburetor.snapshot();
         this.dispose = carburetor.watch(new Set([WILDCARD_PATH]), this.record);
     }
 
+    /** Whether there is a past state to step back to. */
     public canUndo = (): boolean => {
         return this.past.length > 0;
     };
 
+    /** Whether an undone state is waiting to be stepped forward into. */
     public canRedo = (): boolean => {
         return this.future.length > 0;
     };
 
+    /** Steps one change back, or reports that there was nothing to step back to. */
     public undo = (): boolean => {
         const previous = this.past.pop();
 
@@ -47,6 +51,7 @@ export class CarburetorHistory<T extends object> {
         return true;
     };
 
+    /** Steps one undone change forward again. */
     public redo = (): boolean => {
         const next = this.future.pop();
 
@@ -60,15 +65,18 @@ export class CarburetorHistory<T extends object> {
         return true;
     };
 
+    /** Forgets the recorded history, keeping the state as it is. */
     public clear = (): void => {
         this.past = [];
         this.future = [];
     };
 
+    /** Stops watching the carburetor: nothing is recorded after this. */
     public disconnect = (): void => {
         this.dispose();
     };
 
+    /** Records the state before a change, dropping the oldest entry past the limit. */
     protected record = (): void => {
         if (this.applying) {
             return;
@@ -84,6 +92,7 @@ export class CarburetorHistory<T extends object> {
         this.current = this.carburetor.snapshot();
     };
 
+    /** Installs a recorded state without recording the installation itself. */
     protected apply = (state: T): void => {
         this.applying = true;
 

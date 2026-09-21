@@ -14,10 +14,12 @@ interface ITodoProps {
  * so editing one todo does not re-render the list.
  */
 export class TodoApp extends AntiHookComponent<ITodoProps> {
+    /** Loads the list once, after the first commit. */
     protected useEffects(): void {
         this.useEffect(this.props.carburetor.loadData, "loadData", []);
     }
 
+    /** The plus icon on the add button. */
     public renderPlusIcon() {
         return (
             <svg
@@ -34,6 +36,7 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
         );
     }
 
+    /** One counter pill; the values come from the store's derived fields. */
     public renderCounter(label: string, value: number | undefined, tone: string, testId: string) {
         return (
             <span className={'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ' + tone}>
@@ -43,6 +46,7 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
         );
     }
 
+    /** What the list shows before the first todo exists. */
     public renderEmpty() {
         return (
             <li className="px-5 py-14 text-center text-sm text-slate-400 dark:text-slate-500">
@@ -51,6 +55,7 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
         );
     }
 
+    /** Reads the order and the counters only: a todo's own fields are read by its row. */
     public render() {
         const {carburetor} = this.props;
 

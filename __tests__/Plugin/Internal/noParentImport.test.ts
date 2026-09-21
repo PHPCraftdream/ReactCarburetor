@@ -84,7 +84,8 @@ tester.run('no-parent-import', rule, {
             name: 'every offending import in the file is fixed',
             filename: 'lib/src/Carburetor/Store/Tracking/createWriteProxy.ts',
             code: `import {TPath} from "../../Models/Paths";\nimport {joinPath} from "../Paths/joinPath";`,
-            output: `import {TPath} from "@/Carburetor/Models/Paths";\nimport {joinPath} from "@/Carburetor/Store/Paths/joinPath";`,
+            output: 'import {TPath} from "@/Carburetor/Models/Paths";\n'
+                + 'import {joinPath} from "@/Carburetor/Store/Paths/joinPath";',
             errors: 2,
         },
         {

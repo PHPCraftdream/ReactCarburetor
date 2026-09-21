@@ -26,13 +26,16 @@ let todoList: ITodoList = {
     orderIds: ['workTodo1', 'workTodo5', 'workTodo8', 'workTodo9']
 };
 
+/** A copy, so the fake server and the client never share a mutable object. */
 const cloneDataObject = <T>(data: T): T => JSON.parse(JSON.stringify(data));
 
 export class MockToDoClientAPI implements IToDoClientAPI {
+    /** Returns the stored list, as a network client would. */
     public getTodoList = () => {
         return Promise.resolve(cloneDataObject(todoList));
     };
 
+    /** Stores the list and echoes back what was saved. */
     public updateTodoList = (data: ITodoList) => {
         todoList = cloneDataObject(data);
 

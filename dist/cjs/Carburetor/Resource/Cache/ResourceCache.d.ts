@@ -31,6 +31,7 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
      */
     protected lastUsed: Map<string, number>;
     protected useTick: number;
+    /** Takes the loader every entry is filled by, plus the lifetime and size bounds. */
     constructor(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions);
     /** Records that an entry was asked for, which is what eviction orders by. */
     protected touch: (key: string) => void;
@@ -93,7 +94,9 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
     forget: (args: TArgs) => void;
     /** Drops every entry. */
     forgetAll: () => void;
+    /** Removes one entry completely: request, failure, use order and the data itself. */
     protected forgetKey: (key: string) => void;
+    /** Whether an entry has expired or was invalidated; an empty one is always stale. */
     protected isStale: (entry: IResourceEntry<T>) => boolean;
     /**
      * Whether a component is reading this entry right now.
@@ -111,6 +114,7 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
      * the first would leave a promise with nowhere to land, the second would blank out the screen.
      */
     protected evict: () => void;
+    /** Cancels the request for one key, leaving whatever data the entry already holds. */
     protected abortKey: (key: string) => void;
     /**
      * Reads for Suspense: returns the answer, or throws what React should wait for.
@@ -130,6 +134,7 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
     protected markLoading: (key: string, deferNotification: boolean) => void;
     /** Whether this request is still the one the entry is waiting for. */
     protected isCurrent: (key: string, controller: AbortController) => boolean;
+    /** Stores an answer, unless the entry is gone or a newer request has taken over. */
     protected settleSuccess: (key: string, controller: AbortController, data: T) => void;
     /**
      * Records a failure without destroying a good answer.

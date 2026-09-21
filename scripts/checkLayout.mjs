@@ -48,7 +48,9 @@ const walk = (directory) => {
     const entries = readdirSync(directory).filter((entry) => entry !== 'node_modules');
 
     if (entries.length > MAX_ENTRIES) {
-        problems.push(`${relative('.', directory).split(sep).join('/')}: ${entries.length} entries, at most ${MAX_ENTRIES} allowed`);
+        const where = relative('.', directory).split(sep).join('/');
+
+        problems.push(`${where}: ${entries.length} entries, at most ${MAX_ENTRIES} allowed`);
     }
 
     entries.forEach((entry) => {

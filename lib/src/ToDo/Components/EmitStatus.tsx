@@ -7,6 +7,7 @@ import {someCarburetor} from "@/ToDo/Carburetors/SomeCarburetorInstance";
  * a separate small component — otherwise the whole list would re-render with it.
  */
 export class EmitStatus extends AntiHookComponent {
+    /** Reads the timestamp alone, so the list is not re-rendered by it. */
     public render() {
         const {emittedMessage} = this.useCarburetor(someCarburetor);
 

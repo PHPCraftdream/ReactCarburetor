@@ -8,9 +8,11 @@ import { ICarburetorToken } from "../../Models/Tooling.js";
  */
 export declare class CarburetorScope {
     protected instances: Map<string, unknown>;
+    /** The instance this token stands for, created once per scope on first use. */
     get: <T extends unknown>(token: ICarburetorToken<T>) => T;
     /** Replaces an instance — useful for tests and for hydrating a prepared store. */
     set: <T extends unknown>(token: ICarburetorToken<T>, instance: T) => void;
+    /** Whether this scope already created an instance for the token. */
     has: <T extends unknown>(token: ICarburetorToken<T>) => boolean;
     /**
      * Serializable state of every carburetor created in this scope, keyed by token id.
@@ -23,5 +25,6 @@ export declare class CarburetorScope {
      * the payload is left to be created on demand.
      */
     hydrate: (state: IDict<unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>) => void;
+    /** Whether an instance can be serialized: a scope may hold things that cannot. */
     protected isInspectable: (instance: unknown) => instance is IInspectable;
 }

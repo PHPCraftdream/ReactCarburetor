@@ -9,9 +9,14 @@ import { INotifiable } from "../../Models/Store.mjs";
 export declare class UpdateBatch {
     protected depth: number;
     protected pending: Map<INotifiable, TPathSet>;
+    /** Whether a transaction is open, so writes are collected rather than delivered. */
     isActive: () => boolean;
+    /** Opens a transaction; nesting is counted, so only the outermost one delivers. */
     begin: () => void;
+    /** Closes a transaction, delivering everything collected once the outermost one ends. */
     end: () => void;
+    /** Merges writes into what a carburetor will be notified about. */
     add: (target: INotifiable, writes: TPathSet) => void;
+    /** Delivers one notification pass per carburetor, draining what the passes add. */
     protected flush: () => void;
 }

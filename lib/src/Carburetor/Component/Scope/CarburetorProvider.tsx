@@ -8,6 +8,7 @@ interface ICarburetorProviderProps {
 }
 
 export class CarburetorProvider extends React.Component<ICarburetorProviderProps> {
+    /** Publishes the scope to the subtree; scoped components resolve tokens through it. */
     public render() {
         return (
             <CarburetorContext.Provider value={this.props.scope}>

@@ -17,6 +17,7 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
 
     // @bind keeps these on the prototype and their references stable across renders, so
     // passing them down never defeats the props gate.
+    /** Writes the edited title back, leaving the rest of the todo as it was. */
     @bind
     public handleChangeTitle(event: React.ChangeEvent<HTMLInputElement>): void {
         const {carburetor, id} = this.props;
@@ -25,6 +26,7 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
         carburetor.updateTodo({...todo, title: event.target.value});
     }
 
+    /** Toggles the done flag through the carburetor rather than local state. */
     @bind
     public handleChangeDone(event: React.ChangeEvent<HTMLInputElement>): void {
         const {carburetor, id} = this.props;
@@ -33,11 +35,13 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
         carburetor.updateTodo({...todo, done: event.target.checked});
     }
 
+    /** Removes this row's todo. */
     @bind
     public handleClickDelete(): void {
         this.props.carburetor.deleteTodo(this.props.id);
     }
 
+    /** The tick drawn inside the checkbox. */
     public renderCheckIcon() {
         return (
             <svg
@@ -55,6 +59,7 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
         );
     }
 
+    /** The bin icon on the delete button. */
     public renderTrashIcon() {
         return (
             <svg
@@ -72,6 +77,7 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
         );
     }
 
+    /** Reads `items.<id>` alone, so editing a neighbour does not re-render this row. */
     public render() {
         const {id} = this.props;
         const {items} = this.useCarburetor(this.props.carburetor);

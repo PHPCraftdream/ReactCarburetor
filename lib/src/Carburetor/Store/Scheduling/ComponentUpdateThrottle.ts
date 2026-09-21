@@ -12,24 +12,29 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
     protected timeout: TTimerHandle = undefined;
     protected updaters: Map<string, TUpdater> = new Map<string, TUpdater>();
 
+    /** Takes the coalescing window in milliseconds. */
     constructor(protected updateTimeout: number = 40) {
     }
 
+    /** Queues one update per subscriber, so repeated writes collapse into one render. */
     public schedule = (uid: string, updater: TUpdater) => {
         this.updaters.set(uid, updater);
         this.setupTimeout();
     };
 
+    /** Drops a queued update, for a subscriber that unsubscribed before the flush. */
     public cancel = (uid: string) => {
         this.updaters.delete(uid);
     };
 
+    /** Arms the flush, leaving an already armed one alone: the window must not slide. */
     protected setupTimeout = () => {
         if (!this.timeout) {
             this.timeout = setTimeout(this.letsUpdate, this.updateTimeout);
         }
     };
 
+    /** Disarms the flush timer. */
     protected clearTimeout = () => {
         if (this.timeout) {
             clearTimeout(this.timeout);
@@ -38,10 +43,12 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
         this.timeout = undefined;
     };
 
+    /** Runs one queued update; a seam for tests and subclasses. */
     protected runUpdater = (updater: TUpdater) => {
         updater();
     };
 
+    /** Flushes the queue, including what the flush itself queues, and fails on a loop. */
     protected letsUpdate = () => {
         // Updates queued while flushing (for example from an effect that writes to a
         // carburetor) have to run in this very cycle, otherwise clearing the queue

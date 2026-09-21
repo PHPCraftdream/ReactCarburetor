@@ -12,14 +12,17 @@ import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 export class Diagnostics {
     protected enabled: boolean = IS_DEVELOPMENT;
 
+    /** Whether complaints are currently reported. */
     public isEnabled = (): boolean => {
         return this.enabled;
     };
 
+    /** Turns complaints on or off, for a test that asserts one or a session tired of them. */
     public setEnabled = (enabled: boolean): void => {
         this.enabled = enabled;
     };
 
+    /** Reports one complaint, prefixed so its source is obvious in a console. */
     public report = (message: string): void => {
         if (!this.enabled) {
             return;

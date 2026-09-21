@@ -29,6 +29,7 @@ export class SubscriberIndex {
     protected wildcard: Set<string> = new Set<string>();
     protected readsById: Map<string, TPathSet> = new Map<string, TPathSet>();
 
+    /** Registers what one subscriber reads, in both maps. */
     public add = (id: string, reads: TPathSet): void => {
         // Re-registering the same id replaces its paths rather than adding a second entry.
         this.remove(id);
@@ -46,6 +47,7 @@ export class SubscriberIndex {
         });
     };
 
+    /** Forgets a subscriber, dropping every entry its read paths created. */
     public remove = (id: string): void => {
         const reads = this.readsById.get(id);
 
@@ -62,6 +64,7 @@ export class SubscriberIndex {
         });
     };
 
+    /** The subscribers a set of written paths concerns: three lookups per write, no scan. */
     public match = (writes: TPathSet): Set<string> => {
         if (writes.has(WILDCARD_PATH)) {
             return new Set<string>(this.readsById.keys());
@@ -78,6 +81,7 @@ export class SubscriberIndex {
         return matched;
     };
 
+    /** Visits every ancestor of a path, longest first, stopping before the root segment. */
     protected eachAncestor = (path: TPath, visit: (ancestor: TPath) => void): void => {
         let cut = path.lastIndexOf(PATH_SEPARATOR);
 
@@ -89,6 +93,7 @@ export class SubscriberIndex {
         }
     };
 
+    /** Adds an id to one map's entry for a path, creating the entry when it is the first. */
     protected register = (target: Map<TPath, Set<string>>, path: TPath, id: string): void => {
         const known = target.get(path);
 
@@ -101,6 +106,7 @@ export class SubscriberIndex {
         target.set(path, new Set<string>([id]));
     };
 
+    /** Removes an id, and the entry itself once it holds nobody: the maps stay bounded. */
     protected unregister = (target: Map<TPath, Set<string>>, path: TPath, id: string): void => {
         const known = target.get(path);
 
@@ -115,6 +121,7 @@ export class SubscriberIndex {
         }
     };
 
+    /** Merges one bucket into the match set, tolerating a bucket that does not exist. */
     protected collect = (source: Set<string> | undefined, target: Set<string>): void => {
         if (!source) {
             return;

@@ -39,21 +39,31 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     protected pendingEmit: boolean = false;
     protected draftProxy: T | undefined = undefined;
 
+    /** Takes the initial state and the policy that decides when subscribers are woken. */
     constructor(protected data: T, protected scheduler: IUpdateScheduler = syncUpdateScheduler) {
     }
 
+    /** The store's identity, which subscriptions and dev tooling key on. */
     public getUID = (): string => {
         return this.uid;
     };
 
+    /**
+     * The write counter, bumped on every emit.
+     *
+     * A component compares it between render and commit to notice a write that landed in
+     * between, which would otherwise leave it subscribed to stale paths.
+     */
     public getVersion = (): number => {
         return this.version;
     };
 
+    /** The state as it is, untracked: reads through it subscribe to nothing. */
     public getData = (): T => {
         return this.data;
     };
 
+    /** The state behind a read proxy that reports every path the caller touches. */
     public read = (record: TPathRecorder): TReadonly<T> => {
         const data: unknown = this.data;
 
@@ -66,6 +76,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return createReadProxy(data, record) as unknown as TReadonly<T>;
     };
 
+    /** Replaces the whole state and wakes everyone: no path survives a root swap. */
     public setData = (data: T): T => {
         this.data = data;
         this.draftProxy = undefined;
@@ -76,22 +87,27 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return data;
     };
 
+    /** A deep copy of the state, detached from further writes. */
     public snapshot = (): T => {
         return deepClone(this.data);
     };
 
+    /** Installs a snapshot as the current state, copying it so the caller keeps its own. */
     public restore = (data: T): void => {
         this.setData(deepClone(data));
     };
 
+    /** The type-erased half of the snapshot bridge, for callers that do not know `T`. */
     public toJSON = (): unknown => {
         return this.snapshot();
     };
 
+    /** The type-erased half of `restore`; the cast is the caller's promise about the shape. */
     public fromJSON = (value: unknown): void => {
         this.restore(value as T);
     };
 
+    /** Registers a subscriber, returning the id it is cancelled and rescheduled by. */
     public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
         const id = options.id || getUid();
 
@@ -105,6 +121,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return id;
     };
 
+    /** Drops a subscriber, its index entries and any update already scheduled for it. */
     public unsubscribe = (id: string) => {
         if (id in this.subscribers) {
             this.scheduler.cancel(id);
@@ -192,6 +209,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         });
     };
 
+    /** Marks draft as used and arms the development check for a write that never published. */
     protected touchDraft = (): void => {
         if (this.draftTouched) {
             return;
@@ -216,14 +234,17 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
     };
 
+    /** Remembers one changed path, so the emit wakes only the subscribers that read it. */
     protected recordWrite = (path: TPath) => {
         this.writes.add(path);
     };
 
+    /** A hook for subclasses to write derived state before an emit goes out. */
     protected preEmit = () => {
 
     };
 
+    /** Publishes the writes recorded so far, alone or as part of an open transaction. */
     protected emitUpdate = () => {
         this.preEmit();
 

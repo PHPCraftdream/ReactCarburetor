@@ -12,6 +12,7 @@ export class ScopedAntiHookComponent<P = {}, S = {}> extends AntiHookComponent<P
 
     declare public context: CarburetorScope | null;
 
+    /** The surrounding scope, or a loud error: a missing provider is a wiring mistake. */
     protected scope(): CarburetorScope {
         if (!this.context) {
             throw new Error(
@@ -23,6 +24,7 @@ export class ScopedAntiHookComponent<P = {}, S = {}> extends AntiHookComponent<P
         return this.context;
     }
 
+    /** The carburetor this token stands for in the current scope. */
     protected resolve<T extends unknown>(token: ICarburetorToken<T>): T {
         return this.scope().get(token);
     }

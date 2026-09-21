@@ -11,14 +11,17 @@ export class UpdateBatch {
     protected depth: number = 0;
     protected pending: Map<INotifiable, TPathSet> = new Map<INotifiable, TPathSet>();
 
+    /** Whether a transaction is open, so writes are collected rather than delivered. */
     public isActive = (): boolean => {
         return this.depth > 0;
     };
 
+    /** Opens a transaction; nesting is counted, so only the outermost one delivers. */
     public begin = (): void => {
         this.depth++;
     };
 
+    /** Closes a transaction, delivering everything collected once the outermost one ends. */
     public end = (): void => {
         this.depth--;
 
@@ -30,6 +33,7 @@ export class UpdateBatch {
         this.flush();
     };
 
+    /** Merges writes into what a carburetor will be notified about. */
     public add = (target: INotifiable, writes: TPathSet): void => {
         const merged = this.pending.get(target);
 
@@ -42,6 +46,7 @@ export class UpdateBatch {
         writes.forEach((path: TPath) => merged.add(path));
     };
 
+    /** Delivers one notification pass per carburetor, draining what the passes add. */
     protected flush = (): void => {
         // A notification may open a new transaction, so drain until nothing is left.
         while (this.pending.size > 0) {
