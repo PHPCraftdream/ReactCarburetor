@@ -1,9 +1,11 @@
 import {spawnSync} from "node:child_process";
-import {existsSync, readdirSync} from "node:fs";
+import {existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {describe, expect, test} from "@rstest/core";
 import {offsetAt} from "@plugin/Utils/Native/offsetAt.mts";
+import {runNativeOnce} from "@plugin/Utils/Native/nativeBridge.mts";
+import {platformPackageNames} from "@plugin/Utils/Native/platformPackage.mts";
 import {resolveBinary} from "@plugin/Utils/Native/resolveBinary.mts";
 
 /**
@@ -80,6 +82,87 @@ describe('resolveBinary', () => {
             expect(resolveBinary()).toBe(override);
         } finally {
             delete process.env.CARBURETOR_LINT_BIN;
+        }
+    });
+});
+
+describe('platformPackageNames', () => {
+    test('the first candidate is the package npm installs on this machine', () => {
+        // The -gnu suffix assumes Node's process.report is enabled and names glibc, which is
+        // true everywhere this suite runs; a musl machine flipping the order is exactly the
+        // kind of environment drift this assertion exists to surface.
+        const expected = `carburetor-lint-${process.platform}-${process.arch}` +
+            (process.platform === 'linux' ? '-gnu' : '');
+
+        expect(platformPackageNames()[0]).toBe(expected);
+    });
+
+    test('single-binary platforms name exactly one package, whatever the machine', () => {
+        expect(platformPackageNames('darwin', 'arm64')).toEqual(['carburetor-lint-darwin-arm64']);
+        expect(platformPackageNames('sunos', 'x64')).toEqual(['carburetor-lint-sunos-x64']);
+    });
+
+    test('linux offers both libc builds, arm64 included', () => {
+        const names = platformPackageNames('linux', 'arm64');
+
+        expect(names).toContain('carburetor-lint-linux-arm64-gnu');
+        expect(names).toContain('carburetor-lint-linux-arm64-musl');
+    });
+});
+
+describe('a missing binary fails loudly', () => {
+    // An empty directory stands in for a consumer project whose optionalDependencies did not
+    // deliver a binary, and the injected resolver stands in for the whole lookup having missed.
+    const stage = (): string => mkdtempSync(path.join(os.tmpdir(), 'carburetor-lint-missing-'));
+
+    /** The result file the bridge would use for `cwd`, computed exactly as runPaths does. */
+    const resultPath = (cwd: string): string => {
+        const digest = Buffer.from(cwd).toString('base64url').slice(0, 24);
+
+        return path.join(os.tmpdir(), `carburetor-lint-${process.pid}-${digest}.json`);
+    };
+
+    test('with no binary anywhere, the run throws instead of reporting zero problems', () => {
+        const cwd = stage();
+
+        try {
+            let failure: unknown;
+
+            try {
+                runNativeOnce(cwd, () => undefined);
+            } catch (error) {
+                failure = error;
+            }
+
+            expect(failure).toBeInstanceOf(Error);
+            expect((failure as Error).message).toContain('no native binary for this platform');
+            expect((failure as Error).message).toContain('npm install --save-dev carburetor-lint');
+            expect((failure as Error).message).toContain(platformPackageNames()[0]);
+
+            // The failure is written where the other workers of a multithreaded host are
+            // waiting for it, so they inherit this throw instead of a silent clean result.
+            expect(JSON.parse(readFileSync(resultPath(cwd), 'utf8'))).toHaveProperty('error');
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
+    test('a worker reading a runner\'s failure marker throws it instead of waiting out the clock', () => {
+        const cwd = stage();
+        const result = resultPath(cwd);
+        const lock = result.replace(/\.json$/, '.lock');
+
+        // The lock exists means this process is a waiter, not the runner; the marker is what a
+        // failed runner leaves behind.
+        writeFileSync(lock, '');
+        writeFileSync(result, JSON.stringify({error: 'the staged failure'}));
+
+        try {
+            expect(() => runNativeOnce(cwd, () => undefined)).toThrow(/the staged failure/);
+        } finally {
+            rmSync(lock, {force: true});
+            rmSync(result, {force: true});
+            rmSync(cwd, {recursive: true, force: true});
         }
     });
 });

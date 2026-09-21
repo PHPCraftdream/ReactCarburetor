@@ -103,3 +103,105 @@ jobs:
       - name: Clippy
         working-directory: native
         run: cargo clippy --all-targets -- -D warnings
+
+  # The six published platform packages. Each leg builds one cargo target, then runs the
+  # produced binary there — compiling for a target proves nothing about the artefact, running
+  # it does — and finally drops the binary into its package directory and packs it for a
+  # maintainer to publish by hand.
+  native-packages:
+    name: Package ${{ matrix.package }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: carburetor-lint-win32-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin_ext: .exe
+          - package: carburetor-lint-darwin-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+          - package: carburetor-lint-darwin-x64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+          - package: carburetor-lint-linux-x64-gnu
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - package: carburetor-lint-linux-x64-musl
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            apt: musl-tools
+            linker_var: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER
+            linker: musl-gcc
+          - package: carburetor-lint-linux-arm64-gnu
+            os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            apt: gcc-aarch64-linux-gnu qemu-user-static
+            linker_var: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER
+            linker: aarch64-linux-gnu-gcc
+            emulator: qemu-aarch64-static
+    steps:
+      - uses: actions/checkout@v4
+
+      # The cross legs need a linker that speaks the target's ABI; qemu-user-static doubles as
+      # the way to execute the arm64 artefact, since installing it registers binfmt.
+      - name: Install the cross toolchain
+        if: matrix.apt
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
+
+      # Matrix keys cannot be environment variable NAMES, so the linker reaches cargo through
+      # the environment file instead.
+      - name: Point cargo at the cross linker
+        if: matrix.linker
+        run: echo "${{ matrix.linker_var }}=${{ matrix.linker }}" >> "$GITHUB_ENV"
+
+      - name: Add the cargo target
+        run: rustup target add ${{ matrix.target }}
+
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-packages-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock') }}
+
+      - name: Build
+        working-directory: native
+        run: cargo build --release --target ${{ matrix.target }}
+
+      # `--help` exercises the dynamic loader; the fixture lint exercises the walk, the parser
+      # and the exit codes. reads.tsx carries known violations, so exit 1 with the rule id on
+      # stdout is the passing outcome, and anything else fails the step.
+      - name: Run the binary on this target
+        shell: bash
+        run: |
+          set -e
+          BIN="native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}"
+          ${{ matrix.emulator }} "$BIN" --help
+          set +e
+          OUT=$(${{ matrix.emulator }} "$BIN" --format=json --rule no-get-data-in-render=error plugin/__fixtures__/reads.tsx)
+          CODE=$?
+          set -e
+          [ "$CODE" -eq 1 ] || { echo "expected exit 1 (findings), got $CODE" >&2; exit 1; }
+          echo "$OUT" | grep -q no-get-data-in-render || { echo "expected the fixture's violation in the output" >&2; exit 1; }
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Pack the platform package
+        shell: bash
+        run: |
+          set -e
+          cp "native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}" "npm/${{ matrix.package }}/"
+          cd "npm/${{ matrix.package }}"
+          npm pack
+          tar -tf *.tgz | grep -q "package/carburetor-lint"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.package }}
+          path: npm/${{ matrix.package }}/*.tgz

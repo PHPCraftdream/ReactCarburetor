@@ -67,6 +67,29 @@ const offsetAt = (text, line, column)=>{
 const external_node_child_process_namespaceObject = require("node:child_process");
 const external_node_fs_namespaceObject = require("node:fs");
 const external_node_os_namespaceObject = require("node:os");
+const platformPackageNames = (platform = process.platform, arch = process.arch)=>{
+    if ('linux' === platform) {
+        const order = 'musl' === reportLibc() ? [
+            'musl',
+            'gnu'
+        ] : [
+            'gnu',
+            'musl'
+        ];
+        return order.map((libc)=>`carburetor-lint-linux-${arch}-${libc}`);
+    }
+    return [
+        `carburetor-lint-${platform}-${arch}`
+    ];
+};
+const reportLibc = ()=>{
+    try {
+        const header = process.report?.getReport().header;
+        return header?.glibcVersionRuntime ? 'gnu' : header ? 'musl' : void 0;
+    } catch  {
+        return;
+    }
+};
 const external_node_module_namespaceObject = require("node:module");
 const external_node_url_namespaceObject = require("node:url");
 const BINARY_NAME = 'win32' === process.platform ? 'carburetor-lint.exe' : 'carburetor-lint';
@@ -95,11 +118,10 @@ const workspaceBinary = ()=>{
     }
 };
 const platformPackageBinary = ()=>{
-    try {
-        return requireFrom.resolve(`@react-carburetor/native-${process.platform}-${process.arch}/${BINARY_NAME}`);
-    } catch  {
-        return;
-    }
+    for (const name of platformPackageNames())try {
+        const binary = requireFrom.resolve(`${name}/${BINARY_NAME}`);
+        if ((0, external_node_fs_namespaceObject.existsSync)(binary)) return binary;
+    } catch  {}
 };
 const ALL_RULE_IDS = Object.keys(RECOMMENDED);
 const WAIT_TIMEOUT_MS = 30000;
@@ -116,9 +138,9 @@ const runPaths = (cwd)=>{
         result: `${base}.json`
     };
 };
-const runBinary = (cwd)=>{
-    const binary = resolveBinary();
-    if (!binary) throw new Error('react-carburetor/lint: the native binary was not found. Run "cargo build --release" inside native/, or set CARBURETOR_LINT_BIN to a built binary.');
+const runBinary = (cwd, resolve = resolveBinary)=>{
+    const binary = resolve();
+    if (!binary) throw new Error(`react-carburetor/lint: no native binary for this platform. Install it with "npm install --save-dev carburetor-lint" (its optionalDependencies add the package this machine needs, ${platformPackageNames()[0]}), or set CARBURETOR_LINT_BIN to a built binary, or run "cargo build --release" inside native/ in a checkout of this repository.`);
     const args = ALL_RULE_IDS.flatMap((id)=>[
             '--rule',
             `${id}=error`
@@ -135,7 +157,7 @@ const runBinary = (cwd)=>{
     if (2 === result.status) throw new Error(`react-carburetor/lint: the native binary failed: ${result.stderr}`);
     return JSON.parse(result.stdout || '[]');
 };
-const runNativeOnce = (cwd)=>{
+const runNativeOnce = (cwd, resolve = resolveBinary)=>{
     if (cached) return cached;
     const { lock, result } = runPaths(cwd);
     (0, external_node_fs_namespaceObject.mkdirSync)(external_node_path_namespaceObject.dirname(lock), {
@@ -149,9 +171,14 @@ const runNativeOnce = (cwd)=>{
         isRunner = false;
     }
     if (isRunner) try {
-        cached = runBinary(cwd);
+        cached = runBinary(cwd, resolve);
         (0, external_node_fs_namespaceObject.writeFileSync)(result, JSON.stringify(cached));
         return cached;
+    } catch (error) {
+        (0, external_node_fs_namespaceObject.writeFileSync)(result, JSON.stringify({
+            error: error instanceof Error ? error.message : String(error)
+        }));
+        throw error;
     } finally{
         try {
             (0, external_node_fs_namespaceObject.unlinkSync)(lock);
@@ -159,7 +186,10 @@ const runNativeOnce = (cwd)=>{
     }
     const deadline = Date.now() + WAIT_TIMEOUT_MS;
     while(!(0, external_node_fs_namespaceObject.existsSync)(result) && Date.now() < deadline)sleepSync(POLL_INTERVAL_MS);
-    cached = (0, external_node_fs_namespaceObject.existsSync)(result) ? JSON.parse((0, external_node_fs_namespaceObject.readFileSync)(result, 'utf8')) : [];
+    if (!(0, external_node_fs_namespaceObject.existsSync)(result)) throw new Error(`react-carburetor/lint: another worker ran the native binary but produced no result within ${WAIT_TIMEOUT_MS} ms. Run the binary directly to see why.`);
+    const payload = JSON.parse((0, external_node_fs_namespaceObject.readFileSync)(result, 'utf8'));
+    if (!Array.isArray(payload)) throw new Error(`react-carburetor/lint: the worker that ran the native binary failed: ${payload.error}`);
+    cached = payload;
     return cached;
 };
 const nativeRule = (id, description)=>({

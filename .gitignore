@@ -26,3 +26,9 @@ native/target/
 
 # /wrush task worktrees — always created here, in-tree
 /worktrees/
+
+# Platform packages carry their compiled binary only in CI artifacts, never in git; the
+# launcher script lives in npm/carburetor-lint/bin/ and must stay tracked.
+npm/carburetor-lint-*/carburetor-lint
+npm/carburetor-lint-*/carburetor-lint.exe
+npm/carburetor-lint-*/*.tgz

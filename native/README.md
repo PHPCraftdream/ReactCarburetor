@@ -98,6 +98,34 @@ single rename, so a process killed mid-write leaves the original untouched. `no-
 is the first rule with one: a plain `name = () => body` property becomes `name() body`, the method
 form the base class actually dispatches to.
 
+## The npm packages
+
+The binary ships the way oxlint ships its own: `carburetor-lint` on npm is a launcher script
+that finds the compiled binary and hands it your arguments, stdio and exit code, and the
+megabytes live in a platform package beside it, `carburetor-lint-<platform>`. The launcher
+package lists all six under `optionalDependencies`, and each platform package declares `os` and
+`cpu` — `libc` too on linux, where glibc and musl builds are not interchangeable — so an
+install downloads exactly the one binary that runs on the installing machine: `win32-x64`,
+`darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-x64-musl`, `linux-arm64-gnu`.
+
+```bash
+npm install --save-dev carburetor-lint
+npx carburetor-lint --format=json src
+npx carburetor-lint --fix src
+```
+
+The packages live in `../npm/`, one directory each, versioned in lockstep with this crate. The
+CI `native-packages` job builds all six cargo targets, runs each produced binary against a
+fixture to prove the artefact executes on its target — compiling for a target proves nothing
+about the result — and uploads the packed tarballs as artifacts; publishing itself stays a hand
+step, `npm publish` from each package directory.
+
+The lint bridge in `../plugin/src` looks the binary up through the same platform packages, so a
+project using `react-carburetor/lint` should install `carburetor-lint` alongside it. When
+neither a platform package nor a `CARBURETOR_LINT_BIN` override nor a workspace build is
+present, the bridge fails loudly, naming the missing platform package — a missing binary is a
+broken install to report, never a silent, wrong "no problems".
+
 ## Layout
 
 - `src/main.rs` — the command line, the walk, the parallel parse, the fix loop, the output formats,

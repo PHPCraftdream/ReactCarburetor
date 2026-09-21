@@ -13,6 +13,9 @@ declare const process: {
     readonly pid: number;
     readonly env: Readonly<Record<string, string | undefined>>;
     cwd(): string;
+    /** Present unless Node runs with reports disabled; read only to pick the glibc or musl
+     * platform package. */
+    readonly report?: {getReport(): {header: {glibcVersionRuntime?: string}}};
 };
 
 declare const Buffer: {

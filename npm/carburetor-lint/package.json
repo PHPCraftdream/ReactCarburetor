@@ -1,0 +1,35 @@
+{
+  "name": "carburetor-lint",
+  "version": "0.1.0",
+  "description": "React Carburetor's native linter: 22 rules for consumer code, one process over a directory tree, with --fix.",
+  "bin": {
+    "carburetor-lint": "bin/carburetor-lint.js"
+  },
+  "files": [
+    "bin"
+  ],
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PHPCraftdream/ReactCarburetor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PHPCraftdream/ReactCarburetor/issues"
+  },
+  "homepage": "https://github.com/PHPCraftdream/ReactCarburetor#readme",
+  "keywords": [
+    "react",
+    "lint",
+    "oxlint",
+    "eslint",
+    "carburetor"
+  ],
+  "optionalDependencies": {
+    "carburetor-lint-darwin-arm64": "0.1.0",
+    "carburetor-lint-darwin-x64": "0.1.0",
+    "carburetor-lint-linux-arm64-gnu": "0.1.0",
+    "carburetor-lint-linux-x64-gnu": "0.1.0",
+    "carburetor-lint-linux-x64-musl": "0.1.0",
+    "carburetor-lint-win32-x64": "0.1.0"
+  }
+}

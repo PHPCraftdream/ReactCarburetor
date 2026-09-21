@@ -3,6 +3,7 @@ import {closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, wr
 import * as os from "node:os";
 import * as path from "node:path";
 import {RECOMMENDED} from "#src/recommended.mts";
+import {platformPackageNames} from "#src/Utils/Native/platformPackage.mts";
 import {resolveBinary} from "#src/Utils/Native/resolveBinary.mts";
 import type {INativeDiagnostic} from "#src/Utils/Native/INativeDiagnostic.mts";
 
@@ -52,13 +53,16 @@ const runPaths = (cwd: string): {lock: string; result: string} => {
  * off from underneath native and lose diagnostics the host still wants reported. The host, not
  * native, decides what actually surfaces: a rule this call finds is only ever reported through the
  * rule of that same id, and the host never calls that rule's `create()` unless it is enabled. */
-const runBinary = (cwd: string): INativeDiagnostic[] => {
-    const binary = resolveBinary();
+const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinary): INativeDiagnostic[] => {
+    const binary = resolve();
 
     if (!binary) {
         throw new Error(
-            'react-carburetor/lint: the native binary was not found. Run "cargo build --release" ' +
-            'inside native/, or set CARBURETOR_LINT_BIN to a built binary.'
+            'react-carburetor/lint: no native binary for this platform. Install it with ' +
+            '"npm install --save-dev carburetor-lint" (its optionalDependencies add the package ' +
+            `this machine needs, ${platformPackageNames()[0]}), or set CARBURETOR_LINT_BIN to a ` +
+            'built binary, or run "cargo build --release" inside native/ in a checkout of this ' +
+            'repository.'
         );
     }
 
@@ -79,8 +83,9 @@ const runBinary = (cwd: string): INativeDiagnostic[] => {
     return JSON.parse(result.stdout || '[]') as INativeDiagnostic[];
 };
 
-/** Runs the native binary once for this process, sharing the result across worker threads. */
-export const runNativeOnce = (cwd: string): INativeDiagnostic[] => {
+/** Runs the native binary once for this process, sharing the result across worker threads.
+ * The resolver is injectable so a test can stage an install with no binary. */
+export const runNativeOnce = (cwd: string, resolve: () => string | undefined = resolveBinary): INativeDiagnostic[] => {
     if (cached) {
         return cached;
     }
@@ -100,10 +105,17 @@ export const runNativeOnce = (cwd: string): INativeDiagnostic[] => {
 
     if (isRunner) {
         try {
-            cached = runBinary(cwd);
+            cached = runBinary(cwd, resolve);
             writeFileSync(result, JSON.stringify(cached));
 
             return cached;
+        } catch (error) {
+            // The waiters would otherwise spend their whole timeout waiting for a result that
+            // will never come and then report nothing; hand them this failure so every worker
+            // fails the same loud way the runner did.
+            writeFileSync(result, JSON.stringify({error: error instanceof Error ? error.message : String(error)}));
+
+            throw error;
         } finally {
             try {
                 unlinkSync(lock);
@@ -119,7 +131,22 @@ export const runNativeOnce = (cwd: string): INativeDiagnostic[] => {
         sleepSync(POLL_INTERVAL_MS);
     }
 
-    cached = existsSync(result) ? (JSON.parse(readFileSync(result, 'utf8')) as INativeDiagnostic[]) : [];
+    if (!existsSync(result)) {
+        throw new Error(
+            'react-carburetor/lint: another worker ran the native binary but produced no ' +
+            `result within ${WAIT_TIMEOUT_MS} ms. Run the binary directly to see why.`
+        );
+    }
+
+    // A runner that failed writes its error instead of a diagnostics array, so a worker
+    // reading the file either reports the run or reports the failure — never a clean zero.
+    const payload = JSON.parse(readFileSync(result, 'utf8')) as INativeDiagnostic[] | {error: string};
+
+    if (!Array.isArray(payload)) {
+        throw new Error(`react-carburetor/lint: the worker that ran the native binary failed: ${payload.error}`);
+    }
+
+    cached = payload;
 
     return cached;
 };

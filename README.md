@@ -466,6 +466,33 @@ cannot see `@bind` and reports correct usage as an error, so turn it off and rel
 `carburetor/require-bind-for-passed-method`, which is decorator-aware and also catches the reverse
 case.
 
+### The binary and the bridge
+
+The rules are implemented once, in Rust (`native/src/rules/`). What `react-carburetor/lint`
+ships is a bridge: it runs that binary once per lint run and reports through the host's own
+`context.report`. Two ways to run them, good at different things.
+
+**Standalone (`carburetor-lint`)** — `npm i -D carburetor-lint` fetches the one binary matching
+your machine, and then the rules run without starting a linter: `npx carburetor-lint
+--fix-dry-run src` to see what would change, `--fix` to change it. This is the fast path —
+about 20 ms over this repository against 585 ms for the same rules through oxlint — and the
+only one that rewrites code. It reads its own `.carburetorrc.json` (or `--rule`/`--config`),
+not your oxlint or ESLint config; it honours its own `carburetor-disable` comments; it has no
+editor integration. It is a command, not a plugin.
+
+**The bridge (`react-carburetor/lint`)** — the `extends` line or flat-config snippet above.
+Everything the host already does keeps working for these rules: one config file, one
+suppression-comment syntax, editor diagnostics, per-project severity. What it cannot do is
+apply fixes: diagnostics arrive through `context.report`, and no host exposes a plugin API that
+could hand a native fix back. It also needs the binary on disk — install `carburetor-lint`
+next to `react-carburetor`, point `CARBURETOR_LINT_BIN` at a built binary, or run
+`cargo build --release` inside `native/` in a checkout of this repository. With none of those,
+the run fails loudly and names the missing platform package; a missing binary never looks like
+a clean run.
+
+The measurements are this repository's, taken the way [native/README.md](native/README.md)
+describes.
+
 ## API
 
 ### `Carburetor<T>`
