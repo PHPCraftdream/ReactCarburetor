@@ -17,7 +17,7 @@ jobs:
           node-version: 24
 
       - name: Install
-        run: npm install
+        run: npm ci
 
       # The 22 carburetor/* rules are a bridge now: `npm run lint` calls this binary to check its
       # own tree, so it has to exist before anything below it runs, not only before the tests.

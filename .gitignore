@@ -19,7 +19,6 @@
 /lib/src/react-app-env.d.ts
 /.npmrc
 /node_modules/
-/package-lock.json
 
 # Rust build artefacts for the native linter
 native/target/
