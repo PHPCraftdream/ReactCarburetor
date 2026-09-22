@@ -9,11 +9,17 @@ interface IOptions {
     allowOverloads?: boolean;
     allowInheritdoc?: boolean;
     allowTrivialAccessors?: boolean;
+    requireParamDocs?: boolean;
+    requireFieldDocs?: boolean;
 }
 
-/** A function-shaped node, for the body an overload signature lacks. */
+/**
+ * A function-shaped node: the body an overload signature lacks, and the parameters the doc has to
+ * cover.
+ */
 interface IFunctionLikeNode extends IAstNode {
     body: IAstNode | null;
+    params: readonly IAstNode[];
 }
 
 /** A class member; `accessibility` is null unless the author wrote a modifier. */
@@ -100,6 +106,52 @@ const summaryLines = (raw: string): string[] => {
     return lines;
 };
 
+/** The `@param` tags of a TSDoc block: name plus description, continuation lines joined. */
+interface IParamTag {
+    name: string;
+    description: string;
+}
+
+const paramTags = (raw: string): IParamTag[] => {
+    const tags: IParamTag[] = [];
+    let open: IParamTag | null = null;
+
+    for (const line of raw.slice(3, -2).split('\n')) {
+        const text = line.trim().replace(/^\*+/, '').trim();
+
+        if (text.startsWith('@')) {
+            const match = /^@param\s+(\S+)(?:\s+(.*))?$/.exec(text);
+
+            open = match === null ? null : {name: match[1], description: (match[2] ?? '').replace(/^-\s*/, '')};
+
+            if (open !== null) {
+                tags.push(open);
+            }
+
+            continue;
+        }
+
+        // A prose line under a `@param` is that tag's description running over; any other tag
+        // line closes it, which the branch above handles by reassigning `open`.
+        if (open !== null && text !== '') {
+            open.description += ` ${text}`;
+        }
+    }
+
+    return tags;
+};
+
+/**
+ * A parameter's written name, through the wrappers one can be written in (`...rest`, a default, a
+ * constructor parameter property).
+ */
+const paramName = (node: IAstNode): string | null => {
+    const shaped = node as {parameter?: IAstNode; argument?: IAstNode; left?: IAstNode};
+    const inner = shaped.parameter ?? shaped.argument ?? shaped.left ?? node;
+
+    return inner.type === 'Identifier' ? (inner as IIdentifierNode).name : null;
+};
+
 /**
  * Requires a TSDoc block on functions, class methods, function-valued properties and exported
  * `const` functions, and pushes back when the summary is empty or runs past `maxLines`.
@@ -109,7 +161,26 @@ const summaryLines = (raw: string): string[] => {
  * of it. Only the summary counts — the rationale after the first blank line is the part this
  * repository wants at length, so limiting it would be limiting explanation itself. Overload
  * signatures, pure `@inheritdoc` comments, private members under `access: 'public'`, and trivial
- * accessors when `allowTrivialAccessors` is set, are excused.
+ * accessors when `allowTrivialAccessors` is set, are excused. Each exemption returns before any
+ * of the checks below, so an excused node also escapes the parameter and field checks.
+ *
+ * `requireParamDocs` asks every parameter of a covered function to carry its own `@param` tag
+ * with a description that says something; `requireFieldDocs` asks a plain class field for the
+ * same doc a function gets. A parameter written without a name — a destructured pattern — has
+ * nothing a tag can be matched against and is skipped.
+ *
+ * A constructor parameter property — `constructor(protected data: T)` — declares its field
+ * inside the parameter list, where no second comment position exists, so its documentation
+ * cannot be split in two. The constructor's own `@param data` tag, the one `requireParamDocs`
+ * already demands, counts as the field's doc too, and `requireFieldDocs` does not apply to it:
+ * one declaration, one doc, at the only place a reader could look for it.
+ *
+ * A function with exactly one parameter is excused from the tag requirement, because
+ * `@param value - the value` restates the signature, and this repository's comments exist for
+ * what the signature cannot say. The exemption is exactly one parameter: add a second, and
+ * every parameter needs its tag, position alone no longer telling a reader which is which. It
+ * excuses a missing tag, not a broken one — a `@param` that is present must still carry a
+ * description.
  */
 export const requireTsdoc: IRule = {
     meta: {
@@ -126,6 +197,8 @@ export const requireTsdoc: IRule = {
                     allowOverloads: {type: 'boolean'},
                     allowInheritdoc: {type: 'boolean'},
                     allowTrivialAccessors: {type: 'boolean'},
+                    requireParamDocs: {type: 'boolean'},
+                    requireFieldDocs: {type: 'boolean'},
                 },
                 additionalProperties: false,
             },
@@ -140,17 +213,21 @@ export const requireTsdoc: IRule = {
         const allowOverloads = options.allowOverloads ?? true;
         const allowInheritdoc = options.allowInheritdoc ?? true;
         const allowTrivialAccessors = options.allowTrivialAccessors ?? false;
+        const requireParamDocs = options.requireParamDocs ?? false;
+        const requireFieldDocs = options.requireFieldDocs ?? false;
 
         /**
          * Exemptions are decided before the missing-doc checks: an overload has no comment to
-         * find, so it has to be excused before the rule would report one missing.
+         * find, so it has to be excused before the rule would report one missing. The parameter
+         * and field checks after them only run past the exemptions too.
          */
         const check = (
             node: IAstNode,
             kind: string,
             name: string,
-            body: IAstNode | null,
+            overload: boolean,
             member: IMemberNode | null,
+            params: readonly IAstNode[],
         ): void => {
             // An exported declaration carries its doc above `export`, so the comments to read are
             // the ones before the export wrapper, not before the declaration inside it.
@@ -162,7 +239,7 @@ export const requireTsdoc: IRule = {
                 return;
             }
 
-            if (body === null && allowOverloads) {
+            if (overload && allowOverloads) {
                 return;
             }
 
@@ -222,10 +299,43 @@ export const requireTsdoc: IRule = {
                         + ' Keep the summary short and put the rest after a blank line.',
                 });
             }
+
+            if (requireParamDocs) {
+                const tags = paramTags(raw);
+                const tagged = new Set(tags.map((tag: IParamTag): string => tag.name));
+
+                // The lone-parameter exemption: exactly one parameter, excused from needing a tag; a
+                // broken tag that IS present is still reported below, so the exemption excuses
+                // absence only.
+                if (params.length !== 1) {
+                    for (const param of params) {
+                        const parameter = paramName(param);
+
+                        if (parameter !== null && !tagged.has(parameter)) {
+                            context.report({
+                                node,
+                                message: `The TSDoc on '${name}' is missing a @param tag for '${parameter}'.`,
+                            });
+                        }
+                    }
+                }
+
+                for (const tag of tags) {
+                    if (tag.description.trim() === '') {
+                        context.report({
+                            node,
+                            message: `The @param tag for '${tag.name}' on '${name}' has no description.`,
+                        });
+                    }
+                }
+            }
         };
 
         /** The body of the function a member's value holds; null is what an overload member has. */
         const bodyOf = (value: IFunctionLikeNode | null): IAstNode | null => (value === null ? null : value.body);
+
+        /** The parameters of the function a member's value holds; empty is what an overload member has. */
+        const paramsOf = (value: IFunctionLikeNode | null): readonly IAstNode[] => (value === null ? [] : value.params);
 
         /** The declarator of an exported `const` whose initializer is a function, if any. */
         const exportedFunction = (node: IAstNode): IDeclaratorNode | undefined => {
@@ -249,18 +359,19 @@ export const requireTsdoc: IRule = {
             FunctionDeclaration: (node: IAstNode): void => {
                 const fn = node as INamedNode & IFunctionLikeNode;
 
-                check(node, 'Function', nameOf(fn.id) ?? 'function', fn.body, null);
+                check(node, 'Function', nameOf(fn.id) ?? 'function', fn.body === null, null, fn.params);
             },
             // An overload signature is its own node kind here, carrying no body.
             TSDeclareFunction: (node: IAstNode): void => {
                 const fn = node as INamedNode & IFunctionLikeNode;
 
-                check(node, 'Function', nameOf(fn.id) ?? 'function', fn.body, null);
+                check(node, 'Function', nameOf(fn.id) ?? 'function', fn.body === null, null, fn.params);
             },
             MethodDefinition: (node: IAstNode): void => {
                 const member = node as IMemberNode;
 
-                check(node, 'Method', nameOf(member.key) ?? 'method', bodyOf(member.value), member);
+                check(node, 'Method', nameOf(member.key) ?? 'method', bodyOf(member.value) === null, member,
+                    paramsOf(member.value));
             },
             PropertyDefinition: (node: IAstNode): void => {
                 const member = node as IMemberNode;
@@ -268,17 +379,22 @@ export const requireTsdoc: IRule = {
                 const holdsFunction = value !== null
                     && (value.type === 'ArrowFunctionExpression' || value.type === 'FunctionExpression');
 
+                // A plain field has no body, yet is not an overload — hence the explicit flag.
                 if (!holdsFunction) {
+                    if (requireFieldDocs) {
+                        check(node, 'Class property', nameOf(member.key) ?? 'property', false, member, []);
+                    }
+
                     return;
                 }
 
-                check(node, 'Class property', nameOf(member.key) ?? 'property', bodyOf(value), member);
+                check(node, 'Class property', nameOf(member.key) ?? 'property', false, member, value.params);
             },
             ExportNamedDeclaration: (node: IAstNode): void => {
                 const fn = exportedFunction(node);
 
                 if (fn !== undefined && fn.init !== null) {
-                    check(node, 'Exported function', nameOf(fn.id) ?? 'function', fn.init.body, null);
+                    check(node, 'Exported function', nameOf(fn.id) ?? 'function', false, null, fn.init.params);
                 }
             },
         };
