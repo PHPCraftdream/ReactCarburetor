@@ -171,9 +171,16 @@ export class Computed<R> implements IComputed<R> {
         this.attachDependencies(collected);
     };
 
-    /** Swaps in a fresh dependency set, releasing the previous one first. */
+    /** Swaps in a fresh dependency set, keeping every edge the body still reads. */
     protected attachDependencies = (collected: IDict<IDependency>): void => {
-        this.releaseDependencies();
+        // Only registrations the fresh collection does not already hold need work: kept
+        // edges stay subscribed under the same id and read set, departed edges are
+        // dropped, new or changed edges are subscribed below. Releasing a retained edge
+        // instead would unsubscribe an upstream computed, whose last-subscriber release
+        // invalidates it and drags the whole upstream chain through an eager recompute
+        // mid-wave — work no settlement deduplicates, because it is not a settlement.
+        const fresh = this.diffDependencies(collected);
+
         this.dependencies = collected;
         this.recordVersions(collected);
 
@@ -182,7 +189,81 @@ export class Computed<R> implements IComputed<R> {
             return;
         }
 
-        this.observeDependencies();
+        Object.keys(collected).forEach((cuid: string) => {
+            if (!fresh[cuid]) {
+                return;
+            }
+
+            const dependency = collected[cuid];
+
+            dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
+        });
+    };
+
+    /**
+     * Splits a fresh collection into edges already held and edges needing a registration.
+     *
+     * A kept edge survives with its live subscription untouched — same source, same read
+     * set, same subscription id — so recomputing while observed never churns the upstream
+     * subscriber list. Sources the body no longer reads are unsubscribed; a source still
+     * read through different paths is reported as fresh, and the caller's subscribe
+     * replaces that registration in place.
+     *
+     * @param collected - the dependencies the body just collected, compared against the held set
+     * @returns the collected ids that still need a subscription: new sources, and sources
+     * now read through different paths
+     */
+    protected diffDependencies = (collected: IDict<IDependency>): IDict<boolean> => {
+        const fresh: IDict<boolean> = {};
+
+        Object.keys(this.dependencies).forEach((cuid: string) => {
+            const next = collected[cuid];
+
+            if (!next) {
+                this.dependencies[cuid].source.unsubscribe(this.uid);
+
+                return;
+            }
+
+            if (!this.sameReads(this.dependencies[cuid].reads, next.reads)) {
+                fresh[cuid] = true;
+            }
+        });
+
+        Object.keys(collected).forEach((cuid: string) => {
+            if (!(cuid in this.dependencies)) {
+                fresh[cuid] = true;
+            }
+        });
+
+        return fresh;
+    };
+
+    /**
+     * Whether two read sets name exactly the same paths.
+     *
+     * @param before - the paths an edge is currently registered under
+     * @param after - the paths the fresh collection recorded for the same source
+     * @returns true when both sets hold the same paths, so the registration can stay
+     */
+    protected sameReads = (before: TPathSet, after: TPathSet): boolean => {
+        if (before === after) {
+            return true;
+        }
+
+        if (before.size !== after.size) {
+            return false;
+        }
+
+        let same = true;
+
+        before.forEach((path: TPath) => {
+            if (!after.has(path)) {
+                same = false;
+            }
+        });
+
+        return same;
     };
 
     /**

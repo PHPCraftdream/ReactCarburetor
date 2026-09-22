@@ -65,11 +65,39 @@ class Computed {
         this.attachDependencies(collected);
     };
     attachDependencies = (collected)=>{
-        this.releaseDependencies();
+        const fresh = this.diffDependencies(collected);
         this.dependencies = collected;
         this.recordVersions(collected);
         if (0 === Object.keys(this.subscribers).length) return;
-        this.observeDependencies();
+        Object.keys(collected).forEach((cuid)=>{
+            if (!fresh[cuid]) return;
+            const dependency = collected[cuid];
+            dependency.source.subscribe(this.onDependencyChanged, {
+                id: this.uid,
+                reads: dependency.reads
+            });
+        });
+    };
+    diffDependencies = (collected)=>{
+        const fresh = {};
+        Object.keys(this.dependencies).forEach((cuid)=>{
+            const next = collected[cuid];
+            if (!next) return void this.dependencies[cuid].source.unsubscribe(this.uid);
+            if (!this.sameReads(this.dependencies[cuid].reads, next.reads)) fresh[cuid] = true;
+        });
+        Object.keys(collected).forEach((cuid)=>{
+            if (!(cuid in this.dependencies)) fresh[cuid] = true;
+        });
+        return fresh;
+    };
+    sameReads = (before, after)=>{
+        if (before === after) return true;
+        if (before.size !== after.size) return false;
+        let same = true;
+        before.forEach((path)=>{
+            if (!after.has(path)) same = false;
+        });
+        return same;
     };
     recordVersions = (collected)=>{
         const versions = {};

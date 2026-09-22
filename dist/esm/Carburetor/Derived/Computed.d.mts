@@ -69,8 +69,30 @@ export declare class Computed<R> implements IComputed<R> {
     protected hasDrifted: () => boolean;
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
     protected recompute: () => void;
-    /** Swaps in a fresh dependency set, releasing the previous one first. */
+    /** Swaps in a fresh dependency set, keeping every edge the body still reads. */
     protected attachDependencies: (collected: IDict<IDependency>) => void;
+    /**
+     * Splits a fresh collection into edges already held and edges needing a registration.
+     *
+     * A kept edge survives with its live subscription untouched — same source, same read
+     * set, same subscription id — so recomputing while observed never churns the upstream
+     * subscriber list. Sources the body no longer reads are unsubscribed; a source still
+     * read through different paths is reported as fresh, and the caller's subscribe
+     * replaces that registration in place.
+     *
+     * @param collected - the dependencies the body just collected, compared against the held set
+     * @returns the collected ids that still need a subscription: new sources, and sources
+     * now read through different paths
+     */
+    protected diffDependencies: (collected: IDict<IDependency>) => IDict<boolean>;
+    /**
+     * Whether two read sets name exactly the same paths.
+     *
+     * @param before - the paths an edge is currently registered under
+     * @param after - the paths the fresh collection recorded for the same source
+     * @returns true when both sets hold the same paths, so the registration can stay
+     */
+    protected sameReads: (before: TPathSet, after: TPathSet) => boolean;
     /**
      * Records the store versions the value was computed from. An inner computed hides the
      * stores behind it, so those are recorded in its place — otherwise a write they saw
