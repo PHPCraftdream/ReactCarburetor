@@ -17,6 +17,33 @@ interface IEffectRecord {
     cleanup: TEffectCleanup | undefined;
 }
 /**
+ * A `connect()` declaration's bookkeeping: one persistent slot, independent of any one render.
+ *
+ * Unlike `ITrackedCarburetor`, which `track()` recreates from scratch every render and
+ * `commitSubscriptions` prunes when a render stops touching it, a connection is declared once
+ * (typically a class field initializer) and lives for the component's whole lifetime — nothing
+ * ever deletes it from `connections`. What still varies per render is `reads`: the proxy's own
+ * recorder resets it lazily the first time a render actually accesses a field, the same
+ * generation-comparison trick `track()` uses, so a conditional branch reading a different field
+ * next render still narrows or widens the subscription correctly.
+ */
+interface IConnection {
+    /** This connection's own id — stable across whatever carburetor it points at right now. */
+    uid: string;
+    /** Resolves the carburetor to read; called fresh every commit, so a prop swap is noticed. */
+    getCarburetor: () => ICarburetorSubscription;
+    /** The carburetor actually subscribed to right now; undefined before the first commit. */
+    subscribedTo: ICarburetorSubscription | undefined;
+    /** This render's reads so far, reset lazily on the first read after a new render starts. */
+    reads: TPathSet;
+    /** The render `reads` was last reset for; compared against `renderGeneration` to reset it. */
+    generation: number;
+    /** Read set as last actually registered; undefined means nothing is currently registered. */
+    committed: TPathSet | undefined;
+    /** The version as of the most recent actual read, for the same render-to-commit gap `track()` closes. */
+    lastSeenVersion: number | undefined;
+}
+/**
  * Base component that reads its state straight from carburetors.
  *
  * Contract: the lifecycle belongs to the base class. Subclasses override
@@ -36,6 +63,14 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * lifecycle can restore the subscriptions without a render to refill them.
      */
     protected tracked: IDict<ITrackedCarburetor>;
+    /**
+     * Persistent `connect()` declarations, in declaration order.
+     *
+     * Never pruned: a connection lives from the field initializer that created it until the
+     * component itself is torn down, unlike `tracked`, which `commitSubscriptions` drops the
+     * moment a render stops touching it.
+     */
+    protected connections: IConnection[];
     /** Number of the current, not yet committed render. */
     protected renderGeneration: number;
     /** Stale entries this render found. Fetched after the commit — never during render. */
@@ -67,6 +102,38 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * those fields change.
      */
     useCarburetor: <T extends object>(carburetor: ICarburetor<T>) => TReadonly<T>;
+    /**
+     * A persistent view of a carburetor's data, declared once and read directly in render.
+     *
+     * `useCarburetor` allocates a fresh read-tracking proxy every render — for a component that
+     * always reads from the same store this is pure repeated cost. `connect()` instead builds
+     * the view once (a class field initializer is the intended call site) and hands back the
+     * exact same object for as long as the underlying data object does not change; only the
+     * proxy's own recorder, invoked lazily on the first field access of a new render, resets
+     * what counts as "read this render" — a conditional branch reading a different field next
+     * render still narrows or widens the subscription, exactly as `useCarburetor` already does.
+     *
+     * The view stays live across `setData`/`restore`: those replace the store's data object
+     * wholesale, which this method notices (the cached proxy is rebuilt only when the object it
+     * wraps has actually changed) and rebuilds transparently — the returned reference itself
+     * never changes, only what it reads through.
+     *
+     * The declaration itself must not subscribe: React can construct an instance and later
+     * decide never to commit it (see the class docstring's link to React's component contract),
+     * so any side effect here would leak a subscription for a component that never mounted. All
+     * subscription bookkeeping happens in `commitSubscriptions`/`releaseSubscriptions`, driven
+     * by what the *previous* render's field accesses recorded — the same design `useCarburetor`
+     * and `tracked` already use, just keyed by a connection instead of by carburetor identity.
+     *
+     * A root data type this engine cannot proxy (see `isTrackable`) is read once, untracked, at
+     * the moment the underlying object is (re)built — not fresh every render — so this method
+     * inherits `read()`'s existing wildcard fallback but only re-triggers it on a data swap; a
+     * store shaped that way should prefer `useCarburetor`, called directly in render.
+     *
+     * @param source - the carburetor to read, or a function resolving it fresh on every commit
+     * so a prop swap re-points the connection at the new store
+     */
+    connect: <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)) => TReadonly<T>;
     /**
      * Reads a memoized derived value. The component subscribes to the computed itself,
      * not to its inputs, so it re-renders only when the derived value changes.

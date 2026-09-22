@@ -9,6 +9,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `AntiHookComponent.connect(source)`: a persistent view of a carburetor, built once (a field
+  initializer is the intended call site) and read directly in render, instead of a fresh
+  read-tracking proxy on every `useCarburetor` call. `source` is a carburetor or a function
+  resolving one, so a prop swap re-points the connection; `setData`/`restore` keep the same
+  returned view live across a whole-data replacement. Reads are still tracked field by field
+  every render, so a conditional branch reading a different field still narrows or widens the
+  subscription correctly — only the object identity and its underlying proxy are reused.
 - `Carburetor.update(mutate)`: mutates through `draft` and publishes in one step, so a write
   cannot be left unpublished. A draft write that never reaches `emitUpdate` is reported in
   development, and `emitSoon()` covers the case where notifying immediately is unsafe.

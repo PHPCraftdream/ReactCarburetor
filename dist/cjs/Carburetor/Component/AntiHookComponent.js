@@ -44,6 +44,7 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
     uid = (0, getUid_js_namespaceObject.getUid)();
     effects = {};
     tracked = {};
+    connections = [];
     renderGeneration = 0;
     staleResources = [];
     shouldComponentUpdate(nextProps, nextState) {
@@ -69,6 +70,50 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         const tracked = this.track(carburetor);
         return carburetor.read((path)=>{
             tracked.reads.add(path);
+        });
+    };
+    connect = (source)=>{
+        const getCarburetor = 'function' == typeof source ? source : ()=>source;
+        const connection = {
+            uid: (0, getUid_js_namespaceObject.getUid)(),
+            getCarburetor,
+            subscribedTo: void 0,
+            reads: new Set(),
+            generation: -1,
+            committed: void 0,
+            lastSeenVersion: void 0
+        };
+        this.connections.push(connection);
+        const recorder = (path)=>{
+            if (connection.generation !== this.renderGeneration) {
+                connection.reads = new Set();
+                connection.generation = this.renderGeneration;
+            }
+            connection.reads.add(path);
+            connection.lastSeenVersion = getCarburetor().getVersion();
+        };
+        let cachedTarget;
+        let cachedView;
+        const resolveView = ()=>{
+            const carburetor = getCarburetor();
+            const data = carburetor.getData();
+            if (cachedTarget !== data) {
+                cachedTarget = data;
+                cachedView = carburetor.read(recorder);
+            }
+            return cachedView;
+        };
+        const forbidWrite = ()=>{
+            throw new Error("Carburetor: data read through connect() is read-only. Write through carburetor methods — they write via draft and know which paths changed.");
+        };
+        return new Proxy({}, {
+            get: (_target, key)=>Reflect.get(resolveView(), key),
+            has: (_target, key)=>Reflect.has(resolveView(), key),
+            ownKeys: (_target)=>Reflect.ownKeys(resolveView()),
+            getOwnPropertyDescriptor: (_target, key)=>Reflect.getOwnPropertyDescriptor(resolveView(), key),
+            set: forbidWrite,
+            deleteProperty: forbidWrite,
+            defineProperty: forbidWrite
         });
     };
     useComputed = (computed)=>{
@@ -143,6 +188,22 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
             }
             if (tracked.carburetor.getVersion() !== tracked.version) changedDuringRender = true;
         });
+        this.connections.forEach((connection)=>{
+            const carburetor = connection.getCarburetor();
+            if (connection.subscribedTo !== carburetor) {
+                if (connection.subscribedTo) connection.subscribedTo.unsubscribe(connection.uid);
+                connection.committed = void 0;
+                connection.subscribedTo = carburetor;
+            }
+            if (void 0 === connection.committed || !sameReads(connection.committed, connection.reads)) {
+                carburetor.subscribe(this.onCarburetorUpdate, {
+                    id: connection.uid,
+                    reads: connection.reads
+                });
+                connection.committed = new Set(connection.reads);
+            }
+            if (void 0 !== connection.lastSeenVersion && carburetor.getVersion() !== connection.lastSeenVersion) changedDuringRender = true;
+        });
         this.renderGeneration = generation + 1;
         if (changedDuringRender) this.forceUpdate();
     }
@@ -151,6 +212,11 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
             this.tracked[cuid].carburetor.unsubscribe(this.uid);
             this.tracked[cuid].generation = this.renderGeneration;
             this.tracked[cuid].committed = void 0;
+        });
+        this.connections.forEach((connection)=>{
+            if (connection.subscribedTo) connection.subscribedTo.unsubscribe(connection.uid);
+            connection.subscribedTo = void 0;
+            connection.committed = void 0;
         });
     }
 }

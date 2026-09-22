@@ -12,6 +12,9 @@ interface ITodoItemProps {
  * That is why editing one todo re-renders one row instead of the whole list.
  */
 export class TodoItem extends AntiHookComponent<ITodoItemProps> {
+    /** Built once; reads through it stay tracked field by field on every render. */
+    private readonly list = this.connect(() => this.props.carburetor);
+
     /** Demo instrumentation: makes it visible that exactly this row re-rendered. */
     protected renders: number = 0;
 
@@ -80,7 +83,7 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
     /** Reads `items.<id>` alone, so editing a neighbour does not re-render this row. */
     public render() {
         const {id} = this.props;
-        const {items} = this.useCarburetor(this.props.carburetor);
+        const {items} = this.list;
 
         if (!(id in items)) {
             return null;

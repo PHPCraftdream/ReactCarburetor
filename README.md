@@ -75,6 +75,35 @@ directly and call `this.emitUpdate()` yourself, but forgetting the second half c
 while nobody re-renders — so in development the carburetor reports that mistake rather than
 letting it pass silently.
 
+### A persistent connection: `connect()`
+
+`useCarburetor` builds a fresh read-tracking proxy every render. For a component that always
+reads from the same store, `connect()` builds it once instead — a field initializer is the
+intended call site — and hands back the same object for the component's whole lifetime:
+
+```tsx
+class TodoApp extends AntiHookComponent<ITodoProps> {
+    private readonly todos = this.connect(() => this.props.carburetor);
+
+    render() {
+        return (
+            <>
+                <span>Active: {this.todos.activeCount}</span>
+                {this.todos.orderIds.map((id) => <TodoItem key={id} id={id} />)}
+            </>
+        );
+    }
+}
+```
+
+The declaration itself subscribes to nothing — React can construct an instance and never commit
+it, so any side effect there would leak. What each render actually reads is still tracked field
+by field, exactly as `useCarburetor` does, so a conditional branch reading a different field next
+render still narrows or widens the subscription correctly; only the object identity and the proxy
+underneath it are reused across renders. `source` can be a carburetor directly, or a function
+resolving one (as above) so a prop swap re-points the connection at the new store. `setData` and
+`restore` keep working: the same returned view stays live across a whole-data replacement.
+
 ### Precise invalidation
 
 `emitUpdate` compares the written paths against every subscriber's read paths. A write
@@ -529,6 +558,7 @@ describes.
 | member                            | description                                                    |
 |-----------------------------------|----------------------------------------------------------------|
 | `useCarburetor(carburetor)`       | Tracked data for reading in render; establishes the subscription. |
+| `connect(source)`                 | A persistent view, built once (a field initializer is the intended call site) and read directly in render — no per-render proxy allocation. `source` is a carburetor or a function resolving one, so a prop swap re-points it. |
 | `useComputed(computed)`           | Reads a derived value and subscribes to it, not to its inputs.  |
 | `useEffects()` *(protected)*      | Declares the component's effects; runs on mount and after every committed update. |
 | `unUseEffects(prevProps)`         | Component-wide teardown, before every `useEffects` pass and on unmount. |

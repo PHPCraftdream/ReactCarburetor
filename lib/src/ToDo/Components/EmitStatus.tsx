@@ -7,9 +7,12 @@ import {someCarburetor} from "@/ToDo/Carburetors/SomeCarburetorInstance";
  * a separate small component — otherwise the whole list would re-render with it.
  */
 export class EmitStatus extends AntiHookComponent {
+    /** A fixed singleton, so the direct-instance form of connect() fits — no wrapper needed. */
+    private readonly some = this.connect(someCarburetor);
+
     /** Reads the timestamp alone, so the list is not re-rendered by it. */
     public render() {
-        const {emittedMessage} = this.useCarburetor(someCarburetor);
+        const {emittedMessage} = this.some;
 
         return (
             <span className="truncate" data-testid="emitted-message">

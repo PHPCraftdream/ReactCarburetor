@@ -14,6 +14,9 @@ interface ITodoProps {
  * so editing one todo does not re-render the list.
  */
 export class TodoApp extends AntiHookComponent<ITodoProps> {
+    /** Built once; reads through it stay tracked field by field on every render. */
+    private readonly todos = this.connect(() => this.props.carburetor);
+
     /** Loads the list once, after the first commit. */
     protected useEffects(): void {
         this.useEffect(this.props.carburetor.loadData, "loadData", []);
@@ -66,8 +69,9 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
     public render() {
         const {carburetor} = this.props;
 
-        // Reading through the carburetor: the fields read here become the subscription.
-        const {orderIds, activeCount, doneCount} = this.useCarburetor(carburetor);
+        // The fields read here become the subscription, same as useCarburetor — connect()
+        // only moves where the tracking proxy is built, not what it tracks.
+        const {orderIds, activeCount, doneCount} = this.todos;
 
         return (
             <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/85 shadow-xl shadow-slate-900/5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-black/30">

@@ -3,7 +3,7 @@ import {IDict, TEffect, TEffectCleanup, TEffectDeps, TReadonly} from "@/Carburet
 import {IComputed} from "@/Carburetor/Models/Derived";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
-import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
+import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
@@ -21,6 +21,34 @@ interface ITrackedCarburetor {
 interface IEffectRecord {
     deps: TEffectDeps;
     cleanup: TEffectCleanup | undefined;
+}
+
+/**
+ * A `connect()` declaration's bookkeeping: one persistent slot, independent of any one render.
+ *
+ * Unlike `ITrackedCarburetor`, which `track()` recreates from scratch every render and
+ * `commitSubscriptions` prunes when a render stops touching it, a connection is declared once
+ * (typically a class field initializer) and lives for the component's whole lifetime — nothing
+ * ever deletes it from `connections`. What still varies per render is `reads`: the proxy's own
+ * recorder resets it lazily the first time a render actually accesses a field, the same
+ * generation-comparison trick `track()` uses, so a conditional branch reading a different field
+ * next render still narrows or widens the subscription correctly.
+ */
+interface IConnection {
+    /** This connection's own id — stable across whatever carburetor it points at right now. */
+    uid: string;
+    /** Resolves the carburetor to read; called fresh every commit, so a prop swap is noticed. */
+    getCarburetor: () => ICarburetorSubscription;
+    /** The carburetor actually subscribed to right now; undefined before the first commit. */
+    subscribedTo: ICarburetorSubscription | undefined;
+    /** This render's reads so far, reset lazily on the first read after a new render starts. */
+    reads: TPathSet;
+    /** The render `reads` was last reset for; compared against `renderGeneration` to reset it. */
+    generation: number;
+    /** Read set as last actually registered; undefined means nothing is currently registered. */
+    committed: TPathSet | undefined;
+    /** The version as of the most recent actual read, for the same render-to-commit gap `track()` closes. */
+    lastSeenVersion: number | undefined;
 }
 
 /**
@@ -63,6 +91,15 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * lifecycle can restore the subscriptions without a render to refill them.
      */
     protected tracked: IDict<ITrackedCarburetor> = {};
+
+    /**
+     * Persistent `connect()` declarations, in declaration order.
+     *
+     * Never pruned: a connection lives from the field initializer that created it until the
+     * component itself is torn down, unlike `tracked`, which `commitSubscriptions` drops the
+     * moment a render stops touching it.
+     */
+    protected connections: IConnection[] = [];
 
     /** Number of the current, not yet committed render. */
     protected renderGeneration: number = 0;
@@ -121,6 +158,103 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         return carburetor.read((path: TPath) => {
             tracked.reads.add(path);
         });
+    };
+
+    /**
+     * A persistent view of a carburetor's data, declared once and read directly in render.
+     *
+     * `useCarburetor` allocates a fresh read-tracking proxy every render — for a component that
+     * always reads from the same store this is pure repeated cost. `connect()` instead builds
+     * the view once (a class field initializer is the intended call site) and hands back the
+     * exact same object for as long as the underlying data object does not change; only the
+     * proxy's own recorder, invoked lazily on the first field access of a new render, resets
+     * what counts as "read this render" — a conditional branch reading a different field next
+     * render still narrows or widens the subscription, exactly as `useCarburetor` already does.
+     *
+     * The view stays live across `setData`/`restore`: those replace the store's data object
+     * wholesale, which this method notices (the cached proxy is rebuilt only when the object it
+     * wraps has actually changed) and rebuilds transparently — the returned reference itself
+     * never changes, only what it reads through.
+     *
+     * The declaration itself must not subscribe: React can construct an instance and later
+     * decide never to commit it (see the class docstring's link to React's component contract),
+     * so any side effect here would leak a subscription for a component that never mounted. All
+     * subscription bookkeeping happens in `commitSubscriptions`/`releaseSubscriptions`, driven
+     * by what the *previous* render's field accesses recorded — the same design `useCarburetor`
+     * and `tracked` already use, just keyed by a connection instead of by carburetor identity.
+     *
+     * A root data type this engine cannot proxy (see `isTrackable`) is read once, untracked, at
+     * the moment the underlying object is (re)built — not fresh every render — so this method
+     * inherits `read()`'s existing wildcard fallback but only re-triggers it on a data swap; a
+     * store shaped that way should prefer `useCarburetor`, called directly in render.
+     *
+     * @param source - the carburetor to read, or a function resolving it fresh on every commit
+     * so a prop swap re-points the connection at the new store
+     */
+    public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> => {
+        const getCarburetor: () => ICarburetor<T> = typeof source === 'function' ? source : () => source;
+
+        const connection: IConnection = {
+            uid: getUid(),
+            getCarburetor,
+            subscribedTo: undefined,
+            reads: new Set<TPath>(),
+            generation: -1,
+            committed: undefined,
+            lastSeenVersion: undefined,
+        };
+
+        this.connections.push(connection);
+
+        const recorder: TPathRecorder = (path: TPath): void => {
+            if (connection.generation !== this.renderGeneration) {
+                connection.reads = new Set<TPath>();
+                connection.generation = this.renderGeneration;
+            }
+
+            connection.reads.add(path);
+            connection.lastSeenVersion = getCarburetor().getVersion();
+        };
+
+        let cachedTarget: T | undefined;
+        let cachedView: TReadonly<T> | undefined;
+
+        // Rebuilds only when the wrapped data object itself changed — a normal field write
+        // mutates that object in place, so this stays untouched render after render; only
+        // setData()/restore() (a whole new object) or a source() swap to a different carburetor
+        // (whose data is necessarily a different object) trigger a rebuild.
+        const resolveView = (): TReadonly<T> => {
+            const carburetor = getCarburetor();
+            const data = carburetor.getData();
+
+            if (cachedTarget !== data) {
+                cachedTarget = data;
+                cachedView = carburetor.read(recorder);
+            }
+
+            return cachedView as TReadonly<T>;
+        };
+
+        const forbidWrite = (): never => {
+            throw new Error(
+                'Carburetor: data read through connect() is read-only. ' +
+                'Write through carburetor methods — they write via draft and know which paths changed.'
+            );
+        };
+
+        // An empty object stands in for the real target: every trap below resolves and forwards
+        // to the current view instead, which is what lets the same Proxy instance survive a
+        // rebuild underneath it.
+        return new Proxy({} as TReadonly<T>, {
+            get: (_target: TReadonly<T>, key: string | symbol): unknown => Reflect.get(resolveView() as object, key),
+            has: (_target: TReadonly<T>, key: string | symbol): boolean => Reflect.has(resolveView() as object, key),
+            ownKeys: (_target: TReadonly<T>): ArrayLike<string | symbol> => Reflect.ownKeys(resolveView() as object),
+            getOwnPropertyDescriptor: (_target: TReadonly<T>, key: string | symbol): PropertyDescriptor | undefined =>
+                Reflect.getOwnPropertyDescriptor(resolveView() as object, key),
+            set: forbidWrite,
+            deleteProperty: forbidWrite,
+            defineProperty: forbidWrite,
+        }) as TReadonly<T>;
     };
 
     /**
@@ -310,6 +444,35 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             }
         });
 
+        // Connections are never pruned here: unlike `tracked`, a connection's lifetime is the
+        // component's own, not one render's. What still needs redoing per commit is pointing it
+        // at whatever `getCarburetor()` resolves to now, and registering whatever the render
+        // actually read.
+        this.connections.forEach((connection: IConnection) => {
+            const carburetor = connection.getCarburetor();
+
+            if (connection.subscribedTo !== carburetor) {
+                if (connection.subscribedTo) {
+                    connection.subscribedTo.unsubscribe(connection.uid);
+                }
+
+                // Forces the subscribe below even if the new carburetor happens to want the
+                // same paths: the old registration is gone, so skipping would leave nothing
+                // registered anywhere.
+                connection.committed = undefined;
+                connection.subscribedTo = carburetor;
+            }
+
+            if (connection.committed === undefined || !sameReads(connection.committed, connection.reads)) {
+                carburetor.subscribe(this.onCarburetorUpdate, {id: connection.uid, reads: connection.reads});
+                connection.committed = new Set<TPath>(connection.reads);
+            }
+
+            if (connection.lastSeenVersion !== undefined && carburetor.getVersion() !== connection.lastSeenVersion) {
+                changedDuringRender = true;
+            }
+        });
+
         this.renderGeneration = generation + 1;
 
         if (changedDuringRender) {
@@ -341,6 +504,19 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             this.tracked[cuid].carburetor.unsubscribe(this.uid);
             this.tracked[cuid].generation = this.renderGeneration;
             this.tracked[cuid].committed = undefined;
+        });
+
+        // `committed` and `subscribedTo` reset the same way `tracked`'s do, and for the same
+        // reason: a StrictMode-replayed remount's commit must subscribe for real, even though
+        // `reads` (kept, unlike `tracked`'s generation dance — a connection has no generation
+        // to go stale) would otherwise look unchanged.
+        this.connections.forEach((connection: IConnection) => {
+            if (connection.subscribedTo) {
+                connection.subscribedTo.unsubscribe(connection.uid);
+            }
+
+            connection.subscribedTo = undefined;
+            connection.committed = undefined;
         });
     }
 }
