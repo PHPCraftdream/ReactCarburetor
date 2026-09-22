@@ -90,6 +90,23 @@ const getMixedList = (): ITodoList => ({
     activeCount: -3
 });
 
+/** One active item, with the optional counters left out, as an unhydrated initial state. */
+const getUnhydratedList = (): ITodoList => ({
+    items: {
+        a: {id: 'a', title: 'active one', done: false}
+    },
+    orderIds: ['a']
+});
+
+/** One active and one done item, with the optional counters left out entirely. */
+const getUnhydratedPair = (): ITodoList => ({
+    items: {
+        a: {id: 'a', title: 'active one', done: false},
+        b: {id: 'b', title: 'done one', done: true}
+    },
+    orderIds: ['a', 'b']
+});
+
 describe('TodoCarburetor', () => {
     test('a title edit enumerates nothing, compares nothing, and publishes only the item', async () => {
         const carburetor = new TodoCarburetor(new MockToDoClientAPI());
@@ -350,5 +367,88 @@ describe('TodoCarburetor stable order matches a full resort', () => {
 
         expect(carburetor.getData().orderIds).toEqual(referenceOrder);
         expect(carburetor.getData().orderIds).toEqual(['workTodo1', 'workTodo9', 'workTodo8', 'workTodo5']);
+    });
+});
+
+describe('TodoCarburetor counters missing from the initial data', () => {
+    test('the first title edit derives the counters instead of publishing zeros', () => {
+        const carburetor = new TodoCarburetor(new MockToDoClientAPI(), getUnhydratedList());
+        const calls = countDerivation(carburetor);
+        const stored: ITodo = carburetor.getData().items.a;
+
+        carburetor.updateTodo({...stored, title: 'active one edited'});
+
+        expect(carburetor.getData().items.a.title).toEqual('active one edited');
+        expect(carburetor.getData().doneCount).toEqual(0);
+        expect(carburetor.getData().activeCount).toEqual(1);
+
+        // The first write took the whole-list pass; the counters it derived exist now, so
+        // the next title edit is back on the incremental path.
+        const countStatsAfterFirst: number = calls.countStats;
+
+        expect(countStatsAfterFirst).toBeGreaterThan(0);
+
+        carburetor.updateTodo({...carburetor.getData().items.a, title: 'active one edited twice'});
+
+        expect(calls.countStats).toEqual(countStatsAfterFirst);
+        expect(carburetor.getData().doneCount).toEqual(0);
+        expect(carburetor.getData().activeCount).toEqual(1);
+    });
+
+    test('creating on such a store counts the item the zero baseline never held', () => {
+        const carburetor = new TodoCarburetor(new MockToDoClientAPI(), getUnhydratedList());
+
+        carburetor.createTodo();
+
+        const {items, orderIds} = carburetor.getData();
+        const created: ITodo = items[orderIds[0]];
+
+        expect(orderIds).toHaveLength(2);
+        expect(orderIds).toEqual([created.id, 'a']);
+        expect(created.done).toEqual(false);
+        expect(carburetor.getData().doneCount).toEqual(0);
+        expect(carburetor.getData().activeCount).toEqual(2);
+    });
+
+    test('toggling on such a store derives both counts from the items', () => {
+        const carburetor = new TodoCarburetor(new MockToDoClientAPI(), getUnhydratedPair());
+
+        carburetor.updateTodo({...carburetor.getData().items.a, done: true});
+
+        expect(carburetor.getData().doneCount).toEqual(2);
+        expect(carburetor.getData().activeCount).toEqual(0);
+        expect(carburetor.getData().orderIds).toEqual(['a', 'b']);
+
+        carburetor.updateTodo({...carburetor.getData().items.a, done: false});
+
+        expect(carburetor.getData().doneCount).toEqual(1);
+        expect(carburetor.getData().activeCount).toEqual(1);
+        expect(carburetor.getData().orderIds).toEqual(['a', 'b']);
+    });
+
+    test('an already-initialized store keeps the single-item write off the whole-list pass', () => {
+        const carburetor = new TodoCarburetor(new MockToDoClientAPI(), {
+            items: {
+                a: {id: 'a', title: 'active one', done: false},
+                b: {id: 'b', title: 'done one', done: true}
+            },
+            orderIds: ['a', 'b'],
+            doneCount: 1,
+            activeCount: 1
+        });
+        const calls = countDerivation(carburetor);
+        const counters = watchPaths(carburetor, 'doneCount', 'activeCount');
+
+        carburetor.updateTodo({...carburetor.getData().items.a, title: 'active one edited'});
+
+        expect(calls.countStats).toEqual(0);
+        expect(calls.sortItems).toEqual(0);
+        expect(calls.compareOrderIds).toEqual(0);
+        expect(counters.writes()).toEqual(0);
+        expect(carburetor.getData().items.a.title).toEqual('active one edited');
+        expect(carburetor.getData().doneCount).toEqual(1);
+        expect(carburetor.getData().activeCount).toEqual(1);
+
+        counters.dispose();
     });
 });

@@ -9,6 +9,12 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
      * Set around a single-item write that keeps the derived fields current itself; preEmit
      * consumes it and skips the whole-list pass for that one emit.
      *
+     * Keeping them current takes counters that exist: the write reads the state before
+     * touching it, and a list whose optional counters are still missing leaves the flag
+     * false, so its first single-item write takes the whole-list pass. Reading before the
+     * write matters — the write's own arithmetic replaces missing counters with zero, and
+     * zero would pass for initialized by the time preEmit looks.
+     *
      * Any other emit — data replaced through setData, a restore — leaves it false and takes
      * the full pass.
      */
@@ -41,7 +47,7 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
             return;
         }
 
-        this.derivationKeptInline = true;
+        this.derivationKeptInline = this.hasStoredCounters();
 
         this.update((draft: ITodoList) => {
             draft.items[data.id] = data;
@@ -64,7 +70,7 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
             title: ''
         };
 
-        this.derivationKeptInline = true;
+        this.derivationKeptInline = this.hasStoredCounters();
 
         this.update((draft: ITodoList) => {
             draft.items[todo.id] = todo;
@@ -82,7 +88,7 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
             const wasDone: boolean = items[id].done;
             const filterId = (listId: string) => id !== listId;
 
-            this.derivationKeptInline = true;
+            this.derivationKeptInline = this.hasStoredCounters();
 
             this.update((draft: ITodoList) => {
                 delete draft.items[id];
@@ -161,6 +167,15 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
         }
 
         return itemA.done ? 1 : -1;
+    };
+
+    /**
+     * Whether the counters a single-item write shifts exist in the stored state. Called
+     * before a write: once the write has run, its arithmetic has already turned missing
+     * counters into explicit zeros, which are indistinguishable from derived ones.
+     */
+    private hasStoredCounters = (): boolean => {
+        return this.data.doneCount !== undefined && this.data.activeCount !== undefined;
     };
 
     /**
