@@ -164,9 +164,12 @@ jobs:
           sudo dpkg --add-architecture arm64
           # arm64 packages live on the ports archive, not the default amd64-only mirrors — and the
           # default sources still 404 on every arm64 index once the architecture is added, so this
-          # update reads only the new list instead of the machine's full sources.list.
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main universe" \
-            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
+          # update reads only the new list instead of the machine's full sources.list. -updates is
+          # required too: the runner's amd64 libgcc-s1/libstdc++6 already track it, and apt refuses
+          # to pair them with the plain-release arm64 build of the same cross-arch-pinned package.
+          for suite in "$(lsb_release -cs)" "$(lsb_release -cs)-updates"; do
+            echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $suite main universe"
+          done | sudo tee /etc/apt/sources.list.d/arm64-ports.list
           sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/arm64-ports.list" -o Dir::Etc::sourceparts="-"
           sudo apt-get install -y libc6:arm64
 
