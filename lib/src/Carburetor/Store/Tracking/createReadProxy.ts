@@ -26,6 +26,15 @@ import {isTrackable} from "./isTrackable";
  * other; a getter that returns a branch is an alias by another name and is not supported. And
  * the data is a tree, one object at one path: a second path to a live object is reported in
  * development through the alias ledger, which production compiles out.
+ *
+ * @param target - the raw state this proxy fronts, held by reference: nothing copies it, so
+ * every trap answers from the object as it is now
+ * @param record - where each touched path is reported, supplied by read(); a branch read
+ * reports the branch marker, not every path inside it
+ * @param basePath - the dotted path this root answers for; the default '' is the store root,
+ * and its emptiness is what makes ownKeys record the wildcard
+ * @param aliases - development-only: notes each branch object under its path so a second
+ * path to the same object is reported; production hands in undefined
  */
 export const createReadProxy = <T extends object>(
     target: T,

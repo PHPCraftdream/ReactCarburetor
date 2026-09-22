@@ -27,5 +27,10 @@
  *
  * Requires standard (Stage 3) decorators, supported by TypeScript 5+, SWC, Babel 7.20+ and
  * esbuild 0.21+. This is not the legacy `experimentalDecorators` flavour.
+ *
+ * @param method - the decorated method; bound to the instance once, while the original stays
+ * on the prototype so `super.method()` still resolves
+ * @param context - supplied by the runtime; its initializer installs the bound own property
+ * at construction, and a `kind` other than 'method' is rejected
  */
 export declare const bind: <This, TArgs extends unknown[], TReturn>(method: (this: This, ...args: TArgs) => TReturn, context: ClassMethodDecoratorContext<This, (this: This, ...args: TArgs) => TReturn>) => void;

@@ -8,6 +8,7 @@
  * message strings entirely rather than merely skipping the call.
  */
 export declare class Diagnostics {
+    /** The switch setEnabled() flips; on by default in development, off in production. */
     protected enabled: boolean;
     /** Whether complaints are currently reported. */
     isEnabled: () => boolean;

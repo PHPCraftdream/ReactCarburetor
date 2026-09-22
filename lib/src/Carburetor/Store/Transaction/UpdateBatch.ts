@@ -13,7 +13,9 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
  * for every write.
  */
 export class UpdateBatch {
+    /** How many transactions are open; flush runs only when the outermost one closes. */
     protected depth: number = 0;
+    /** Writes collected per carburetor while the transaction is open, delivered once at flush. */
     protected pending: Map<INotifiable, TPathSet> = new Map<INotifiable, TPathSet>();
 
     /** Whether a transaction is open, so writes are collected rather than delivered. */
@@ -38,7 +40,14 @@ export class UpdateBatch {
         this.flush();
     };
 
-    /** Merges writes into what a carburetor will be notified about. */
+    /**
+     * Merges writes into what a carburetor will be notified about.
+     *
+     * @param target - the carburetor the writes belong to; the map key that folds repeated
+     * adds into the single notification pass flush() gives it
+     * @param writes - the paths changed; the first add copies the set, so the caller stays
+     * free to keep mutating its own
+     */
     public add = (target: INotifiable, writes: TPathSet): void => {
         const merged = this.pending.get(target);
 

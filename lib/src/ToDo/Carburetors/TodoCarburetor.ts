@@ -5,7 +5,13 @@ import {TDeleteTodo, TUpdateTodo} from "./Models";
 import {someCarburetor} from "./SomeCarburetorInstance";
 
 export class TodoCarburetor extends Carburetor<ITodoList> {
-    /** Takes the API the list is loaded and saved through, plus the state to start from. */
+    /**
+     * Takes the API the list is loaded and saved through, plus the state to start from.
+     *
+     * @param api - the client every load goes through; loadData swaps the whole list for its answer
+     * @param data - the state shown before the first load; left out, it starts empty until the
+     * api answers
+     */
     constructor(protected api: IToDoClientAPI, data: ITodoList = getDefaultTodos()) {
         super(data);
     }

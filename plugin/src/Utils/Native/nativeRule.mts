@@ -25,6 +25,11 @@ interface IPointNode {
  * its own description — the schema is dropped, though: native does not read options a JS host
  * would validate against one, and accepting options that silently do nothing is worse than
  * accepting none.
+ *
+ * @param id - the rule id native reports under; a diagnostic belongs to this rule only when its
+ * `rule` field matches
+ * @param description - placed in `meta.docs.description` verbatim, so each produced rule presents
+ * as its own rule to the host
  */
 export const nativeRule = (id: string, description: string): IRule => ({
     meta: {type: 'problem', docs: {description}} satisfies IRuleMeta,

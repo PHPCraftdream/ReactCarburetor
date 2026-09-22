@@ -6,7 +6,9 @@ import { CarburetorScope } from "./Scope/CarburetorScope.mjs";
  * module-level singletons. Uses `contextType`, so no hooks are involved.
  */
 export declare class ScopedAntiHookComponent<P = {}, S = {}> extends AntiHookComponent<P, S> {
+    /** Makes React populate each instance's `context` with the surrounding CarburetorScope. */
     static contextType: import("react").Context<CarburetorScope | null>;
+    /** The scope React fills in from contextType; null until a provider mounts above. */
     context: CarburetorScope | null;
     /** The surrounding scope, or a loud error: a missing provider is a wiring mistake. */
     protected scope(): CarburetorScope;

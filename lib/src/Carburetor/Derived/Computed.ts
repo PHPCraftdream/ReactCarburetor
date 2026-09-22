@@ -29,9 +29,13 @@ interface IAnnouncement<R> {
  * the result (editing a title while a counter stays the same) re-renders nobody.
  */
 export class Computed<R> implements IComputed<R> {
+    /** This computed's id, which dependencies are subscribed and released under. */
     protected uid: string = getUid();
+    /** Moves only when a changed value is announced, letting a component spot writes across a render. */
     protected version: number = 0;
+    /** Callbacks woken when a changed value settles, keyed by subscription id. */
     protected subscribers: IDict<TSubscriber> = {};
+    /** What the current value was computed from, observed only while somebody is listening. */
     protected dependencies: IDict<IDependency> = {};
 
     /** The stores the current value was computed from, including those behind inner computeds. */
@@ -40,7 +44,9 @@ export class Computed<R> implements IComputed<R> {
     /** The value the last notification carried; undefined until the first one. */
     protected announced: IAnnouncement<R> | undefined = undefined;
 
+    /** The cached body result, undefined until the first compute. */
     protected value: R | undefined = undefined;
+    /** Whether the cached value can be trusted; cleared when a dependency moves or the last listener leaves. */
     protected valid: boolean = false;
 
     /** Takes the body whose reads become this value's dependencies. */
@@ -70,6 +76,9 @@ export class Computed<R> implements IComputed<R> {
      * `options.reads` is accepted for interface compatibility and deliberately ignored:
      * a computed notifies at the granularity of its whole value, so there is no finer
      * path inside it to depend on.
+     *
+     * @param callback - woken only when a settled value differs from the last announced one
+     * @param options - `id` keys the subscription for later unsubscribe; a uid is generated when omitted
      */
     public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
         const id = options.id || getUid();

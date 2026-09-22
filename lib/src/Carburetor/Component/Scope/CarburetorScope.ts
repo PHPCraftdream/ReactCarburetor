@@ -10,6 +10,7 @@ import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
  * leaks one user's state into another's render.
  */
 export class CarburetorScope {
+    /** The instances created or installed in this scope so far, keyed by token id. */
     protected instances: Map<string, unknown> = new Map<string, unknown>();
 
     /** The instance this token stands for, created once per scope on first use. */
@@ -24,7 +25,12 @@ export class CarburetorScope {
         return created;
     };
 
-    /** Replaces an instance — useful for tests and for hydrating a prepared store. */
+    /**
+     * Replaces an instance — useful for tests and for hydrating a prepared store.
+     *
+     * @param token - names the slot replaced; later `get` calls for it return the new instance
+     * @param instance - stored as-is under the token's id; the factory inside the token never runs
+     */
     public set = <T extends unknown>(token: ICarburetorToken<T>, instance: T): void => {
         this.instances.set(token.id, instance);
     };
@@ -60,6 +66,11 @@ export class CarburetorScope {
      * not an error — but it is also exactly what the server and the client declaring one token
      * under different names looks like, so development reports it instead of dropping it
      * silently.
+     *
+     * @param state - the dehydrate() payload, keyed by token name; keys no token claims are
+     * reported in development and otherwise ignored
+     * @param tokens - the tokens to restore; ones absent from `state` are left to be created
+     * on demand instead
      */
     public hydrate = (state: IDict<unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>): void => {
         const claimed = new Set<string>();

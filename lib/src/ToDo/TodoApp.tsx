@@ -36,7 +36,14 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
         );
     }
 
-    /** One counter pill; the values come from the store's derived fields. */
+    /**
+     * One counter pill; the values come from the store's derived fields.
+     *
+     * @param label - the caption before the number, colon included, e.g. 'active:'
+     * @param value - undefined until the first emit, and rendered as 0 rather than an empty pill
+     * @param tone - the color classes appended after the pill's shared layout classes, verbatim
+     * @param testId - the data-testid the demo's tests assert against, one per pill
+     */
     public renderCounter(label: string, value: number | undefined, tone: string, testId: string) {
         return (
             <span className={'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ' + tone}>

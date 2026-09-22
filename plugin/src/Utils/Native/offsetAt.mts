@@ -6,6 +6,12 @@
  * `\n` alone: a `\r\n` file leaves a trailing `\r` on each line, which shifts every column after
  * the first line by however many `\r` characters preceded it — negligible for this project's own
  * LF sources, and worth revisiting only if a consumer's repository turns out to use CRLF.
+ *
+ * @param text - the source indexed into; the `\n` split means a `\r` left by CRLF counts toward
+ * the offsets this returns
+ * @param line - the 1-based line to walk to; each line before it adds its length plus one, and a
+ * line count past the text's end just stops the walk at the last line
+ * @param column - the 1-based position inside that line, 1 being its first character
  */
 export const offsetAt = (text: string, line: number, column: number): number => {
     const lines = text.split('\n');

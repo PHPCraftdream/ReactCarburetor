@@ -7,10 +7,16 @@ import { ICarburetorToken } from "../../Models/Tooling.mjs";
  * leaks one user's state into another's render.
  */
 export declare class CarburetorScope {
+    /** The instances created or installed in this scope so far, keyed by token id. */
     protected instances: Map<string, unknown>;
     /** The instance this token stands for, created once per scope on first use. */
     get: <T extends unknown>(token: ICarburetorToken<T>) => T;
-    /** Replaces an instance — useful for tests and for hydrating a prepared store. */
+    /**
+     * Replaces an instance — useful for tests and for hydrating a prepared store.
+     *
+     * @param token - names the slot replaced; later `get` calls for it return the new instance
+     * @param instance - stored as-is under the token's id; the factory inside the token never runs
+     */
     set: <T extends unknown>(token: ICarburetorToken<T>, instance: T) => void;
     /** Whether this scope already created an instance for the token. */
     has: <T extends unknown>(token: ICarburetorToken<T>) => boolean;
@@ -29,6 +35,11 @@ export declare class CarburetorScope {
      * not an error — but it is also exactly what the server and the client declaring one token
      * under different names looks like, so development reports it instead of dropping it
      * silently.
+     *
+     * @param state - the dehydrate() payload, keyed by token name; keys no token claims are
+     * reported in development and otherwise ignored
+     * @param tokens - the tokens to restore; ones absent from `state` are left to be created
+     * on demand instead
      */
     hydrate: (state: IDict<unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>) => void;
     /** Whether an instance can be serialized: a scope may hold things that cannot. */

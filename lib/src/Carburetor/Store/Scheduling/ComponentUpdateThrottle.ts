@@ -12,15 +12,25 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
  * by default.
  */
 export class ComponentUpdateThrottle implements IUpdateScheduler {
+    /** Flush rounds letsUpdate() tolerates before it declares an infinite update loop. */
     protected maxUpdateDepth: number = 50;
+    /** The armed flush timer, whose presence keeps setupTimeout() from sliding the window. */
     protected timeout: TTimerHandle = undefined;
+    /** Updates waiting for the next flush, keyed by subscriber; letsUpdate() drains it until empty. */
     protected updaters: Map<string, TUpdater> = new Map<string, TUpdater>();
 
     /** Takes the coalescing window in milliseconds. */
     constructor(protected updateTimeout: number = 40) {
     }
 
-    /** Queues one update per subscriber, so repeated writes collapse into one render. */
+    /**
+     * Queues one update per subscriber, so repeated writes collapse into one render.
+     *
+     * @param uid - the subscriber's id, the queue key whose reuse replaces the still-unrun
+     * update instead of queueing a second one
+     * @param updater - the callback the flush runs; nothing here invokes it, and cancel()
+     * before the window elapses drops it unrun
+     */
     public schedule = (uid: string, updater: TUpdater) => {
         this.updaters.set(uid, updater);
         this.setupTimeout();

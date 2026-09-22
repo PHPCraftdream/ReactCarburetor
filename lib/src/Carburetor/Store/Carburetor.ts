@@ -24,6 +24,7 @@ interface ISubscriberRecord {
 }
 
 export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable {
+    /** The subscriber records the index points at: delivery schedules the callback it finds here. */
     protected subscribers: IDict<ISubscriberRecord> = {};
 
     /** Finds the subscribers a write concerns without scanning all of them. */
@@ -32,7 +33,9 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** Development alias ledger handed to both proxies; undefined outside development. */
     protected aliases: TAliasLedger = createAliasLedger();
 
+    /** The store's identity, minted once at construction. */
     protected uid: string = getUid();
+    /** The counter getVersion() returns; bumped by every emitUpdate. */
     protected version: number = 0;
 
     /** Paths changed since the last emitUpdate. */
@@ -43,9 +46,15 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
     /** An emit already scheduled for a later microtask, so the dev check stays quiet. */
     protected pendingEmit: boolean = false;
+    /** The write proxy behind draft, memoized across accesses and dropped by setData. */
     protected draftProxy: T | undefined = undefined;
 
-    /** Takes the initial state and the policy that decides when subscribers are woken. */
+    /**
+     * Takes the initial state and the policy that decides when subscribers are woken.
+     *
+     * @param data - the state the store wraps; reads go through read(), writes through
+     * draft, and setData() swaps it wholesale.
+     */
     constructor(protected data: T, protected scheduler: IUpdateScheduler = syncUpdateScheduler) {
     }
 
@@ -113,7 +122,14 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         this.restore(value as T);
     };
 
-    /** Registers a subscriber, returning the id it is cancelled and rescheduled by. */
+    /**
+     * Registers a subscriber, returning the id it is cancelled and rescheduled by.
+     *
+     * @param callback - called with no arguments per matching write; it must re-read to
+     * see fresh values, and a throw costs it only a development-mode complaint.
+     * @param options - the id to reuse across re-subscribes and the paths to watch;
+     * without `reads` the subscription matches every write.
+     */
     public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
         const id = options.id || getUid();
 
@@ -136,7 +152,14 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
     };
 
-    /** Subscribes outside React — for persistence, logging, analytics. */
+    /**
+     * Subscribes outside React — for persistence, logging, analytics.
+     *
+     * @param reads - the paths the callback cares about; a set holding the wildcard path
+     * hears about every write.
+     * @param callback - run per matching write with no arguments; the returned disposer
+     * unsubscribes it.
+     */
     public watch = (reads: TPathSet, callback: TSubscriber): TDisposer => {
         const id = this.subscribe(callback, {reads});
 

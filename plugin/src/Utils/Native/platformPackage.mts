@@ -10,6 +10,10 @@
  * not, because that is where most Linux installs are. The launcher script in
  * `npm/carburetor-lint/bin/` duplicates this logic because it cannot import the plugin's
  * sources — keep the two in step when a target is added.
+ *
+ * @param platform - the OS segment of the name, interpolated untouched; anything but `linux`
+ * produces a single candidate
+ * @param arch - the CPU segment, likewise verbatim, shared by both linux libc variants
  */
 export const platformPackageNames = (
     platform: string = process.platform,

@@ -12,14 +12,26 @@ import { Carburetor } from "../Store/Carburetor.js";
  */
 export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceData<T>> {
     protected loader: TResourceLoader<T, TArgs>;
+    /** The abort handle of the request in flight, fired by abort() and compared against when it settles. */
     protected controller: AbortController | undefined;
+    /** The key that request was started with, which a repeated start joins on. */
     protected pendingKey: string | undefined;
+    /** The promise behind it: what suspend throws to React and a joining start returns. */
     protected pendingRequest: Promise<void> | undefined;
     /** The key the stored Success/Error state belongs to; unlike `pendingKey`, which tracks the in-flight one. */
     protected settledKey: string | undefined;
+    /** The arguments of the most recent start, which reload() replays. */
     protected lastArgs: TArgs | undefined;
+    /** The raw rejection behind the described state.error, kept whole for suspend to rethrow. */
     protected lastError: unknown;
-    /** Takes the loader this resource calls, and starts out empty. */
+    /**
+     * Takes the loader this resource calls, and starts out empty.
+     *
+     * @param loader - called with the arguments and an abort signal; the single slot means a newer
+     * start aborts it, so two of its runs are never alive at once
+     * @param scheduler - the policy deciding when subscribers are woken; omitted, updates publish
+     * synchronously on each write
+     */
     constructor(loader: TResourceLoader<T, TArgs>, scheduler?: IUpdateScheduler);
     /** The raw rejection value, which the serializable state cannot carry. */
     getLastError: () => unknown;
@@ -42,14 +54,37 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
      *
      * `deferNotification` exists for `suspend`, which is called from render — the pending
      * status then goes out on a microtask instead of in the middle of rendering.
+     *
+     * @param args - folded into the request key by keyOf(), so structurally equal arguments join
+     * one request; also what reload() replays
+     * @param deferNotification - true from suspend(): the pending write goes out on a microtask
+     * because the caller is mid-render
      */
     protected start: (args: TArgs, deferNotification: boolean) => Promise<void>;
     /** The identity of a set of arguments, for telling one request from another. */
     protected keyOf: (args: TArgs) => string;
     /** Whether a settled request is still the one whose answer this resource wants. */
     protected isCurrent: (controller: AbortController) => boolean;
-    /** Stores a successful answer, unless a newer request has since taken over. */
+    /**
+     * Stores a successful answer, unless a newer request has since taken over.
+     *
+     * @param controller - the request claiming the write; one already aborted or replaced fails
+     * the check, and its answer is dropped whole
+     * @param key - recorded as the settled key, so suspend serves this answer only to a read of
+     * the same arguments
+     * @param data - the answer stored verbatim; landing it also drops any raw error an earlier
+     * failure had kept
+     */
     protected settleSuccess: (controller: AbortController, key: string, data: T) => void;
-    /** Stores a failure, keeping the raw rejection aside for `suspend` to rethrow. */
+    /**
+     * Stores a failure, keeping the raw rejection aside for `suspend` to rethrow.
+     *
+     * @param controller - the request reporting the failure; a superseded or aborted one is
+     * ignored, leaving the newer request's outcome in charge
+     * @param key - recorded as the settled key, so the Error state is only served to a read of
+     * these arguments
+     * @param error - the rejection as thrown: lastError keeps it whole, while the state carries
+     * only the message describeError() extracts
+     */
     protected settleError: (controller: AbortController, key: string, error: unknown) => void;
 }

@@ -12,13 +12,24 @@ import { IHistoryOptions } from "../Models/Tooling.js";
  */
 export declare class CarburetorHistory<T extends object> {
     protected carburetor: ICarburetor<T>;
+    /** States to step back to; the oldest is dropped once `limit` is exceeded. */
     protected past: T[];
+    /** Undone states waiting for redo; any fresh write empties it. */
     protected future: T[];
+    /** The state as of the last recorded change, awaiting promotion into `past`. */
     protected current: T;
+    /** The most states `past` may hold; set from options at construction. */
     protected limit: number;
+    /** Set inside apply() so the watcher ignores changes history installs itself. */
     protected applying: boolean;
+    /** The watch installed at construction; disconnect() runs it to stop recording. */
     protected dispose: TDisposer;
-    /** Starts watching a carburetor, with the current state as the first entry. */
+    /**
+     * Starts watching a carburetor, with the current state as the first entry.
+     *
+     * @param carburetor - the store being tracked: snapshots become the entries, restore() applies undo and redo to it
+     * @param options - `limit` caps how far back undo reaches; defaults to 50 entries when omitted
+     */
     constructor(carburetor: ICarburetor<T>, options?: IHistoryOptions);
     /** Whether there is a past state to step back to. */
     canUndo: () => boolean;

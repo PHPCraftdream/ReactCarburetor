@@ -50,6 +50,7 @@ const sameReads = (a: TPathSet, b: TPathSet): boolean => {
  * otherwise effects, subscription cleanup or the props gate will not work.
  */
 export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
+    /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
     protected uid: string = getUid();
 
     /** Per-effect state: the deps it last ran with, and the cleanup it returned. */
@@ -77,6 +78,11 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * This is safe here because a component does not depend on its parent to learn about
      * state: when its own data changes it re-renders itself through forceUpdate, which
      * bypasses shouldComponentUpdate.
+     *
+     * @param nextProps - the incoming props, shallow-compared against the current ones; an object
+     * or arrow rebuilt by the parent still counts as changed and lets the update through
+     * @param nextState - the incoming state, compared with shallowEqual the same way; updates a
+     * carburetor triggers never depend on this gate, since forceUpdate bypasses it
      */
     public shouldComponentUpdate(nextProps: Readonly<P>, nextState: Readonly<S>): boolean {
         return !shallowEqual(this.props, nextProps) || !shallowEqual(this.state, nextState);
@@ -142,6 +148,11 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * `status: Success` with its old data. `failed` on the view is what stops this method from
      * re-queueing the same failing request from the failure's own notification; only a successful
      * answer, an explicit `refresh`/`load`, or a new `invalidate` re-arms a fetch.
+     *
+     * @param source - the cache entry's owner: `pathOf(args)` gives the path this render
+     * subscribes to, and a stale entry queues a `load` for after the commit
+     * @param args - the cache key, identifying the entry read now and targeted by the deferred
+     * `load`; a different value reads a different entry
      */
     public useResource = <T extends unknown, TArgs extends unknown>(
         source: IResourceSource<T, TArgs>,
@@ -210,6 +221,13 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * Whatever the effect returns is treated as its cleanup and is run before the effect runs
      * again, and on unmount — so setup and teardown stay paired per effect rather than being
      * one global hook for the whole component.
+     *
+     * @param callBack - the effect body; a function it returns becomes the cleanup, run before
+     * the next run and on unmount
+     * @param name - the key in the per-effect record, so two effects sharing one name would
+     * overwrite each other's deps and cleanup
+     * @param deps - compared shallowly with the last run's; an equal set skips the run and
+     * leaves the existing cleanup standing
      */
     protected useEffect = (callBack: TEffect, name: string, deps: TEffectDeps): void => {
         const known = this.effects[name];

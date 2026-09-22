@@ -10,6 +10,7 @@ import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
  * message strings entirely rather than merely skipping the call.
  */
 export class Diagnostics {
+    /** The switch setEnabled() flips; on by default in development, off in production. */
     protected enabled: boolean = IS_DEVELOPMENT;
 
     /** Whether complaints are currently reported. */

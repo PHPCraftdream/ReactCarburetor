@@ -13,7 +13,13 @@ const pathsTouch = (readPath: TPath, writePath: TPath): boolean => {
         || writePath.startsWith(readPath + PATH_SEPARATOR);
 };
 
-/** Whether any written path touches any read path; a wildcard on either side matches all. */
+/**
+ * Whether any written path touches any read path; a wildcard on either side matches all.
+ *
+ * @param reads - the paths subscribers watched; a wildcard entry answers true outright.
+ * @param writes - the paths a transaction changed; each is paired against every read
+ * until one touches.
+ */
 export const pathsIntersect = (reads: TPathSet, writes: TPathSet): boolean => {
     if (reads.has(WILDCARD_PATH) || writes.has(WILDCARD_PATH)) {
         return true;

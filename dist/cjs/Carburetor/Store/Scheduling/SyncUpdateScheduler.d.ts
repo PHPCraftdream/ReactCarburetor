@@ -6,7 +6,13 @@ import { IUpdateScheduler } from "../../Models/Store.js";
  * so there is nothing to smooth out.
  */
 export declare class SyncUpdateScheduler implements IUpdateScheduler {
-    /** Runs the update immediately; React batches what happens in one event. */
+    /**
+     * Runs the update immediately; React batches what happens in one event.
+     *
+     * @param _uid - ignored: nothing is queued here, so there is no id to file an update under
+     * @param updater - run on the call itself, before it returns; nothing defers it to a
+     * later tick
+     */
     schedule: (_uid: string, updater: TUpdater) => void;
     /** Nothing to cancel: an update was already delivered by the time this could be called. */
     cancel: (_uid: string) => void;

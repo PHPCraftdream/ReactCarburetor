@@ -84,7 +84,13 @@ const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinar
 };
 
 /** Runs the native binary once for this process, sharing the result across worker threads.
- * The resolver is injectable so a test can stage an install with no binary. */
+ * The resolver is injectable so a test can stage an install with no binary.
+ *
+ * @param cwd - the project the binary lints; its digest also names this run's lock and result
+ * files in the temp directory
+ * @param resolve - consulted only by the worker that wins the lock; waiters read the written
+ * result file and never resolve
+ */
 export const runNativeOnce = (cwd: string, resolve: () => string | undefined = resolveBinary): INativeDiagnostic[] => {
     if (cached) {
         return cached;

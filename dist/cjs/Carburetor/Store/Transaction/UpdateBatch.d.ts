@@ -7,7 +7,9 @@ import { INotifiable } from "../../Models/Store.js";
  * for every write.
  */
 export declare class UpdateBatch {
+    /** How many transactions are open; flush runs only when the outermost one closes. */
     protected depth: number;
+    /** Writes collected per carburetor while the transaction is open, delivered once at flush. */
     protected pending: Map<INotifiable, TPathSet>;
     /** Whether a transaction is open, so writes are collected rather than delivered. */
     isActive: () => boolean;
@@ -15,7 +17,14 @@ export declare class UpdateBatch {
     begin: () => void;
     /** Closes a transaction, delivering everything collected once the outermost one ends. */
     end: () => void;
-    /** Merges writes into what a carburetor will be notified about. */
+    /**
+     * Merges writes into what a carburetor will be notified about.
+     *
+     * @param target - the carburetor the writes belong to; the map key that folds repeated
+     * adds into the single notification pass flush() gives it
+     * @param writes - the paths changed; the first add copies the set, so the caller stays
+     * free to keep mutating its own
+     */
     add: (target: INotifiable, writes: TPathSet) => void;
     /** Delivers one notification pass per carburetor, draining what the passes add. */
     protected flush: () => void;
