@@ -5,12 +5,18 @@ import { Carburetor } from "../Store/Carburetor.mjs";
  * An async value with an explicit status, so loading and failure are part of the state
  * rather than something every component reinvents. Concurrent loads with the same
  * arguments share one request; a load with different arguments aborts the previous one.
+ *
+ * The slot holds one answer, and `suspend` serves it only for the key it actually
+ * settled: reading with any other key starts a fresh request instead of handing over
+ * the previous record's data.
  */
 export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceData<T>> {
     protected loader: TResourceLoader<T, TArgs>;
     protected controller: AbortController | undefined;
     protected pendingKey: string | undefined;
     protected pendingRequest: Promise<void> | undefined;
+    /** The key the stored Success/Error state belongs to; unlike `pendingKey`, which tracks the in-flight one. */
+    protected settledKey: string | undefined;
     protected lastArgs: TArgs | undefined;
     protected lastError: unknown;
     /** Takes the loader this resource calls, and starts out empty. */
@@ -43,7 +49,7 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
     /** Whether a settled request is still the one whose answer this resource wants. */
     protected isCurrent: (controller: AbortController) => boolean;
     /** Stores a successful answer, unless a newer request has since taken over. */
-    protected settleSuccess: (controller: AbortController, data: T) => void;
+    protected settleSuccess: (controller: AbortController, key: string, data: T) => void;
     /** Stores a failure, keeping the raw rejection aside for `suspend` to rethrow. */
-    protected settleError: (controller: AbortController, error: unknown) => void;
+    protected settleError: (controller: AbortController, key: string, error: unknown) => void;
 }

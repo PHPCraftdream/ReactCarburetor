@@ -152,4 +152,154 @@ describe('ResourceCarburetor', () => {
         expect(statusReader).toEqual(2);
         expect(dataReader).toEqual(1);
     });
+
+    test('a suspend for a different key does not serve the stored answer', async () => {
+        const gates: Record<string, IDeferred<string>> = {a: deferred<string>(), b: deferred<string>()};
+        const requested: string[] = [];
+
+        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+            requested.push(args.id);
+
+            return gates[args.id].promise;
+        });
+
+        gates.a.resolve('a-data');
+        await resource.load({id: 'a'});
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+        expect(resource.getData().data).toEqual('a-data');
+
+        // 'b' must not be answered by the slot still holding a's data: it suspends on a
+        // fresh request, and only b's own answer ever comes back for it.
+        let caught: unknown;
+
+        try {
+            resource.suspend({id: 'b'});
+        } catch (error: unknown) {
+            caught = error;
+        }
+
+        expect(caught).toBeInstanceOf(Promise);
+        expect(requested).toEqual(['a', 'b']);
+
+        gates.b.resolve('b-data');
+        await (caught as Promise<void>);
+        await flush();
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+        expect(resource.getData().data).toEqual('b-data');
+        expect(resource.suspend({id: 'b'})).toEqual('b-data');
+    });
+
+    test('a suspend for a different key does not rethrow the stored failure', async () => {
+        const gates: Record<string, IDeferred<string>> = {a: deferred<string>(), b: deferred<string>()};
+
+        const resource = new ResourceCarburetor<string, {id: string}>((args) => gates[args.id].promise);
+
+        gates.a.reject(new Error('a failed'));
+        await resource.load({id: 'a'}).catch(() => undefined);
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Error);
+        // The failure still belongs to 'a', and is still rethrown for it.
+        expect(() => resource.suspend({id: 'a'})).toThrow('a failed');
+
+        let caught: unknown;
+
+        try {
+            resource.suspend({id: 'b'});
+        } catch (error: unknown) {
+            caught = error;
+        }
+
+        // 'b' gets its own request instead of a's error.
+        expect(caught).toBeInstanceOf(Promise);
+
+        gates.b.resolve('b-data');
+        await (caught as Promise<void>);
+        await flush();
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+        expect(resource.getData().data).toEqual('b-data');
+    });
+
+    test('a suspend for the stored key keeps returning the cached answer', async () => {
+        let calls = 0;
+
+        const resource = new ResourceCarburetor<number, {id: string}>(() => {
+            calls++;
+
+            return Promise.resolve(calls);
+        });
+
+        await resource.load({id: 'a'});
+
+        expect(resource.suspend({id: 'a'})).toEqual(1);
+        expect(resource.suspend({id: 'a'})).toEqual(1);
+        expect(calls).toEqual(1);
+    });
+
+    test('after an aborted replacement load, suspending the old key fetches again', async () => {
+        const requested: string[] = [];
+        const resolvers: Array<(value: string) => void> = [];
+
+        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+            requested.push(args.id);
+
+            return new Promise<string>((resolve) => {
+                resolvers.push(resolve);
+            });
+        });
+
+        const loading = resource.load({id: 'a'});
+        resolvers[0]('a-first');
+        await loading;
+
+        expect(resource.getData().data).toEqual('a-first');
+
+        // 'b' starts and is aborted before it settles, so its answer is ignored.
+        const replaced = resource.load({id: 'b'});
+        resource.abort();
+
+        resolvers[1]('b-late');
+        await replaced;
+        await flush();
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Pending);
+
+        // The slot holds no answer, so 'a' suspends on a fresh request rather than
+        // trusting what was stored before the abort.
+        let caught: unknown;
+
+        try {
+            resource.suspend({id: 'a'});
+        } catch (error: unknown) {
+            caught = error;
+        }
+
+        expect(caught).toBeInstanceOf(Promise);
+        expect(requested).toEqual(['a', 'b', 'a']);
+
+        resolvers[2]('a-second');
+        await (caught as Promise<void>);
+        await flush();
+
+        expect(resource.getData().data).toEqual('a-second');
+        expect(resource.suspend({id: 'a'})).toEqual('a-second');
+    });
+
+    test('an abort with nothing in flight leaves the settled answer in place', async () => {
+        let calls = 0;
+
+        const resource = new ResourceCarburetor<number, {id: string}>(() => {
+            calls++;
+
+            return Promise.resolve(calls);
+        });
+
+        await resource.load({id: 'a'});
+        resource.abort();
+
+        expect(resource.suspend({id: 'a'})).toEqual(1);
+        expect(calls).toEqual(1);
+    });
 });

@@ -42,6 +42,7 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
     controller = void 0;
     pendingKey = void 0;
     pendingRequest = void 0;
+    settledKey = void 0;
     lastArgs = void 0;
     lastError = void 0;
     constructor(loader, scheduler){
@@ -50,9 +51,10 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
     getLastError = ()=>this.lastError;
     suspend = (args)=>{
         const state = this.data;
-        if (state.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success) return state.data;
-        if (state.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error) throw this.lastError || new Error(state.error || 'Carburetor: resource failed');
-        if (this.pendingRequest && this.pendingKey === this.keyOf(args)) throw this.pendingRequest;
+        const key = this.keyOf(args);
+        if (state.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success && this.settledKey === key) return state.data;
+        if (state.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error && this.settledKey === key) throw this.lastError || new Error(state.error || 'Carburetor: resource failed');
+        if (this.pendingRequest && this.pendingKey === key) throw this.pendingRequest;
         throw this.start(args, true);
     };
     load = (args)=>this.start(args, false);
@@ -78,23 +80,25 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
         this.controller = controller;
         this.pendingKey = key;
         this.lastArgs = args;
+        this.settledKey = void 0;
         this.draft.status = EResourceStatus_js_namespaceObject.EResourceStatus.Pending;
         this.draft.error = void 0;
         if (deferNotification) this.emitSoon();
         else this.emitUpdate();
         this.pendingRequest = this.loader(args, controller.signal).then((data)=>{
-            this.settleSuccess(controller, data);
+            this.settleSuccess(controller, key, data);
         }, (error)=>{
-            this.settleError(controller, error);
+            this.settleError(controller, key, error);
         });
         return this.pendingRequest;
     };
     keyOf = (args)=>JSON.stringify(void 0 === args ? null : args);
     isCurrent = (controller)=>this.controller === controller && !controller.signal.aborted;
-    settleSuccess = (controller, data)=>{
+    settleSuccess = (controller, key, data)=>{
         if (!this.isCurrent(controller)) return;
         this.controller = void 0;
         this.pendingRequest = void 0;
+        this.settledKey = key;
         this.lastError = void 0;
         this.draft.status = EResourceStatus_js_namespaceObject.EResourceStatus.Success;
         this.draft.data = data;
@@ -102,10 +106,11 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
         this.draft.updatedAt = Date.now();
         this.emitUpdate();
     };
-    settleError = (controller, error)=>{
+    settleError = (controller, key, error)=>{
         if (!this.isCurrent(controller)) return;
         this.controller = void 0;
         this.pendingRequest = void 0;
+        this.settledKey = key;
         this.lastError = error;
         this.draft.status = EResourceStatus_js_namespaceObject.EResourceStatus.Error;
         this.draft.error = describeError(error);

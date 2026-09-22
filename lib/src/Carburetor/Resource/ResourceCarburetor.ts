@@ -17,11 +17,17 @@ const describeError = (error: unknown): string => {
  * An async value with an explicit status, so loading and failure are part of the state
  * rather than something every component reinvents. Concurrent loads with the same
  * arguments share one request; a load with different arguments aborts the previous one.
+ *
+ * The slot holds one answer, and `suspend` serves it only for the key it actually
+ * settled: reading with any other key starts a fresh request instead of handing over
+ * the previous record's data.
  */
 export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceData<T>> {
     protected controller: AbortController | undefined = undefined;
     protected pendingKey: string | undefined = undefined;
     protected pendingRequest: Promise<void> | undefined = undefined;
+    /** The key the stored Success/Error state belongs to; unlike `pendingKey`, which tracks the in-flight one. */
+    protected settledKey: string | undefined = undefined;
     protected lastArgs: TArgs | undefined = undefined;
     protected lastError: unknown = undefined;
 
@@ -44,16 +50,19 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      */
     public suspend = (args: TArgs): T => {
         const state = this.data;
+        const key = this.keyOf(args);
 
-        if (state.status === EResourceStatus.Success) {
+        // A stored answer is only good for the key that produced it: anything else falls
+        // through to a fresh request, exactly like a key that was never loaded.
+        if (state.status === EResourceStatus.Success && this.settledKey === key) {
             return state.data as T;
         }
 
-        if (state.status === EResourceStatus.Error) {
+        if (state.status === EResourceStatus.Error && this.settledKey === key) {
             throw this.lastError || new Error(state.error || 'Carburetor: resource failed');
         }
 
-        if (this.pendingRequest && this.pendingKey === this.keyOf(args)) {
+        if (this.pendingRequest && this.pendingKey === key) {
             throw this.pendingRequest;
         }
 
@@ -89,6 +98,8 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.controller = undefined;
         this.pendingRequest = undefined;
         this.pendingKey = undefined;
+        // `settledKey` needs no clearing: this only runs with a request in flight, and the
+        // `start` that armed it already reset the stored answer's key.
     };
 
     /**
@@ -112,6 +123,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.pendingKey = key;
         this.lastArgs = args;
 
+        // `load` and `reload` both come through here, so starting a request replaces
+        // whatever the slot held: the old answer stops being served from this moment.
+        this.settledKey = undefined;
+
         this.draft.status = EResourceStatus.Pending;
         this.draft.error = undefined;
 
@@ -123,10 +138,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
 
         this.pendingRequest = this.loader(args, controller.signal).then(
             (data: T) => {
-                this.settleSuccess(controller, data);
+                this.settleSuccess(controller, key, data);
             },
             (error: unknown) => {
-                this.settleError(controller, error);
+                this.settleError(controller, key, error);
             }
         );
 
@@ -144,13 +159,14 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     };
 
     /** Stores a successful answer, unless a newer request has since taken over. */
-    protected settleSuccess = (controller: AbortController, data: T): void => {
+    protected settleSuccess = (controller: AbortController, key: string, data: T): void => {
         if (!this.isCurrent(controller)) {
             return;
         }
 
         this.controller = undefined;
         this.pendingRequest = undefined;
+        this.settledKey = key;
         this.lastError = undefined;
 
         this.draft.status = EResourceStatus.Success;
@@ -161,13 +177,14 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     };
 
     /** Stores a failure, keeping the raw rejection aside for `suspend` to rethrow. */
-    protected settleError = (controller: AbortController, error: unknown): void => {
+    protected settleError = (controller: AbortController, key: string, error: unknown): void => {
         if (!this.isCurrent(controller)) {
             return;
         }
 
         this.controller = undefined;
         this.pendingRequest = undefined;
+        this.settledKey = key;
         this.lastError = error;
 
         this.draft.status = EResourceStatus.Error;
