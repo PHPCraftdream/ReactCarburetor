@@ -158,20 +158,20 @@ jobs:
         if: matrix.apt
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
 
+      # qemu-user only needs the arm64 ld.so and libc on disk to execute a foreign binary; a real
+      # `apt-get install libc6:arm64` drags in dpkg's cross-arch version-parity `Breaks:` rules and
+      # apt tries to reconcile the whole base system against them. Downloading the .deb and
+      # unpacking it with dpkg -x sidesteps the dependency resolver entirely.
       - name: Install the aarch64 runtime libraries
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo dpkg --add-architecture arm64
-          # arm64 packages live on the ports archive, not the default amd64-only mirrors — and the
-          # default sources still 404 on every arm64 index once the architecture is added, so this
-          # update reads only the new list instead of the machine's full sources.list. -updates is
-          # required too: the runner's amd64 libgcc-s1/libstdc++6 already track it, and apt refuses
-          # to pair them with the plain-release arm64 build of the same cross-arch-pinned package.
-          for suite in "$(lsb_release -cs)" "$(lsb_release -cs)-updates"; do
-            echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $suite main universe"
-          done | sudo tee /etc/apt/sources.list.d/arm64-ports.list
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
           sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/arm64-ports.list" -o Dir::Etc::sourceparts="-"
-          sudo apt-get install -y libc6:arm64
+          cd "$RUNNER_TEMP"
+          apt-get download libc6:arm64
+          sudo dpkg -x libc6_*.deb /
 
       # Matrix keys cannot be environment variable NAMES, so the linker reaches cargo through
       # the environment file instead.
