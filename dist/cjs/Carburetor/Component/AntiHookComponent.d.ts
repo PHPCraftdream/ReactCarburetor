@@ -237,6 +237,19 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * inherits `read()`'s existing wildcard fallback but only re-triggers it on a data swap; a
      * store shaped that way should prefer `useCarburetor`, called directly in render.
      *
+     * The facade's object/array kind is decided once, at declaration, from the source's
+     * current root: the source is probed once here — nothing records, no render attempt is
+     * open, and nothing subscribes — an array root declares an array-shaped view
+     * (`Array.isArray` true, `JSON.stringify` serializes it as an array), and anything else
+     * declares an object-shaped one. The kind then never changes — a Proxy target is fixed
+     * at creation — so a source that is not resolvable yet (a scope-backed resolver resolves
+     * only after construction, when React fills context) fixes the object shape, and a later
+     * root whose kind disagrees fails with an explicit boundary error instead of serving a
+     * silently incompatible view. Descriptors are forwarded through the same live view, with
+     * non-configurable ones reported configurable — the only lawful answer over an empty
+     * target — which is safe because every mutation trap, including prototype and extension
+     * changes, is rejected.
+     *
      * @param source - the carburetor to read, or a function resolving it at each attempt's
      * first read so a prop swap re-points the connection at the new store
      */

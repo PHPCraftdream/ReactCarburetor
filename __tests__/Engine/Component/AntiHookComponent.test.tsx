@@ -1,7 +1,17 @@
 import * as React from 'react';
 import {act} from 'react';
 import {fireEvent, render} from '@testing-library/react';
-import {AntiHookComponent, Carburetor, ComponentUpdateThrottle, EResourceStatus, computed} from "@/Carburetor";
+import {
+    AntiHookComponent,
+    Carburetor,
+    CarburetorProvider,
+    CarburetorScope,
+    ComponentUpdateThrottle,
+    EResourceStatus,
+    ScopedAntiHookComponent,
+    carburetorToken,
+    computed
+} from "@/Carburetor";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
 import {TReadonly, TSubscriber} from '@/Carburetor/Models/Base';
@@ -1246,6 +1256,237 @@ describe('<AntiHookComponent />', () => {
             unmount();
 
             expect(store.subscriberCount()).toEqual(0);
+        });
+
+        test('an array-root store reads as an array through the facade', () => {
+            const store = new Carburetor<Array<{id: number}>>([{id: 1}, {id: 2}]);
+
+            class List extends AntiHookComponent {
+                public readonly view = this.connect(() => store);
+
+                render() {
+                    return <ul>{this.view.map(item => <li key={item.id} className="item">{item.id}</li>)}</ul>;
+                }
+            }
+
+            const instance = new List({} as never);
+
+            expect(Array.isArray(instance.view)).toBe(true);
+            expect([...instance.view].length).toEqual(2);
+            expect(Object.keys(instance.view)).toEqual(['0', '1']);
+            expect(JSON.parse(JSON.stringify(instance.view))).toEqual([{id: 1}, {id: 2}]);
+
+            const {container, unmount} = render(<List />);
+
+            expect(container.querySelectorAll('.item').length).toEqual(2);
+
+            act(() => {
+                store.setData([{id: 1}, {id: 2}, {id: 3}]);
+            });
+
+            expect(container.querySelectorAll('.item').length).toEqual(3);
+
+            unmount();
+        });
+
+        test('a frozen root with primitive fields still reads, enumerates and serializes', () => {
+            const store = new Carburetor<{value: number}>(Object.freeze({value: 7}));
+
+            class Frozen extends AntiHookComponent {
+                public readonly view = this.connect(() => store);
+
+                render() {
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            const instance = new Frozen({} as never);
+
+            expect(instance.view.value).toEqual(7);
+            expect(Object.keys(instance.view)).toEqual(['value']);
+            expect(JSON.parse(JSON.stringify(instance.view))).toEqual({value: 7});
+        });
+
+        test('a frozen branch is refused with the engine boundary error', () => {
+            const store = new Carburetor<{nested: {deep: number}}>(
+                Object.freeze({nested: Object.freeze({deep: 1})})
+            );
+
+            class FrozenBranch extends AntiHookComponent {
+                public readonly view = this.connect(() => store);
+
+                render() {
+                    return <div className="value">{this.view.nested.deep}</div>;
+                }
+            }
+
+            const instance = new FrozenBranch({} as never);
+
+            expect(() => instance.view.nested).toThrow('non-configurable');
+        });
+
+        test('mutation attempts are rejected and never poison later reads', () => {
+            const store = new CounterCarburetor(getCounterData());
+
+            class Counter extends AntiHookComponent {
+                public readonly view = this.connect(() => store);
+
+                render() {
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            const {container, unmount} = render(<Counter />);
+            const instance = new Counter({} as never);
+            const view = instance.view as unknown as {value: number; other?: number};
+
+            expect(() => {
+                view.value = 5;
+            }).toThrow('read-only');
+            expect(() => {
+                delete view.other;
+            }).toThrow('read-only');
+            expect(() => {
+                Object.defineProperty(view, 'value', {value: 9, writable: true, enumerable: true, configurable: true});
+            }).toThrow('read-only');
+            expect(() => {
+                Object.setPrototypeOf(view, {injected: () => 1});
+            }).toThrow();
+            expect(() => {
+                Object.preventExtensions(view);
+            }).toThrow();
+            expect(Object.isExtensible(view)).toBe(true);
+            expect(Object.getPrototypeOf(view)).toBe(Object.prototype);
+
+            expect(store.getData()).toEqual({value: 0, other: 0});
+
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+            unmount();
+        });
+
+        test('restore() keeps the view live on the restored data', () => {
+            const store = new CounterCarburetor({value: 5, other: 0});
+            const snapshot = store.snapshot();
+
+            class Counter extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            const {container, unmount} = render(<Counter />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('5');
+
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('6');
+
+            act(() => {
+                store.restore(snapshot);
+            });
+
+            expect(container.querySelector('.value')?.textContent).toEqual('5');
+
+            unmount();
+        });
+
+        test('a scope-backed resolver connects without subscribing during construction', () => {
+            const token = carburetorToken<ObservedCarburetor>(
+                () => new ObservedCarburetor(getCounterData()),
+                'js03/connect/counter'
+            );
+
+            class ScopedCounter extends ScopedAntiHookComponent {
+                private readonly view = this.connect(() => this.resolve(token));
+
+                render() {
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            const scope = new CarburetorScope();
+            const store = scope.get(token);
+
+            // Constructed outside any provider: the resolver cannot resolve yet, the
+            // declaration must swallow that quietly, and nothing may subscribe.
+            const uncommitted = new ScopedCounter({} as never);
+
+            expect(store.subscriberCount()).toEqual(0);
+
+            const {container, unmount} = render(
+                <CarburetorProvider scope={scope}>
+                    <ScopedCounter />
+                </CarburetorProvider>
+            );
+
+            expect(container.querySelector('.value')?.textContent).toEqual('0');
+
+            act(() => {
+                store.incValue();
+            });
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+            expect(store.subscribeReads.length).toEqual(1);
+            expect([...store.subscribeReads[0]]).toEqual(['value']);
+
+            unmount();
+
+            expect(store.subscriberCount()).toEqual(0);
+            expect(uncommitted).toBeDefined();
+        });
+
+        test('an array root behind a scope-backed resolver fails loudly, not with a wrong view', () => {
+            const token = carburetorToken<Carburetor<Array<{id: number}>>>(
+                () => new Carburetor<Array<{id: number}>>([{id: 1}]),
+                'js03/connect/array'
+            );
+
+            class ScopedList extends ScopedAntiHookComponent {
+                private readonly view = this.connect(() => this.resolve(token));
+
+                render() {
+                    return <div className="value">{this.view[0].id}</div>;
+                }
+            }
+
+            const scope = new CarburetorScope();
+
+            expect(() => {
+                render(
+                    <CarburetorProvider scope={scope}>
+                        <ScopedList />
+                    </CarburetorProvider>
+                );
+            }).toThrow('array');
+        });
+
+        test('a source() swap that changes the root kind fails loudly instead of serving a mixed view', () => {
+            const arrayStore = new Carburetor<Array<{id: number}>>([{id: 1}]);
+            const objectStore = new Carburetor<{value: number}>({value: 0});
+
+            class Swapper extends AntiHookComponent<{useArray: boolean}> {
+                private readonly view = this.connect(() => (this.props.useArray ? arrayStore : objectStore));
+
+                render() {
+                    const values = this.view as ReadonlyArray<{id: number}>;
+
+                    return <div className="value">{values.length}</div>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Swapper useArray={true} />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+            expect(() => rerender(<Swapper useArray={false} />)).toThrow('kind');
+
+            unmount();
         });
     });
 

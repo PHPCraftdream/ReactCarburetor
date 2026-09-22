@@ -334,6 +334,19 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * inherits `read()`'s existing wildcard fallback but only re-triggers it on a data swap; a
      * store shaped that way should prefer `useCarburetor`, called directly in render.
      *
+     * The facade's object/array kind is decided once, at declaration, from the source's
+     * current root: the source is probed once here — nothing records, no render attempt is
+     * open, and nothing subscribes — an array root declares an array-shaped view
+     * (`Array.isArray` true, `JSON.stringify` serializes it as an array), and anything else
+     * declares an object-shaped one. The kind then never changes — a Proxy target is fixed
+     * at creation — so a source that is not resolvable yet (a scope-backed resolver resolves
+     * only after construction, when React fills context) fixes the object shape, and a later
+     * root whose kind disagrees fails with an explicit boundary error instead of serving a
+     * silently incompatible view. Descriptors are forwarded through the same live view, with
+     * non-configurable ones reported configurable — the only lawful answer over an empty
+     * target — which is safe because every mutation trap, including prototype and extension
+     * changes, is rejected.
+     *
      * @param source - the carburetor to read, or a function resolving it at each attempt's
      * first read so a prop swap re-points the connection at the new store
      */
@@ -376,6 +389,46 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         let cachedTarget: T | undefined;
         let cachedView: TReadonly<T> | undefined;
 
+        // Root-shape contract: the facade's object/array kind is fixed once, here, from the
+        // source's current root — an array root declares an array-shaped facade (`[]` target:
+        // `Array.isArray` true, `JSON.stringify` emits an array), anything else an
+        // object-shaped one. A Proxy target cannot change after creation, so the kind cannot
+        // either: a source that is not resolvable yet (a scope-backed resolver resolves only
+        // after construction, once React fills context) declares an object-shaped facade, and
+        // a later root of the other kind fails loudly in resolveView instead of serving a
+        // silently wrong view.
+        let arrayFacade = false;
+
+        try {
+            // A shape probe, not a read: no render attempt is open, so nothing records, and
+            // nothing here subscribes — the declaration stays subscription-free until commit.
+            arrayFacade = Array.isArray(getCarburetor().getData());
+        } catch {
+            // The source is not resolvable yet; the real resolution error, if any, surfaces
+            // unguarded at the first real read below.
+        }
+
+        // A new underlying data object must keep the declared kind: same kind — the rebuild is
+        // transparent (setData, restore, a source() swap); the other kind — an explicit
+        // boundary error, because forwarding it would serve a view that answers basic
+        // JavaScript questions (`Array.isArray`, key enumeration) wrongly.
+        const assertDeclaredKind = (data: T): void => {
+            if (Array.isArray(data) === arrayFacade) {
+                return;
+            }
+
+            throw new Error(
+                arrayFacade
+                    ? 'Carburetor: this connect() view was declared for an array root, but its source now ' +
+                      'resolves to a root that is not an array. One persistent view cannot change its ' +
+                      'object/array kind; declare a separate connection for the other store.'
+                    : 'Carburetor: this connect() view is fixed as an object view because its source was not ' +
+                      'resolvable at declaration time (a scope-backed resolver resolves after construction), ' +
+                      'but the resolved root is an array. Read an array-rooted scoped store through ' +
+                      'useCarburetor in render instead.'
+            );
+        };
+
         // Rebuilds only when the wrapped data object itself changed — a normal field write
         // mutates that object in place, so this stays untouched render after render; only
         // setData()/restore() (a whole new object) or a source() swap to a different carburetor
@@ -385,6 +438,7 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             const data = carburetor.getData();
 
             if (cachedTarget !== data) {
+                assertDeclaredKind(data);
                 cachedTarget = data;
                 cachedView = carburetor.read(recorder);
             }
@@ -399,15 +453,49 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             );
         };
 
-        // An empty object stands in for the real target: every trap below resolves and forwards
-        // to the current view instead, which is what lets the same Proxy instance survive a
-        // rebuild underneath it.
-        return new Proxy({} as TReadonly<T>, {
+        // An empty object/array stands in for the real target: every trap below resolves and
+        // forwards to the current view instead, which is what lets the same Proxy instance
+        // survive a rebuild underneath it. Which of the two it is fixes the facade's kind.
+        return new Proxy((arrayFacade ? [] : {}) as unknown as TReadonly<T>, {
             get: (_target: TReadonly<T>, key: string | symbol): unknown => Reflect.get(resolveView() as object, key),
             has: (_target: TReadonly<T>, key: string | symbol): boolean => Reflect.has(resolveView() as object, key),
             ownKeys: (_target: TReadonly<T>): ArrayLike<string | symbol> => Reflect.ownKeys(resolveView() as object),
-            getOwnPropertyDescriptor: (_target: TReadonly<T>, key: string | symbol): PropertyDescriptor | undefined =>
-                Reflect.getOwnPropertyDescriptor(resolveView() as object, key),
+            getOwnPropertyDescriptor: (_target: TReadonly<T>, key: string | symbol): PropertyDescriptor | undefined => {
+                const descriptor: PropertyDescriptor | undefined =
+                    Reflect.getOwnPropertyDescriptor(resolveView() as object, key);
+
+                if (descriptor === undefined || descriptor.configurable) {
+                    return descriptor;
+                }
+
+                // A non-configurable view descriptor can often not be reported as-is: over the
+                // empty facade target the engine answers with a bare proxy-invariant TypeError
+                // and no explanation — the enumeration/serialization failure this facade
+                // existed to fix. The one lawful representation there is the descriptor
+                // relaxed to configurable, which grants nothing: set, deleteProperty,
+                // defineProperty, setPrototypeOf and preventExtensions are all rejected below,
+                // so the relaxed flag can never be acted on. A key the target itself holds as
+                // a non-configurable own property (an array target's "length") must instead
+                // be forwarded unchanged: relaxing it would contradict the target's existing
+                // property, which the engine rejects, while forwarding stays compatible
+                // because the target's own "length" remains writable.
+                const targetDescriptor: PropertyDescriptor | undefined =
+                    Reflect.getOwnPropertyDescriptor(_target as object, key);
+
+                if (targetDescriptor !== undefined && !targetDescriptor.configurable) {
+                    return descriptor;
+                }
+
+                return {...descriptor, configurable: true};
+            },
+            // Introspection stays truthful about the live data; the target stays extensible,
+            // which is what keeps every forwarding trap lawful.
+            getPrototypeOf: (_target: TReadonly<T>): object | null => Reflect.getPrototypeOf(resolveView() as object),
+            // A prototype change or an extension change would invalidate the facade's
+            // forwarding invariants (a non-extensible target must mirror the view's keys), so
+            // both are rejected the same way as writes.
+            setPrototypeOf: forbidWrite,
+            preventExtensions: forbidWrite,
             set: forbidWrite,
             deleteProperty: forbidWrite,
             defineProperty: forbidWrite,
