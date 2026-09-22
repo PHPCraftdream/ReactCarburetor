@@ -34,6 +34,7 @@ const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const UpdateWaveInstance_js_namespaceObject = require("../Store/Scheduling/UpdateWaveInstance.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../Store/Diagnostics/DiagnosticsInstance.js");
+const invalidationEdges = new WeakMap();
 class Computed {
     body;
     uid = (0, getUid_js_namespaceObject.getUid)();
@@ -46,6 +47,7 @@ class Computed {
     valid = false;
     constructor(body){
         this.body = body;
+        invalidationEdges.set(this.onDependencyChanged, this.markStale);
     }
     getUID = ()=>this.uid;
     getVersion = ()=>this.version;
@@ -59,6 +61,9 @@ class Computed {
         this.subscribers[id] = callback;
         if (!this.valid || wasUnobserved && this.hasDrifted()) this.recompute();
         else if (wasUnobserved) this.observeDependencies();
+        if (wasUnobserved && this.valid) this.announced = {
+            value: this.value
+        };
         return id;
     };
     unsubscribe = (id)=>{
@@ -167,9 +172,18 @@ class Computed {
         this.dependencies = {};
     };
     onDependencyChanged = ()=>{
-        this.valid = false;
+        this.markStale();
         if (UpdateWaveInstance_js_namespaceObject.updateWave.isActive()) return void UpdateWaveInstance_js_namespaceObject.updateWave.defer(this.uid, this.settle);
         this.settle();
+    };
+    markStale = ()=>{
+        this.valid = false;
+        Object.keys(this.subscribers).forEach((id)=>{
+            const callback = this.subscribers[id];
+            if (!callback) return;
+            const mark = invalidationEdges.get(callback);
+            if (mark) mark();
+        });
     };
     settle = ()=>{
         const previous = this.value;

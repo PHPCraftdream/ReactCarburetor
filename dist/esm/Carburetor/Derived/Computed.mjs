@@ -2,6 +2,7 @@ import { getUid } from "../Store/Utils/getUid.mjs";
 import { updateWave } from "../Store/Scheduling/UpdateWaveInstance.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 import { diagnostics } from "../Store/Diagnostics/DiagnosticsInstance.mjs";
+const invalidationEdges = new WeakMap();
 class Computed {
     body;
     uid = getUid();
@@ -14,6 +15,7 @@ class Computed {
     valid = false;
     constructor(body){
         this.body = body;
+        invalidationEdges.set(this.onDependencyChanged, this.markStale);
     }
     getUID = ()=>this.uid;
     getVersion = ()=>this.version;
@@ -27,6 +29,9 @@ class Computed {
         this.subscribers[id] = callback;
         if (!this.valid || wasUnobserved && this.hasDrifted()) this.recompute();
         else if (wasUnobserved) this.observeDependencies();
+        if (wasUnobserved && this.valid) this.announced = {
+            value: this.value
+        };
         return id;
     };
     unsubscribe = (id)=>{
@@ -135,9 +140,18 @@ class Computed {
         this.dependencies = {};
     };
     onDependencyChanged = ()=>{
-        this.valid = false;
+        this.markStale();
         if (updateWave.isActive()) return void updateWave.defer(this.uid, this.settle);
         this.settle();
+    };
+    markStale = ()=>{
+        this.valid = false;
+        Object.keys(this.subscribers).forEach((id)=>{
+            const callback = this.subscribers[id];
+            if (!callback) return;
+            const mark = invalidationEdges.get(callback);
+            if (mark) mark();
+        });
     };
     settle = ()=>{
         const previous = this.value;

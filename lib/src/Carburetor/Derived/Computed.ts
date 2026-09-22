@@ -10,6 +10,13 @@ import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
+/**
+ * Maps a live computed's invalidation callback to the call that marks that computed's
+ * cached value stale. Invalidation travels downstream along these edges — and only
+ * these: a plain value observer is woken by a delivered change, never by a mark.
+ */
+const invalidationEdges: WeakMap<TSubscriber, () => void> = new WeakMap<TSubscriber, () => void>();
+
 interface IDependency {
     source: ICarburetorSubscription;
     reads: TPathSet;
@@ -45,7 +52,14 @@ export class Computed<R> implements IComputed<R> {
     /** The stores the current value was computed from, including those behind inner computeds. */
     protected versions: IDict<IDependencyVersion> = {};
 
-    /** The value the last notification carried; undefined until the first one. */
+    /**
+     * The value an observer last had delivered: the baseline a settlement is judged
+     * against, kept independently of the evaluation cache.
+     *
+     * It is set when the first subscriber arrives — the moment somebody starts actually
+     * looking at the value — so a read that refreshes the cache mid-wave can never move
+     * the baseline. Undefined while nobody has been told anything.
+     */
     protected announced: IAnnouncement<R> | undefined = undefined;
 
     /** The cached body result, undefined until the first compute. */
@@ -55,6 +69,10 @@ export class Computed<R> implements IComputed<R> {
 
     /** Takes the body whose reads become this value's dependencies. */
     constructor(protected body: TComputeBody<R>) {
+        // Files this computed's invalidation callback so computations upstream of it can
+        // reach it when they are invalidated — including when their settlement fails and
+        // nothing is announced.
+        invalidationEdges.set(this.onDependencyChanged, this.markStale);
     }
 
     /** The identity a component or another computed subscribes by. */
@@ -99,6 +117,14 @@ export class Computed<R> implements IComputed<R> {
             this.recompute();
         } else if (wasUnobserved) {
             this.observeDependencies();
+        }
+
+        // First observation is the moment the value becomes a publication: whoever just
+        // subscribed is looking at exactly this value, so it is the baseline the first
+        // settlement is judged against. A body that just threw leaves the baseline alone —
+        // there is nothing successful to be told about yet.
+        if (wasUnobserved && this.valid) {
+            this.announced = {value: this.value as R};
         }
 
         return id;
@@ -320,7 +346,10 @@ export class Computed<R> implements IComputed<R> {
 
     /** Invalidates on a dependency write, and settles once the wave around it has passed. */
     protected onDependencyChanged = (): void => {
-        this.valid = false;
+        // Invalidation travels before any settlement runs: everything downstream is marked
+        // stale now, so a settlement that pulls a dependent's cached value recomputes it
+        // from current inputs instead of combining a new input with a stale derived one.
+        this.markStale();
 
         // One write reaches this computed's dependencies one after another inside the same
         // pass. Settling for each notification would announce values built from inputs that
@@ -337,6 +366,34 @@ export class Computed<R> implements IComputed<R> {
     };
 
     /**
+     * Marks this cached value untrustworthy and passes the mark downstream.
+     *
+     * The mark stops at value observers on purpose: they are woken when a changed value
+     * is delivered, and a mark must not wake them into reading a computation that is
+     * still mid-flight. Computed subscribers, however, must learn about the invalidation
+     * even when no settlement of theirs follows — when the settlement upstream fails, no
+     * announcement ever comes, and an unmarked dependent would keep serving its cached
+     * value as if it were still current.
+     */
+    protected markStale = (): void => {
+        this.valid = false;
+
+        Object.keys(this.subscribers).forEach((id: string) => {
+            const callback = this.subscribers[id];
+
+            if (!callback) {
+                return;
+            }
+
+            const mark = invalidationEdges.get(callback);
+
+            if (mark) {
+                mark();
+            }
+        });
+    };
+
+    /**
      * Recomputes and wakes subscribers if the value moved past what was last announced.
      *
      * A body that throws changes nothing here: the value, `valid` and `announced` stand
@@ -350,8 +407,11 @@ export class Computed<R> implements IComputed<R> {
 
         this.recompute();
 
-        // A read that landed mid-wave can have recomputed the value already, so a value that
-        // was once announced is judged against the announcement rather than `previous`.
+        // The judgment is against the publication baseline, not `previous`: a read that
+        // landed mid-wave can have refreshed the cache without the observer ever seeing
+        // the intermediate value, so what was last ANNOUNCED is what a change is measured
+        // from. `announced` is undefined only when observation never produced a
+        // successful value, and then the last cached value is all there is to compare with.
         const baseline = this.announced !== undefined ? this.announced.value : previous;
 
         if (Object.is(baseline, this.value)) {

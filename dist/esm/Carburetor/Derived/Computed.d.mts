@@ -33,7 +33,14 @@ export declare class Computed<R> implements IComputed<R> {
     protected dependencies: IDict<IDependency>;
     /** The stores the current value was computed from, including those behind inner computeds. */
     protected versions: IDict<IDependencyVersion>;
-    /** The value the last notification carried; undefined until the first one. */
+    /**
+     * The value an observer last had delivered: the baseline a settlement is judged
+     * against, kept independently of the evaluation cache.
+     *
+     * It is set when the first subscriber arrives — the moment somebody starts actually
+     * looking at the value — so a read that refreshes the cache mid-wave can never move
+     * the baseline. Undefined while nobody has been told anything.
+     */
     protected announced: IAnnouncement<R> | undefined;
     /** The cached body result, undefined until the first compute. */
     protected value: R | undefined;
@@ -107,6 +114,17 @@ export declare class Computed<R> implements IComputed<R> {
     protected releaseDependencies: () => void;
     /** Invalidates on a dependency write, and settles once the wave around it has passed. */
     protected onDependencyChanged: () => void;
+    /**
+     * Marks this cached value untrustworthy and passes the mark downstream.
+     *
+     * The mark stops at value observers on purpose: they are woken when a changed value
+     * is delivered, and a mark must not wake them into reading a computation that is
+     * still mid-flight. Computed subscribers, however, must learn about the invalidation
+     * even when no settlement of theirs follows — when the settlement upstream fails, no
+     * announcement ever comes, and an unmarked dependent would keep serving its cached
+     * value as if it were still current.
+     */
+    protected markStale: () => void;
     /**
      * Recomputes and wakes subscribers if the value moved past what was last announced.
      *
