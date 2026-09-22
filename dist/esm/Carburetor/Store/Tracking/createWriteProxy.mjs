@@ -29,7 +29,7 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
         set: (source, key, value)=>{
             const previous = Reflect.get(source, key);
             const raw = unwrapWriteProxy(value);
-            if (previous === raw) return true;
+            if (Object.prototype.hasOwnProperty.call(source, key) && Object.is(previous, raw)) return true;
             aliases?.checkWrite(source, basePath);
             aliases?.forget(previous);
             const path = writtenPath(key);

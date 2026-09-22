@@ -97,8 +97,12 @@ export const createWriteProxy = <T extends object>(
             const previous: unknown = Reflect.get(source, key);
             const raw: unknown = unwrapWriteProxy(value);
 
-            // Writing the same value changes nothing and must wake nobody.
-            if (previous === raw) {
+            // A genuine no-op is an own key already holding the assigned value. The
+            // comparison is SameValue (Object.is), not ===: +0 and -0 are distinct values,
+            // and NaN matches itself. An absent key is never a no-op either — assigning
+            // even `undefined` must create the own property, or `in`, enumeration and
+            // hasOwn would never see the write.
+            if (Object.prototype.hasOwnProperty.call(source, key) && Object.is(previous, raw)) {
                 return true;
             }
 
