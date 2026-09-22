@@ -45,7 +45,11 @@ jobs:
         run: |
           free -h
           cat /proc/sys/vm/overcommit_memory
-          ulimit -a
+          grep -E "Committed_AS|CommitLimit|VmallocTotal" /proc/meminfo
+          cat /proc/sys/vm/max_map_count
+
+      - name: Allow full memory overcommit
+        run: sudo sysctl -w vm.overcommit_memory=1
 
       - name: Lint
         run: npx oxlint --type-aware --format=stylish --debug=timings
