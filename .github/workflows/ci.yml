@@ -41,6 +41,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # --type-aware lint loads a full TS program plus tsgolint's Go runtime, which reserves a lot
+      # of virtual address space; the kernel's default heuristic overcommit check then refuses the
+      # fork() for the small native-lint child even with plenty of RAM actually free.
+      - name: Allow full memory overcommit
+        run: sudo sysctl -w vm.overcommit_memory=1
+
       - name: Lint
         run: npm run lint
 
@@ -68,7 +74,7 @@ jobs:
 
       - name: Install
         working-directory: lib
-        run: npm install
+        run: npm ci
 
       - name: Build
         working-directory: lib
@@ -145,10 +151,28 @@ jobs:
       - uses: actions/checkout@v4
 
       # The cross legs need a linker that speaks the target's ABI; qemu-user-static doubles as
-      # the way to execute the arm64 artefact, since installing it registers binfmt.
+      # the way to execute the arm64 artefact, since installing it registers binfmt. Running an
+      # aarch64 binary under qemu-user still needs an aarch64 dynamic linker on disk, which is why
+      # the arm64 leg also pulls in the multiarch runtime libs.
       - name: Install the cross toolchain
         if: matrix.apt
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
+
+      # qemu-user only needs the arm64 ld.so and libc on disk to execute a foreign binary; a real
+      # `apt-get install libc6:arm64` drags in dpkg's cross-arch version-parity `Breaks:` rules and
+      # apt tries to reconcile the whole base system against them. Downloading the .deb and
+      # unpacking it with dpkg -x sidesteps the dependency resolver entirely.
+      - name: Install the aarch64 runtime libraries
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo dpkg --add-architecture arm64
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main" \
+            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
+          sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/arm64-ports.list" -o Dir::Etc::sourceparts="-"
+          cd "$RUNNER_TEMP"
+          apt-get download libc6:arm64 libgcc-s1:arm64
+          sudo dpkg -x libc6_*.deb /
+          sudo dpkg -x libgcc-s1_*.deb /
 
       # Matrix keys cannot be environment variable NAMES, so the linker reaches cargo through
       # the environment file instead.
@@ -199,7 +223,9 @@ jobs:
           cp "native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}" "npm/${{ matrix.package }}/"
           cd "npm/${{ matrix.package }}"
           npm pack
-          tar -tf *.tgz | grep -q "package/carburetor-lint"
+          # No -q: it exits the moment it finds a match, leaving tar to write into a closed pipe
+          # and fail with SIGPIPE under `set -e -o pipefail`, even when the check itself passes.
+          tar -tf *.tgz | grep "package/carburetor-lint" >/dev/null
 
       - uses: actions/upload-artifact@v4
         with:
