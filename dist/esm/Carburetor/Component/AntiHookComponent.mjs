@@ -119,12 +119,22 @@ class AntiHookComponent extends __rspack_external_react.Component {
             installed: void 0
         };
         this.connections.push(connection);
+        const resolveAttemptSource = ()=>{
+            const attempt = this.renderAttempt;
+            if (!attempt) return getCarburetor();
+            const key = CONNECTION_ATTEMPT_KEY + connection.uid;
+            const resolved = attempt.sources.get(key);
+            if (void 0 !== resolved) return resolved;
+            const carburetor = getCarburetor();
+            attempt.sources.set(key, carburetor);
+            return carburetor;
+        };
         const recorder = (path)=>{
             const attempt = this.renderAttempt;
             if (!attempt) return;
             let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
             if (!entry) {
-                const carburetor = getCarburetor();
+                const carburetor = resolveAttemptSource();
                 entry = {
                     connection,
                     source: carburetor,
@@ -135,9 +145,9 @@ class AntiHookComponent extends __rspack_external_react.Component {
             }
             entry.reads.add(path);
         };
-        return this.buildPersistentView(getCarburetor, recorder);
+        return this.buildPersistentView(getCarburetor, recorder, resolveAttemptSource);
     };
-    buildPersistentView = (getCarburetor, recorder)=>{
+    buildPersistentView = (getCarburetor, recorder, resolveAttemptSource)=>{
         let cachedTarget;
         let cachedView;
         let arrayFacade = false;
@@ -149,7 +159,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
             throw new Error(arrayFacade ? "Carburetor: this connect() view was declared for an array root, but its source now resolves to a root that is not an array. One persistent view cannot change its object/array kind; declare a separate connection for the other store." : "Carburetor: this connect() view is fixed as an object view because its source was not resolvable at declaration time (a scope-backed resolver resolves after construction), but the resolved root is an array. Read an array-rooted scoped store through useCarburetor in render instead.");
         };
         const resolveView = ()=>{
-            const carburetor = getCarburetor();
+            const carburetor = resolveAttemptSource();
             const data = carburetor.getData();
             if (cachedTarget !== data) {
                 assertDeclaredKind(data);
@@ -194,12 +204,22 @@ class AntiHookComponent extends __rspack_external_react.Component {
             installed: void 0
         };
         this.connections.push(connection);
+        const resolveAttemptSource = ()=>{
+            const attempt = this.renderAttempt;
+            if (!attempt) return getCarburetor();
+            const key = CONNECTION_ATTEMPT_KEY + connection.uid;
+            const resolved = attempt.sources.get(key);
+            if (void 0 !== resolved) return resolved;
+            const carburetor = getCarburetor();
+            attempt.sources.set(key, carburetor);
+            return carburetor;
+        };
         const recorder = (path)=>{
             const attempt = this.renderAttempt;
             if (!attempt) return;
             let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
             if (!entry) {
-                const carburetor = getCarburetor();
+                const carburetor = resolveAttemptSource();
                 entry = {
                     connection,
                     source: carburetor,
@@ -210,7 +230,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
             }
             entry.reads.add(path);
         };
-        const view = this.buildPersistentView(getCarburetor, recorder);
+        const view = this.buildPersistentView(getCarburetor, recorder, resolveAttemptSource);
         let snapshot;
         let escapeReported = false;
         return ()=>{
@@ -261,6 +281,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
     openRenderAttempt() {
         const attempt = {
             entries: new Map(),
+            sources: new Map(),
             abandoned: false
         };
         this.renderAttempt = attempt;
@@ -278,7 +299,8 @@ class AntiHookComponent extends __rspack_external_react.Component {
             baselineVersion: source.getVersion(),
             reads: new Set()
         };
-        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + source.getUID());
+        const cuid = source.getUID();
+        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + cuid);
         if (!entry) {
             entry = {
                 connection: void 0,
@@ -286,7 +308,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
                 baselineVersion: source.getVersion(),
                 reads: new Set()
             };
-            attempt.entries.set(TRACKED_ATTEMPT_KEY + source.getUID(), entry);
+            attempt.entries.set(TRACKED_ATTEMPT_KEY + cuid, entry);
         }
         return entry;
     }

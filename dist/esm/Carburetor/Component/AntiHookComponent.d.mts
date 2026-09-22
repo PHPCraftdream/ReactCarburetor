@@ -74,7 +74,10 @@ interface ITrackedCarburetor extends IDependencySlot {
 interface IConnection extends IDependencySlot {
     /** This connection's own id — stable across whatever carburetor it points at right now. */
     uid: string;
-    /** Resolves the carburetor to read; called at an attempt's first read, so a prop swap is noticed. */
+    /**
+     * Resolves the carburetor to read; an attempt's first read resolves it once for the whole
+     * attempt, so a prop swap is noticed by the next render, not re-probed per field.
+     */
     getCarburetor: () => ICarburetorSubscription;
 }
 /**
@@ -107,6 +110,13 @@ interface IAttemptEntry {
 interface IRenderAttempt {
     /** Collected entries, keyed by `CONNECTION_ATTEMPT_KEY`/`TRACKED_ATTEMPT_KEY` + source uid. */
     entries: Map<string, IAttemptEntry>;
+    /**
+     * Sources already resolved during this attempt, keyed like `entries`. The per-attempt memo
+     * behind a connection's resolution: view resolution and the recorder's baseline capture
+     * share it, so reading several fields resolves the source once per attempt instead of once
+     * per field. It dies with the attempt, so no source selection survives into a later render.
+     */
+    sources: Map<string, ICarburetorSubscription>;
     /** True when the render threw — an error or a Suspense thenable; a commit will not consume it. */
     abandoned: boolean;
 }
@@ -265,6 +275,9 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * @param getCarburetor - resolves the carburetor to read; called at an attempt's first read
      * (and once here, probing the root's shape), so a prop swap is noticed
      * @param recorder - where each read path is reported while a render attempt is open
+     * @param resolveAttemptSource - resolves the source through the attempt's once-per-attempt
+     * memo, so view resolution and the recorder's baseline capture share one resolution; an
+     * uncached resolution outside any attempt
      */
     private buildPersistentView;
     /**

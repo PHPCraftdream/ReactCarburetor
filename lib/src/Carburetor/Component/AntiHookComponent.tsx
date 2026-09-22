@@ -85,7 +85,10 @@ interface ITrackedCarburetor extends IDependencySlot {}
 interface IConnection extends IDependencySlot {
     /** This connection's own id — stable across whatever carburetor it points at right now. */
     uid: string;
-    /** Resolves the carburetor to read; called at an attempt's first read, so a prop swap is noticed. */
+    /**
+     * Resolves the carburetor to read; an attempt's first read resolves it once for the whole
+     * attempt, so a prop swap is noticed by the next render, not re-probed per field.
+     */
     getCarburetor: () => ICarburetorSubscription;
 }
 
@@ -120,6 +123,13 @@ interface IAttemptEntry {
 interface IRenderAttempt {
     /** Collected entries, keyed by `CONNECTION_ATTEMPT_KEY`/`TRACKED_ATTEMPT_KEY` + source uid. */
     entries: Map<string, IAttemptEntry>;
+    /**
+     * Sources already resolved during this attempt, keyed like `entries`. The per-attempt memo
+     * behind a connection's resolution: view resolution and the recorder's baseline capture
+     * share it, so reading several fields resolves the source once per attempt instead of once
+     * per field. It dies with the attempt, so no source selection survives into a later render.
+     */
+    sources: Map<string, ICarburetorSubscription>;
     /** True when the render threw — an error or a Suspense thenable; a commit will not consume it. */
     abandoned: boolean;
 }
@@ -504,6 +514,37 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
 
         this.connections.push(connection);
 
+        // The connection's source, resolved at most once per render attempt: the attempt's
+        // first read resolves it into the attempt's collection, and every later read of the
+        // same attempt — the recorder's baseline capture included — reuses that instance. The
+        // memo lives and dies with the attempt, so no source selection is carried across
+        // renders, and outside an attempt (an event read, the declaration-time shape probe)
+        // nothing is cached: the resolver runs again, so a handler read still sees current
+        // data. The underlying root is not part of this memo: view resolution re-reads
+        // getData() on every access, so a setData() root replacement stays visible.
+        const resolveAttemptSource = (): ICarburetor<T> => {
+            const attempt = this.renderAttempt;
+
+            if (!attempt) {
+                return getCarburetor();
+            }
+
+            const key = CONNECTION_ATTEMPT_KEY + connection.uid;
+            // The key is this connection's alone and only this closure writes it, so the value
+            // it names is always the ICarburetor<T> this declaration resolved.
+            const resolved = attempt.sources.get(key) as ICarburetor<T> | undefined;
+
+            if (resolved !== undefined) {
+                return resolved;
+            }
+
+            const carburetor = getCarburetor();
+
+            attempt.sources.set(key, carburetor);
+
+            return carburetor;
+        };
+
         const recorder: TPathRecorder = (path: TPath): void => {
             const attempt = this.renderAttempt;
 
@@ -519,7 +560,9 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
                 // The source and its baseline version are captured once, at the beginning of
                 // this attempt's consumption — not refreshed after every property access — so
                 // a write landing mid-render or mid-commit stays detectable at commit time.
-                const carburetor = getCarburetor();
+                // The source is not resolved again here: this read is arriving through the
+                // view, whose resolution already fixed this attempt's source.
+                const carburetor = resolveAttemptSource();
 
                 entry = {
                     connection,
@@ -533,7 +576,7 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             entry.reads.add(path);
         };
 
-        return this.buildPersistentView(getCarburetor, recorder);
+        return this.buildPersistentView(getCarburetor, recorder, resolveAttemptSource);
     };
 
     /**
@@ -547,10 +590,14 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * @param getCarburetor - resolves the carburetor to read; called at an attempt's first read
      * (and once here, probing the root's shape), so a prop swap is noticed
      * @param recorder - where each read path is reported while a render attempt is open
+     * @param resolveAttemptSource - resolves the source through the attempt's once-per-attempt
+     * memo, so view resolution and the recorder's baseline capture share one resolution; an
+     * uncached resolution outside any attempt
      */
     private buildPersistentView = <T extends object>(
         getCarburetor: () => ICarburetor<T>,
-        recorder: TPathRecorder
+        recorder: TPathRecorder,
+        resolveAttemptSource: () => ICarburetor<T>
     ): TReadonly<T> => {
         let cachedTarget: T | undefined;
         let cachedView: TReadonly<T> | undefined;
@@ -600,7 +647,10 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         // setData()/restore() (a whole new object) or a source() swap to a different carburetor
         // (whose data is necessarily a different object) trigger a rebuild.
         const resolveView = (): TReadonly<T> => {
-            const carburetor = getCarburetor();
+            // The attempt's shared resolution, not a fresh one per property access: reading
+            // several fields in one render resolves the source once. The root itself is still
+            // re-read per access — a setData() replacement must rebuild the view immediately.
+            const carburetor = resolveAttemptSource();
             const data = carburetor.getData();
 
             if (cachedTarget !== data) {
@@ -723,6 +773,37 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
 
         this.connections.push(connection);
 
+        // The connection's source, resolved at most once per render attempt: the attempt's
+        // first read resolves it into the attempt's collection, and every later read of the
+        // same attempt — the recorder's baseline capture included — reuses that instance. The
+        // memo lives and dies with the attempt, so no source selection is carried across
+        // renders, and outside an attempt (an event read, the declaration-time shape probe)
+        // nothing is cached: the resolver runs again, so a handler read still sees current
+        // data. The underlying root is not part of this memo: view resolution re-reads
+        // getData() on every access, so a setData() root replacement stays visible.
+        const resolveAttemptSource = (): ICarburetor<T> => {
+            const attempt = this.renderAttempt;
+
+            if (!attempt) {
+                return getCarburetor();
+            }
+
+            const key = CONNECTION_ATTEMPT_KEY + connection.uid;
+            // The key is this connection's alone and only this closure writes it, so the value
+            // it names is always the ICarburetor<T> this declaration resolved.
+            const resolved = attempt.sources.get(key) as ICarburetor<T> | undefined;
+
+            if (resolved !== undefined) {
+                return resolved;
+            }
+
+            const carburetor = getCarburetor();
+
+            attempt.sources.set(key, carburetor);
+
+            return carburetor;
+        };
+
         const recorder: TPathRecorder = (path: TPath): void => {
             const attempt = this.renderAttempt;
 
@@ -738,7 +819,9 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
                 // The source and its baseline version are captured once, at the beginning of
                 // this attempt's consumption — not refreshed after every property access — so
                 // a write landing mid-render or mid-commit stays detectable at commit time.
-                const carburetor = getCarburetor();
+                // The source is not resolved again here: this read is arriving through the
+                // view, whose resolution already fixed this attempt's source.
+                const carburetor = resolveAttemptSource();
 
                 entry = {
                     connection,
@@ -752,7 +835,7 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             entry.reads.add(path);
         };
 
-        const view = this.buildPersistentView(getCarburetor, recorder);
+        const view = this.buildPersistentView(getCarburetor, recorder, resolveAttemptSource);
 
         let snapshot: {value: R} | undefined = undefined;
         let escapeReported = false;
@@ -874,7 +957,11 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * reachable — so an abandoned collection can never bleed into a new attempt.
      */
     private openRenderAttempt(): IRenderAttempt {
-        const attempt: IRenderAttempt = {entries: new Map<string, IAttemptEntry>(), abandoned: false};
+        const attempt: IRenderAttempt = {
+            entries: new Map<string, IAttemptEntry>(),
+            sources: new Map<string, ICarburetorSubscription>(),
+            abandoned: false,
+        };
 
         this.renderAttempt = attempt;
 
@@ -911,11 +998,12 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             return {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
         }
 
-        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + source.getUID());
+        const cuid = source.getUID();
+        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + cuid);
 
         if (!entry) {
             entry = {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
-            attempt.entries.set(TRACKED_ATTEMPT_KEY + source.getUID(), entry);
+            attempt.entries.set(TRACKED_ATTEMPT_KEY + cuid, entry);
         }
 
         return entry;
