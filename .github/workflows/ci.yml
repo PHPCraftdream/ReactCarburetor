@@ -42,7 +42,7 @@ jobs:
         run: npm run typecheck
 
       - name: Lint
-        run: npm run lint
+        run: npx oxlint --type-aware --format=stylish --debug=timings
 
       - name: Check layout rules
         run: npm run check:layout
