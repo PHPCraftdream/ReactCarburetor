@@ -67,7 +67,7 @@ const reportLiveViewEscape = (next)=>{
 };
 const CONNECTION_ATTEMPT_KEY = 'c:';
 const TRACKED_ATTEMPT_KEY = 't:';
-const renderBoundaries = new WeakSet();
+const RENDER_KEY = 'render';
 class AntiHookComponent extends __rspack_external_react.Component {
     uid = getUid();
     effects = {};
@@ -79,10 +79,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
     staleResources = [];
     constructor(props){
         super(props);
-        this.wrapRender();
-    }
-    UNSAFE_componentWillMount() {
-        this.wrapRender();
+        return this.withRenderBoundary();
     }
     shouldComponentUpdate(nextProps, nextState) {
         return !shallowEqual(this.props, nextProps) || !shallowEqual(this.state, nextState);
@@ -261,10 +258,49 @@ class AntiHookComponent extends __rspack_external_react.Component {
         this.staleResources = [];
         queued.forEach((load)=>load());
     }
-    wrapRender() {
-        const realRender = this.render;
-        if ('function' != typeof realRender || renderBoundaries.has(realRender)) return;
-        const boundary = ()=>{
+    withRenderBoundary() {
+        let rawRender;
+        let boundary;
+        let wrapped = false;
+        const proxy = new Proxy(this, {
+            get: (target, key)=>{
+                if (key !== RENDER_KEY) return Reflect.get(target, key, target);
+                const raw = wrapped ? rawRender : Reflect.get(target, RENDER_KEY, target);
+                if ('function' != typeof raw) return raw;
+                if (void 0 === boundary || rawRender !== raw) {
+                    rawRender = raw;
+                    boundary = this.buildRenderBoundary(raw);
+                }
+                return boundary;
+            },
+            set: (target, key, value)=>{
+                if (key !== RENDER_KEY) return Reflect.set(target, key, value, target);
+                rawRender = value;
+                wrapped = 'function' == typeof value;
+                boundary = wrapped ? this.buildRenderBoundary(value) : void 0;
+                return true;
+            },
+            defineProperty: (target, key, descriptor)=>{
+                if (key !== RENDER_KEY) return Reflect.defineProperty(target, key, descriptor);
+                rawRender = descriptor.value;
+                wrapped = 'function' == typeof descriptor.value;
+                boundary = wrapped ? this.buildRenderBoundary(descriptor.value) : void 0;
+                return true;
+            },
+            deleteProperty: (target, key)=>{
+                if (key === RENDER_KEY) {
+                    rawRender = void 0;
+                    boundary = void 0;
+                    wrapped = false;
+                }
+                return Reflect.deleteProperty(target, key);
+            },
+            has: (target, key)=>key === RENDER_KEY ? wrapped || Reflect.has(target, RENDER_KEY) : Reflect.has(target, key)
+        });
+        return proxy;
+    }
+    buildRenderBoundary(realRender) {
+        return ()=>{
             const attempt = this.openRenderAttempt();
             try {
                 return realRender.call(this);
@@ -275,8 +311,6 @@ class AntiHookComponent extends __rspack_external_react.Component {
                 this.closeRenderAttempt(attempt);
             }
         };
-        renderBoundaries.add(boundary);
-        this.render = boundary;
     }
     openRenderAttempt() {
         const attempt = {

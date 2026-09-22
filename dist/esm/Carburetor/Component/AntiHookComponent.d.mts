@@ -131,10 +131,9 @@ interface IEffectRecord {
  * Base component that reads its state straight from carburetors.
  *
  * Contract: the lifecycle belongs to the base class. Subclasses override
- * useEffects/unUseEffects, not componentDidMount/componentDidUpdate/componentWillUnmount,
- * shouldComponentUpdate or UNSAFE_componentWillMount. If you do override those, call the
- * super implementation — otherwise effects, subscription cleanup, the props gate or the
- * render boundary will not work.
+ * useEffects/unUseEffects, not componentDidMount/componentDidUpdate/componentWillUnmount or
+ * shouldComponentUpdate. If you do override those, call the super implementation — otherwise
+ * effects, subscription cleanup or the props gate will not work.
  */
 export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
@@ -171,19 +170,23 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
     /** Stale entries this render found. Fetched after the commit — never during render. */
     protected staleResources: (() => void)[];
     /**
-     * Wraps a prototype-method `render` with the render-attempt boundary before any field
-     * initializer runs: a subclass's prototype `render` is already reachable here, while a
-     * class-field one is not initialized yet — the mount hook below catches that shape.
+     * Hands React a boundary proxy instead of the instance, so every later read or definition
+     * of `render` goes through its traps and the render-attempt boundary is installed at the
+     * moment the render first exists.
+     *
+     * Returning an object from a derived constructor replaces `this` for the rest of
+     * construction, which is what makes definition-time wrapping possible: a subclass's
+     * class-field initializers then run against the proxy, and a class-field `render` is
+     * defined through its `defineProperty` trap. Neither alternative can do that. A prototype
+     * accessor cannot: class fields are installed with `Object.defineProperty` semantics,
+     * which replaces an inherited accessor instead of calling it. And no React lifecycle hook
+     * can: React never calls a mount hook for a component that defines
+     * `getDerivedStateFromProps` or `getSnapshotBeforeUpdate`, so a fallback installed there
+     * silently never runs for exactly those components.
      *
      * @param props - forwarded to `React.Component` untouched
      */
     constructor(props: Readonly<P>);
-    /**
-     * Catches a class-field `render`: its initializer runs after the base constructor and
-     * clobbers a boundary installed there, and React calls this hook after every field
-     * initializer and before the first render — `renderBoundaries` makes a second wrap a no-op.
-     */
-    UNSAFE_componentWillMount(): void;
     /**
      * A re-render of the parent must not cascade down the tree. Precise invalidation only
      * governs updates coming from a carburetor; without this gate every parent render would
@@ -351,14 +354,23 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
     /** Runs the fetches render queued, now that the subscriptions they need exist. */
     protected loadStaleResources(): void;
     /**
-     * Replaces the subclass's `render` with a boundary that opens a render attempt around it.
+     * Wraps this instance in the render boundary proxy; the constructor hands the proxy to
+     * React in place of `this`.
      *
-     * A boundary is installed once per instance: `renderBoundaries` recognizes a render that is
-     * already a boundary, and a `render` that is not a function — React.Component has no runtime
-     * prototype `render`, so there is nothing to wrap before a subclass defines one — is left
-     * alone for the mount hook to catch.
+     * Only `render` is special-cased — every other property forwards to the target untouched,
+     * so the instance keeps its ordinary shape: own keys, property descriptors and the
+     * prototype chain are the target's own. The raw render and the boundary built for it live
+     * in this closure, so a boundary is built exactly once per raw render per instance.
      */
-    private wrapRender;
+    private withRenderBoundary;
+    /**
+     * Builds the boundary around one raw render: opens a render attempt before it runs, marks
+     * the attempt abandoned when the render throws (an error, or a Suspense thenable), and
+     * closes it right after — a commit never consumes what an abandoned render collected.
+     *
+     * @param realRender - the subclass's own render, called with the raw instance as `this`
+     */
+    private buildRenderBoundary;
     /**
      * Opens a fresh render attempt: an empty entry map this render's reads will fill.
      *

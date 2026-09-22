@@ -315,21 +315,18 @@ const CONNECTION_ATTEMPT_KEY = 'c:';
 const TRACKED_ATTEMPT_KEY = 't:';
 
 /**
- * The render wrappers already installed, per instance: a guard that keeps a render wrapped
- * exactly once even though both the constructor and `UNSAFE_componentWillMount` offer to do
- * it — the constructor catches prototype-method renders, the mount hook catches class-field
- * renders, and either can run when the other has already wrapped.
+ * The property the render boundary intercepts, named once so every trap in the boundary proxy
+ * agrees on it.
  */
-const renderBoundaries = new WeakSet<object>();
+const RENDER_KEY = 'render';
 
 /**
  * Base component that reads its state straight from carburetors.
  *
  * Contract: the lifecycle belongs to the base class. Subclasses override
- * useEffects/unUseEffects, not componentDidMount/componentDidUpdate/componentWillUnmount,
- * shouldComponentUpdate or UNSAFE_componentWillMount. If you do override those, call the
- * super implementation — otherwise effects, subscription cleanup, the props gate or the
- * render boundary will not work.
+ * useEffects/unUseEffects, not componentDidMount/componentDidUpdate/componentWillUnmount or
+ * shouldComponentUpdate. If you do override those, call the super implementation — otherwise
+ * effects, subscription cleanup or the props gate will not work.
  */
 export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
@@ -374,30 +371,27 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     protected staleResources: (() => void)[] = [];
 
     /**
-     * Wraps a prototype-method `render` with the render-attempt boundary before any field
-     * initializer runs: a subclass's prototype `render` is already reachable here, while a
-     * class-field one is not initialized yet — the mount hook below catches that shape.
+     * Hands React a boundary proxy instead of the instance, so every later read or definition
+     * of `render` goes through its traps and the render-attempt boundary is installed at the
+     * moment the render first exists.
+     *
+     * Returning an object from a derived constructor replaces `this` for the rest of
+     * construction, which is what makes definition-time wrapping possible: a subclass's
+     * class-field initializers then run against the proxy, and a class-field `render` is
+     * defined through its `defineProperty` trap. Neither alternative can do that. A prototype
+     * accessor cannot: class fields are installed with `Object.defineProperty` semantics,
+     * which replaces an inherited accessor instead of calling it. And no React lifecycle hook
+     * can: React never calls a mount hook for a component that defines
+     * `getDerivedStateFromProps` or `getSnapshotBeforeUpdate`, so a fallback installed there
+     * silently never runs for exactly those components.
      *
      * @param props - forwarded to `React.Component` untouched
      */
     constructor(props: Readonly<P>) {
         super(props);
 
-        this.wrapRender();
+        return this.withRenderBoundary();
     }
-
-    // The boundary must exist before the first render, and this is the only React hook that
-    // runs after subclass field initializers; UNSAFE_ is the supported, warning-free spelling.
-    // oxlint-disable react/no-unsafe
-    /**
-     * Catches a class-field `render`: its initializer runs after the base constructor and
-     * clobbers a boundary installed there, and React calls this hook after every field
-     * initializer and before the first render — `renderBoundaries` makes a second wrap a no-op.
-     */
-    public UNSAFE_componentWillMount(): void {
-        this.wrapRender();
-    }
-    // oxlint-enable react/no-unsafe
 
     /**
      * A re-render of the parent must not cascade down the tree. Precise invalidation only
@@ -916,28 +910,104 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     }
 
     /**
-     * Replaces the subclass's `render` with a boundary that opens a render attempt around it.
+     * Wraps this instance in the render boundary proxy; the constructor hands the proxy to
+     * React in place of `this`.
      *
-     * A boundary is installed once per instance: `renderBoundaries` recognizes a render that is
-     * already a boundary, and a `render` that is not a function — React.Component has no runtime
-     * prototype `render`, so there is nothing to wrap before a subclass defines one — is left
-     * alone for the mount hook to catch.
+     * Only `render` is special-cased — every other property forwards to the target untouched,
+     * so the instance keeps its ordinary shape: own keys, property descriptors and the
+     * prototype chain are the target's own. The raw render and the boundary built for it live
+     * in this closure, so a boundary is built exactly once per raw render per instance.
      */
-    private wrapRender(): void {
-        const realRender = this.render as unknown;
+    private withRenderBoundary(): this {
+        let rawRender: unknown;
+        let boundary: (() => React.ReactNode) | undefined;
+        let wrapped = false;
 
-        if (typeof realRender !== 'function' || renderBoundaries.has(realRender)) {
-            return;
-        }
+        const proxy = new Proxy(this as unknown as object, {
+            get: (target: object, key: string | symbol): unknown => {
+                if (key !== RENDER_KEY) {
+                    return Reflect.get(target, key, target);
+                }
 
-        const boundary = (): React.ReactNode => {
+                // A render the definition traps absorbed lives only in this closure; anything
+                // else — a prototype-method render, or no render at all — is looked up on the
+                // target like a plain property read.
+                const raw = wrapped ? rawRender : Reflect.get(target, RENDER_KEY, target);
+
+                if (typeof raw !== 'function') {
+                    return raw;
+                }
+
+                // One boundary per raw render: a new render definition replaces the previous
+                // one, and re-reading an unchanged render returns the boundary already built.
+                if (boundary === undefined || rawRender !== raw) {
+                    rawRender = raw;
+                    boundary = this.buildRenderBoundary(raw as () => React.ReactNode);
+                }
+
+                return boundary;
+            },
+            set: (target: object, key: string | symbol, value: unknown): boolean => {
+                if (key !== RENDER_KEY) {
+                    return Reflect.set(target, key, value, target);
+                }
+
+                // Absorbed, never forwarded: the render exists only through `get`, so there is
+                // no plain own property a later read could bypass the boundary with.
+                rawRender = value;
+                wrapped = typeof value === 'function';
+                boundary = wrapped ? this.buildRenderBoundary(value as () => React.ReactNode) : undefined;
+
+                return true;
+            },
+            defineProperty: (target: object, key: string | symbol, descriptor: PropertyDescriptor): boolean => {
+                if (key !== RENDER_KEY) {
+                    return Reflect.defineProperty(target, key, descriptor);
+                }
+
+                // The [[Define]] form a class-field initializer uses lands here: the same
+                // wrap-at-definition treatment as the assignment above.
+                rawRender = descriptor.value;
+                wrapped = typeof descriptor.value === 'function';
+
+                if (wrapped) {
+                    boundary = this.buildRenderBoundary(descriptor.value as () => React.ReactNode);
+                } else {
+                    boundary = undefined;
+                }
+
+                return true;
+            },
+            deleteProperty: (target: object, key: string | symbol): boolean => {
+                if (key === RENDER_KEY) {
+                    rawRender = undefined;
+                    boundary = undefined;
+                    wrapped = false;
+                }
+
+                return Reflect.deleteProperty(target, key);
+            },
+            has: (target: object, key: string | symbol): boolean =>
+                key === RENDER_KEY ? wrapped || Reflect.has(target, RENDER_KEY) : Reflect.has(target, key),
+        });
+
+        return proxy as this;
+    }
+
+    /**
+     * Builds the boundary around one raw render: opens a render attempt before it runs, marks
+     * the attempt abandoned when the render throws (an error, or a Suspense thenable), and
+     * closes it right after — a commit never consumes what an abandoned render collected.
+     *
+     * @param realRender - the subclass's own render, called with the raw instance as `this`
+     */
+    private buildRenderBoundary(realRender: () => React.ReactNode): () => React.ReactNode {
+        return (): React.ReactNode => {
             const attempt = this.openRenderAttempt();
 
             try {
-                return (realRender as () => React.ReactNode).call(this);
+                return realRender.call(this);
             } catch (error: unknown) {
-                // A render that throws (an error, or a Suspense thenable) never publishes what
-                // it collected: the attempt is marked abandoned and a commit will not consume it.
                 attempt.abandoned = true;
 
                 throw error;
@@ -945,9 +1015,6 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
                 this.closeRenderAttempt(attempt);
             }
         };
-
-        renderBoundaries.add(boundary);
-        this.render = boundary as unknown as () => React.ReactNode;
     }
 
     /**
