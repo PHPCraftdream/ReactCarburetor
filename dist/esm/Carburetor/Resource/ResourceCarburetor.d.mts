@@ -47,8 +47,15 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
     load: (args: TArgs) => Promise<void>;
     /** Repeats the last load with the same arguments. */
     reload: () => Promise<void>;
-    /** Cancels the request in flight; its result is ignored when it arrives. */
+    /** Cancels the request in flight; its result is ignored when it arrives, and the slot returns to Idle. */
     abort: () => void;
+    /**
+     * The bookkeeping half of abort(): fires the handle and drops the request, writing nothing.
+     *
+     * Shared with start(), which replaces a request rather than giving up on one — only abort()
+     * publishes the slot going idle.
+     */
+    protected cancelInFlight: () => void;
     /**
      * The one path into a request: deduplicates, aborts the previous one, publishes pending.
      *

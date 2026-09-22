@@ -51,6 +51,36 @@ describe('ResourceCarburetor', () => {
         expect(JSON.stringify(resource.getData())).toContain('nope');
     });
 
+    test('a loader that throws synchronously settles like a rejection', async () => {
+        const failure = new Error('thrown');
+        let calls = 0;
+
+        const resource = new ResourceCarburetor<string>(() => {
+            calls++;
+
+            if (calls === 1) {
+                throw failure;
+            }
+
+            return Promise.resolve('recovered');
+        });
+
+        // The failure is handled by the load promise, not thrown out of it — the same shape an
+        // async rejection takes.
+        await resource.load(undefined);
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Error);
+        expect(resource.getData().error).toEqual('thrown');
+        expect(resource.getLastError()).toBe(failure);
+
+        // The slot is not wedged: a retry runs the loader again and settles normally.
+        await resource.load(undefined);
+
+        expect(calls).toEqual(2);
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+        expect(resource.getData().data).toEqual('recovered');
+    });
+
     test('shares one request between concurrent loads with the same arguments', async () => {
         let calls = 0;
         const gate = deferred<number>();
@@ -100,7 +130,7 @@ describe('ResourceCarburetor', () => {
         expect(resource.getData().data).toEqual('fresh');
     });
 
-    test('abort leaves the resource pending without settling it', async () => {
+    test('abort returns the slot to idle without settling the request', async () => {
         const gate = deferred<string>();
         const resource = new ResourceCarburetor<string>(() => gate.promise);
 
@@ -111,7 +141,8 @@ describe('ResourceCarburetor', () => {
         await loading;
         await flush();
 
-        expect(resource.getData().status).toEqual(EResourceStatus.Pending);
+        // Pending would promise an answer nothing delivers; the slot claims nothing is happening.
+        expect(resource.getData().status).toEqual(EResourceStatus.Idle);
         expect(resource.getData().data).toEqual(undefined);
     });
 
@@ -264,7 +295,7 @@ describe('ResourceCarburetor', () => {
         await replaced;
         await flush();
 
-        expect(resource.getData().status).toEqual(EResourceStatus.Pending);
+        expect(resource.getData().status).toEqual(EResourceStatus.Idle);
 
         // The slot holds no answer, so 'a' suspends on a fresh request rather than
         // trusting what was stored before the abort.

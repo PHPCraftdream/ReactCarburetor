@@ -35,6 +35,12 @@ class ResourceCarburetor extends Carburetor {
     };
     abort = ()=>{
         if (!this.controller) return;
+        this.cancelInFlight();
+        this.draft.status = EResourceStatus.Idle;
+        this.emitUpdate();
+    };
+    cancelInFlight = ()=>{
+        if (!this.controller) return;
         this.controller.abort();
         this.controller = void 0;
         this.pendingRequest = void 0;
@@ -43,7 +49,7 @@ class ResourceCarburetor extends Carburetor {
     start = (args, deferNotification)=>{
         const key = this.keyOf(args);
         if (this.pendingRequest && this.pendingKey === key) return this.pendingRequest;
-        this.abort();
+        this.cancelInFlight();
         const controller = new AbortController();
         this.controller = controller;
         this.pendingKey = key;
@@ -53,7 +59,13 @@ class ResourceCarburetor extends Carburetor {
         this.draft.error = void 0;
         if (deferNotification) this.emitSoon();
         else this.emitUpdate();
-        this.pendingRequest = this.loader(args, controller.signal).then((data)=>{
+        let answer;
+        try {
+            answer = this.loader(args, controller.signal);
+        } catch (error) {
+            answer = Promise.reject(error);
+        }
+        this.pendingRequest = answer.then((data)=>{
             this.settleSuccess(controller, key, data);
         }, (error)=>{
             this.settleError(controller, key, error);

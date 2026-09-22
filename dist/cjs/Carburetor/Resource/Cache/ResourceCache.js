@@ -183,7 +183,13 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         const controller = new AbortController();
         this.controllers.set(key, controller);
         this.markLoading(key, deferNotification);
-        const request = this.loader(args, controller.signal).then((data)=>{
+        let answer;
+        try {
+            answer = this.loader(args, controller.signal);
+        } catch (error) {
+            answer = Promise.reject(error);
+        }
+        const request = answer.then((data)=>{
             this.settleSuccess(key, controller, data);
         }, (error)=>{
             this.settleFailure(key, controller, error);

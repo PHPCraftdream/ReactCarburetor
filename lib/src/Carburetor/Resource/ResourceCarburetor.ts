@@ -100,8 +100,27 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         return this.start(args, false);
     };
 
-    /** Cancels the request in flight; its result is ignored when it arrives. */
+    /** Cancels the request in flight; its result is ignored when it arrives, and the slot returns to Idle. */
     public abort = (): void => {
+        if (!this.controller) {
+            return;
+        }
+
+        this.cancelInFlight();
+
+        // A cancelled request leaves nothing on its way: Pending would claim an answer no one
+        // will ever deliver, so the slot goes back to the state it starts in.
+        this.draft.status = EResourceStatus.Idle;
+        this.emitUpdate();
+    };
+
+    /**
+     * The bookkeeping half of abort(): fires the handle and drops the request, writing nothing.
+     *
+     * Shared with start(), which replaces a request rather than giving up on one — only abort()
+     * publishes the slot going idle.
+     */
+    protected cancelInFlight = (): void => {
         if (!this.controller) {
             return;
         }
@@ -132,7 +151,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             return this.pendingRequest;
         }
 
-        this.abort();
+        this.cancelInFlight();
 
         const controller = new AbortController();
 
@@ -153,7 +172,17 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             this.emitUpdate();
         }
 
-        this.pendingRequest = this.loader(args, controller.signal).then(
+        // A loader may throw before returning its promise; routing the throw through the same
+        // rejection path keeps the slot from holding a Pending no request will ever settle.
+        let answer: Promise<T>;
+
+        try {
+            answer = this.loader(args, controller.signal);
+        } catch (error: unknown) {
+            answer = Promise.reject(error);
+        }
+
+        this.pendingRequest = answer.then(
             (data: T) => {
                 this.settleSuccess(controller, key, data);
             },

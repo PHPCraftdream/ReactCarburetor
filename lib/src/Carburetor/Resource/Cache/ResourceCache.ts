@@ -399,7 +399,17 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         this.controllers.set(key, controller);
         this.markLoading(key, deferNotification);
 
-        const request = this.loader(args, controller.signal).then(
+        // A loader may throw before returning its promise; routing the throw through the same
+        // rejection path keeps the entry from waiting on a request that was never registered.
+        let answer: Promise<T>;
+
+        try {
+            answer = this.loader(args, controller.signal);
+        } catch (error: unknown) {
+            answer = Promise.reject(error);
+        }
+
+        const request = answer.then(
             (data: T) => {
                 this.settleSuccess(key, controller, data);
             },

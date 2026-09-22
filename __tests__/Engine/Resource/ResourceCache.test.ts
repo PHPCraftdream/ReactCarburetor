@@ -260,6 +260,44 @@ describe('ResourceCache', () => {
         expect(cache.getFailure('a')).toBe(failure);
     });
 
+    test('a loader that throws synchronously settles the entry like a rejection', async () => {
+        const calls: string[] = [];
+        const failure = new Error('thrown');
+        let aCalls = 0;
+
+        const cache = new ResourceCache<IUser, string>((id) => {
+            calls.push(id);
+
+            if (id === 'a') {
+                aCalls += 1;
+
+                if (aCalls === 1) {
+                    throw failure;
+                }
+            }
+
+            return Promise.resolve({id, name: id.toUpperCase()});
+        });
+
+        await cache.load('a');
+
+        const entry = cache.getEntry('a');
+
+        expect(entry.status).toEqual(EResourceStatus.Error);
+        expect(entry.error).toEqual('thrown');
+        expect(entry.failed).toBeTruthy();
+        expect(cache.getFailure('a')).toBe(failure);
+
+        // The throw never touched the other entries.
+        await cache.load('b');
+        expect(cache.getEntry('b').status).toEqual(EResourceStatus.Success);
+
+        // The failed key retries instead of staying wedged.
+        await cache.load('a');
+        expect(calls).toEqual(['a', 'b', 'a']);
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Success);
+    });
+
     test('a failure leaves the entry stale, so asking again retries', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
