@@ -37,6 +37,7 @@ const PUBLISHING_CONTEXT: [&str; 1] = ["preEmit"];
 /// The first unpublished write found in one method.
 struct Write {
     offset: u32,
+    class: Option<Span>,
     member: Option<String>,
 }
 
@@ -47,30 +48,43 @@ struct Check<'s> {
     writes: HashMap<Span, Write>,
     /// The methods that do publish.
     publishes: HashSet<Span>,
-    /// Method name -> the methods of the same class it calls, for spreading the exemption.
-    calls_from: HashMap<String, HashSet<String>>,
+    /// (class span, method name) -> the same class's methods it calls, for spreading the
+    /// exemption. Keyed by class like `writes` is by span: two classes can define the same method
+    /// name, and one class's exemption must not reach into the other.
+    calls_from: HashMap<(Option<Span>, String), HashSet<String>>,
 }
 
 impl<'s> Check<'s> {
-    /// The names that never have to publish, following calls out of a publishing context.
-    fn exempt(&self) -> HashSet<String> {
-        let mut exempt: HashSet<String> =
-            PUBLISHING_CONTEXT.iter().map(|name| name.to_string()).collect();
-        let mut queue: VecDeque<String> = exempt.iter().cloned().collect();
+    /// Per class: the names that never have to publish, following calls out of a publishing
+    /// context there.
+    fn exempt(&self) -> HashMap<Option<Span>, HashSet<String>> {
+        let mut classes: HashSet<Option<Span>> =
+            self.writes.values().map(|write| write.class).collect();
+        classes.extend(self.calls_from.keys().map(|key| key.0));
 
-        while let Some(name) = queue.pop_front() {
-            let Some(called) = self.calls_from.get(&name) else {
-                continue;
-            };
+        let mut exempt_by_class: HashMap<Option<Span>, HashSet<String>> = HashMap::new();
 
-            for callee in called {
-                if exempt.insert(callee.clone()) {
-                    queue.push_back(callee.clone());
+        for class in classes {
+            let mut exempt: HashSet<String> =
+                PUBLISHING_CONTEXT.iter().map(|name| name.to_string()).collect();
+            let mut queue: VecDeque<String> = exempt.iter().cloned().collect();
+
+            while let Some(name) = queue.pop_front() {
+                let Some(called) = self.calls_from.get(&(class, name)) else {
+                    continue;
+                };
+
+                for callee in called {
+                    if exempt.insert(callee.clone()) {
+                        queue.push_back(callee.clone());
+                    }
                 }
             }
+
+            exempt_by_class.insert(class, exempt);
         }
 
-        exempt
+        exempt_by_class
     }
 }
 
@@ -84,7 +98,11 @@ impl<'a, 's> Rule<'a> for Check<'s> {
                 continue;
             }
 
-            if write.member.as_ref().is_some_and(|name| exempt.contains(name)) {
+            let exempted = write.member.as_ref().is_some_and(|name| {
+                exempt.get(&write.class).is_some_and(|names| names.contains(name))
+            });
+
+            if exempted {
                 continue;
             }
 
@@ -106,7 +124,11 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
         self.writes
             .entry(member)
-            .or_insert_with(|| Write { offset: span.start, member: context.member.clone() });
+            .or_insert_with(|| Write {
+                offset: span.start,
+                class: context.class_span,
+                member: context.member.clone(),
+            });
     }
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
@@ -137,7 +159,10 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         };
 
-        self.calls_from.entry(caller).or_default().insert(method.to_string());
+        self.calls_from
+            .entry((context.class_span, caller))
+            .or_default()
+            .insert(method.to_string());
     }
 }
 
@@ -240,5 +265,18 @@ mod tests {
 
         // Line 8: the write inside `bad`, while the identical write in `good` is published.
         assert_eq!(lines(&diagnose(&source, check)), [8]);
+    }
+
+    #[test]
+    fn a_name_shared_with_another_class_does_not_inherit_its_exemption() {
+        // The exemption is scoped to one class: `First`'s helper never has to publish because
+        // preEmit calls it there, but the unrelated same-named helper in `Second` still does.
+        let source = "class First extends Carburetor {\n    \
+                      preEmit = () => {\n        this.helper();\n    };\n\n    \
+                      helper = () => {\n        this.draft.count = 1;\n    };\n}\n\n\
+                      class Second extends Carburetor {\n    \
+                      helper = () => {\n        this.draft.count = 1;\n    };\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [13]);
     }
 }

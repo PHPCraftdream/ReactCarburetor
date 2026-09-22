@@ -6,8 +6,9 @@
 //! Writes belong in `useEffects`, in a handler, or in a resource load.
 //!
 //! A store is identified by evidence rather than by a naming convention: whatever is passed to
-//! `this.useCarburetor(...)` or `this.useComputed(...)` anywhere in the file is one, compared by the
-//! source text of that argument so `this.props.carburetor` works as well as an imported singleton.
+//! `this.useCarburetor(...)`, `this.useComputed(...)`, or `this.useResource(...)` anywhere in the
+//! file is one, compared by the source text of that argument so `this.props.carburetor` works as
+//! well as an imported singleton.
 //! A component that writes to a store it never reads is not detected. See docs/hazards.md, H11.
 
 use std::collections::HashSet;
@@ -24,7 +25,7 @@ use crate::{Diagnostic, Source};
 pub const RULE: &str = "carburetor/no-store-write-in-render";
 
 /// Calls that only read, and are therefore fine in render.
-const READ_METHODS: [&str; 9] = [
+const READ_METHODS: [&str; 10] = [
     "getData",
     "getVersion",
     "getUID",
@@ -33,14 +34,15 @@ const READ_METHODS: [&str; 9] = [
     "toJSON",
     "read",
     "get",
+    "getEntry",
     // `suspend()` does write — it starts the request and marks the resource pending — but it is
     // built for exactly this position: the notification is deferred to a microtask precisely
     // because a render must not notify. Reporting it would flag the documented way to use Suspense.
     "suspend",
 ];
 
-/// Reads that identify their argument as a store or a computed.
-const TRACKING_READS: [&str; 2] = ["useCarburetor", "useComputed"];
+/// Reads that identify their argument as a store, a computed, or a resource.
+const TRACKING_READS: [&str; 3] = ["useCarburetor", "useComputed", "useResource"];
 
 /// A write in render, waiting to be judged once the file has revealed what its stores are.
 struct Suspect {
@@ -148,6 +150,26 @@ mod tests {
     fn suspend_is_built_for_render() {
         let source = "class Widget extends AntiHookComponent {\n    render() {\n        \
                       const d = this.useCarburetor(resource);\n        return resource.suspend(1);\n    }\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_resource_load_in_render_is_reported() {
+        // `useResource` names the cache as tracked, and `load` notifies its subscribers mid-render:
+        // the same hazard this rule exists to catch.
+        let source = "class Widget extends AntiHookComponent {\n    render() {\n        \
+                      this.useResource(cache, 1);\n        cache.load(1);\n        \
+                      return null;\n    }\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [4]);
+    }
+
+    #[test]
+    fn a_get_entry_call_is_a_plain_read_in_render() {
+        let source = "class Widget extends AntiHookComponent {\n    render() {\n        \
+                      const d = this.useCarburetor(cache);\n        \
+                      return cache.getEntry(1);\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
