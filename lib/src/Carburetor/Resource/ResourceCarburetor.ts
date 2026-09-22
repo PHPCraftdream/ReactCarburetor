@@ -2,6 +2,7 @@ import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceData, TResourceLoader} from "@/Carburetor/Models/Resource";
 import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
+import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {getInitialResourceData} from "./getInitialResourceData";
 
 /** The message a failure is stored under: the state has to stay serializable. */
@@ -12,6 +13,18 @@ const describeError = (error: unknown): string => {
 
     return String(error);
 };
+
+/** The resource slot as snapshot() hands it out: the state plus the key the answer settled under. */
+export interface IResourceSnapshot<T> extends IResourceData<T> {
+    /**
+     * The key the stored answer settled under, which restore() re-establishes so suspend()
+     * serves the restored answer only to the arguments that produced it. undefined when the
+     * slot holds no settled answer — idle, pending, or a snapshot written before this field
+     * existed. It travels in the snapshot, never in the live state, so the IResourceData
+     * contract is unchanged.
+     */
+    key?: string | undefined;
+}
 
 /**
  * An async value with an explicit status, so loading and failure are part of the state
@@ -29,7 +42,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     protected pendingKey: string | undefined = undefined;
     /** The promise behind it: what suspend throws to React and a joining start returns. */
     protected pendingRequest: Promise<void> | undefined = undefined;
-    /** The key the stored Success/Error state belongs to; unlike `pendingKey`, which tracks the in-flight one. */
+    /**
+     * The key the stored Success/Error state belongs to; unlike `pendingKey`, which tracks the
+     * in-flight one. restore() re-establishes it from the snapshot.
+     */
     protected settledKey: string | undefined = undefined;
     /** The arguments of the most recent start, which reload() replays. */
     protected lastArgs: TArgs | undefined = undefined;
@@ -47,6 +63,52 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     constructor(protected loader: TResourceLoader<T, TArgs>, scheduler?: IUpdateScheduler) {
         super(getInitialResourceData<T>(), scheduler);
     }
+
+    /**
+     * The state plus the key its answer settled under: what travels across the serialization
+     * boundary has to carry enough for the restored slot to tell which arguments the answer
+     * belongs to.
+     *
+     * deepClone is repeated from the base rather than called through super: every base member
+     * is an instance field, so there is no super.snapshot() to reach (TS2855).
+     */
+    public snapshot = (): IResourceSnapshot<T> => {
+        return {...deepClone(this.data), key: this.settledKey};
+    };
+
+    /**
+     * Installs a snapshot as the current state, and re-establishes the answer's identity
+     * with it: the data alone says nothing about which arguments produced it.
+     */
+    public restore = (data: IResourceSnapshot<T>): void => {
+        // A restored snapshot replaces the answer wholesale, so a request still in flight is
+        // serving a state about to stop existing: fire its handle and drop its bookkeeping,
+        // the same mechanism abort() relies on. Its settlement later fails isCurrent() and
+        // lands nowhere, which keeps the restored state from being corrupted by the stale
+        // response. Unlike abort(), nothing is published here: the restored state follows.
+        this.cancelInFlight();
+
+        // Identity is re-established BEFORE the state lands: setData() notifies subscribers
+        // synchronously, and a suspend() from such a callback must see key and data agree.
+        // Only a settled answer carries a key — the same invariant start() maintains when it
+        // clears the stored answer's key on going pending.
+        const settled = data.status === EResourceStatus.Success || data.status === EResourceStatus.Error;
+        this.settledKey = settled ? data.key : undefined;
+
+        // The raw rejection cannot cross the serialization boundary: what the snapshot carries
+        // is the message describeError() extracted, so the restored failure rethrows from a
+        // reconstructed Error. Restoring a non-failure clears any stale one.
+        this.lastError = data.status === EResourceStatus.Error && data.error ? new Error(data.error) : undefined;
+
+        // The key rides in the snapshot, not in the state: the four state fields are installed
+        // explicitly so the live IResourceData contract stays exactly what it was.
+        this.setData(deepClone({
+            status: data.status,
+            data: data.data,
+            error: data.error,
+            updatedAt: data.updatedAt,
+        }));
+    };
 
     /** The raw rejection value, which the serializable state cannot carry. */
     public getLastError = (): unknown => {

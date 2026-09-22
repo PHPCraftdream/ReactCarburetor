@@ -1,6 +1,17 @@
 import { IResourceData, TResourceLoader } from "../Models/Resource.mjs";
 import { IUpdateScheduler } from "../Models/Store.mjs";
 import { Carburetor } from "../Store/Carburetor.mjs";
+/** The resource slot as snapshot() hands it out: the state plus the key the answer settled under. */
+export interface IResourceSnapshot<T> extends IResourceData<T> {
+    /**
+     * The key the stored answer settled under, which restore() re-establishes so suspend()
+     * serves the restored answer only to the arguments that produced it. undefined when the
+     * slot holds no settled answer — idle, pending, or a snapshot written before this field
+     * existed. It travels in the snapshot, never in the live state, so the IResourceData
+     * contract is unchanged.
+     */
+    key?: string | undefined;
+}
 /**
  * An async value with an explicit status, so loading and failure are part of the state
  * rather than something every component reinvents. Concurrent loads with the same
@@ -18,7 +29,10 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
     protected pendingKey: string | undefined;
     /** The promise behind it: what suspend throws to React and a joining start returns. */
     protected pendingRequest: Promise<void> | undefined;
-    /** The key the stored Success/Error state belongs to; unlike `pendingKey`, which tracks the in-flight one. */
+    /**
+     * The key the stored Success/Error state belongs to; unlike `pendingKey`, which tracks the
+     * in-flight one. restore() re-establishes it from the snapshot.
+     */
     protected settledKey: string | undefined;
     /** The arguments of the most recent start, which reload() replays. */
     protected lastArgs: TArgs | undefined;
@@ -33,6 +47,20 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
      * synchronously on each write
      */
     constructor(loader: TResourceLoader<T, TArgs>, scheduler?: IUpdateScheduler);
+    /**
+     * The state plus the key its answer settled under: what travels across the serialization
+     * boundary has to carry enough for the restored slot to tell which arguments the answer
+     * belongs to.
+     *
+     * deepClone is repeated from the base rather than called through super: every base member
+     * is an instance field, so there is no super.snapshot() to reach (TS2855).
+     */
+    snapshot: () => IResourceSnapshot<T>;
+    /**
+     * Installs a snapshot as the current state, and re-establishes the answer's identity
+     * with it: the data alone says nothing about which arguments produced it.
+     */
+    restore: (data: IResourceSnapshot<T>) => void;
     /** The raw rejection value, which the serializable state cannot carry. */
     getLastError: () => unknown;
     /**

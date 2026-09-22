@@ -32,6 +32,7 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const EResourceStatus_js_namespaceObject = require("../Models/Enums/EResourceStatus.js");
 const Carburetor_js_namespaceObject = require("../Store/Carburetor.js");
+const deepClone_js_namespaceObject = require("../Store/Utils/deepClone.js");
 const external_getInitialResourceData_js_namespaceObject = require("./getInitialResourceData.js");
 const describeError = (error)=>{
     if (error instanceof Error) return error.message;
@@ -48,6 +49,22 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
     constructor(loader, scheduler){
         super((0, external_getInitialResourceData_js_namespaceObject.getInitialResourceData)(), scheduler), this.loader = loader;
     }
+    snapshot = ()=>({
+            ...(0, deepClone_js_namespaceObject.deepClone)(this.data),
+            key: this.settledKey
+        });
+    restore = (data)=>{
+        this.cancelInFlight();
+        const settled = data.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success || data.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error;
+        this.settledKey = settled ? data.key : void 0;
+        this.lastError = data.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error && data.error ? new Error(data.error) : void 0;
+        this.setData((0, deepClone_js_namespaceObject.deepClone)({
+            status: data.status,
+            data: data.data,
+            error: data.error,
+            updatedAt: data.updatedAt
+        }));
+    };
     getLastError = ()=>this.lastError;
     suspend = (args)=>{
         const state = this.data;

@@ -1,5 +1,6 @@
 import { EResourceStatus } from "../Models/Enums/EResourceStatus.mjs";
 import { Carburetor } from "../Store/Carburetor.mjs";
+import { deepClone } from "../Store/Utils/deepClone.mjs";
 import { getInitialResourceData } from "./getInitialResourceData.mjs";
 const describeError = (error)=>{
     if (error instanceof Error) return error.message;
@@ -16,6 +17,22 @@ class ResourceCarburetor extends Carburetor {
     constructor(loader, scheduler){
         super(getInitialResourceData(), scheduler), this.loader = loader;
     }
+    snapshot = ()=>({
+            ...deepClone(this.data),
+            key: this.settledKey
+        });
+    restore = (data)=>{
+        this.cancelInFlight();
+        const settled = data.status === EResourceStatus.Success || data.status === EResourceStatus.Error;
+        this.settledKey = settled ? data.key : void 0;
+        this.lastError = data.status === EResourceStatus.Error && data.error ? new Error(data.error) : void 0;
+        this.setData(deepClone({
+            status: data.status,
+            data: data.data,
+            error: data.error,
+            updatedAt: data.updatedAt
+        }));
+    };
     getLastError = ()=>this.lastError;
     suspend = (args)=>{
         const state = this.data;

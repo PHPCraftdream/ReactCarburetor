@@ -333,4 +333,198 @@ describe('ResourceCarburetor', () => {
         expect(resource.suspend({id: 'a'})).toEqual(1);
         expect(calls).toEqual(1);
     });
+
+    test('restoring a snapshot does not serve the restored answer to another key', async () => {
+        // A fresh gate per request: the same key is loaded more than once here, and a gate
+        // already resolved would answer the later request with the first one's value.
+        const gates: Record<string, IDeferred<string>[]> = {a: [], b: []};
+        const requested: string[] = [];
+
+        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+            requested.push(args.id);
+
+            const gate = deferred<string>();
+            gates[args.id].push(gate);
+
+            return gate.promise;
+        });
+
+        const loadingA = resource.load({id: 'a'});
+        gates.a[0].resolve('a-data');
+        await loadingA;
+
+        const snapshot = resource.snapshot();
+
+        const loadingB = resource.load({id: 'b'});
+        gates.b[0].resolve('b-data');
+        await loadingB;
+
+        resource.restore(snapshot);
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+        expect(resource.getData().data).toEqual('a-data');
+
+        // The restored answer is a's, and 'b' was loaded only after the snapshot was taken:
+        // reading b starts a fresh request rather than being handed a's data.
+        let caught: unknown;
+
+        try {
+            resource.suspend({id: 'b'});
+        } catch (error: unknown) {
+            caught = error;
+        }
+
+        expect(caught).toBeInstanceOf(Promise);
+        expect(requested).toEqual(['a', 'b', 'b']);
+
+        gates.b[1].resolve('b-data-2');
+        await (caught as Promise<void>);
+        await flush();
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+        expect(resource.getData().data).toEqual('b-data-2');
+        expect(resource.suspend({id: 'b'})).toEqual('b-data-2');
+    });
+
+    test('a hydrated answer is served for its own key without a new request', async () => {
+        let sourceCalls = 0;
+
+        const source = new ResourceCarburetor<string, {id: string}>(() => {
+            sourceCalls++;
+
+            return Promise.resolve('a-data');
+        });
+
+        await source.load({id: 'a'});
+        expect(sourceCalls).toEqual(1);
+
+        let freshCalls = 0;
+
+        const fresh = new ResourceCarburetor<string, {id: string}>(() => {
+            freshCalls++;
+
+            return Promise.resolve('fresh-data');
+        });
+
+        fresh.fromJSON(JSON.parse(JSON.stringify(source.snapshot())));
+
+        let caught: unknown;
+
+        try {
+            fresh.suspend({id: 'a'});
+        } catch (error: unknown) {
+            caught = error;
+        }
+
+        // The answer came across the serialization boundary, so the restored instance must
+        // serve it for the key it settled under instead of asking the loader again.
+        expect(caught).toEqual(undefined);
+        expect(fresh.suspend({id: 'a'})).toEqual('a-data');
+        expect(freshCalls).toEqual(0);
+        expect(fresh.getData().status).toEqual(EResourceStatus.Success);
+    });
+
+    test('restoring an error snapshot keeps the failure bound to its key', async () => {
+        const gates: Record<string, IDeferred<string>> = {a: deferred<string>(), b: deferred<string>()};
+
+        const source = new ResourceCarburetor<string, {id: string}>(() => gates.a.promise);
+
+        gates.a.reject(new Error('a failed'));
+        await source.load({id: 'a'}).catch(() => undefined);
+
+        let freshCalls = 0;
+
+        const fresh = new ResourceCarburetor<string, {id: string}>(() => {
+            freshCalls++;
+
+            return gates.b.promise;
+        });
+
+        fresh.fromJSON(JSON.parse(JSON.stringify(source.snapshot())));
+
+        // The message crossed the boundary as text, so the failure is rebuilt from it and
+        // stays rethrown for the key that produced it.
+        expect(fresh.getData().status).toEqual(EResourceStatus.Error);
+        expect(fresh.getData().error).toEqual('a failed');
+        expect(fresh.getLastError()).toBeInstanceOf(Error);
+        expect(() => fresh.suspend({id: 'a'})).toThrow('a failed');
+
+        // 'b' gets its own request instead of a's restored failure.
+        let caught: unknown;
+
+        try {
+            fresh.suspend({id: 'b'});
+        } catch (error: unknown) {
+            caught = error;
+        }
+
+        expect(caught).toBeInstanceOf(Promise);
+        expect(freshCalls).toEqual(1);
+
+        gates.b.resolve('b-data');
+        await (caught as Promise<void>);
+        await flush();
+
+        expect(fresh.getData().status).toEqual(EResourceStatus.Success);
+        expect(fresh.getData().data).toEqual('b-data');
+    });
+
+    test('restoring over a request in flight drops the stale answer', async () => {
+        const gates: Record<string, IDeferred<string>[]> = {a: [], b: []};
+        const requested: string[] = [];
+        const signals: AbortSignal[] = [];
+
+        const resource = new ResourceCarburetor<string, {id: string}>((args, signal) => {
+            requested.push(args.id);
+            signals.push(signal);
+
+            const gate = deferred<string>();
+            gates[args.id].push(gate);
+
+            return gate.promise;
+        });
+
+        const loadingA = resource.load({id: 'a'});
+        gates.a[0].resolve('a-data');
+        await loadingA;
+
+        const snapshot = resource.snapshot();
+
+        // The request left in flight is serving a state the restore replaces wholesale.
+        const stale = resource.load({id: 'b'});
+
+        resource.restore(snapshot);
+
+        expect(signals[1].aborted).toBeTruthy();
+
+        gates.b[0].resolve('b-late');
+        await stale;
+        await flush();
+
+        // The abandoned answer lands nowhere: the restored state stays what it was.
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+        expect(resource.getData().data).toEqual('a-data');
+        expect(resource.suspend({id: 'a'})).toEqual('a-data');
+        expect(requested).toEqual(['a', 'b']);
+
+        // 'b' never settled, so reading it starts a fresh request rather than being handed
+        // the restored a answer.
+        let caught: unknown;
+
+        try {
+            resource.suspend({id: 'b'});
+        } catch (error: unknown) {
+            caught = error;
+        }
+
+        expect(caught).toBeInstanceOf(Promise);
+        expect(requested).toEqual(['a', 'b', 'b']);
+
+        gates.b[1].resolve('b-data-2');
+        await (caught as Promise<void>);
+        await flush();
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+        expect(resource.getData().data).toEqual('b-data-2');
+    });
 });
