@@ -162,6 +162,10 @@ jobs:
         if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo dpkg --add-architecture arm64
+          # arm64 packages live on the ports archive, not the amd64-only default mirrors, which
+          # 404 on every arm64 index once the architecture is added.
+          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main universe" \
+            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
           sudo apt-get update
           sudo apt-get install -y libc6:arm64
 

@@ -64,8 +64,13 @@ describe('packaging the lint rules', () => {
     });
 
     test('a consumer oxlint config gets the rules from one extends line', () => {
+        // Explicit format: oxlint auto-switches to GitHub-annotation output under CI's own
+        // GITHUB_ACTIONS env var, which this process inherits when the test itself runs in CI.
+        // "agent" is the plain `path:line:col: severity rule: message` layout this assertion
+        // expects — the same one oxlint picks on its own outside of a TTY and outside CI.
         const output = run(path.join('node_modules', 'oxlint', 'bin', 'oxlint'), [
             '-c', path.join(CONSUMER, 'oxlintrc.json'),
+            '--format', 'agent',
             path.join(CONSUMER, 'app.tsx'),
         ]);
 
