@@ -40,13 +40,25 @@ const sameReads = (a, b)=>{
     for (const path of a)if (!b.has(path)) return false;
     return true;
 };
+const CONNECTION_ATTEMPT_KEY = 'c:';
+const TRACKED_ATTEMPT_KEY = 't:';
+const renderBoundaries = new WeakSet();
 class AntiHookComponent extends external_react_namespaceObject.Component {
     uid = (0, getUid_js_namespaceObject.getUid)();
     effects = {};
     tracked = {};
     connections = [];
-    renderGeneration = 0;
+    renderAttempt = void 0;
+    pendingAttempt = void 0;
+    committedAttempt = void 0;
     staleResources = [];
+    constructor(props){
+        super(props);
+        this.wrapRender();
+    }
+    UNSAFE_componentWillMount() {
+        this.wrapRender();
+    }
     shouldComponentUpdate(nextProps, nextState) {
         return !(0, external_shallowEqual_js_namespaceObject.shallowEqual)(this.props, nextProps) || !(0, external_shallowEqual_js_namespaceObject.shallowEqual)(this.state, nextState);
     }
@@ -67,9 +79,10 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         this.releaseSubscriptions();
     }
     useCarburetor = (carburetor)=>{
-        const tracked = this.track(carburetor);
+        const attempt = this.renderAttempt;
+        const entry = this.track(carburetor);
         return carburetor.read((path)=>{
-            tracked.reads.add(path);
+            if (void 0 !== attempt && this.renderAttempt === attempt) entry.reads.add(path);
         });
     };
     connect = (source)=>{
@@ -77,20 +90,25 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         const connection = {
             uid: (0, getUid_js_namespaceObject.getUid)(),
             getCarburetor,
-            subscribedTo: void 0,
-            reads: new Set(),
-            generation: -1,
             committed: void 0,
-            lastSeenVersion: void 0
+            installed: void 0
         };
         this.connections.push(connection);
         const recorder = (path)=>{
-            if (connection.generation !== this.renderGeneration) {
-                connection.reads = new Set();
-                connection.generation = this.renderGeneration;
+            const attempt = this.renderAttempt;
+            if (!attempt) return;
+            let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
+            if (!entry) {
+                const carburetor = getCarburetor();
+                entry = {
+                    connection,
+                    source: carburetor,
+                    baselineVersion: carburetor.getVersion(),
+                    reads: new Set()
+                };
+                attempt.entries.set(CONNECTION_ATTEMPT_KEY + connection.uid, entry);
             }
-            connection.reads.add(path);
-            connection.lastSeenVersion = getCarburetor().getVersion();
+            entry.reads.add(path);
         };
         let cachedTarget;
         let cachedView;
@@ -134,18 +152,54 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         this.staleResources = [];
         queued.forEach((load)=>load());
     }
-    track(source) {
-        const cuid = source.getUID();
-        const known = this.tracked[cuid];
-        const tracked = known && known.generation === this.renderGeneration ? known : {
-            carburetor: source,
-            reads: new Set(),
-            version: source.getVersion(),
-            generation: this.renderGeneration,
-            committed: known ? known.committed : void 0
+    wrapRender() {
+        const realRender = this.render;
+        if ('function' != typeof realRender || renderBoundaries.has(realRender)) return;
+        const boundary = ()=>{
+            const attempt = this.openRenderAttempt();
+            try {
+                return realRender.call(this);
+            } catch (error) {
+                attempt.abandoned = true;
+                throw error;
+            } finally{
+                this.closeRenderAttempt(attempt);
+            }
         };
-        this.tracked[cuid] = tracked;
-        return tracked;
+        renderBoundaries.add(boundary);
+        this.render = boundary;
+    }
+    openRenderAttempt() {
+        const attempt = {
+            entries: new Map(),
+            abandoned: false
+        };
+        this.renderAttempt = attempt;
+        return attempt;
+    }
+    closeRenderAttempt(attempt) {
+        this.pendingAttempt = attempt;
+        this.renderAttempt = void 0;
+    }
+    track(source) {
+        const attempt = this.renderAttempt;
+        if (!attempt) return {
+            connection: void 0,
+            source,
+            baselineVersion: source.getVersion(),
+            reads: new Set()
+        };
+        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + source.getUID());
+        if (!entry) {
+            entry = {
+                connection: void 0,
+                source,
+                baselineVersion: source.getVersion(),
+                reads: new Set()
+            };
+            attempt.entries.set(TRACKED_ATTEMPT_KEY + source.getUID(), entry);
+        }
+        return entry;
     }
     useEffects() {}
     unUseEffects(_prevProps) {}
@@ -170,54 +224,85 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         this.forceUpdate();
     };
     commitSubscriptions() {
-        const generation = this.renderGeneration;
+        const attempt = this.pendingAttempt;
+        const fresh = void 0 !== attempt && !attempt.abandoned && attempt !== this.committedAttempt;
+        if (fresh) {
+            this.committedAttempt = attempt;
+            Object.keys(this.tracked).forEach((cuid)=>{
+                if (attempt.entries.has(TRACKED_ATTEMPT_KEY + cuid)) return;
+                this.releaseSlot(this.uid, this.tracked[cuid]);
+                delete this.tracked[cuid];
+            });
+            this.connections.forEach((connection)=>{
+                if (!attempt.entries.has(CONNECTION_ATTEMPT_KEY + connection.uid)) connection.committed = void 0;
+            });
+            attempt.entries.forEach((entry, key)=>{
+                const description = {
+                    carburetor: entry.source,
+                    baselineVersion: entry.baselineVersion,
+                    reads: new Set(entry.reads)
+                };
+                if (entry.connection) {
+                    entry.connection.committed = description;
+                    return;
+                }
+                const cuid = key.slice(TRACKED_ATTEMPT_KEY.length);
+                const known = this.tracked[cuid];
+                this.tracked[cuid] = {
+                    committed: description,
+                    installed: known ? known.installed : void 0
+                };
+            });
+        }
         let changedDuringRender = false;
         Object.keys(this.tracked).forEach((cuid)=>{
-            const tracked = this.tracked[cuid];
-            if (tracked.generation !== generation) {
-                tracked.carburetor.unsubscribe(this.uid);
-                delete this.tracked[cuid];
-                return;
-            }
-            if (void 0 === tracked.committed || !sameReads(tracked.committed, tracked.reads)) {
-                tracked.carburetor.subscribe(this.onCarburetorUpdate, {
-                    id: this.uid,
-                    reads: tracked.reads
-                });
-                tracked.committed = new Set(tracked.reads);
-            }
-            if (tracked.carburetor.getVersion() !== tracked.version) changedDuringRender = true;
+            if (this.alignSubscription(this.uid, this.tracked[cuid])) changedDuringRender = true;
         });
         this.connections.forEach((connection)=>{
-            const carburetor = connection.getCarburetor();
-            if (connection.subscribedTo !== carburetor) {
-                if (connection.subscribedTo) connection.subscribedTo.unsubscribe(connection.uid);
-                connection.committed = void 0;
-                connection.subscribedTo = carburetor;
-            }
-            if (void 0 === connection.committed || !sameReads(connection.committed, connection.reads)) {
-                carburetor.subscribe(this.onCarburetorUpdate, {
-                    id: connection.uid,
-                    reads: connection.reads
-                });
-                connection.committed = new Set(connection.reads);
-            }
-            if (void 0 !== connection.lastSeenVersion && carburetor.getVersion() !== connection.lastSeenVersion) changedDuringRender = true;
+            if (this.alignSubscription(connection.uid, connection)) changedDuringRender = true;
         });
-        this.renderGeneration = generation + 1;
         if (changedDuringRender) this.forceUpdate();
+    }
+    alignSubscription(uid, slot) {
+        const committed = slot.committed;
+        const installed = slot.installed;
+        if (!committed) {
+            if (installed) {
+                installed.carburetor.unsubscribe(uid);
+                slot.installed = void 0;
+            }
+            return false;
+        }
+        if (installed && installed.carburetor !== committed.carburetor) {
+            installed.carburetor.unsubscribe(uid);
+            slot.installed = void 0;
+        }
+        if (void 0 === slot.installed || !sameReads(slot.installed.reads, committed.reads)) {
+            committed.carburetor.subscribe(this.onCarburetorUpdate, {
+                id: uid,
+                reads: committed.reads
+            });
+            slot.installed = {
+                carburetor: committed.carburetor,
+                reads: new Set(committed.reads)
+            };
+        }
+        return committed.carburetor.getVersion() !== committed.baselineVersion;
+    }
+    releaseSlot(uid, slot) {
+        if (slot.installed) {
+            slot.installed.carburetor.unsubscribe(uid);
+            slot.installed = void 0;
+        }
     }
     releaseSubscriptions() {
         Object.keys(this.tracked).forEach((cuid)=>{
-            this.tracked[cuid].carburetor.unsubscribe(this.uid);
-            this.tracked[cuid].generation = this.renderGeneration;
-            this.tracked[cuid].committed = void 0;
+            this.releaseSlot(this.uid, this.tracked[cuid]);
         });
         this.connections.forEach((connection)=>{
-            if (connection.subscribedTo) connection.subscribedTo.unsubscribe(connection.uid);
-            connection.subscribedTo = void 0;
-            connection.committed = void 0;
+            this.releaseSlot(connection.uid, connection);
         });
+        this.renderAttempt = void 0;
     }
 }
 exports.AntiHookComponent = __webpack_exports__.AntiHookComponent;

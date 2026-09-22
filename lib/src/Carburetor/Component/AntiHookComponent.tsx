@@ -9,46 +9,124 @@ import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {shallowEqual} from "./shallowEqual";
 
-interface ITrackedCarburetor {
+/**
+ * What one commit established about a dependency: the carburetor a render attempt resolved,
+ * the store version when the reading started, and the paths it read.
+ *
+ * Published only by a commit consuming a fresh render attempt, with the read set copied at
+ * that tentative-to-committed transition — so a later read through a stale captured view can
+ * never alter what a commit established. The description survives unmount: it is what a
+ * StrictMode-replayed mount's commit restores subscriptions from.
+ */
+interface IDependencyDescription {
+    /** The carburetor the attempt resolved and read. */
     carburetor: ICarburetorSubscription;
+    /** The store version captured at the attempt's first touch; the commit-time drift check anchors here. */
+    baselineVersion: number;
+    /** The paths the attempt read; a private copy, never shared with an attempt or a handle. */
     reads: TPathSet;
-    version: number;
-    generation: number;
-    /** Read set as last actually registered; undefined means nothing is currently registered. */
-    committed: TPathSet | undefined;
 }
 
-interface IEffectRecord {
-    deps: TEffectDeps;
-    cleanup: TEffectCleanup | undefined;
+/**
+ * The active registration of a dependency: what is actually subscribed in the stores right now.
+ *
+ * Kept next to the description it was built from so a commit can skip re-registering an
+ * unchanged read set, and so a teardown or a re-point at another carburetor knows exactly which
+ * store to unsubscribe from. Its lifetime is independent of the description's: unmount and a
+ * StrictMode replay clear handles, descriptions stay.
+ */
+interface ISubscriptionHandle {
+    /** The store the registration lives in; unsubscribing goes through it. */
+    carburetor: ICarburetorSubscription;
+    /** The read set as registered — a copy, so a compare with a fresh description detects drift. */
+    reads: TPathSet;
 }
+
+/**
+ * One component's dependency slot: the two long-lived states a carburetor dependency has.
+ *
+ * The committed description is data — what the last fresh render attempt read — while the
+ * installed handle is a live registration a teardown must release. Keeping them apart is what
+ * lets unmount drop a subscription without forgetting what to restore it from.
+ */
+interface IDependencySlot {
+    /** What the last fresh commit established; undefined while nothing current commits to. */
+    committed: IDependencyDescription | undefined;
+    /** The registration actually in the stores right now; undefined while none is registered. */
+    installed: ISubscriptionHandle | undefined;
+}
+
+/**
+ * A carburetor read through `useCarburetor`, `useComputed` or `useResource`: one dependency
+ * slot keyed by the carburetor's own uid.
+ *
+ * Records are written by commits, out of what a fresh render attempt collected — never by
+ * render itself. A commit whose attempt never touched a record releases and deletes it: a
+ * store that stops being read must stop being subscribed to, or a write to it re-renders a
+ * component that no longer shows that data. What survives unmount is the committed
+ * description, which is what a replayed mount restores from.
+ */
+interface ITrackedCarburetor extends IDependencySlot {}
 
 /**
  * A `connect()` declaration's bookkeeping: one persistent slot, independent of any one render.
  *
- * Unlike `ITrackedCarburetor`, which `track()` recreates from scratch every render and
- * `commitSubscriptions` prunes when a render stops touching it, a connection is declared once
- * (typically a class field initializer) and lives for the component's whole lifetime — nothing
- * ever deletes it from `connections`. What still varies per render is `reads`: the proxy's own
- * recorder resets it lazily the first time a render actually accesses a field, the same
- * generation-comparison trick `track()` uses, so a conditional branch reading a different field
- * next render still narrows or widens the subscription correctly.
+ * A connection is declared once (typically a class field initializer) and lives for the
+ * component's whole lifetime — nothing ever deletes it from `connections`, so a branch that
+ * stops being read keeps its declaration and can be re-read by a later render. What varies is
+ * the slot's content: a fresh attempt publishes a new committed description; a commit whose
+ * attempt never touched the connection clears that description, and `alignSubscription` then
+ * ends the subscription — an unused connection must have no active read subscription, yet the
+ * declaration itself stays ready for a render that reads it again.
  */
-interface IConnection {
+interface IConnection extends IDependencySlot {
     /** This connection's own id — stable across whatever carburetor it points at right now. */
     uid: string;
-    /** Resolves the carburetor to read; called fresh every commit, so a prop swap is noticed. */
+    /** Resolves the carburetor to read; called at an attempt's first read, so a prop swap is noticed. */
     getCarburetor: () => ICarburetorSubscription;
-    /** The carburetor actually subscribed to right now; undefined before the first commit. */
-    subscribedTo: ICarburetorSubscription | undefined;
-    /** This render's reads so far, reset lazily on the first read after a new render starts. */
+}
+
+/**
+ * One source's read record inside one render attempt: tentative, and never merged across
+ * attempts.
+ *
+ * The source and its baseline version are captured once, at the first read of the attempt —
+ * not refreshed after every property access — so a write landing mid-render or mid-commit
+ * stays detectable at commit time. Later reads in the same attempt only grow the path set.
+ */
+interface IAttemptEntry {
+    /** Set for a connection read: where a commit publishes the description built from this entry. */
+    connection: IConnection | undefined;
+    /** The carburetor the read resolved to, captured at the attempt's first touch. */
+    source: ICarburetorSubscription;
+    /** The store version at that first touch; the commit-time drift check anchors here. */
+    baselineVersion: number;
+    /** The paths read during this attempt; grows monotonically until the attempt closes. */
     reads: TPathSet;
-    /** The render `reads` was last reset for; compared against `renderGeneration` to reset it. */
-    generation: number;
-    /** Read set as last actually registered; undefined means nothing is currently registered. */
-    committed: TPathSet | undefined;
-    /** The version as of the most recent actual read, for the same render-to-commit gap `track()` closes. */
-    lastSeenVersion: number | undefined;
+}
+
+/**
+ * One render attempt's collection: the boundary between render and everything else.
+ *
+ * Opened immediately before the subclass's render runs and closed in a `finally` right after
+ * it returns or throws, it is the only thing the read recorders write to. Nothing is open
+ * during the render→commit gap, so child mount callbacks, sibling renders, effects and
+ * handlers reading a captured view cannot alter this render's dependency set or version
+ * evidence. An abandoned attempt (its render threw) is never consumed by a commit.
+ */
+interface IRenderAttempt {
+    /** Collected entries, keyed by `CONNECTION_ATTEMPT_KEY`/`TRACKED_ATTEMPT_KEY` + source uid. */
+    entries: Map<string, IAttemptEntry>;
+    /** True when the render threw — an error or a Suspense thenable; a commit will not consume it. */
+    abandoned: boolean;
+}
+
+/** Per-effect bookkeeping: what the effect last ran with, and the cleanup it returned. */
+interface IEffectRecord {
+    /** The deps the effect last ran with; compared shallowly to skip a redundant run. */
+    deps: TEffectDeps;
+    /** What the effect returned, if that was a function; run before the next run and on unmount. */
+    cleanup: TEffectCleanup | undefined;
 }
 
 /**
@@ -70,12 +148,31 @@ const sameReads = (a: TPathSet, b: TPathSet): boolean => {
 };
 
 /**
+ * Attempt-map key prefix for a `connect()` declaration's entry; the connection's uid follows
+ * it. Connection uids and carburetor uids come from the same counter, so keying by kind keeps
+ * the map self-describing about what each collected entry will publish to.
+ */
+const CONNECTION_ATTEMPT_KEY = 'c:';
+
+/** Attempt-map key prefix for a `track()`ed source; the carburetor's uid follows it. */
+const TRACKED_ATTEMPT_KEY = 't:';
+
+/**
+ * The render wrappers already installed, per instance: a guard that keeps a render wrapped
+ * exactly once even though both the constructor and `UNSAFE_componentWillMount` offer to do
+ * it — the constructor catches prototype-method renders, the mount hook catches class-field
+ * renders, and either can run when the other has already wrapped.
+ */
+const renderBoundaries = new WeakSet<object>();
+
+/**
  * Base component that reads its state straight from carburetors.
  *
  * Contract: the lifecycle belongs to the base class. Subclasses override
- * useEffects/unUseEffects, not componentDidMount/componentDidUpdate/componentWillUnmount
- * or shouldComponentUpdate. If you do override those, call the super implementation —
- * otherwise effects, subscription cleanup or the props gate will not work.
+ * useEffects/unUseEffects, not componentDidMount/componentDidUpdate/componentWillUnmount,
+ * shouldComponentUpdate or UNSAFE_componentWillMount. If you do override those, call the
+ * super implementation — otherwise effects, subscription cleanup, the props gate or the
+ * render boundary will not work.
  */
 export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
@@ -85,10 +182,12 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     protected effects: IDict<IEffectRecord> = {};
 
     /**
-     * Carburetors read by this component: what was read, and in which render.
+     * Carburetors read through `useCarburetor`/`useComputed`/`useResource`: one dependency slot
+     * per carburetor, written by commits out of what a fresh render attempt collected.
      *
-     * The records outlive unmount: releaseSubscriptions keeps them, so a replayed mount
-     * lifecycle can restore the subscriptions without a render to refill them.
+     * The committed descriptions outlive unmount: releaseSubscriptions keeps them, so a
+     * replayed mount lifecycle can restore the subscriptions without a render to refill them.
+     * The records themselves do not: a commit whose attempt never touched a record drops it.
      */
     protected tracked: IDict<ITrackedCarburetor> = {};
 
@@ -97,15 +196,51 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      *
      * Never pruned: a connection lives from the field initializer that created it until the
      * component itself is torn down, unlike `tracked`, which `commitSubscriptions` drops the
-     * moment a render stops touching it.
+     * moment a render stops touching it. What a commit clears on an untouched connection is
+     * its committed description — ending the subscription; the declaration stays reusable.
      */
     protected connections: IConnection[] = [];
 
-    /** Number of the current, not yet committed render. */
-    protected renderGeneration: number = 0;
+    /** The render attempt currently open, if any; recorders write only while this is set. */
+    protected renderAttempt: IRenderAttempt | undefined = undefined;
+
+    /** The last closed attempt, waiting for the commit that may consume it. */
+    protected pendingAttempt: IRenderAttempt | undefined = undefined;
+
+    /**
+     * The attempt the last commit consumed: identity, not a counter, says whether this commit
+     * has a new render behind it.
+     */
+    protected committedAttempt: IRenderAttempt | undefined = undefined;
 
     /** Stale entries this render found. Fetched after the commit — never during render. */
     protected staleResources: (() => void)[] = [];
+
+    /**
+     * Wraps a prototype-method `render` with the render-attempt boundary before any field
+     * initializer runs: a subclass's prototype `render` is already reachable here, while a
+     * class-field one is not initialized yet — the mount hook below catches that shape.
+     *
+     * @param props - forwarded to `React.Component` untouched
+     */
+    constructor(props: Readonly<P>) {
+        super(props);
+
+        this.wrapRender();
+    }
+
+    // The boundary must exist before the first render, and this is the only React hook that
+    // runs after subclass field initializers; UNSAFE_ is the supported, warning-free spelling.
+    // oxlint-disable react/no-unsafe
+    /**
+     * Catches a class-field `render`: its initializer runs after the base constructor and
+     * clobbers a boundary installed there, and React calls this hook after every field
+     * initializer and before the first render — `renderBoundaries` makes a second wrap a no-op.
+     */
+    public UNSAFE_componentWillMount(): void {
+        this.wrapRender();
+    }
+    // oxlint-enable react/no-unsafe
 
     /**
      * A re-render of the parent must not cascade down the tree. Precise invalidation only
@@ -151,12 +286,20 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * The only way to read state in render: returns tracked data. The component
      * subscribes to exactly the fields it actually reads, and re-renders only when
      * those fields change.
+     *
+     * A read is attributed to the render attempt that was open when `useCarburetor` itself
+     * ran — and to nothing else: the identity check inside the recorder stops a view captured
+     * by an older render and read later (from a handler, an effect) from adding paths to some
+     * other attempt's read set.
      */
     public useCarburetor = <T extends object>(carburetor: ICarburetor<T>): TReadonly<T> => {
-        const tracked = this.track(carburetor);
+        const attempt = this.renderAttempt;
+        const entry = this.track(carburetor);
 
         return carburetor.read((path: TPath) => {
-            tracked.reads.add(path);
+            if (attempt !== undefined && this.renderAttempt === attempt) {
+                entry.reads.add(path);
+            }
         });
     };
 
@@ -166,10 +309,10 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * `useCarburetor` allocates a fresh read-tracking proxy every render — for a component that
      * always reads from the same store this is pure repeated cost. `connect()` instead builds
      * the view once (a class field initializer is the intended call site) and hands back the
-     * exact same object for as long as the underlying data object does not change; only the
-     * proxy's own recorder, invoked lazily on the first field access of a new render, resets
-     * what counts as "read this render" — a conditional branch reading a different field next
-     * render still narrows or widens the subscription, exactly as `useCarburetor` already does.
+     * exact same object for as long as the underlying data object does not change; what changes
+     * per render is only what the proxy's recorder collects: a read counts while a render
+     * attempt is open — the same boundary `useCarburetor` records under — so a conditional
+     * branch reading a different field next render still narrows or widens the subscription.
      *
      * The view stays live across `setData`/`restore`: those replace the store's data object
      * wholesale, which this method notices (the cached proxy is rebuilt only when the object it
@@ -180,40 +323,54 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * decide never to commit it (see the class docstring's link to React's component contract),
      * so any side effect here would leak a subscription for a component that never mounted. All
      * subscription bookkeeping happens in `commitSubscriptions`/`releaseSubscriptions`, driven
-     * by what the *previous* render's field accesses recorded — the same design `useCarburetor`
-     * and `tracked` already use, just keyed by a connection instead of by carburetor identity.
+     * by the attempt a commit consumes: the recorder captures the source and its baseline
+     * version at the attempt's first read, and the commit publishes them as the connection's
+     * committed description; a commit whose attempt never touched the connection clears that
+     * description — ending the subscription but not the declaration, which a later render
+     * re-arms simply by reading it again.
      *
      * A root data type this engine cannot proxy (see `isTrackable`) is read once, untracked, at
      * the moment the underlying object is (re)built — not fresh every render — so this method
      * inherits `read()`'s existing wildcard fallback but only re-triggers it on a data swap; a
      * store shaped that way should prefer `useCarburetor`, called directly in render.
      *
-     * @param source - the carburetor to read, or a function resolving it fresh on every commit
-     * so a prop swap re-points the connection at the new store
+     * @param source - the carburetor to read, or a function resolving it at each attempt's
+     * first read so a prop swap re-points the connection at the new store
      */
     public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> => {
         const getCarburetor: () => ICarburetor<T> = typeof source === 'function' ? source : () => source;
 
-        const connection: IConnection = {
-            uid: getUid(),
-            getCarburetor,
-            subscribedTo: undefined,
-            reads: new Set<TPath>(),
-            generation: -1,
-            committed: undefined,
-            lastSeenVersion: undefined,
-        };
+        const connection: IConnection = {uid: getUid(), getCarburetor, committed: undefined, installed: undefined};
 
         this.connections.push(connection);
 
         const recorder: TPathRecorder = (path: TPath): void => {
-            if (connection.generation !== this.renderGeneration) {
-                connection.reads = new Set<TPath>();
-                connection.generation = this.renderGeneration;
+            const attempt = this.renderAttempt;
+
+            // Outside a render attempt the read still gets current data, but records nothing:
+            // a handler, effect or child callback can never alter a render's dependency set.
+            if (!attempt) {
+                return;
             }
 
-            connection.reads.add(path);
-            connection.lastSeenVersion = getCarburetor().getVersion();
+            let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
+
+            if (!entry) {
+                // The source and its baseline version are captured once, at the beginning of
+                // this attempt's consumption — not refreshed after every property access — so
+                // a write landing mid-render or mid-commit stays detectable at commit time.
+                const carburetor = getCarburetor();
+
+                entry = {
+                    connection,
+                    source: carburetor,
+                    baselineVersion: carburetor.getVersion(),
+                    reads: new Set<TPath>(),
+                };
+                attempt.entries.set(CONNECTION_ATTEMPT_KEY + connection.uid, entry);
+            }
+
+            entry.reads.add(path);
         };
 
         let cachedTarget: T | undefined;
@@ -316,31 +473,97 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     }
 
     /**
-     * The read record for one source in the current render.
+     * Replaces the subclass's `render` with a boundary that opens a render attempt around it.
      *
-     * A record from an earlier generation is replaced rather than extended, so reads that are
-     * gone from this render do not keep the component subscribed to their paths.
+     * A boundary is installed once per instance: `renderBoundaries` recognizes a render that is
+     * already a boundary, and a `render` that is not a function — React.Component has no runtime
+     * prototype `render`, so there is nothing to wrap before a subclass defines one — is left
+     * alone for the mount hook to catch.
      */
-    protected track(source: ICarburetorSubscription): ITrackedCarburetor {
-        const cuid = source.getUID();
-        const known = this.tracked[cuid];
+    private wrapRender(): void {
+        const realRender = this.render as unknown;
 
-        const tracked: ITrackedCarburetor = known && known.generation === this.renderGeneration
-            ? known
-            : {
-                carburetor: source,
-                reads: new Set<TPath>(),
-                version: source.getVersion(),
-                generation: this.renderGeneration,
-                committed: known ? known.committed : undefined
-            };
+        if (typeof realRender !== 'function' || renderBoundaries.has(realRender)) {
+            return;
+        }
 
-        this.tracked[cuid] = tracked;
+        const boundary = (): React.ReactNode => {
+            const attempt = this.openRenderAttempt();
 
-        return tracked;
+            try {
+                return (realRender as () => React.ReactNode).call(this);
+            } catch (error: unknown) {
+                // A render that throws (an error, or a Suspense thenable) never publishes what
+                // it collected: the attempt is marked abandoned and a commit will not consume it.
+                attempt.abandoned = true;
+
+                throw error;
+            } finally {
+                this.closeRenderAttempt(attempt);
+            }
+        };
+
+        renderBoundaries.add(boundary);
+        this.render = boundary as unknown as () => React.ReactNode;
     }
 
-    /** Where a subclass declares its effects; called after every commit. */
+    /**
+     * Opens a fresh render attempt: an empty entry map this render's reads will fill.
+     *
+     * Any previous tentative state is discarded by replacement — it simply stops being
+     * reachable — so an abandoned collection can never bleed into a new attempt.
+     */
+    private openRenderAttempt(): IRenderAttempt {
+        const attempt: IRenderAttempt = {entries: new Map<string, IAttemptEntry>(), abandoned: false};
+
+        this.renderAttempt = attempt;
+
+        return attempt;
+    }
+
+    /**
+     * Closes a render attempt: it becomes the candidate the next commit may consume.
+     *
+     * From here until the next open there is no current attempt, so nothing records: the
+     * render→commit gap is inert, and reads through captured views — from handlers, effects or
+     * other components' callbacks — cannot alter this render's dependency set.
+     *
+     * @param attempt - the attempt just closed; kept as pending even when the render threw
+     */
+    private closeRenderAttempt(attempt: IRenderAttempt): void {
+        this.pendingAttempt = attempt;
+        this.renderAttempt = undefined;
+    }
+
+    /**
+     * The attempt entry for one source in the current render: created on first use with the
+     * source resolved and the baseline version captured, then only its path set grows.
+     *
+     * Outside a render attempt there is nothing to attribute a read to; a detached entry is
+     * returned so the caller still gets data while nothing is recorded or ever published.
+     *
+     * @param source - the subscription-shaped source to record this render's reads for
+     */
+    protected track(source: ICarburetorSubscription): IAttemptEntry {
+        const attempt = this.renderAttempt;
+
+        if (!attempt) {
+            return {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
+        }
+
+        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + source.getUID());
+
+        if (!entry) {
+            entry = {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
+            attempt.entries.set(TRACKED_ATTEMPT_KEY + source.getUID(), entry);
+        }
+
+        return entry;
+    }
+
+    /**
+     * Where a subclass declares its effects; called after every commit.
+     */
     protected useEffects(): void {
     }
 
@@ -406,74 +629,93 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     };
 
     /**
-     * Establishes this render's subscriptions and drops the ones it no longer needs.
+     * Establishes this commit's subscriptions and drops the ones this render no longer needs.
+     *
+     * A commit consumes the pending render attempt exactly once, and only a fresh one: a fresh
+     * attempt's entries become each dependency's committed description — the read set copied —
+     * records the attempt never touched are released and deleted, and a connection it never
+     * touched loses its description, which `alignSubscription` turns into an unsubscribe. A
+     * commit with no fresh attempt behind it (a StrictMode-replayed mount, a Suspense
+     * hide/reveal) skips all of that and only re-aligns, restoring subscriptions from the
+     * descriptions the last fresh commit published.
      *
      * Subscribing happens here rather than in render: render has to stay pure, otherwise an
      * abandoned concurrent render would leave subscriptions pointing at a component that was
-     * never committed. The price is the window between render and commit, which is closed by
-     * comparing the carburetor version.
+     * never committed. The price is the window between render and commit, which stays closed
+     * because every description carries the baseline version its attempt captured at first
+     * read — a write landing in the gap is still detected, and force-updated away.
      */
     protected commitSubscriptions(): void {
-        const generation = this.renderGeneration;
+        const attempt = this.pendingAttempt;
+
+        // A commit consumes a render attempt exactly once, and only a fresh one: StrictMode's
+        // replayed mount and a Suspense hide/reveal commit again with NO new render behind
+        // them — identity with the last consumed attempt is what tells those apart from a
+        // real render, so a replay restores the last committed description instead of being
+        // mistaken for an empty render.
+        const fresh = attempt !== undefined && !attempt.abandoned && attempt !== this.committedAttempt;
+
+        if (fresh) {
+            this.committedAttempt = attempt;
+
+            // A record the attempt did not touch is gone from the render: release its
+            // subscription and drop the record. A connection the attempt did not touch keeps
+            // its declaration but loses its committed description — and with it, below, the
+            // subscription: an unused connection must have no active read subscription.
+            Object.keys(this.tracked).forEach((cuid: string) => {
+                if (attempt.entries.has(TRACKED_ATTEMPT_KEY + cuid)) {
+                    return;
+                }
+
+                this.releaseSlot(this.uid, this.tracked[cuid]);
+                delete this.tracked[cuid];
+            });
+
+            this.connections.forEach((connection: IConnection) => {
+                if (!attempt.entries.has(CONNECTION_ATTEMPT_KEY + connection.uid)) {
+                    connection.committed = undefined;
+                }
+            });
+
+            // What the attempt read becomes the new committed description. The set is copied
+            // at this tentative-to-committed transition so a later read through a stale
+            // captured view cannot alter what a commit established.
+            attempt.entries.forEach((entry: IAttemptEntry, key: string) => {
+                const description: IDependencyDescription = {
+                    carburetor: entry.source,
+                    baselineVersion: entry.baselineVersion,
+                    reads: new Set<TPath>(entry.reads),
+                };
+
+                if (entry.connection) {
+                    entry.connection.committed = description;
+
+                    return;
+                }
+
+                const cuid = key.slice(TRACKED_ATTEMPT_KEY.length);
+                const known = this.tracked[cuid];
+
+                this.tracked[cuid] = {
+                    committed: description,
+                    installed: known ? known.installed : undefined,
+                };
+            });
+        }
+
         let changedDuringRender = false;
 
         Object.keys(this.tracked).forEach((cuid: string) => {
-            const tracked = this.tracked[cuid];
-
-            if (tracked.generation !== generation) {
-                tracked.carburetor.unsubscribe(this.uid);
-                delete this.tracked[cuid];
-
-                return;
-            }
-
-            // An unchanged read set skips re-registering: SubscriberIndex would remove and
-            // re-walk every ancestor of every path only to arrive at the same entries — pure
-            // cost. The version check below still runs either way.
-            if (tracked.committed === undefined || !sameReads(tracked.committed, tracked.reads)) {
-                // Subscribing with the component's own id replaces the previous registration
-                // instead of adding a second one. The carburetor copies the read set, so reads
-                // happening later outside render cannot extend an established subscription.
-                tracked.carburetor.subscribe(this.onCarburetorUpdate, {id: this.uid, reads: tracked.reads});
-
-                tracked.committed = new Set<TPath>(tracked.reads);
-            }
-
-            if (tracked.carburetor.getVersion() !== tracked.version) {
+            if (this.alignSubscription(this.uid, this.tracked[cuid])) {
                 changedDuringRender = true;
             }
         });
 
-        // Connections are never pruned here: unlike `tracked`, a connection's lifetime is the
-        // component's own, not one render's. What still needs redoing per commit is pointing it
-        // at whatever `getCarburetor()` resolves to now, and registering whatever the render
-        // actually read.
         this.connections.forEach((connection: IConnection) => {
-            const carburetor = connection.getCarburetor();
-
-            if (connection.subscribedTo !== carburetor) {
-                if (connection.subscribedTo) {
-                    connection.subscribedTo.unsubscribe(connection.uid);
-                }
-
-                // Forces the subscribe below even if the new carburetor happens to want the
-                // same paths: the old registration is gone, so skipping would leave nothing
-                // registered anywhere.
-                connection.committed = undefined;
-                connection.subscribedTo = carburetor;
-            }
-
-            if (connection.committed === undefined || !sameReads(connection.committed, connection.reads)) {
-                carburetor.subscribe(this.onCarburetorUpdate, {id: connection.uid, reads: connection.reads});
-                connection.committed = new Set<TPath>(connection.reads);
-            }
-
-            if (connection.lastSeenVersion !== undefined && carburetor.getVersion() !== connection.lastSeenVersion) {
+            if (this.alignSubscription(connection.uid, connection)) {
                 changedDuringRender = true;
             }
         });
-
-        this.renderGeneration = generation + 1;
 
         if (changedDuringRender) {
             this.forceUpdate();
@@ -481,42 +723,90 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     }
 
     /**
-     * Unsubscribes from every tracked source, so a carburetor stops holding this instance.
+     * Brings one slot's registration in line with its committed description.
      *
-     * The read records survive the teardown: a commit can follow without a render to refill
-     * them, because StrictMode replays the mount lifecycles (mount, unmount, mount) in
-     * development, and that commit rebuilds the subscriptions from the records — render is
-     * what fills them, and it does not run again.
+     * No description means nothing may be listening: an installed handle is unsubscribed and
+     * cleared. Otherwise a handle pointing at another carburetor is dropped first, and an
+     * unchanged read set skips re-registering. Returns the drift check: whether the store's
+     * version moved past the description's baseline, i.e. whether a write landed between the
+     * render's read and this commit — anchored to the baseline captured at the attempt's first
+     * read, not refreshed after every access, which is what keeps an unused connection from
+     * looping forceUpdate forever.
      *
-     * The records are re-stamped so the next commit accepts them: `commitSubscriptions` moves
-     * `renderGeneration` past the generation that stamped the record, so a record kept as it
-     * stood would read as stale and be dropped. No render runs between this method and that
-     * commit, so the re-stamp cannot be mistaken for a future render's marks — a real render
-     * stamps its reads with a fresh generation, which is what still lets it drop the reads it
-     * no longer makes.
+     * @param uid - the id the slot's registration is keyed under: the component's own for
+     * `tracked` records, the connection's own for connections
+     * @param slot - the slot to align
+     */
+    private alignSubscription(uid: string, slot: IDependencySlot): boolean {
+        const committed = slot.committed;
+        const installed = slot.installed;
+
+        if (!committed) {
+            if (installed) {
+                installed.carburetor.unsubscribe(uid);
+                slot.installed = undefined;
+            }
+
+            return false;
+        }
+
+        if (installed && installed.carburetor !== committed.carburetor) {
+            installed.carburetor.unsubscribe(uid);
+            slot.installed = undefined;
+        }
+
+        // An unchanged read set skips re-registering: SubscriberIndex would remove and
+        // re-walk every ancestor of every path only to arrive at the same entries — pure
+        // cost. The version check below still runs either way.
+        if (slot.installed === undefined || !sameReads(slot.installed.reads, committed.reads)) {
+            // Subscribing with the slot's own id replaces the previous registration instead of
+            // adding a second one. The carburetor copies the read set, so reads happening later
+            // outside render cannot extend an established subscription.
+            committed.carburetor.subscribe(this.onCarburetorUpdate, {id: uid, reads: committed.reads});
+            slot.installed = {carburetor: committed.carburetor, reads: new Set<TPath>(committed.reads)};
+        }
+
+        return committed.carburetor.getVersion() !== committed.baselineVersion;
+    }
+
+    /**
+     * Ends a slot's active registration, leaving its committed description untouched.
      *
-     * `committed` is reset along with the subscriptions: the replayed mount's commit must
-     * subscribe for real again even though its read set is identical — letting it count as
-     * unchanged would leave the restore silently skipped.
+     * Serves both callers that want exactly that: teardown (clear every handle, keep every
+     * description for a replayed mount's restore) and a fresh commit's prune pass (delete
+     * whole records, but empty their stores first).
+     *
+     * @param uid - the id the slot's registration is keyed under: the component's own for
+     * `tracked` records, the connection's own for connections
+     * @param slot - the slot whose handle to clear
+     */
+    private releaseSlot(uid: string, slot: IDependencySlot): void {
+        if (slot.installed) {
+            slot.installed.carburetor.unsubscribe(uid);
+            slot.installed = undefined;
+        }
+    }
+
+    /**
+     * Unsubscribes from every source, so a carburetor stops holding this instance.
+     *
+     * Only the active handles go: every committed description stays, as do the pending and
+     * consumed attempt identities. That is exactly what lets a StrictMode-replayed mount's
+     * commit re-install the subscriptions without a new render — its attempt is not fresh, so
+     * `alignSubscription` reinstalls from the descriptions the last fresh commit published —
+     * and what keeps the replay from being mistaken for an empty render, which would drop
+     * every dependency as unread. A render still drops what it stops reading: that runs
+     * through a fresh attempt, which clears descriptions wholesale, not through this method.
      */
     protected releaseSubscriptions(): void {
         Object.keys(this.tracked).forEach((cuid: string) => {
-            this.tracked[cuid].carburetor.unsubscribe(this.uid);
-            this.tracked[cuid].generation = this.renderGeneration;
-            this.tracked[cuid].committed = undefined;
+            this.releaseSlot(this.uid, this.tracked[cuid]);
         });
 
-        // `committed` and `subscribedTo` reset the same way `tracked`'s do, and for the same
-        // reason: a StrictMode-replayed remount's commit must subscribe for real, even though
-        // `reads` (kept, unlike `tracked`'s generation dance — a connection has no generation
-        // to go stale) would otherwise look unchanged.
         this.connections.forEach((connection: IConnection) => {
-            if (connection.subscribedTo) {
-                connection.subscribedTo.unsubscribe(connection.uid);
-            }
-
-            connection.subscribedTo = undefined;
-            connection.committed = undefined;
+            this.releaseSlot(connection.uid, connection);
         });
+
+        this.renderAttempt = undefined;
     }
 }

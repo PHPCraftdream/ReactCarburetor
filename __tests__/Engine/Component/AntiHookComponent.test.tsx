@@ -4,7 +4,7 @@ import {fireEvent, render} from '@testing-library/react';
 import {AntiHookComponent, Carburetor, ComponentUpdateThrottle, EResourceStatus, computed} from "@/Carburetor";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
-import {TSubscriber} from '@/Carburetor/Models/Base';
+import {TReadonly, TSubscriber} from '@/Carburetor/Models/Base';
 import {ISubscribeOptions} from '@/Carburetor/Models/Store';
 
 interface ICounterData {
@@ -882,6 +882,371 @@ describe('<AntiHookComponent />', () => {
 
             expect(store.subscriberCount()).toEqual(0);
         });
+
+        test('a write to a path of a hidden connection does not trigger renders or loop', () => {
+            const store = new ObservedCarburetor(getCounterData());
+            let renders = 0;
+
+            class Hidden extends AntiHookComponent<{show: boolean}> {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    renders++;
+
+                    // The harness guard keeps a render loop from hanging the suite: this test
+                    // asserts a bounded number of renders, so tripping the guard is a failure.
+                    if (renders > 40) {
+                        throw new Error('bounded render-loop guard tripped');
+                    }
+
+                    return this.props.show ? <div className="value">{this.view.value}</div> : <div/>;
+                }
+            }
+
+            const {rerender, unmount} = render(<Hidden show={true} />);
+
+            expect(store.subscriberCount()).toEqual(1);
+
+            rerender(<Hidden show={false} />);
+
+            // The render that hid the branch must drop the connection's subscription: nothing
+            // reads it, so a write to its former dependency may not reach this component again.
+            expect(store.subscriberCount()).toEqual(0);
+
+            act(() => store.incValue());
+
+            expect(renders).toEqual(2);
+            expect(store.subscriberCount()).toEqual(0);
+
+            unmount();
+        });
+
+        test('a handler read does not add paths to the next render subscription', () => {
+            const store = new ObservedCarburetor(getCounterData());
+
+            class Reader extends AntiHookComponent<{label: string}> {
+                private readonly view = this.connect(() => store);
+
+                handleClick = (): void => {
+                    // Reading connected data outside render must stay invisible to tracking:
+                    // the next render still subscribes to exactly the paths it reads.
+                    void this.view.other;
+                };
+
+                render() {
+                    return <div>
+                        <span className="value">{this.view.value}</span>
+                        <span className="label">{this.props.label}</span>
+                        <button className="btn" onClick={this.handleClick}>read</button>
+                    </div>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Reader label="a" />);
+
+            expect([...store.subscribeReads[0]]).toEqual(['value']);
+
+            fireEvent.click(container.querySelector('.btn') as HTMLButtonElement);
+
+            rerender(<Reader label="b" />);
+
+            // The handler's read is invisible to tracking: the second render commits exactly the
+            // read set it made itself, which is unchanged, so the first — and only — registration
+            // still names what the render reads.
+            expect(store.subscribeReads.length).toEqual(1);
+            expect([...store.subscribeReads[0]]).toEqual(['value']);
+
+            unmount();
+        });
+
+        test('an effect read does not add paths to a later render', () => {
+            const store = new ObservedCarburetor(getCounterData());
+
+            class EffectReader extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                protected useEffects(): void {
+                    void this.view.other;
+                }
+
+                render() {
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            const {container, unmount} = render(<EffectReader />);
+
+            expect([...store.subscribeReads[0]]).toEqual(['value']);
+
+            act(() => store.incOther());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('0');
+            expect(store.subscribeReads.length).toEqual(1);
+
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+            // The re-render the write triggered commits the same read set it already has, so
+            // nothing re-registers — and the effect's read of 'other' never shows up anywhere.
+            expect(store.subscribeReads.length).toEqual(1);
+            expect([...store.subscribeReads[0]]).toEqual(['value']);
+
+            unmount();
+        });
+
+        test('showing a hidden branch again restores one subscription with current data', () => {
+            const store = new ObservedCarburetor(getCounterData());
+            let renders = 0;
+
+            class Hidden extends AntiHookComponent<{show: boolean}> {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    renders++;
+
+                    return this.props.show ? <div className="value">{this.view.value}</div> : <div/>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Hidden show={true} />);
+
+            expect(store.subscriberCount()).toEqual(1);
+
+            rerender(<Hidden show={false} />);
+
+            expect(store.subscriberCount()).toEqual(0);
+
+            // Data moves while nothing is watching: no render may happen for it.
+            act(() => store.incValue());
+            act(() => store.incValue());
+
+            expect(renders).toEqual(2);
+            expect(store.subscriberCount()).toEqual(0);
+
+            rerender(<Hidden show={true} />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('2');
+            expect(store.subscriberCount()).toEqual(1);
+            expect(store.subscribeReads.length).toEqual(2);
+            expect([...store.subscribeReads[1]]).toEqual(['value']);
+
+            // The restored subscription keeps working: exactly one registration, still live.
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('3');
+            expect(store.subscribeReads.length).toEqual(2);
+
+            unmount();
+
+            expect(store.subscriberCount()).toEqual(0);
+        });
+
+        test('a declaration that is never read installs no empty subscription', () => {
+            const first = new ObservedCarburetor(getCounterData());
+            const second = new ObservedCarburetor(getCounterData());
+
+            class Two extends AntiHookComponent<{useFirst: boolean; tick: number}> {
+                private readonly left = this.connect(() => first);
+                private readonly right = this.connect(() => second);
+
+                render() {
+                    return <div className="value">{this.props.useFirst ? this.left.value : this.right.value}</div>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Two useFirst={true} tick={0} />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('0');
+            expect(first.subscriberCount()).toEqual(1);
+            expect(second.subscriberCount()).toEqual(0);
+
+            // Re-commits without reading the second declaration must not install anything for it.
+            rerender(<Two useFirst={true} tick={1} />);
+
+            expect(second.subscriberCount()).toEqual(0);
+
+            rerender(<Two useFirst={false} tick={2} />);
+
+            expect(first.subscriberCount()).toEqual(0);
+            expect(second.subscriberCount()).toEqual(1);
+            expect(container.querySelector('.value')?.textContent).toEqual('0');
+
+            act(() => second.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+            unmount();
+
+            expect(second.subscriberCount()).toEqual(0);
+        });
+
+        test('a child mount callback can write the store without suppressing the parent update', () => {
+            const store = new ObservedCarburetor(getCounterData());
+
+            class Child extends AntiHookComponent<{view: TReadonly<ICounterData>}> {
+                public componentDidMount(): void {
+                    super.componentDidMount();
+
+                    // A write from a child mount callback lands after the parent rendered and
+                    // before the parent commits; a commit-time read through the parent's view
+                    // must not paper over the version gap the parent's drift check watches.
+                    store.incValue();
+                    void this.props.view.value;
+                }
+
+                render() {
+                    // Untracked by design: the child must not widen the parent's subscription
+                    // (or any other), so it reads the raw data object directly.
+                    // oxlint-disable-next-line carburetor/no-get-data-in-render
+                    return <span className="child">{store.getData().value}</span>;
+                }
+            }
+
+            class Parent extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    return <div className="value">{this.view.value}<Child view={this.view}/></div>;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            // The div's whole textContent would read '10': the parent's own text node plus the
+            // child's span, which the props gate keeps at its pre-write '0' (its props never
+            // changed). The parent's own text node is what carries the regression point.
+            expect(container.querySelector('.value')?.firstChild?.textContent).toEqual('1');
+            expect(store.subscriberCount()).toEqual(1);
+
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.firstChild?.textContent).toEqual('2');
+
+            unmount();
+        });
+
+        test('a source swap between renders validates the new store version too', () => {
+            const first = new ObservedCarburetor(getCounterData());
+            const second = new ObservedCarburetor({value: 10, other: 0});
+
+            // Writes to whatever store it is handed, during its own commit phase: by the time the
+            // reader's commit runs, the version its render captured is already behind.
+            class Early extends AntiHookComponent<{store: ObservedCarburetor}> {
+                protected useEffects(): void {
+                    this.props.store.incValue();
+                }
+
+                render() {
+                    return <div/>;
+                }
+            }
+
+            class Swapped extends AntiHookComponent<{store: ObservedCarburetor}> {
+                private readonly view = this.connect(() => this.props.store);
+
+                render() {
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(
+                <div><Early store={first}/><Swapped store={first}/></div>
+            );
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+            rerender(<div><Early store={second}/><Swapped store={second}/></div>);
+
+            expect(first.subscriberCount()).toEqual(0);
+            expect(second.subscriberCount()).toEqual(1);
+            expect(container.querySelector('.value')?.textContent).toEqual('11');
+
+            unmount();
+
+            expect(second.subscriberCount()).toEqual(0);
+        });
+
+        test('unchanged committed dependencies do not rebuild the subscriber index', () => {
+            const store = new ObservedCarburetor(getCounterData());
+
+            class Stable extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            const {container, unmount} = render(<Stable />);
+
+            expect(store.subscribeReads.length).toEqual(1);
+
+            act(() => store.incValue());
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('2');
+            expect(store.subscribeReads.length).toEqual(1);
+            expect(store.subscriberCount()).toEqual(1);
+
+            unmount();
+        });
+
+        test('collects reads when render is declared as a class property', () => {
+            const store = new ObservedCarburetor(getCounterData());
+
+            class FieldRender extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                // oxlint-disable-next-line carburetor/no-lifecycle-class-property
+                render = () => <div className="value">{this.view.value}</div>;
+            }
+
+            const {container, unmount} = render(<FieldRender />);
+
+            expect(store.subscriberCount()).toEqual(1);
+            expect(container.querySelector('.value')?.textContent).toEqual('0');
+
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+            expect(store.subscribeReads.length).toEqual(1);
+
+            unmount();
+
+            expect(store.subscriberCount()).toEqual(0);
+        });
+
+        test('a replayed mount does not install a subscription for an unused connection', () => {
+            const store = new ObservedCarburetor(getCounterData());
+
+            class Maybe extends AntiHookComponent<{show: boolean}> {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    return this.props.show ? <div className="value">{this.view.value}</div> : <div/>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<React.StrictMode><Maybe show={false} /></React.StrictMode>);
+
+            // Both mount passes must leave an unread connection unsubscribed: no empty
+            // registration, and nothing for the replay to mistake for a dependency.
+            expect(store.subscriberCount()).toEqual(0);
+            expect(store.subscribeReads.length).toEqual(0);
+
+            rerender(<React.StrictMode><Maybe show={true} /></React.StrictMode>);
+
+            expect(store.subscriberCount()).toEqual(1);
+            expect(container.querySelector('.value')?.textContent).toEqual('0');
+
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+            unmount();
+
+            expect(store.subscriberCount()).toEqual(0);
+        });
     });
 
     describe('under StrictMode', () => {
@@ -1045,6 +1410,200 @@ describe('<AntiHookComponent />', () => {
             expect(other.subscriberCount()).toEqual(1);
 
             unmount();
+        });
+    });
+
+    describe('render attempt lifecycle', () => {
+        test('a failed mount render installs nothing', () => {
+            const store = new ObservedCarburetor(getCounterData());
+            let renders = 0;
+
+            class Boom extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    renders++;
+
+                    const value = this.view.value;
+
+                    throw new Error('boom after reading ' + value);
+                }
+            }
+
+            expect(() => render(<Boom />)).toThrow('boom');
+
+            // The attempt that threw is abandoned: what it collected is never published and no
+            // subscription is installed for a component that never committed.
+            expect(store.subscriberCount()).toEqual(0);
+            expect(store.subscribeReads.length).toEqual(0);
+            // React 19 retries an errored render once before propagating it: both attempts run
+            // here, and both are abandoned by the boundary.
+            expect(renders).toEqual(2);
+        });
+
+        test('a failed update render publishes nothing new and leaves no leak', () => {
+            const store = new ObservedCarburetor(getCounterData());
+
+            class Flaky extends AntiHookComponent<{fail: boolean}> {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    if (this.props.fail) {
+                        throw new Error('flaky');
+                    }
+
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            class Catch extends React.Component<{children: React.ReactNode}, {failed: boolean}> {
+                public state = {failed: false};
+
+                public static getDerivedStateFromError(): {failed: boolean} {
+                    return {failed: true};
+                }
+
+                public render() {
+                    return this.state.failed ? <span className="caught">caught</span> : this.props.children;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Catch><Flaky fail={false} /></Catch>);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('0');
+            expect(store.subscriberCount()).toEqual(1);
+            expect(store.subscribeReads.length).toEqual(1);
+
+            rerender(<Catch><Flaky fail={true} /></Catch>);
+
+            expect(container.querySelector('.caught')?.textContent).toEqual('caught');
+            // The abandoned attempt published nothing; the boundary replacing the subtree
+            // released what the last good commit held.
+            expect(store.subscribeReads.length).toEqual(1);
+            expect(store.subscriberCount()).toEqual(0);
+
+            unmount();
+        });
+
+        test('a suspended mount leaves no subscription and recovers with fresh data', async () => {
+            const store = new ObservedCarburetor(getCounterData());
+            let resolveGate: (() => void) | undefined;
+            let settled = false;
+            const gate = new Promise<void>((resolve) => {
+                resolveGate = () => {
+                    settled = true;
+                    resolve();
+                };
+            });
+
+            class Later extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    const value = this.view.value;
+
+                    // React 19 retries a suspended render synchronously: the render must keep
+                    // throwing while the gate is pending, or the retry commits content and
+                    // nothing suspends.
+                    if (!settled) {
+                        throw gate;
+                    }
+
+                    return <div className="value">{value}</div>;
+                }
+            }
+
+            const {container, unmount} = render(
+                <React.Suspense fallback={<span className="fallback">wait</span>}><Later /></React.Suspense>
+            );
+
+            expect(container.querySelector('.fallback')?.textContent).toEqual('wait');
+            expect(store.subscriberCount()).toEqual(0);
+            expect(store.subscribeReads.length).toEqual(0);
+
+            act(() => store.incValue());
+
+            await act(async () => {
+                resolveGate?.();
+                await gate;
+            });
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+            expect(store.subscriberCount()).toEqual(1);
+
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('2');
+
+            unmount();
+
+            expect(store.subscriberCount()).toEqual(0);
+        });
+
+        test('suspense hide and reveal preserve the committed subscription without leaks', async () => {
+            const store = new ObservedCarburetor(getCounterData());
+            let resolveGate: (() => void) | undefined;
+            let settled = false;
+            const gate = new Promise<void>((resolve) => {
+                resolveGate = () => {
+                    settled = true;
+                    resolve();
+                };
+            });
+
+            class Gate extends AntiHookComponent<{block: boolean}> {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    const value = this.view.value;
+
+                    // Same as the mount case: React 19 retries a suspended render immediately,
+                    // so the gate must keep throwing until it settles, or no suspension happens.
+                    if (this.props.block && !settled) {
+                        throw gate;
+                    }
+
+                    return <div className="value">{value}</div>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(
+                <React.Suspense fallback={<span className="fallback">wait</span>}>
+                    <Gate block={false} />
+                </React.Suspense>
+            );
+
+            expect(container.querySelector('.value')?.textContent).toEqual('0');
+            expect(store.subscriberCount()).toEqual(1);
+
+            rerender(
+                <React.Suspense fallback={<span className="fallback">wait</span>}>
+                    <Gate block={true} />
+                </React.Suspense>
+            );
+
+            // The suspended update hides the tree; whatever React did with the hidden
+            // instance, no render may run for writes nobody can see.
+            act(() => store.incValue());
+
+            expect(container.querySelector('.fallback')?.textContent).toEqual('wait');
+
+            await act(async () => {
+                resolveGate?.();
+                await gate;
+            });
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+            expect(store.subscriberCount()).toEqual(1);
+
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('2');
+            expect(store.subscriberCount()).toEqual(1);
+
+            unmount();
+
+            expect(store.subscriberCount()).toEqual(0);
         });
     });
 });
