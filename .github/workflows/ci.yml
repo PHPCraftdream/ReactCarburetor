@@ -170,8 +170,9 @@ jobs:
             | sudo tee /etc/apt/sources.list.d/arm64-ports.list
           sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/arm64-ports.list" -o Dir::Etc::sourceparts="-"
           cd "$RUNNER_TEMP"
-          apt-get download libc6:arm64
+          apt-get download libc6:arm64 libgcc-s1:arm64
           sudo dpkg -x libc6_*.deb /
+          sudo dpkg -x libgcc-s1_*.deb /
 
       # Matrix keys cannot be environment variable NAMES, so the linker reaches cargo through
       # the environment file instead.
