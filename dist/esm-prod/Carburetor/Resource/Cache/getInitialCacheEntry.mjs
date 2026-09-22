@@ -1,1 +1,1 @@
-import{EResourceStatus as t}from"../../Models/Enums/EResourceStatus.mjs";let e=()=>({status:t.Idle,data:void 0,error:void 0,updatedAt:void 0,refreshing:!1,invalidated:!1});export{e as getInitialCacheEntry};
+import{EResourceStatus as e}from"../../Models/Enums/EResourceStatus.mjs";let t=()=>({status:e.Idle,data:void 0,error:void 0,updatedAt:void 0,refreshing:!1,invalidated:!1,failed:!1});export{t as getInitialCacheEntry};

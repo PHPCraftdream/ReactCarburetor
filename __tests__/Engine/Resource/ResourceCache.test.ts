@@ -252,6 +252,8 @@ describe('ResourceCache', () => {
         const entry = cache.getEntry('a');
 
         expect(entry.status).toEqual(EResourceStatus.Error);
+        // Even without prior data, the failure is recorded on the entry itself.
+        expect(entry.failed).toBeTruthy();
         expect(entry.error).toEqual('network down');
         expect(entry.data).toBeUndefined();
         // The serializable state carries the message; the rejection itself is kept beside it.

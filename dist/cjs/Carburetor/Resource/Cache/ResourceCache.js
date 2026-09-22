@@ -93,6 +93,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         if (!this.data.entries[key]) return;
         this.update((draft)=>{
             draft.entries[key].invalidated = true;
+            draft.entries[key].failed = false;
         });
     };
     invalidateAll = ()=>{
@@ -101,6 +102,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         this.update((draft)=>{
             keys.forEach((key)=>{
                 draft.entries[key].invalidated = true;
+                draft.entries[key].failed = false;
             });
         });
     };
@@ -212,6 +214,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
             draft.entries[key].updatedAt = Date.now();
             draft.entries[key].refreshing = false;
             draft.entries[key].invalidated = false;
+            draft.entries[key].failed = false;
         });
     };
     settleFailure = (key, controller, error)=>{
@@ -223,6 +226,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         this.update((draft)=>{
             draft.entries[key].error = (0, external_describeError_js_namespaceObject.describeError)(error);
             draft.entries[key].refreshing = false;
+            draft.entries[key].failed = true;
             if (!hasData) draft.entries[key].status = EResourceStatus_js_namespaceObject.EResourceStatus.Error;
         });
     };

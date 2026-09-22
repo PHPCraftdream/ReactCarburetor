@@ -29,6 +29,21 @@ export interface IResourceEntry<T> extends IResourceData<T> {
      * obtained: the entry is stale because someone said so, not because it aged.
      */
     invalidated: boolean;
+    /**
+     * The most recent settled attempt failed, and nothing has asked to try again since.
+     *
+     * Separate from `status` because a refresh that fails keeps `status: Success` — the data on
+     * hand is still good — while the component layer must not queue another fetch from that
+     * failure's own notification, or a failing loader is retried once per render, forever.
+     *
+     * Set by any failed attempt. Cleared by a successful answer, and by an explicit
+     * `invalidate`/`invalidateAll`: a write the server accepted is a new external event, and the
+     * documented contract of an invalidation is that entries being read refetch on the next
+     * render, which must include an entry whose last attempt failed. A retry left in flight or
+     * aborted does not clear it — the flag describes the last settled outcome, so an abandoned
+     * retry leaves the entry waiting for an explicit `refresh`/`load`.
+     */
+    failed: boolean;
 }
 /** The cache's state: entries under keys produced by `encodeCacheKey`. */
 export interface IResourceCacheData<T> {

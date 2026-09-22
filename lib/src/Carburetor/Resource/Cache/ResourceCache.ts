@@ -158,6 +158,11 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
      * are on screen; refetching all of them is the waste this engine exists to avoid. The entries
      * being read refetch themselves on the next render, and a caller who wants one *now* calls
      * `refresh`.
+     *
+     * Invalidating also clears `failed`, re-arming an entry whose last attempt failed: the
+     * invalidation is a new external event, not the failure's own notification, so the next
+     * render may fetch again — which is what lets a post-write invalidation retry a refresh
+     * that had failed.
      */
     public invalidate = (args: TArgs): void => {
         const key = this.keyOf(args);
@@ -168,10 +173,11 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
 
         this.update((draft: IResourceCacheData<T>) => {
             draft.entries[key].invalidated = true;
+            draft.entries[key].failed = false;
         });
     };
 
-    /** Marks every entry stale, which is the usual move after a write the server accepted. */
+    /** Marks every entry stale and re-arms any failed entry, the usual move after a write the server accepted. */
     public invalidateAll = (): void => {
         const keys = Object.keys(this.data.entries);
 
@@ -182,6 +188,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         this.update((draft: IResourceCacheData<T>) => {
             keys.forEach((key: string) => {
                 draft.entries[key].invalidated = true;
+                draft.entries[key].failed = false;
             });
         });
     };
@@ -414,6 +421,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
             draft.entries[key].updatedAt = Date.now();
             draft.entries[key].refreshing = false;
             draft.entries[key].invalidated = false;
+            draft.entries[key].failed = false;
         });
     };
 
@@ -426,6 +434,10 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
      * `updatedAt` is deliberately left alone: it records when the *data* was obtained, and a failure
      * did not obtain any. Bumping it would both lie about the data's age and suppress the next
      * attempt for a whole TTL.
+     *
+     * The `failed` flag is what stops the component layer from auto-retrying a failed refresh that
+     * keeps `status: Success`. `invalidated` is deliberately left alone, so staleness keeps
+     * reporting the truth about the data's age for display, while `failed` alone governs auto-retry.
      */
     protected settleFailure = (key: string, controller: AbortController, error: unknown): void => {
         // The entry can be gone: evicted, or forgotten while the request was in flight. Writing into
@@ -443,6 +455,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         this.update((draft: IResourceCacheData<T>) => {
             draft.entries[key].error = describeError(error);
             draft.entries[key].refreshing = false;
+            draft.entries[key].failed = true;
 
             if (!hasData) {
                 draft.entries[key].status = EResourceStatus.Error;

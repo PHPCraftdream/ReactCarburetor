@@ -137,6 +137,11 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * An entry that failed is left alone. Retrying it from render would loop: the failure re-renders
      * the component, which would queue the same request again. A failed entry waits for an explicit
      * `refresh`, which is what the documented behaviour promises.
+     *
+     * The status check alone cannot see every failure: an entry whose *refresh* failed keeps
+     * `status: Success` with its old data. `failed` on the view is what stops this method from
+     * re-queueing the same failing request from the failure's own notification; only a successful
+     * answer, an explicit `refresh`/`load`, or a new `invalidate` re-arms a fetch.
      */
     public useResource = <T extends unknown, TArgs extends unknown>(
         source: IResourceSource<T, TArgs>,
@@ -145,7 +150,7 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         this.track(source).reads.add(source.pathOf(args));
 
         const view = source.getEntry(args);
-        const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error;
+        const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error && !view.failed;
 
         if (worthFetching) {
             this.staleResources.push(() => {

@@ -86,9 +86,14 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
      * are on screen; refetching all of them is the waste this engine exists to avoid. The entries
      * being read refetch themselves on the next render, and a caller who wants one *now* calls
      * `refresh`.
+     *
+     * Invalidating also clears `failed`, re-arming an entry whose last attempt failed: the
+     * invalidation is a new external event, not the failure's own notification, so the next
+     * render may fetch again — which is what lets a post-write invalidation retry a refresh
+     * that had failed.
      */
     invalidate: (args: TArgs) => void;
-    /** Marks every entry stale, which is the usual move after a write the server accepted. */
+    /** Marks every entry stale and re-arms any failed entry, the usual move after a write the server accepted. */
     invalidateAll: () => void;
     /** Drops one entry, cancelling its request first so a late answer cannot resurrect it. */
     forget: (args: TArgs) => void;
@@ -145,6 +150,10 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
      * `updatedAt` is deliberately left alone: it records when the *data* was obtained, and a failure
      * did not obtain any. Bumping it would both lie about the data's age and suppress the next
      * attempt for a whole TTL.
+     *
+     * The `failed` flag is what stops the component layer from auto-retrying a failed refresh that
+     * keeps `status: Success`. `invalidated` is deliberately left alone, so staleness keeps
+     * reporting the truth about the data's age for display, while `failed` alone governs auto-retry.
      */
     protected settleFailure: (key: string, controller: AbortController, error: unknown) => void;
 }

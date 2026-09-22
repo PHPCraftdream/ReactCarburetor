@@ -5,6 +5,7 @@ const getInitialCacheEntry = ()=>({
         error: void 0,
         updatedAt: void 0,
         refreshing: false,
-        invalidated: false
+        invalidated: false,
+        failed: false
     });
 export { getInitialCacheEntry };

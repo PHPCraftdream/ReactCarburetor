@@ -175,4 +175,53 @@ describe('ResourceCache.refresh', () => {
         expect(cache.getEntry('a').data).toEqual('ann again');
         expect(cache.getEntry('b').data).toEqual('bob');
     });
+
+    test('a failed refresh marks the entry failed until an answer or a new invalidation re-arms it', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+
+        await withData(cache, loader);
+
+        const request = cache.refresh('a');
+        loader.pending[1].reject(new Error('gateway timeout'));
+        await request;
+
+        expect(cache.getEntry('a').failed).toBeTruthy();
+
+        // A new invalidation is an explicit external event, so the entry may be asked again.
+        cache.invalidate('a');
+        expect(cache.getEntry('a').failed).toBeFalsy();
+
+        void cache.load('a');
+        loader.pending[2].resolve('second');
+        await flush();
+
+        expect(cache.getEntry('a').data).toEqual('second');
+        expect(cache.getEntry('a').failed).toBeFalsy();
+    });
+
+    test('an explicit refresh after a failed one retries the loader', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+
+        await withData(cache, loader);
+
+        const failed = cache.refresh('a');
+        loader.pending[1].reject(new Error('gateway timeout'));
+        await failed;
+
+        const retried = cache.refresh('a');
+
+        // A failed refresh does not lock the entry: refresh is the documented way back in.
+        expect(loader.calls).toEqual(['a', 'a', 'a']);
+
+        loader.pending[2].resolve('second');
+        await retried;
+
+        const entry = cache.getEntry('a');
+
+        expect(entry.data).toEqual('second');
+        expect(entry.error).toBeUndefined();
+        expect(entry.failed).toBeFalsy();
+    });
 });

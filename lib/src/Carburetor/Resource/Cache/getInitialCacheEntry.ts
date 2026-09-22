@@ -9,4 +9,5 @@ export const getInitialCacheEntry = <T>(): IResourceEntry<T> => ({
     updatedAt: undefined,
     refreshing: false,
     invalidated: false,
+    failed: false,
 });

@@ -37,7 +37,8 @@ const getInitialCacheEntry = ()=>({
         error: void 0,
         updatedAt: void 0,
         refreshing: false,
-        invalidated: false
+        invalidated: false,
+        failed: false
     });
 exports.getInitialCacheEntry = __webpack_exports__.getInitialCacheEntry;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

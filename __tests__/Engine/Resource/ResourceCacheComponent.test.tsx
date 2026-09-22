@@ -149,7 +149,7 @@ describe('a component reading a resource cache', () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, string>(loader.load);
 
-        const {container, unmount} = render(<Row cache={cache} id="a"/>);
+        const {container, rerender, unmount} = render(<Row cache={cache} id="a"/>);
 
         loader.fail[0](new Error('nope'));
         await flush();
@@ -157,6 +157,59 @@ describe('a component reading a resource cache', () => {
         expect(container.querySelector('.value')?.textContent).toEqual(EResourceStatus.Error);
         // Retrying here would loop: the failure re-renders, which would queue the request again.
         expect(loader.calls).toEqual(['a']);
+
+        rerender(<Row cache={cache} id="a"/>);
+        await flush();
+
+        // One more commit on top of the failure: still no new request.
+        expect(loader.calls).toEqual(['a']);
+
+        unmount();
+    });
+
+    test('a failed refresh is not retried from render, but an explicit refresh retries', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load);
+
+        void cache.load('a');
+        loader.settle[0]('first');
+        await flush();
+
+        const {container, rerender, unmount} = render(<Row cache={cache} id="a"/>);
+
+        expect(container.querySelector('.value')?.textContent).toEqual('first');
+        expect(loader.calls).toEqual(['a']);
+
+        // A write landed elsewhere: the entry is invalidated, so the next render refetches it.
+        act(() => {
+            cache.invalidate('a');
+        });
+        await flush();
+
+        expect(loader.calls).toEqual(['a', 'a']);
+
+        loader.fail[1](new Error('gateway timeout'));
+        await flush();
+
+        // The refresh failed, but the data the user is reading is still there.
+        expect(container.querySelector('.value')?.textContent).toEqual('first');
+        // One attempt per external event: the failure's own notification must not queue another.
+        expect(loader.calls).toEqual(['a', 'a']);
+
+        rerender(<Row cache={cache} id="a"/>);
+        await flush();
+
+        expect(loader.calls).toEqual(['a', 'a']);
+
+        // The escape hatch: an explicit refresh is allowed to try again.
+        const request = cache.refresh('a');
+        loader.settle[2]('second');
+        await request;
+        await flush();
+
+        expect(container.querySelector('.value')?.textContent).toEqual('second');
+        expect(loader.calls).toEqual(['a', 'a', 'a']);
+        expect(cache.getEntry('a').failed).toBeFalsy();
 
         unmount();
     });

@@ -78,7 +78,7 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
     useResource = (source, args)=>{
         this.track(source).reads.add(source.pathOf(args));
         const view = source.getEntry(args);
-        const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus_js_namespaceObject.EResourceStatus.Error;
+        const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus_js_namespaceObject.EResourceStatus.Error && !view.failed;
         if (worthFetching) this.staleResources.push(()=>{
             source.load(args);
         });
