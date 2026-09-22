@@ -38,13 +38,6 @@ const findExtension = ()=>{
     const host = globalThis;
     return host.__REDUX_DEVTOOLS_EXTENSION__;
 };
-const composeState = (carburetors)=>{
-    const state = {};
-    Object.keys(carburetors).forEach((name)=>{
-        state[name] = carburetors[name].toJSON();
-    });
-    return state;
-};
 const connectDevTools = (carburetors, options = {})=>{
     const extension = options.extension || findExtension();
     if (!extension) return ()=>void 0;
@@ -54,10 +47,24 @@ const connectDevTools = (carburetors, options = {})=>{
     const subscriberId = (0, getUid_js_namespaceObject.getUid)();
     const names = Object.keys(carburetors);
     let applyingTimeTravel = false;
-    connection.init(composeState(carburetors));
+    const snapshots = {};
+    const composeState = ()=>{
+        const state = {};
+        names.forEach((name)=>{
+            const version = carburetors[name].getVersion();
+            const cached = snapshots[name];
+            if (!cached || cached.version !== version) snapshots[name] = {
+                state: carburetors[name].toJSON(),
+                version
+            };
+            state[name] = snapshots[name].state;
+        });
+        return state;
+    };
+    connection.init(composeState());
     const publish = (name)=>{
         if (applyingTimeTravel) return;
-        connection.send(name + '/update', composeState(carburetors));
+        connection.send(name + '/update', composeState());
     };
     names.forEach((name)=>{
         carburetors[name].subscribe(()=>publish(name), {

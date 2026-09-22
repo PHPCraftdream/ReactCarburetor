@@ -12,16 +12,6 @@ const findExtension = (): IDevToolsExtension | undefined => {
     return host.__REDUX_DEVTOOLS_EXTENSION__;
 };
 
-const composeState = (carburetors: IDict<IInspectable>): IDict<unknown> => {
-    const state: IDict<unknown> = {};
-
-    Object.keys(carburetors).forEach((name: string) => {
-        state[name] = carburetors[name].toJSON();
-    });
-
-    return state;
-};
-
 /**
  * Publishes the state of the given carburetors to the Redux DevTools extension and
  * applies time travel back onto them. Returns a disposer; if no extension is available
@@ -42,14 +32,37 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
     const names = Object.keys(carburetors);
     let applyingTimeTravel = false;
 
-    connection.init(composeState(carburetors));
+    const snapshots: IDict<{state: unknown; version: number}> = {};
+
+    // A payload copies each store once and then reuses that copy until the store's version
+    // moves. Every version is checked on every composition: the notification is named after
+    // one store, but a transaction may already have changed the others by the time it fires,
+    // so refreshing only the named store would publish a payload mixing old and new states.
+    const composeState = (): IDict<unknown> => {
+        const state: IDict<unknown> = {};
+
+        names.forEach((name: string) => {
+            const version = carburetors[name].getVersion();
+            const cached = snapshots[name];
+
+            if (!cached || cached.version !== version) {
+                snapshots[name] = {state: carburetors[name].toJSON(), version};
+            }
+
+            state[name] = snapshots[name].state;
+        });
+
+        return state;
+    };
+
+    connection.init(composeState());
 
     const publish = (name: string) => {
         if (applyingTimeTravel) {
             return;
         }
 
-        connection.send(name + '/update', composeState(carburetors));
+        connection.send(name + '/update', composeState());
     };
 
     names.forEach((name: string) => {

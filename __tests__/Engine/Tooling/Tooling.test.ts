@@ -7,8 +7,10 @@ import {
     connectDevTools,
     IDevToolsConnection,
     IDevToolsMessage,
+    IInspectable,
     IStorageLike,
     persist,
+    transaction,
     waitForUpdate
 } from "@/Carburetor";
 
@@ -288,6 +290,19 @@ describe('connectDevTools', () => {
         };
     };
 
+    const countClones = (store: IInspectable): {count: () => number} => {
+        let calls = 0;
+        const original = store.toJSON;
+
+        store.toJSON = (): unknown => {
+            calls++;
+
+            return original();
+        };
+
+        return {count: () => calls};
+    };
+
     test('publishes the initial state and every change', () => {
         const carburetor = new CounterCarburetor(getData());
         const fake = createFakeExtension();
@@ -336,6 +351,123 @@ describe('connectDevTools', () => {
             carburetor.setValue(1);
             dispose();
         }).not.toThrow();
+    });
+
+    test('reuses the snapshot of an unchanged store when another store changes', () => {
+        const first = new CounterCarburetor(getData());
+        const second = new CounterCarburetor(getData());
+        const firstClones = countClones(first);
+        const secondClones = countClones(second);
+        const fake = createFakeExtension();
+
+        const dispose = connectDevTools({first, second}, {extension: fake.extension});
+
+        expect(firstClones.count()).toEqual(1);
+        expect(secondClones.count()).toEqual(1);
+
+        first.setValue(3);
+
+        expect(fake.sent.length).toEqual(1);
+        expect(fake.sent[0].action).toEqual('first/update');
+        expect(fake.sent[0].state).toEqual({first: {value: 3, label: 'start'}, second: {value: 0, label: 'start'}});
+        // The unchanged store keeps the copy taken at init; only the changed store is re-cloned.
+        expect(firstClones.count()).toEqual(2);
+        expect(secondClones.count()).toEqual(1);
+
+        dispose();
+    });
+
+    test('a transaction over several stores sends consistent payloads without re-cloning settled versions', () => {
+        const first = new CounterCarburetor(getData());
+        const second = new CounterCarburetor(getData());
+        const firstClones = countClones(first);
+        const secondClones = countClones(second);
+        const fake = createFakeExtension();
+
+        const dispose = connectDevTools({first, second}, {extension: fake.extension});
+
+        transaction(() => {
+            first.setValue(1);
+            second.setValue(2);
+        });
+
+        expect(fake.sent.length).toEqual(2);
+        expect(fake.sent[0].action).toEqual('first/update');
+        expect(fake.sent[0].state).toEqual({first: {value: 1, label: 'start'}, second: {value: 2, label: 'start'}});
+        expect(fake.sent[1].action).toEqual('second/update');
+        expect(fake.sent[1].state).toEqual({first: {value: 1, label: 'start'}, second: {value: 2, label: 'start'}});
+        // One copy at init plus one after each store's version moved; the second publish reuses both.
+        expect(firstClones.count()).toEqual(2);
+        expect(secondClones.count()).toEqual(2);
+
+        dispose();
+    });
+
+    test('a published payload stays detached from later writes', () => {
+        const first = new CounterCarburetor(getData());
+        const second = new CounterCarburetor(getData());
+        const fake = createFakeExtension();
+
+        const dispose = connectDevTools({first, second}, {extension: fake.extension});
+
+        first.setValue(3);
+        const published = fake.sent[0].state;
+
+        first.setValue(4);
+        second.setValue(7);
+
+        expect(published).toEqual({first: {value: 3, label: 'start'}, second: {value: 0, label: 'start'}});
+        // Each write publishes its own message; the last payload carries both fresh values while
+        // the payload captured above still shows the states it had when it was sent.
+        expect(fake.sent.length).toEqual(3);
+        expect(fake.sent[2].state).toEqual({first: {value: 4, label: 'start'}, second: {value: 7, label: 'start'}});
+
+        dispose();
+    });
+
+    test('rollback rewinds the stores and the next publish reflects the rewound state', () => {
+        const first = new CounterCarburetor(getData());
+        const second = new CounterCarburetor(getData());
+        const fake = createFakeExtension();
+
+        const dispose = connectDevTools({first, second}, {extension: fake.extension});
+
+        first.setValue(5);
+        second.setValue(6);
+        const sentAfterChanges = fake.sent.length;
+
+        fake.emit({
+            type: EDevToolsMessageType.Dispatch,
+            payload: {type: EDevToolsAction.Rollback},
+            state: JSON.stringify({first: {value: 1, label: 'start'}, second: {value: 0, label: 'start'}}),
+        });
+
+        expect(first.getData().value).toEqual(1);
+        expect(second.getData().value).toEqual(0);
+        expect(fake.sent.length).toEqual(sentAfterChanges);
+
+        second.setValue(2);
+
+        expect(fake.sent[fake.sent.length - 1].state)
+            .toEqual({first: {value: 1, label: 'start'}, second: {value: 2, label: 'start'}});
+
+        dispose();
+    });
+
+    test('without an extension, transactions and disposal remain no-ops', () => {
+        const first = new CounterCarburetor(getData());
+        const second = new CounterCarburetor(getData());
+        const dispose = connectDevTools({first, second});
+
+        expect(() => transaction(() => {
+            first.setValue(1);
+            second.setValue(2);
+        })).not.toThrow();
+        expect(() => {
+            dispose();
+            dispose();
+        }).not.toThrow();
+        expect(first.getData().value).toEqual(1);
     });
 });
 
