@@ -32,6 +32,8 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
      *
      * @param data - the state the store wraps; reads go through read(), writes through
      * draft, and setData() swaps it wholesale.
+     * @param scheduler - decides when a matched subscriber's callback actually runs;
+     * defaults to immediate, synchronous delivery.
      */
     constructor(data: T, scheduler?: IUpdateScheduler);
     /** The store's identity, which subscriptions and dev tooling key on. */

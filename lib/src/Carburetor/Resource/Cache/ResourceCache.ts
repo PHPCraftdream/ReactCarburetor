@@ -100,9 +100,14 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
      */
     public getEntry = (args: TArgs): IResourceView<T> => {
         const key = this.keyOf(args);
-        const entry = this.data.entries[key] || getInitialCacheEntry<T>();
+        const stored = this.data.entries[key];
+        const entry = stored || getInitialCacheEntry<T>();
 
-        this.touch(key);
+        // Only a real entry has a use order worth recording: eviction enumerates entries, so a
+        // stamp on a key that was only ever read would never be reclaimed and would pile up.
+        if (stored) {
+            this.touch(key);
+        }
 
         return {...entry, stale: this.isStale(entry)};
     };
@@ -263,8 +268,14 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
      * Without this the cache grows by one entry per distinct argument set for the lifetime of the
      * process. An entry with a request in flight, or one a component is reading, is never dropped:
      * the first would leave a promise with nowhere to land, the second would blank out the screen.
+     *
+     * The check runs wherever eligibility can change: a request starting and one settling, the
+     * latter also being what eventually reclaims the bound once a reader unsubscribes.
+     *
+     * @param deferNotification - true when the caller is mid-render: the drop goes out through
+     * emitSoon() rather than emitUpdate(), like markLoading()'s own deferred write
      */
-    protected evict = (): void => {
+    protected evict = (deferNotification: boolean = false): void => {
         const keys = Object.keys(this.data.entries);
 
         if (keys.length <= this.maxEntries) {
@@ -289,11 +300,26 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
             this.lastUsed.delete(key);
         });
 
-        this.update((draft: IResourceCacheData<T>) => {
-            doomed.forEach((key: string) => {
-                delete draft.entries[key];
-            });
+        // Written through draft by hand, as markLoading() does: update() cannot hold its
+        // notification back, and this is the one write that sometimes must be.
+        const draft = this.draft;
+
+        doomed.forEach((key: string) => {
+            delete draft.entries[key];
         });
+
+        if (deferNotification) {
+            // markLoading() has already scheduled the deferred emit when it wrote the pending
+            // status, so these deletes ride that same microtask; a second emitSoon() would publish
+            // an empty write set, which goes out as a wake-everything wildcard.
+            if (!this.pendingEmit) {
+                this.emitSoon();
+            }
+
+            return;
+        }
+
+        this.emitUpdate();
     };
 
     /** Cancels the request for one key, leaving whatever data the entry already holds. */
@@ -385,8 +411,9 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         this.requests.set(key, request);
 
         // Enforced here rather than where the entry is created: only now is this request visible to
-        // the eviction pass, which must never drop an entry that something is waiting for.
-        this.evict();
+        // the eviction pass, which must never drop an entry that something is waiting for. The
+        // deferral carries through: mid-render, the eviction publishes when the status write does.
+        this.evict(deferNotification);
 
         return request;
     };
@@ -463,6 +490,10 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
             draft.entries[key].invalidated = false;
             draft.entries[key].failed = false;
         });
+
+        // The request is gone, so this entry may have become droppable; until something else
+        // touches the cache, settlement is the only check the bound gets.
+        this.evict();
     };
 
     /**
@@ -508,5 +539,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
                 draft.entries[key].status = EResourceStatus.Error;
             }
         });
+
+        this.evict();
     };
 }

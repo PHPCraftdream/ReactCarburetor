@@ -240,4 +240,86 @@ describe('ResourceCache lifetime', () => {
 
         expect(Object.keys(cache.getData().entries)).not.toContain(cache.keyOf('a'));
     });
+
+    test('entries that settle bring the cache back within its bound', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 1});
+
+        void cache.load('a');
+        void cache.load('b');
+        void cache.load('c');
+
+        // All three had a request in flight when they started, so none could be dropped then.
+        expect(Object.keys(cache.getData().entries).length).toEqual(3);
+
+        loader.settle[0]('value-a');
+        loader.settle[1]('value-b');
+        loader.settle[2]('value-c');
+        await flush();
+
+        // Without a check at settlement the cache would sit over its bound forever.
+        expect(Object.keys(cache.getData().entries)).toEqual([cache.keyOf('c')]);
+    });
+
+    test('reads of absent keys do not pile up use-order records', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 2});
+        const lastUsed = () => (cache as unknown as {lastUsed: Map<string, number>}).lastUsed;
+
+        await fill(cache, loader, ['a']);
+
+        for (let index = 0; index < 50; index++) {
+            cache.getEntry(`absent-${index}`);
+        }
+
+        // Polling many keys that never load must not grow bookkeeping eviction can never reclaim.
+        expect(lastUsed().size).toEqual(1);
+        expect(lastUsed().has(cache.keyOf('a'))).toBeTruthy();
+
+        // Eviction still orders by the reads that did happen: `a` was used first, so it goes.
+        void cache.load('b');
+        loader.settle[1]('value-b');
+        void cache.load('c');
+        loader.settle[2]('value-c');
+        await flush();
+
+        const kept = Object.keys(cache.getData().entries);
+
+        expect(kept.length).toEqual(2);
+        expect(kept).toContain(cache.keyOf('b'));
+        expect(kept).toContain(cache.keyOf('c'));
+        expect(kept).not.toContain(cache.keyOf('a'));
+    });
+
+    test('eviction behind a suspend publishes with the deferred emit, not mid-render', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 1, ttl: 60_000});
+
+        await fill(cache, loader, ['a']);
+
+        // A store-wide watcher, the way devtools hang off the cache: it hears about every write,
+        // so nothing published synchronously can slip past it.
+        let notified = 0;
+        cache.subscribe(() => notified++, {id: 'observer'});
+
+        // What a render does with a full cache: ask for a new key through suspend().
+        let thrown: unknown;
+
+        try {
+            cache.suspend('b');
+        } catch (error: unknown) {
+            thrown = error;
+        }
+
+        expect(thrown).toBeInstanceOf(Promise);
+
+        // Neither the pending-status write nor the eviction was published during the call.
+        expect(notified).toEqual(0);
+
+        await flush();
+
+        // Both went out together on the deferred microtask, and the bound was reclaimed.
+        expect(notified).toEqual(1);
+        expect(Object.keys(cache.getData().entries)).toEqual([cache.keyOf('b')]);
+    });
 });

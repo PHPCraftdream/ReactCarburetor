@@ -62,8 +62,9 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
     pathOf = (args)=>`entries${PathSeparator_js_namespaceObject.PATH_SEPARATOR}${this.keyOf(args)}`;
     getEntry = (args)=>{
         const key = this.keyOf(args);
-        const entry = this.data.entries[key] || (0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)();
-        this.touch(key);
+        const stored = this.data.entries[key];
+        const entry = stored || (0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)();
+        if (stored) this.touch(key);
         return {
             ...entry,
             stale: this.isStale(entry)
@@ -132,7 +133,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
             return Array.from(reads).some((read)=>read === prefix || read.startsWith(`${prefix}${PathSeparator_js_namespaceObject.PATH_SEPARATOR}`));
         });
     };
-    evict = ()=>{
+    evict = (deferNotification = false)=>{
         const keys = Object.keys(this.data.entries);
         if (keys.length <= this.maxEntries) return;
         const candidates = keys.filter((key)=>!this.requests.has(key) && !this.isRetained(key)).sort((left, right)=>(this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0));
@@ -143,11 +144,15 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
             this.failures.delete(key);
             this.lastUsed.delete(key);
         });
-        this.update((draft)=>{
-            doomed.forEach((key)=>{
-                delete draft.entries[key];
-            });
+        const draft = this.draft;
+        doomed.forEach((key)=>{
+            delete draft.entries[key];
         });
+        if (deferNotification) {
+            if (!this.pendingEmit) this.emitSoon();
+            return;
+        }
+        this.emitUpdate();
     };
     abortKey = (key)=>{
         const controller = this.controllers.get(key);
@@ -184,7 +189,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
             this.settleFailure(key, controller, error);
         });
         this.requests.set(key, request);
-        this.evict();
+        this.evict(deferNotification);
         return request;
     };
     markLoading = (key, deferNotification)=>{
@@ -216,6 +221,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
             draft.entries[key].invalidated = false;
             draft.entries[key].failed = false;
         });
+        this.evict();
     };
     settleFailure = (key, controller, error)=>{
         if (!this.isCurrent(key, controller) || !this.data.entries[key]) return;
@@ -229,6 +235,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
             draft.entries[key].failed = true;
             if (!hasData) draft.entries[key].status = EResourceStatus_js_namespaceObject.EResourceStatus.Error;
         });
+        this.evict();
     };
 }
 exports.ResourceCache = __webpack_exports__.ResourceCache;

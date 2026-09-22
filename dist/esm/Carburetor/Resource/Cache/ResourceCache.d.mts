@@ -128,8 +128,14 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
      * Without this the cache grows by one entry per distinct argument set for the lifetime of the
      * process. An entry with a request in flight, or one a component is reading, is never dropped:
      * the first would leave a promise with nowhere to land, the second would blank out the screen.
+     *
+     * The check runs wherever eligibility can change: a request starting and one settling, the
+     * latter also being what eventually reclaims the bound once a reader unsubscribes.
+     *
+     * @param deferNotification - true when the caller is mid-render: the drop goes out through
+     * emitSoon() rather than emitUpdate(), like markLoading()'s own deferred write
      */
-    protected evict: () => void;
+    protected evict: (deferNotification?: boolean) => void;
     /** Cancels the request for one key, leaving whatever data the entry already holds. */
     protected abortKey: (key: string) => void;
     /**
