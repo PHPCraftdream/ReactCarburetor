@@ -9,6 +9,8 @@ interface ITrackedCarburetor {
     reads: TPathSet;
     version: number;
     generation: number;
+    /** Read set as last actually registered; undefined means nothing is currently registered. */
+    committed: TPathSet | undefined;
 }
 interface IEffectRecord {
     deps: TEffectDeps;
@@ -129,6 +131,10 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * commit, so the re-stamp cannot be mistaken for a future render's marks — a real render
      * stamps its reads with a fresh generation, which is what still lets it drop the reads it
      * no longer makes.
+     *
+     * `committed` is reset along with the subscriptions: the replayed mount's commit must
+     * subscribe for real again even though its read set is identical — letting it count as
+     * unchanged would leave the restore silently skipped.
      */
     protected releaseSubscriptions(): void;
 }

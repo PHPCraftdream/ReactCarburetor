@@ -3,6 +3,9 @@ import {act} from 'react';
 import {fireEvent, render} from '@testing-library/react';
 import {AntiHookComponent, Carburetor, ComponentUpdateThrottle, EResourceStatus, computed} from "@/Carburetor";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
+import {TSubscriber} from '@/Carburetor/Models/Base';
+import {ISubscribeOptions} from '@/Carburetor/Models/Store';
 
 interface ICounterData {
     value: number;
@@ -26,6 +29,21 @@ class CounterCarburetor extends Carburetor<ICounterData> {
         this.draft.other++;
 
         this.emitUpdate();
+    };
+}
+
+class ObservedCarburetor extends CounterCarburetor {
+    /** One entry per subscribe() that actually ran, holding the read set that call received. */
+    public subscribeReads: TPathSet[] = [];
+
+    // The base subscribe is an instance property, so it must be captured before the
+    // override below replaces it — this is how the override still reaches the original.
+    private readonly baseSubscribe = this.subscribe;
+
+    public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
+        this.subscribeReads.push(new Set<TPath>(options.reads ?? []));
+
+        return this.baseSubscribe(callback, options);
     };
 }
 
@@ -483,6 +501,104 @@ describe('<AntiHookComponent />', () => {
         unmount();
 
         expect(store.subscriberCount()).toEqual(0);
+    });
+
+    test('a re-render with the same read set does not re-subscribe', () => {
+        const store = new ObservedCarburetor(getCounterData());
+
+        class Reader extends AntiHookComponent {
+            render() {
+                const {value} = this.useCarburetor(store);
+
+                return <div className="value">{value}</div>;
+            }
+        }
+
+        const {container, unmount} = render(<Reader />);
+
+        expect(container.querySelector('.value')?.textContent).toEqual('0');
+        expect(store.subscribeReads.length).toEqual(1);
+        expect([...store.subscribeReads[0]]).toEqual(['value']);
+
+        // A write to a read path re-renders with identical reads; the commit must skip
+        // subscribe() rather than re-register the same paths.
+        act(() => store.incValue());
+        act(() => store.incOther());
+
+        expect(container.querySelector('.value')?.textContent).toEqual('1');
+        expect(store.subscribeReads.length).toEqual(1);
+        expect(store.subscriberCount()).toEqual(1);
+
+        unmount();
+    });
+
+    test('a changed read set still re-subscribes with the new paths', () => {
+        const store = new ObservedCarburetor(getCounterData());
+
+        class Picker extends AntiHookComponent<{wide: boolean}> {
+            render() {
+                const data = this.useCarburetor(store);
+
+                return <div className="value">{this.props.wide ? data.other : data.value}</div>;
+            }
+        }
+
+        const {container, rerender, unmount} = render(<Picker wide={false} />);
+
+        expect(store.subscribeReads.length).toEqual(1);
+        expect([...store.subscribeReads[0]]).toEqual(['value']);
+
+        // A different key of the same carburetor: the new set must replace the old
+        // registration, not stack a second one.
+        rerender(<Picker wide={true} />);
+
+        expect(store.subscribeReads.length).toEqual(2);
+        expect([...store.subscribeReads[1]]).toEqual(['other']);
+        expect(store.subscriberCount()).toEqual(1);
+
+        act(() => store.incOther());
+
+        expect(container.querySelector('.value')?.textContent).toEqual('1');
+        expect(store.subscribeReads.length).toEqual(2);
+
+        rerender(<Picker wide={false} />);
+
+        expect(store.subscribeReads.length).toEqual(3);
+        expect([...store.subscribeReads[2]]).toEqual(['value']);
+
+        unmount();
+    });
+
+    test('a write landing between render and commit still forces the update', () => {
+        const store = new ObservedCarburetor(getCounterData());
+
+        // React renders the whole tree before committing any of it, so this sibling writes
+        // after the reader's render stamped the version but before its commit — the gap the
+        // drift check in commitSubscriptions closes.
+        class Early extends AntiHookComponent {
+            protected useEffects(): void {
+                store.incValue();
+            }
+
+            render() {
+                return <div/>;
+            }
+        }
+
+        class Reader extends AntiHookComponent {
+            render() {
+                const {value} = this.useCarburetor(store);
+
+                return <div className="value">{value}</div>;
+            }
+        }
+
+        const {container, unmount} = render(<div><Early /><Reader /></div>);
+
+        expect(container.querySelector('.value')?.textContent).toEqual('1');
+        expect(store.subscribeReads.length).toEqual(1);
+
+        unmount();
     });
 
     interface ITodoLike {

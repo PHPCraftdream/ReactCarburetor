@@ -35,6 +35,11 @@ const EResourceStatus_js_namespaceObject = require("../Models/Enums/EResourceSta
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const external_shallowEqual_js_namespaceObject = require("./shallowEqual.js");
+const sameReads = (a, b)=>{
+    if (a.size !== b.size) return false;
+    for (const path of a)if (!b.has(path)) return false;
+    return true;
+};
 class AntiHookComponent extends external_react_namespaceObject.Component {
     uid = (0, getUid_js_namespaceObject.getUid)();
     effects = {};
@@ -91,7 +96,8 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
             carburetor: source,
             reads: new Set(),
             version: source.getVersion(),
-            generation: this.renderGeneration
+            generation: this.renderGeneration,
+            committed: known ? known.committed : void 0
         };
         this.tracked[cuid] = tracked;
         return tracked;
@@ -128,10 +134,13 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
                 delete this.tracked[cuid];
                 return;
             }
-            tracked.carburetor.subscribe(this.onCarburetorUpdate, {
-                id: this.uid,
-                reads: tracked.reads
-            });
+            if (void 0 === tracked.committed || !sameReads(tracked.committed, tracked.reads)) {
+                tracked.carburetor.subscribe(this.onCarburetorUpdate, {
+                    id: this.uid,
+                    reads: tracked.reads
+                });
+                tracked.committed = new Set(tracked.reads);
+            }
             if (tracked.carburetor.getVersion() !== tracked.version) changedDuringRender = true;
         });
         this.renderGeneration = generation + 1;
@@ -141,6 +150,7 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         Object.keys(this.tracked).forEach((cuid)=>{
             this.tracked[cuid].carburetor.unsubscribe(this.uid);
             this.tracked[cuid].generation = this.renderGeneration;
+            this.tracked[cuid].committed = void 0;
         });
     }
 }

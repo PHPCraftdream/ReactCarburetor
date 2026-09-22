@@ -3,6 +3,11 @@ import { getUid } from "../Store/Utils/getUid.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 import { shallowEqual } from "./shallowEqual.mjs";
 import * as __rspack_external_react from "react";
+const sameReads = (a, b)=>{
+    if (a.size !== b.size) return false;
+    for (const path of a)if (!b.has(path)) return false;
+    return true;
+};
 class AntiHookComponent extends __rspack_external_react.Component {
     uid = getUid();
     effects = {};
@@ -59,7 +64,8 @@ class AntiHookComponent extends __rspack_external_react.Component {
             carburetor: source,
             reads: new Set(),
             version: source.getVersion(),
-            generation: this.renderGeneration
+            generation: this.renderGeneration,
+            committed: known ? known.committed : void 0
         };
         this.tracked[cuid] = tracked;
         return tracked;
@@ -96,10 +102,13 @@ class AntiHookComponent extends __rspack_external_react.Component {
                 delete this.tracked[cuid];
                 return;
             }
-            tracked.carburetor.subscribe(this.onCarburetorUpdate, {
-                id: this.uid,
-                reads: tracked.reads
-            });
+            if (void 0 === tracked.committed || !sameReads(tracked.committed, tracked.reads)) {
+                tracked.carburetor.subscribe(this.onCarburetorUpdate, {
+                    id: this.uid,
+                    reads: tracked.reads
+                });
+                tracked.committed = new Set(tracked.reads);
+            }
             if (tracked.carburetor.getVersion() !== tracked.version) changedDuringRender = true;
         });
         this.renderGeneration = generation + 1;
@@ -109,6 +118,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
         Object.keys(this.tracked).forEach((cuid)=>{
             this.tracked[cuid].carburetor.unsubscribe(this.uid);
             this.tracked[cuid].generation = this.renderGeneration;
+            this.tracked[cuid].committed = void 0;
         });
     }
 }

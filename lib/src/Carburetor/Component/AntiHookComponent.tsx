@@ -14,12 +14,32 @@ interface ITrackedCarburetor {
     reads: TPathSet;
     version: number;
     generation: number;
+    /** Read set as last actually registered; undefined means nothing is currently registered. */
+    committed: TPathSet | undefined;
 }
 
 interface IEffectRecord {
     deps: TEffectDeps;
     cleanup: TEffectCleanup | undefined;
 }
+
+/**
+ * Membership equality for path sets: same size, every member present — the identity of the
+ * Set plays no role.
+ */
+const sameReads = (a: TPathSet, b: TPathSet): boolean => {
+    if (a.size !== b.size) {
+        return false;
+    }
+
+    for (const path of a) {
+        if (!b.has(path)) {
+            return false;
+        }
+    }
+
+    return true;
+};
 
 /**
  * Base component that reads its state straight from carburetors.
@@ -161,7 +181,8 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
                 carburetor: source,
                 reads: new Set<TPath>(),
                 version: source.getVersion(),
-                generation: this.renderGeneration
+                generation: this.renderGeneration,
+                committed: known ? known.committed : undefined
             };
 
         this.tracked[cuid] = tracked;
@@ -249,10 +270,17 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
                 return;
             }
 
-            // Subscribing with the component's own id replaces the previous registration
-            // instead of adding a second one. The carburetor copies the read set, so reads
-            // happening later outside render cannot extend an established subscription.
-            tracked.carburetor.subscribe(this.onCarburetorUpdate, {id: this.uid, reads: tracked.reads});
+            // An unchanged read set skips re-registering: SubscriberIndex would remove and
+            // re-walk every ancestor of every path only to arrive at the same entries — pure
+            // cost. The version check below still runs either way.
+            if (tracked.committed === undefined || !sameReads(tracked.committed, tracked.reads)) {
+                // Subscribing with the component's own id replaces the previous registration
+                // instead of adding a second one. The carburetor copies the read set, so reads
+                // happening later outside render cannot extend an established subscription.
+                tracked.carburetor.subscribe(this.onCarburetorUpdate, {id: this.uid, reads: tracked.reads});
+
+                tracked.committed = new Set<TPath>(tracked.reads);
+            }
 
             if (tracked.carburetor.getVersion() !== tracked.version) {
                 changedDuringRender = true;
@@ -280,11 +308,16 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * commit, so the re-stamp cannot be mistaken for a future render's marks — a real render
      * stamps its reads with a fresh generation, which is what still lets it drop the reads it
      * no longer makes.
+     *
+     * `committed` is reset along with the subscriptions: the replayed mount's commit must
+     * subscribe for real again even though its read set is identical — letting it count as
+     * unchanged would leave the restore silently skipped.
      */
     protected releaseSubscriptions(): void {
         Object.keys(this.tracked).forEach((cuid: string) => {
             this.tracked[cuid].carburetor.unsubscribe(this.uid);
             this.tracked[cuid].generation = this.renderGeneration;
+            this.tracked[cuid].committed = undefined;
         });
     }
 }
