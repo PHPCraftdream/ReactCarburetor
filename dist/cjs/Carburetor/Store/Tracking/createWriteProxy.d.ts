@@ -4,6 +4,10 @@ import { TPath, TPathRecorder, TAliasLedger } from "../../Models/Paths.js";
  * only wakes the subscribers that read it. Reads made elsewhere are consulted through the alias
  * ledger, so writing into an object that another path was read from is reported in development.
  *
+ * A landed write also publishes its recorded path to the proxy cache scope every proxy over the
+ * same raw object shares: the caches release the replaced or deleted branches' old wrappers the
+ * next time they are consulted, so an obsolete branch stops being pinned by the write that ended it.
+ *
  * @param target - the raw object the proxy fronts; it is filed in proxyTargets so a value
  * read back through draft is unwrapped before the write compares it
  * @param record - the store's write sink, feeding the paths the next emitUpdate announces;

@@ -38,7 +38,7 @@ const external_createProxyCache_js_namespaceObject = require("./createProxyCache
 const external_liveViews_js_namespaceObject = require("./liveViews.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
 const createReadProxy = (target, record, basePath = '', aliases)=>{
-    const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
+    const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)(target);
     const forbidWrite = ()=>{
         throw new Error("Carburetor: data read through useCarburetor is read-only. Write through carburetor methods — they write via draft and know which paths changed.");
     };
@@ -49,6 +49,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
     };
     const proxy = new Proxy(target, {
         get: (source, key)=>{
+            if (key === external_createProxyCache_js_namespaceObject.PROXY_CACHE) return cached;
             const value = Reflect.get(source, key, proxy);
             if ('symbol' == typeof key) return value;
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);

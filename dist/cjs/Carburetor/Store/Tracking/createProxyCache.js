@@ -27,24 +27,61 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
-const createProxyCache = ()=>{
+__webpack_require__.d(__webpack_exports__, {
+    PROXY_CACHE: ()=>PROXY_CACHE,
+    createProxyCache: ()=>createProxyCache
+});
+const PathSeparator_js_namespaceObject = require("../Paths/PathSeparator.js");
+const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
+const PROXY_CACHE = Symbol('carburetor.proxyCache');
+const scopes = new WeakMap();
+const covers = (invalidated, key)=>{
+    if (invalidated === WildcardPath_js_namespaceObject.WILDCARD_PATH || '' === invalidated) return true;
+    return key === invalidated || key.startsWith(invalidated + PathSeparator_js_namespaceObject.PATH_SEPARATOR);
+};
+const createProxyCache = (target)=>{
+    const scope = scopes.get(target) ?? {
+        revision: 0,
+        invalidations: new Map()
+    };
+    scopes.set(target, scope);
     const entries = new Map();
-    return (path, source, create)=>{
+    let syncedAt = scope.revision;
+    const sync = ()=>{
+        if (syncedAt === scope.revision) return;
+        for (const [path, entry] of entries)for (const [invalidated, revision] of scope.invalidations)if (revision > entry.revision && covers(invalidated, path)) {
+            entries.delete(path);
+            break;
+        }
+        syncedAt = scope.revision;
+    };
+    const cache = (path, source, create)=>{
+        sync();
         const entry = entries.get(path);
         if (entry && entry.source === source) return entry.proxy;
         const proxy = create();
         entries.set(path, {
             source,
-            proxy
+            proxy,
+            revision: scope.revision
         });
         return proxy;
     };
+    cache.invalidate = (path)=>{
+        scope.revision++;
+        scope.invalidations.set(path, scope.revision);
+    };
+    cache.owns = (path, source)=>{
+        const entry = entries.get(path);
+        return void 0 !== entry && entry.source === source;
+    };
+    cache.size = ()=>entries.size;
+    return cache;
 };
-__webpack_require__.d(__webpack_exports__, {}, {
-    createProxyCache: createProxyCache
-});
+exports.PROXY_CACHE = __webpack_exports__.PROXY_CACHE;
 exports.createProxyCache = __webpack_exports__.createProxyCache;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
+    "PROXY_CACHE",
     "createProxyCache"
 ].indexOf(__rspack_i)) exports[__rspack_i] = __webpack_exports__[__rspack_i];
 Object.defineProperty(exports, '__esModule', {

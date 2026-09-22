@@ -41,7 +41,7 @@ const unwrapWriteProxy = (value)=>{
     return target ?? value;
 };
 const createWriteProxy = (target, record, basePath = '', aliases)=>{
-    const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
+    const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)(target);
     const isArray = Array.isArray(target);
     const writtenPath = (key)=>{
         if ('symbol' == typeof key) return WildcardPath_js_namespaceObject.WILDCARD_PATH;
@@ -49,6 +49,7 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
     };
     const proxy = new Proxy(target, {
         get: (source, key)=>{
+            if (key === external_createProxyCache_js_namespaceObject.PROXY_CACHE) return cached;
             const value = Reflect.get(source, key);
             if ('symbol' == typeof key || 'function' == typeof value) return value;
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
@@ -62,20 +63,26 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
             if (previous === raw) return true;
             aliases?.checkWrite(source, basePath);
             aliases?.forget(previous);
-            record(writtenPath(key));
+            const path = writtenPath(key);
+            record(path);
+            cached.invalidate(path);
             return Reflect.set(source, key, raw);
         },
         defineProperty: (source, key, descriptor)=>{
             aliases?.checkWrite(source, basePath);
             aliases?.forget(Reflect.get(source, key));
-            record(writtenPath(key));
+            const path = writtenPath(key);
+            record(path);
+            cached.invalidate(path);
             return Reflect.defineProperty(source, key, descriptor);
         },
         deleteProperty: (source, key)=>{
             if (!Reflect.has(source, key)) return true;
             aliases?.checkWrite(source, basePath);
             aliases?.forget(Reflect.get(source, key));
-            record(writtenPath(key));
+            const path = writtenPath(key);
+            record(path);
+            cached.invalidate(path);
             return Reflect.deleteProperty(source, key);
         }
     });

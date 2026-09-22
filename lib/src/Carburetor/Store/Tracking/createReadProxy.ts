@@ -3,7 +3,7 @@ import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {branchPath} from "@/Carburetor/Store/Paths/BranchMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
-import {createProxyCache} from "./createProxyCache";
+import {createProxyCache, PROXY_CACHE} from "./createProxyCache";
 import {liveViews} from "./liveViews";
 import {isTrackable} from "./isTrackable";
 
@@ -43,7 +43,7 @@ export const createReadProxy = <T extends object>(
     basePath: TPath = '',
     aliases?: TAliasLedger
 ): T => {
-    const cached = createProxyCache();
+    const cached = createProxyCache(target);
 
     const forbidWrite = (): never => {
         throw new Error(
@@ -81,6 +81,13 @@ export const createReadProxy = <T extends object>(
 
     const proxy = new Proxy(target, {
         get: (source: T, key: string | symbol): unknown => {
+            // The introspection hatch is answered before anything else: it must not count as
+            // a read of the data, so nothing is recorded and the cache is neither filled nor
+            // swept by asking for it.
+            if (key === PROXY_CACHE) {
+                return cached;
+            }
+
             // The proxy itself is the receiver: a getter then sees the proxy as `this`, so its
             // internal reads (`get doubled() { return this.n * 2 }`) land in the recording
             // instead of silently reading the raw target.

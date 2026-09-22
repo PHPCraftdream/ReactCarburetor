@@ -1,7 +1,7 @@
 import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {createProxyCache} from "./createProxyCache";
+import {createProxyCache, PROXY_CACHE} from "./createProxyCache";
 import {isTrackable} from "./isTrackable";
 
 /**
@@ -27,6 +27,10 @@ const unwrapWriteProxy = (value: unknown): unknown => {
  * only wakes the subscribers that read it. Reads made elsewhere are consulted through the alias
  * ledger, so writing into an object that another path was read from is reported in development.
  *
+ * A landed write also publishes its recorded path to the proxy cache scope every proxy over the
+ * same raw object shares: the caches release the replaced or deleted branches' old wrappers the
+ * next time they are consulted, so an obsolete branch stops being pinned by the write that ended it.
+ *
  * @param target - the raw object the proxy fronts; it is filed in proxyTargets so a value
  * read back through draft is unwrapped before the write compares it
  * @param record - the store's write sink, feeding the paths the next emitUpdate announces;
@@ -43,7 +47,7 @@ export const createWriteProxy = <T extends object>(
     basePath: TPath = '',
     aliases?: TAliasLedger
 ): T => {
-    const cached = createProxyCache();
+    const cached = createProxyCache(target);
     const isArray: boolean = Array.isArray(target);
 
     const writtenPath = (key: string | symbol): TPath => {
@@ -59,6 +63,12 @@ export const createWriteProxy = <T extends object>(
 
     const proxy = new Proxy(target, {
         get: (source: T, key: string | symbol): unknown => {
+            // The introspection hatch is answered before anything else: asking for it must
+            // not reach the data, record a path, or touch the cache.
+            if (key === PROXY_CACHE) {
+                return cached;
+            }
+
             const value: unknown = Reflect.get(source, key);
 
             if (typeof key === 'symbol' || typeof value === 'function') {
@@ -97,7 +107,15 @@ export const createWriteProxy = <T extends object>(
             aliases?.checkWrite(source, basePath);
             aliases?.forget(previous);
 
-            record(writtenPath(key));
+            const path = writtenPath(key);
+
+            record(path);
+            // The old subtree at this path is obsolete from here on: the published path makes
+            // every cache over this object release the entries still holding it the next time
+            // they are consulted. The granularity is the one `record` already reports — a
+            // whole array path for an index or `length` write, the wildcard for a symbol — so
+            // what the caches evict can never be narrower than what the write announced.
+            cached.invalidate(path);
 
             return Reflect.set(source, key, raw);
         },
@@ -107,7 +125,12 @@ export const createWriteProxy = <T extends object>(
             aliases?.checkWrite(source, basePath);
             aliases?.forget(Reflect.get(source, key));
 
-            record(writtenPath(key));
+            const path = writtenPath(key);
+
+            record(path);
+            // The same publication the set trap makes: whatever this write replaces here is
+            // obsolete, and the caches over this object release it on their next consultation.
+            cached.invalidate(path);
 
             return Reflect.defineProperty(source, key, descriptor);
         },
@@ -119,7 +142,12 @@ export const createWriteProxy = <T extends object>(
             aliases?.checkWrite(source, basePath);
             aliases?.forget(Reflect.get(source, key));
 
-            record(writtenPath(key));
+            const path = writtenPath(key);
+
+            record(path);
+            // The same publication the set trap makes: whatever this write deletes here is
+            // obsolete, and the caches over this object release it on their next consultation.
+            cached.invalidate(path);
 
             return Reflect.deleteProperty(source, key);
         },
