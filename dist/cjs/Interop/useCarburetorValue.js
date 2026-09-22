@@ -31,33 +31,78 @@ __webpack_require__.d(__webpack_exports__, {
     useCarburetorValue: ()=>useCarburetorValue
 });
 const external_react_namespaceObject = require("react");
+const index_js_namespaceObject = require("../Carburetor/index.js");
+const sameReads = (a, b)=>{
+    if (a.size !== b.size) return false;
+    for (const path of a)if (!b.has(path)) return false;
+    return true;
+};
 const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const cache = (0, external_react_namespaceObject.useRef)({
+        carburetor: void 0,
+        select: void 0,
         version: -1,
         value: void 0,
         filled: false
     });
-    const subscribe = (0, external_react_namespaceObject.useCallback)((onStoreChange)=>{
-        const reads = new Set();
-        select(carburetor.read((path)=>reads.add(path)));
+    const pendingReads = (0, external_react_namespaceObject.useRef)(new Set());
+    const active = (0, external_react_namespaceObject.useRef)(null);
+    const notify = (0, external_react_namespaceObject.useRef)(null);
+    const install = (0, external_react_namespaceObject.useCallback)(()=>{
+        const onStoreChange = notify.current;
+        if (!onStoreChange) return;
+        const reads = pendingReads.current;
+        const current = active.current;
+        if (current && current.carburetor === carburetor && sameReads(current.reads, reads)) return;
+        if (current) current.carburetor.unsubscribe(current.id);
         const id = carburetor.subscribe(onStoreChange, {
             reads
         });
-        return ()=>carburetor.unsubscribe(id);
+        active.current = {
+            carburetor,
+            id,
+            reads
+        };
     }, [
-        carburetor,
-        select
+        carburetor
+    ]);
+    const subscribe = (0, external_react_namespaceObject.useCallback)((onStoreChange)=>{
+        notify.current = ()=>{
+            onStoreChange();
+            install();
+        };
+        install();
+        return ()=>{
+            const current = active.current;
+            if (current) {
+                current.carburetor.unsubscribe(current.id);
+                active.current = null;
+            }
+        };
+    }, [
+        install
     ]);
     const getSnapshot = (0, external_react_namespaceObject.useCallback)(()=>{
         const entry = cache.current;
         const version = carburetor.getVersion();
-        if (entry.filled && entry.version === version) return entry.value;
-        const next = select(carburetor.read(()=>void 0));
+        if (entry.filled && entry.carburetor === carburetor && entry.select === select && entry.version === version) return entry.value;
+        const reads = new Set();
+        let next = select(carburetor.read((path)=>reads.add(path)));
+        if ((0, index_js_namespaceObject.isTrackable)(next)) next = (0, index_js_namespaceObject.deepClone)(next);
+        pendingReads.current = reads;
         if (entry.filled && isEqual(entry.value, next)) {
-            entry.version = version;
+            cache.current = {
+                carburetor,
+                select,
+                version,
+                value: entry.value,
+                filled: true
+            };
             return entry.value;
         }
         cache.current = {
+            carburetor,
+            select,
             version,
             value: next,
             filled: true
@@ -68,6 +113,9 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
         select,
         isEqual
     ]);
+    (0, external_react_namespaceObject.useLayoutEffect)(()=>{
+        install();
+    });
     return (0, external_react_namespaceObject.useSyncExternalStore)(subscribe, getSnapshot, getSnapshot);
 };
 exports.useCarburetorValue = __webpack_exports__.useCarburetorValue;
