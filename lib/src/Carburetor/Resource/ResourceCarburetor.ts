@@ -1,5 +1,5 @@
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
-import {IResourceData, TResourceLoader} from "@/Carburetor/Models/Resource";
+import {IResourceData, IResourceSnapshot, TResourceLoader} from "@/Carburetor/Models/Resource";
 import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
@@ -13,18 +13,6 @@ const describeError = (error: unknown): string => {
 
     return String(error);
 };
-
-/** The resource slot as snapshot() hands it out: the state plus the key the answer settled under. */
-export interface IResourceSnapshot<T> extends IResourceData<T> {
-    /**
-     * The key the stored answer settled under, which restore() re-establishes so suspend()
-     * serves the restored answer only to the arguments that produced it. undefined when the
-     * slot holds no settled answer — idle, pending, or a snapshot written before this field
-     * existed. It travels in the snapshot, never in the live state, so the IResourceData
-     * contract is unchanged.
-     */
-    key?: string | undefined;
-}
 
 /**
  * An async value with an explicit status, so loading and failure are part of the state

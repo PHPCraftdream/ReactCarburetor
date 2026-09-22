@@ -13,6 +13,18 @@ export interface IResourceData<T> {
 
 export type TResourceLoader<T, TArgs> = (args: TArgs, signal: AbortSignal) => Promise<T>;
 
+/** The resource slot as snapshot() hands it out: the state plus the key the answer settled under. */
+export interface IResourceSnapshot<T> extends IResourceData<T> {
+    /**
+     * The key the stored answer settled under, which restore() re-establishes so suspend()
+     * serves the restored answer only to the arguments that produced it. undefined when the
+     * slot holds no settled answer — idle, pending, or a snapshot written before this field
+     * existed. It travels in the snapshot, never in the live state, so the IResourceData
+     * contract is unchanged.
+     */
+    key?: string | undefined;
+}
+
 /**
  * One cached answer.
  *

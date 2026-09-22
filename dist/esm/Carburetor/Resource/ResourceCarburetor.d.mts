@@ -1,17 +1,6 @@
-import { IResourceData, TResourceLoader } from "../Models/Resource.mjs";
+import { IResourceData, IResourceSnapshot, TResourceLoader } from "../Models/Resource.mjs";
 import { IUpdateScheduler } from "../Models/Store.mjs";
 import { Carburetor } from "../Store/Carburetor.mjs";
-/** The resource slot as snapshot() hands it out: the state plus the key the answer settled under. */
-export interface IResourceSnapshot<T> extends IResourceData<T> {
-    /**
-     * The key the stored answer settled under, which restore() re-establishes so suspend()
-     * serves the restored answer only to the arguments that produced it. undefined when the
-     * slot holds no settled answer — idle, pending, or a snapshot written before this field
-     * existed. It travels in the snapshot, never in the live state, so the IResourceData
-     * contract is unchanged.
-     */
-    key?: string | undefined;
-}
 /**
  * An async value with an explicit status, so loading and failure are part of the state
  * rather than something every component reinvents. Concurrent loads with the same
