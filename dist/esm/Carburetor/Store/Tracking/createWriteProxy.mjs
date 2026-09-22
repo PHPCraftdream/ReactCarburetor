@@ -2,6 +2,12 @@ import { joinPath } from "../Paths/joinPath.mjs";
 import { WILDCARD_PATH } from "../Paths/WildcardPath.mjs";
 import { createProxyCache } from "./createProxyCache.mjs";
 import { isTrackable } from "./isTrackable.mjs";
+const proxyTargets = new WeakMap();
+const unwrapWriteProxy = (value)=>{
+    if (null === value || 'object' != typeof value) return value;
+    const target = proxyTargets.get(value);
+    return target ?? value;
+};
 const createWriteProxy = (target, record, basePath = '', aliases)=>{
     const cached = createProxyCache();
     const isArray = Array.isArray(target);
@@ -9,7 +15,7 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
         if ('symbol' == typeof key) return WILDCARD_PATH;
         return isArray ? basePath || WILDCARD_PATH : joinPath(basePath, key);
     };
-    return new Proxy(target, {
+    const proxy = new Proxy(target, {
         get: (source, key)=>{
             const value = Reflect.get(source, key);
             if ('symbol' == typeof key || 'function' == typeof value) return value;
@@ -20,11 +26,12 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
         },
         set: (source, key, value)=>{
             const previous = Reflect.get(source, key);
-            if (previous === value) return true;
+            const raw = unwrapWriteProxy(value);
+            if (previous === raw) return true;
             aliases?.checkWrite(source, basePath);
             aliases?.forget(previous);
             record(writtenPath(key));
-            return Reflect.set(source, key, value);
+            return Reflect.set(source, key, raw);
         },
         defineProperty: (source, key, descriptor)=>{
             aliases?.checkWrite(source, basePath);
@@ -40,5 +47,7 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
             return Reflect.deleteProperty(source, key);
         }
     });
+    proxyTargets.set(proxy, target);
+    return proxy;
 };
 export { createWriteProxy };

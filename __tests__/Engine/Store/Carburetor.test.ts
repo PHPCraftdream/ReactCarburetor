@@ -36,6 +36,15 @@ class TestCarburetor extends Carburetor<ITestData> {
         });
     };
 
+    /** A mutation that dies after its first write has already landed. */
+    public throwAfterWrite = (a: number) => {
+        this.update((draft: ITestData) => {
+            draft.a = a;
+
+            throw new Error('mutate failed halfway');
+        });
+    };
+
     /** An async mutation: the write lands after update() has already published. */
     public setAThroughAsyncUpdate = (a: number) => {
         // The rule is right; this proves the runtime diagnostic catches it as well.
@@ -60,6 +69,68 @@ class TestCarburetor extends Carburetor<ITestData> {
         this.data.a = a;
 
         this.emitUpdate();
+    };
+
+    /** A write through getData: tracked by nobody, like any escape from draft. */
+    public setBThroughGetData = (b: number) => {
+        // The rule is right; this write exists to prove an emit with no recorded path wakes everyone.
+        // oxlint-disable-next-line carburetor/no-external-data-mutation
+        this.getData().b = b;
+
+        this.emitUpdate();
+    };
+
+    /** Mixed in one emit: a precise write through draft and a blind one through getData. */
+    public setAandUntrackedB = (a: number, b: number) => {
+        this.draft.a = a;
+
+        // The rule is right; the blind write mixed into a precise emit is exactly what the test pins down.
+        // oxlint-disable-next-line carburetor/no-external-data-mutation
+        this.getData().b = b;
+
+        this.emitUpdate();
+    };
+
+    /** The same mixed write, with the blind write owned deliberately through markAllChanged. */
+    public setAandUntrackedBWithMark = (a: number, b: number) => {
+        this.draft.a = a;
+
+        // The rule is right; this blind write is owned deliberately through markAllChanged below.
+        // oxlint-disable-next-line carburetor/no-external-data-mutation
+        this.getData().b = b;
+
+        this.markAllChanged();
+
+        this.emitUpdate();
+    };
+}
+
+interface IItemListData {
+    items: Array<{n: number}>;
+}
+
+class ItemListCarburetor extends Carburetor<IItemListData> {
+    /** Sorts items in place: an already ordered list must wake nobody. */
+    public sortItems = () => {
+        this.update((draft: IItemListData) => {
+            draft.items.sort((x, y) => x.n - y.n);
+        });
+    };
+
+    /** Writes every element back as it was read: the data must keep its raw objects. */
+    public selfReassign = () => {
+        this.update((draft: IItemListData) => {
+            draft.items.forEach((item, index) => {
+                draft.items[index] = item;
+            });
+        });
+    };
+
+    /** Replaces one element with a genuinely different object. */
+    public replaceFirst = (item: {n: number}) => {
+        this.update((draft: IItemListData) => {
+            draft.items[0] = item;
+        });
     };
 }
 
@@ -580,5 +651,165 @@ describe('Carburetor', () => {
         expect(carburetor.getData().a.b.v).toEqual(2);
         expect(flat).toEqual(1);
         expect(nested).toEqual(1);
+    });
+
+    test('update publishes the writes that landed before the callback threw', async () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+        let readerOfA = 0;
+        let readerOfB = 0;
+        const versionBefore = carburetor.getVersion();
+
+        console.error = (message: string) => reported.push(message);
+        carburetor.subscribe(() => readerOfA++, {id: 'a-reader', reads: readsOf('a')});
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
+
+        try {
+            expect(() => carburetor.throwAfterWrite(1)).toThrow('mutate failed halfway');
+
+            await new Promise(resolve => queueMicrotask(() => resolve(undefined)));
+        } finally {
+            console.error = original;
+        }
+
+        // The write was already in the data when the callback threw, so it is published:
+        // subscribers see the state as it is, and the dev check stays quiet about it.
+        expect(carburetor.getData().a).toEqual(1);
+        expect(readerOfA).toEqual(1);
+        expect(readerOfB).toEqual(0);
+        expect(carburetor.getVersion()).toEqual(versionBefore + 1);
+        expect(reported).toEqual([]);
+    });
+
+    test('a throw before any write publishes nothing', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let calls = 0;
+        const versionBefore = carburetor.getVersion();
+
+        carburetor.subscribe(() => calls++, {id: 'a-reader', reads: readsOf('a')});
+
+        expect(() => {
+            carburetor.update(() => {
+                throw new Error('died before touching anything');
+            });
+        }).toThrow('died before touching anything');
+
+        expect(carburetor.getData().a).toEqual(0);
+        expect(calls).toEqual(0);
+        expect(carburetor.getVersion()).toEqual(versionBefore);
+    });
+
+    test('reassigning proxy-read-back elements without a change wakes nobody', () => {
+        const first = {n: 1};
+        const second = {n: 2};
+        const carburetor = new ItemListCarburetor({items: [first, second]});
+        let calls = 0;
+        const versionBefore = carburetor.getVersion();
+
+        carburetor.subscribe(() => calls++, {id: 'items-reader', reads: readsOf('items')});
+
+        carburetor.selfReassign();
+
+        expect(calls).toEqual(0);
+        expect(carburetor.getVersion()).toEqual(versionBefore);
+        // The plain data keeps the raw elements: a proxy must not leak into it.
+        expect(carburetor.getData().items[0]).toBe(first);
+        expect(carburetor.getData().items[1]).toBe(second);
+    });
+
+    test('sorting an already ordered array of objects wakes nobody', () => {
+        const first = {n: 1};
+        const second = {n: 2};
+        const third = {n: 3};
+        const carburetor = new ItemListCarburetor({items: [first, second, third]});
+        let calls = 0;
+        const versionBefore = carburetor.getVersion();
+
+        carburetor.subscribe(() => calls++, {id: 'items-reader', reads: readsOf('items')});
+
+        carburetor.sortItems();
+
+        expect(calls).toEqual(0);
+        expect(carburetor.getVersion()).toEqual(versionBefore);
+        expect(carburetor.getData().items[0]).toBe(first);
+        expect(carburetor.getData().items[2]).toBe(third);
+    });
+
+    test('an actual reorder of an object array is still recorded and published', () => {
+        const first = {n: 2};
+        const second = {n: 1};
+        const carburetor = new ItemListCarburetor({items: [first, second]});
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'items-reader', reads: readsOf('items')});
+
+        carburetor.sortItems();
+
+        expect(calls).toEqual(1);
+        expect(carburetor.getData().items[0]).toBe(second);
+        expect(carburetor.getData().items[1]).toBe(first);
+    });
+
+    test('assigning a genuinely different object through draft still wakes subscribers', () => {
+        const first = {n: 1};
+        const second = {n: 2};
+        const carburetor = new ItemListCarburetor({items: [first, second]});
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'items-reader', reads: readsOf('items')});
+
+        carburetor.replaceFirst({n: 9});
+
+        expect(calls).toEqual(1);
+        expect(carburetor.getData().items[0]).toEqual({n: 9});
+        expect(carburetor.getData().items[1]).toBe(second);
+    });
+
+    test('a getData write alone still wakes everyone', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let readerOfB = 0;
+
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
+
+        carburetor.setBThroughGetData(1);
+
+        expect(carburetor.getData().b).toEqual(1);
+        expect(readerOfB).toEqual(1);
+    });
+
+    test('a getData write mixed with draft writes wakes nobody for itself', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let readerOfA = 0;
+        let readerOfB = 0;
+
+        carburetor.subscribe(() => readerOfA++, {id: 'a-reader', reads: readsOf('a')});
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
+
+        carburetor.setAandUntrackedB(1, 1);
+
+        // The draft write is precise; the blind write is lost — the state changed, but
+        // nobody reading `b` is told. markAllChanged() is the way to own such a write.
+        expect(carburetor.getData().b).toEqual(1);
+        expect(readerOfA).toEqual(1);
+        expect(readerOfB).toEqual(0);
+    });
+
+    test('markAllChanged publishes writes that bypassed draft', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let readerOfA = 0;
+        let readerOfB = 0;
+        const versionBefore = carburetor.getVersion();
+
+        carburetor.subscribe(() => readerOfA++, {id: 'a-reader', reads: readsOf('a')});
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
+
+        carburetor.setAandUntrackedBWithMark(1, 1);
+
+        expect(carburetor.getData().a).toEqual(1);
+        expect(carburetor.getData().b).toEqual(1);
+        expect(readerOfA).toEqual(1);
+        expect(readerOfB).toEqual(1);
+        expect(carburetor.getVersion()).toEqual(versionBefore + 1);
     });
 });

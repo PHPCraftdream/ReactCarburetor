@@ -34,6 +34,12 @@ const joinPath_js_namespaceObject = require("../Paths/joinPath.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
+const proxyTargets = new WeakMap();
+const unwrapWriteProxy = (value)=>{
+    if (null === value || 'object' != typeof value) return value;
+    const target = proxyTargets.get(value);
+    return target ?? value;
+};
 const createWriteProxy = (target, record, basePath = '', aliases)=>{
     const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
     const isArray = Array.isArray(target);
@@ -41,7 +47,7 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
         if ('symbol' == typeof key) return WildcardPath_js_namespaceObject.WILDCARD_PATH;
         return isArray ? basePath || WildcardPath_js_namespaceObject.WILDCARD_PATH : (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
     };
-    return new Proxy(target, {
+    const proxy = new Proxy(target, {
         get: (source, key)=>{
             const value = Reflect.get(source, key);
             if ('symbol' == typeof key || 'function' == typeof value) return value;
@@ -52,11 +58,12 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
         },
         set: (source, key, value)=>{
             const previous = Reflect.get(source, key);
-            if (previous === value) return true;
+            const raw = unwrapWriteProxy(value);
+            if (previous === raw) return true;
             aliases?.checkWrite(source, basePath);
             aliases?.forget(previous);
             record(writtenPath(key));
-            return Reflect.set(source, key, value);
+            return Reflect.set(source, key, raw);
         },
         defineProperty: (source, key, descriptor)=>{
             aliases?.checkWrite(source, basePath);
@@ -72,6 +79,8 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
             return Reflect.deleteProperty(source, key);
         }
     });
+    proxyTargets.set(proxy, target);
+    return proxy;
 };
 exports.createWriteProxy = __webpack_exports__.createWriteProxy;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

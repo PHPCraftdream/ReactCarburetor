@@ -58,13 +58,25 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     notifyWrites: (writes: TPathSet) => void;
     /**
      * Writes go through draft: changed paths are remembered, and only the subscribers
-     * that read those paths get woken up. Mutating this.data directly still works,
-     * but loses precision — the whole store is then treated as changed.
+     * that read those paths get woken up.
+     *
+     * Mutating this.data directly also changes the state, but nothing records it —
+     * getData() hands out the raw object, and a raw object cannot be observed after the
+     * fact. On its own, such a write still wakes everyone: an emit with no recorded path
+     * falls back to the whole store. Mixed with draft writes in the same emit, only the
+     * recorded paths go out and the direct write wakes nobody — call markAllChanged()
+     * to publish such a write deliberately.
      */
     protected get draft(): T;
     /**
      * Mutates and publishes in one step. Writing to `draft` and forgetting `emitUpdate()`
      * changes the data while nobody re-renders, which is why this is the recommended form.
+     *
+     * If mutate throws partway through, the writes it already made stay in the data —
+     * the draft applies each one the moment it executes — so they are published anyway:
+     * subscribers keep seeing the state as it is, and the error still reaches the caller.
+     * Rolling the writes back would take a full snapshot of the state before every update,
+     * too high a price on the hot path for a programming error.
      */
     protected update: (mutate: (draft: T) => void) => void;
     /** Publishes on the next microtask — for writes made where notifying now is unsafe. */
@@ -73,6 +85,8 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     protected touchDraft: () => void;
     /** Remembers one changed path, so the emit wakes only the subscribers that read it. */
     protected recordWrite: (path: TPath) => void;
+    /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
+    protected markAllChanged: () => void;
     /** A hook for subclasses to write derived state before an emit goes out. */
     protected preEmit: () => void;
     /** Publishes the writes recorded so far, alone or as part of an open transaction. */

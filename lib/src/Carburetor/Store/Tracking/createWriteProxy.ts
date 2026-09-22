@@ -5,6 +5,24 @@ import {createProxyCache} from "./createProxyCache";
 import {isTrackable} from "./isTrackable";
 
 /**
+ * Write proxies by the raw object each wraps. A value read back through draft arrives
+ * wrapped — array.sort writes the elements it read, and those read as proxies — so the
+ * set trap unwraps it first: otherwise the wrap itself would count as a change, and a
+ * proxy would end up living inside the plain data.
+ */
+const proxyTargets: WeakMap<object, object> = new WeakMap();
+
+const unwrapWriteProxy = (value: unknown): unknown => {
+    if (value === null || typeof value !== 'object') {
+        return value;
+    }
+
+    const target: object | undefined = proxyTargets.get(value);
+
+    return target ?? value;
+};
+
+/**
  * Write proxy: every changed branch is recorded as a path, so the carburetor
  * only wakes the subscribers that read it. Reads made elsewhere are consulted through the alias
  * ledger, so writing into an object that another path was read from is reported in development.
@@ -29,7 +47,7 @@ export const createWriteProxy = <T extends object>(
         return isArray ? (basePath || WILDCARD_PATH) : joinPath(basePath, key);
     };
 
-    return new Proxy(target, {
+    const proxy = new Proxy(target, {
         get: (source: T, key: string | symbol): unknown => {
             const value: unknown = Reflect.get(source, key);
 
@@ -56,9 +74,10 @@ export const createWriteProxy = <T extends object>(
         },
         set: (source: T, key: string | symbol, value: unknown): boolean => {
             const previous: unknown = Reflect.get(source, key);
+            const raw: unknown = unwrapWriteProxy(value);
 
             // Writing the same value changes nothing and must wake nobody.
-            if (previous === value) {
+            if (previous === raw) {
                 return true;
             }
 
@@ -70,7 +89,7 @@ export const createWriteProxy = <T extends object>(
 
             record(writtenPath(key));
 
-            return Reflect.set(source, key, value);
+            return Reflect.set(source, key, raw);
         },
         // Object.defineProperty never reaches the set trap, so without this the write
         // would land in the data and wake nobody.
@@ -94,5 +113,9 @@ export const createWriteProxy = <T extends object>(
 
             return Reflect.deleteProperty(source, key);
         },
-    }) as T;
+    });
+
+    proxyTargets.set(proxy, target);
+
+    return proxy as T;
 };

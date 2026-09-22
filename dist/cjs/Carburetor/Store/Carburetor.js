@@ -133,8 +133,12 @@ class Carburetor {
         return this.draftProxy;
     }
     update = (mutate)=>{
-        const result = mutate(this.draft);
-        this.emitUpdate();
+        let result;
+        try {
+            result = mutate(this.draft);
+        } finally{
+            this.emitUpdate();
+        }
         if ("u" > typeof process && 'production' !== process.env.NODE_ENV) {
             if (result instanceof Promise) DiagnosticsInstance_js_namespaceObject.diagnostics.report("update(mutate) published before the mutation finished: the callback returned a promise, so writes made after its first await wake nobody. Keep the callback synchronous and publish after the await instead.");
         }
@@ -156,6 +160,9 @@ class Carburetor {
     };
     recordWrite = (path)=>{
         this.writes.add(path);
+    };
+    markAllChanged = ()=>{
+        this.recordWrite(WildcardPath_js_namespaceObject.WILDCARD_PATH);
     };
     preEmit = ()=>{};
     emitUpdate = ()=>{

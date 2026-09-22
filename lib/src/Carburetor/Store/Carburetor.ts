@@ -167,8 +167,14 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
     /**
      * Writes go through draft: changed paths are remembered, and only the subscribers
-     * that read those paths get woken up. Mutating this.data directly still works,
-     * but loses precision — the whole store is then treated as changed.
+     * that read those paths get woken up.
+     *
+     * Mutating this.data directly also changes the state, but nothing records it —
+     * getData() hands out the raw object, and a raw object cannot be observed after the
+     * fact. On its own, such a write still wakes everyone: an emit with no recorded path
+     * falls back to the whole store. Mixed with draft writes in the same emit, only the
+     * recorded paths go out and the direct write wakes nobody — call markAllChanged()
+     * to publish such a write deliberately.
      */
     protected get draft(): T {
         const data: unknown = this.data;
@@ -194,11 +200,21 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /**
      * Mutates and publishes in one step. Writing to `draft` and forgetting `emitUpdate()`
      * changes the data while nobody re-renders, which is why this is the recommended form.
+     *
+     * If mutate throws partway through, the writes it already made stay in the data —
+     * the draft applies each one the moment it executes — so they are published anyway:
+     * subscribers keep seeing the state as it is, and the error still reaches the caller.
+     * Rolling the writes back would take a full snapshot of the state before every update,
+     * too high a price on the hot path for a programming error.
      */
     protected update = (mutate: (draft: T) => void): void => {
-        const result: unknown = mutate(this.draft);
+        let result: unknown;
 
-        this.emitUpdate();
+        try {
+            result = mutate(this.draft);
+        } finally {
+            this.emitUpdate();
+        }
 
         // An async callback is accepted by a void-returning signature, and then everything it
         // writes after the first await lands in the data long after this emitUpdate has run.
@@ -251,6 +267,11 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** Remembers one changed path, so the emit wakes only the subscribers that read it. */
     protected recordWrite = (path: TPath) => {
         this.writes.add(path);
+    };
+
+    /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
+    protected markAllChanged = (): void => {
+        this.recordWrite(WILDCARD_PATH);
     };
 
     /** A hook for subclasses to write derived state before an emit goes out. */
