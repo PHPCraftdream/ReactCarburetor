@@ -4,6 +4,7 @@ import {branchPath} from "@/Carburetor/Store/Paths/BranchMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {createProxyCache} from "./createProxyCache";
+import {liveViews} from "./liveViews";
 import {isTrackable} from "./isTrackable";
 
 /**
@@ -170,6 +171,10 @@ export const createReadProxy = <T extends object>(
         defineProperty: forbidWrite,
         deleteProperty: forbidWrite,
     }) as T;
+
+    // This proxy and every view reachable through it are live views: the child-prop snapshot
+    // boundary checks this before handing data onward.
+    liveViews.note(proxy);
 
     return proxy;
 };

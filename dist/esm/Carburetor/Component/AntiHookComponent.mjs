@@ -1,12 +1,69 @@
 import { EResourceStatus } from "../Models/Enums/EResourceStatus.mjs";
 import { getUid } from "../Store/Utils/getUid.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
+import { diagnostics } from "../Store/Diagnostics/DiagnosticsInstance.mjs";
+import { liveViews } from "../Store/Tracking/liveViews.mjs";
+import { IS_DEVELOPMENT } from "../Store/Utils/DevelopmentFlag.mjs";
 import { shallowEqual } from "./shallowEqual.mjs";
 import * as __rspack_external_react from "react";
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
     return true;
+};
+const isPlainObject = (value)=>{
+    if ('object' != typeof value || null === value || Array.isArray(value)) return false;
+    const prototype = Object.getPrototypeOf(value);
+    return null === prototype || prototype === Object.prototype;
+};
+const sameSelection = (snapshot, next)=>{
+    if (Object.is(snapshot, next)) return true;
+    const snapshotIsArray = Array.isArray(snapshot);
+    const nextIsArray = Array.isArray(next);
+    if (snapshotIsArray || nextIsArray) {
+        if (!snapshotIsArray || !nextIsArray) return false;
+        const previousMembers = snapshot;
+        const freshMembers = next;
+        return previousMembers.length === freshMembers.length && previousMembers.every((member, index)=>Object.is(member, freshMembers[index]));
+    }
+    if (!isPlainObject(snapshot) || !isPlainObject(next)) return false;
+    const previousKeys = Object.keys(snapshot);
+    const freshKeys = Object.keys(next);
+    if (previousKeys.length !== freshKeys.length) return false;
+    const previousMembers = snapshot;
+    const freshMembers = next;
+    return previousKeys.every((key)=>Object.is(previousMembers[key], freshMembers[key]));
+};
+const detachSelection = (value)=>{
+    if (Array.isArray(value)) return Array.from(value);
+    if (isPlainObject(value)) return {
+        ...value
+    };
+    return value;
+};
+const reportLiveViewEscape = (next)=>{
+    const guidance = "A child reading it in its own render records nothing, so no subscription covers what it sees and it never hears about changes. Select plain values — primitives, or plain objects and arrays built from them.";
+    if (liveViews.has(next)) {
+        diagnostics.report('a connectSelection() snapshot handed a child a live store view as its whole value. ' + guidance);
+        return true;
+    }
+    if (Array.isArray(next)) {
+        const index = next.findIndex((member)=>liveViews.has(member));
+        if (-1 !== index) {
+            diagnostics.report('a connectSelection() snapshot handed a child a live store view as array member ' + index + '. ' + guidance);
+            return true;
+        }
+        return false;
+    }
+    if (isPlainObject(next)) {
+        const members = next;
+        const key = Object.keys(members).find((memberKey)=>liveViews.has(members[memberKey]));
+        if (void 0 !== key) {
+            diagnostics.report('a connectSelection() snapshot handed a child a live store view as member "' + key + '". ' + guidance);
+            return true;
+        }
+    }
+    return false;
 };
 const CONNECTION_ATTEMPT_KEY = 'c:';
 const TRACKED_ATTEMPT_KEY = 't:';
@@ -78,6 +135,9 @@ class AntiHookComponent extends __rspack_external_react.Component {
             }
             entry.reads.add(path);
         };
+        return this.buildPersistentView(getCarburetor, recorder);
+    };
+    buildPersistentView = (getCarburetor, recorder)=>{
         let cachedTarget;
         let cachedView;
         let arrayFacade = false;
@@ -101,7 +161,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
         const forbidWrite = ()=>{
             throw new Error("Carburetor: data read through connect() is read-only. Write through carburetor methods — they write via draft and know which paths changed.");
         };
-        return new Proxy(arrayFacade ? [] : {}, {
+        const facade = new Proxy(arrayFacade ? [] : {}, {
             get: (_target, key)=>Reflect.get(resolveView(), key),
             has: (_target, key)=>Reflect.has(resolveView(), key),
             ownKeys: (_target)=>Reflect.ownKeys(resolveView()),
@@ -122,6 +182,46 @@ class AntiHookComponent extends __rspack_external_react.Component {
             deleteProperty: forbidWrite,
             defineProperty: forbidWrite
         });
+        liveViews.note(facade);
+        return facade;
+    };
+    connectSelection = (source, select)=>{
+        const getCarburetor = 'function' == typeof source ? source : ()=>source;
+        const connection = {
+            uid: getUid(),
+            getCarburetor,
+            committed: void 0,
+            installed: void 0
+        };
+        this.connections.push(connection);
+        const recorder = (path)=>{
+            const attempt = this.renderAttempt;
+            if (!attempt) return;
+            let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
+            if (!entry) {
+                const carburetor = getCarburetor();
+                entry = {
+                    connection,
+                    source: carburetor,
+                    baselineVersion: carburetor.getVersion(),
+                    reads: new Set()
+                };
+                attempt.entries.set(CONNECTION_ATTEMPT_KEY + connection.uid, entry);
+            }
+            entry.reads.add(path);
+        };
+        const view = this.buildPersistentView(getCarburetor, recorder);
+        let snapshot;
+        let escapeReported = false;
+        return ()=>{
+            const next = select(view);
+            if (IS_DEVELOPMENT && !escapeReported) escapeReported = reportLiveViewEscape(next);
+            if (void 0 !== snapshot && sameSelection(snapshot.value, next)) return snapshot.value;
+            snapshot = {
+                value: detachSelection(next)
+            };
+            return snapshot.value;
+        };
     };
     useComputed = (computed)=>{
         this.track(computed).reads.add(WILDCARD_PATH);

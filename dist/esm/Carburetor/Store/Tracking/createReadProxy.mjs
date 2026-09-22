@@ -3,6 +3,7 @@ import { branchPath } from "../Paths/BranchMarker.mjs";
 import { WILDCARD_PATH } from "../Paths/WildcardPath.mjs";
 import { IS_DEVELOPMENT } from "../Utils/DevelopmentFlag.mjs";
 import { createProxyCache } from "./createProxyCache.mjs";
+import { liveViews } from "./liveViews.mjs";
 import { isTrackable } from "./isTrackable.mjs";
 const createReadProxy = (target, record, basePath = '', aliases)=>{
     const cached = createProxyCache();
@@ -57,6 +58,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
         defineProperty: forbidWrite,
         deleteProperty: forbidWrite
     });
+    liveViews.note(proxy);
     return proxy;
 };
 export { createReadProxy };

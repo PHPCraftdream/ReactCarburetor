@@ -255,6 +255,60 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      */
     connect: <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)) => TReadonly<T>;
     /**
+     * Builds the persistent view one connect()-family declaration reads through: the once-only
+     * shape probe, the declared-kind assertion, the forwarding facade.
+     *
+     * Shared by `connect` and `connectSelection`, which declare one connection, record through
+     * one recorder, and hand out one facade whose object/array kind is fixed at declaration
+     * time — the JS-03 contract, see `connect`'s docstring.
+     *
+     * @param getCarburetor - resolves the carburetor to read; called at an attempt's first read
+     * (and once here, probing the root's shape), so a prop swap is noticed
+     * @param recorder - where each read path is reported while a render attempt is open
+     */
+    private buildPersistentView;
+    /**
+     * A typed selection of this component's connected data, safe to hand a child gated by
+     * shallow props comparison — an external `React.memo` component, or this base class's own
+     * props gate.
+     *
+     * Declare once as a field initializer, call the returned function in render:
+     *
+     * ```tsx
+     * private readonly row = this.connectSelection(
+     *     () => this.props.carburetor,
+     *     (data) => ({title: data.items[this.props.id].title})
+     * );
+     *
+     * render() {
+     *     return <MemoRow todo={this.row()} />;
+     * }
+     * ```
+     *
+     * `select` reads the same tracked view `connect` hands out, so its reads land in this
+     * render's attempt and the component subscribes to exactly the paths the selection
+     * touches. What the call returns is not that view: plain objects and arrays are
+     * shallow-copied, so the child receives detached plain data.
+     *
+     * The snapshot's identity changes only when the selected content changes — members are
+     * compared with `Object.is`, one level deep, the same comparison a props gate applies —
+     * and stays the same object otherwise. That is what lets a gated child re-render exactly
+     * when the selected data changed, and keep its bail-out otherwise.
+     *
+     * The selector runs on every call, including every render, because that is what keeps this
+     * render's read set — and with it, the subscription the next update needs — fresh; the
+     * internal cache is about identity only and never skips a read (a skipped read would drop
+     * the connection's dependencies and strand the child).
+     *
+     * Handing out a live view (the facade or a branch of it) as the snapshot or inside it is
+     * not supported and is reported once per selection in development. Select plain values.
+     *
+     * @param source - the carburetor to read, or a function resolving it at each attempt's
+     * first read so a prop swap re-points the connection at the new store
+     * @param select - picks the part of the data this child consumes; runs on every call
+     */
+    connectSelection: <T extends object, R>(source: ICarburetor<T> | (() => ICarburetor<T>), select: (data: TReadonly<T>) => R) => (() => R);
+    /**
      * Reads a memoized derived value. The component subscribes to the computed itself,
      * not to its inputs, so it re-renders only when the derived value changes.
      */

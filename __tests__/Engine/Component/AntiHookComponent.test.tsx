@@ -8,6 +8,7 @@ import {
     CarburetorScope,
     ComponentUpdateThrottle,
     EResourceStatus,
+    IDict,
     ScopedAntiHookComponent,
     carburetorToken,
     computed
@@ -1485,6 +1486,518 @@ describe('<AntiHookComponent />', () => {
             expect(container.querySelector('.value')?.textContent).toEqual('1');
 
             expect(() => rerender(<Swapper useArray={false} />)).toThrow('kind');
+
+            unmount();
+        });
+    });
+
+    describe('child props boundary', () => {
+        interface IRow {
+            title: string;
+            done: boolean;
+        }
+
+        interface IRowList {
+            items: IDict<IRow>;
+        }
+
+        class RowListCarburetor extends Carburetor<IRowList> {
+            public subscriberCount = (): number => {
+                return Object.keys(this.subscribers).length;
+            };
+
+            public rename = (id: string, title: string): void => {
+                this.draft.items[id] = {...this.getData().items[id], title};
+                this.emitUpdate();
+            };
+
+            public renameLeaf = (id: string, title: string): void => {
+                this.draft.items[id].title = title;
+                this.emitUpdate();
+            };
+        }
+
+        const getListData = (): IRowList => ({
+            items: {
+                a: {title: 'Ann', done: false},
+                b: {title: 'Bea', done: false},
+            },
+        });
+
+        test('reproduction: the Ann → Bob memo child displays Bob through the selection snapshot', () => {
+            const store = new RowListCarburetor(getListData());
+            let memoRenders = 0;
+
+            const MemoTitle = React.memo(({todo}: {todo: {title: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-title">{todo.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+                render() {
+                    return <MemoTitle todo={this.row()} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('Ann');
+
+            // The in-place leaf write — the exact write that stranded the live-view child.
+            act(() => store.renameLeaf('a', 'Bob'));
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('Bob');
+
+            unmount();
+        });
+
+        test('a class child gated by its own props gate re-renders when the snapshot changes', () => {
+            const store = new RowListCarburetor(getListData());
+            let childRenders = 0;
+
+            class GatedChild extends AntiHookComponent<{todo: {title: string}}> {
+                render() {
+                    childRenders++;
+
+                    return <span className="gated-title">{this.props.todo.title}</span>;
+                }
+            }
+
+            class Parent extends AntiHookComponent {
+                private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+                render() {
+                    return <GatedChild todo={this.row()} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            expect(container.querySelector('.gated-title')?.textContent).toEqual('Ann');
+            expect(childRenders).toEqual(1);
+
+            act(() => store.renameLeaf('a', 'Bob'));
+
+            expect(childRenders).toEqual(2);
+            expect(container.querySelector('.gated-title')?.textContent).toEqual('Bob');
+
+            unmount();
+        });
+
+        test('an unrelated store write does not redraw the child', () => {
+            const store = new RowListCarburetor(getListData());
+            let parentRenders = 0;
+            let memoRenders = 0;
+
+            const MemoTitle = React.memo(({todo}: {todo: {title: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-title">{todo.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{flag?: string}> {
+                private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+                render() {
+                    parentRenders++;
+
+                    return <MemoTitle todo={this.row()} />;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent />);
+
+            expect(memoRenders).toEqual(1);
+
+            // The selection reads items.a.title only, so a write to another row wakes nobody.
+            act(() => store.renameLeaf('b', 'Belle'));
+
+            expect(parentRenders).toEqual(1);
+            expect(memoRenders).toEqual(1);
+
+            // The parent re-renders for its own props, but the selection is equal: the snapshot
+            // keeps its identity and the memo child keeps its bail-out.
+            rerender(<Parent flag="second" />);
+
+            expect(parentRenders).toEqual(2);
+            expect(memoRenders).toEqual(1);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('Ann');
+
+            unmount();
+        });
+
+        test('a bail-out does not remove the dependencies the next update needs', () => {
+            const store = new RowListCarburetor(getListData());
+            let memoRenders = 0;
+
+            const MemoTitle = React.memo(({todo}: {todo: {title: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-title">{todo.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{flag?: string}> {
+                private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+                render() {
+                    return <MemoTitle todo={this.row()} />;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent />);
+
+            // Two bail-outs in a row: the selector still runs on each, which is what keeps the
+            // subscription for items.a.title alive across renders nobody draws.
+            rerender(<Parent flag="two" />);
+            rerender(<Parent flag="three" />);
+
+            expect(memoRenders).toEqual(1);
+
+            act(() => store.renameLeaf('a', 'Bob'));
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('Bob');
+
+            unmount();
+        });
+
+        test('replacing a nested object still updates the child', () => {
+            const store = new RowListCarburetor(getListData());
+            let memoRenders = 0;
+
+            const MemoTitle = React.memo(({todo}: {todo: {title: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-title">{todo.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+                render() {
+                    return <MemoTitle todo={this.row()} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            // The wholesale row replacement — the write a handed-down live branch does see.
+            act(() => store.rename('a', 'Bob'));
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('Bob');
+
+            unmount();
+        });
+
+        test('replacing the whole store still updates the child', () => {
+            const store = new RowListCarburetor(getListData());
+            let memoRenders = 0;
+
+            const MemoTitle = React.memo(({todo}: {todo: {title: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-title">{todo.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+                render() {
+                    return <MemoTitle todo={this.row()} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            // A block body: setData returns the new data, and a value-returning callback puts
+            // act() on its Promise overload.
+            act(() => {
+                store.setData({items: {a: {title: 'Carol', done: false}, b: {title: 'Bea', done: false}}});
+            });
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('Carol');
+
+            unmount();
+        });
+
+        test('a swapped source re-points the selection at the new store', () => {
+            const first = new RowListCarburetor(getListData());
+            const second = new RowListCarburetor({items: {a: {title: 'Cara', done: false}}});
+
+            class Parent extends AntiHookComponent<{store: RowListCarburetor}> {
+                private readonly row = this.connectSelection(
+                    () => this.props.store,
+                    (data) => ({title: data.items.a.title})
+                );
+
+                render() {
+                    return <span className="swap-title">{this.row().title}</span>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent store={first} />);
+
+            expect(container.querySelector('.swap-title')?.textContent).toEqual('Ann');
+
+            rerender(<Parent store={second} />);
+
+            expect(container.querySelector('.swap-title')?.textContent).toEqual('Cara');
+            expect(first.subscriberCount()).toEqual(0);
+            expect(second.subscriberCount()).toEqual(1);
+
+            unmount();
+
+            expect(second.subscriberCount()).toEqual(0);
+        });
+
+        test('the snapshot is detached plain data whose identity is stable while the selection is equal', () => {
+            const store = new RowListCarburetor(getListData());
+            let memoRenders = 0;
+            const seen: {title: string}[] = [];
+
+            const MemoTitle = React.memo(({todo}: {todo: {title: string}}) => {
+                memoRenders++;
+                seen.push(todo);
+
+                return <span className="memo-title">{todo.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{flag?: string}> {
+                private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+                render() {
+                    return <MemoTitle todo={this.row()} />;
+                }
+            }
+
+            const {rerender, unmount} = render(<Parent />);
+
+            rerender(<Parent flag="x" />);
+
+            // The parent re-rendered, but the selection is equal: the child bailed on the same
+            // object and never saw a second one.
+            expect(memoRenders).toEqual(1);
+            expect(seen.length).toEqual(1);
+
+            const snapshot = seen[0];
+
+            expect(Object.getPrototypeOf(snapshot)).toEqual(Object.prototype);
+            expect(snapshot).not.toBe(store.getData().items.a);
+
+            // Detached: writing the snapshot leaves the store untouched.
+            snapshot.title = 'Hacked';
+
+            expect(store.getData().items.a.title).toEqual('Ann');
+
+            act(() => store.renameLeaf('a', 'Bob'));
+
+            expect(memoRenders).toEqual(2);
+            expect(seen.length).toEqual(2);
+            expect(seen[1]).not.toBe(snapshot);
+            expect(seen[1].title).toEqual('Bob');
+
+            unmount();
+        });
+
+        test('a selection that is declared but never read installs no subscription', () => {
+            const store = new RowListCarburetor(getListData());
+
+            class Parent extends AntiHookComponent {
+                private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+                render() {
+                    return <div />;
+                }
+            }
+
+            const {unmount} = render(<Parent />);
+
+            expect(store.subscriberCount()).toEqual(0);
+
+            unmount();
+        });
+
+        test('a selection that stops being read is dropped and restored like a connection', () => {
+            const store = new RowListCarburetor(getListData());
+            let memoRenders = 0;
+
+            const MemoTitle = React.memo(({todo}: {todo: {title: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-title">{todo.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{show: boolean}> {
+                private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+                render() {
+                    return this.props.show ? <MemoTitle todo={this.row()} /> : <span className="hidden">off</span>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent show />);
+
+            expect(store.subscriberCount()).toEqual(1);
+
+            rerender(<Parent show={false} />);
+
+            expect(store.subscriberCount()).toEqual(0);
+
+            // The write nobody reads must not redraw the hidden child.
+            act(() => store.renameLeaf('a', 'Bob'));
+
+            expect(memoRenders).toEqual(1);
+
+            rerender(<Parent show />);
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('Bob');
+            expect(store.subscriberCount()).toEqual(1);
+
+            unmount();
+        });
+
+        test('a selection handing out a live view is reported once in development', () => {
+            const store = new RowListCarburetor(getListData());
+
+            class Parent extends AntiHookComponent {
+                private readonly row = this.connectSelection(() => store, (data) => ({row: data.items.a}));
+
+                render() {
+                    return <span className="live-branch">{this.row().row.title}</span>;
+                }
+            }
+
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (message: string) => reported.push(message);
+
+            try {
+                const view = render(<Parent />);
+
+                view.rerender(<Parent />);
+                view.unmount();
+            } finally {
+                console.error = original;
+            }
+
+            // Once per selection, not per render: the mistake is the declaration's.
+            expect(reported.filter((message) => message.includes('connectSelection()')).length).toEqual(1);
+        });
+
+        // The two tests below pin the documented unsupported escape — see README — for which
+        // connectSelection is the supported transfer: a live view handed to a gated child fails
+        // silently, and these assert the stale outcome rather than a fix.
+        test('unsupported escape: a memo child receiving the live branch keeps stale data after a leaf write', () => {
+            const store = new RowListCarburetor(getListData());
+            let parentRenders = 0;
+            let memoRenders = 0;
+
+            const MemoTitle = React.memo(({todo}: {todo: {title: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-title">{todo.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                private readonly list = this.connect(() => store);
+
+                render() {
+                    parentRenders++;
+
+                    // The parent reads the branch but no leaf, so it subscribes to the branch
+                    // marker alone; the child's own reads happen outside the parent's render
+                    // attempt and record nothing.
+                    return <MemoTitle todo={this.list.items.a} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            act(() => store.renameLeaf('a', 'Bob'));
+
+            expect(parentRenders).toEqual(1);
+            expect(memoRenders).toEqual(1);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('Ann');
+            expect(store.getData().items.a.title).toEqual('Bob');
+
+            unmount();
+        });
+
+        test('unsupported escape: the props gate bails even when the parent re-renders on the same leaf', () => {
+            const store = new RowListCarburetor(getListData());
+            let memoRenders = 0;
+
+            const MemoTitle = React.memo(({todo}: {todo: {title: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-title">{todo.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                private readonly list = this.connect(() => store);
+
+                render() {
+                    return <div>
+                        <span className="heading">{this.list.items.a.title}</span>
+                        <MemoTitle todo={this.list.items.a} />
+                    </div>;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            act(() => store.renameLeaf('a', 'Bob'));
+
+            // The parent is live on the leaf and redraws it, but the leaf write did not change
+            // the branch object's identity, so the memo child bails and keeps its first render.
+            expect(container.querySelector('.heading')?.textContent).toEqual('Bob');
+            expect(memoRenders).toEqual(1);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('Ann');
+
+            unmount();
+        });
+
+        test('the selection data is deeply read-only and the snapshot type is inferred', () => {
+            const store = new RowListCarburetor(getListData());
+
+            class TypedParent extends AntiHookComponent {
+                private readonly row = this.connectSelection(
+                    () => store,
+                    (data) => ({
+                        title: data.items.a.title,
+                        done: data.items.a.done,
+                        upper: data.items.a.title.length > 0
+                    })
+                );
+
+                // Pins the inferred snapshot type: no casts, no field lists.
+                public peek(): {title: string; done: boolean; upper: boolean} {
+                    const view = this.row();
+
+                    return {title: view.title, done: view.done, upper: view.upper};
+                }
+
+                render() {
+                    return <span className="typed">{this.row().title}</span>;
+                }
+            }
+
+            const {container, unmount} = render(<TypedParent />);
+
+            expect(container.querySelector('.typed')?.textContent).toEqual('Ann');
+
+            // Construction outside React is legal, and the snapshot type still infers.
+            const holder = new TypedParent({} as never);
+
+            expect(holder.peek()).toEqual({title: 'Ann', done: false, upper: true});
 
             unmount();
         });

@@ -7,6 +7,9 @@ import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
+import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {shallowEqual} from "./shallowEqual";
 
 /**
@@ -145,6 +148,150 @@ const sameReads = (a: TPathSet, b: TPathSet): boolean => {
     }
 
     return true;
+};
+
+/**
+ * Whether `value` is a plain object: a non-null, non-array object whose prototype is
+ * `Object.prototype` or `null` — the shape a detached selection's members take, and the only
+ * shape the selection comparison below knows how to look inside.
+ */
+const isPlainObject = (value: unknown): value is Record<string, unknown> => {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return false;
+    }
+
+    const prototype: object | null = Object.getPrototypeOf(value);
+
+    return prototype === null || prototype === Object.prototype;
+};
+
+/**
+ * Whether a fresh selection has the same content as the snapshot already handed out. This is
+ * deliberately the same comparison a child's props gate applies, so "same" here means the
+ * handed-out snapshot may keep its identity — and the gated child keeps its bail-out. The
+ * detached previous snapshot is compared against the raw fresh selection: a shallow copy
+ * shares every member with its source, so identity differences introduced by detaching say
+ * nothing about content.
+ */
+const sameSelection = (snapshot: unknown, next: unknown): boolean => {
+    if (Object.is(snapshot, next)) {
+        return true;
+    }
+
+    const snapshotIsArray = Array.isArray(snapshot);
+    const nextIsArray = Array.isArray(next);
+
+    if (snapshotIsArray || nextIsArray) {
+        if (!snapshotIsArray || !nextIsArray) {
+            return false;
+        }
+
+        // Bindings narrowed ahead of the callback: a `.every` body runs outside the guards'
+        // narrowing reach.
+        const previousMembers = snapshot as unknown[];
+        const freshMembers = next as unknown[];
+
+        return previousMembers.length === freshMembers.length &&
+            previousMembers.every((member: unknown, index: number): boolean =>
+                Object.is(member, freshMembers[index]));
+    }
+
+    if (!isPlainObject(snapshot) || !isPlainObject(next)) {
+        return false;
+    }
+
+    const previousKeys = Object.keys(snapshot);
+    const freshKeys = Object.keys(next);
+
+    if (previousKeys.length !== freshKeys.length) {
+        return false;
+    }
+
+    // Bindings narrowed ahead of the callback: a `.every` body runs outside the guards'
+    // narrowing reach.
+    const previousMembers = snapshot as Record<string, unknown>;
+    const freshMembers = next as Record<string, unknown>;
+
+    return previousKeys.every((key: string): boolean => Object.is(previousMembers[key], freshMembers[key]));
+};
+
+/**
+ * The detached form of a selection's value — the form safe to hand a child.
+ *
+ * Plain objects and arrays are shallow-copied, so a child receives plain data that outlives
+ * the render instead of a branch of the live view; a branch read inside the child's own render
+ * would record nothing and sit under no subscription. Primitives are detached by being values.
+ * Exotic objects (Map, Date, class instances) would lose their prototype to a copy, so they
+ * pass as is.
+ */
+const detachSelection = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+        return Array.from(value);
+    }
+
+    if (isPlainObject(value)) {
+        return {...value};
+    }
+
+    return value;
+};
+
+/**
+ * The development diagnostic for a selection that hands a live view to a child.
+ *
+ * Reported once per selection, not per render — the mistake is the declaration's, and one
+ * complaint names it. Returns whether a report was made, so the caller latches only on a real
+ * escape and a selection that only later starts handing out a live view is still caught;
+ * production compiles the call site out, leaving behavior unchanged.
+ *
+ * @param next - the fresh selection to inspect: its whole value first, then its members one
+ * level deep
+ */
+const reportLiveViewEscape = (next: unknown): boolean => {
+    const guidance = 'A child reading it in its own render records nothing, so no subscription covers what it ' +
+        'sees and it never hears about changes. Select plain values — primitives, or plain objects and arrays ' +
+        'built from them.';
+
+    if (liveViews.has(next)) {
+        diagnostics.report(
+            'a connectSelection() snapshot handed a child a live store view as its whole value. ' + guidance
+        );
+
+        return true;
+    }
+
+    if (Array.isArray(next)) {
+        const index = next.findIndex((member: unknown): boolean => liveViews.has(member));
+
+        if (index !== -1) {
+            diagnostics.report(
+                'a connectSelection() snapshot handed a child a live store view as array member ' +
+                index + '. ' + guidance
+            );
+
+            return true;
+        }
+
+        return false;
+    }
+
+    if (isPlainObject(next)) {
+        // Binding narrowed ahead of the callback: a `.find` body runs outside the guard's
+        // narrowing reach.
+        const members: Record<string, unknown> = next;
+        const key = Object.keys(members).find((memberKey: string): boolean => liveViews.has(members[memberKey]));
+
+        if (key !== undefined) {
+            diagnostics.report(
+                'a connectSelection() snapshot handed a child a live store view as member "' +
+                key + '". ' + guidance
+            );
+
+            return true;
+        }
+    }
+
+    return false;
 };
 
 /**
@@ -386,6 +533,25 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             entry.reads.add(path);
         };
 
+        return this.buildPersistentView(getCarburetor, recorder);
+    };
+
+    /**
+     * Builds the persistent view one connect()-family declaration reads through: the once-only
+     * shape probe, the declared-kind assertion, the forwarding facade.
+     *
+     * Shared by `connect` and `connectSelection`, which declare one connection, record through
+     * one recorder, and hand out one facade whose object/array kind is fixed at declaration
+     * time — the JS-03 contract, see `connect`'s docstring.
+     *
+     * @param getCarburetor - resolves the carburetor to read; called at an attempt's first read
+     * (and once here, probing the root's shape), so a prop swap is noticed
+     * @param recorder - where each read path is reported while a render attempt is open
+     */
+    private buildPersistentView = <T extends object>(
+        getCarburetor: () => ICarburetor<T>,
+        recorder: TPathRecorder
+    ): TReadonly<T> => {
         let cachedTarget: T | undefined;
         let cachedView: TReadonly<T> | undefined;
 
@@ -456,7 +622,7 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         // An empty object/array stands in for the real target: every trap below resolves and
         // forwards to the current view instead, which is what lets the same Proxy instance
         // survive a rebuild underneath it. Which of the two it is fixes the facade's kind.
-        return new Proxy((arrayFacade ? [] : {}) as unknown as TReadonly<T>, {
+        const facade = new Proxy((arrayFacade ? [] : {}) as unknown as TReadonly<T>, {
             get: (_target: TReadonly<T>, key: string | symbol): unknown => Reflect.get(resolveView() as object, key),
             has: (_target: TReadonly<T>, key: string | symbol): boolean => Reflect.has(resolveView() as object, key),
             ownKeys: (_target: TReadonly<T>): ArrayLike<string | symbol> => Reflect.ownKeys(resolveView() as object),
@@ -500,6 +666,112 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             deleteProperty: forbidWrite,
             defineProperty: forbidWrite,
         }) as TReadonly<T>;
+
+        // Noted so the child-prop snapshot boundary recognizes this view as live.
+        liveViews.note(facade);
+
+        return facade;
+    };
+
+    /**
+     * A typed selection of this component's connected data, safe to hand a child gated by
+     * shallow props comparison — an external `React.memo` component, or this base class's own
+     * props gate.
+     *
+     * Declare once as a field initializer, call the returned function in render:
+     *
+     * ```tsx
+     * private readonly row = this.connectSelection(
+     *     () => this.props.carburetor,
+     *     (data) => ({title: data.items[this.props.id].title})
+     * );
+     *
+     * render() {
+     *     return <MemoRow todo={this.row()} />;
+     * }
+     * ```
+     *
+     * `select` reads the same tracked view `connect` hands out, so its reads land in this
+     * render's attempt and the component subscribes to exactly the paths the selection
+     * touches. What the call returns is not that view: plain objects and arrays are
+     * shallow-copied, so the child receives detached plain data.
+     *
+     * The snapshot's identity changes only when the selected content changes — members are
+     * compared with `Object.is`, one level deep, the same comparison a props gate applies —
+     * and stays the same object otherwise. That is what lets a gated child re-render exactly
+     * when the selected data changed, and keep its bail-out otherwise.
+     *
+     * The selector runs on every call, including every render, because that is what keeps this
+     * render's read set — and with it, the subscription the next update needs — fresh; the
+     * internal cache is about identity only and never skips a read (a skipped read would drop
+     * the connection's dependencies and strand the child).
+     *
+     * Handing out a live view (the facade or a branch of it) as the snapshot or inside it is
+     * not supported and is reported once per selection in development. Select plain values.
+     *
+     * @param source - the carburetor to read, or a function resolving it at each attempt's
+     * first read so a prop swap re-points the connection at the new store
+     * @param select - picks the part of the data this child consumes; runs on every call
+     */
+    public connectSelection = <T extends object, R>(
+        source: ICarburetor<T> | (() => ICarburetor<T>),
+        select: (data: TReadonly<T>) => R
+    ): (() => R) => {
+        const getCarburetor: () => ICarburetor<T> = typeof source === 'function' ? source : () => source;
+
+        const connection: IConnection = {uid: getUid(), getCarburetor, committed: undefined, installed: undefined};
+
+        this.connections.push(connection);
+
+        const recorder: TPathRecorder = (path: TPath): void => {
+            const attempt = this.renderAttempt;
+
+            // Outside a render attempt the read still gets current data, but records nothing:
+            // a handler, effect or child callback can never alter a render's dependency set.
+            if (!attempt) {
+                return;
+            }
+
+            let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
+
+            if (!entry) {
+                // The source and its baseline version are captured once, at the beginning of
+                // this attempt's consumption — not refreshed after every property access — so
+                // a write landing mid-render or mid-commit stays detectable at commit time.
+                const carburetor = getCarburetor();
+
+                entry = {
+                    connection,
+                    source: carburetor,
+                    baselineVersion: carburetor.getVersion(),
+                    reads: new Set<TPath>(),
+                };
+                attempt.entries.set(CONNECTION_ATTEMPT_KEY + connection.uid, entry);
+            }
+
+            entry.reads.add(path);
+        };
+
+        const view = this.buildPersistentView(getCarburetor, recorder);
+
+        let snapshot: {value: R} | undefined = undefined;
+        let escapeReported = false;
+
+        return (): R => {
+            const next: R = select(view);
+
+            if (IS_DEVELOPMENT && !escapeReported) {
+                escapeReported = reportLiveViewEscape(next);
+            }
+
+            if (snapshot !== undefined && sameSelection(snapshot.value, next)) {
+                return snapshot.value;
+            }
+
+            snapshot = {value: detachSelection(next) as R};
+
+            return snapshot.value;
+        };
     };
 
     /**

@@ -104,6 +104,52 @@ underneath it are reused across renders. `source` can be a carburetor directly, 
 resolving one (as above) so a prop swap re-points the connection at the new store. `setData` and
 `restore` keep working: the same returned view stays live across a whole-data replacement.
 
+### Passing connected data to children
+
+A `connect()` view is one live, persistent object — exactly what its owner wants, and exactly
+wrong for a child gated by shallow props comparison: the reference never changes, so a
+`React.memo` child (or a child whose `shouldComponentUpdate` compares props, which includes
+every `AntiHookComponent`) bails out and keeps showing whatever it first rendered. Handing the
+view — or a branch of it — to such a child is not supported, and it fails silently: the child's
+reads happen outside the owner's render attempt, record nothing, and no subscription covers
+what the child sees.
+
+Two supported arrangements instead.
+
+**A Carburetor-aware child reads the store itself.** Pass the carburetor and an identity (an
+id, a key) as props — this is how `TodoItem` works. The child declares its own `connect()` or
+`useCarburetor` and collects its own reads, so it subscribes to exactly what it renders.
+
+**An external child gets a selection snapshot.** `connectSelection(source, select)` is declared
+once like `connect`, and what it returns is called in render:
+
+```tsx
+class TodoList extends AntiHookComponent<ITodoProps> {
+    private readonly row = this.connectSelection(
+        () => this.props.carburetor,
+        (data) => ({title: data.items[this.props.id].title, done: data.items[this.props.id].done})
+    );
+
+    render() {
+        return <MemoRow todo={this.row()} />;
+    }
+}
+```
+
+`select` reads the same tracked view `connect` hands out, so the owner subscribes to exactly
+the paths the selection touches. What the call returns is detached plain data: plain objects
+and arrays are shallow-copied, and the snapshot's identity changes only when the selected
+content changes — members compared with `Object.is`, one level deep, the same comparison a
+props gate applies. The gated child therefore re-renders exactly when the selected data
+changed and keeps its bail-out otherwise: a write to another row does not redraw it, while
+replacing a nested object or the whole store does.
+
+The selector runs on every render — that is what keeps the owner's subscription fresh — while
+the snapshot object itself is reused until the content actually changes, so nothing is cloned
+per render beyond the one selection object. A selection that hands out a live view (the
+facade, or a branch of it) as the snapshot or inside it is reported once in development:
+select plain values — primitives, or plain objects and arrays built from them.
+
 ### Precise invalidation
 
 `emitUpdate` compares the written paths against every subscriber's read paths. A write
@@ -559,6 +605,7 @@ describes.
 |-----------------------------------|----------------------------------------------------------------|
 | `useCarburetor(carburetor)`       | Tracked data for reading in render; establishes the subscription. |
 | `connect(source)`                 | A persistent view, built once (a field initializer is the intended call site) and read directly in render — no per-render proxy allocation. `source` is a carburetor or a function resolving one, so a prop swap re-points it. |
+| `connectSelection(source, select)` | A typed selection of connected data, safe to hand to a child gated by shallow props comparison. Call what it returns in render: the selector's reads subscribe the owner, the returned snapshot is detached plain data whose identity changes only when the selected content changes. |
 | `useComputed(computed)`           | Reads a derived value and subscribes to it, not to its inputs.  |
 | `useEffects()` *(protected)*      | Declares the component's effects; runs on mount and after every committed update. |
 | `unUseEffects(prevProps)`         | Component-wide teardown, before every `useEffects` pass and on unmount. |

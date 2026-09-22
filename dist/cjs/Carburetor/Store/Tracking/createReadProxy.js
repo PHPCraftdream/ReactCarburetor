@@ -35,6 +35,7 @@ const BranchMarker_js_namespaceObject = require("../Paths/BranchMarker.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
 const DevelopmentFlag_js_namespaceObject = require("../Utils/DevelopmentFlag.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
+const external_liveViews_js_namespaceObject = require("./liveViews.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
 const createReadProxy = (target, record, basePath = '', aliases)=>{
     const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
@@ -89,6 +90,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
         defineProperty: forbidWrite,
         deleteProperty: forbidWrite
     });
+    external_liveViews_js_namespaceObject.liveViews.note(proxy);
     return proxy;
 };
 exports.createReadProxy = __webpack_exports__.createReadProxy;

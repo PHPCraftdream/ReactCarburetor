@@ -1,0 +1,1 @@
+let e=new WeakSet,t={note:t=>{e.add(t)},has:t=>"object"==typeof t&&null!==t&&e.has(t)};export{t as liveViews};
