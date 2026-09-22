@@ -34,7 +34,7 @@ const joinPath_js_namespaceObject = require("../Paths/joinPath.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
-const createWriteProxy = (target, record, basePath = '')=>{
+const createWriteProxy = (target, record, basePath = '', aliases)=>{
     const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
     const isArray = Array.isArray(target);
     const writtenPath = (key)=>{
@@ -46,21 +46,28 @@ const createWriteProxy = (target, record, basePath = '')=>{
             const value = Reflect.get(source, key);
             if ('symbol' == typeof key || 'function' == typeof value) return value;
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
-            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return cached(path, value, ()=>createWriteProxy(value, record, path));
+            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return cached(path, value, ()=>createWriteProxy(value, record, path, aliases));
             if (null !== value && 'object' == typeof value) record(path);
             return value;
         },
         set: (source, key, value)=>{
-            if (Reflect.get(source, key) === value) return true;
+            const previous = Reflect.get(source, key);
+            if (previous === value) return true;
+            aliases?.checkWrite(source, basePath);
+            aliases?.forget(previous);
             record(writtenPath(key));
             return Reflect.set(source, key, value);
         },
         defineProperty: (source, key, descriptor)=>{
+            aliases?.checkWrite(source, basePath);
+            aliases?.forget(Reflect.get(source, key));
             record(writtenPath(key));
             return Reflect.defineProperty(source, key, descriptor);
         },
         deleteProperty: (source, key)=>{
             if (!Reflect.has(source, key)) return true;
+            aliases?.checkWrite(source, basePath);
+            aliases?.forget(Reflect.get(source, key));
             record(writtenPath(key));
             return Reflect.deleteProperty(source, key);
         }

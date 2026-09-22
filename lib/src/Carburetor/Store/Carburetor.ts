@@ -1,5 +1,5 @@
 import {IDict, TDisposer, TReadonly, TSubscriber} from "@/Carburetor/Models/Base";
-import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
+import {TPath, TPathRecorder, TPathSet, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {deepClone} from "./Utils/deepClone";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
@@ -8,6 +8,7 @@ import {syncUpdateScheduler} from "./Scheduling/SyncUpdateSchedulerInstance";
 import {updateWave} from "./Scheduling/UpdateWaveInstance";
 import {createReadProxy} from "./Tracking/createReadProxy";
 import {createWriteProxy} from "./Tracking/createWriteProxy";
+import {createAliasLedger} from "./Tracking/AliasLedger";
 import {isTrackable} from "./Tracking/isTrackable";
 import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {getUid} from "./Utils/getUid";
@@ -27,6 +28,10 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
     /** Finds the subscribers a write concerns without scanning all of them. */
     protected subscriberIndex: SubscriberIndex = new SubscriberIndex();
+
+    /** Development alias ledger handed to both proxies; undefined outside development. */
+    protected aliases: TAliasLedger = createAliasLedger();
+
     protected uid: string = getUid();
     protected version: number = 0;
 
@@ -74,7 +79,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             return this.data as unknown as TReadonly<T>;
         }
 
-        return createReadProxy(data, record) as unknown as TReadonly<T>;
+        return createReadProxy(data, record, '', this.aliases) as unknown as TReadonly<T>;
     };
 
     /** Replaces the whole state and wakes everyone: no path survives a root swap. */
@@ -180,7 +185,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
 
         if (!this.draftProxy) {
-            this.draftProxy = createWriteProxy(data, this.recordWrite) as T;
+            this.draftProxy = createWriteProxy(data, this.recordWrite, '', this.aliases) as T;
         }
 
         return this.draftProxy;

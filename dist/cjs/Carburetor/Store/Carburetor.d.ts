@@ -1,5 +1,5 @@
 import { IDict, TDisposer, TReadonly, TSubscriber } from "../Models/Base.js";
-import { TPath, TPathRecorder, TPathSet } from "../Models/Paths.js";
+import { TPath, TPathRecorder, TPathSet, TAliasLedger } from "../Models/Paths.js";
 import { ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler } from "../Models/Store.js";
 import { SubscriberIndex } from "./Paths/SubscriberIndex.js";
 interface ISubscriberRecord {
@@ -12,6 +12,8 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     protected subscribers: IDict<ISubscriberRecord>;
     /** Finds the subscribers a write concerns without scanning all of them. */
     protected subscriberIndex: SubscriberIndex;
+    /** Development alias ledger handed to both proxies; undefined outside development. */
+    protected aliases: TAliasLedger;
     protected uid: string;
     protected version: number;
     /** Paths changed since the last emitUpdate. */

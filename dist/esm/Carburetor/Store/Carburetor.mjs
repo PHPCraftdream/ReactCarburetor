@@ -5,6 +5,7 @@ import { syncUpdateScheduler } from "./Scheduling/SyncUpdateSchedulerInstance.mj
 import { updateWave } from "./Scheduling/UpdateWaveInstance.mjs";
 import { createReadProxy } from "./Tracking/createReadProxy.mjs";
 import { createWriteProxy } from "./Tracking/createWriteProxy.mjs";
+import { createAliasLedger } from "./Tracking/AliasLedger.mjs";
 import { isTrackable } from "./Tracking/isTrackable.mjs";
 import { updateBatch } from "./Transaction/UpdateBatchInstance.mjs";
 import { getUid } from "./Utils/getUid.mjs";
@@ -14,6 +15,7 @@ class Carburetor {
     scheduler;
     subscribers = {};
     subscriberIndex = new SubscriberIndex();
+    aliases = createAliasLedger();
     uid = getUid();
     version = 0;
     writes = new Set();
@@ -33,7 +35,7 @@ class Carburetor {
             record(WILDCARD_PATH);
             return this.data;
         }
-        return createReadProxy(data, record);
+        return createReadProxy(data, record, '', this.aliases);
     };
     setData = (data)=>{
         this.data = data;
@@ -95,7 +97,7 @@ class Carburetor {
             this.recordWrite(WILDCARD_PATH);
             return this.data;
         }
-        if (!this.draftProxy) this.draftProxy = createWriteProxy(data, this.recordWrite);
+        if (!this.draftProxy) this.draftProxy = createWriteProxy(data, this.recordWrite, '', this.aliases);
         return this.draftProxy;
     }
     update = (mutate)=>{

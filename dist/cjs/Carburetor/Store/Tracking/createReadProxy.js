@@ -31,20 +31,25 @@ __webpack_require__.d(__webpack_exports__, {
     createReadProxy: ()=>createReadProxy
 });
 const joinPath_js_namespaceObject = require("../Paths/joinPath.js");
+const BranchMarker_js_namespaceObject = require("../Paths/BranchMarker.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
-const createReadProxy = (target, record, basePath = '')=>{
+const createReadProxy = (target, record, basePath = '', aliases)=>{
     const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
     const forbidWrite = ()=>{
         throw new Error("Carburetor: data read through useCarburetor is read-only. Write through carburetor methods — they write via draft and know which paths changed.");
     };
-    return new Proxy(target, {
+    const proxy = new Proxy(target, {
         get: (source, key)=>{
-            const value = Reflect.get(source, key);
+            const value = Reflect.get(source, key, proxy);
             if ('symbol' == typeof key) return value;
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
-            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return cached(path, value, ()=>createReadProxy(value, record, path));
+            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) {
+                aliases?.note(value, path);
+                record((0, BranchMarker_js_namespaceObject.branchPath)(path));
+                return cached(path, value, ()=>createReadProxy(value, record, path, aliases));
+            }
             record(path);
             return value;
         },
@@ -59,6 +64,7 @@ const createReadProxy = (target, record, basePath = '')=>{
         set: forbidWrite,
         deleteProperty: forbidWrite
     });
+    return proxy;
 };
 exports.createReadProxy = __webpack_exports__.createReadProxy;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

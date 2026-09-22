@@ -37,6 +37,7 @@ const SyncUpdateSchedulerInstance_js_namespaceObject = require("./Scheduling/Syn
 const UpdateWaveInstance_js_namespaceObject = require("./Scheduling/UpdateWaveInstance.js");
 const createReadProxy_js_namespaceObject = require("./Tracking/createReadProxy.js");
 const createWriteProxy_js_namespaceObject = require("./Tracking/createWriteProxy.js");
+const AliasLedger_js_namespaceObject = require("./Tracking/AliasLedger.js");
 const isTrackable_js_namespaceObject = require("./Tracking/isTrackable.js");
 const UpdateBatchInstance_js_namespaceObject = require("./Transaction/UpdateBatchInstance.js");
 const getUid_js_namespaceObject = require("./Utils/getUid.js");
@@ -46,6 +47,7 @@ class Carburetor {
     scheduler;
     subscribers = {};
     subscriberIndex = new SubscriberIndex_js_namespaceObject.SubscriberIndex();
+    aliases = (0, AliasLedger_js_namespaceObject.createAliasLedger)();
     uid = (0, getUid_js_namespaceObject.getUid)();
     version = 0;
     writes = new Set();
@@ -65,7 +67,7 @@ class Carburetor {
             record(WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return this.data;
         }
-        return (0, createReadProxy_js_namespaceObject.createReadProxy)(data, record);
+        return (0, createReadProxy_js_namespaceObject.createReadProxy)(data, record, '', this.aliases);
     };
     setData = (data)=>{
         this.data = data;
@@ -127,7 +129,7 @@ class Carburetor {
             this.recordWrite(WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return this.data;
         }
-        if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.recordWrite);
+        if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.recordWrite, '', this.aliases);
         return this.draftProxy;
     }
     update = (mutate)=>{

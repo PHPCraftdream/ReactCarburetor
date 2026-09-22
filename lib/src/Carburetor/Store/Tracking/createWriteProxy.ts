@@ -1,4 +1,4 @@
-import {TPath, TPathRecorder} from "@/Carburetor/Models/Paths";
+import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {createProxyCache} from "./createProxyCache";
@@ -6,9 +6,15 @@ import {isTrackable} from "./isTrackable";
 
 /**
  * Write proxy: every changed branch is recorded as a path, so the carburetor
- * only wakes the subscribers that read it.
+ * only wakes the subscribers that read it. Reads made elsewhere are consulted through the alias
+ * ledger, so writing into an object that another path was read from is reported in development.
  */
-export const createWriteProxy = <T extends object>(target: T, record: TPathRecorder, basePath: TPath = ''): T => {
+export const createWriteProxy = <T extends object>(
+    target: T,
+    record: TPathRecorder,
+    basePath: TPath = '',
+    aliases?: TAliasLedger
+): T => {
     const cached = createProxyCache();
     const isArray: boolean = Array.isArray(target);
 
@@ -34,7 +40,7 @@ export const createWriteProxy = <T extends object>(target: T, record: TPathRecor
             const path = joinPath(basePath, key);
 
             if (isTrackable(value)) {
-                return cached(path, value, () => createWriteProxy(value, record, path));
+                return cached(path, value, () => createWriteProxy(value, record, path, aliases));
             }
 
             // A Map, Set, Date or class instance cannot be wrapped, so `draft.index.set(...)`
@@ -49,10 +55,18 @@ export const createWriteProxy = <T extends object>(target: T, record: TPathRecor
             return value;
         },
         set: (source: T, key: string | symbol, value: unknown): boolean => {
+            const previous: unknown = Reflect.get(source, key);
+
             // Writing the same value changes nothing and must wake nobody.
-            if (Reflect.get(source, key) === value) {
+            if (previous === value) {
                 return true;
             }
+
+            // A branch replaced or deleted takes its old object's recorded path with it, and a
+            // write into an object last read under a different path is the aliasing the ledger
+            // exists to report.
+            aliases?.checkWrite(source, basePath);
+            aliases?.forget(previous);
 
             record(writtenPath(key));
 
@@ -61,6 +75,9 @@ export const createWriteProxy = <T extends object>(target: T, record: TPathRecor
         // Object.defineProperty never reaches the set trap, so without this the write
         // would land in the data and wake nobody.
         defineProperty: (source: T, key: string | symbol, descriptor: PropertyDescriptor): boolean => {
+            aliases?.checkWrite(source, basePath);
+            aliases?.forget(Reflect.get(source, key));
+
             record(writtenPath(key));
 
             return Reflect.defineProperty(source, key, descriptor);
@@ -69,6 +86,9 @@ export const createWriteProxy = <T extends object>(target: T, record: TPathRecor
             if (!Reflect.has(source, key)) {
                 return true;
             }
+
+            aliases?.checkWrite(source, basePath);
+            aliases?.forget(Reflect.get(source, key));
 
             record(writtenPath(key));
 
