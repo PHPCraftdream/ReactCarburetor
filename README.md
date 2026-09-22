@@ -53,8 +53,10 @@ component's subscription.
 const {orderIds, activeCount} = this.useCarburetor(todoCarburetor);
 ```
 
-Data returned from `useCarburetor` is deeply read-only: the compiler rejects a write, and the
-proxy throws if you force one past it. Writes belong to the carburetor, through `update`:
+Data returned from `useCarburetor` is deeply read-only where it is plain data: the compiler
+rejects a write, and the proxy throws if you force one past it. A `Map`, `Date`, `Set` or class
+instance passes through unwrapped, so its own mutating methods sit outside that guard. Writes
+belong to the carburetor, through `update`:
 
 ```ts
 export class TodoCarburetor extends Carburetor<ITodoList> {
@@ -505,7 +507,7 @@ describes.
 |---------------------------------|--------------------------------------------------------------------|
 | `constructor(data, scheduler?)` | Initial data and delivery policy (defaults to immediate delivery).  |
 | `getData(): T`                  | Untracked data, for code outside render.                           |
-| `read(record)`                  | Tracked, deeply read-only data; every read path goes to `record`.  |
+| `read(record)`                  | Tracked, read-only plain data; every read path goes to `record`.   |
 | `setData(data)`                 | Replaces the data and invalidates everything.                      |
 | `snapshot(): T`                 | Detached deep copy, safe to serialize or keep.                     |
 | `restore(data)`                 | Replaces the data with a snapshot.                                 |

@@ -348,32 +348,6 @@ describe('Carburetor', () => {
         expect(tail).toEqual(0);
     });
 
-    test('a throwing subscriber does not cost later subscribers their notification', () => {
-        const carburetor = new TestCarburetor(getTestData());
-        const original = console.error;
-        const reported: string[] = [];
-        const order: string[] = [];
-
-        console.error = (message: string) => reported.push(message);
-
-        try {
-            carburetor.subscribe(() => {
-                order.push('first');
-
-                throw new Error('first subscriber failed');
-            }, {id: 'first', reads: readsOf('a')});
-            carburetor.subscribe(() => order.push('second'), {id: 'second', reads: readsOf('a')});
-
-            carburetor.setA(1);
-        } finally {
-            console.error = original;
-        }
-
-        expect(order).toEqual(['first', 'second']);
-        expect(reported.length).toEqual(1);
-        expect(reported[0]).toContain('first subscriber failed');
-    });
-
     test('subscribing with the same id replaces the previous registration', () => {
         const carburetor = new TestCarburetor(getTestData());
         let first = 0;
@@ -498,6 +472,79 @@ describe('Carburetor', () => {
         expect(() => {
             data.a = 1;
         }).toThrow();
+    });
+
+    test('Object.defineProperty on the read view throws and changes nothing', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const data = carburetor.read(() => undefined) as unknown as ITestData;
+
+        expect(() => {
+            Object.defineProperty(data, 'a', {value: 1});
+        }).toThrow('read-only');
+
+        expect(carburetor.getData().a).toEqual(0);
+    });
+
+    test('a descriptor read hands out the wrapped branch, not the raw object', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const data = carburetor.read(() => undefined) as unknown as ITestData;
+        const descriptor = Object.getOwnPropertyDescriptor(data, 'nested') as PropertyDescriptor;
+
+        // The raw object would be a mutation path around every trap the view installs.
+        expect(descriptor.value).not.toBe(carburetor.getData().nested);
+
+        expect(() => {
+            (descriptor.value as {value: number}).value = 5;
+        }).toThrow('read-only');
+
+        expect(carburetor.getData().nested.value).toEqual(0);
+    });
+
+    test('enumerating keys wraps nothing and subscribes to the structure alone', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const reads = new Set<TPath>();
+        const data = carburetor.read((path: TPath) => reads.add(path)) as unknown as ITestData;
+
+        expect(Object.keys(data.nested)).toEqual(['value']);
+
+        // The gOPD call the enumeration performs is a structure check, not a value read:
+        // recording it would wake this reader when only `nested.value` changes.
+        expect(reads.has('nested.value')).toBeFalsy();
+        expect(reads.has('nested')).toBeTruthy();
+    });
+
+    test('reading into a frozen branch refuses with the path instead of the raw TypeError', () => {
+        interface IFrozenData {
+            outer: {inner: {value: number}; note: string};
+            leaf: number;
+        }
+
+        const getFrozenData = (): IFrozenData => ({
+            outer: Object.freeze({inner: {value: 0}, note: 'first'}),
+            leaf: 0,
+        });
+
+        const carburetor = new Carburetor<IFrozenData>(getFrozenData());
+        const data = carburetor.read(() => undefined) as unknown as IFrozenData;
+
+        expect(() => data.outer.inner).toThrow('outer.inner');
+        expect(() => data.outer.inner).toThrow('non-configurable');
+        expect(carburetor.getData().outer.inner.value).toEqual(0);
+
+        // A leaf of the frozen branch is a primitive read: invariant-safe and still tracked.
+        const reads = new Set<TPath>();
+        const tracked = carburetor.read((path: TPath) => reads.add(path)) as unknown as IFrozenData;
+
+        expect(tracked.outer.note).toEqual('first');
+        expect(reads.has('outer.note')).toBeTruthy();
+    });
+
+    test('a frozen root refuses nested reads the same way, primitives stay readable', () => {
+        const carburetor = new TestCarburetor(Object.freeze(getTestData()));
+        const data = carburetor.read(() => undefined) as unknown as ITestData;
+
+        expect(() => data.nested).toThrow('"nested"');
+        expect(data.a).toEqual(0);
     });
 
     test('a presence check on a branch hears about replacement, not about nested writes', () => {

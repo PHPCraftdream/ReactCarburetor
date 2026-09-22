@@ -33,12 +33,18 @@ __webpack_require__.d(__webpack_exports__, {
 const joinPath_js_namespaceObject = require("../Paths/joinPath.js");
 const BranchMarker_js_namespaceObject = require("../Paths/BranchMarker.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
+const DevelopmentFlag_js_namespaceObject = require("../Utils/DevelopmentFlag.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
 const createReadProxy = (target, record, basePath = '', aliases)=>{
     const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
     const forbidWrite = ()=>{
         throw new Error("Carburetor: data read through useCarburetor is read-only. Write through carburetor methods — they write via draft and know which paths changed.");
+    };
+    const lockedError = (path)=>new Error('Carburetor: read-only tracking cannot wrap "' + path + '" — the property is non-configurable and non-writable (freeze or seal does this), and the engine accepts only the raw object there, which nothing would track or guard. Keep store data unfrozen; snapshot() is the detached form.');
+    const lockedAgainstWrapping = (source, key, own)=>{
+        const descriptor = own ?? (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT || !Object.isExtensible(source) ? Reflect.getOwnPropertyDescriptor(source, key) : void 0);
+        return void 0 !== descriptor && !descriptor.configurable && false === descriptor.writable;
     };
     const proxy = new Proxy(target, {
         get: (source, key)=>{
@@ -48,6 +54,10 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
             if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) {
                 aliases?.note(value, path);
                 record((0, BranchMarker_js_namespaceObject.branchPath)(path));
+                if (lockedAgainstWrapping(source, key)) {
+                    if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(path);
+                    return value;
+                }
                 return cached(path, value, ()=>createReadProxy(value, record, path, aliases));
             }
             record(path);
@@ -61,7 +71,22 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
             record(basePath || WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return Reflect.ownKeys(source);
         },
+        getOwnPropertyDescriptor: (source, key)=>{
+            const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
+            if (void 0 === descriptor || 'symbol' == typeof key) return descriptor;
+            const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
+            const value = descriptor.value;
+            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) {
+                if (lockedAgainstWrapping(source, key, descriptor)) {
+                    if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(path);
+                    return descriptor;
+                }
+                descriptor.value = cached(path, value, ()=>createReadProxy(value, record, path, aliases));
+            }
+            return descriptor;
+        },
         set: forbidWrite,
+        defineProperty: forbidWrite,
         deleteProperty: forbidWrite
     });
     return proxy;

@@ -1,7 +1,18 @@
 import { TPath, TPathRecorder, TAliasLedger } from "../../Models/Paths.js";
 /**
- * Read proxy: every field access is recorded as a path.
- * Writing through it is forbidden — writes belong to carburetor methods.
+ * Read proxy: every field access is recorded as a path. Writing through it is forbidden —
+ * `set`, `deleteProperty` and `defineProperty` all throw — and `getOwnPropertyDescriptor`
+ * wraps object values like `get` does, so no trap hands out raw state.
+ *
+ * Plain objects and arrays only: a Map, Date, Set or class instance passes through unwrapped,
+ * so a mutating method called on one of those sits outside this guard.
+ *
+ * Frozen data is refused, not wrapped. For a non-configurable, non-writable property the
+ * engine accepts no proxy answer but the raw value — from `get` and `getOwnPropertyDescriptor`
+ * alike — so nothing inside a frozen branch can be wrapped by spec, and handing out the raw
+ * object would be the untracked, unguarded leak this view exists to prevent. Development
+ * throws with the path named; production hands out the raw branch, still recorded as a branch
+ * read, the same degrade-and-mark policy the write proxy applies to Maps.
  *
  * Two contracts the recording relies on. Accessors run against the proxy — it is handed to
  * `Reflect.get` as the receiver — so the reads a getter makes internally are tracked like any

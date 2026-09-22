@@ -2,12 +2,24 @@ import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {branchPath} from "@/Carburetor/Store/Paths/BranchMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {createProxyCache} from "./createProxyCache";
 import {isTrackable} from "./isTrackable";
 
 /**
- * Read proxy: every field access is recorded as a path.
- * Writing through it is forbidden — writes belong to carburetor methods.
+ * Read proxy: every field access is recorded as a path. Writing through it is forbidden —
+ * `set`, `deleteProperty` and `defineProperty` all throw — and `getOwnPropertyDescriptor`
+ * wraps object values like `get` does, so no trap hands out raw state.
+ *
+ * Plain objects and arrays only: a Map, Date, Set or class instance passes through unwrapped,
+ * so a mutating method called on one of those sits outside this guard.
+ *
+ * Frozen data is refused, not wrapped. For a non-configurable, non-writable property the
+ * engine accepts no proxy answer but the raw value — from `get` and `getOwnPropertyDescriptor`
+ * alike — so nothing inside a frozen branch can be wrapped by spec, and handing out the raw
+ * object would be the untracked, unguarded leak this view exists to prevent. Development
+ * throws with the path named; production hands out the raw branch, still recorded as a branch
+ * read, the same degrade-and-mark policy the write proxy applies to Maps.
  *
  * Two contracts the recording relies on. Accessors run against the proxy — it is handed to
  * `Reflect.get` as the receiver — so the reads a getter makes internally are tracked like any
@@ -28,6 +40,33 @@ export const createReadProxy = <T extends object>(
             'Carburetor: data read through useCarburetor is read-only. ' +
             'Write through carburetor methods — they write via draft and know which paths changed.'
         );
+    };
+
+    const lockedError = (path: TPath): Error =>
+        new Error(
+            'Carburetor: read-only tracking cannot wrap "' + path + '" — the property is ' +
+            'non-configurable and non-writable (freeze or seal does this), and the engine ' +
+            'accepts only the raw object there, which nothing would track or guard. ' +
+            'Keep store data unfrozen; snapshot() is the detached form.'
+        );
+
+    /**
+     * Whether the property leaves the proxy no legal answer but the raw value: for a
+     * non-configurable, non-writable property the invariants reject a wrapped one. Development
+     * looks the descriptor up on every branch read so the refusal always fires; production
+     * pays for the lookup only on a non-extensible source, where locked properties are plausible.
+     */
+    const lockedAgainstWrapping = (
+        source: T,
+        key: string | symbol,
+        own?: PropertyDescriptor
+    ): boolean => {
+        const descriptor: PropertyDescriptor | undefined =
+            own ?? (IS_DEVELOPMENT || !Object.isExtensible(source)
+                ? Reflect.getOwnPropertyDescriptor(source, key)
+                : undefined);
+
+        return descriptor !== undefined && !descriptor.configurable && descriptor.writable === false;
     };
 
     const proxy = new Proxy(target, {
@@ -52,6 +91,14 @@ export const createReadProxy = <T extends object>(
                 aliases?.note(value, path);
                 record(branchPath(path));
 
+                if (lockedAgainstWrapping(source, key)) {
+                    if (IS_DEVELOPMENT) {
+                        throw lockedError(path);
+                    }
+
+                    return value;
+                }
+
                 return cached(path, value, () => createReadProxy(value, record, path, aliases));
             }
 
@@ -72,7 +119,46 @@ export const createReadProxy = <T extends object>(
 
             return Reflect.ownKeys(source);
         },
+        // Object.getOwnPropertyDescriptor would otherwise hand out the raw nested object — a
+        // second way around every trap. It wraps like `get` does but records nothing:
+        // `Object.keys` and `for...in` pass through here for the enumeration check alone, and
+        // a structure-only read must not subscribe to the values it merely looked at.
+        getOwnPropertyDescriptor: (
+            source: T,
+            key: string | symbol
+        ): PropertyDescriptor | undefined => {
+            const descriptor: PropertyDescriptor | undefined =
+                Reflect.getOwnPropertyDescriptor(source, key);
+
+            if (descriptor === undefined || typeof key === 'symbol') {
+                return descriptor;
+            }
+
+            const path = joinPath(basePath, key);
+            const value: unknown = descriptor.value;
+
+            if (isTrackable(value)) {
+                if (lockedAgainstWrapping(source, key, descriptor)) {
+                    if (IS_DEVELOPMENT) {
+                        throw lockedError(path);
+                    }
+
+                    return descriptor;
+                }
+
+                descriptor.value = cached(
+                    path,
+                    value,
+                    () => createReadProxy(value, record, path, aliases)
+                );
+            }
+
+            return descriptor;
+        },
         set: forbidWrite,
+        // Object.defineProperty never reaches the set trap: without this the write would land
+        // in the data untracked and unannounced.
+        defineProperty: forbidWrite,
         deleteProperty: forbidWrite,
     }) as T;
 
