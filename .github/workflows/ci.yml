@@ -41,6 +41,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      - name: Memory diagnostics
+        run: |
+          free -h
+          cat /proc/sys/vm/overcommit_memory
+          ulimit -a
+
       - name: Lint
         run: npx oxlint --type-aware --format=stylish --debug=timings
 
