@@ -51,6 +51,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
     const proxy = new Proxy(target, {
         get: (source, key)=>{
             if (key === external_Models_js_namespaceObject.PROXY_CACHE) return cached;
+            cached.sweep();
             const value = Reflect.get(source, key, proxy);
             if ('symbol' == typeof key) return value;
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
@@ -67,14 +68,17 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
             return value;
         },
         has: (source, key)=>{
+            cached.sweep();
             if ('string' == typeof key) record((0, joinPath_js_namespaceObject.joinPath)(basePath, key));
             return Reflect.has(source, key);
         },
         ownKeys: (source)=>{
+            cached.sweep();
             record(basePath || WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return Reflect.ownKeys(source);
         },
         getOwnPropertyDescriptor: (source, key)=>{
+            cached.sweep();
             const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
             if (void 0 === descriptor || 'symbol' == typeof key) return descriptor;
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);

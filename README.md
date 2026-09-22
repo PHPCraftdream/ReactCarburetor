@@ -117,8 +117,12 @@ extension changes — is rejected.
 
 Views stay live across writes: when a write replaces or deletes a branch, the engine releases the
 replaced branch's internal wrapper the next time anything reads through the view — a read of some
-other path is enough, and nothing waits on garbage collection. Per written path the engine keeps
-only a path string and a revision number, never the data object.
+other path is enough, and nothing waits on garbage collection. Every kind of read counts: leaf
+reads, `in` checks and key enumeration reclaim the same way a branch fetch does, so a view left
+reading only primitives still lets deleted branches go. Per written path the engine keeps a path
+string and a revision number only while some live cache still needs that record to evict its
+obsolete entry; applied records are retired, so the ledger tracks the live caches and their
+pending writes rather than the store's lifetime write churn.
 
 ### Passing connected data to children
 

@@ -239,6 +239,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   now runs at most once per render attempt, shared with the baseline version capture.
 - The DevTools connector re-cloned every connected store on every notification; snapshots of
   stores whose version did not change are now reused.
+- Views release replaced or deleted branches on every kind of read now: primitive leaf reads,
+  `in` checks and key enumeration sweep the proxy cache like branch fetches do, so a view left
+  reading only a count or an emptied dictionary no longer pins the removed subtree for its
+  lifetime.
+- The proxy cache's invalidation ledger is bounded: a published write record is retired once no
+  live cache needs it — every cache sharing the raw object's scope has swept through it, or none
+  of the laggards holds an entry it would evict — so the metadata tracks live caches and pending
+  writes instead of lifetime write churn, and a sweep stops rescanning retired history.
 
 ### Removed
 

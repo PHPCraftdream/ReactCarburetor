@@ -45,6 +45,22 @@ export interface IProxyCache {
     invalidate: (path: TPath) => void;
 
     /**
+     * Applies the invalidations published since this cache last swept, releasing the entries
+     * they made obsolete, and retires the records no live cache needs any more. The read proxy
+     * calls this from every data-access trap, so primitive reads and key enumeration release
+     * obsolete branches exactly like a branch fetch does; the cache call itself sweeps before
+     * answering. A no-op while nothing new was published.
+     */
+    sweep: () => void;
+
+    /**
+     * How many invalidation records the shared scope still holds unretired. The ledger is
+     * bounded by contract: this tracks the live caches' pending work, never the object's
+     * lifetime write churn. Test introspection, like `owns` and `size`.
+     */
+    pending: () => number;
+
+    /**
      * Whether the cache currently holds an entry for (path, source). Reports the state as it
      * is — it does NOT sweep first — so a test that wants to observe the engine's own eviction
      * must consult the cache through the proxy (any path) before asking.

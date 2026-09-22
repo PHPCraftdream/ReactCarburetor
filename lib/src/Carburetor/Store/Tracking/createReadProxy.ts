@@ -89,6 +89,11 @@ export const createReadProxy = <T extends object>(
                 return cached;
             }
 
+            // Any data access reclaims: a write may have obsoleted cached branches since the
+            // last read, and a primitive read must release them exactly like a branch fetch
+            // does. The cache itself no-ops while nothing new was published.
+            cached.sweep();
+
             // The proxy itself is the receiver: a getter then sees the proxy as `this`, so its
             // internal reads (`get doubled() { return this.n * 2 }`) land in the recording
             // instead of silently reading the raw target.
@@ -125,6 +130,9 @@ export const createReadProxy = <T extends object>(
             return value;
         },
         has: (source: T, key: string | symbol): boolean => {
+            // A presence check is a data access: it reclaims obsolete branches like any other.
+            cached.sweep();
+
             if (typeof key === 'string') {
                 record(joinPath(basePath, key));
             }
@@ -132,6 +140,10 @@ export const createReadProxy = <T extends object>(
             return Reflect.has(source, key);
         },
         ownKeys: (source: T): ArrayLike<string | symbol> => {
+            // Enumeration reclaims too: `Object.keys` after a deletion must release the deleted
+            // branches even when no object-valued key is ever fetched again.
+            cached.sweep();
+
             // Enumerating keys reads the structure as a whole.
             record(basePath || WILDCARD_PATH);
 
@@ -145,6 +157,10 @@ export const createReadProxy = <T extends object>(
             source: T,
             key: string | symbol
         ): PropertyDescriptor | undefined => {
+            // Descriptor reads reclaim like gets: `for...in` passes through here, and even a
+            // structure-only read must release what earlier reads left cached.
+            cached.sweep();
+
             const descriptor: PropertyDescriptor | undefined =
                 Reflect.getOwnPropertyDescriptor(source, key);
 
