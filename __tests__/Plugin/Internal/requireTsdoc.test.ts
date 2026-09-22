@@ -156,6 +156,21 @@ tester.run('require-tsdoc', rule, {
             options: [{requireParamDocs: true, requireFieldDocs: true}],
         },
         {
+            name: 'a defaulted constructor parameter property tagged by its own name',
+            code: [
+                'class Box {',
+                '    /**',
+                '     * Builds a box.',
+                '     *',
+                '     * @param data - the initial contents.',
+                '     * @param scale - the drawing scale.',
+                '     */',
+                '    constructor(protected data: T, protected scale: number = 1) {}',
+                '}',
+            ].join('\n'),
+            options: [{requireParamDocs: true, requireFieldDocs: true}],
+        },
+        {
             name: 'a plain documented field under requireFieldDocs',
             code: [
                 'class Counter {',
@@ -383,6 +398,21 @@ tester.run('require-tsdoc', rule, {
                 '     * @param data - the initial contents.',
                 '     */',
                 '    constructor(protected data: T, scale: number) {}',
+                '}',
+            ].join('\n'),
+            options: [{requireParamDocs: true}],
+            errors: [{message: /The TSDoc on 'constructor' is missing a @param tag for 'scale'\./}],
+        },
+        {
+            name: 'a defaulted constructor parameter property is still matched to its @param tag',
+            code: [
+                'class Box {',
+                '    /**',
+                '     * Builds a box.',
+                '     *',
+                '     * @param data - the initial contents.',
+                '     */',
+                '    constructor(protected data: T, protected scale: number = 1) {}',
                 '}',
             ].join('\n'),
             options: [{requireParamDocs: true}],

@@ -143,13 +143,25 @@ const paramTags = (raw: string): IParamTag[] => {
 
 /**
  * A parameter's written name, through the wrappers one can be written in (`...rest`, a default, a
- * constructor parameter property).
+ * constructor parameter property) — unwrapped repeatedly, since a parameter property with a
+ * default combines two wrappers at once (`protected scheduler: T = def`, a property around a
+ * default around the identifier) and a single unwrap only peels the outer one.
  */
 const paramName = (node: IAstNode): string | null => {
-    const shaped = node as {parameter?: IAstNode; argument?: IAstNode; left?: IAstNode};
-    const inner = shaped.parameter ?? shaped.argument ?? shaped.left ?? node;
+    let current: IAstNode = node;
 
-    return inner.type === 'Identifier' ? (inner as IIdentifierNode).name : null;
+    while (current.type !== 'Identifier') {
+        const shaped = current as {parameter?: IAstNode; argument?: IAstNode; left?: IAstNode};
+        const inner = shaped.parameter ?? shaped.argument ?? shaped.left;
+
+        if (inner === undefined) {
+            return null;
+        }
+
+        current = inner;
+    }
+
+    return (current as IIdentifierNode).name;
 };
 
 /**
