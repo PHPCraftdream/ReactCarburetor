@@ -4,7 +4,9 @@ State lives outside the React tree. Class components read it directly, and each 
 subscribes to **exactly the fields it read** — so a write wakes only the components that
 actually depend on it.
 
-No hooks. No dependency arrays. No memoization to maintain, and nothing for a compiler to
+No hooks. No dependency arrays to avoid unnecessary re-renders — path-precise subscriptions
+handle that automatically. Effects still take one, to control when the effect itself reruns,
+the same as React's `useEffect`. No memoization to maintain, and nothing for a compiler to
 optimize after the fact: the unnecessary re-renders are never created in the first place.
 
 ```tsx

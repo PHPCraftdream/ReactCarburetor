@@ -96,10 +96,17 @@ a regression, not a loading state. The refresh is visible as a separate flag.
 | `getEntry(args)` | The entry as it is now, with a `stale` verdict. Does not start anything, and does not write — `Carburetor.read` is the tracked-read API, so this one is named after `getData`. |
 | `load(args)` | Resolves from the cache when fresh, otherwise fetches. Concurrent identical calls share one request. |
 | `refresh(args)` | Always fetches, ignoring freshness. Replaces the entry on success, keeps it on failure. |
-| `invalidate(args?)` | Marks one entry, or all of them, stale. Optionally refetches at once. |
-| `forget(args?)` | Removes one entry, or all of them. |
+| `invalidate(args)` | Marks one entry stale without touching its data. Never refetches: entries being read refetch on their next read, and `refresh` fetches one now. Also clears `failed`, re-arming an entry whose last attempt failed. |
+| `invalidateAll()` | Marks every entry stale and re-arms any failed entry, the usual move after a write the server accepted. Never refetches. |
+| `forget(args)` | Removes one entry, cancelling its request first so a late answer cannot resurrect it. |
+| `forgetAll()` | Removes every entry. |
 | `suspend(args)` | Reads for Suspense: throws the in-flight promise, or the error. |
-| `abort(args?)` | Cancels in-flight requests. |
+| `abort(args)` | Cancels one entry's in-flight request, leaving whatever data the entry already holds. |
+| `abortAll()` | Cancels every request in flight. |
+
+The one-entry and all-entries variants are separate methods rather than one optional argument:
+arguments can be `void` — `load()` takes none then — so an argument-less `abort()` would be
+genuinely ambiguous between "this one entry" and "all of them".
 
 Eviction is not optional: without it the cache grows by one entry per distinct argument set for the
 lifetime of the process. A maximum entry count is set in the constructor, least-recently-used entries
