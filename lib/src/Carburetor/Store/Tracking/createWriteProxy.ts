@@ -1,7 +1,8 @@
 import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {createProxyCache, PROXY_CACHE} from "./createProxyCache";
+import {createProxyCache} from "./createProxyCache";
+import {PROXY_CACHE} from "./Models";
 import {isTrackable} from "./isTrackable";
 
 /**

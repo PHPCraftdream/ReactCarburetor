@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "types": ["@rstest/core/globals"]
+  },
+  "include": ["__tests__/Engine/Component/AntiHookComponent.types.test.ts"],
+  "exclude": ["node_modules", "dist"]
+}

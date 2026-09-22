@@ -3,7 +3,8 @@ import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {branchPath} from "@/Carburetor/Store/Paths/BranchMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
-import {createProxyCache, PROXY_CACHE} from "./createProxyCache";
+import {createProxyCache} from "./createProxyCache";
+import {PROXY_CACHE} from "./Models";
 import {liveViews} from "./liveViews";
 import {isTrackable} from "./isTrackable";
 

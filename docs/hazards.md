@@ -44,6 +44,7 @@ is documented as such, defaults to `warn` at most, and states its heuristic.
 | H3 | `no-computed-get-in-computed` | reads | error | no |
 | H4 | `no-use-carburetor-outside-render` | reads | error | no |
 | H5 | `no-escaping-tracked-data` | reads | warn | no |
+| H28 | none — a development diagnostic, not a rule | reads | — | — |
 | H6 | `require-emit-after-draft-write` | writes | error | no |
 | H7 | `no-direct-data-write` | writes | warn | no |
 | H8 | `no-external-data-mutation` | writes | error | no |
@@ -198,10 +199,10 @@ private onClick = () => {
 };
 ```
 
-**Why it is silent.** Reads collected outside render land in the tracking set of the *current
-render generation*, and `commitSubscriptions` copies the set it had at commit time. The read
-therefore either does nothing or widens a subscription in a way that disappears on the next
-render — non-deterministically, depending on when the handler ran.
+**Why it is silent.** The read returns current data but records nothing: outside a render attempt
+the engine attributes it to no render, so it can never alter what any render established — a
+handler read cannot pollute the next render either. The component simply never subscribes to what
+was read there and keeps showing the value it first rendered, with no error.
 
 **Right.** Read in render and use the value, or use `getData()` in the handler, where no
 subscription is wanted.
@@ -248,6 +249,34 @@ method from being mistaken for the tracked one — the rule has no scope analyse
 
 **False positives.** Real. Closing over tracked data in a handler is often harmless because the
 handler runs while that render is still current. `warn`, not `error`, for that reason.
+
+### H28 — a live view handed to a child gated by props comparison
+
+**Wrong**
+
+```tsx
+private readonly todos = this.connect(() => this.props.carburetor);
+
+public render() {
+    return <MemoRow todos={this.todos.items} />;   // a branch of the live view
+}
+```
+
+`MemoRow` is wrapped in `React.memo` or extends `AntiHookComponent` — anything that compares props
+shallowly. Passing the view itself instead of a branch is the same mistake.
+
+**Why it is silent.** The view's reference never changes, so the child's props compare as unchanged
+every time: it bails out forever and keeps its first render. A child that reads the captured view
+in its own render records nothing — the read happens outside the owner's render attempt — so no
+subscription covers what it sees. Nothing errors anywhere.
+
+**Right.** A Carburetor-aware child reads the store itself: pass the carburetor and an identity as
+props, and let the child declare its own `connect()` or `useCarburetor`. An external child gets a
+`connectSelection()` snapshot — detached plain data whose identity changes only when the selected
+content changes.
+
+**Rule** none yet — the engine itself reports handing a live view through a `connectSelection()`
+snapshot, once per selection, in development; see the README's Diagnostics section.
 
 ## Writes
 

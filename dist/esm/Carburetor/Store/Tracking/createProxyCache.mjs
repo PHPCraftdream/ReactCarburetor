@@ -1,6 +1,5 @@
 import { PATH_SEPARATOR } from "../Paths/PathSeparator.mjs";
 import { WILDCARD_PATH } from "../Paths/WildcardPath.mjs";
-const PROXY_CACHE = Symbol('carburetor.proxyCache');
 const scopes = new WeakMap();
 const covers = (invalidated, key)=>{
     if (invalidated === WILDCARD_PATH || '' === invalidated) return true;
@@ -45,4 +44,4 @@ const createProxyCache = (target)=>{
     cache.size = ()=>entries.size;
     return cache;
 };
-export { PROXY_CACHE, createProxyCache };
+export { createProxyCache };

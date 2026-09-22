@@ -33,6 +33,7 @@ __webpack_require__.d(__webpack_exports__, {
 const joinPath_js_namespaceObject = require("../Paths/joinPath.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
+const external_Models_js_namespaceObject = require("./Models.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
 const proxyTargets = new WeakMap();
 const unwrapWriteProxy = (value)=>{
@@ -49,7 +50,7 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
     };
     const proxy = new Proxy(target, {
         get: (source, key)=>{
-            if (key === external_createProxyCache_js_namespaceObject.PROXY_CACHE) return cached;
+            if (key === external_Models_js_namespaceObject.PROXY_CACHE) return cached;
             const value = Reflect.get(source, key);
             if ('symbol' == typeof key || 'function' == typeof value) return value;
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);

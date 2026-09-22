@@ -2,7 +2,8 @@ import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {AntiHookComponent, Carburetor, TPath} from '@/Carburetor';
-import {createProxyCache, IProxyCache, PROXY_CACHE} from '@/Carburetor/Store/Tracking/createProxyCache';
+import {createProxyCache} from '@/Carburetor/Store/Tracking/createProxyCache';
+import {IProxyCache, PROXY_CACHE} from '@/Carburetor/Store/Tracking/Models';
 import {TReadonly} from '@/Carburetor/Models/Base';
 
 interface IBranch {

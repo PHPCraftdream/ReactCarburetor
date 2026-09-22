@@ -35,6 +35,7 @@ const BranchMarker_js_namespaceObject = require("../Paths/BranchMarker.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
 const DevelopmentFlag_js_namespaceObject = require("../Utils/DevelopmentFlag.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
+const external_Models_js_namespaceObject = require("./Models.js");
 const external_liveViews_js_namespaceObject = require("./liveViews.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
 const createReadProxy = (target, record, basePath = '', aliases)=>{
@@ -49,7 +50,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
     };
     const proxy = new Proxy(target, {
         get: (source, key)=>{
-            if (key === external_createProxyCache_js_namespaceObject.PROXY_CACHE) return cached;
+            if (key === external_Models_js_namespaceObject.PROXY_CACHE) return cached;
             const value = Reflect.get(source, key, proxy);
             if ('symbol' == typeof key) return value;
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);

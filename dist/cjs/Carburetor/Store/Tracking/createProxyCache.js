@@ -28,12 +28,10 @@ var __webpack_require__ = {};
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
-    PROXY_CACHE: ()=>PROXY_CACHE,
     createProxyCache: ()=>createProxyCache
 });
 const PathSeparator_js_namespaceObject = require("../Paths/PathSeparator.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
-const PROXY_CACHE = Symbol('carburetor.proxyCache');
 const scopes = new WeakMap();
 const covers = (invalidated, key)=>{
     if (invalidated === WildcardPath_js_namespaceObject.WILDCARD_PATH || '' === invalidated) return true;
@@ -78,10 +76,8 @@ const createProxyCache = (target)=>{
     cache.size = ()=>entries.size;
     return cache;
 };
-exports.PROXY_CACHE = __webpack_exports__.PROXY_CACHE;
 exports.createProxyCache = __webpack_exports__.createProxyCache;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
-    "PROXY_CACHE",
     "createProxyCache"
 ].indexOf(__rspack_i)) exports[__rspack_i] = __webpack_exports__[__rspack_i];
 Object.defineProperty(exports, '__esModule', {

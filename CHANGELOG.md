@@ -16,6 +16,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   returned view live across a whole-data replacement. Reads are still tracked field by field
   every render, so a conditional branch reading a different field still narrows or widens the
   subscription correctly — only the object identity and its underlying proxy are reused.
+- `AntiHookComponent.connectSelection(source, select)`: the supported way to hand connected data to
+  a child gated by shallow props comparison. Declared once like `connect` and called in render; the
+  selector's reads subscribe the owner, and the returned snapshot is detached plain data whose
+  identity changes only when the selected content changes — `Object.is`, one level deep, the same
+  comparison a props gate applies. Handing a live view through a selection is reported once per
+  selection in development.
 - `Carburetor.update(mutate)`: mutates through `draft` and publishes in one step, so a write
   cannot be left unpublished. A draft write that never reaches `emitUpdate` is reported in
   development, and `emitSoon()` covers the case where notifying immediately is unsafe.
@@ -211,6 +217,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   everything, since a symbol cannot be expressed as a path.
 - `update(mutate)` given an `async` callback published at the first `await` and left every later
   write unpublished with no warning; development now reports it.
+- A `ResourceCache` key containing the path separator (`.` or `~`) never notified its readers:
+  read, write and retention paths built different strings for the same entry. All of them now come
+  from one `joinPath` builder, the same one the tracking proxies use.
+- A `connect()` branch that stopped being read kept its subscription and re-rendered after an
+  unrelated write, and reads from handlers, effects or child commits could pollute a render's read
+  set. Reads are now attributed only to the render attempt open during render; subscriptions are
+  established only by a commit.
+- An array-rooted `connect()` view failed `Array.isArray` and threw on enumeration or
+  serialization. The facade's object/array kind is now fixed at declaration, non-configurable
+  descriptors are answered lawfully, and prototype or extension changes are rejected.
+- One throwing computed subscriber or settlement could skip the delivery owed to the others;
+  delivery is now isolated per observer and per queued settlement.
+- A four-node computed chain re-subscribed every edge on every recompute — ten body calls per
+  source write. Unchanged edges are kept now, and each node evaluates once.
+- The proxy cache kept every branch wrapper forever, pinning deleted and replaced data objects; an
+  obsolete entry is now released when a write covers its path.
+- A title-only todo edit ran the full count and sort derivation; the work now stays proportional
+  to the action.
+- `connect()` and `connectSelection()` resolved their source on every field access; the resolver
+  now runs at most once per render attempt, shared with the baseline version capture.
+- The DevTools connector re-cloned every connected store on every notification; snapshots of
+  stores whose version did not change are now reused.
 
 ### Removed
 

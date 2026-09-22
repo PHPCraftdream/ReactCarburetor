@@ -104,6 +104,22 @@ underneath it are reused across renders. `source` can be a carburetor directly, 
 resolving one (as above) so a prop swap re-points the connection at the new store. `setData` and
 `restore` keep working: the same returned view stays live across a whole-data replacement.
 
+The view's object/array kind is decided once, at declaration, from the source's current root: an
+array root gives a view that answers `Array.isArray`, iteration, `Object.keys` and
+`JSON.stringify` as an array. A proxy cannot change kind afterwards, so the kind never changes:
+a source that is not resolvable at declaration time (a scope-backed resolver resolves only after
+React fills context) fixes the view as an object view, and a later root of the other kind fails
+with an explicit boundary error instead of serving a silently wrong view — read an array-rooted
+scoped store through `useCarburetor` in render instead. Descriptor introspection is forwarded
+through the live view; a non-configurable descriptor is reported configurable, which grants
+nothing, because every mutation trap — assignment, deletion, `defineProperty`, prototype and
+extension changes — is rejected.
+
+Views stay live across writes: when a write replaces or deletes a branch, the engine releases the
+replaced branch's internal wrapper the next time anything reads through the view — a read of some
+other path is enough, and nothing waits on garbage collection. Per written path the engine keeps
+only a path string and a revision number, never the data object.
+
 ### Passing connected data to children
 
 A `connect()` view is one live, persistent object — exactly what its owner wants, and exactly
@@ -313,7 +329,9 @@ is not tied to one effect.
 ### Diagnostics
 
 The engine complains about a few kinds of misuse — a write that was never published, a
-`transaction` handed an async body. Those complaints are development-only and switchable:
+`transaction` handed an async body, a `connectSelection()` snapshot that hands a live store view
+— the facade or a branch of it — to a child, reported once per selection. Select plain values
+instead. Those complaints are development-only and switchable:
 
 ```ts
 diagnostics.setEnabled(false);   // silence them anywhere
@@ -604,7 +622,7 @@ describes.
 | member                            | description                                                    |
 |-----------------------------------|----------------------------------------------------------------|
 | `useCarburetor(carburetor)`       | Tracked data for reading in render; establishes the subscription. |
-| `connect(source)`                 | A persistent view, built once (a field initializer is the intended call site) and read directly in render — no per-render proxy allocation. `source` is a carburetor or a function resolving one, so a prop swap re-points it. |
+| `connect(source)`                 | A persistent view, built once (a field initializer is the intended call site) and read directly in render — the view object is reused across renders, while each render opens a fresh record of the paths read: the source resolver runs at most once per render, shared by all reads of that render, and every access still dispatches through the proxy and records its path. `source` is a carburetor or a function resolving one, so a prop swap re-points it. |
 | `connectSelection(source, select)` | A typed selection of connected data, safe to hand to a child gated by shallow props comparison. Call what it returns in render: the selector's reads subscribe the owner, the returned snapshot is detached plain data whose identity changes only when the selected content changes. |
 | `useComputed(computed)`           | Reads a derived value and subscribes to it, not to its inputs.  |
 | `useEffects()` *(protected)*      | Declares the component's effects; runs on mount and after every committed update. |
@@ -635,8 +653,9 @@ the exported surface so one does not slip in by accident.
 
 ## Caveats
 
-- Don't stash tracked data outside render. Reads happening after commit are not part of the
-  subscription, and a proxy kept across renders may point at replaced data.
+- Don't stash tracked data outside render. A read there records nothing — outside a render attempt
+  it can never alter what any render established — so it buys no subscription coverage, and a
+  proxy kept across renders may point at replaced data.
 - Tracking covers plain objects and arrays. `Map`, `Set`, `Date` and class instances are handed
   over as they are: reading one is a leaf read, and mutating it in place is invisible to the
   proxy. No update is lost over it — reaching for such a value through `draft` counts as writing

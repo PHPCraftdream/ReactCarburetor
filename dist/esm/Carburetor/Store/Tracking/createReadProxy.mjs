@@ -2,7 +2,8 @@ import { joinPath } from "../Paths/joinPath.mjs";
 import { branchPath } from "../Paths/BranchMarker.mjs";
 import { WILDCARD_PATH } from "../Paths/WildcardPath.mjs";
 import { IS_DEVELOPMENT } from "../Utils/DevelopmentFlag.mjs";
-import { PROXY_CACHE, createProxyCache } from "./createProxyCache.mjs";
+import { createProxyCache } from "./createProxyCache.mjs";
+import { PROXY_CACHE } from "./Models.mjs";
 import { liveViews } from "./liveViews.mjs";
 import { isTrackable } from "./isTrackable.mjs";
 const createReadProxy = (target, record, basePath = '', aliases)=>{

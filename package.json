@@ -55,7 +55,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "rslib build",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p plugin/tsconfig.json && tsc --noEmit -p plugin/internal/tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p plugin/tsconfig.json && tsc --noEmit -p plugin/internal/tsconfig.json && tsc --noEmit -p tsconfig.types.json",
     "lint": "oxlint --type-aware",
     "check:layout": "node scripts/checkLayout.mjs",
     "test": "rstest run",
