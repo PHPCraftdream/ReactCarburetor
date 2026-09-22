@@ -2,6 +2,7 @@ import { deepClone } from "./Utils/deepClone.mjs";
 import { SubscriberIndex } from "./Paths/SubscriberIndex.mjs";
 import { WILDCARD_PATH } from "./Paths/WildcardPath.mjs";
 import { syncUpdateScheduler } from "./Scheduling/SyncUpdateSchedulerInstance.mjs";
+import { updateWave } from "./Scheduling/UpdateWaveInstance.mjs";
 import { createReadProxy } from "./Tracking/createReadProxy.mjs";
 import { createWriteProxy } from "./Tracking/createWriteProxy.mjs";
 import { isTrackable } from "./Tracking/isTrackable.mjs";
@@ -77,10 +78,15 @@ class Carburetor {
         };
     };
     notifyWrites = (writes)=>{
-        this.subscriberIndex.match(writes).forEach((id)=>{
-            const record = this.subscribers[id];
-            if (record) this.scheduler.schedule(id, record.callback);
-        });
+        updateWave.begin();
+        try {
+            this.subscriberIndex.match(writes).forEach((id)=>{
+                const record = this.subscribers[id];
+                if (record) this.scheduler.schedule(id, record.callback);
+            });
+        } finally{
+            updateWave.end();
+        }
     };
     get draft() {
         const data = this.data;

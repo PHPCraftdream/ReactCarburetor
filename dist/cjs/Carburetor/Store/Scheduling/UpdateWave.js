@@ -27,11 +27,7 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
-__webpack_require__.d(__webpack_exports__, {
-    UpdateBatch: ()=>UpdateBatch
-});
-const UpdateWaveInstance_js_namespaceObject = require("../Scheduling/UpdateWaveInstance.js");
-class UpdateBatch {
+class UpdateWave {
     depth = 0;
     pending = new Map();
     isActive = ()=>this.depth > 0;
@@ -41,32 +37,29 @@ class UpdateBatch {
     end = ()=>{
         this.depth--;
         if (this.depth > 0) return;
-        this.depth = 0;
-        this.flush();
-    };
-    add = (target, writes)=>{
-        const merged = this.pending.get(target);
-        if (!merged) return void this.pending.set(target, new Set(writes));
-        writes.forEach((path)=>merged.add(path));
-    };
-    flush = ()=>{
-        UpdateWaveInstance_js_namespaceObject.updateWave.begin();
+        this.depth = 1;
         try {
             while(this.pending.size > 0){
                 const batch = Array.from(this.pending.entries());
                 this.pending.clear();
-                batch.forEach(([target, writes])=>{
-                    target.notifyWrites(writes);
+                batch.forEach(([, settle])=>{
+                    settle();
                 });
             }
         } finally{
-            UpdateWaveInstance_js_namespaceObject.updateWave.end();
+            this.depth = 0;
         }
     };
+    defer = (uid, settle)=>{
+        this.pending.set(uid, settle);
+    };
 }
-exports.UpdateBatch = __webpack_exports__.UpdateBatch;
+__webpack_require__.d(__webpack_exports__, {
+    UpdateWave: ()=>UpdateWave
+});
+exports.UpdateWave = __webpack_exports__.UpdateWave;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
-    "UpdateBatch"
+    "UpdateWave"
 ].indexOf(__rspack_i)) exports[__rspack_i] = __webpack_exports__[__rspack_i];
 Object.defineProperty(exports, '__esModule', {
     value: true

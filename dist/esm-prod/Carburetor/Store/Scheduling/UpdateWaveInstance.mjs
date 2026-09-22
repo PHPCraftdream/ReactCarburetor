@@ -1,0 +1,1 @@
+import{UpdateWave as e}from"./UpdateWave.mjs";let t=new e;export{t as updateWave};

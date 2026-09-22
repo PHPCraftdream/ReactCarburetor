@@ -1,3 +1,4 @@
+import { updateWave } from "../Scheduling/UpdateWaveInstance.mjs";
 class UpdateBatch {
     depth = 0;
     pending = new Map();
@@ -17,12 +18,17 @@ class UpdateBatch {
         writes.forEach((path)=>merged.add(path));
     };
     flush = ()=>{
-        while(this.pending.size > 0){
-            const batch = Array.from(this.pending.entries());
-            this.pending.clear();
-            batch.forEach(([target, writes])=>{
-                target.notifyWrites(writes);
-            });
+        updateWave.begin();
+        try {
+            while(this.pending.size > 0){
+                const batch = Array.from(this.pending.entries());
+                this.pending.clear();
+                batch.forEach(([target, writes])=>{
+                    target.notifyWrites(writes);
+                });
+            }
+        } finally{
+            updateWave.end();
         }
     };
 }

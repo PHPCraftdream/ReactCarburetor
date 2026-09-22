@@ -31,6 +31,7 @@ __webpack_require__.d(__webpack_exports__, {
     Computed: ()=>Computed
 });
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
+const UpdateWaveInstance_js_namespaceObject = require("../Store/Scheduling/UpdateWaveInstance.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 class Computed {
     body;
@@ -38,6 +39,8 @@ class Computed {
     version = 0;
     subscribers = {};
     dependencies = {};
+    versions = {};
+    announced = void 0;
     value = void 0;
     valid = false;
     constructor(body){
@@ -46,16 +49,15 @@ class Computed {
     getUID = ()=>this.uid;
     getVersion = ()=>this.version;
     get = ()=>{
-        if (!this.valid) this.recompute();
+        if (this.isStale()) this.recompute();
         return this.value;
     };
     subscribe = (callback, options = {})=>{
         const id = options.id || (0, getUid_js_namespaceObject.getUid)();
         const wasUnobserved = 0 === Object.keys(this.subscribers).length;
         this.subscribers[id] = callback;
-        if (this.valid) {
-            if (wasUnobserved) this.observeDependencies();
-        } else this.recompute();
+        if (!this.valid || wasUnobserved && this.hasDrifted()) this.recompute();
+        else if (wasUnobserved) this.observeDependencies();
         return id;
     };
     unsubscribe = (id)=>{
@@ -66,6 +68,14 @@ class Computed {
             this.valid = false;
         }
     };
+    isStale = ()=>{
+        if (Object.keys(this.subscribers).length > 0) return !this.valid;
+        return !this.valid || this.hasDrifted();
+    };
+    hasDrifted = ()=>Object.keys(this.versions).some((cuid)=>{
+            const recorded = this.versions[cuid];
+            return recorded.source.getVersion() !== recorded.version;
+        });
     recompute = ()=>{
         const collected = {};
         const track = (source)=>{
@@ -88,8 +98,29 @@ class Computed {
     attachDependencies = (collected)=>{
         this.releaseDependencies();
         this.dependencies = collected;
+        this.recordVersions(collected);
         if (0 === Object.keys(this.subscribers).length) return;
         this.observeDependencies();
+    };
+    recordVersions = (collected)=>{
+        const versions = {};
+        const record = (dependency)=>{
+            if ('read' in dependency.source) {
+                versions[dependency.source.getUID()] = {
+                    source: dependency.source,
+                    version: dependency.source.getVersion()
+                };
+                return;
+            }
+            const inner = dependency.source;
+            Object.keys(inner.versions).forEach((cuid)=>{
+                versions[cuid] = inner.versions[cuid];
+            });
+        };
+        Object.keys(collected).forEach((cuid)=>{
+            record(collected[cuid]);
+        });
+        this.versions = versions;
     };
     observeDependencies = ()=>{
         Object.keys(this.dependencies).forEach((cuid)=>{
@@ -107,11 +138,22 @@ class Computed {
         this.dependencies = {};
     };
     onDependencyChanged = ()=>{
-        const previous = this.value;
         this.valid = false;
+        if (UpdateWaveInstance_js_namespaceObject.updateWave.isActive()) return void UpdateWaveInstance_js_namespaceObject.updateWave.defer(this.uid, this.settle);
+        this.settle();
+    };
+    settle = ()=>{
+        const previous = this.value;
         this.recompute();
-        if (Object.is(previous, this.value)) return;
+        const baseline = void 0 !== this.announced ? this.announced.value : previous;
+        if (Object.is(baseline, this.value)) return;
+        this.announced = {
+            value: this.value
+        };
         this.version++;
+        this.deliver();
+    };
+    deliver = ()=>{
         Object.keys(this.subscribers).forEach((id)=>{
             const callback = this.subscribers[id];
             if (callback) callback();

@@ -250,4 +250,111 @@ describe('computed', () => {
 
         unmount();
     });
+
+    test('a value computed while unobserved is rechecked when someone subscribes', () => {
+        const carburetor = new ListCarburetor(getData());
+        let runs = 0;
+
+        const doneCount = computed<number>((read) => {
+            runs++;
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        expect(doneCount.get()).toEqual(1);
+        expect(runs).toEqual(1);
+
+        // Nobody is subscribed, so this write reaches no one.
+        carburetor.setDone('a', true);
+
+        let notified = 0;
+        doneCount.subscribe(() => notified++, {id: 'listener'});
+
+        expect(notified).toEqual(0);
+        expect(doneCount.get()).toEqual(2);
+        expect(runs).toEqual(2);
+    });
+
+    test('a component mounting after an unobserved write sees the written value', () => {
+        const carburetor = new ListCarburetor(getData());
+        let renders = 0;
+
+        const doneCount = computed<number>((read) => {
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        expect(doneCount.get()).toEqual(1);
+
+        carburetor.setDone('a', true);
+
+        class Counter extends AntiHookComponent {
+            render() {
+                renders++;
+
+                return <div className="count">{this.useComputed(doneCount)}</div>;
+            }
+        }
+
+        const {container, unmount} = render(<Counter />);
+        expect(container.querySelector('.count')?.textContent).toEqual('2');
+        expect(renders).toEqual(1);
+
+        unmount();
+    });
+
+    test('a diamond computed never delivers a value its inputs disagree on', () => {
+        const carburetor = new ListCarburetor(getData());
+
+        const doneCount = computed<number>((read) => {
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        const aDone = computed<boolean>((read) => read(carburetor).items.a.done);
+
+        const total = computed<number>((read) => read(doneCount) * 10 + (read(aDone) ? 1 : 0));
+
+        const delivered: number[] = [];
+        total.subscribe(() => delivered.push(total.get()), {id: 'listener'});
+
+        expect(total.get()).toEqual(10);
+        expect(delivered).toEqual([]);
+
+        // One write moves both doneCount and aDone; total must settle once, after both.
+        carburetor.setDone('a', true);
+
+        expect(delivered).toEqual([21]);
+        expect(total.get()).toEqual(21);
+    });
+
+    test('a transaction writing two stores settles a computed reading both once', () => {
+        const first = new ListCarburetor(getData());
+        const second = new ListCarburetor(getData());
+        let runs = 0;
+        let notified = 0;
+
+        const total = computed<number>((read) => {
+            runs++;
+
+            return (read(first).items.a.done ? 1 : 0) + (read(second).items.b.done ? 10 : 0);
+        });
+
+        total.subscribe(() => notified++, {id: 'listener'});
+
+        expect(total.get()).toEqual(10);
+        expect(runs).toEqual(1);
+
+        transaction(() => {
+            first.setDone('a', true);
+            second.setDone('b', false);
+        });
+
+        expect(total.get()).toEqual(1);
+        expect(runs).toEqual(2);
+        expect(notified).toEqual(1);
+    });
 });

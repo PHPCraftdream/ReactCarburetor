@@ -140,8 +140,8 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
     releaseSubscriptions() {
         Object.keys(this.tracked).forEach((cuid)=>{
             this.tracked[cuid].carburetor.unsubscribe(this.uid);
+            this.tracked[cuid].generation = this.renderGeneration;
         });
-        this.tracked = {};
     }
 }
 exports.AntiHookComponent = __webpack_exports__.AntiHookComponent;

@@ -1,0 +1,1 @@
+class e{depth=0;pending=new Map;isActive=()=>this.depth>0;begin=()=>{this.depth++};end=()=>{if(this.depth--,!(this.depth>0)){this.depth=1;try{for(;this.pending.size>0;){let e=Array.from(this.pending.entries());this.pending.clear(),e.forEach(([,e])=>{e()})}}finally{this.depth=0}}};defer=(e,t)=>{this.pending.set(e,t)}}export{e as UpdateWave};

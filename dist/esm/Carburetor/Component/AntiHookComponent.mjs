@@ -108,8 +108,8 @@ class AntiHookComponent extends __rspack_external_react.Component {
     releaseSubscriptions() {
         Object.keys(this.tracked).forEach((cuid)=>{
             this.tracked[cuid].carburetor.unsubscribe(this.uid);
+            this.tracked[cuid].generation = this.renderGeneration;
         });
-        this.tracked = {};
     }
 }
 export { AntiHookComponent };

@@ -3,11 +3,23 @@ import {IComputed, TComputeBody, TComputedReader} from "@/Carburetor/Models/Deri
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
+import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
 interface IDependency {
     source: ICarburetorSubscription;
     reads: TPathSet;
+}
+
+/** One store a value was computed from, and the version it held at the time. */
+interface IDependencyVersion {
+    source: ICarburetorSubscription;
+    version: number;
+}
+
+/** The value the last notification carried. */
+interface IAnnouncement<R> {
+    value: R;
 }
 
 /**
@@ -21,6 +33,13 @@ export class Computed<R> implements IComputed<R> {
     protected version: number = 0;
     protected subscribers: IDict<TSubscriber> = {};
     protected dependencies: IDict<IDependency> = {};
+
+    /** The stores the current value was computed from, including those behind inner computeds. */
+    protected versions: IDict<IDependencyVersion> = {};
+
+    /** The value the last notification carried; undefined until the first one. */
+    protected announced: IAnnouncement<R> | undefined = undefined;
+
     protected value: R | undefined = undefined;
     protected valid: boolean = false;
 
@@ -33,14 +52,14 @@ export class Computed<R> implements IComputed<R> {
         return this.uid;
     };
 
-    /** Bumped only when the value actually changed, not on every recompute. */
+    /** Bumped once per delivered change, not on every recompute. */
     public getVersion = (): number => {
         return this.version;
     };
 
-    /** The value, recomputing first if a dependency invalidated it. */
+    /** The value, recomputing first if it cannot be trusted. */
     public get = (): R => {
-        if (!this.valid) {
+        if (this.isStale()) {
             this.recompute();
         }
 
@@ -58,10 +77,12 @@ export class Computed<R> implements IComputed<R> {
 
         this.subscribers[id] = callback;
 
-        // A value nobody reads is not worth keeping fresh, so dependencies are only
-        // observed once someone is listening — including the case where the value was
-        // already computed by an unobserved read.
-        if (!this.valid) {
+        // A value nobody reads is not worth keeping fresh, so dependencies are only observed
+        // once someone is listening. While unobserved the computed misses every write, so
+        // observation starts with a freshness check: the cached value survives only when the
+        // stores it was computed from have not moved since. The check is `hasDrifted` rather
+        // than `isStale` because the subscriber above already made this computed observed.
+        if (!this.valid || (wasUnobserved && this.hasDrifted())) {
             this.recompute();
         } else if (wasUnobserved) {
             this.observeDependencies();
@@ -87,6 +108,25 @@ export class Computed<R> implements IComputed<R> {
             this.releaseDependencies();
             this.valid = false;
         }
+    };
+
+    /** Whether the cached value can still be handed out. */
+    protected isStale = (): boolean => {
+        // Observed, invalidations arrive through the subscription, so `valid` is authoritative.
+        if (Object.keys(this.subscribers).length > 0) {
+            return !this.valid;
+        }
+
+        return !this.valid || this.hasDrifted();
+    };
+
+    /** Whether any store this value was computed from moved since it was read. */
+    protected hasDrifted = (): boolean => {
+        return Object.keys(this.versions).some((cuid: string) => {
+            const recorded = this.versions[cuid];
+
+            return recorded.source.getVersion() !== recorded.version;
+        });
     };
 
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
@@ -122,6 +162,7 @@ export class Computed<R> implements IComputed<R> {
     protected attachDependencies = (collected: IDict<IDependency>): void => {
         this.releaseDependencies();
         this.dependencies = collected;
+        this.recordVersions(collected);
 
         // Dependencies are only observed while somebody is listening to the computed.
         if (Object.keys(this.subscribers).length === 0) {
@@ -129,6 +170,40 @@ export class Computed<R> implements IComputed<R> {
         }
 
         this.observeDependencies();
+    };
+
+    /**
+     * Records the store versions the value was computed from. An inner computed hides the
+     * stores behind it, so those are recorded in its place — otherwise a write they saw
+     * while nobody was listening could never be noticed here.
+     *
+     * The body has just read every dependency, so their own records are current.
+     */
+    protected recordVersions = (collected: IDict<IDependency>): void => {
+        const versions: IDict<IDependencyVersion> = {};
+
+        const record = (dependency: IDependency): void => {
+            if ('read' in dependency.source) {
+                versions[dependency.source.getUID()] = {
+                    source: dependency.source,
+                    version: dependency.source.getVersion(),
+                };
+
+                return;
+            }
+
+            const inner = dependency.source as Computed<unknown>;
+
+            Object.keys(inner.versions).forEach((cuid: string) => {
+                versions[cuid] = inner.versions[cuid];
+            });
+        };
+
+        Object.keys(collected).forEach((cuid: string) => {
+            record(collected[cuid]);
+        });
+
+        this.versions = versions;
     };
 
     /** Subscribes to every dependency under this computed's own id. */
@@ -149,19 +224,45 @@ export class Computed<R> implements IComputed<R> {
         this.dependencies = {};
     };
 
-    /** Recomputes on a dependency write, and wakes subscribers only if the result moved. */
+    /** Invalidates on a dependency write, and settles once the wave around it has passed. */
     protected onDependencyChanged = (): void => {
-        const previous = this.value;
-
         this.valid = false;
-        this.recompute();
 
-        if (Object.is(previous, this.value)) {
+        // One write reaches this computed's dependencies one after another inside the same
+        // pass. Settling for each notification would announce values built from inputs that
+        // have not been told about the write yet — and recomputing mid-pass resubscribes the
+        // dependency set, which can even consume an input's own invalidation. The wave
+        // decides when it is this computed's turn: once, with every input already settled.
+        if (updateWave.isActive()) {
+            updateWave.defer(this.uid, this.settle);
+
             return;
         }
 
-        this.version++;
+        this.settle();
+    };
 
+    /** Recomputes and wakes subscribers if the value moved past what was last announced. */
+    protected settle = (): void => {
+        const previous = this.value;
+
+        this.recompute();
+
+        // A read that landed mid-wave can have recomputed the value already, so a value that
+        // was once announced is judged against the announcement rather than `previous`.
+        const baseline = this.announced !== undefined ? this.announced.value : previous;
+
+        if (Object.is(baseline, this.value)) {
+            return;
+        }
+
+        this.announced = {value: this.value as R};
+        this.version++;
+        this.deliver();
+    };
+
+    /** Wakes every subscriber with the settled value. */
+    protected deliver = (): void => {
         Object.keys(this.subscribers).forEach((id: string) => {
             // A subscriber may have left while this very batch was being delivered.
             const callback = this.subscribers[id];

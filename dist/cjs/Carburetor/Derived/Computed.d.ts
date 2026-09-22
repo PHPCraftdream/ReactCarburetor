@@ -6,6 +6,15 @@ interface IDependency {
     source: ICarburetorSubscription;
     reads: TPathSet;
 }
+/** One store a value was computed from, and the version it held at the time. */
+interface IDependencyVersion {
+    source: ICarburetorSubscription;
+    version: number;
+}
+/** The value the last notification carried. */
+interface IAnnouncement<R> {
+    value: R;
+}
 /**
  * A memoized derived value. The paths its body reads become its dependencies, so it is
  * recomputed only when one of them is written — never on every store update. Subscribers
@@ -18,15 +27,19 @@ export declare class Computed<R> implements IComputed<R> {
     protected version: number;
     protected subscribers: IDict<TSubscriber>;
     protected dependencies: IDict<IDependency>;
+    /** The stores the current value was computed from, including those behind inner computeds. */
+    protected versions: IDict<IDependencyVersion>;
+    /** The value the last notification carried; undefined until the first one. */
+    protected announced: IAnnouncement<R> | undefined;
     protected value: R | undefined;
     protected valid: boolean;
     /** Takes the body whose reads become this value's dependencies. */
     constructor(body: TComputeBody<R>);
     /** The identity a component or another computed subscribes by. */
     getUID: () => string;
-    /** Bumped only when the value actually changed, not on every recompute. */
+    /** Bumped once per delivered change, not on every recompute. */
     getVersion: () => number;
-    /** The value, recomputing first if a dependency invalidated it. */
+    /** The value, recomputing first if it cannot be trusted. */
     get: () => R;
     /**
      * `options.reads` is accepted for interface compatibility and deliberately ignored:
@@ -41,15 +54,31 @@ export declare class Computed<R> implements IComputed<R> {
      * invalidations, so what it holds cannot be trusted when someone subscribes again.
      */
     unsubscribe: (id: string) => void;
+    /** Whether the cached value can still be handed out. */
+    protected isStale: () => boolean;
+    /** Whether any store this value was computed from moved since it was read. */
+    protected hasDrifted: () => boolean;
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
     protected recompute: () => void;
     /** Swaps in a fresh dependency set, releasing the previous one first. */
     protected attachDependencies: (collected: IDict<IDependency>) => void;
+    /**
+     * Records the store versions the value was computed from. An inner computed hides the
+     * stores behind it, so those are recorded in its place — otherwise a write they saw
+     * while nobody was listening could never be noticed here.
+     *
+     * The body has just read every dependency, so their own records are current.
+     */
+    protected recordVersions: (collected: IDict<IDependency>) => void;
     /** Subscribes to every dependency under this computed's own id. */
     protected observeDependencies: () => void;
     /** Unsubscribes from every dependency and forgets them. */
     protected releaseDependencies: () => void;
-    /** Recomputes on a dependency write, and wakes subscribers only if the result moved. */
+    /** Invalidates on a dependency write, and settles once the wave around it has passed. */
     protected onDependencyChanged: () => void;
+    /** Recomputes and wakes subscribers if the value moved past what was last announced. */
+    protected settle: () => void;
+    /** Wakes every subscriber with the settled value. */
+    protected deliver: () => void;
 }
 export {};

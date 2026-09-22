@@ -1,5 +1,6 @@
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {INotifiable} from "@/Carburetor/Models/Store";
+import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 
 /**
  * Collects writes while a transaction is open and delivers one notification pass per
@@ -48,14 +49,23 @@ export class UpdateBatch {
 
     /** Delivers one notification pass per carburetor, draining what the passes add. */
     protected flush = (): void => {
-        // A notification may open a new transaction, so drain until nothing is left.
-        while (this.pending.size > 0) {
-            const batch = Array.from(this.pending.entries());
-            this.pending.clear();
+        // The whole drain is one wave: a transaction writing several carburetors is one
+        // logical write, so a computation reading several of them settles once, after all
+        // of them have been told, instead of once per store.
+        updateWave.begin();
 
-            batch.forEach(([target, writes]: [INotifiable, TPathSet]) => {
-                target.notifyWrites(writes);
-            });
+        try {
+            // A notification may open a new transaction, so drain until nothing is left.
+            while (this.pending.size > 0) {
+                const batch = Array.from(this.pending.entries());
+                this.pending.clear();
+
+                batch.forEach(([target, writes]: [INotifiable, TPathSet]) => {
+                    target.notifyWrites(writes);
+                });
+            }
+        } finally {
+            updateWave.end();
         }
     };
 }

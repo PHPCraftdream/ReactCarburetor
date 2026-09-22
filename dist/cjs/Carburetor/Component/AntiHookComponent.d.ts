@@ -26,7 +26,12 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
     protected uid: string;
     /** Per-effect state: the deps it last ran with, and the cleanup it returned. */
     protected effects: IDict<IEffectRecord>;
-    /** Carburetors read by this component: what was read, and in which render. */
+    /**
+     * Carburetors read by this component: what was read, and in which render.
+     *
+     * The records outlive unmount: releaseSubscriptions keeps them, so a replayed mount
+     * lifecycle can restore the subscriptions without a render to refill them.
+     */
     protected tracked: IDict<ITrackedCarburetor>;
     /** Number of the current, not yet committed render. */
     protected renderGeneration: number;
@@ -110,7 +115,21 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * comparing the carburetor version.
      */
     protected commitSubscriptions(): void;
-    /** Unsubscribes from every tracked source, so a carburetor stops holding this instance. */
+    /**
+     * Unsubscribes from every tracked source, so a carburetor stops holding this instance.
+     *
+     * The read records survive the teardown: a commit can follow without a render to refill
+     * them, because StrictMode replays the mount lifecycles (mount, unmount, mount) in
+     * development, and that commit rebuilds the subscriptions from the records — render is
+     * what fills them, and it does not run again.
+     *
+     * The records are re-stamped so the next commit accepts them: `commitSubscriptions` moves
+     * `renderGeneration` past the generation that stamped the record, so a record kept as it
+     * stood would read as stale and be dropped. No render runs between this method and that
+     * commit, so the re-stamp cannot be mistaken for a future render's marks — a real render
+     * stamps its reads with a fresh generation, which is what still lets it drop the reads it
+     * no longer makes.
+     */
     protected releaseSubscriptions(): void;
 }
 export {};

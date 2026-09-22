@@ -34,6 +34,7 @@ const deepClone_js_namespaceObject = require("./Utils/deepClone.js");
 const SubscriberIndex_js_namespaceObject = require("./Paths/SubscriberIndex.js");
 const WildcardPath_js_namespaceObject = require("./Paths/WildcardPath.js");
 const SyncUpdateSchedulerInstance_js_namespaceObject = require("./Scheduling/SyncUpdateSchedulerInstance.js");
+const UpdateWaveInstance_js_namespaceObject = require("./Scheduling/UpdateWaveInstance.js");
 const createReadProxy_js_namespaceObject = require("./Tracking/createReadProxy.js");
 const createWriteProxy_js_namespaceObject = require("./Tracking/createWriteProxy.js");
 const isTrackable_js_namespaceObject = require("./Tracking/isTrackable.js");
@@ -109,10 +110,15 @@ class Carburetor {
         };
     };
     notifyWrites = (writes)=>{
-        this.subscriberIndex.match(writes).forEach((id)=>{
-            const record = this.subscribers[id];
-            if (record) this.scheduler.schedule(id, record.callback);
-        });
+        UpdateWaveInstance_js_namespaceObject.updateWave.begin();
+        try {
+            this.subscriberIndex.match(writes).forEach((id)=>{
+                const record = this.subscribers[id];
+                if (record) this.scheduler.schedule(id, record.callback);
+            });
+        } finally{
+            UpdateWaveInstance_js_namespaceObject.updateWave.end();
+        }
     };
     get draft() {
         const data = this.data;

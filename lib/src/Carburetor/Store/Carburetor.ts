@@ -5,6 +5,7 @@ import {deepClone} from "./Utils/deepClone";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
 import {syncUpdateScheduler} from "./Scheduling/SyncUpdateSchedulerInstance";
+import {updateWave} from "./Scheduling/UpdateWaveInstance";
 import {createReadProxy} from "./Tracking/createReadProxy";
 import {createWriteProxy} from "./Tracking/createWriteProxy";
 import {isTrackable} from "./Tracking/isTrackable";
@@ -141,14 +142,22 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
     /** Called by the batch coordinator when a transaction closes. */
     public notifyWrites = (writes: TPathSet): void => {
-        this.subscriberIndex.match(writes).forEach((id: string) => {
-            // A subscriber may have unsubscribed while this batch was being delivered.
-            const record = this.subscribers[id];
+        // Delivering one write is one wave: whatever its delivery cascades into settles
+        // before the wave ends, so outer observers only ever hear settled values.
+        updateWave.begin();
 
-            if (record) {
-                this.scheduler.schedule(id, record.callback);
-            }
-        });
+        try {
+            this.subscriberIndex.match(writes).forEach((id: string) => {
+                // A subscriber may have unsubscribed while this batch was being delivered.
+                const record = this.subscribers[id];
+
+                if (record) {
+                    this.scheduler.schedule(id, record.callback);
+                }
+            });
+        } finally {
+            updateWave.end();
+        }
     };
 
     /**
