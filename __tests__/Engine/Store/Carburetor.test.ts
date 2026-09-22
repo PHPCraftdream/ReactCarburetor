@@ -348,6 +348,32 @@ describe('Carburetor', () => {
         expect(tail).toEqual(0);
     });
 
+    test('a throwing subscriber does not cost later subscribers their notification', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+        const order: string[] = [];
+
+        console.error = (message: string) => reported.push(message);
+
+        try {
+            carburetor.subscribe(() => {
+                order.push('first');
+
+                throw new Error('first subscriber failed');
+            }, {id: 'first', reads: readsOf('a')});
+            carburetor.subscribe(() => order.push('second'), {id: 'second', reads: readsOf('a')});
+
+            carburetor.setA(1);
+        } finally {
+            console.error = original;
+        }
+
+        expect(order).toEqual(['first', 'second']);
+        expect(reported.length).toEqual(1);
+        expect(reported[0]).toContain('first subscriber failed');
+    });
+
     test('subscribing with the same id replaces the previous registration', () => {
         const carburetor = new TestCarburetor(getTestData());
         let first = 0;

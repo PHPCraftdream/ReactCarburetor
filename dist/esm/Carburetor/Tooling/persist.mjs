@@ -11,7 +11,11 @@ const persist = (carburetor, options)=>{
     return carburetor.watch(new Set([
         WILDCARD_PATH
     ]), ()=>{
-        storage.setItem(key, JSON.stringify(carburetor.snapshot()));
+        try {
+            storage.setItem(key, JSON.stringify(carburetor.snapshot()));
+        } catch (error) {
+            if (options.onError) options.onError(error);
+        }
     });
 };
 export { persist };

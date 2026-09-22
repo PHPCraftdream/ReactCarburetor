@@ -114,9 +114,17 @@ class Carburetor {
     notifyWrites = (writes)=>{
         UpdateWaveInstance_js_namespaceObject.updateWave.begin();
         try {
+            const failures = [];
             this.subscriberIndex.match(writes).forEach((id)=>{
                 const record = this.subscribers[id];
-                if (record) this.scheduler.schedule(id, record.callback);
+                if (record) try {
+                    this.scheduler.schedule(id, record.callback);
+                } catch (error) {
+                    failures.push(error);
+                }
+            });
+            failures.forEach((error)=>{
+                if ("u" > typeof process && 'production' !== process.env.NODE_ENV) DiagnosticsInstance_js_namespaceObject.diagnostics.report('a subscriber threw while a write was delivered: ' + (error instanceof Error ? error.message : String(error)) + '. The write had already landed, so the remaining subscribers were notified anyway.');
             });
         } finally{
             UpdateWaveInstance_js_namespaceObject.updateWave.end();

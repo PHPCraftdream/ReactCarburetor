@@ -1,6 +1,10 @@
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {INotifiable} from "@/Carburetor/Models/Store";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
+import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+
+// See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
+declare const process: {env: {NODE_ENV?: string}} | undefined;
 
 /**
  * Collects writes while a transaction is open and delivers one notification pass per
@@ -55,15 +59,34 @@ export class UpdateBatch {
         updateWave.begin();
 
         try {
+            // The carburetors in one transaction are independent parts of one logical
+            // write: one failing to deliver must not abandon the others still queued, so
+            // each pass is isolated and the failures are reported once the drain ends.
+            const failures: unknown[] = [];
+
             // A notification may open a new transaction, so drain until nothing is left.
             while (this.pending.size > 0) {
                 const batch = Array.from(this.pending.entries());
                 this.pending.clear();
 
                 batch.forEach(([target, writes]: [INotifiable, TPathSet]) => {
-                    target.notifyWrites(writes);
+                    try {
+                        target.notifyWrites(writes);
+                    } catch (error: unknown) {
+                        failures.push(error);
+                    }
                 });
             }
+
+            failures.forEach((error: unknown) => {
+                if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+                    diagnostics.report(
+                        'a carburetor threw while a transaction was being delivered: ' +
+                        (error instanceof Error ? error.message : String(error)) +
+                        '. The other carburetors in the batch were notified anyway.'
+                    );
+                }
+            });
         } finally {
             updateWave.end();
         }

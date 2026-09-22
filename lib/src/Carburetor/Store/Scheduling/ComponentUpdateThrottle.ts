@@ -1,5 +1,9 @@
 import {TTimerHandle, TUpdater} from "@/Carburetor/Models/Base";
 import {IUpdateScheduler} from "@/Carburetor/Models/Store";
+import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+
+// See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
+declare const process: {env: {NODE_ENV?: string}} | undefined;
 
 /**
  * A policy for streaming sources: a socket pushing a thousand messages per second,
@@ -54,24 +58,48 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
         // carburetor) have to run in this very cycle, otherwise clearing the queue
         // would silently drop them.
         let depth = 0;
+        // One throwing updater must not cost the updaters after it the flush they were
+        // already promised: each run is isolated and the failures are reported once the
+        // flush settles, below, so they surface even when the depth guard aborts it.
+        const failures: unknown[] = [];
 
-        while (this.updaters.size > 0) {
-            if (depth++ >= this.maxUpdateDepth) {
+        try {
+            while (this.updaters.size > 0) {
+                if (depth++ >= this.maxUpdateDepth) {
+                    this.updaters.clear();
+
+                    throw new Error(
+                        'ComponentUpdateThrottle: exceeded max update depth of ' + this.maxUpdateDepth +
+                        '. An updater keeps scheduling new updates — this is an infinite update loop.'
+                    );
+                }
+
+                const batch = Array.from(this.updaters.values());
                 this.updaters.clear();
-                this.clearTimeout();
 
-                throw new Error(
-                    'ComponentUpdateThrottle: exceeded max update depth of ' + this.maxUpdateDepth +
-                    '. An updater keeps scheduling new updates — this is an infinite update loop.'
-                );
+                batch.forEach((updater: TUpdater) => {
+                    try {
+                        this.runUpdater(updater);
+                    } catch (error: unknown) {
+                        failures.push(error);
+                    }
+                });
             }
+        } finally {
+            failures.forEach((error: unknown) => {
+                if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+                    diagnostics.report(
+                        'an updater threw while the throttle flushed: ' +
+                        (error instanceof Error ? error.message : String(error)) +
+                        '. The remaining updaters in the batch were run anyway.'
+                    );
+                }
+            });
 
-            const batch = Array.from(this.updaters.values());
-            this.updaters.clear();
-
-            batch.forEach(this.runUpdater);
+            // The handle belongs to the flush that just fired: it has to be dropped even
+            // when the flush ends abnormally, or setupTimeout() would see it in place and
+            // never arm again — every update after a throwing one would sit queued forever.
+            this.clearTimeout();
         }
-
-        this.clearTimeout();
     };
 }

@@ -27,6 +27,10 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
+__webpack_require__.d(__webpack_exports__, {
+    ComponentUpdateThrottle: ()=>ComponentUpdateThrottle
+});
+const DiagnosticsInstance_js_namespaceObject = require("../Diagnostics/DiagnosticsInstance.js");
 class ComponentUpdateThrottle {
     updateTimeout;
     maxUpdateDepth = 50;
@@ -54,22 +58,31 @@ class ComponentUpdateThrottle {
     };
     letsUpdate = ()=>{
         let depth = 0;
-        while(this.updaters.size > 0){
-            if (depth++ >= this.maxUpdateDepth) {
+        const failures = [];
+        try {
+            while(this.updaters.size > 0){
+                if (depth++ >= this.maxUpdateDepth) {
+                    this.updaters.clear();
+                    throw new Error('ComponentUpdateThrottle: exceeded max update depth of ' + this.maxUpdateDepth + '. An updater keeps scheduling new updates — this is an infinite update loop.');
+                }
+                const batch = Array.from(this.updaters.values());
                 this.updaters.clear();
-                this.clearTimeout();
-                throw new Error('ComponentUpdateThrottle: exceeded max update depth of ' + this.maxUpdateDepth + '. An updater keeps scheduling new updates — this is an infinite update loop.');
+                batch.forEach((updater)=>{
+                    try {
+                        this.runUpdater(updater);
+                    } catch (error) {
+                        failures.push(error);
+                    }
+                });
             }
-            const batch = Array.from(this.updaters.values());
-            this.updaters.clear();
-            batch.forEach(this.runUpdater);
+        } finally{
+            failures.forEach((error)=>{
+                if ("u" > typeof process && 'production' !== process.env.NODE_ENV) DiagnosticsInstance_js_namespaceObject.diagnostics.report('an updater threw while the throttle flushed: ' + (error instanceof Error ? error.message : String(error)) + '. The remaining updaters in the batch were run anyway.');
+            });
+            this.clearTimeout();
         }
-        this.clearTimeout();
     };
 }
-__webpack_require__.d(__webpack_exports__, {
-    ComponentUpdateThrottle: ()=>ComponentUpdateThrottle
-});
 exports.ComponentUpdateThrottle = __webpack_exports__.ComponentUpdateThrottle;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "ComponentUpdateThrottle"

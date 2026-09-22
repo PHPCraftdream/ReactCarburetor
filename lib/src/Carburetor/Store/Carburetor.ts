@@ -152,12 +152,32 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         updateWave.begin();
 
         try {
+            // The write has already landed when delivery runs, so one throwing subscriber
+            // must not cost the subscribers after it their notification: each delivery is
+            // isolated, and the failures are reported once the pass finishes rather than
+            // re-thrown into whoever made the write.
+            const failures: unknown[] = [];
+
             this.subscriberIndex.match(writes).forEach((id: string) => {
                 // A subscriber may have unsubscribed while this batch was being delivered.
                 const record = this.subscribers[id];
 
                 if (record) {
-                    this.scheduler.schedule(id, record.callback);
+                    try {
+                        this.scheduler.schedule(id, record.callback);
+                    } catch (error: unknown) {
+                        failures.push(error);
+                    }
+                }
+            });
+
+            failures.forEach((error: unknown) => {
+                if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+                    diagnostics.report(
+                        'a subscriber threw while a write was delivered: ' +
+                        (error instanceof Error ? error.message : String(error)) +
+                        '. The write had already landed, so the remaining subscribers were notified anyway.'
+                    );
                 }
             });
         } finally {

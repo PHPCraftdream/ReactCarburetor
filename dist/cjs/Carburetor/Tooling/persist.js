@@ -43,7 +43,11 @@ const persist = (carburetor, options)=>{
     return carburetor.watch(new Set([
         WildcardPath_js_namespaceObject.WILDCARD_PATH
     ]), ()=>{
-        storage.setItem(key, JSON.stringify(carburetor.snapshot()));
+        try {
+            storage.setItem(key, JSON.stringify(carburetor.snapshot()));
+        } catch (error) {
+            if (options.onError) options.onError(error);
+        }
     });
 };
 exports.persist = __webpack_exports__.persist;

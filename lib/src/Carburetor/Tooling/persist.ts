@@ -24,6 +24,14 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     }
 
     return carburetor.watch(new Set([WILDCARD_PATH]), () => {
-        storage.setItem(key, JSON.stringify(carburetor.snapshot()));
+        // A failing write must reach onError like a failed restore does, and must not cut
+        // off the subscribers notified after this one; the last good entry stays in place.
+        try {
+            storage.setItem(key, JSON.stringify(carburetor.snapshot()));
+        } catch (error: unknown) {
+            if (options.onError) {
+                options.onError(error);
+            }
+        }
     });
 };

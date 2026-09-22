@@ -1,3 +1,4 @@
+import { diagnostics } from "../Diagnostics/DiagnosticsInstance.mjs";
 class ComponentUpdateThrottle {
     updateTimeout;
     maxUpdateDepth = 50;
@@ -25,17 +26,29 @@ class ComponentUpdateThrottle {
     };
     letsUpdate = ()=>{
         let depth = 0;
-        while(this.updaters.size > 0){
-            if (depth++ >= this.maxUpdateDepth) {
+        const failures = [];
+        try {
+            while(this.updaters.size > 0){
+                if (depth++ >= this.maxUpdateDepth) {
+                    this.updaters.clear();
+                    throw new Error('ComponentUpdateThrottle: exceeded max update depth of ' + this.maxUpdateDepth + '. An updater keeps scheduling new updates — this is an infinite update loop.');
+                }
+                const batch = Array.from(this.updaters.values());
                 this.updaters.clear();
-                this.clearTimeout();
-                throw new Error('ComponentUpdateThrottle: exceeded max update depth of ' + this.maxUpdateDepth + '. An updater keeps scheduling new updates — this is an infinite update loop.');
+                batch.forEach((updater)=>{
+                    try {
+                        this.runUpdater(updater);
+                    } catch (error) {
+                        failures.push(error);
+                    }
+                });
             }
-            const batch = Array.from(this.updaters.values());
-            this.updaters.clear();
-            batch.forEach(this.runUpdater);
+        } finally{
+            failures.forEach((error)=>{
+                if ("u" > typeof process && 'production' !== process.env.NODE_ENV) diagnostics.report('an updater threw while the throttle flushed: ' + (error instanceof Error ? error.message : String(error)) + '. The remaining updaters in the batch were run anyway.');
+            });
+            this.clearTimeout();
         }
-        this.clearTimeout();
     };
 }
 export { ComponentUpdateThrottle };

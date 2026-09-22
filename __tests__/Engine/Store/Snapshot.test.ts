@@ -152,6 +152,37 @@ describe('transaction', () => {
         expect(order).toEqual(['first', 'second']);
     });
 
+    test('a carburetor failing to deliver does not abandon the others in the batch', () => {
+        const first = new TestCarburetor(getTestData());
+        const second = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+        let notified = 0;
+
+        // notifyWrites is replaced whole so the failure happens at the batch level, above
+        // the per-subscriber isolation a throwing subscriber would already be caught by.
+        first.notifyWrites = () => {
+            throw new Error('first store failed to deliver');
+        };
+
+        second.subscribe(() => notified++, {id: 'w2'});
+
+        console.error = (message: string) => reported.push(message);
+
+        try {
+            transaction(() => {
+                first.setA(1);
+                second.setA(1);
+            });
+        } finally {
+            console.error = original;
+        }
+
+        expect(notified).toEqual(1);
+        expect(reported.length).toEqual(1);
+        expect(reported[0]).toContain('first store failed to deliver');
+    });
+
     test('nested transactions flush once, at the outermost exit', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;

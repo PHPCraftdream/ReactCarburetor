@@ -82,6 +82,30 @@ describe('persist', () => {
         expect(storage.getItem('counter')).toEqual(null);
         expect(carburetor.getData().value).toEqual(0);
     });
+
+    test('reports a failing write and lets later subscribers still run', () => {
+        const failingStorage: IStorageLike = {
+            getItem: () => null,
+            setItem: () => {
+                throw new Error('quota exceeded');
+            },
+            removeItem: () => undefined,
+        };
+
+        const carburetor = new CounterCarburetor(getData());
+        let reported: unknown = undefined;
+        let notified = 0;
+
+        // The persist callback registers first, so it is delivered before the subscriber
+        // below: its failure is exactly what used to cut the subscriber off.
+        persist(carburetor, {key: 'counter', storage: failingStorage, onError: (error: unknown) => (reported = error)});
+        carburetor.subscribe(() => notified++, {id: 'after-persist'});
+
+        expect(() => carburetor.setValue(1)).not.toThrow();
+
+        expect((reported as Error).message).toEqual('quota exceeded');
+        expect(notified).toEqual(1);
+    });
 });
 
 describe('CarburetorHistory', () => {

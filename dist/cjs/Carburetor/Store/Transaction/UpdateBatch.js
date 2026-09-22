@@ -31,6 +31,7 @@ __webpack_require__.d(__webpack_exports__, {
     UpdateBatch: ()=>UpdateBatch
 });
 const UpdateWaveInstance_js_namespaceObject = require("../Scheduling/UpdateWaveInstance.js");
+const DiagnosticsInstance_js_namespaceObject = require("../Diagnostics/DiagnosticsInstance.js");
 class UpdateBatch {
     depth = 0;
     pending = new Map();
@@ -52,13 +53,21 @@ class UpdateBatch {
     flush = ()=>{
         UpdateWaveInstance_js_namespaceObject.updateWave.begin();
         try {
+            const failures = [];
             while(this.pending.size > 0){
                 const batch = Array.from(this.pending.entries());
                 this.pending.clear();
                 batch.forEach(([target, writes])=>{
-                    target.notifyWrites(writes);
+                    try {
+                        target.notifyWrites(writes);
+                    } catch (error) {
+                        failures.push(error);
+                    }
                 });
             }
+            failures.forEach((error)=>{
+                if ("u" > typeof process && 'production' !== process.env.NODE_ENV) DiagnosticsInstance_js_namespaceObject.diagnostics.report('a carburetor threw while a transaction was being delivered: ' + (error instanceof Error ? error.message : String(error)) + '. The other carburetors in the batch were notified anyway.');
+            });
         } finally{
             UpdateWaveInstance_js_namespaceObject.updateWave.end();
         }
