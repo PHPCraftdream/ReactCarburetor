@@ -14,7 +14,15 @@ export declare class UpdateWave {
     isActive: () => boolean;
     /** Opens a pass; invalidations inside it are collected instead of settled. */
     begin: () => void;
-    /** Closes a pass, then drains deferred work until the cascades stop producing more. */
+    /**
+     * Closes a pass, then drains deferred work until the cascades stop producing more.
+     *
+     * The drain follows the store's notification policy: every settlement is isolated, so
+     * one that throws costs neither the settlements after it their turn nor the work queued
+     * while the drain runs — the loop keeps going until `pending` is empty. Failures are
+     * reported once the drain finishes rather than re-thrown into whoever made the write,
+     * and the depth is restored no matter how the drain went.
+     */
     end: () => void;
     /**
      * Remembers one deferred computation; a later invalidation replaces an earlier one.

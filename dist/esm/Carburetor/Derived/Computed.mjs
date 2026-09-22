@@ -1,6 +1,7 @@
 import { getUid } from "../Store/Utils/getUid.mjs";
 import { updateWave } from "../Store/Scheduling/UpdateWaveInstance.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
+import { diagnostics } from "../Store/Diagnostics/DiagnosticsInstance.mjs";
 class Computed {
     body;
     uid = getUid();
@@ -122,9 +123,17 @@ class Computed {
         this.deliver();
     };
     deliver = ()=>{
+        const failures = [];
         Object.keys(this.subscribers).forEach((id)=>{
             const callback = this.subscribers[id];
-            if (callback) callback();
+            if (callback) try {
+                callback();
+            } catch (error) {
+                failures.push(error);
+            }
+        });
+        failures.forEach((error)=>{
+            if ("u" > typeof process && 'production' !== process.env.NODE_ENV) diagnostics.report('a subscriber threw while a computed value was delivered: ' + (error instanceof Error ? error.message : String(error)) + '. The remaining subscribers were notified anyway.');
         });
     };
 }

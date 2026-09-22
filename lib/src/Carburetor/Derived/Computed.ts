@@ -5,6 +5,10 @@ import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carbure
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+
+// See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
+declare const process: {env: {NODE_ENV?: string}} | undefined;
 
 interface IDependency {
     source: ICarburetorSubscription;
@@ -251,7 +255,15 @@ export class Computed<R> implements IComputed<R> {
         this.settle();
     };
 
-    /** Recomputes and wakes subscribers if the value moved past what was last announced. */
+    /**
+     * Recomputes and wakes subscribers if the value moved past what was last announced.
+     *
+     * A body that throws changes nothing here: the value, `valid` and `announced` stand
+     * untouched, so no old cached value can be announced as a newly successful computation.
+     * The error escapes to the wave, which isolates it and keeps settling the other
+     * computations; an explicit get() reruns the body and hands the error to its reader,
+     * and the next write to a dependency retries it.
+     */
     protected settle = (): void => {
         const previous = this.value;
 
@@ -270,14 +282,36 @@ export class Computed<R> implements IComputed<R> {
         this.deliver();
     };
 
-    /** Wakes every subscriber with the settled value. */
+    /**
+     * Wakes every subscriber with the settled value.
+     *
+     * Each subscriber is isolated, matching notifyWrites(): one that throws costs the
+     * subscribers after it neither their notification nor the wave its remaining work, and
+     * the failures are reported once delivery finishes rather than re-thrown.
+     */
     protected deliver = (): void => {
+        const failures: unknown[] = [];
+
         Object.keys(this.subscribers).forEach((id: string) => {
             // A subscriber may have left while this very batch was being delivered.
             const callback = this.subscribers[id];
 
             if (callback) {
-                callback();
+                try {
+                    callback();
+                } catch (error: unknown) {
+                    failures.push(error);
+                }
+            }
+        });
+
+        failures.forEach((error: unknown) => {
+            if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+                diagnostics.report(
+                    'a subscriber threw while a computed value was delivered: ' +
+                    (error instanceof Error ? error.message : String(error)) +
+                    '. The remaining subscribers were notified anyway.'
+                );
             }
         });
     };

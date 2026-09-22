@@ -33,6 +33,7 @@ __webpack_require__.d(__webpack_exports__, {
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const UpdateWaveInstance_js_namespaceObject = require("../Store/Scheduling/UpdateWaveInstance.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
+const DiagnosticsInstance_js_namespaceObject = require("../Store/Diagnostics/DiagnosticsInstance.js");
 class Computed {
     body;
     uid = (0, getUid_js_namespaceObject.getUid)();
@@ -154,9 +155,17 @@ class Computed {
         this.deliver();
     };
     deliver = ()=>{
+        const failures = [];
         Object.keys(this.subscribers).forEach((id)=>{
             const callback = this.subscribers[id];
-            if (callback) callback();
+            if (callback) try {
+                callback();
+            } catch (error) {
+                failures.push(error);
+            }
+        });
+        failures.forEach((error)=>{
+            if ("u" > typeof process && 'production' !== process.env.NODE_ENV) DiagnosticsInstance_js_namespaceObject.diagnostics.report('a subscriber threw while a computed value was delivered: ' + (error instanceof Error ? error.message : String(error)) + '. The remaining subscribers were notified anyway.');
         });
     };
 }
