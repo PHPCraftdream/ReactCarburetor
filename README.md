@@ -344,7 +344,7 @@ into another's render. A scope creates the instances per request instead, and co
 resolve them through context — no hooks involved.
 
 ```ts
-export const todoToken = carburetorToken(() => new TodoCarburetor(new ToDoClientAPI()));
+export const todoToken = carburetorToken(() => new TodoCarburetor(new ToDoClientAPI()), 'todos');
 ```
 
 ```tsx
@@ -372,8 +372,12 @@ scope.hydrate(state, [todoToken, filterToken]);
 ```
 
 `dehydrate` covers every carburetor the scope actually created; `hydrate` instantiates the
-tokens whose state is present and leaves the rest to be created on demand. A single store can
-also be seeded directly with `scope.set(token, carburetor)`.
+tokens whose state is present and leaves the rest to be created on demand. The token's name is
+what the two sides match on, so the same token must be declared with the same name in the server
+and client bundles — the two module graphs can otherwise run in any order, and a counter-based
+id would not survive the trip. Two tokens in one process may not share a name, and a payload key
+no token claims is reported in development. A single store can also be seeded directly with
+`scope.set(token, carburetor)`.
 
 ## Tooling
 

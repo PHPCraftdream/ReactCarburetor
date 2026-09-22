@@ -27,14 +27,19 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
-__webpack_require__.d(__webpack_exports__, {
-    carburetorToken: ()=>carburetorToken
-});
-const getUid_js_namespaceObject = require("../../Store/Utils/getUid.js");
-const carburetorToken = (create)=>({
-        id: (0, getUid_js_namespaceObject.getUid)(),
+const takenNames = new Set();
+const carburetorToken = (create, name)=>{
+    if ('' === name) throw new Error('Carburetor: a token needs a non-empty name: it is the key the client hydrates from.');
+    if (takenNames.has(name)) throw new Error('Carburetor: a token named "' + name + '" already exists. Two tokens under one name would overwrite each other in a scope and in a dehydrate() payload; give one of them its own name.');
+    takenNames.add(name);
+    return {
+        id: name,
         create
-    });
+    };
+};
+__webpack_require__.d(__webpack_exports__, {}, {
+    carburetorToken: carburetorToken
+});
 exports.carburetorToken = __webpack_exports__.carburetorToken;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "carburetorToken"

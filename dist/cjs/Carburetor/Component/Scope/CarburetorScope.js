@@ -27,6 +27,11 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
+__webpack_require__.d(__webpack_exports__, {
+    CarburetorScope: ()=>CarburetorScope
+});
+const DiagnosticsInstance_js_namespaceObject = require("../../Store/Diagnostics/DiagnosticsInstance.js");
+const DevelopmentFlag_js_namespaceObject = require("../../Store/Utils/DevelopmentFlag.js");
 class CarburetorScope {
     instances = new Map();
     get = (token)=>{
@@ -47,11 +52,17 @@ class CarburetorScope {
         return state;
     };
     hydrate = (state, tokens)=>{
+        const claimed = new Set();
         tokens.forEach((token)=>{
-            if (!(token.id in state)) return;
+            if (!Object.prototype.hasOwnProperty.call(state, token.id)) return;
+            claimed.add(token.id);
             const instance = this.get(token);
             if (this.isInspectable(instance)) instance.fromJSON(state[token.id]);
         });
+        if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) {
+            const unclaimed = Object.keys(state).filter((key)=>!claimed.has(key));
+            if (unclaimed.length > 0) DiagnosticsInstance_js_namespaceObject.diagnostics.report('hydrate() was handed state under keys no token claims: ' + unclaimed.map((key)=>'"' + key + '"').join(', ') + ". Those entries were ignored; if one of them looks like a token name, the server and the client declare that token under different names.");
+        }
     };
     isInspectable = (instance)=>{
         if ('object' != typeof instance || null === instance) return false;
@@ -59,9 +70,6 @@ class CarburetorScope {
         return 'function' == typeof candidate.toJSON && 'function' == typeof candidate.fromJSON;
     };
 }
-__webpack_require__.d(__webpack_exports__, {
-    CarburetorScope: ()=>CarburetorScope
-});
 exports.CarburetorScope = __webpack_exports__.CarburetorScope;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "CarburetorScope"

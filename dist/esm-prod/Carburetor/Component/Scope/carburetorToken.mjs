@@ -1,1 +1,1 @@
-import{getUid as r}from"../../Store/Utils/getUid.mjs";let t=t=>({id:r(),create:t});export{t as carburetorToken};
+let e=new Set,r=(r,o)=>{if(""===o)throw Error("Carburetor: a token needs a non-empty name: it is the key the client hydrates from.");if(e.has(o))throw Error('Carburetor: a token named "'+o+'" already exists. Two tokens under one name would overwrite each other in a scope and in a dehydrate() payload; give one of them its own name.');return e.add(o),{id:o,create:r}};export{r as carburetorToken};

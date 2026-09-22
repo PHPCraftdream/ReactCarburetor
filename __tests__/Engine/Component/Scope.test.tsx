@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
+import {rstest} from '@rstest/core';
 import {
     Carburetor,
     CarburetorProvider,
@@ -21,7 +22,7 @@ class CounterCarburetor extends Carburetor<ICounterData> {
     };
 }
 
-const counterToken = carburetorToken<CounterCarburetor>(() => new CounterCarburetor({value: 0}));
+const counterToken = carburetorToken<CounterCarburetor>(() => new CounterCarburetor({value: 0}), 'scope-test/counter');
 
 class ScopedCounter extends ScopedAntiHookComponent {
     render() {
@@ -155,6 +156,22 @@ describe('CarburetorScope', () => {
         scope.hydrate({}, [counterToken]);
 
         expect(scope.has(counterToken)).toBeFalsy();
+    });
+
+    test('a payload key no token claims is reported in development', () => {
+        const errorSpy = rstest.spyOn(console, 'error').mockImplementation(() => {});
+
+        try {
+            const scope = new CarburetorScope();
+
+            scope.hydrate({[counterToken.id]: {value: 5}, 'stale-name': {value: 9}}, [counterToken]);
+
+            expect(scope.get(counterToken).getData().value).toEqual(5);
+            expect(errorSpy).toHaveBeenCalledTimes(1);
+            expect(String(errorSpy.mock.calls[0][0])).toContain('stale-name');
+        } finally {
+            errorSpy.mockRestore();
+        }
     });
 
     test('a hydrated component renders the server state', () => {

@@ -120,6 +120,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `carburetorToken(create, name)`: a token's `id` is a caller-chosen name instead of a number
+  from the process-local counter shared with stores and components. `CarburetorScope.dehydrate()`
+  keys its payload by it and `hydrate()` matches on it across the server/client boundary, which a
+  counter could not guarantee: any carburetor, component or token created before this one in one
+  bundle but not the other shifted every later id, and the client silently hydrated from defaults.
+  Two tokens claiming one name in a process are rejected, and `hydrate()` reports payload keys no
+  token claims in development — a subset hydration stays silent and legitimate in production.
 - `subscribe(callback, options)` takes an options object instead of positional `customId` and
   `reads`, and copies the read set it is given.
 - `Carburetor<T extends object>`: a primitive store silently degraded to wildcard tracking.

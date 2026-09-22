@@ -1,3 +1,5 @@
+import { diagnostics } from "../../Store/Diagnostics/DiagnosticsInstance.mjs";
+import { IS_DEVELOPMENT } from "../../Store/Utils/DevelopmentFlag.mjs";
 class CarburetorScope {
     instances = new Map();
     get = (token)=>{
@@ -18,11 +20,17 @@ class CarburetorScope {
         return state;
     };
     hydrate = (state, tokens)=>{
+        const claimed = new Set();
         tokens.forEach((token)=>{
-            if (!(token.id in state)) return;
+            if (!Object.prototype.hasOwnProperty.call(state, token.id)) return;
+            claimed.add(token.id);
             const instance = this.get(token);
             if (this.isInspectable(instance)) instance.fromJSON(state[token.id]);
         });
+        if (IS_DEVELOPMENT) {
+            const unclaimed = Object.keys(state).filter((key)=>!claimed.has(key));
+            if (unclaimed.length > 0) diagnostics.report('hydrate() was handed state under keys no token claims: ' + unclaimed.map((key)=>'"' + key + '"').join(', ') + ". Those entries were ignored; if one of them looks like a token name, the server and the client declare that token under different names.");
+        }
     };
     isInspectable = (instance)=>{
         if ('object' != typeof instance || null === instance) return false;

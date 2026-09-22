@@ -227,7 +227,7 @@ describe('a component reading a resource cache', () => {
 
     test('hydrated data is rendered as it is, without a request', async () => {
         const loader = makeLoader();
-        const token = carburetorToken(() => new ResourceCache<string, string>(loader.load, {ttl: 60_000}));
+        const token = carburetorToken(() => new ResourceCache<string, string>(loader.load, {ttl: 60_000}), 'resource-cache-test/cache');
 
         const server = new CarburetorScope();
         const serverCache = server.get(token);

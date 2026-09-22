@@ -15,7 +15,7 @@ export declare class CarburetorScope {
     /** Whether this scope already created an instance for the token. */
     has: <T extends unknown>(token: ICarburetorToken<T>) => boolean;
     /**
-     * Serializable state of every carburetor created in this scope, keyed by token id.
+     * Serializable state of every carburetor created in this scope, keyed by token name.
      * Take this after rendering on the server and send it to the client.
      */
     dehydrate: () => IDict<unknown>;
@@ -23,6 +23,12 @@ export declare class CarburetorScope {
      * Restores state produced by dehydrate. Tokens whose state is present are instantiated,
      * so the client starts from the same data the server rendered; anything not mentioned in
      * the payload is left to be created on demand.
+     *
+     * A payload key matching no token is the reverse case: the server sent data the client has
+     * no token for. A client deliberately hydrating a subset makes that legitimate, so it is
+     * not an error — but it is also exactly what the server and the client declaring one token
+     * under different names looks like, so development reports it instead of dropping it
+     * silently.
      */
     hydrate: (state: IDict<unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>) => void;
     /** Whether an instance can be serialized: a scope may hold things that cannot. */

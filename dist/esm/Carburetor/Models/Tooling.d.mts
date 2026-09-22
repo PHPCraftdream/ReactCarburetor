@@ -4,6 +4,10 @@ import { TDisposer } from "./Base.mjs";
  * A token is a module-level constant; the instances it produces are not.
  */
 export interface ICarburetorToken<T> {
+    /**
+     * The token's name, written by the caller: the same string in every process, and the key
+     * dehydrate() and hydrate() match on across the server/client boundary.
+     */
     id: string;
     create: () => T;
 }

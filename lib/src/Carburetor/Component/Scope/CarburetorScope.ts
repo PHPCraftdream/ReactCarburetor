@@ -1,6 +1,8 @@
 import {IDict} from "@/Carburetor/Models/Base";
 import {IInspectable} from "@/Carburetor/Models/Store";
 import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
+import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 
 /**
  * One set of carburetor instances. Create a scope per server request instead of keeping
@@ -33,7 +35,7 @@ export class CarburetorScope {
     };
 
     /**
-     * Serializable state of every carburetor created in this scope, keyed by token id.
+     * Serializable state of every carburetor created in this scope, keyed by token name.
      * Take this after rendering on the server and send it to the client.
      */
     public dehydrate = (): IDict<unknown> => {
@@ -52,12 +54,23 @@ export class CarburetorScope {
      * Restores state produced by dehydrate. Tokens whose state is present are instantiated,
      * so the client starts from the same data the server rendered; anything not mentioned in
      * the payload is left to be created on demand.
+     *
+     * A payload key matching no token is the reverse case: the server sent data the client has
+     * no token for. A client deliberately hydrating a subset makes that legitimate, so it is
+     * not an error — but it is also exactly what the server and the client declaring one token
+     * under different names looks like, so development reports it instead of dropping it
+     * silently.
      */
     public hydrate = (state: IDict<unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>): void => {
+        const claimed = new Set<string>();
+
         tokens.forEach((token: ICarburetorToken<unknown>) => {
-            if (!(token.id in state)) {
+            // Own keys only: a token named like an Object.prototype member must not match.
+            if (!Object.prototype.hasOwnProperty.call(state, token.id)) {
                 return;
             }
+
+            claimed.add(token.id);
 
             const instance = this.get(token);
 
@@ -65,6 +78,19 @@ export class CarburetorScope {
                 instance.fromJSON(state[token.id]);
             }
         });
+
+        if (IS_DEVELOPMENT) {
+            const unclaimed = Object.keys(state).filter((key: string) => !claimed.has(key));
+
+            if (unclaimed.length > 0) {
+                diagnostics.report(
+                    'hydrate() was handed state under keys no token claims: ' +
+                    unclaimed.map((key: string) => '"' + key + '"').join(', ') +
+                    '. Those entries were ignored; if one of them looks like a token name, the ' +
+                    'server and the client declare that token under different names.'
+                );
+            }
+        }
     };
 
     /** Whether an instance can be serialized: a scope may hold things that cannot. */
