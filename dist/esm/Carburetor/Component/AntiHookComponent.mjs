@@ -11,11 +11,13 @@ const sameReads = (a, b)=>{
     for (const path of a)if (!b.has(path)) return false;
     return true;
 };
+const describeFailure = (error)=>error instanceof Error ? error.message : String(error);
 const isPlainObject = (value)=>{
     if ('object' != typeof value || null === value || Array.isArray(value)) return false;
     const prototype = Object.getPrototypeOf(value);
     return null === prototype || prototype === Object.prototype;
 };
+const ownEnumerableKeys = (value)=>Reflect.ownKeys(value).filter((key)=>Object.prototype.propertyIsEnumerable.call(value, key));
 const sameSelection = (snapshot, next)=>{
     if (Object.is(snapshot, next)) return true;
     const snapshotIsArray = Array.isArray(snapshot);
@@ -27,12 +29,12 @@ const sameSelection = (snapshot, next)=>{
         return previousMembers.length === freshMembers.length && previousMembers.every((member, index)=>Object.is(member, freshMembers[index]));
     }
     if (!isPlainObject(snapshot) || !isPlainObject(next)) return false;
-    const previousKeys = Object.keys(snapshot);
-    const freshKeys = Object.keys(next);
+    const previousKeys = ownEnumerableKeys(snapshot);
+    const freshKeys = ownEnumerableKeys(next);
     if (previousKeys.length !== freshKeys.length) return false;
     const previousMembers = snapshot;
     const freshMembers = next;
-    return previousKeys.every((key)=>Object.is(previousMembers[key], freshMembers[key]));
+    return previousKeys.every((key)=>Object.prototype.hasOwnProperty.call(freshMembers, key) && Object.is(previousMembers[key], freshMembers[key]));
 };
 const detachSelection = (value)=>{
     if (Array.isArray(value)) return Array.from(value);
@@ -76,7 +78,6 @@ class AntiHookComponent extends __rspack_external_react.Component {
     renderAttempt = void 0;
     pendingAttempt = void 0;
     committedAttempt = void 0;
-    staleResources = [];
     constructor(props){
         super(props);
         return this.withRenderBoundary();
@@ -96,9 +97,11 @@ class AntiHookComponent extends __rspack_external_react.Component {
         this.useEffects();
     }
     componentWillUnmount() {
-        this.unUseEffects(this.props);
-        this.releaseEffects();
-        this.releaseSubscriptions();
+        const failures = [];
+        this.runTeardownStage("the component-wide unUseEffects callback threw while a component unmounted", ()=>this.unUseEffects(this.props), failures);
+        this.runTeardownStage('an effect cleanup threw while a component unmounted', ()=>this.releaseEffects(), failures);
+        this.runTeardownStage("releasing subscriptions threw while a component unmounted", ()=>this.releaseSubscriptions(), failures);
+        failures.forEach((failure)=>this.reportTeardownFailure(failure));
     }
     useCarburetor = (carburetor)=>{
         const attempt = this.renderAttempt;
@@ -248,14 +251,20 @@ class AntiHookComponent extends __rspack_external_react.Component {
         this.track(source).reads.add(source.pathOf(args));
         const view = source.getEntry(args);
         const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error && !view.failed;
-        if (worthFetching) this.staleResources.push(()=>{
-            source.load(args);
-        });
+        const attempt = this.renderAttempt;
+        if (worthFetching) {
+            if (attempt) attempt.deferredLoads.push(()=>{
+                source.load(args);
+            });
+            else if (IS_DEVELOPMENT) diagnostics.report('useResource() skipped the deferred load for entry ' + source.pathOf(args) + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
+        }
         return view;
     };
     loadStaleResources() {
-        const queued = this.staleResources;
-        this.staleResources = [];
+        const attempt = this.pendingAttempt;
+        if (void 0 === attempt || attempt.abandoned || attempt !== this.committedAttempt) return;
+        const queued = attempt.deferredLoads;
+        attempt.deferredLoads = [];
         queued.forEach((load)=>load());
     }
     withRenderBoundary() {
@@ -316,6 +325,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
         const attempt = {
             entries: new Map(),
             sources: new Map(),
+            deferredLoads: [],
             abandoned: false
         };
         this.renderAttempt = attempt;
@@ -348,22 +358,50 @@ class AntiHookComponent extends __rspack_external_react.Component {
     }
     useEffects() {}
     unUseEffects(_prevProps) {}
+    reportTeardownFailure = (failure)=>{
+        if ("u" > typeof process && 'production' !== process.env.NODE_ENV) diagnostics.report(failure);
+    };
+    runTeardownStage = (what, stage, failures)=>{
+        try {
+            stage();
+        } catch (error) {
+            failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
+        }
+    };
     useEffect = (callBack, name, deps)=>{
         const known = this.effects[name];
         if (known && shallowEqual(known.deps, deps)) return;
-        if (known && known.cleanup) known.cleanup();
-        const cleanup = callBack();
-        this.effects[name] = {
+        const failures = [];
+        if (known && known.cleanup) try {
+            known.cleanup();
+        } catch (error) {
+            failures.push(error);
+        }
+        const record = {
             deps,
-            cleanup: 'function' == typeof cleanup ? cleanup : void 0
+            cleanup: void 0
         };
+        this.effects[name] = record;
+        try {
+            const cleanup = callBack();
+            record.cleanup = 'function' == typeof cleanup ? cleanup : void 0;
+        } finally{
+            failures.forEach((error)=>this.reportTeardownFailure('an effect cleanup threw while an effect was replaced: ' + describeFailure(error) + '. The new effect ran anyway.'));
+        }
     };
     releaseEffects() {
-        Object.keys(this.effects).forEach((name)=>{
-            const cleanup = this.effects[name].cleanup;
-            if (cleanup) cleanup();
-        });
+        const records = this.effects;
         this.effects = {};
+        const failures = [];
+        Object.keys(records).forEach((name)=>{
+            const cleanup = records[name].cleanup;
+            if (cleanup) try {
+                cleanup();
+            } catch (error) {
+                failures.push(error);
+            }
+        });
+        failures.forEach((error)=>this.reportTeardownFailure('an effect cleanup threw while a component unmounted: ' + describeFailure(error) + '. The teardown completed anyway.'));
     }
     onCarburetorUpdate = ()=>{
         this.forceUpdate();

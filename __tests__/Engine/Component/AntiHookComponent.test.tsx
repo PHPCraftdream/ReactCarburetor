@@ -59,6 +59,30 @@ class ObservedCarburetor extends CounterCarburetor {
     };
 }
 
+/**
+ * An own enumerable symbol member shared by the selection tests below. A shallow spread copies
+ * it, so a snapshot handed out can carry one and the comparison must see it change.
+ */
+const SYM = Symbol('r2-07');
+
+interface ITodoPayload {
+    [key: string]: unknown;
+    [SYM]?: number;
+}
+
+interface ITodoData {
+    payload: ITodoPayload;
+}
+
+class TodoCarburetor extends Carburetor<ITodoData> {
+    /** Replaces the payload wholesale — the write that wakes a parent reading it. */
+    public replacePayload = (payload: ITodoPayload): void => {
+        this.update((draft: ITodoData): void => {
+            draft.payload = payload;
+        });
+    };
+}
+
 interface IProps {
     a: number;
     b: number;
@@ -347,6 +371,293 @@ describe('<AntiHookComponent />', () => {
         expect(runs).toEqual(1);
 
         unmount();
+    });
+
+    describe('throwing teardowns (R2-09)', () => {
+        test('a throwing effect cleanup still unmounts the rest and releases the subscription', () => {
+            const log: string[] = [];
+            const store = new CounterCarburetor(getCounterData());
+
+            class TwoCleanups extends AntiHookComponent {
+                protected useEffects(): void {
+                    this.useEffect(
+                        () => {
+                            log.push('open:a');
+
+                            return () => {
+                                log.push('close:a');
+
+                                throw new Error('cleanup a failed');
+                            };
+                        },
+                        'a',
+                        []
+                    );
+
+                    this.useEffect(
+                        () => {
+                            log.push('open:b');
+
+                            return () => log.push('close:b');
+                        },
+                        'b',
+                        []
+                    );
+                }
+
+                render() {
+                    this.useCarburetor(store);
+
+                    return <div/>;
+                }
+            }
+
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (message: string) => reported.push(message);
+
+            try {
+                const {unmount} = render(<TwoCleanups />);
+
+                expect(log).toEqual(['open:a', 'open:b']);
+                expect(store.subscriberCount()).toEqual(1);
+
+                // The teardown itself must not throw: the first cleanup's failure costs the
+                // component neither the second cleanup nor the subscription it still holds.
+                unmount();
+            } finally {
+                console.error = original;
+            }
+
+            expect(log).toEqual(['open:a', 'open:b', 'close:a', 'close:b']);
+            expect(store.subscriberCount()).toEqual(0);
+            expect(reported.filter((message: string) =>
+                message.includes('cleanup a failed') && message.includes('unmount')).length).toEqual(1);
+        });
+
+        test('a throwing component-wide unUseEffects still tears down effects and subscriptions', () => {
+            const log: string[] = [];
+            const store = new CounterCarburetor(getCounterData());
+
+            class BrokenTeardown extends AntiHookComponent {
+                protected useEffects(): void {
+                    this.useEffect(() => {
+                        log.push('open:a');
+
+                        return () => log.push('close:a');
+                    }, 'a', []);
+                }
+
+                protected unUseEffects(): void {
+                    throw new Error('wide teardown failed');
+                }
+
+                render() {
+                    this.useCarburetor(store);
+
+                    return <div/>;
+                }
+            }
+
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (message: string) => reported.push(message);
+
+            try {
+                const {unmount} = render(<BrokenTeardown />);
+
+                expect(store.subscriberCount()).toEqual(1);
+
+                unmount();
+            } finally {
+                console.error = original;
+            }
+
+            expect(log).toEqual(['open:a', 'close:a']);
+            expect(store.subscriberCount()).toEqual(0);
+            expect(reported.filter((message: string) =>
+                message.includes('wide teardown failed') && message.includes('unmount')).length).toEqual(1);
+        });
+
+        test('replacing an effect whose old cleanup throws still runs the new effect', () => {
+            const log: string[] = [];
+            const store = new CounterCarburetor(getCounterData());
+
+            class Channel extends AntiHookComponent<{channel: string}> {
+                protected useEffects(): void {
+                    this.useEffect(
+                        () => {
+                            const channel = this.props.channel;
+                            log.push('open:' + channel);
+
+                            return () => {
+                                log.push('close:' + channel);
+
+                                if (channel === 'a') {
+                                    throw new Error('cleanup a failed');
+                                }
+                            };
+                        },
+                        'channel',
+                        [this.props.channel]
+                    );
+                }
+
+                render() {
+                    this.useCarburetor(store);
+
+                    return <div/>;
+                }
+            }
+
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (message: string) => reported.push(message);
+
+            try {
+                const {rerender, unmount} = render(<Channel channel="a"/>);
+
+                expect(log).toEqual(['open:a']);
+
+                // The replaced cleanup throws, but the new effect still has to run: the throw
+                // belongs to teardown, not to the effect that replaces it.
+                rerender(<Channel channel="b"/>);
+                expect(log).toEqual(['open:a', 'close:a', 'open:b']);
+
+                // The new cleanup runs exactly once: no stale reference survives the swap.
+                unmount();
+                expect(log).toEqual(['open:a', 'close:a', 'open:b', 'close:b']);
+                expect(store.subscriberCount()).toEqual(0);
+            } finally {
+                console.error = original;
+            }
+
+            expect(reported.filter((message: string) =>
+                message.includes('cleanup a failed') && message.includes('replaced')).length).toEqual(1);
+        });
+
+        test('replacing an effect whose new setup throws leaves no stale cleanup behind', () => {
+            const log: string[] = [];
+
+            class BrokenSetup extends AntiHookComponent<{fail: boolean}> {
+                protected useEffects(): void {
+                    this.useEffect(
+                        () => {
+                            if (this.props.fail) {
+                                throw new Error('setup failed');
+                            }
+
+                            log.push('open');
+
+                            return () => log.push('cleanup');
+                        },
+                        'effect',
+                        [this.props.fail]
+                    );
+                }
+
+                render() {
+                    return <div/>;
+                }
+            }
+
+            // React does not re-throw a commit-lifecycle error out of the update that caused
+            // it: it reaches the nearest error boundary, which is what makes the failure
+            // observable rather than swallowed.
+            class Catch extends React.Component<{children: React.ReactNode}, {failed: boolean}> {
+                public state = {failed: false};
+
+                public static getDerivedStateFromError(): {failed: boolean} {
+                    return {failed: true};
+                }
+
+                public render() {
+                    return this.state.failed ? <span className="caught">caught</span> : this.props.children;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Catch><BrokenSetup fail={false}/></Catch>);
+
+            expect(log).toEqual(['open']);
+
+            // The setup error still surfaces: a broken setup is as visible as it was before.
+            rerender(<Catch><BrokenSetup fail={true}/></Catch>);
+            expect(container.querySelector('.caught')?.textContent).toEqual('caught');
+            expect(log).toEqual(['open', 'cleanup']);
+
+            // The record moved to the new deps with no cleanup, so the unmount runs nothing again.
+            unmount();
+            expect(log).toEqual(['open', 'cleanup']);
+        });
+
+        test('a throwing setup still reports the replaced cleanup that threw before it', () => {
+            const log: string[] = [];
+
+            class Both extends AntiHookComponent<{fail: boolean}> {
+                protected useEffects(): void {
+                    this.useEffect(
+                        () => {
+                            if (this.props.fail) {
+                                throw new Error('setup failed');
+                            }
+
+                            log.push('open');
+
+                            return () => {
+                                log.push('cleanup');
+
+                                throw new Error('cleanup failed');
+                            };
+                        },
+                        'effect',
+                        [this.props.fail]
+                    );
+                }
+
+                render() {
+                    return <div/>;
+                }
+            }
+
+            class Catch extends React.Component<{children: React.ReactNode}, {failed: boolean}> {
+                public state = {failed: false};
+
+                public static getDerivedStateFromError(): {failed: boolean} {
+                    return {failed: true};
+                }
+
+                public render() {
+                    return this.state.failed ? <span className="caught">caught</span> : this.props.children;
+                }
+            }
+
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (message: string) => reported.push(message);
+
+            try {
+                const {container, rerender, unmount} = render(<Catch><Both fail={false}/></Catch>);
+
+                expect(log).toEqual(['open']);
+
+                rerender(<Catch><Both fail={true}/></Catch>);
+                expect(container.querySelector('.caught')?.textContent).toEqual('caught');
+                expect(log).toEqual(['open', 'cleanup']);
+
+                unmount();
+                expect(log).toEqual(['open', 'cleanup']);
+            } finally {
+                console.error = original;
+            }
+
+            // The replaced cleanup's complaint is reported even though the setup threw after it.
+            expect(reported.filter((message: string) =>
+                message.includes('cleanup failed') && message.includes('replaced')).length).toEqual(1);
+        });
     });
 
     test('a parent re-render does not cascade into children', () => {
@@ -1369,6 +1680,54 @@ describe('<AntiHookComponent />', () => {
             unmount();
         });
 
+        test('nested views behind connect() refuse structural mutation (R2-12)', () => {
+            class NameCarburetor extends Carburetor<{user: {name: string}}> {
+                public rename = (name: string): void => {
+                    this.draft.user.name = name;
+
+                    this.emitUpdate();
+                };
+            }
+
+            const store = new NameCarburetor({user: {name: 'first'}});
+
+            class UserView extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    return <div className="name">{this.view.user.name}</div>;
+                }
+            }
+
+            const {container, unmount} = render(<UserView />);
+
+            expect(container.querySelector('.name')?.textContent).toEqual('first');
+
+            const instance = new UserView({} as never);
+            const nested = (instance as unknown as {view: {user: {name: string}}}).view.user;
+            const rawUser = store.getData().user;
+
+            // The facade's own traps already reject these, but a branch reached through it is
+            // an ordinary read proxy from createReadProxy: it must refuse them too, against the
+            // raw backing object rather than some copy.
+            expect(() => {
+                Object.setPrototypeOf(nested, null);
+            }).toThrow(/read-only/);
+            expect(Object.getPrototypeOf(rawUser)).toBe(Object.prototype);
+
+            expect(() => {
+                Object.preventExtensions(nested);
+            }).toThrow(/read-only/);
+            expect(Object.isExtensible(rawUser)).toBe(true);
+
+            act(() => store.rename('second'));
+
+            // A legitimate draft write still reaches the rendered output.
+            expect(container.querySelector('.name')?.textContent).toEqual('second');
+
+            unmount();
+        });
+
         test('restore() keeps the view live on the restored data', () => {
             const store = new CounterCarburetor({value: 5, other: 0});
             const snapshot = store.snapshot();
@@ -1806,6 +2165,180 @@ describe('<AntiHookComponent />', () => {
             unmount();
         });
 
+        // R2-07: what detaching copies is also what the comparison compares — the own
+        // enumerable string and symbol properties, exactly the set a shallow spread copies.
+        // Membership matters as much as value: a key swapped for another one, or a symbol
+        // member whose value changed, is a content change even when the key counts match.
+        test('a key replaced by another undefined-valued key at equal cardinality updates the child (R2-07)', () => {
+            const store = new TodoCarburetor({payload: {a: undefined}});
+            let memoRenders = 0;
+
+            const MemoTodo = React.memo(({todo}: {todo: ITodoPayload}) => {
+                memoRenders++;
+
+                return <span className="memo-todo">{Object.keys(todo).join(',')}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                private readonly todo = this.connectSelection(() => store, (data) => ({...data.payload}));
+
+                render() {
+                    return <MemoTodo todo={this.todo()} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            expect(memoRenders).toEqual(1);
+            expect(container.querySelector('.memo-todo')?.textContent).toEqual('a');
+
+            // The payload is replaced wholesale, so the parent re-renders; the key set changed
+            // from {a} to {b} at equal cardinality, so the snapshot may not keep its identity.
+            act(() => store.replacePayload({b: undefined}));
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-todo')?.textContent).toEqual('b');
+
+            unmount();
+        });
+
+        test('an enumerable symbol member whose value changes updates the child (R2-07)', () => {
+            const store = new TodoCarburetor({payload: {[SYM]: 0}});
+            let memoRenders = 0;
+
+            const MemoTodo = React.memo(({todo}: {todo: ITodoPayload}) => {
+                memoRenders++;
+
+                return <span className="memo-sym">{todo[SYM]}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                private readonly todo = this.connectSelection(() => store, (data) => ({...data.payload}));
+
+                render() {
+                    return <MemoTodo todo={this.todo()} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            expect(memoRenders).toEqual(1);
+            expect(container.querySelector('.memo-sym')?.textContent).toEqual('0');
+
+            // The spread copies the symbol member, so the child-visible content did change even
+            // though the string key count stayed at zero on both sides.
+            act(() => store.replacePayload({[SYM]: 1}));
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-sym')?.textContent).toEqual('1');
+
+            unmount();
+        });
+
+        test('a key removed and another added at equal cardinality updates the child (R2-07)', () => {
+            const store = new TodoCarburetor({payload: {a: 1, b: 2}});
+            let memoRenders = 0;
+
+            const MemoTodo = React.memo(({todo}: {todo: ITodoPayload}) => {
+                memoRenders++;
+
+                return <span className="memo-todo">{Object.keys(todo).join(',')}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                private readonly todo = this.connectSelection(() => store, (data) => ({...data.payload}));
+
+                render() {
+                    return <MemoTodo todo={this.todo()} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            expect(memoRenders).toEqual(1);
+            expect(container.querySelector('.memo-todo')?.textContent).toEqual('a,b');
+
+            act(() => store.replacePayload({a: 1, c: 2}));
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-todo')?.textContent).toEqual('a,c');
+
+            unmount();
+        });
+
+        test('an unchanged selection holding an undefined value and a symbol member keeps its identity (R2-07)', () => {
+            const store = new TodoCarburetor({payload: {a: undefined, [SYM]: 0}});
+            let memoRenders = 0;
+            const seen: ITodoPayload[] = [];
+
+            const MemoTodo = React.memo(({todo}: {todo: ITodoPayload}) => {
+                memoRenders++;
+                seen.push(todo);
+
+                return <span className="memo-mixed">{Object.keys(todo).join(',')}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{flag?: string}> {
+                private readonly todo = this.connectSelection(() => store, (data) => ({...data.payload}));
+
+                render() {
+                    return <MemoTodo todo={this.todo()} />;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent />);
+
+            expect(memoRenders).toEqual(1);
+            expect(container.querySelector('.memo-mixed')?.textContent).toEqual('a');
+
+            // The parent re-renders for its own props, but the selection is unchanged: both the
+            // undefined-valued key and the symbol member compare equal, so the snapshot keeps its
+            // identity and the gated child keeps its bail-out.
+            rerender(<Parent flag="second" />);
+
+            expect(memoRenders).toEqual(1);
+            expect(seen.length).toEqual(1);
+            expect(Object.keys(seen[0])).toEqual(['a']);
+            expect(seen[0][SYM]).toEqual(0);
+
+            unmount();
+        });
+
+        test('a key order change is the same content and keeps the child bailed out (R2-07)', () => {
+            const store = new TodoCarburetor({payload: {a: 1, b: 2}});
+            let memoRenders = 0;
+            const seen: ITodoPayload[] = [];
+
+            const MemoTodo = React.memo(({todo}: {todo: ITodoPayload}) => {
+                memoRenders++;
+                seen.push(todo);
+
+                return <span className="memo-order">{Object.keys(todo).join(',')}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                private readonly todo = this.connectSelection(() => store, (data) => ({...data.payload}));
+
+                render() {
+                    return <MemoTodo todo={this.todo()} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            expect(memoRenders).toEqual(1);
+
+            // Same members, same values, written in the other order: the comparison is
+            // set-wise, so the snapshot keeps its identity and the child never re-renders.
+            act(() => store.replacePayload({b: 2, a: 1}));
+
+            expect(memoRenders).toEqual(1);
+            expect(seen.length).toEqual(1);
+            expect(container.querySelector('.memo-order')?.textContent).toEqual('a,b');
+
+            unmount();
+        });
+
         test('a selection that is declared but never read installs no subscription', () => {
             const store = new RowListCarburetor(getListData());
 
@@ -2165,6 +2698,299 @@ describe('<AntiHookComponent />', () => {
             expect(other.subscriberCount()).toEqual(1);
 
             unmount();
+        });
+    });
+
+    /**
+     * R2-08: a deferred resource load is tentative state of the render attempt that queued it,
+     * exactly like the reads are. An abandoned attempt — its render threw an error or a
+     * Suspense thenable — must take its queued fetches with it, so a later commit on the same
+     * instance drains only the queue of the attempt it consumed.
+     */
+    describe('deferred resource loads (R2-08)', () => {
+        test('a suspended update abandons its queued load, and a later commit fetches only its own key', async () => {
+            const loader = makeLoader();
+            const cache = new ResourceCache<string, string>(loader.load);
+            let resolveGate: (() => void) | undefined;
+            let settled = false;
+            const gate = new Promise<void>((resolve) => {
+                resolveGate = () => {
+                    settled = true;
+                    resolve();
+                };
+            });
+
+            class Gate extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string; block: boolean}> {
+                render() {
+                    const entry = this.useResource(this.props.cache, this.props.id);
+
+                    // Same as the suspense lifecycle tests: React 19 retries a suspended render
+                    // immediately, so the gate must keep throwing until it settles, or the retry
+                    // commits content and nothing suspends.
+                    if (this.props.block && !settled) {
+                        throw gate;
+                    }
+
+                    return <span className="value">{entry.data || entry.status}</span>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(
+                <React.Suspense fallback={<span className="fallback">wait</span>}>
+                    <Gate cache={cache} id="mount" block={false} />
+                </React.Suspense>
+            );
+
+            expect(container.querySelector('.value')?.textContent).toEqual(EResourceStatus.Pending);
+
+            loader.settle[0]('Mount');
+            await flush();
+
+            expect(container.querySelector('.value')?.textContent).toEqual('Mount');
+
+            // Reads 'abandoned' — queuing its deferred load — and then suspends: the attempt is
+            // abandoned, and the load it queued must die with it.
+            rerender(
+                <React.Suspense fallback={<span className="fallback">wait</span>}>
+                    <Gate cache={cache} id="abandoned" block={true} />
+                </React.Suspense>
+            );
+
+            expect(container.querySelector('.fallback')?.textContent).toEqual('wait');
+
+            // A later update on the SAME instance, still while the gate is pending: it commits,
+            // and the commit must drain only its own attempt's queue.
+            rerender(
+                <React.Suspense fallback={<span className="fallback">wait</span>}>
+                    <Gate cache={cache} id="committed" block={false} />
+                </React.Suspense>
+            );
+
+            expect(container.querySelector('.value')?.textContent).toEqual(EResourceStatus.Pending);
+            // The abandoned key is never fetched: its load was never promoted to a real request.
+            expect(loader.calls).toEqual(['mount', 'committed']);
+
+            // The retry React owes the abandoned update runs with the CURRENT props: the
+            // committed entry is already in flight, so nothing queues and nothing loads.
+            await act(async () => {
+                resolveGate?.();
+                await gate;
+            });
+
+            expect(loader.calls).toEqual(['mount', 'committed']);
+
+            loader.settle[1]('Committed');
+            await flush();
+
+            expect(container.querySelector('.value')?.textContent).toEqual('Committed');
+            expect(loader.calls).toEqual(['mount', 'committed']);
+
+            unmount();
+        });
+
+        test('repeated suspended attempts abandon their queue, and the retried render loads once', async () => {
+            const loader = makeLoader();
+            const cache = new ResourceCache<string, string>(loader.load);
+            let resolveGate: (() => void) | undefined;
+            let settled = false;
+            const gate = new Promise<void>((resolve) => {
+                resolveGate = () => {
+                    settled = true;
+                    resolve();
+                };
+            });
+
+            class Gate extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string; block: boolean}> {
+                render() {
+                    const entry = this.useResource(this.props.cache, this.props.id);
+
+                    // Same as the suspense lifecycle tests: React 19 retries a suspended render
+                    // immediately, so the gate must keep throwing until it settles.
+                    if (this.props.block && !settled) {
+                        throw gate;
+                    }
+
+                    return <span className="value">{entry.data || entry.status}</span>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(
+                <React.Suspense fallback={<span className="fallback">wait</span>}>
+                    <Gate cache={cache} id="mount" block={false} />
+                </React.Suspense>
+            );
+
+            loader.settle[0]('Mount');
+            await flush();
+
+            expect(container.querySelector('.value')?.textContent).toEqual('Mount');
+
+            // Two updates in a row read 'repeat' and suspend: each abandons an attempt that
+            // queued the same deferred load, and neither attempt is consumed by a commit.
+            rerender(
+                <React.Suspense fallback={<span className="fallback">wait</span>}>
+                    <Gate cache={cache} id="repeat" block={true} />
+                </React.Suspense>
+            );
+
+            expect(container.querySelector('.fallback')?.textContent).toEqual('wait');
+
+            rerender(
+                <React.Suspense fallback={<span className="fallback">wait</span>}>
+                    <Gate cache={cache} id="repeat" block={true} />
+                </React.Suspense>
+            );
+
+            expect(container.querySelector('.fallback')?.textContent).toEqual('wait');
+            expect(loader.calls).toEqual(['mount']);
+
+            // The retried render commits reading 'repeat': one attempt survives, so one load.
+            // Even if the abandoned queues had survived, ResourceCache.fetch dedups concurrent
+            // same-key requests — only the surviving attempt's queue is drained either way.
+            await act(async () => {
+                resolveGate?.();
+                await gate;
+            });
+
+            expect(loader.calls).toEqual(['mount', 'repeat']);
+            expect(container.querySelector('.value')?.textContent).toEqual(EResourceStatus.Pending);
+
+            unmount();
+        });
+
+        test('a thrown-error attempt takes its queued load with it, and recovery loads its own key', async () => {
+            const loader = makeLoader();
+            const cache = new ResourceCache<string, string>(loader.load);
+
+            class Flaky extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string; fail: boolean}> {
+                render() {
+                    const entry = this.useResource(this.props.cache, this.props.id);
+
+                    if (this.props.fail) {
+                        throw new Error('flaky');
+                    }
+
+                    return <span className="value">{entry.data || entry.status}</span>;
+                }
+            }
+
+            class Catch extends React.Component<{children: React.ReactNode}, {failed: boolean; seen: React.ReactNode}> {
+                public state = {failed: false, seen: this.props.children};
+
+                public static getDerivedStateFromError(): {failed: boolean} {
+                    return {failed: true};
+                }
+
+                // A new subtree earns a fresh attempt: the boundary recovers instead of staying
+                // latched, which is what remounts a fresh instance for the recovery update.
+                public static getDerivedStateFromProps(
+                    props: Readonly<{children: React.ReactNode}>,
+                    state: {failed: boolean; seen: React.ReactNode}
+                ): {failed: boolean; seen: React.ReactNode} | null {
+                    return props.children === state.seen ? null : {failed: false, seen: props.children};
+                }
+
+                public render() {
+                    return this.state.failed ? <span className="caught">caught</span> : this.props.children;
+                }
+            }
+
+            const {container, rerender, unmount} = render(
+                <Catch><Flaky cache={cache} id="seed" fail={false} /></Catch>
+            );
+
+            loader.settle[0]('Seed');
+            await flush();
+
+            expect(container.querySelector('.value')?.textContent).toEqual('Seed');
+            expect(loader.calls).toEqual(['seed']);
+
+            // Reads 'abandoned' — queuing its load — and then throws: the boundary replaces the
+            // subtree, and the queue must not outlive the attempt anywhere shared.
+            rerender(<Catch><Flaky cache={cache} id="abandoned" fail={true} /></Catch>);
+
+            expect(container.querySelector('.caught')?.textContent).toEqual('caught');
+            expect(loader.calls).toEqual(['seed']);
+
+            // The boundary remounts a fresh instance for the recovery: it loads only its own key.
+            rerender(<Catch><Flaky cache={cache} id="recovery" fail={false} /></Catch>);
+
+            expect(loader.calls).toEqual(['seed', 'recovery']);
+
+            loader.settle[1]('Recovery');
+            await flush();
+
+            expect(container.querySelector('.value')?.textContent).toEqual('Recovery');
+            expect(loader.calls).toEqual(['seed', 'recovery']);
+
+            unmount();
+        });
+
+        test('changing arguments keeps one load per committed read', async () => {
+            const loader = makeLoader();
+            const cache = new ResourceCache<string, string>(loader.load);
+
+            class Row extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string}> {
+                render() {
+                    const entry = this.useResource(this.props.cache, this.props.id);
+
+                    return <span className="value">{entry.data || entry.status}</span>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Row cache={cache} id="a" />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual(EResourceStatus.Pending);
+
+            loader.settle[0]('Ann');
+            await flush();
+
+            expect(container.querySelector('.value')?.textContent).toEqual('Ann');
+
+            rerender(<Row cache={cache} id="b" />);
+
+            // One load per committed key: 'b' is fetched, 'a' is not fetched a second time.
+            expect(loader.calls).toEqual(['a', 'b']);
+            expect(container.querySelector('.value')?.textContent).toEqual(EResourceStatus.Pending);
+
+            unmount();
+        });
+
+        test('a useResource call outside a render attempt reports in development and queues nothing', () => {
+            const loader = makeLoader();
+            const cache = new ResourceCache<string, string>(loader.load);
+
+            class Outside extends AntiHookComponent<{cache: ResourceCache<string, string>}> {
+                // The handler-shaped read: there is no render attempt open, so there is no
+                // attempt to attribute a deferred load to.
+                public readOutside = (): unknown => this.useResource(this.props.cache, 'outside');
+
+                render() {
+                    return <span className="value">{EResourceStatus.Idle}</span>;
+                }
+            }
+
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (message: string) => reported.push(message);
+
+            try {
+                const holder = new Outside({cache});
+
+                holder.readOutside();
+                holder.readOutside();
+            } finally {
+                console.error = original;
+            }
+
+            // Once per call, naming the load that was skipped and where the API belongs.
+            const complaints = reported.filter((message: string) => message.includes('useResource()'));
+
+            expect(complaints.length).toEqual(2);
+            expect(complaints[0].includes('outside')).toEqual(true);
+            // Nothing was queued, so nothing can be fetched: no load ran outside render either.
+            expect(loader.calls).toEqual([]);
         });
     });
 

@@ -12,6 +12,9 @@ import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {shallowEqual} from "./shallowEqual";
 
+// See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
+declare const process: {env: {NODE_ENV?: string}} | undefined;
+
 /**
  * What one commit established about a dependency: the carburetor a render attempt resolved,
  * the store version when the reading started, and the paths it read.
@@ -130,6 +133,13 @@ interface IRenderAttempt {
      * per field. It dies with the attempt, so no source selection survives into a later render.
      */
     sources: Map<string, ICarburetorSubscription>;
+    /**
+     * The fetches this render queued: tentative like everything else the attempt collected,
+     * becoming real only if a commit consumes this attempt. An abandoned attempt's queue dies
+     * with the attempt, so a render that never committed cannot leave network work behind for a
+     * later commit on the same instance to run.
+     */
+    deferredLoads: (() => void)[];
     /** True when the render threw — an error or a Suspense thenable; a commit will not consume it. */
     abandoned: boolean;
 }
@@ -161,6 +171,13 @@ const sameReads = (a: TPathSet, b: TPathSet): boolean => {
 };
 
 /**
+ * What a failure reads as in a dev-only report: the message when it has one, `String()` when
+ * it does not — the same conversion the store's delivery paths use for their reports.
+ */
+const describeFailure = (error: unknown): string =>
+    (error instanceof Error ? error.message : String(error));
+
+/**
  * Whether `value` is a plain object: a non-null, non-array object whose prototype is
  * `Object.prototype` or `null` — the shape a detached selection's members take, and the only
  * shape the selection comparison below knows how to look inside.
@@ -176,12 +193,27 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
 };
 
 /**
- * Whether a fresh selection has the same content as the snapshot already handed out. This is
- * deliberately the same comparison a child's props gate applies, so "same" here means the
- * handed-out snapshot may keep its identity — and the gated child keeps its bail-out. The
- * detached previous snapshot is compared against the raw fresh selection: a shallow copy
- * shares every member with its source, so identity differences introduced by detaching say
- * nothing about content.
+ * The own enumerable property keys of `value` — strings and symbols alike — in the order
+ * `Reflect.ownKeys` reports them.
+ *
+ * This is the one set the selection comparison and the detachment agree on: a shallow spread
+ * (`{...value}`) copies exactly these keys and nothing else, so comparing them is comparing
+ * what a child can actually see.
+ */
+const ownEnumerableKeys = (value: object): Array<string | symbol> =>
+    Reflect.ownKeys(value).filter((key: string | symbol): boolean =>
+        Object.prototype.propertyIsEnumerable.call(value, key));
+
+/**
+ * Whether a fresh selection has the same content as the snapshot already handed out, so "same"
+ * here means the handed-out snapshot may keep its identity — and the gated child keeps its
+ * bail-out.
+ *
+ * A plain object compares its own enumerable string and symbol keys — the exact set a shallow
+ * spread copies — for membership plus `Object.is` values, and an array compares its length and
+ * elements with `Object.is`, the exact set `Array.from` copies. The detached previous snapshot
+ * is compared against the raw fresh selection: a shallow copy shares every member with its
+ * source, so identity differences introduced by detaching say nothing about content.
  */
 const sameSelection = (snapshot: unknown, next: unknown): boolean => {
     if (Object.is(snapshot, next)) {
@@ -195,6 +227,10 @@ const sameSelection = (snapshot: unknown, next: unknown): boolean => {
         if (!snapshotIsArray || !nextIsArray) {
             return false;
         }
+
+        // Deliberate asymmetry with the plain-object branch below: `Array.from` copies indices
+        // and nothing else — no extra own properties, no symbol keys — so element-wise Object.is
+        // already covers the whole copied set of an array.
 
         // Bindings narrowed ahead of the callback: a `.every` body runs outside the guards'
         // narrowing reach.
@@ -210,8 +246,8 @@ const sameSelection = (snapshot: unknown, next: unknown): boolean => {
         return false;
     }
 
-    const previousKeys = Object.keys(snapshot);
-    const freshKeys = Object.keys(next);
+    const previousKeys = ownEnumerableKeys(snapshot);
+    const freshKeys = ownEnumerableKeys(next);
 
     if (previousKeys.length !== freshKeys.length) {
         return false;
@@ -219,10 +255,15 @@ const sameSelection = (snapshot: unknown, next: unknown): boolean => {
 
     // Bindings narrowed ahead of the callback: a `.every` body runs outside the guards'
     // narrowing reach.
-    const previousMembers = snapshot as Record<string, unknown>;
-    const freshMembers = next as Record<string, unknown>;
+    const previousMembers = snapshot as Record<string | symbol, unknown>;
+    const freshMembers = next as Record<string | symbol, unknown>;
 
-    return previousKeys.every((key: string): boolean => Object.is(previousMembers[key], freshMembers[key]));
+    // Equal cardinality plus every previous key present on the fresh object leaves the two key
+    // sets no room to differ, so a key swapped for another one — `{a: undefined}` becoming
+    // `{b: undefined}`, say — is a content change even though the counts match.
+    return previousKeys.every((key: string | symbol): boolean =>
+        Object.prototype.hasOwnProperty.call(freshMembers, key) &&
+        Object.is(previousMembers[key], freshMembers[key]));
 };
 
 /**
@@ -232,7 +273,8 @@ const sameSelection = (snapshot: unknown, next: unknown): boolean => {
  * the render instead of a branch of the live view; a branch read inside the child's own render
  * would record nothing and sit under no subscription. Primitives are detached by being values.
  * Exotic objects (Map, Date, class instances) would lose their prototype to a copy, so they
- * pass as is.
+ * pass as is. The copy is also what the comparison reads: the copied key set and the compared
+ * key set agree by construction, which is what makes a stable snapshot mean a stable view.
  */
 const detachSelection = (value: unknown): unknown => {
     if (Array.isArray(value)) {
@@ -367,9 +409,6 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      */
     protected committedAttempt: IRenderAttempt | undefined = undefined;
 
-    /** Stale entries this render found. Fetched after the commit — never during render. */
-    protected staleResources: (() => void)[] = [];
-
     /**
      * Hands React a boundary proxy instead of the instance, so every later read or definition
      * of `render` goes through its traps and the render-attempt boundary is installed at the
@@ -426,11 +465,27 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         this.useEffects();
     }
 
-    /** Releases everything this component holds: effect cleanups first, subscriptions last. */
+    /**
+     * Releases everything this component holds: effect cleanups first, subscriptions last.
+     *
+     * Every stage runs isolated, so one that throws costs the component neither the stages after
+     * it nor a store a subscription to a component that no longer exists — a cleanup that fails,
+     * or the component-wide `unUseEffects` that does, must not be able to stop the release of
+     * what follows. What the stages collected is reported once the whole teardown finished, the
+     * way the store's delivery paths report their failures, rather than re-thrown into React's
+     * unmount path.
+     */
     public componentWillUnmount(): void {
-        this.unUseEffects(this.props);
-        this.releaseEffects();
-        this.releaseSubscriptions();
+        const failures: string[] = [];
+
+        this.runTeardownStage('the component-wide unUseEffects callback threw while a component ' +
+            'unmounted', () => this.unUseEffects(this.props), failures);
+        this.runTeardownStage('an effect cleanup threw while a component unmounted',
+            () => this.releaseEffects(), failures);
+        this.runTeardownStage('releasing subscriptions threw while a component unmounted',
+            () => this.releaseSubscriptions(), failures);
+
+        failures.forEach((failure: string) => this.reportTeardownFailure(failure));
     }
 
     /**
@@ -740,9 +795,10 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * touches. What the call returns is not that view: plain objects and arrays are
      * shallow-copied, so the child receives detached plain data.
      *
-     * The snapshot's identity changes only when the selected content changes — members are
-     * compared with `Object.is`, one level deep, the same comparison a props gate applies —
-     * and stays the same object otherwise. That is what lets a gated child re-render exactly
+     * The snapshot's identity changes only when the selected content changes — a plain object's
+     * own enumerable string and symbol keys are compared for membership plus `Object.is` values,
+     * the exact set a shallow spread copies, and an array's length and elements with `Object.is`
+     * — and stays the same object otherwise. That is what lets a gated child re-render exactly
      * when the selected data changed, and keep its bail-out otherwise.
      *
      * The selector runs on every call, including every render, because that is what keeps this
@@ -891,20 +947,58 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         const view = source.getEntry(args);
         const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error && !view.failed;
 
+        // The deferred load belongs to the render attempt that queued it, exactly like the reads
+        // do: tentative until the commit that consumes the attempt runs it, discarded with an
+        // attempt whose render threw. Every call site runs inside render, where an attempt is
+        // always open; outside one there is nothing to attribute the load to, so the view is
+        // still returned but the load is skipped — and reported, once per call, in development.
+        const attempt = this.renderAttempt;
+
         if (worthFetching) {
-            this.staleResources.push(() => {
-                void source.load(args);
-            });
+            if (attempt) {
+                attempt.deferredLoads.push(() => {
+                    void source.load(args);
+                });
+            } else if (IS_DEVELOPMENT) {
+                diagnostics.report(
+                    'useResource() skipped the deferred load for entry ' + source.pathOf(args) +
+                    ' because it ran outside a render attempt. That is the only place a deferred ' +
+                    'load can be attributed to a commit: run useResource() inside render(), the ' +
+                    'way every other read API is meant to run, or refresh the entry from an effect.'
+                );
+            }
         }
 
         return view;
     };
 
-    /** Runs the fetches render queued, now that the subscriptions they need exist. */
+    /**
+     * Runs the fetches the committed render queued, now that the subscriptions they need exist.
+     *
+     * Only the attempt this commit consumed has its queue drained: it must be the pending
+     * attempt, un-abandoned, and the very attempt `commitSubscriptions` published — identity
+     * that means exactly "this commit had a fresh render behind it". Anything else is left
+     * untouched: an abandoned attempt's queue dies with the attempt, and a commit with no fresh
+     * attempt behind it (a StrictMode-replayed mount, a Suspense hide/reveal) has no new render
+     * to fetch for.
+     *
+     * A replayed StrictMode mount cannot double-load: its second `componentDidMount` finds the
+     * attempt already consumed (it is the committed attempt, so not the fresh one it drained at
+     * the first `componentDidMount`), and the drain above swaps each queue out before invoking
+     * its loads anyway — every queue is consumed exactly once, so the replay finds it empty.
+     */
     protected loadStaleResources(): void {
-        const queued = this.staleResources;
+        const attempt = this.pendingAttempt;
 
-        this.staleResources = [];
+        if (attempt === undefined || attempt.abandoned || attempt !== this.committedAttempt) {
+            return;
+        }
+
+        // Swapped out before the loads run: a load can synchronously notify this component, and
+        // the notification path must not find the queue it is draining still in place.
+        const queued = attempt.deferredLoads;
+
+        attempt.deferredLoads = [];
 
         queued.forEach((load: () => void) => load());
     }
@@ -1027,6 +1121,7 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         const attempt: IRenderAttempt = {
             entries: new Map<string, IAttemptEntry>(),
             sources: new Map<string, ICarburetorSubscription>(),
+            deferredLoads: [],
             abandoned: false,
         };
 
@@ -1088,11 +1183,52 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     }
 
     /**
+     * Reports one failure a teardown or an effect replacement collected, dev only.
+     *
+     * Reporting is the last thing these paths do with a failure: a callback that failed must be
+     * heard about, but never at the cost of the work queued behind it or of React's lifecycle
+     * seeing the error. The guard is the one the store's delivery paths use, so a production
+     * build reports nothing.
+     *
+     * @param failure - the message to report, already naming what ran and what it cost
+     */
+    private reportTeardownFailure = (failure: string): void => {
+        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+            diagnostics.report(failure);
+        }
+    };
+
+    /**
+     * Runs one stage of the unmount teardown, isolated so a failure there costs the stages after
+     * it nothing.
+     *
+     * The failure is filed as the message its report will use and the caller moves on: nothing
+     * here throws, whatever the stage does.
+     *
+     * @param what - the sentence fragment naming the stage, for the failure message
+     * @param stage - the stage itself
+     * @param failures - the messages collected so far, appended to when the stage throws
+     */
+    private runTeardownStage = (what: string, stage: () => void, failures: string[]): void => {
+        try {
+            stage();
+        } catch (error: unknown) {
+            failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
+        }
+    };
+
+    /**
      * Runs `callBack` when its dependencies changed since the last run.
      *
      * Whatever the effect returns is treated as its cleanup and is run before the effect runs
      * again, and on unmount — so setup and teardown stay paired per effect rather than being
      * one global hook for the whole component.
+     *
+     * A replaced cleanup is teardown work, so it runs isolated: its failure is reported once the
+     * replacement finished, never thrown at the new run. The record moves to the new deps before
+     * the setup runs and holds no cleanup until the setup returns one, so a setup that throws
+     * leaves the record consistent — new deps, no cleanup — instead of a stale cleanup a later
+     * unmount would run a second time.
      *
      * @param callBack - the effect body; a function it returns becomes the cleanup, run before
      * the next run and on unmount
@@ -1108,29 +1244,67 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             return;
         }
 
+        // The replaced cleanup is teardown work: it must not cost us the new run, so its
+        // failure waits for the report until the replacement finished.
+        const failures: unknown[] = [];
+
         if (known && known.cleanup) {
-            known.cleanup();
+            try {
+                known.cleanup();
+            } catch (error: unknown) {
+                failures.push(error);
+            }
         }
 
-        const cleanup = callBack();
+        // A fresh record, so the setup that follows writes deps and cleanup itself: a setup
+        // that throws leaves the new deps standing with no cleanup, and no reference anywhere
+        // still points at the cleanup that already ran.
+        const record: IEffectRecord = {deps, cleanup: undefined};
 
-        this.effects[name] = {
-            deps,
-            cleanup: typeof cleanup === 'function' ? cleanup : undefined,
-        };
+        this.effects[name] = record;
+
+        try {
+            const cleanup = callBack();
+
+            record.cleanup = typeof cleanup === 'function' ? cleanup : undefined;
+        } finally {
+            failures.forEach((error: unknown) => this.reportTeardownFailure(
+                'an effect cleanup threw while an effect was replaced: ' +
+                describeFailure(error) + '. The new effect ran anyway.'
+            ));
+        }
     };
 
-    /** Runs every effect's cleanup once, on unmount, and forgets them. */
+    /**
+     * Runs every effect's cleanup once, on unmount, and forgets them.
+     *
+     * Each cleanup is isolated, so one that throws costs the cleanups after it neither their
+     * turn nor their record: the whole set is dropped once every cleanup has had its turn, and
+     * what they collected is reported instead of thrown into the unmount that called this.
+     */
     protected releaseEffects(): void {
-        Object.keys(this.effects).forEach((name: string) => {
-            const cleanup = this.effects[name].cleanup;
+        const records = this.effects;
+
+        this.effects = {};
+
+        const failures: unknown[] = [];
+
+        Object.keys(records).forEach((name: string) => {
+            const cleanup = records[name].cleanup;
 
             if (cleanup) {
-                cleanup();
+                try {
+                    cleanup();
+                } catch (error: unknown) {
+                    failures.push(error);
+                }
             }
         });
 
-        this.effects = {};
+        failures.forEach((error: unknown) => this.reportTeardownFailure(
+            'an effect cleanup threw while a component unmounted: ' +
+            describeFailure(error) + '. The teardown completed anyway.'
+        ));
     }
 
     /**

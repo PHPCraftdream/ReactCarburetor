@@ -60,6 +60,8 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
             }
             return descriptor;
         },
+        setPrototypeOf: forbidWrite,
+        preventExtensions: forbidWrite,
         set: forbidWrite,
         defineProperty: forbidWrite,
         deleteProperty: forbidWrite

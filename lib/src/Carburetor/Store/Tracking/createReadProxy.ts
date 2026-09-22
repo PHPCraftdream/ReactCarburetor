@@ -13,6 +13,12 @@ import {isTrackable} from "./isTrackable";
  * `set`, `deleteProperty` and `defineProperty` all throw — and `getOwnPropertyDescriptor`
  * wraps object values like `get` does, so no trap hands out raw state.
  *
+ * Structural changes are refused the same way, at every level of the read tree:
+ * `setPrototypeOf` (prototype changes) and `preventExtensions` (extension changes) both
+ * throw, so neither a root view nor any nested branch behind it can reshape the backing
+ * object. Introspection stays truthful: no getPrototypeOf or isExtensible trap answers
+ * them, so a view keeps reporting exactly what the raw data is.
+ *
  * Plain objects and arrays only: a Map, Date, Set or class instance passes through unwrapped,
  * so a mutating method called on one of those sits outside this guard.
  *
@@ -189,6 +195,11 @@ export const createReadProxy = <T extends object>(
 
             return descriptor;
         },
+        // A prototype change or an extension change would reshape the backing object through
+        // the view, so both are refused exactly like a write. Introspection stays truthful:
+        // there is deliberately no getPrototypeOf or isExtensible trap to answer them.
+        setPrototypeOf: forbidWrite,
+        preventExtensions: forbidWrite,
         set: forbidWrite,
         // Object.defineProperty never reaches the set trap: without this the write would land
         // in the data untracked and unannounced.

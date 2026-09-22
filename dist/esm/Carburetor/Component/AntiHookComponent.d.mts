@@ -117,6 +117,13 @@ interface IRenderAttempt {
      * per field. It dies with the attempt, so no source selection survives into a later render.
      */
     sources: Map<string, ICarburetorSubscription>;
+    /**
+     * The fetches this render queued: tentative like everything else the attempt collected,
+     * becoming real only if a commit consumes this attempt. An abandoned attempt's queue dies
+     * with the attempt, so a render that never committed cannot leave network work behind for a
+     * later commit on the same instance to run.
+     */
+    deferredLoads: (() => void)[];
     /** True when the render threw — an error or a Suspense thenable; a commit will not consume it. */
     abandoned: boolean;
 }
@@ -167,8 +174,6 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * has a new render behind it.
      */
     protected committedAttempt: IRenderAttempt | undefined;
-    /** Stale entries this render found. Fetched after the commit — never during render. */
-    protected staleResources: (() => void)[];
     /**
      * Hands React a boundary proxy instead of the instance, so every later read or definition
      * of `render` goes through its traps and the render-attempt boundary is installed at the
@@ -206,7 +211,16 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
     componentDidMount(): void;
     /** The same commit work as on mount, with the previous props' effects torn down first. */
     componentDidUpdate(prevProps: Readonly<P>): void;
-    /** Releases everything this component holds: effect cleanups first, subscriptions last. */
+    /**
+     * Releases everything this component holds: effect cleanups first, subscriptions last.
+     *
+     * Every stage runs isolated, so one that throws costs the component neither the stages after
+     * it nor a store a subscription to a component that no longer exists — a cleanup that fails,
+     * or the component-wide `unUseEffects` that does, must not be able to stop the release of
+     * what follows. What the stages collected is reported once the whole teardown finished, the
+     * way the store's delivery paths report their failures, rather than re-thrown into React's
+     * unmount path.
+     */
     componentWillUnmount(): void;
     /**
      * The only way to read state in render: returns tracked data. The component
@@ -306,9 +320,10 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * touches. What the call returns is not that view: plain objects and arrays are
      * shallow-copied, so the child receives detached plain data.
      *
-     * The snapshot's identity changes only when the selected content changes — members are
-     * compared with `Object.is`, one level deep, the same comparison a props gate applies —
-     * and stays the same object otherwise. That is what lets a gated child re-render exactly
+     * The snapshot's identity changes only when the selected content changes — a plain object's
+     * own enumerable string and symbol keys are compared for membership plus `Object.is` values,
+     * the exact set a shallow spread copies, and an array's length and elements with `Object.is`
+     * — and stays the same object otherwise. That is what lets a gated child re-render exactly
      * when the selected data changed, and keep its bail-out otherwise.
      *
      * The selector runs on every call, including every render, because that is what keeps this
@@ -351,7 +366,21 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * `load`; a different value reads a different entry
      */
     useResource: <T extends unknown, TArgs extends unknown>(source: IResourceSource<T, TArgs>, args: TArgs) => IResourceView<T>;
-    /** Runs the fetches render queued, now that the subscriptions they need exist. */
+    /**
+     * Runs the fetches the committed render queued, now that the subscriptions they need exist.
+     *
+     * Only the attempt this commit consumed has its queue drained: it must be the pending
+     * attempt, un-abandoned, and the very attempt `commitSubscriptions` published — identity
+     * that means exactly "this commit had a fresh render behind it". Anything else is left
+     * untouched: an abandoned attempt's queue dies with the attempt, and a commit with no fresh
+     * attempt behind it (a StrictMode-replayed mount, a Suspense hide/reveal) has no new render
+     * to fetch for.
+     *
+     * A replayed StrictMode mount cannot double-load: its second `componentDidMount` finds the
+     * attempt already consumed (it is the committed attempt, so not the fresh one it drained at
+     * the first `componentDidMount`), and the drain above swaps each queue out before invoking
+     * its loads anyway — every queue is consumed exactly once, so the replay finds it empty.
+     */
     protected loadStaleResources(): void;
     /**
      * Wraps this instance in the render boundary proxy; the constructor hands the proxy to
@@ -405,11 +434,40 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
     /** Where a subclass tears down what the previous props' effects set up. */
     protected unUseEffects(_prevProps: P): void;
     /**
+     * Reports one failure a teardown or an effect replacement collected, dev only.
+     *
+     * Reporting is the last thing these paths do with a failure: a callback that failed must be
+     * heard about, but never at the cost of the work queued behind it or of React's lifecycle
+     * seeing the error. The guard is the one the store's delivery paths use, so a production
+     * build reports nothing.
+     *
+     * @param failure - the message to report, already naming what ran and what it cost
+     */
+    private reportTeardownFailure;
+    /**
+     * Runs one stage of the unmount teardown, isolated so a failure there costs the stages after
+     * it nothing.
+     *
+     * The failure is filed as the message its report will use and the caller moves on: nothing
+     * here throws, whatever the stage does.
+     *
+     * @param what - the sentence fragment naming the stage, for the failure message
+     * @param stage - the stage itself
+     * @param failures - the messages collected so far, appended to when the stage throws
+     */
+    private runTeardownStage;
+    /**
      * Runs `callBack` when its dependencies changed since the last run.
      *
      * Whatever the effect returns is treated as its cleanup and is run before the effect runs
      * again, and on unmount — so setup and teardown stay paired per effect rather than being
      * one global hook for the whole component.
+     *
+     * A replaced cleanup is teardown work, so it runs isolated: its failure is reported once the
+     * replacement finished, never thrown at the new run. The record moves to the new deps before
+     * the setup runs and holds no cleanup until the setup returns one, so a setup that throws
+     * leaves the record consistent — new deps, no cleanup — instead of a stale cleanup a later
+     * unmount would run a second time.
      *
      * @param callBack - the effect body; a function it returns becomes the cleanup, run before
      * the next run and on unmount
@@ -419,7 +477,13 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * leaves the existing cleanup standing
      */
     protected useEffect: (callBack: TEffect, name: string, deps: TEffectDeps) => void;
-    /** Runs every effect's cleanup once, on unmount, and forgets them. */
+    /**
+     * Runs every effect's cleanup once, on unmount, and forgets them.
+     *
+     * Each cleanup is isolated, so one that throws costs the cleanups after it neither their
+     * turn nor their record: the whole set is dropped once every cleanup has had its turn, and
+     * what they collected is reported instead of thrown into the unmount that called this.
+     */
     protected releaseEffects(): void;
     /**
      * What a carburetor calls when a path this component read was written.
