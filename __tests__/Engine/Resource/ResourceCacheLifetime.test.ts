@@ -322,4 +322,58 @@ describe('ResourceCache lifetime', () => {
         expect(notified).toEqual(1);
         expect(Object.keys(cache.getData().entries)).toEqual([cache.keyOf('b')]);
     });
+
+    test('forget drops the cached view along with the rest of the entry', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
+
+        await fill(cache, loader, ['a', 'b']);
+        cache.getEntry('a');
+        cache.getEntry('b');
+
+        expect(viewCache().size).toEqual(2);
+
+        cache.forget('a');
+
+        expect(viewCache().has(cache.keyOf('a'))).toBeFalsy();
+        expect(viewCache().has(cache.keyOf('b'))).toBeTruthy();
+    });
+
+    test('eviction drops the evicted entry\'s cached view', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 2, ttl: 60_000});
+        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
+
+        await fill(cache, loader, ['a', 'b']);
+        cache.getEntry('a');
+        cache.getEntry('b');
+
+        // Touching `a` makes `b` the least recently used.
+        cache.getEntry('a');
+
+        void cache.load('c');
+        loader.settle[2]('value-c');
+        await flush();
+
+        expect(Object.keys(cache.getData().entries)).not.toContain(cache.keyOf('b'));
+        expect(viewCache().has(cache.keyOf('b'))).toBeFalsy();
+        expect(viewCache().has(cache.keyOf('a'))).toBeTruthy();
+        // `c` was never read through getEntry, so it holds no view record.
+        expect(viewCache().size).toEqual(1);
+    });
+
+    test('forgetAll empties the cached views', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
+
+        await fill(cache, loader, ['a', 'b']);
+        cache.getEntry('a');
+        cache.getEntry('b');
+
+        cache.forgetAll();
+
+        expect(viewCache().size).toEqual(0);
+    });
 });

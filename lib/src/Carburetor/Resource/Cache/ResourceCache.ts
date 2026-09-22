@@ -55,6 +55,17 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
     protected useTick: number = 0;
 
     /**
+     * The last view handed out per entry, so repeated reads share one object.
+     *
+     * A fresh view object on every read would defeat a child's `shallowEqual` props gate: the
+     * entry behind it may be identical, but the prop identity is not, and the child re-renders
+     * for nothing. Reused only while the stored entry still matches the view field for field —
+     * entries are written in place through the draft proxy, so a changed entry keeps its object
+     * identity and only its fields tell the truth.
+     */
+    protected viewCache: Map<string, IResourceView<T>> = new Map<string, IResourceView<T>>();
+
+    /**
      * Takes the loader every entry is filled by, plus the lifetime and size bounds.
      *
      * @param loader - run once per distinct argument set, receiving an abort signal it should pass
@@ -76,9 +87,32 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         this.lastUsed.set(key, this.useTick);
     };
 
-    /** The key an argument set is stored under, exposed so a caller can read one entry's path. */
+    /** The arguments the most recent `keyOf` encoded, paired with the key below. */
+    protected lastKeyArgs: TArgs | undefined = undefined;
+    /** The key those arguments produced; a hit requires both slots to agree. */
+    protected lastKeyValue: string | undefined = undefined;
+
+    /**
+     * The key an argument set is stored under, exposed so a caller can read one entry's path.
+     *
+     * Memoized on the most recent arguments, by reference: `useResource` asks for `pathOf(args)`
+     * and then `getEntry(args)` within one render, and encoding the same object twice per render
+     * is pure waste. A different reference recomputes, so the memo never answers with another
+     * argument set's key. The one answer it can get wrong is a caller mutating an args object in
+     * place between calls, which reads as the previous key — arguments here are value keys and
+     * are expected to stay immutable once built.
+     */
     public keyOf = (args: TArgs): string => {
-        return encodeCacheKey(args);
+        if (this.lastKeyArgs === args && this.lastKeyValue !== undefined) {
+            return this.lastKeyValue;
+        }
+
+        const key = encodeCacheKey(args);
+
+        this.lastKeyArgs = args;
+        this.lastKeyValue = key;
+
+        return key;
     };
 
     /**
@@ -101,15 +135,34 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
     public getEntry = (args: TArgs): IResourceView<T> => {
         const key = this.keyOf(args);
         const stored = this.data.entries[key];
-        const entry = stored || getInitialCacheEntry<T>();
+
+        if (!stored) {
+            // An absent entry is always stale — its `updatedAt` is undefined — and is never
+            // cached: a record for a key that is only ever read would pile up outside eviction's
+            // reach, the way the use-order stamps once did.
+            return {...getInitialCacheEntry<T>(), stale: true};
+        }
 
         // Only a real entry has a use order worth recording: eviction enumerates entries, so a
         // stamp on a key that was only ever read would never be reclaimed and would pile up.
-        if (stored) {
-            this.touch(key);
+        this.touch(key);
+
+        const stale = this.isStale(stored);
+        const cached = this.viewCache.get(key);
+
+        // Entries are written in place through the draft proxy — settling a request does not
+        // swap the stored object — so the reference alone cannot tell a changed entry from an
+        // unchanged one, and the fields are the honest diff. Staleness is judged live on every
+        // call, since time alone flips it with no write anywhere.
+        if (cached && this.isViewCurrent(cached, stored, stale)) {
+            return cached;
         }
 
-        return {...entry, stale: this.isStale(entry)};
+        const view: IResourceView<T> = {...stored, stale};
+
+        this.viewCache.set(key, view);
+
+        return view;
     };
 
     /** The raw rejection for one entry, which `error` can only describe. */
@@ -219,11 +272,12 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         Object.keys(this.data.entries).forEach((key: string) => this.forgetKey(key));
     };
 
-    /** Removes one entry completely: request, failure, use order and the data itself. */
+    /** Removes one entry completely: request, failure, use order, last view and the data itself. */
     protected forgetKey = (key: string): void => {
         this.abortKey(key);
         this.failures.delete(key);
         this.lastUsed.delete(key);
+        this.viewCache.delete(key);
 
         if (!this.data.entries[key]) {
             return;
@@ -241,6 +295,24 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         }
 
         return Date.now() - entry.updatedAt > this.ttl;
+    };
+
+    /**
+     * Whether a cached view still describes the entry exactly, staleness included.
+     *
+     * @param view - the view last handed out for this key, whose fields are the earlier snapshot
+     * @param entry - the stored entry as it stands now, compared field by field
+     * @param stale - the freshness verdict computed for this call, which time alone can flip
+     */
+    protected isViewCurrent = (view: IResourceView<T>, entry: IResourceEntry<T>, stale: boolean): boolean => {
+        return view.stale === stale
+            && view.status === entry.status
+            && view.data === entry.data
+            && view.error === entry.error
+            && view.updatedAt === entry.updatedAt
+            && view.refreshing === entry.refreshing
+            && view.invalidated === entry.invalidated
+            && view.failed === entry.failed;
     };
 
     /**
@@ -298,6 +370,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         doomed.forEach((key: string) => {
             this.failures.delete(key);
             this.lastUsed.delete(key);
+            this.viewCache.delete(key);
         });
 
         // Written through draft by hand, as markLoading() does: update() cannot hold its

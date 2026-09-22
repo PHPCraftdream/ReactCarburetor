@@ -36,6 +36,16 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
     /** The counter those stamps come from; monotonic, so same-millisecond touches still order. */
     protected useTick: number;
     /**
+     * The last view handed out per entry, so repeated reads share one object.
+     *
+     * A fresh view object on every read would defeat a child's `shallowEqual` props gate: the
+     * entry behind it may be identical, but the prop identity is not, and the child re-renders
+     * for nothing. Reused only while the stored entry still matches the view field for field —
+     * entries are written in place through the draft proxy, so a changed entry keeps its object
+     * identity and only its fields tell the truth.
+     */
+    protected viewCache: Map<string, IResourceView<T>>;
+    /**
      * Takes the loader every entry is filled by, plus the lifetime and size bounds.
      *
      * @param loader - run once per distinct argument set, receiving an abort signal it should pass
@@ -46,7 +56,20 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
     constructor(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions);
     /** Records that an entry was asked for, which is what eviction orders by. */
     protected touch: (key: string) => void;
-    /** The key an argument set is stored under, exposed so a caller can read one entry's path. */
+    /** The arguments the most recent `keyOf` encoded, paired with the key below. */
+    protected lastKeyArgs: TArgs | undefined;
+    /** The key those arguments produced; a hit requires both slots to agree. */
+    protected lastKeyValue: string | undefined;
+    /**
+     * The key an argument set is stored under, exposed so a caller can read one entry's path.
+     *
+     * Memoized on the most recent arguments, by reference: `useResource` asks for `pathOf(args)`
+     * and then `getEntry(args)` within one render, and encoding the same object twice per render
+     * is pure waste. A different reference recomputes, so the memo never answers with another
+     * argument set's key. The one answer it can get wrong is a caller mutating an args object in
+     * place between calls, which reads as the previous key — arguments here are value keys and
+     * are expected to stay immutable once built.
+     */
     keyOf: (args: TArgs) => string;
     /**
      * The read path of one entry.
@@ -110,10 +133,18 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
     forget: (args: TArgs) => void;
     /** Drops every entry. */
     forgetAll: () => void;
-    /** Removes one entry completely: request, failure, use order and the data itself. */
+    /** Removes one entry completely: request, failure, use order, last view and the data itself. */
     protected forgetKey: (key: string) => void;
     /** Whether an entry has expired or was invalidated; an empty one is always stale. */
     protected isStale: (entry: IResourceEntry<T>) => boolean;
+    /**
+     * Whether a cached view still describes the entry exactly, staleness included.
+     *
+     * @param view - the view last handed out for this key, whose fields are the earlier snapshot
+     * @param entry - the stored entry as it stands now, compared field by field
+     * @param stale - the freshness verdict computed for this call, which time alone can flip
+     */
+    protected isViewCurrent: (view: IResourceView<T>, entry: IResourceEntry<T>, stale: boolean) => boolean;
     /**
      * Whether a component is reading this entry right now.
      *

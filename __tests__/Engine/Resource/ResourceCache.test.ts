@@ -1,5 +1,10 @@
 import {EResourceStatus, TPath, TPathSet} from "@/Carburetor";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {encodeCacheKey} from "@/Carburetor/Resource/Cache/encodeCacheKey";
+
+// Hoisted above the imports, like `vi.mock`: `{spy: true}` keeps the real encoder running and
+// only wraps the export in a call-tracking spy, so every test below behaves as before.
+rstest.mock("@/Carburetor/Resource/Cache/encodeCacheKey", {spy: true});
 
 interface IUser {
     id: string;
@@ -322,5 +327,116 @@ describe('ResourceCache', () => {
 
         expect(loader.calls).toEqual(['a']);
         expect(cache.keyOf({id: 'a'})).toEqual(cache.keyOf({id: 'a'}));
+    });
+
+    test('repeated reads of an unchanged entry share one view object', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+
+        void cache.load('a');
+        loader.pending[0].resolve({id: 'a', name: 'Ann'});
+        await flush();
+
+        const first = cache.getEntry('a');
+        const second = cache.getEntry('a');
+
+        expect(second).toBe(first);
+        expect(second.data).toEqual({id: 'a', name: 'Ann'});
+    });
+
+    test('a settled answer replaces the view object for its key', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+
+        void cache.load('a');
+        loader.pending[0].resolve({id: 'a', name: 'Ann'});
+        await flush();
+
+        const before = cache.getEntry('a');
+
+        void cache.refresh('a');
+        loader.pending[1].resolve({id: 'a', name: 'Anna'});
+        await flush();
+
+        const after = cache.getEntry('a');
+
+        expect(after).not.toBe(before);
+        expect(after.data).toEqual({id: 'a', name: 'Anna'});
+        expect(after.updatedAt as number).toBeGreaterThanOrEqual(before.updatedAt as number);
+    });
+
+    test('an invalidation replaces the view object without touching the data', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+
+        void cache.load('a');
+        loader.pending[0].resolve({id: 'a', name: 'Ann'});
+        await flush();
+
+        const before = cache.getEntry('a');
+
+        cache.invalidate('a');
+
+        const after = cache.getEntry('a');
+
+        expect(after).not.toBe(before);
+        expect(after.stale).toBe(true);
+        expect(after.data).toEqual({id: 'a', name: 'Ann'});
+    });
+
+    test('an entry crossing its ttl gets a fresh view object with no write in between', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 50});
+
+        void cache.load('a');
+        loader.pending[0].resolve({id: 'a', name: 'Ann'});
+        await flush();
+
+        const fresh = cache.getEntry('a');
+
+        expect(fresh.stale).toBe(false);
+
+        await new Promise(resolve => setTimeout(resolve, 120));
+
+        const expired = cache.getEntry('a');
+
+        expect(expired).not.toBe(fresh);
+        expect(expired.stale).toBe(true);
+        expect(expired.data).toEqual({id: 'a', name: 'Ann'});
+        // Time alone moved the verdict; the loader was never asked again.
+        expect(loader.calls).toEqual(['a']);
+    });
+
+    test('reads of an absent key are never cached', () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load);
+        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
+
+        const first = cache.getEntry('missing');
+
+        for (let index = 0; index < 50; index++) {
+            cache.getEntry(`absent-${index}`);
+        }
+
+        const again = cache.getEntry('missing');
+
+        // Built fresh every time, and no bookkeeping for keys that never loaded.
+        expect(again).not.toBe(first);
+        expect(again).toEqual(first);
+        expect(viewCache().size).toEqual(0);
+    });
+
+    test('one pathOf plus one getEntry encodes the arguments once', () => {
+        // mockClear first: earlier tests in this file also encoded keys.
+        rstest.mocked(encodeCacheKey).mockClear();
+
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+        const args = {id: 'a'};
+
+        cache.pathOf(args);
+        cache.getEntry(args);
+
+        expect(encodeCacheKey).toHaveBeenCalledTimes(1);
     });
 });

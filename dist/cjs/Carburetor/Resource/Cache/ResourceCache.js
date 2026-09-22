@@ -47,6 +47,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
     failures = new Map();
     lastUsed = new Map();
     useTick = 0;
+    viewCache = new Map();
     constructor(loader, options = {}){
         super({
             entries: {}
@@ -58,17 +59,33 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         this.useTick += 1;
         this.lastUsed.set(key, this.useTick);
     };
-    keyOf = (args)=>(0, external_encodeCacheKey_js_namespaceObject.encodeCacheKey)(args);
+    lastKeyArgs = void 0;
+    lastKeyValue = void 0;
+    keyOf = (args)=>{
+        if (this.lastKeyArgs === args && void 0 !== this.lastKeyValue) return this.lastKeyValue;
+        const key = (0, external_encodeCacheKey_js_namespaceObject.encodeCacheKey)(args);
+        this.lastKeyArgs = args;
+        this.lastKeyValue = key;
+        return key;
+    };
     pathOf = (args)=>`entries${PathSeparator_js_namespaceObject.PATH_SEPARATOR}${this.keyOf(args)}`;
     getEntry = (args)=>{
         const key = this.keyOf(args);
         const stored = this.data.entries[key];
-        const entry = stored || (0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)();
-        if (stored) this.touch(key);
-        return {
-            ...entry,
-            stale: this.isStale(entry)
+        if (!stored) return {
+            ...(0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)(),
+            stale: true
         };
+        this.touch(key);
+        const stale = this.isStale(stored);
+        const cached = this.viewCache.get(key);
+        if (cached && this.isViewCurrent(cached, stored, stale)) return cached;
+        const view = {
+            ...stored,
+            stale
+        };
+        this.viewCache.set(key, view);
+        return view;
     };
     getFailure = (args)=>this.failures.get(this.keyOf(args));
     load = (args)=>{
@@ -117,6 +134,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         this.abortKey(key);
         this.failures.delete(key);
         this.lastUsed.delete(key);
+        this.viewCache.delete(key);
         if (!this.data.entries[key]) return;
         this.update((draft)=>{
             delete draft.entries[key];
@@ -126,6 +144,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         if (entry.invalidated || void 0 === entry.updatedAt) return true;
         return Date.now() - entry.updatedAt > this.ttl;
     };
+    isViewCurrent = (view, entry, stale)=>view.stale === stale && view.status === entry.status && view.data === entry.data && view.error === entry.error && view.updatedAt === entry.updatedAt && view.refreshing === entry.refreshing && view.invalidated === entry.invalidated && view.failed === entry.failed;
     isRetained = (key)=>{
         const prefix = `entries.${key}`;
         return Object.keys(this.subscribers).some((id)=>{
@@ -143,6 +162,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         doomed.forEach((key)=>{
             this.failures.delete(key);
             this.lastUsed.delete(key);
+            this.viewCache.delete(key);
         });
         const draft = this.draft;
         doomed.forEach((key)=>{
