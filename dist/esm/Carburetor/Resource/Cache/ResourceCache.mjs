@@ -1,6 +1,7 @@
 import { EResourceStatus } from "../../Models/Enums/EResourceStatus.mjs";
 import { Carburetor } from "../../Store/Carburetor.mjs";
 import { PATH_SEPARATOR } from "../../Store/Paths/PathSeparator.mjs";
+import { joinPath } from "../../Store/Paths/joinPath.mjs";
 import { describeError } from "../describeError.mjs";
 import { encodeCacheKey } from "./encodeCacheKey.mjs";
 import { getInitialCacheEntry } from "./getInitialCacheEntry.mjs";
@@ -36,7 +37,7 @@ class ResourceCache extends Carburetor {
         this.lastKeyValue = key;
         return key;
     };
-    pathOf = (args)=>`entries${PATH_SEPARATOR}${this.keyOf(args)}`;
+    pathOf = (args)=>joinPath('entries', this.keyOf(args));
     getEntry = (args)=>{
         const key = this.keyOf(args);
         const stored = this.data.entries[key];
@@ -114,7 +115,7 @@ class ResourceCache extends Carburetor {
     };
     isViewCurrent = (view, entry, stale)=>view.stale === stale && view.status === entry.status && view.data === entry.data && view.error === entry.error && view.updatedAt === entry.updatedAt && view.refreshing === entry.refreshing && view.invalidated === entry.invalidated && view.failed === entry.failed;
     isRetained = (key)=>{
-        const prefix = `entries.${key}`;
+        const prefix = joinPath('entries', key);
         return Object.keys(this.subscribers).some((id)=>{
             const reads = this.subscribers[id].reads;
             return Array.from(reads).some((read)=>read === prefix || read.startsWith(`${prefix}${PATH_SEPARATOR}`));

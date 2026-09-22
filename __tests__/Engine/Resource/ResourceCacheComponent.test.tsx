@@ -53,6 +53,19 @@ class Row extends AntiHookComponent<IRowProps> {
     }
 }
 
+interface IQueryProps {
+    cache: ResourceCache<string, {id: string}>;
+    query: {id: string};
+}
+
+class QueryRow extends AntiHookComponent<IQueryProps> {
+    public render() {
+        const entry = this.useResource(this.props.cache, this.props.query);
+
+        return <span className="value">{entry.data || entry.status}</span>;
+    }
+}
+
 describe('a component reading a resource cache', () => {
     test('fetches after the commit, not during render', async () => {
         const loader = makeLoader();
@@ -300,6 +313,93 @@ describe('a component reading a resource cache', () => {
         expect(container.querySelector('.value')?.textContent).toEqual('from the server');
         // Refetching everything on hydration is the cost server rendering was meant to avoid.
         expect(loader.calls).toEqual(['a']);
+
+        unmount();
+    });
+
+    test('delivers loading and completion updates for keys the path builder must escape', async () => {
+        for (const id of ['plain', 'a.b', 'a~b']) {
+            const loader = makeLoader();
+            const cache = new ResourceCache<string, string>(loader.load);
+
+            const {container, unmount} = render(<Row cache={cache} id={id}/>);
+
+            // The deferred load's pending write reached the component.
+            expect(container.querySelector('.value')?.textContent).toEqual(EResourceStatus.Pending);
+
+            loader.settle[0](`value for ${id}`);
+            await flush();
+
+            expect(container.querySelector('.value')?.textContent).toEqual(`value for ${id}`);
+
+            unmount();
+        }
+    });
+
+    test('delivers updates when the arguments are objects holding escaped characters', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, {id: string}>(loader.load);
+
+        const {container, unmount} = render(<QueryRow cache={cache} query={{id: 'a.b'}}/>);
+
+        expect(container.querySelector('.value')?.textContent).toEqual(EResourceStatus.Pending);
+
+        loader.settle[0]('Ann');
+        await flush();
+
+        expect(container.querySelector('.value')?.textContent).toEqual('Ann');
+
+        unmount();
+    });
+
+    test('one escaped entry answering does not re-render the reader of another', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load);
+        let rendersOfDot = 0;
+
+        const {unmount} = render(
+            <div>
+                <Row cache={cache} id="a.b" onRender={() => rendersOfDot++}/>
+                <Row cache={cache} id="a~b"/>
+            </div>
+        );
+
+        loader.settle[0]('Ann');
+        await flush();
+
+        const after = rendersOfDot;
+
+        loader.settle[1]('Bob');
+        await flush();
+
+        // Entry `a~b` answering is none of `a.b`'s business.
+        expect(rendersOfDot).toEqual(after);
+
+        unmount();
+    });
+
+    test('hydrated entries survive for keys holding escaped characters', async () => {
+        const loader = makeLoader();
+        const token = carburetorToken(() => new ResourceCache<string, string>(loader.load, {ttl: 60_000}), 'resource-cache-test/escaped-cache');
+
+        const server = new CarburetorScope();
+        const serverCache = server.get(token);
+
+        void serverCache.load('a.b');
+        loader.settle[0]('from the server');
+        await flush();
+
+        const state = server.dehydrate();
+
+        const client = new CarburetorScope();
+        client.hydrate(state, [token]);
+
+        const clientCache = client.get(token);
+        const {container, unmount} = render(<Row cache={clientCache} id="a.b"/>);
+
+        expect(container.querySelector('.value')?.textContent).toEqual('from the server');
+        // Hydration must not refetch: that is the cost server rendering was meant to avoid.
+        expect(loader.calls).toEqual(['a.b']);
 
         unmount();
     });

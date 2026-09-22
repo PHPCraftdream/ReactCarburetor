@@ -439,4 +439,46 @@ describe('ResourceCache', () => {
 
         expect(encodeCacheKey).toHaveBeenCalledTimes(1);
     });
+
+    test('a reader of an entry whose key holds the separator is woken when it settles', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load);
+
+        let notified = 0;
+        cache.subscribe(() => notified++, {id: 'reader', reads: readsOf(cache.pathOf('a.b'))});
+
+        void cache.load('a.b');
+        loader.pending[0].resolve({id: 'a.b', name: 'Ann'});
+        await flush();
+
+        // The written path and the subscribed path come out of the same escape, or a key
+        // holding `.` or `~` never hears anything again.
+        expect(notified).toBeGreaterThan(0);
+    });
+
+    test('settling one escaped entry wakes only its own reader', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load);
+
+        // Subscribed after both requests are in flight: each reader must not be counted
+        // against the pending write its own entry legitimately sends when its load starts.
+        void cache.load('a.b');
+        void cache.load('a~b');
+
+        let readerOfDot = 0;
+        let readerOfTilde = 0;
+        cache.subscribe(() => readerOfDot++, {id: 'dot', reads: readsOf(cache.pathOf('a.b'))});
+        cache.subscribe(() => readerOfTilde++, {id: 'tilde', reads: readsOf(cache.pathOf('a~b'))});
+
+        loader.pending[0].resolve({id: 'a.b', name: 'Ann'});
+        await flush();
+
+        expect(readerOfDot).toBeGreaterThan(0);
+        expect(readerOfTilde).toEqual(0);
+
+        loader.pending[1].resolve({id: 'a~b', name: 'Bob'});
+        await flush();
+
+        expect(readerOfTilde).toBeGreaterThan(0);
+    });
 });

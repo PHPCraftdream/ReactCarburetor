@@ -9,6 +9,7 @@ import {
 import {TPath} from "@/Carburetor/Models/Paths";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
+import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {describeError} from "@/Carburetor/Resource/describeError";
 import {encodeCacheKey} from "./encodeCacheKey";
 import {getInitialCacheEntry} from "./getInitialCacheEntry";
@@ -121,9 +122,15 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
      * The component layer asks for this rather than building `entries.<key>` itself: where entries
      * live is this class's business, and a component that hard-coded it would break the moment the
      * shape changed.
+     *
+     * The segment is built by `joinPath`, the same builder the tracking proxies use, rather than
+     * concatenating the stored key by hand: the stored key is already escaped once by
+     * `encodeCacheKey`, and as a path segment it is escaped again, so what a reader subscribes to
+     * is exactly the path a write through the draft proxy records. Hand-appending the stored key
+     * made the two disagree for any key holding `.` or `~`, and those entries never notified.
      */
     public pathOf = (args: TArgs): TPath => {
-        return `entries${PATH_SEPARATOR}${this.keyOf(args)}`;
+        return joinPath('entries', this.keyOf(args));
     };
 
     /**
@@ -323,7 +330,9 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
      * not counted: it watches everything, and counting it would pin the whole cache in memory.
      */
     protected isRetained = (key: string): boolean => {
-        const prefix = `entries.${key}`;
+        // The prefix is built by `joinPath`, not hand-concatenated, so it is the same path
+        // representation `pathOf` hands out and the one a subscriber's recorded reads hold.
+        const prefix = joinPath('entries', key);
 
         return Object.keys(this.subscribers).some((id: string) => {
             const reads = this.subscribers[id].reads;

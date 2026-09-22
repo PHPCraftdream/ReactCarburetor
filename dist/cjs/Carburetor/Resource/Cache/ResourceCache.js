@@ -33,6 +33,7 @@ __webpack_require__.d(__webpack_exports__, {
 const EResourceStatus_js_namespaceObject = require("../../Models/Enums/EResourceStatus.js");
 const Carburetor_js_namespaceObject = require("../../Store/Carburetor.js");
 const PathSeparator_js_namespaceObject = require("../../Store/Paths/PathSeparator.js");
+const joinPath_js_namespaceObject = require("../../Store/Paths/joinPath.js");
 const external_describeError_js_namespaceObject = require("../describeError.js");
 const external_encodeCacheKey_js_namespaceObject = require("./encodeCacheKey.js");
 const external_getInitialCacheEntry_js_namespaceObject = require("./getInitialCacheEntry.js");
@@ -68,7 +69,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         this.lastKeyValue = key;
         return key;
     };
-    pathOf = (args)=>`entries${PathSeparator_js_namespaceObject.PATH_SEPARATOR}${this.keyOf(args)}`;
+    pathOf = (args)=>(0, joinPath_js_namespaceObject.joinPath)('entries', this.keyOf(args));
     getEntry = (args)=>{
         const key = this.keyOf(args);
         const stored = this.data.entries[key];
@@ -146,7 +147,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
     };
     isViewCurrent = (view, entry, stale)=>view.stale === stale && view.status === entry.status && view.data === entry.data && view.error === entry.error && view.updatedAt === entry.updatedAt && view.refreshing === entry.refreshing && view.invalidated === entry.invalidated && view.failed === entry.failed;
     isRetained = (key)=>{
-        const prefix = `entries.${key}`;
+        const prefix = (0, joinPath_js_namespaceObject.joinPath)('entries', key);
         return Object.keys(this.subscribers).some((id)=>{
             const reads = this.subscribers[id].reads;
             return Array.from(reads).some((read)=>read === prefix || read.startsWith(`${prefix}${PathSeparator_js_namespaceObject.PATH_SEPARATOR}`));

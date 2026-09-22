@@ -225,6 +225,39 @@ describe('ResourceCache lifetime', () => {
         expect(Object.keys(cache.getData().entries)).toContain(cache.keyOf('a'));
     });
 
+    test('an entry-level subscription pins an entry whatever its key holds', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 1, ttl: 60_000});
+
+        await fill(cache, loader, ['a.b']);
+
+        // Exactly the path useResource subscribes to.
+        cache.subscribe(() => undefined, {id: 'entry-reader', reads: readsOf(cache.pathOf('a.b'))});
+
+        void cache.load('c');
+        loader.settle[1]('value-c');
+        await flush();
+
+        // Over the bound and least recently used, but blanking a rendered entry is worse.
+        expect(Object.keys(cache.getData().entries)).toContain(cache.keyOf('a.b'));
+    });
+
+    test('a nested tracked read pins its entry whatever its key holds', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 1, ttl: 60_000});
+
+        await fill(cache, loader, ['a~b']);
+
+        // A read tracked one level inside the entry, the way a proxy read records it.
+        cache.subscribe(() => undefined, {id: 'leaf-reader', reads: readsOf(`${cache.pathOf('a~b')}.data`)});
+
+        void cache.load('c');
+        loader.settle[1]('value-c');
+        await flush();
+
+        expect(Object.keys(cache.getData().entries)).toContain(cache.keyOf('a~b'));
+    });
+
     test('a subscriber without read paths does not pin the cache', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 1, ttl: 60_000});

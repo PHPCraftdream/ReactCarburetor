@@ -77,6 +77,12 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
      * The component layer asks for this rather than building `entries.<key>` itself: where entries
      * live is this class's business, and a component that hard-coded it would break the moment the
      * shape changed.
+     *
+     * The segment is built by `joinPath`, the same builder the tracking proxies use, rather than
+     * concatenating the stored key by hand: the stored key is already escaped once by
+     * `encodeCacheKey`, and as a path segment it is escaped again, so what a reader subscribes to
+     * is exactly the path a write through the draft proxy records. Hand-appending the stored key
+     * made the two disagree for any key holding `.` or `~`, and those entries never notified.
      */
     pathOf: (args: TArgs) => TPath;
     /**
