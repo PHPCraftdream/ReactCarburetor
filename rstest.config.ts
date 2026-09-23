@@ -11,6 +11,17 @@ export default defineConfig({
     testEnvironment: 'jsdom',
     setupFiles: ['./__tests__/setupTests.ts'],
     include: ['__tests__/**/*.test.{ts,tsx}'],
+    tools: {
+        swc: {
+            jsc: {
+                transform: {
+                    react: {
+                        runtime: 'automatic',
+                    },
+                },
+            },
+        },
+    },
     resolve: {
         alias: {
             react$: rootReact,

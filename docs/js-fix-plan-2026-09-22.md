@@ -1,6 +1,9 @@
 # JavaScript correction and optimization plan — 2026-09-22
 
-Status: proposed; all implementation steps below are pending.
+Status: implemented (all 11 steps, commits `df24715`..`45cccf8`). A follow-up review
+(`docs/js-review-round-2-2026-09-22.md`) found gaps in several of these fixes outside their own
+test coverage; each step's note below says whether a round-2 fix extended it. Round 2 is itself
+fully implemented as of this commit.
 
 Baseline: `797fef8`, which includes the `connect()` implementation from `daa9000`.
 Scope: the JavaScript/TypeScript runtime, component integration, demo, tests, and documentation.
@@ -74,7 +77,7 @@ checks pass; writing a patch or updating documentation alone does not close it.
 
 ## JS-01 — Make cache read, write, and retention paths agree
 
-- [ ] Pending.
+- [x] Done (`df24715`). No round-2 follow-up.
 
 Files: [ResourceCache.ts](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts),
 [encodeCacheKey.ts](../lib/src/Carburetor/Resource/Cache/encodeCacheKey.ts),
@@ -99,7 +102,11 @@ Acceptance:
 
 ## JS-02 — Give render tracking an explicit lifecycle
 
-- [ ] Pending.
+- [x] Done (`f85d129`). The fallback wrap installed from `UNSAFE_componentWillMount` turned out to
+  never run for a component defining `getDerivedStateFromProps`/`getSnapshotBeforeUpdate` (React
+  skips that hook for such components) — found and fixed as R2-04, which replaced the mount-hook
+  fallback with a proxy that intercepts `render` at definition time, independent of any lifecycle
+  hook being called at all.
 
 Primary file: [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx).
 
@@ -138,7 +145,9 @@ Acceptance:
 
 ## JS-03 — Make the persistent proxy facade obey JavaScript semantics
 
-- [ ] Pending.
+- [x] Done (`d861ad0`). The guards this added to the outer `connect()` facade did not extend to
+  nested branch views, which still allowed `setPrototypeOf`/`preventExtensions` to reach the real
+  backing object — found and fixed as R2-12 (`createReadProxy.ts`'s own traps).
 
 Files: [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx),
 [createReadProxy.ts](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts).
@@ -170,7 +179,8 @@ Acceptance:
 
 ## JS-04 — Establish a safe boundary for child props
 
-- [ ] Pending.
+- [x] Done (`50e039c`). `sameSelection`'s equality check ignored key presence/removal at equal
+  cardinality and symbol-keyed properties — found and fixed as R2-07.
 
 Files: [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx),
 [createReadProxy.ts](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts),
@@ -207,7 +217,10 @@ Acceptance:
 
 ## JS-05 — Isolate errors throughout computed delivery
 
-- [ ] Pending.
+- [x] Done (`962551d`). This isolated delivery/settlement failures from each other, but left two
+  separate freshness bugs outside its own test coverage — found and fixed as R2-01 (a mid-wave
+  read could consume the first real notification) and part of R2-02 (an upstream failure did not
+  propagate staleness to a dependent computed).
 
 Files: [Computed.ts](../lib/src/Carburetor/Derived/Computed.ts),
 [UpdateWave.ts](../lib/src/Carburetor/Store/Scheduling/UpdateWave.ts),
@@ -232,7 +245,9 @@ Acceptance:
 
 ## JS-06 — Stop rebuilding retained computed dependencies
 
-- [ ] Pending.
+- [x] Done (`e07fff9`). The insertion-ordered (not dependency-ordered) settlement queue this left
+  in place could publish a mixed-generation intermediate value for an unequal-depth dependency
+  graph — found and fixed as R2-02.
 
 Primary file: [Computed.ts](../lib/src/Carburetor/Derived/Computed.ts).
 
@@ -259,7 +274,9 @@ oracle or introduce synthetic load.
 
 ## JS-07 — Reclaim obsolete proxy-cache entries
 
-- [ ] Pending.
+- [x] Done (`b8eca49`). Documented as a known limitation at the time: the invalidation ledger
+  itself had no pruning and grew with write churn, and a primitive-only read never triggered a
+  sweep at all — both found (confirming the documented limitation) and fixed as R2-05/R2-06.
 
 Files: [createProxyCache.ts](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts),
 [createReadProxy.ts](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts),
@@ -286,7 +303,10 @@ Acceptance:
 
 ## JS-08 — Avoid whole-list derivation work for title edits
 
-- [ ] Pending.
+- [x] Done (`06cd77f`). The first single-item write after hydrating a list with omitted counters
+  published wrong (zero) counts, because the write's own arithmetic zero-filled the missing
+  counters before the "first derivation" fallback checked whether they existed — found and fixed
+  as R2-10.
 
 Primary file: [TodoCarburetor.ts](../lib/src/ToDo/Carburetors/TodoCarburetor.ts).
 
@@ -309,7 +329,10 @@ Acceptance:
 
 ## JS-09 — Reduce repeated work on connected reads
 
-- [ ] Pending.
+- [x] Done (`3703bcd`). The per-attempt source memo this added did not extend to deferred resource
+  loads, which stayed in a component-wide array — an abandoned render's queued load could fire at
+  a later, unrelated commit; found and fixed as R2-08 (deferred loads now live on the render
+  attempt itself and die with it).
 
 Primary file: [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx).
 
@@ -333,7 +356,7 @@ Acceptance:
 
 ## JS-10 — Reuse unchanged DevTools snapshots
 
-- [ ] Pending.
+- [x] Done (`6f6ad5b`). No round-2 follow-up.
 
 Primary file: [connectDevTools.ts](../lib/src/Carburetor/Tooling/connectDevTools.ts).
 
@@ -357,7 +380,12 @@ Acceptance:
 
 ## JS-11 — Verify the integrated result and update the contract
 
-- [ ] Pending.
+- [x] Done (`45cccf8`). The "check the supported React 18/19 range" sub-item below was NOT
+  completed then and still is not: only React 19.3 has ever been exercised, locally or in CI, in
+  this repository's history. README.md now says so explicitly instead of leaving the 18/19
+  peerDependency range looking equally verified. A second review round
+  (`docs/js-review-round-2-2026-09-22.md`) found and fixed 14 further findings across most of the
+  steps above; see each step's note.
 
 Add regressions alongside the affected engine/component/resource tests. At minimum the suite must
 include all reproduced failures in the evidence table, plus the controls that already passed.

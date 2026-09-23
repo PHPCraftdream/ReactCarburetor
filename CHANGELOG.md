@@ -175,6 +175,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `preEmmit` / `emmitByKey` renamed to `preEmit` / `emitByKey`.
 - Tooling moved to Rslib, Rsbuild, Rstest, oxlint and TypeScript 7; the demo app moved from
   Create React App and Bootstrap to Rsbuild and Tailwind CSS; React upgraded to 19.
+- `AntiHookComponent.tsx`'s per-attempt connection resolver/recorder, duplicated between
+  `connect()` and `connectSelection()`, and its pure selection-comparison/detachment helpers now
+  live in `Component/Connection/` and `Component/Models/`; the class itself keeps only lifecycle
+  orchestration. The public API and its behavior are unchanged.
 
 ### Fixed
 
@@ -247,6 +251,42 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   live cache needs it — every cache sharing the raw object's scope has swept through it, or none
   of the laggards holds an entry it would evict — so the metadata tracks live caches and pending
   writes instead of lifetime write churn, and a sweep stops rescanning retired history.
+- A computed's first real change could be silently absorbed by another subscriber reading it
+  mid-wave, between invalidation and settlement. Publication is now judged against the last value
+  actually delivered, kept independently of the evaluation cache a mid-wave read can refresh.
+- An unequal-depth dependency graph (a value read both directly and through a chain of derived
+  computeds) could publish an intermediate, mixed-generation value before settling to the correct
+  one. Invalidation now propagates downstream immediately, separately from settlement scheduling,
+  so a settlement that pulls a stale dependent always recomputes it from current inputs; a
+  dependency that fails to settle now correctly makes its dependents stale too, instead of one
+  silently serving its last-good cached value forever.
+- Restoring a resource snapshot, or hydrating a successful one into a fresh instance, lost track
+  of which arguments the answer belonged to: a restored snapshot's data could be served for a
+  different, unrelated key. `snapshot()`/`restore()` now carry the settled key.
+- A subclass declaring a class-field `render` together with `getDerivedStateFromProps` or
+  `getSnapshotBeforeUpdate` mounted with zero subscriptions, because React does not call
+  `UNSAFE_componentWillMount` for a component defining either of those. The render boundary is
+  now installed at definition time through a proxy over the instance, independent of any React
+  lifecycle hook actually being called.
+- `connectSelection()`'s equality check ignored key presence/removal at equal cardinality (a key
+  swapped for another with the same count) and symbol-keyed properties, so some real content
+  changes did not update a memoized child.
+- An abandoned render (one that suspended or threw) could leave a queued resource load to fire at
+  a later, unrelated commit on the same instance. Deferred loads now live on the render attempt
+  itself and are discarded with it.
+- A throwing effect cleanup, or a throwing component-wide `unUseEffects`, stopped the rest of
+  unmount teardown, including subscription release, leaving the store still subscribed to an
+  unmounted component. Each teardown stage now runs isolated; failures are reported afterward
+  instead of interrupting the stages that follow.
+- A todo store hydrated with populated items but omitted counter fields published wrong (zero)
+  `activeCount`/`doneCount` on its first single-item write: the write's own arithmetic zero-filled
+  the missing counters before the "first derivation" fallback checked whether they had ever been
+  initialized.
+- The write proxy's no-op check used `===`: assigning `undefined` to an absent key created no
+  property, `-0` over `+0` was treated as unchanged, and re-assigning the same `NaN` was treated
+  as a write. It now requires the key to already be an own property and compares with `Object.is`.
+- A nested branch of a `connect()`/`read()` view still allowed `setPrototypeOf`/`preventExtensions`
+  to reach the real backing object, even though the outer view already rejected both.
 
 ### Removed
 

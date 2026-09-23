@@ -35,8 +35,12 @@ const EResourceStatus_js_namespaceObject = require("../Models/Enums/EResourceSta
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../Store/Diagnostics/DiagnosticsInstance.js");
-const liveViews_js_namespaceObject = require("../Store/Tracking/liveViews.js");
 const DevelopmentFlag_js_namespaceObject = require("../Store/Utils/DevelopmentFlag.js");
+const buildPersistentView_js_namespaceObject = require("./Connection/buildPersistentView.js");
+const declareConnection_js_namespaceObject = require("./Connection/declareConnection.js");
+const detachSelection_js_namespaceObject = require("./Connection/detachSelection.js");
+const reportLiveViewEscape_js_namespaceObject = require("./Connection/reportLiveViewEscape.js");
+const sameSelection_js_namespaceObject = require("./Connection/sameSelection.js");
 const external_shallowEqual_js_namespaceObject = require("./shallowEqual.js");
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
@@ -44,61 +48,6 @@ const sameReads = (a, b)=>{
     return true;
 };
 const describeFailure = (error)=>error instanceof Error ? error.message : String(error);
-const isPlainObject = (value)=>{
-    if ('object' != typeof value || null === value || Array.isArray(value)) return false;
-    const prototype = Object.getPrototypeOf(value);
-    return null === prototype || prototype === Object.prototype;
-};
-const ownEnumerableKeys = (value)=>Reflect.ownKeys(value).filter((key)=>Object.prototype.propertyIsEnumerable.call(value, key));
-const sameSelection = (snapshot, next)=>{
-    if (Object.is(snapshot, next)) return true;
-    const snapshotIsArray = Array.isArray(snapshot);
-    const nextIsArray = Array.isArray(next);
-    if (snapshotIsArray || nextIsArray) {
-        if (!snapshotIsArray || !nextIsArray) return false;
-        const previousMembers = snapshot;
-        const freshMembers = next;
-        return previousMembers.length === freshMembers.length && previousMembers.every((member, index)=>Object.is(member, freshMembers[index]));
-    }
-    if (!isPlainObject(snapshot) || !isPlainObject(next)) return false;
-    const previousKeys = ownEnumerableKeys(snapshot);
-    const freshKeys = ownEnumerableKeys(next);
-    if (previousKeys.length !== freshKeys.length) return false;
-    const previousMembers = snapshot;
-    const freshMembers = next;
-    return previousKeys.every((key)=>Object.prototype.hasOwnProperty.call(freshMembers, key) && Object.is(previousMembers[key], freshMembers[key]));
-};
-const detachSelection = (value)=>{
-    if (Array.isArray(value)) return Array.from(value);
-    if (isPlainObject(value)) return {
-        ...value
-    };
-    return value;
-};
-const reportLiveViewEscape = (next)=>{
-    const guidance = "A child reading it in its own render records nothing, so no subscription covers what it sees and it never hears about changes. Select plain values — primitives, or plain objects and arrays built from them.";
-    if (liveViews_js_namespaceObject.liveViews.has(next)) {
-        DiagnosticsInstance_js_namespaceObject.diagnostics.report('a connectSelection() snapshot handed a child a live store view as its whole value. ' + guidance);
-        return true;
-    }
-    if (Array.isArray(next)) {
-        const index = next.findIndex((member)=>liveViews_js_namespaceObject.liveViews.has(member));
-        if (-1 !== index) {
-            DiagnosticsInstance_js_namespaceObject.diagnostics.report('a connectSelection() snapshot handed a child a live store view as array member ' + index + '. ' + guidance);
-            return true;
-        }
-        return false;
-    }
-    if (isPlainObject(next)) {
-        const members = next;
-        const key = Object.keys(members).find((memberKey)=>liveViews_js_namespaceObject.liveViews.has(members[memberKey]));
-        if (void 0 !== key) {
-            DiagnosticsInstance_js_namespaceObject.diagnostics.report('a connectSelection() snapshot handed a child a live store view as member "' + key + '". ' + guidance);
-            return true;
-        }
-    }
-    return false;
-};
 const CONNECTION_ATTEMPT_KEY = 'c:';
 const TRACKED_ATTEMPT_KEY = 't:';
 const RENDER_KEY = 'render';
@@ -142,135 +91,18 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
             if (void 0 !== attempt && this.renderAttempt === attempt) entry.reads.add(path);
         });
     };
-    connect = (source)=>{
-        const getCarburetor = 'function' == typeof source ? source : ()=>source;
-        const connection = {
-            uid: (0, getUid_js_namespaceObject.getUid)(),
-            getCarburetor,
-            committed: void 0,
-            installed: void 0
-        };
-        this.connections.push(connection);
-        const resolveAttemptSource = ()=>{
-            const attempt = this.renderAttempt;
-            if (!attempt) return getCarburetor();
-            const key = CONNECTION_ATTEMPT_KEY + connection.uid;
-            const resolved = attempt.sources.get(key);
-            if (void 0 !== resolved) return resolved;
-            const carburetor = getCarburetor();
-            attempt.sources.set(key, carburetor);
-            return carburetor;
-        };
-        const recorder = (path)=>{
-            const attempt = this.renderAttempt;
-            if (!attempt) return;
-            let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
-            if (!entry) {
-                const carburetor = resolveAttemptSource();
-                entry = {
-                    connection,
-                    source: carburetor,
-                    baselineVersion: carburetor.getVersion(),
-                    reads: new Set()
-                };
-                attempt.entries.set(CONNECTION_ATTEMPT_KEY + connection.uid, entry);
-            }
-            entry.reads.add(path);
-        };
-        return this.buildPersistentView(getCarburetor, recorder, resolveAttemptSource);
-    };
-    buildPersistentView = (getCarburetor, recorder, resolveAttemptSource)=>{
-        let cachedTarget;
-        let cachedView;
-        let arrayFacade = false;
-        try {
-            arrayFacade = Array.isArray(getCarburetor().getData());
-        } catch  {}
-        const assertDeclaredKind = (data)=>{
-            if (Array.isArray(data) === arrayFacade) return;
-            throw new Error(arrayFacade ? "Carburetor: this connect() view was declared for an array root, but its source now resolves to a root that is not an array. One persistent view cannot change its object/array kind; declare a separate connection for the other store." : "Carburetor: this connect() view is fixed as an object view because its source was not resolvable at declaration time (a scope-backed resolver resolves after construction), but the resolved root is an array. Read an array-rooted scoped store through useCarburetor in render instead.");
-        };
-        const resolveView = ()=>{
-            const carburetor = resolveAttemptSource();
-            const data = carburetor.getData();
-            if (cachedTarget !== data) {
-                assertDeclaredKind(data);
-                cachedTarget = data;
-                cachedView = carburetor.read(recorder);
-            }
-            return cachedView;
-        };
-        const forbidWrite = ()=>{
-            throw new Error("Carburetor: data read through connect() is read-only. Write through carburetor methods — they write via draft and know which paths changed.");
-        };
-        const facade = new Proxy(arrayFacade ? [] : {}, {
-            get: (_target, key)=>Reflect.get(resolveView(), key),
-            has: (_target, key)=>Reflect.has(resolveView(), key),
-            ownKeys: (_target)=>Reflect.ownKeys(resolveView()),
-            getOwnPropertyDescriptor: (_target, key)=>{
-                const descriptor = Reflect.getOwnPropertyDescriptor(resolveView(), key);
-                if (void 0 === descriptor || descriptor.configurable) return descriptor;
-                const targetDescriptor = Reflect.getOwnPropertyDescriptor(_target, key);
-                if (void 0 !== targetDescriptor && !targetDescriptor.configurable) return descriptor;
-                return {
-                    ...descriptor,
-                    configurable: true
-                };
-            },
-            getPrototypeOf: (_target)=>Reflect.getPrototypeOf(resolveView()),
-            setPrototypeOf: forbidWrite,
-            preventExtensions: forbidWrite,
-            set: forbidWrite,
-            deleteProperty: forbidWrite,
-            defineProperty: forbidWrite
-        });
-        liveViews_js_namespaceObject.liveViews.note(facade);
-        return facade;
-    };
+    declareConnection = (source)=>(0, declareConnection_js_namespaceObject.declareConnection)(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
+    connect = (source)=>(0, buildPersistentView_js_namespaceObject.buildPersistentView)(this.declareConnection(source));
     connectSelection = (source, select)=>{
-        const getCarburetor = 'function' == typeof source ? source : ()=>source;
-        const connection = {
-            uid: (0, getUid_js_namespaceObject.getUid)(),
-            getCarburetor,
-            committed: void 0,
-            installed: void 0
-        };
-        this.connections.push(connection);
-        const resolveAttemptSource = ()=>{
-            const attempt = this.renderAttempt;
-            if (!attempt) return getCarburetor();
-            const key = CONNECTION_ATTEMPT_KEY + connection.uid;
-            const resolved = attempt.sources.get(key);
-            if (void 0 !== resolved) return resolved;
-            const carburetor = getCarburetor();
-            attempt.sources.set(key, carburetor);
-            return carburetor;
-        };
-        const recorder = (path)=>{
-            const attempt = this.renderAttempt;
-            if (!attempt) return;
-            let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
-            if (!entry) {
-                const carburetor = resolveAttemptSource();
-                entry = {
-                    connection,
-                    source: carburetor,
-                    baselineVersion: carburetor.getVersion(),
-                    reads: new Set()
-                };
-                attempt.entries.set(CONNECTION_ATTEMPT_KEY + connection.uid, entry);
-            }
-            entry.reads.add(path);
-        };
-        const view = this.buildPersistentView(getCarburetor, recorder, resolveAttemptSource);
+        const view = (0, buildPersistentView_js_namespaceObject.buildPersistentView)(this.declareConnection(source));
         let snapshot;
         let escapeReported = false;
         return ()=>{
             const next = select(view);
-            if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT && !escapeReported) escapeReported = reportLiveViewEscape(next);
-            if (void 0 !== snapshot && sameSelection(snapshot.value, next)) return snapshot.value;
+            if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT && !escapeReported) escapeReported = (0, reportLiveViewEscape_js_namespaceObject.reportLiveViewEscape)(next);
+            if (void 0 !== snapshot && (0, sameSelection_js_namespaceObject.sameSelection)(snapshot.value, next)) return snapshot.value;
             snapshot = {
-                value: detachSelection(next)
+                value: (0, detachSelection_js_namespaceObject.detachSelection)(next)
             };
             return snapshot.value;
         };

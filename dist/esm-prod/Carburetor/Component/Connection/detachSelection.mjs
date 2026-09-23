@@ -1,0 +1,1 @@
+import{isPlainObject as r}from"./isPlainObject.mjs";let e=e=>Array.isArray(e)?Array.from(e):r(e)?{...e}:e;export{e as detachSelection};

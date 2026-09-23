@@ -579,18 +579,32 @@ describe('<AntiHookComponent />', () => {
                 }
             }
 
-            const {container, rerender, unmount} = render(<Catch><BrokenSetup fail={false}/></Catch>);
+            // React 19 logs the error this boundary catches; captured so the guard sees
+            // only unexpected output.
+            const original = console.error;
+            const reported: string[] = [];
 
-            expect(log).toEqual(['open']);
+            console.error = (...args: unknown[]) => reported.push(args.map(String).join(' '));
 
-            // The setup error still surfaces: a broken setup is as visible as it was before.
-            rerender(<Catch><BrokenSetup fail={true}/></Catch>);
-            expect(container.querySelector('.caught')?.textContent).toEqual('caught');
-            expect(log).toEqual(['open', 'cleanup']);
+            try {
+                const {container, rerender, unmount} = render(<Catch><BrokenSetup fail={false}/></Catch>);
 
-            // The record moved to the new deps with no cleanup, so the unmount runs nothing again.
-            unmount();
-            expect(log).toEqual(['open', 'cleanup']);
+                expect(log).toEqual(['open']);
+
+                // The setup error still surfaces: a broken setup is as visible as it was before.
+                rerender(<Catch><BrokenSetup fail={true}/></Catch>);
+                expect(container.querySelector('.caught')?.textContent).toEqual('caught');
+                expect(log).toEqual(['open', 'cleanup']);
+
+                // The record moved to the new deps with no cleanup, so the unmount runs nothing again.
+                unmount();
+                expect(log).toEqual(['open', 'cleanup']);
+            } finally {
+                console.error = original;
+            }
+
+            expect(reported.filter((message: string) =>
+                message.includes('The above error occurred in the <BrokenSetup> component')).length).toEqual(1);
         });
 
         test('a throwing setup still reports the replaced cleanup that threw before it', () => {
@@ -2637,7 +2651,11 @@ describe('<AntiHookComponent />', () => {
 
             expect(container.querySelector('.value')?.textContent).toEqual('Ann');
 
-            void cache.refresh('a');
+            // The refresh is an external event like the store writes below: act-wrapped, or
+            // React warns about the re-render it triggers.
+            act(() => {
+                void cache.refresh('a');
+            });
             loader.settle[1]('Betty');
             await flush();
 
@@ -2895,35 +2913,49 @@ describe('<AntiHookComponent />', () => {
                 }
             }
 
-            const {container, rerender, unmount} = render(
-                <Catch><Flaky cache={cache} id="seed" fail={false} /></Catch>
-            );
+            // React 19 logs the error this boundary catches; captured so the guard sees
+            // only unexpected output.
+            const original = console.error;
+            const reported: string[] = [];
 
-            loader.settle[0]('Seed');
-            await flush();
+            console.error = (...args: unknown[]) => reported.push(args.map(String).join(' '));
 
-            expect(container.querySelector('.value')?.textContent).toEqual('Seed');
-            expect(loader.calls).toEqual(['seed']);
+            try {
+                const {container, rerender, unmount} = render(
+                    <Catch><Flaky cache={cache} id="seed" fail={false} /></Catch>
+                );
 
-            // Reads 'abandoned' — queuing its load — and then throws: the boundary replaces the
-            // subtree, and the queue must not outlive the attempt anywhere shared.
-            rerender(<Catch><Flaky cache={cache} id="abandoned" fail={true} /></Catch>);
+                loader.settle[0]('Seed');
+                await flush();
 
-            expect(container.querySelector('.caught')?.textContent).toEqual('caught');
-            expect(loader.calls).toEqual(['seed']);
+                expect(container.querySelector('.value')?.textContent).toEqual('Seed');
+                expect(loader.calls).toEqual(['seed']);
 
-            // The boundary remounts a fresh instance for the recovery: it loads only its own key.
-            rerender(<Catch><Flaky cache={cache} id="recovery" fail={false} /></Catch>);
+                // Reads 'abandoned' — queuing its load — and then throws: the boundary replaces the
+                // subtree, and the queue must not outlive the attempt anywhere shared.
+                rerender(<Catch><Flaky cache={cache} id="abandoned" fail={true} /></Catch>);
 
-            expect(loader.calls).toEqual(['seed', 'recovery']);
+                expect(container.querySelector('.caught')?.textContent).toEqual('caught');
+                expect(loader.calls).toEqual(['seed']);
 
-            loader.settle[1]('Recovery');
-            await flush();
+                // The boundary remounts a fresh instance for the recovery: it loads only its own key.
+                rerender(<Catch><Flaky cache={cache} id="recovery" fail={false} /></Catch>);
 
-            expect(container.querySelector('.value')?.textContent).toEqual('Recovery');
-            expect(loader.calls).toEqual(['seed', 'recovery']);
+                expect(loader.calls).toEqual(['seed', 'recovery']);
 
-            unmount();
+                loader.settle[1]('Recovery');
+                await flush();
+
+                expect(container.querySelector('.value')?.textContent).toEqual('Recovery');
+                expect(loader.calls).toEqual(['seed', 'recovery']);
+
+                unmount();
+            } finally {
+                console.error = original;
+            }
+
+            expect(reported.filter((message: string) =>
+                message.includes('The above error occurred in the <Flaky> component')).length).toEqual(1);
         });
 
         test('changing arguments keeps one load per committed read', async () => {
@@ -3049,21 +3081,35 @@ describe('<AntiHookComponent />', () => {
                 }
             }
 
-            const {container, rerender, unmount} = render(<Catch><Flaky fail={false} /></Catch>);
+            // React 19 logs the error this boundary catches; captured so the guard sees
+            // only unexpected output.
+            const original = console.error;
+            const reported: string[] = [];
 
-            expect(container.querySelector('.value')?.textContent).toEqual('0');
-            expect(store.subscriberCount()).toEqual(1);
-            expect(store.subscribeReads.length).toEqual(1);
+            console.error = (...args: unknown[]) => reported.push(args.map(String).join(' '));
 
-            rerender(<Catch><Flaky fail={true} /></Catch>);
+            try {
+                const {container, rerender, unmount} = render(<Catch><Flaky fail={false} /></Catch>);
 
-            expect(container.querySelector('.caught')?.textContent).toEqual('caught');
-            // The abandoned attempt published nothing; the boundary replacing the subtree
-            // released what the last good commit held.
-            expect(store.subscribeReads.length).toEqual(1);
-            expect(store.subscriberCount()).toEqual(0);
+                expect(container.querySelector('.value')?.textContent).toEqual('0');
+                expect(store.subscriberCount()).toEqual(1);
+                expect(store.subscribeReads.length).toEqual(1);
 
-            unmount();
+                rerender(<Catch><Flaky fail={true} /></Catch>);
+
+                expect(container.querySelector('.caught')?.textContent).toEqual('caught');
+                // The abandoned attempt published nothing; the boundary replacing the subtree
+                // released what the last good commit held.
+                expect(store.subscribeReads.length).toEqual(1);
+                expect(store.subscriberCount()).toEqual(0);
+
+                unmount();
+            } finally {
+                console.error = original;
+            }
+
+            expect(reported.filter((message: string) =>
+                message.includes('The above error occurred in the <Flaky> component')).length).toEqual(1);
         });
 
         test('a suspended mount leaves no subscription and recovers with fresh data', async () => {

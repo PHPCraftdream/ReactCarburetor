@@ -1,0 +1,1 @@
+let e=e=>Reflect.ownKeys(e).filter(t=>Object.prototype.propertyIsEnumerable.call(e,t));export{e as ownEnumerableKeys};

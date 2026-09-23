@@ -3,146 +3,30 @@ import {IDict, TEffect, TEffectCleanup, TEffectDeps, TReadonly} from "@/Carburet
 import {IComputed} from "@/Carburetor/Models/Derived";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
-import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
-import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
+import {
+    IAttemptEntry,
+    IConnection,
+    IConnectionSource,
+    IDependencyDescription,
+    IDependencySlot,
+    IRenderAttempt,
+    ITrackedCarburetor,
+} from "./Models/Connection";
+import {buildPersistentView} from "./Connection/buildPersistentView";
+import {declareConnection} from "./Connection/declareConnection";
+import {detachSelection} from "./Connection/detachSelection";
+import {reportLiveViewEscape} from "./Connection/reportLiveViewEscape";
+import {sameSelection} from "./Connection/sameSelection";
 import {shallowEqual} from "./shallowEqual";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
-
-/**
- * What one commit established about a dependency: the carburetor a render attempt resolved,
- * the store version when the reading started, and the paths it read.
- *
- * Published only by a commit consuming a fresh render attempt, with the read set copied at
- * that tentative-to-committed transition — so a later read through a stale captured view can
- * never alter what a commit established. The description survives unmount: it is what a
- * StrictMode-replayed mount's commit restores subscriptions from.
- */
-interface IDependencyDescription {
-    /** The carburetor the attempt resolved and read. */
-    carburetor: ICarburetorSubscription;
-    /** The store version captured at the attempt's first touch; the commit-time drift check anchors here. */
-    baselineVersion: number;
-    /** The paths the attempt read; a private copy, never shared with an attempt or a handle. */
-    reads: TPathSet;
-}
-
-/**
- * The active registration of a dependency: what is actually subscribed in the stores right now.
- *
- * Kept next to the description it was built from so a commit can skip re-registering an
- * unchanged read set, and so a teardown or a re-point at another carburetor knows exactly which
- * store to unsubscribe from. Its lifetime is independent of the description's: unmount and a
- * StrictMode replay clear handles, descriptions stay.
- */
-interface ISubscriptionHandle {
-    /** The store the registration lives in; unsubscribing goes through it. */
-    carburetor: ICarburetorSubscription;
-    /** The read set as registered — a copy, so a compare with a fresh description detects drift. */
-    reads: TPathSet;
-}
-
-/**
- * One component's dependency slot: the two long-lived states a carburetor dependency has.
- *
- * The committed description is data — what the last fresh render attempt read — while the
- * installed handle is a live registration a teardown must release. Keeping them apart is what
- * lets unmount drop a subscription without forgetting what to restore it from.
- */
-interface IDependencySlot {
-    /** What the last fresh commit established; undefined while nothing current commits to. */
-    committed: IDependencyDescription | undefined;
-    /** The registration actually in the stores right now; undefined while none is registered. */
-    installed: ISubscriptionHandle | undefined;
-}
-
-/**
- * A carburetor read through `useCarburetor`, `useComputed` or `useResource`: one dependency
- * slot keyed by the carburetor's own uid.
- *
- * Records are written by commits, out of what a fresh render attempt collected — never by
- * render itself. A commit whose attempt never touched a record releases and deletes it: a
- * store that stops being read must stop being subscribed to, or a write to it re-renders a
- * component that no longer shows that data. What survives unmount is the committed
- * description, which is what a replayed mount restores from.
- */
-interface ITrackedCarburetor extends IDependencySlot {}
-
-/**
- * A `connect()` declaration's bookkeeping: one persistent slot, independent of any one render.
- *
- * A connection is declared once (typically a class field initializer) and lives for the
- * component's whole lifetime — nothing ever deletes it from `connections`, so a branch that
- * stops being read keeps its declaration and can be re-read by a later render. What varies is
- * the slot's content: a fresh attempt publishes a new committed description; a commit whose
- * attempt never touched the connection clears that description, and `alignSubscription` then
- * ends the subscription — an unused connection must have no active read subscription, yet the
- * declaration itself stays ready for a render that reads it again.
- */
-interface IConnection extends IDependencySlot {
-    /** This connection's own id — stable across whatever carburetor it points at right now. */
-    uid: string;
-    /**
-     * Resolves the carburetor to read; an attempt's first read resolves it once for the whole
-     * attempt, so a prop swap is noticed by the next render, not re-probed per field.
-     */
-    getCarburetor: () => ICarburetorSubscription;
-}
-
-/**
- * One source's read record inside one render attempt: tentative, and never merged across
- * attempts.
- *
- * The source and its baseline version are captured once, at the first read of the attempt —
- * not refreshed after every property access — so a write landing mid-render or mid-commit
- * stays detectable at commit time. Later reads in the same attempt only grow the path set.
- */
-interface IAttemptEntry {
-    /** Set for a connection read: where a commit publishes the description built from this entry. */
-    connection: IConnection | undefined;
-    /** The carburetor the read resolved to, captured at the attempt's first touch. */
-    source: ICarburetorSubscription;
-    /** The store version at that first touch; the commit-time drift check anchors here. */
-    baselineVersion: number;
-    /** The paths read during this attempt; grows monotonically until the attempt closes. */
-    reads: TPathSet;
-}
-
-/**
- * One render attempt's collection: the boundary between render and everything else.
- *
- * Opened immediately before the subclass's render runs and closed in a `finally` right after
- * it returns or throws, it is the only thing the read recorders write to. Nothing is open
- * during the render→commit gap, so child mount callbacks, sibling renders, effects and
- * handlers reading a captured view cannot alter this render's dependency set or version
- * evidence. An abandoned attempt (its render threw) is never consumed by a commit.
- */
-interface IRenderAttempt {
-    /** Collected entries, keyed by `CONNECTION_ATTEMPT_KEY`/`TRACKED_ATTEMPT_KEY` + source uid. */
-    entries: Map<string, IAttemptEntry>;
-    /**
-     * Sources already resolved during this attempt, keyed like `entries`. The per-attempt memo
-     * behind a connection's resolution: view resolution and the recorder's baseline capture
-     * share it, so reading several fields resolves the source once per attempt instead of once
-     * per field. It dies with the attempt, so no source selection survives into a later render.
-     */
-    sources: Map<string, ICarburetorSubscription>;
-    /**
-     * The fetches this render queued: tentative like everything else the attempt collected,
-     * becoming real only if a commit consumes this attempt. An abandoned attempt's queue dies
-     * with the attempt, so a render that never committed cannot leave network work behind for a
-     * later commit on the same instance to run.
-     */
-    deferredLoads: (() => void)[];
-    /** True when the render threw — an error or a Suspense thenable; a commit will not consume it. */
-    abandoned: boolean;
-}
 
 /** Per-effect bookkeeping: what the effect last ran with, and the cleanup it returned. */
 interface IEffectRecord {
@@ -176,175 +60,6 @@ const sameReads = (a: TPathSet, b: TPathSet): boolean => {
  */
 const describeFailure = (error: unknown): string =>
     (error instanceof Error ? error.message : String(error));
-
-/**
- * Whether `value` is a plain object: a non-null, non-array object whose prototype is
- * `Object.prototype` or `null` — the shape a detached selection's members take, and the only
- * shape the selection comparison below knows how to look inside.
- */
-const isPlainObject = (value: unknown): value is Record<string, unknown> => {
-    if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-        return false;
-    }
-
-    const prototype: object | null = Object.getPrototypeOf(value);
-
-    return prototype === null || prototype === Object.prototype;
-};
-
-/**
- * The own enumerable property keys of `value` — strings and symbols alike — in the order
- * `Reflect.ownKeys` reports them.
- *
- * This is the one set the selection comparison and the detachment agree on: a shallow spread
- * (`{...value}`) copies exactly these keys and nothing else, so comparing them is comparing
- * what a child can actually see.
- */
-const ownEnumerableKeys = (value: object): Array<string | symbol> =>
-    Reflect.ownKeys(value).filter((key: string | symbol): boolean =>
-        Object.prototype.propertyIsEnumerable.call(value, key));
-
-/**
- * Whether a fresh selection has the same content as the snapshot already handed out, so "same"
- * here means the handed-out snapshot may keep its identity — and the gated child keeps its
- * bail-out.
- *
- * A plain object compares its own enumerable string and symbol keys — the exact set a shallow
- * spread copies — for membership plus `Object.is` values, and an array compares its length and
- * elements with `Object.is`, the exact set `Array.from` copies. The detached previous snapshot
- * is compared against the raw fresh selection: a shallow copy shares every member with its
- * source, so identity differences introduced by detaching say nothing about content.
- */
-const sameSelection = (snapshot: unknown, next: unknown): boolean => {
-    if (Object.is(snapshot, next)) {
-        return true;
-    }
-
-    const snapshotIsArray = Array.isArray(snapshot);
-    const nextIsArray = Array.isArray(next);
-
-    if (snapshotIsArray || nextIsArray) {
-        if (!snapshotIsArray || !nextIsArray) {
-            return false;
-        }
-
-        // Deliberate asymmetry with the plain-object branch below: `Array.from` copies indices
-        // and nothing else — no extra own properties, no symbol keys — so element-wise Object.is
-        // already covers the whole copied set of an array.
-
-        // Bindings narrowed ahead of the callback: a `.every` body runs outside the guards'
-        // narrowing reach.
-        const previousMembers = snapshot as unknown[];
-        const freshMembers = next as unknown[];
-
-        return previousMembers.length === freshMembers.length &&
-            previousMembers.every((member: unknown, index: number): boolean =>
-                Object.is(member, freshMembers[index]));
-    }
-
-    if (!isPlainObject(snapshot) || !isPlainObject(next)) {
-        return false;
-    }
-
-    const previousKeys = ownEnumerableKeys(snapshot);
-    const freshKeys = ownEnumerableKeys(next);
-
-    if (previousKeys.length !== freshKeys.length) {
-        return false;
-    }
-
-    // Bindings narrowed ahead of the callback: a `.every` body runs outside the guards'
-    // narrowing reach.
-    const previousMembers = snapshot as Record<string | symbol, unknown>;
-    const freshMembers = next as Record<string | symbol, unknown>;
-
-    // Equal cardinality plus every previous key present on the fresh object leaves the two key
-    // sets no room to differ, so a key swapped for another one — `{a: undefined}` becoming
-    // `{b: undefined}`, say — is a content change even though the counts match.
-    return previousKeys.every((key: string | symbol): boolean =>
-        Object.prototype.hasOwnProperty.call(freshMembers, key) &&
-        Object.is(previousMembers[key], freshMembers[key]));
-};
-
-/**
- * The detached form of a selection's value — the form safe to hand a child.
- *
- * Plain objects and arrays are shallow-copied, so a child receives plain data that outlives
- * the render instead of a branch of the live view; a branch read inside the child's own render
- * would record nothing and sit under no subscription. Primitives are detached by being values.
- * Exotic objects (Map, Date, class instances) would lose their prototype to a copy, so they
- * pass as is. The copy is also what the comparison reads: the copied key set and the compared
- * key set agree by construction, which is what makes a stable snapshot mean a stable view.
- */
-const detachSelection = (value: unknown): unknown => {
-    if (Array.isArray(value)) {
-        return Array.from(value);
-    }
-
-    if (isPlainObject(value)) {
-        return {...value};
-    }
-
-    return value;
-};
-
-/**
- * The development diagnostic for a selection that hands a live view to a child.
- *
- * Reported once per selection, not per render — the mistake is the declaration's, and one
- * complaint names it. Returns whether a report was made, so the caller latches only on a real
- * escape and a selection that only later starts handing out a live view is still caught;
- * production compiles the call site out, leaving behavior unchanged.
- *
- * @param next - the fresh selection to inspect: its whole value first, then its members one
- * level deep
- */
-const reportLiveViewEscape = (next: unknown): boolean => {
-    const guidance = 'A child reading it in its own render records nothing, so no subscription covers what it ' +
-        'sees and it never hears about changes. Select plain values — primitives, or plain objects and arrays ' +
-        'built from them.';
-
-    if (liveViews.has(next)) {
-        diagnostics.report(
-            'a connectSelection() snapshot handed a child a live store view as its whole value. ' + guidance
-        );
-
-        return true;
-    }
-
-    if (Array.isArray(next)) {
-        const index = next.findIndex((member: unknown): boolean => liveViews.has(member));
-
-        if (index !== -1) {
-            diagnostics.report(
-                'a connectSelection() snapshot handed a child a live store view as array member ' +
-                index + '. ' + guidance
-            );
-
-            return true;
-        }
-
-        return false;
-    }
-
-    if (isPlainObject(next)) {
-        // Binding narrowed ahead of the callback: a `.find` body runs outside the guard's
-        // narrowing reach.
-        const members: Record<string, unknown> = next;
-        const key = Object.keys(members).find((memberKey: string): boolean => liveViews.has(members[memberKey]));
-
-        if (key !== undefined) {
-            diagnostics.report(
-                'a connectSelection() snapshot handed a child a live store view as member "' +
-                key + '". ' + guidance
-            );
-
-            return true;
-        }
-    }
-
-    return false;
-};
 
 /**
  * Attempt-map key prefix for a `connect()` declaration's entry; the connection's uid follows
@@ -510,6 +225,20 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
     };
 
     /**
+     * Declares one connect()-family connection into this component's persistent list and builds
+     * its per-attempt source resolver and recorder.
+     */
+    private declareConnection = <T extends object>(
+        source: ICarburetor<T> | (() => ICarburetor<T>)
+    ): IConnectionSource<T> =>
+        declareConnection(
+            this.connections,
+            CONNECTION_ATTEMPT_KEY,
+            (): IRenderAttempt | undefined => this.renderAttempt,
+            source
+        );
+
+    /**
      * A persistent view of a carburetor's data, declared once and read directly in render.
      *
      * `useCarburetor` allocates a fresh read-tracking proxy every render — for a component that
@@ -556,221 +285,8 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * @param source - the carburetor to read, or a function resolving it at each attempt's
      * first read so a prop swap re-points the connection at the new store
      */
-    public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> => {
-        const getCarburetor: () => ICarburetor<T> = typeof source === 'function' ? source : () => source;
-
-        const connection: IConnection = {uid: getUid(), getCarburetor, committed: undefined, installed: undefined};
-
-        this.connections.push(connection);
-
-        // The connection's source, resolved at most once per render attempt: the attempt's
-        // first read resolves it into the attempt's collection, and every later read of the
-        // same attempt — the recorder's baseline capture included — reuses that instance. The
-        // memo lives and dies with the attempt, so no source selection is carried across
-        // renders, and outside an attempt (an event read, the declaration-time shape probe)
-        // nothing is cached: the resolver runs again, so a handler read still sees current
-        // data. The underlying root is not part of this memo: view resolution re-reads
-        // getData() on every access, so a setData() root replacement stays visible.
-        const resolveAttemptSource = (): ICarburetor<T> => {
-            const attempt = this.renderAttempt;
-
-            if (!attempt) {
-                return getCarburetor();
-            }
-
-            const key = CONNECTION_ATTEMPT_KEY + connection.uid;
-            // The key is this connection's alone and only this closure writes it, so the value
-            // it names is always the ICarburetor<T> this declaration resolved.
-            const resolved = attempt.sources.get(key) as ICarburetor<T> | undefined;
-
-            if (resolved !== undefined) {
-                return resolved;
-            }
-
-            const carburetor = getCarburetor();
-
-            attempt.sources.set(key, carburetor);
-
-            return carburetor;
-        };
-
-        const recorder: TPathRecorder = (path: TPath): void => {
-            const attempt = this.renderAttempt;
-
-            // Outside a render attempt the read still gets current data, but records nothing:
-            // a handler, effect or child callback can never alter a render's dependency set.
-            if (!attempt) {
-                return;
-            }
-
-            let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
-
-            if (!entry) {
-                // The source and its baseline version are captured once, at the beginning of
-                // this attempt's consumption — not refreshed after every property access — so
-                // a write landing mid-render or mid-commit stays detectable at commit time.
-                // The source is not resolved again here: this read is arriving through the
-                // view, whose resolution already fixed this attempt's source.
-                const carburetor = resolveAttemptSource();
-
-                entry = {
-                    connection,
-                    source: carburetor,
-                    baselineVersion: carburetor.getVersion(),
-                    reads: new Set<TPath>(),
-                };
-                attempt.entries.set(CONNECTION_ATTEMPT_KEY + connection.uid, entry);
-            }
-
-            entry.reads.add(path);
-        };
-
-        return this.buildPersistentView(getCarburetor, recorder, resolveAttemptSource);
-    };
-
-    /**
-     * Builds the persistent view one connect()-family declaration reads through: the once-only
-     * shape probe, the declared-kind assertion, the forwarding facade.
-     *
-     * Shared by `connect` and `connectSelection`, which declare one connection, record through
-     * one recorder, and hand out one facade whose object/array kind is fixed at declaration
-     * time — the JS-03 contract, see `connect`'s docstring.
-     *
-     * @param getCarburetor - resolves the carburetor to read; called at an attempt's first read
-     * (and once here, probing the root's shape), so a prop swap is noticed
-     * @param recorder - where each read path is reported while a render attempt is open
-     * @param resolveAttemptSource - resolves the source through the attempt's once-per-attempt
-     * memo, so view resolution and the recorder's baseline capture share one resolution; an
-     * uncached resolution outside any attempt
-     */
-    private buildPersistentView = <T extends object>(
-        getCarburetor: () => ICarburetor<T>,
-        recorder: TPathRecorder,
-        resolveAttemptSource: () => ICarburetor<T>
-    ): TReadonly<T> => {
-        let cachedTarget: T | undefined;
-        let cachedView: TReadonly<T> | undefined;
-
-        // Root-shape contract: the facade's object/array kind is fixed once, here, from the
-        // source's current root — an array root declares an array-shaped facade (`[]` target:
-        // `Array.isArray` true, `JSON.stringify` emits an array), anything else an
-        // object-shaped one. A Proxy target cannot change after creation, so the kind cannot
-        // either: a source that is not resolvable yet (a scope-backed resolver resolves only
-        // after construction, once React fills context) declares an object-shaped facade, and
-        // a later root of the other kind fails loudly in resolveView instead of serving a
-        // silently wrong view.
-        let arrayFacade = false;
-
-        try {
-            // A shape probe, not a read: no render attempt is open, so nothing records, and
-            // nothing here subscribes — the declaration stays subscription-free until commit.
-            arrayFacade = Array.isArray(getCarburetor().getData());
-        } catch {
-            // The source is not resolvable yet; the real resolution error, if any, surfaces
-            // unguarded at the first real read below.
-        }
-
-        // A new underlying data object must keep the declared kind: same kind — the rebuild is
-        // transparent (setData, restore, a source() swap); the other kind — an explicit
-        // boundary error, because forwarding it would serve a view that answers basic
-        // JavaScript questions (`Array.isArray`, key enumeration) wrongly.
-        const assertDeclaredKind = (data: T): void => {
-            if (Array.isArray(data) === arrayFacade) {
-                return;
-            }
-
-            throw new Error(
-                arrayFacade
-                    ? 'Carburetor: this connect() view was declared for an array root, but its source now ' +
-                      'resolves to a root that is not an array. One persistent view cannot change its ' +
-                      'object/array kind; declare a separate connection for the other store.'
-                    : 'Carburetor: this connect() view is fixed as an object view because its source was not ' +
-                      'resolvable at declaration time (a scope-backed resolver resolves after construction), ' +
-                      'but the resolved root is an array. Read an array-rooted scoped store through ' +
-                      'useCarburetor in render instead.'
-            );
-        };
-
-        // Rebuilds only when the wrapped data object itself changed — a normal field write
-        // mutates that object in place, so this stays untouched render after render; only
-        // setData()/restore() (a whole new object) or a source() swap to a different carburetor
-        // (whose data is necessarily a different object) trigger a rebuild.
-        const resolveView = (): TReadonly<T> => {
-            // The attempt's shared resolution, not a fresh one per property access: reading
-            // several fields in one render resolves the source once. The root itself is still
-            // re-read per access — a setData() replacement must rebuild the view immediately.
-            const carburetor = resolveAttemptSource();
-            const data = carburetor.getData();
-
-            if (cachedTarget !== data) {
-                assertDeclaredKind(data);
-                cachedTarget = data;
-                cachedView = carburetor.read(recorder);
-            }
-
-            return cachedView as TReadonly<T>;
-        };
-
-        const forbidWrite = (): never => {
-            throw new Error(
-                'Carburetor: data read through connect() is read-only. ' +
-                'Write through carburetor methods — they write via draft and know which paths changed.'
-            );
-        };
-
-        // An empty object/array stands in for the real target: every trap below resolves and
-        // forwards to the current view instead, which is what lets the same Proxy instance
-        // survive a rebuild underneath it. Which of the two it is fixes the facade's kind.
-        const facade = new Proxy((arrayFacade ? [] : {}) as unknown as TReadonly<T>, {
-            get: (_target: TReadonly<T>, key: string | symbol): unknown => Reflect.get(resolveView() as object, key),
-            has: (_target: TReadonly<T>, key: string | symbol): boolean => Reflect.has(resolveView() as object, key),
-            ownKeys: (_target: TReadonly<T>): ArrayLike<string | symbol> => Reflect.ownKeys(resolveView() as object),
-            getOwnPropertyDescriptor: (_target: TReadonly<T>, key: string | symbol): PropertyDescriptor | undefined => {
-                const descriptor: PropertyDescriptor | undefined =
-                    Reflect.getOwnPropertyDescriptor(resolveView() as object, key);
-
-                if (descriptor === undefined || descriptor.configurable) {
-                    return descriptor;
-                }
-
-                // A non-configurable view descriptor can often not be reported as-is: over the
-                // empty facade target the engine answers with a bare proxy-invariant TypeError
-                // and no explanation — the enumeration/serialization failure this facade
-                // existed to fix. The one lawful representation there is the descriptor
-                // relaxed to configurable, which grants nothing: set, deleteProperty,
-                // defineProperty, setPrototypeOf and preventExtensions are all rejected below,
-                // so the relaxed flag can never be acted on. A key the target itself holds as
-                // a non-configurable own property (an array target's "length") must instead
-                // be forwarded unchanged: relaxing it would contradict the target's existing
-                // property, which the engine rejects, while forwarding stays compatible
-                // because the target's own "length" remains writable.
-                const targetDescriptor: PropertyDescriptor | undefined =
-                    Reflect.getOwnPropertyDescriptor(_target as object, key);
-
-                if (targetDescriptor !== undefined && !targetDescriptor.configurable) {
-                    return descriptor;
-                }
-
-                return {...descriptor, configurable: true};
-            },
-            // Introspection stays truthful about the live data; the target stays extensible,
-            // which is what keeps every forwarding trap lawful.
-            getPrototypeOf: (_target: TReadonly<T>): object | null => Reflect.getPrototypeOf(resolveView() as object),
-            // A prototype change or an extension change would invalidate the facade's
-            // forwarding invariants (a non-extensible target must mirror the view's keys), so
-            // both are rejected the same way as writes.
-            setPrototypeOf: forbidWrite,
-            preventExtensions: forbidWrite,
-            set: forbidWrite,
-            deleteProperty: forbidWrite,
-            defineProperty: forbidWrite,
-        }) as TReadonly<T>;
-
-        // Noted so the child-prop snapshot boundary recognizes this view as live.
-        liveViews.note(facade);
-
-        return facade;
-    };
+    public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> =>
+        buildPersistentView(this.declareConnection(source));
 
     /**
      * A typed selection of this component's connected data, safe to hand a child gated by
@@ -817,75 +333,7 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         source: ICarburetor<T> | (() => ICarburetor<T>),
         select: (data: TReadonly<T>) => R
     ): (() => R) => {
-        const getCarburetor: () => ICarburetor<T> = typeof source === 'function' ? source : () => source;
-
-        const connection: IConnection = {uid: getUid(), getCarburetor, committed: undefined, installed: undefined};
-
-        this.connections.push(connection);
-
-        // The connection's source, resolved at most once per render attempt: the attempt's
-        // first read resolves it into the attempt's collection, and every later read of the
-        // same attempt — the recorder's baseline capture included — reuses that instance. The
-        // memo lives and dies with the attempt, so no source selection is carried across
-        // renders, and outside an attempt (an event read, the declaration-time shape probe)
-        // nothing is cached: the resolver runs again, so a handler read still sees current
-        // data. The underlying root is not part of this memo: view resolution re-reads
-        // getData() on every access, so a setData() root replacement stays visible.
-        const resolveAttemptSource = (): ICarburetor<T> => {
-            const attempt = this.renderAttempt;
-
-            if (!attempt) {
-                return getCarburetor();
-            }
-
-            const key = CONNECTION_ATTEMPT_KEY + connection.uid;
-            // The key is this connection's alone and only this closure writes it, so the value
-            // it names is always the ICarburetor<T> this declaration resolved.
-            const resolved = attempt.sources.get(key) as ICarburetor<T> | undefined;
-
-            if (resolved !== undefined) {
-                return resolved;
-            }
-
-            const carburetor = getCarburetor();
-
-            attempt.sources.set(key, carburetor);
-
-            return carburetor;
-        };
-
-        const recorder: TPathRecorder = (path: TPath): void => {
-            const attempt = this.renderAttempt;
-
-            // Outside a render attempt the read still gets current data, but records nothing:
-            // a handler, effect or child callback can never alter a render's dependency set.
-            if (!attempt) {
-                return;
-            }
-
-            let entry = attempt.entries.get(CONNECTION_ATTEMPT_KEY + connection.uid);
-
-            if (!entry) {
-                // The source and its baseline version are captured once, at the beginning of
-                // this attempt's consumption — not refreshed after every property access — so
-                // a write landing mid-render or mid-commit stays detectable at commit time.
-                // The source is not resolved again here: this read is arriving through the
-                // view, whose resolution already fixed this attempt's source.
-                const carburetor = resolveAttemptSource();
-
-                entry = {
-                    connection,
-                    source: carburetor,
-                    baselineVersion: carburetor.getVersion(),
-                    reads: new Set<TPath>(),
-                };
-                attempt.entries.set(CONNECTION_ATTEMPT_KEY + connection.uid, entry);
-            }
-
-            entry.reads.add(path);
-        };
-
-        const view = this.buildPersistentView(getCarburetor, recorder, resolveAttemptSource);
+        const view = buildPersistentView(this.declareConnection(source));
 
         let snapshot: {value: R} | undefined = undefined;
         let escapeReported = false;

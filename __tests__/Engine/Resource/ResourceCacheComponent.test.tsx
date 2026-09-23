@@ -201,7 +201,11 @@ describe('a component reading a resource cache', () => {
 
         expect(loader.calls).toEqual(['a', 'a']);
 
-        loader.fail[1](new Error('gateway timeout'));
+        // The rejection notifies the mounted row synchronously, so the re-render it causes
+        // must happen inside act, or React warns about it.
+        act(() => {
+            loader.fail[1](new Error('gateway timeout'));
+        });
         await flush();
 
         // The refresh failed, but the data the user is reading is still there.
@@ -214,8 +218,9 @@ describe('a component reading a resource cache', () => {
 
         expect(loader.calls).toEqual(['a', 'a']);
 
-        // The escape hatch: an explicit refresh is allowed to try again.
-        const request = cache.refresh('a');
+        // The escape hatch: an explicit refresh is allowed to try again. Its synchronous
+        // notification is act-wrapped for the same reason as the rejection above.
+        const request = act(() => cache.refresh('a'));
         loader.settle[2]('second');
         await request;
         await flush();

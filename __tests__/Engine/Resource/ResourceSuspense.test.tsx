@@ -81,26 +81,40 @@ describe('resource under Suspense', () => {
     });
 
     test('a failure reaches the error boundary', async () => {
-        const gate = deferred<string>();
-        const resource = new ResourceCarburetor<string>(() => gate.promise);
+        // React 19 logs the error this boundary catches; captured so the guard sees
+        // only unexpected output.
+        const original = console.error;
+        const reported: string[] = [];
 
-        const {container, unmount} = render(
-            <Boundary>
-                <React.Suspense fallback={<div className="fallback">loading</div>}>
-                    <SuspendingView resource={resource}/>
-                </React.Suspense>
-            </Boundary>
-        );
+        console.error = (...args: unknown[]) => reported.push(args.map(String).join(' '));
 
-        expect(container.querySelector('.fallback')).not.toBeNull();
+        try {
+            const gate = deferred<string>();
+            const resource = new ResourceCarburetor<string>(() => gate.promise);
 
-        await act(async () => {
-            gate.reject(new Error('request failed'));
-            await gate.promise.catch(() => undefined);
-        });
+            const {container, unmount} = render(
+                <Boundary>
+                    <React.Suspense fallback={<div className="fallback">loading</div>}>
+                        <SuspendingView resource={resource}/>
+                    </React.Suspense>
+                </Boundary>
+            );
 
-        expect(container.querySelector('.failed')?.textContent).toEqual('request failed');
+            expect(container.querySelector('.fallback')).not.toBeNull();
 
-        unmount();
+            await act(async () => {
+                gate.reject(new Error('request failed'));
+                await gate.promise.catch(() => undefined);
+            });
+
+            expect(container.querySelector('.failed')?.textContent).toEqual('request failed');
+
+            unmount();
+        } finally {
+            console.error = original;
+        }
+
+        expect(reported.filter((message: string) =>
+            message.includes('The above error occurred in the <SuspendingView> component')).length).toEqual(1);
     });
 });

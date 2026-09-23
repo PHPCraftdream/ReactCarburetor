@@ -42,6 +42,8 @@ npm install react-carburetor
 
 React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal
 build and in a pre-stripped production build that the `production` export condition selects.
+The advertised range is `^18.0.0 || ^19.0.0`; the test suite and the demo app are exercised
+locally and in CI against React 19.3 only — the 18.x range is not separately verified.
 
 ## Core ideas
 
