@@ -9,6 +9,42 @@ interface ITodoProps {
     carburetor: TodoCarburetor;
 }
 
+/** The plus icon on the add button. */
+function renderPlusIcon() {
+    return (
+        <svg
+            className="size-5"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            aria-hidden="true"
+        >
+            <path d="M12 5.5v13M5.5 12h13"/>
+        </svg>
+    );
+}
+
+/** One counter pill. */
+function renderCounter(label: string, value: number | undefined, tone: string, testId: string) {
+    return (
+        <span className={'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ' + tone}>
+            {label}
+            <span className="tabular-nums" data-testid={testId}>{value || 0}</span>
+        </span>
+    );
+}
+
+/** What the list shows before the first todo exists. */
+function renderEmpty() {
+    return (
+        <li className="px-5 py-14 text-center text-sm text-slate-400 dark:text-slate-500">
+            Nothing here yet — add your first todo
+        </li>
+    );
+}
+
 /**
  * The list reads only the order and the counters. Individual todos are read by the rows,
  * so editing one todo does not re-render the list.
@@ -20,49 +56,6 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
     /** Loads the list once, after the first commit. */
     protected useEffects(): void {
         this.useEffect(this.props.carburetor.loadData, "loadData", []);
-    }
-
-    /** The plus icon on the add button. */
-    public renderPlusIcon() {
-        return (
-            <svg
-                className="size-5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                aria-hidden="true"
-            >
-                <path d="M12 5.5v13M5.5 12h13"/>
-            </svg>
-        );
-    }
-
-    /**
-     * One counter pill; the values come from the store's derived fields.
-     *
-     * @param label - the caption before the number, colon included, e.g. 'active:'
-     * @param value - undefined until the first emit, and rendered as 0 rather than an empty pill
-     * @param tone - the color classes appended after the pill's shared layout classes, verbatim
-     * @param testId - the data-testid the demo's tests assert against, one per pill
-     */
-    public renderCounter(label: string, value: number | undefined, tone: string, testId: string) {
-        return (
-            <span className={'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ' + tone}>
-                {label}
-                <span className="tabular-nums" data-testid={testId}>{value || 0}</span>
-            </span>
-        );
-    }
-
-    /** What the list shows before the first todo exists. */
-    public renderEmpty() {
-        return (
-            <li className="px-5 py-14 text-center text-sm text-slate-400 dark:text-slate-500">
-                Nothing here yet — add your first todo
-            </li>
-        );
     }
 
     /** One row; carburetor comes from props, id is the map callback's only argument. */
@@ -97,18 +90,18 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
                         data-testid="add-todo"
                         className="inline-flex size-10 shrink-0 items-center justify-center rounded-full bg-slate-900 text-white shadow-sm transition hover:bg-slate-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 active:scale-95 dark:bg-slate-50 dark:text-slate-900 dark:hover:bg-white"
                     >
-                        {this.renderPlusIcon()}
+                        {renderPlusIcon()}
                     </button>
                 </header>
 
                 <div className="flex flex-wrap items-center gap-2 px-5 py-3">
-                    {this.renderCounter(
+                    {renderCounter(
                         'active:',
                         activeCount,
                         'bg-sky-100 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300',
                         'active-count'
                     )}
-                    {this.renderCounter(
+                    {renderCounter(
                         'done:',
                         doneCount,
                         'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300',
@@ -118,7 +111,7 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
 
                 <ul className="divide-y divide-slate-200/70 border-y dark:divide-slate-800 dark:border-slate-800">
                     {orderIds.length === 0
-                        ? this.renderEmpty()
+                        ? renderEmpty()
                         : orderIds.map(this.renderTodoItem)}
                 </ul>
 

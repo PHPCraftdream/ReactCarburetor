@@ -7,6 +7,42 @@ interface ITodoItemProps {
     id: string;
 }
 
+/** The tick drawn inside the checkbox. */
+function renderCheckIcon() {
+    return (
+        <svg
+            className="pointer-events-none absolute left-1 size-3 text-white opacity-0 transition-opacity dark:text-slate-900"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="3.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+        >
+            <path d="M4 12.5l5.5 5.5L20 6"/>
+        </svg>
+    );
+}
+
+/** The bin icon on the delete button. */
+function renderTrashIcon() {
+    return (
+        <svg
+            className="size-4"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+        >
+            <path d="M4 7h16M9 7V4.5h6V7M10 11.5v6M14 11.5v6M6.5 7l.9 12.2a1.3 1.3 0 001.3 1.3h6.6a1.3 1.3 0 001.3-1.3L17.5 7"/>
+        </svg>
+    );
+}
+
 /**
  * A row subscribes to its own todo: it reads `items.<id>` and nothing else.
  * That is why editing one todo re-renders one row instead of the whole list.
@@ -44,42 +80,6 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
         this.props.carburetor.deleteTodo(this.props.id);
     }
 
-    /** The tick drawn inside the checkbox. */
-    public renderCheckIcon() {
-        return (
-            <svg
-                className="pointer-events-none absolute left-1 size-3 text-white opacity-0 transition-opacity dark:text-slate-900"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-            >
-                <path d="M4 12.5l5.5 5.5L20 6"/>
-            </svg>
-        );
-    }
-
-    /** The bin icon on the delete button. */
-    public renderTrashIcon() {
-        return (
-            <svg
-                className="size-4"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-            >
-                <path d="M4 7h16M9 7V4.5h6V7M10 11.5v6M14 11.5v6M6.5 7l.9 12.2a1.3 1.3 0 001.3 1.3h6.6a1.3 1.3 0 001.3-1.3L17.5 7"/>
-            </svg>
-        );
-    }
-
     /** Reads `items.<id>` alone, so editing a neighbour does not re-render this row. */
     public render() {
         const {id} = this.props;
@@ -110,7 +110,7 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
                         data-testid="todo-done"
                         className="peer size-5 shrink-0 cursor-pointer appearance-none rounded-md border border-slate-300 bg-white transition-colors hover:border-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:checked:border-slate-100 dark:checked:bg-slate-100"
                     />
-                    {this.renderCheckIcon()}
+                    {renderCheckIcon()}
                 </label>
 
                 <input
@@ -137,7 +137,7 @@ export class TodoItem extends AntiHookComponent<ITodoItemProps> {
                     data-testid="todo-delete"
                     className="rounded-lg p-1.5 text-slate-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 group-hover:opacity-100 max-sm:opacity-100 dark:hover:bg-red-500/10 dark:hover:text-red-400"
                 >
-                    {this.renderTrashIcon()}
+                    {renderTrashIcon()}
                 </button>
             </li>
         );
