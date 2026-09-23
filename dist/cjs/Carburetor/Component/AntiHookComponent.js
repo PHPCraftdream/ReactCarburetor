@@ -135,6 +135,7 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         let rawRender;
         let boundary;
         let wrapped = false;
+        let receiver;
         const proxy = new Proxy(this, {
             get: (target, key)=>{
                 if (key !== RENDER_KEY) return Reflect.get(target, key, target);
@@ -142,7 +143,7 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
                 if ('function' != typeof raw) return raw;
                 if (void 0 === boundary || rawRender !== raw) {
                     rawRender = raw;
-                    boundary = this.buildRenderBoundary(raw);
+                    boundary = this.buildRenderBoundary(raw, receiver);
                 }
                 return boundary;
             },
@@ -150,14 +151,14 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
                 if (key !== RENDER_KEY) return Reflect.set(target, key, value, target);
                 rawRender = value;
                 wrapped = 'function' == typeof value;
-                boundary = wrapped ? this.buildRenderBoundary(value) : void 0;
+                boundary = wrapped ? this.buildRenderBoundary(value, receiver) : void 0;
                 return true;
             },
             defineProperty: (target, key, descriptor)=>{
                 if (key !== RENDER_KEY) return Reflect.defineProperty(target, key, descriptor);
                 rawRender = descriptor.value;
                 wrapped = 'function' == typeof descriptor.value;
-                boundary = wrapped ? this.buildRenderBoundary(descriptor.value) : void 0;
+                boundary = wrapped ? this.buildRenderBoundary(descriptor.value, receiver) : void 0;
                 return true;
             },
             deleteProperty: (target, key)=>{
@@ -170,13 +171,14 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
             },
             has: (target, key)=>key === RENDER_KEY ? wrapped || Reflect.has(target, RENDER_KEY) : Reflect.has(target, key)
         });
+        receiver = proxy;
         return proxy;
     }
-    buildRenderBoundary(realRender) {
+    buildRenderBoundary(realRender, receiver) {
         return ()=>{
             const attempt = this.openRenderAttempt();
             try {
-                return realRender.call(this);
+                return realRender.call(receiver);
             } catch (error) {
                 attempt.abandoned = true;
                 throw error;

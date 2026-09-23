@@ -1,1 +1,1 @@
-import{isPlainObject as r}from"./isPlainObject.mjs";let e=e=>Array.isArray(e)?Array.from(e):r(e)?{...e}:e;export{e as detachSelection};
+import{isPlainObject as e}from"./isPlainObject.mjs";import{ownEnumerableKeys as r}from"./ownEnumerableKeys.mjs";let t=(n,o)=>{if("object"!=typeof n||null===n)return n;if(o.has(n))return o.get(n);let a=Array.isArray(n);if(!a&&!e(n))return n;let i=a?[]:{};return o.set(n,i),r(n).forEach(e=>{i[e]=t(n[e],o)}),i},n=e=>t(e,new WeakMap);export{n as detachSelection};

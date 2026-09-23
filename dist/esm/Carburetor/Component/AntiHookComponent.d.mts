@@ -263,7 +263,17 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * the attempt abandoned when the render throws (an error, or a Suspense thenable), and
      * closes it right after — a commit never consumes what an abandoned render collected.
      *
-     * @param realRender - the subclass's own render, called with the raw instance as `this`
+     * The render-attempt bookkeeping stays anchored to the raw base instance (`this`, closed
+     * over here) regardless of receiver: `renderAttempt`/`pendingAttempt` are ordinary fields,
+     * not native `#private` ones, so there is exactly one logical component either way.
+     *
+     * @param realRender - the subclass's own render
+     * @param receiver - the object `realRender` runs against: the proxy this constructor
+     * returns, not the raw instance — a subclass's native `#private` field is installed on
+     * that returned proxy (whatever a derived constructor returns becomes `this` for the rest
+     * of construction, including field initializers), and native private access brand-checks
+     * its receiver, so calling `realRender` against anything else throws for a subclass that
+     * uses one
      */
     private buildRenderBoundary;
     /**

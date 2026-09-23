@@ -33,29 +33,29 @@ __webpack_require__.d(__webpack_exports__, {
 const DiagnosticsInstance_js_namespaceObject = require("../../Store/Diagnostics/DiagnosticsInstance.js");
 const liveViews_js_namespaceObject = require("../../Store/Tracking/liveViews.js");
 const external_isPlainObject_js_namespaceObject = require("./isPlainObject.js");
+const external_ownEnumerableKeys_js_namespaceObject = require("./ownEnumerableKeys.js");
+const describeSegment = (segment)=>'symbol' == typeof segment ? '[' + segment.toString() + ']' : segment;
+const findLiveView = (value, visited, path)=>{
+    if (liveViews_js_namespaceObject.liveViews.has(value)) return path;
+    if ('object' != typeof value || null === value) return;
+    if (!Array.isArray(value) && !(0, external_isPlainObject_js_namespaceObject.isPlainObject)(value)) return;
+    if (visited.has(value)) return;
+    visited.add(value);
+    const members = value;
+    for (const key of (0, external_ownEnumerableKeys_js_namespaceObject.ownEnumerableKeys)(value)){
+        const found = findLiveView(members[key], visited, [
+            ...path,
+            key
+        ]);
+        if (void 0 !== found) return found;
+    }
+};
 const reportLiveViewEscape = (next)=>{
-    const guidance = "A child reading it in its own render records nothing, so no subscription covers what it sees and it never hears about changes. Select plain values — primitives, or plain objects and arrays built from them.";
-    if (liveViews_js_namespaceObject.liveViews.has(next)) {
-        DiagnosticsInstance_js_namespaceObject.diagnostics.report('a connectSelection() snapshot handed a child a live store view as its whole value. ' + guidance);
-        return true;
-    }
-    if (Array.isArray(next)) {
-        const index = next.findIndex((member)=>liveViews_js_namespaceObject.liveViews.has(member));
-        if (-1 !== index) {
-            DiagnosticsInstance_js_namespaceObject.diagnostics.report('a connectSelection() snapshot handed a child a live store view as array member ' + index + '. ' + guidance);
-            return true;
-        }
-        return false;
-    }
-    if ((0, external_isPlainObject_js_namespaceObject.isPlainObject)(next)) {
-        const members = next;
-        const key = Object.keys(members).find((memberKey)=>liveViews_js_namespaceObject.liveViews.has(members[memberKey]));
-        if (void 0 !== key) {
-            DiagnosticsInstance_js_namespaceObject.diagnostics.report('a connectSelection() snapshot handed a child a live store view as member "' + key + '". ' + guidance);
-            return true;
-        }
-    }
-    return false;
+    const location = findLiveView(next, new Set(), []);
+    if (void 0 === location) return false;
+    const where = 0 === location.length ? 'as its whole value' : 'at "' + location.map(describeSegment).join('.') + '"';
+    DiagnosticsInstance_js_namespaceObject.diagnostics.report('a connectSelection() snapshot handed a child a live store view ' + where + ". A child reading it in its own render records nothing, so no subscription covers what it sees and it never hears about changes. Select plain values — primitives, or plain objects and arrays built from them.");
+    return true;
 };
 exports.reportLiveViewEscape = __webpack_exports__.reportLiveViewEscape;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
