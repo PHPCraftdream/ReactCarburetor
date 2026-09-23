@@ -38,7 +38,7 @@ const joinPath_js_namespaceObject = require("../../Store/Paths/joinPath.js");
 const deepClone_js_namespaceObject = require("../../Store/Utils/deepClone.js");
 const external_describeError_js_namespaceObject = require("../describeError.js");
 const external_createAbortHandle_js_namespaceObject = require("../createAbortHandle.js");
-const external_encodeCacheKey_js_namespaceObject = require("./encodeCacheKey.js");
+const external_escapeCacheKey_js_namespaceObject = require("./escapeCacheKey.js");
 const external_getInitialCacheEntry_js_namespaceObject = require("./getInitialCacheEntry.js");
 const DEFAULT_TTL = 30000;
 const DEFAULT_MAX_ENTRIES = 100;
@@ -92,7 +92,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         const json = JSON.stringify(void 0 === args ? null : args);
         const memoized = this.lastKeyArgs === args && void 0 !== this.lastKeyValue;
         if (memoized && this.lastKeyJson === json && void 0 !== this.lastKeyValue) return this.lastKeyValue;
-        const key = (0, external_encodeCacheKey_js_namespaceObject.encodeCacheKey)(args);
+        const key = (0, external_escapeCacheKey_js_namespaceObject.escapeCacheKey)(json);
         const development = "u" > typeof process && 'production' !== process.env.NODE_ENV;
         if (memoized && development && !this.keyMutationReported) {
             this.keyMutationReported = true;

@@ -9,7 +9,7 @@ import { Carburetor } from "../../Store/Carburetor.mjs";
  * shape an API layer needs — and the reason a consumer does not have to add a query library next to
  * the state engine.
  *
- * Entries live in a flat dictionary under keys from `encodeCacheKey`, so path tracking does the
+ * Entries live in a flat dictionary under keys from `escapeCacheKey`, so path tracking does the
  * precision for free: a component reading one entry is not woken by another entry's answer. See
  * docs/promise-cache.md for the decisions behind the shape, the escaped key and the TTL.
  */
@@ -102,7 +102,7 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
      *
      * The segment is built by `joinPath`, the same builder the tracking proxies use, rather than
      * concatenating the stored key by hand: the stored key is already escaped once by
-     * `encodeCacheKey`, and as a path segment it is escaped again, so what a reader subscribes to
+     * `escapeCacheKey`, and as a path segment it is escaped again, so what a reader subscribes to
      * is exactly the path a write through the draft proxy records. Hand-appending the stored key
      * made the two disagree for any key holding `.` or `~`, and those entries never notified.
      */

@@ -1,0 +1,1 @@
+import{PATH_SEPARATOR as t}from"../../Store/Paths/PathSeparator.mjs";let e=e=>e.split("~").join("~0").split(t).join("~1");export{e as escapeCacheKey};

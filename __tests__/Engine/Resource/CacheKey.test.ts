@@ -1,5 +1,6 @@
 import {pathsIntersect, WILDCARD_PATH} from "@/Carburetor";
 import {encodeCacheKey} from "@/Carburetor/Resource/Cache/encodeCacheKey";
+import {escapeCacheKey} from "@/Carburetor/Resource/Cache/escapeCacheKey";
 
 /**
  * The key has to survive being used as one path segment, which is the whole reason it is escaped.
@@ -65,5 +66,12 @@ describe('cache keys', () => {
         keys.forEach((key: string) => {
             expect(key).not.toEqual(WILDCARD_PATH);
         });
+    });
+
+    test('the escaper of an already-serialized string is the exact second half of the encode', () => {
+        expect(escapeCacheKey('{"id":"a.b"}')).toEqual(encodeCacheKey({id: 'a.b'}));
+        // Tilde first, separator second — the same order, so an escaped-looking argument survives.
+        expect(escapeCacheKey('"~1"')).toEqual('"~01"');
+        expect(escapeCacheKey('"a.b"')).toEqual('"a~1b"');
     });
 });

@@ -1,1 +1,1 @@
-import{PATH_SEPARATOR as t}from"../../Store/Paths/PathSeparator.mjs";let o=o=>JSON.stringify(void 0===o?null:o).split("~").join("~0").split(t).join("~1");export{o as encodeCacheKey};
+import{escapeCacheKey as e}from"./escapeCacheKey.mjs";let o=o=>e(JSON.stringify(void 0===o?null:o));export{o as encodeCacheKey};

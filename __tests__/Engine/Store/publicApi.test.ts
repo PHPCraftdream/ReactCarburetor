@@ -48,6 +48,7 @@ const INTERNALS: string[] = [
     'createProxyCache',
     'createReadProxy',
     'createWriteProxy',
+    'escapeCacheKey',
     'joinPath',
     'PATH_SEPARATOR',
     'UpdateBatch',

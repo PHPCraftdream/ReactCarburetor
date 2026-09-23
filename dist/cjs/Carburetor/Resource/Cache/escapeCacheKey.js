@@ -28,13 +28,13 @@ var __webpack_require__ = {};
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
-    encodeCacheKey: ()=>encodeCacheKey
+    escapeCacheKey: ()=>escapeCacheKey
 });
-const external_escapeCacheKey_js_namespaceObject = require("./escapeCacheKey.js");
-const encodeCacheKey = (args)=>(0, external_escapeCacheKey_js_namespaceObject.escapeCacheKey)(JSON.stringify(void 0 === args ? null : args));
-exports.encodeCacheKey = __webpack_exports__.encodeCacheKey;
+const PathSeparator_js_namespaceObject = require("../../Store/Paths/PathSeparator.js");
+const escapeCacheKey = (json)=>json.split('~').join('~0').split(PathSeparator_js_namespaceObject.PATH_SEPARATOR).join('~1');
+exports.escapeCacheKey = __webpack_exports__.escapeCacheKey;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
-    "encodeCacheKey"
+    "escapeCacheKey"
 ].indexOf(__rspack_i)) exports[__rspack_i] = __webpack_exports__[__rspack_i];
 Object.defineProperty(exports, '__esModule', {
     value: true

@@ -435,18 +435,40 @@ describe('ResourceCache', () => {
         expect(viewCache().size).toEqual(0);
     });
 
-    test('one pathOf plus one getEntry encodes the arguments once', () => {
-        // mockClear first: earlier tests in this file also encoded keys.
-        rstest.mocked(encodeCacheKey).mockClear();
-
+    test('one pathOf plus one getEntry serializes the arguments once per lookup, cold and warm', () => {
         const loader = makeLoader();
         const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
         const args = {id: 'a'};
 
-        cache.pathOf(args);
-        cache.getEntry(args);
+        // Spying JSON.stringify itself, not encodeCacheKey: since R7-05 the cache escapes its own
+        // JSON and the public encoder is no longer on the read path, so stringify count is the
+        // honest measure of "one render does not over-serialize".
+        const stringify = rstest.spyOn(JSON, 'stringify');
 
-        expect(encodeCacheKey).toHaveBeenCalledTimes(1);
+        try {
+            // mockClear first: earlier tests in this file also encoded keys.
+            rstest.mocked(encodeCacheKey).mockClear();
+            stringify.mockClear();
+
+            // Cold pass: pathOf encodes — one stringify, then the JSON string is escaped, not
+            // re-stringified — and getEntry validates the memo with its own stringify (R6-05 makes
+            // that one unavoidable). Two, where the R7 report measured three.
+            cache.pathOf(args);
+            cache.getEntry(args);
+
+            expect(stringify).toHaveBeenCalledTimes(2);
+            expect(encodeCacheKey).not.toHaveBeenCalled();
+
+            // Warm pass: both lookups are memo hits; each still pays its single validation stringify.
+            stringify.mockClear();
+
+            cache.pathOf(args);
+            cache.getEntry(args);
+
+            expect(stringify).toHaveBeenCalledTimes(2);
+        } finally {
+            stringify.mockRestore();
+        }
     });
 
     test('a reader of an entry whose key holds the separator is woken when it settles', async () => {

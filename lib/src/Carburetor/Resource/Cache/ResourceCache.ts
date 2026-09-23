@@ -14,7 +14,7 @@ import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {describeError} from "@/Carburetor/Resource/describeError";
 import {createAbortHandle} from "@/Carburetor/Resource/createAbortHandle";
-import {encodeCacheKey} from "./encodeCacheKey";
+import {escapeCacheKey} from "./escapeCacheKey";
 import {getInitialCacheEntry} from "./getInitialCacheEntry";
 
 // Declared locally rather than through @types/node, like DevelopmentFlag does: bundlers
@@ -37,7 +37,7 @@ const ENTRIES_PREFIX: string = `entries${PATH_SEPARATOR}`;
  * shape an API layer needs — and the reason a consumer does not have to add a query library next to
  * the state engine.
  *
- * Entries live in a flat dictionary under keys from `encodeCacheKey`, so path tracking does the
+ * Entries live in a flat dictionary under keys from `escapeCacheKey`, so path tracking does the
  * precision for free: a component reading one entry is not woken by another entry's answer. See
  * docs/promise-cache.md for the decisions behind the shape, the escaped key and the TTL.
  */
@@ -159,8 +159,9 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
      * key — and development reports the mutation once, since nothing in `TArgs` can forbid it.
      */
     public keyOf = (args: TArgs): string => {
-        // The one stringify the memo cannot skip: it is the validation. It mirrors encodeCacheKey's
-        // encoding (undefined becomes null), so the compared strings describe the same values.
+        // The one stringify the memo cannot skip: it is the validation. It is also the serialization
+        // encodeCacheKey would do (undefined becomes null), so on a miss the key is this exact
+        // string escaped, and nothing below serializes a second time (R7-05).
         const json = JSON.stringify(args === undefined ? null : args) as string;
 
         const memoized = this.lastKeyArgs === args && this.lastKeyValue !== undefined;
@@ -169,7 +170,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
             return this.lastKeyValue;
         }
 
-        const key = encodeCacheKey(args);
+        const key = escapeCacheKey(json);
 
         // A local over the same member expression the other diagnostics compare: bundlers
         // substitute it at build time, so this block still drops from a production bundle.
@@ -201,7 +202,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
      *
      * The segment is built by `joinPath`, the same builder the tracking proxies use, rather than
      * concatenating the stored key by hand: the stored key is already escaped once by
-     * `encodeCacheKey`, and as a path segment it is escaped again, so what a reader subscribes to
+     * `escapeCacheKey`, and as a path segment it is escaped again, so what a reader subscribes to
      * is exactly the path a write through the draft proxy records. Hand-appending the stored key
      * made the two disagree for any key holding `.` or `~`, and those entries never notified.
      */

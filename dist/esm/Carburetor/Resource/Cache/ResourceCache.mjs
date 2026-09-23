@@ -6,7 +6,7 @@ import { joinPath } from "../../Store/Paths/joinPath.mjs";
 import { deepClone } from "../../Store/Utils/deepClone.mjs";
 import { describeError } from "../describeError.mjs";
 import { createAbortHandle } from "../createAbortHandle.mjs";
-import { encodeCacheKey } from "./encodeCacheKey.mjs";
+import { escapeCacheKey } from "./escapeCacheKey.mjs";
 import { getInitialCacheEntry } from "./getInitialCacheEntry.mjs";
 const DEFAULT_TTL = 30000;
 const DEFAULT_MAX_ENTRIES = 100;
@@ -60,7 +60,7 @@ class ResourceCache extends Carburetor {
         const json = JSON.stringify(void 0 === args ? null : args);
         const memoized = this.lastKeyArgs === args && void 0 !== this.lastKeyValue;
         if (memoized && this.lastKeyJson === json && void 0 !== this.lastKeyValue) return this.lastKeyValue;
-        const key = encodeCacheKey(args);
+        const key = escapeCacheKey(json);
         const development = "u" > typeof process && 'production' !== process.env.NODE_ENV;
         if (memoized && development && !this.keyMutationReported) {
             this.keyMutationReported = true;
