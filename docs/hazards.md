@@ -1074,8 +1074,8 @@ the instance, the component base's own override points (`useEffects`, `useEffect
 `useComputed`, …) which the base calls as `this.<name>()`, and any member of a class with an
 `implements` clause — a contract the linter cannot verify. Mechanical exclusions apply regardless:
 `constructor`, getters and setters, `accessor`, body-less declarations, `override`, decorated
-members, computed names. Both name lists are pinned by tests against the sources they come from;
-the rule's own source carries the full list. Eligible methods and arrow-function fields ship an
+members, computed names. The component-base list is pinned by a test against its source; the rule's
+own source carries both full lists. Eligible methods and arrow-function fields ship an
 autofix (`--fix`) that moves the function above the class and rewrites its `this.<name>` references.
 Function-expression fields, methods with an explicit `this` parameter, and members whose references
 cannot all be safely rewritten are report-only; the closure case also reports without a fix. Scope
