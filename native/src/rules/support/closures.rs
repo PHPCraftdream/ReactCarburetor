@@ -147,7 +147,25 @@ pub fn analyze_field<'a>(
     // costs nothing per render and there is nothing to extract. The field's own function value is
     // the member's own body, so it is the root rather than a candidate.
     let Some(Expression::FunctionExpression(root)) = &field.value else {
-        return MemberAnalysis { closures: Vec::new(), class_dependency: false };
+        // An arrow field is that function value in arrow clothing: its signature and body can
+        // still need the class, and the member-level answer is what `require-module-function`
+        // reads. Its body stays the root, so no closure is collected here — a closure inside the
+        // field's body remains the non-candidate it already was.
+        let class_dependency = match &field.value {
+            Some(Expression::ArrowFunctionExpression(arrow)) => {
+                let mut scan = DependencyScan {
+                    type_parameters: class_type_parameters(semantic, field.node_id()),
+                    found: false,
+                };
+
+                scan.visit_arrow_function_expression(arrow);
+
+                scan.found
+            }
+            _ => false,
+        };
+
+        return MemberAnalysis { closures: Vec::new(), class_dependency };
     };
 
     analyze(root, field.span, field.node_id(), semantic, member_is_render)
@@ -1819,7 +1837,9 @@ class Widget extends AntiHookComponent {
             false,
             |analysis| {
                 assert_eq!(analysis.closures.len(), 0);
-                assert!(!analysis.class_dependency);
+                // No closure is collected from the arrow field, but the member-level dependency is
+                // still computed: the field's body reads `this.handle`, so it needs the class.
+                assert!(analysis.class_dependency);
             },
         );
     }

@@ -89,6 +89,7 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("require-effect-deps", Severity::Warn),
     ("require-emit-after-draft-write", Severity::Error),
     ("require-method-for-closure", Severity::Warn),
+    ("require-module-function", Severity::Warn),
     ("require-subscription-disposal", Severity::Warn),
     ("require-super-in-lifecycle", Severity::Error),
 ];
@@ -412,8 +413,8 @@ mod tests {
     }
 
     #[test]
-    fn the_preset_has_22_bare_rules_and_one_off() {
-        assert_eq!(DEFAULT_SEVERITIES.len(), 22);
+    fn the_preset_has_24_bare_rules_and_one_off() {
+        assert_eq!(DEFAULT_SEVERITIES.len(), 24);
         assert!(DEFAULT_SEVERITIES.iter().all(|(name, _)| !name.starts_with(PREFIX)));
 
         let off = DEFAULT_SEVERITIES
