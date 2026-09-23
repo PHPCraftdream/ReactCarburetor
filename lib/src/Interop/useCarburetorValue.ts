@@ -1,6 +1,8 @@
 import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react";
-import {deepClone, ICarburetor, isTrackable, TPath, TPathSet, TSubscriber} from "@/Carburetor";
-import {isExoticValue} from "@/Carburetor/Store/Utils/isExoticValue";
+import {ICarburetor, TPath, TPathSet, TSubscriber} from "@/Carburetor";
+import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {detachOpaque} from "@/Carburetor/Store/Utils/detachOpaque";
+import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<T extends object, R> {
@@ -33,41 +35,9 @@ const sameReads = (a: TPathSet, b: TPathSet): boolean => {
     return true;
 };
 
-/**
- * A detached copy of an opaque selector result: a live Map, Set or Date mutates in place while
- * its reference stays identical, so it can neither certify equality nor serve as the immutable
- * snapshot React's external-store contract requires.
- *
- * Class instances have no generic safe copy and stay live — the same known limit `detachSelection`
- * documents. Plain containers never reach here: `isTrackable` routes them to `deepClone`.
- */
-const snapshotOpaque = <T>(value: T): T => {
-    if (value instanceof Date) {
-        return new Date(value.getTime()) as unknown as T;
-    }
-
-    if (value instanceof Map) {
-        const copy = new Map<unknown, unknown>();
-
-        value.forEach((member: unknown, key: unknown) => {
-            copy.set(key, deepClone(member));
-        });
-
-        return copy as unknown as T;
-    }
-
-    if (value instanceof Set) {
-        const copy = new Set<unknown>();
-
-        value.forEach((member: unknown) => {
-            copy.add(deepClone(member));
-        });
-
-        return copy as unknown as T;
-    }
-
-    return value;
-};
+/** Names a live instance for the development report: the class name when one is reachable. */
+const describeInstance = (instance: object): string =>
+    Object.getPrototypeOf(instance)?.constructor?.name || 'untracked class';
 
 /**
  * Subscribes to exactly the paths the selector reads, the same precision the class API
@@ -99,6 +69,10 @@ export const useCarburetorValue = <T extends object, R>(
     const pendingReads = useRef<TPathSet>(new Set<TPath>());
     const active = useRef<IActiveSubscription<T> | null>(null);
     const notify = useRef<TSubscriber | null>(null);
+
+    // Reported once per hook instance: the mistake is the selector's declaration, and one
+    // complaint names it.
+    const liveInstanceReported = useRef(false);
 
     const install = useCallback((): void => {
         const onStoreChange = notify.current;
@@ -169,18 +143,30 @@ export const useCarburetorValue = <T extends object, R>(
 
         // A selector returning a branch hands back the live proxy, and traversal records no
         // read — the subscription would watch nothing and the value would mutate in place.
-        // Cloning through the proxy fixes both at once: its ownKeys records the branch, every
+        // Detaching through the proxy fixes both at once: its ownKeys records the branch, every
         // leaf is recorded on the way out, and the caller gets a detached copy. Selector-built
         // fresh objects take the same copy, which keeps one rule instead of a proxy-detection
-        // heuristic.
-        if (isTrackable(next)) {
-            next = deepClone(next);
-        } else if (isExoticValue(next)) {
-            // R6-03: reusing the previous snapshot by reference is only safe for immutable
-            // values. A live Map mutated in place would keep its reference across versions,
-            // so Object.is would certify the mutation as "equal" and React would never see
-            // it: hand out a fresh detached copy per store version instead.
-            next = snapshotOpaque(next);
+        // heuristic. R7-01: the detach recurses, so a Map, Set or Date nested at any depth is
+        // copied too and an opaque member can no longer keep an earlier snapshot alive.
+        if (next !== null && typeof next === 'object') {
+            // R7-01: a class instance still passes through live — no generic safe copy exists —
+            // but no longer silently. Development reports it once and names the fix; production
+            // compiles the report out and leaves the documented pass-through behavior unchanged.
+            const reportLiveInstance = IS_DEVELOPMENT && !liveInstanceReported.current
+                ? (instance: object): void => {
+                    liveInstanceReported.current = true;
+
+                    diagnostics.report(
+                        'useCarburetorValue() handed React a live ' + describeInstance(instance) +
+                        ' instance. A class instance has no safe copy, so the same object is handed ' +
+                        'out again after every store change and an in-place mutation is certified as ' +
+                        'unchanged — the component renders stale data. Select plain values instead: ' +
+                        'the fields the component renders, or a plain object built from them.'
+                    );
+                }
+                : undefined;
+
+            next = detachOpaque(next, reportLiveInstance);
         }
 
         pendingReads.current = reads;

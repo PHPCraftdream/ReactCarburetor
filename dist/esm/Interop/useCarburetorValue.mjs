@@ -1,28 +1,15 @@
 import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
-import { deepClone, isTrackable } from "../Carburetor/index.mjs";
-import { isExoticValue } from "../Carburetor/Store/Utils/isExoticValue.mjs";
+import { diagnostics } from "../Carburetor/Store/Diagnostics/DiagnosticsInstance.mjs";
+import { detachOpaque } from "../Carburetor/Store/Utils/detachOpaque.mjs";
+import { IS_DEVELOPMENT } from "../Carburetor/Store/Utils/DevelopmentFlag.mjs";
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
     return true;
 };
-const snapshotOpaque = (value)=>{
-    if (value instanceof Date) return new Date(value.getTime());
-    if (value instanceof Map) {
-        const copy = new Map();
-        value.forEach((member, key)=>{
-            copy.set(key, deepClone(member));
-        });
-        return copy;
-    }
-    if (value instanceof Set) {
-        const copy = new Set();
-        value.forEach((member)=>{
-            copy.add(deepClone(member));
-        });
-        return copy;
-    }
-    return value;
+const describeInstance = (instance)=>{
+    var _Object_getPrototypeOf_constructor, _Object_getPrototypeOf;
+    return (null == (_Object_getPrototypeOf = Object.getPrototypeOf(instance)) ? void 0 : null == (_Object_getPrototypeOf_constructor = _Object_getPrototypeOf.constructor) ? void 0 : _Object_getPrototypeOf_constructor.name) || 'untracked class';
 };
 const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const cache = useRef({
@@ -35,6 +22,7 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const pendingReads = useRef(new Set());
     const active = useRef(null);
     const notify = useRef(null);
+    const liveInstanceReported = useRef(false);
     const install = useCallback(()=>{
         const onStoreChange = notify.current;
         if (!onStoreChange) return;
@@ -75,8 +63,13 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
         if (entry.filled && entry.carburetor === carburetor && entry.select === select && entry.version === version) return entry.value;
         const reads = new Set();
         let next = select(carburetor.read((path)=>reads.add(path)));
-        if (isTrackable(next)) next = deepClone(next);
-        else if (isExoticValue(next)) next = snapshotOpaque(next);
+        if (null !== next && 'object' == typeof next) {
+            const reportLiveInstance = IS_DEVELOPMENT && !liveInstanceReported.current ? (instance)=>{
+                liveInstanceReported.current = true;
+                diagnostics.report('useCarburetorValue() handed React a live ' + describeInstance(instance) + " instance. A class instance has no safe copy, so the same object is handed out again after every store change and an in-place mutation is certified as unchanged — the component renders stale data. Select plain values instead: the fields the component renders, or a plain object built from them.");
+            } : void 0;
+            next = detachOpaque(next, reportLiveInstance);
+        }
         pendingReads.current = reads;
         if (entry.filled && isEqual(entry.value, next)) {
             cache.current = {

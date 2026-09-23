@@ -92,6 +92,60 @@ class IndexedCarburetor extends Carburetor<IIndexedData> {
     };
 }
 
+class Box {
+    public value: number;
+
+    public constructor(value: number) {
+        this.value = value;
+    }
+}
+
+interface IBoxedData {
+    box: Box;
+}
+
+class BoxedCarburetor extends Carburetor<IBoxedData> {
+    public setBoxValue = (value: number) => {
+        this.draft.box.value = value;
+
+        this.emitUpdate();
+    };
+}
+
+interface IMatrixData {
+    matrix: Map<string, Map<string, number>>;
+}
+
+const getMatrixData = (): IMatrixData =>
+    ({matrix: new Map([['row', new Map([['a', 1]])]])});
+
+class MatrixCarburetor extends Carburetor<IMatrixData> {
+    public setCell = (row: string, key: string, value: number) => {
+        this.draft.matrix.get(row)?.set(key, value);
+
+        this.emitUpdate();
+    };
+}
+
+interface IMixedData {
+    index: Map<string, number>;
+    tags: Set<string>;
+    stamp: Date;
+}
+
+const getMixedData = (): IMixedData =>
+    ({index: new Map([['a', 1]]), tags: new Set(['x']), stamp: new Date(1000)});
+
+class MixedCarburetor extends Carburetor<IMixedData> {
+    public mutateAll = () => {
+        this.draft.index.set('a', 2);
+        this.draft.tags.add('y');
+        this.draft.stamp.setTime(2000);
+
+        this.emitUpdate();
+    };
+}
+
 describe('hooks interop', () => {
     test('a function component reads a carburetor and re-renders on change', () => {
         const carburetor = new ProfileCarburetor(getData());
@@ -395,6 +449,134 @@ describe('hooks interop', () => {
         act(() => carburetor.setTitle('u'));
         expect(renders).toBeGreaterThan(afterMount);
         expect(container.querySelector('.title')?.textContent).toEqual('u');
+
+        unmount();
+    });
+
+    test('a class-instance selector result is handed out live, reported once in development (R7-01)', () => {
+        const carburetor = new BoxedCarburetor({box: new Box(1)});
+        const reported: string[] = [];
+        const original = console.error;
+
+        console.error = (message: string) => reported.push(message);
+
+        const BoxView = () => {
+            const box = useCarburetorValue(carburetor, (data) => data.box);
+
+            return <div className="value">{String(box.value)}</div>;
+        };
+
+        try {
+            const {container, unmount} = render(<BoxView/>);
+
+            // The instance reaches the component live the moment it is selected: the report is
+            // about the declaration, not about any particular write.
+            expect(reported.length).toEqual(1);
+            expect(reported[0]).toContain('useCarburetorValue() handed React a live Box instance');
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+            act(() => carburetor.setBoxValue(2));
+
+            // No safe copy exists, so the documented boundary stands: the same live instance is
+            // handed out again, Object.is certifies it unchanged, and the DOM stays stale — the
+            // report above is what names the hazard and the fix ("Select plain values").
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+            // The report is not repeated per store version.
+            expect(reported.length).toEqual(1);
+
+            unmount();
+        } finally {
+            console.error = original;
+        }
+    });
+
+    test('a plain envelope wrapping a Map updates and leaves earlier snapshots detached (R7-01)', () => {
+        const carburetor = new IndexedCarburetor(getIndexData());
+        const seen: Array<{index: Map<string, number>}> = [];
+
+        const select = (data: IIndexedData) => ({index: data.index});
+        const isEqual = (a: {index: Map<string, number>}, b: {index: Map<string, number>}) => a.index === b.index;
+
+        const EnvelopeView = () => {
+            const value = useCarburetorValue(carburetor, select, isEqual);
+
+            seen.push(value);
+
+            return <div className="value">{value.index.get('a')}</div>;
+        };
+
+        const {container, unmount} = render(<EnvelopeView/>);
+
+        expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+        const firstSnapshot = seen[0];
+
+        act(() => carburetor.setIndex('a', 2));
+
+        // The report's repro: the comparator used to see the same live Map in both snapshots and
+        // certified the mutation equal, so the DOM stayed stale. With every envelope carrying its
+        // own detached Map, the change is seen and the render happens.
+        expect(container.querySelector('.value')?.textContent).toEqual('2');
+        // The first snapshot's Map was never the live one: it did not mutate with the store.
+        expect(firstSnapshot.index.get('a')).toEqual(1);
+        expect(firstSnapshot.index).not.toBe(carburetor.getData().index);
+
+        unmount();
+    });
+
+    test('a Map of Maps detaches every level and the earlier snapshot stays intact (R7-01)', () => {
+        const carburetor = new MatrixCarburetor(getMatrixData());
+        const seen: Array<Map<string, Map<string, number>>> = [];
+
+        const MatrixView = () => {
+            const matrix = useCarburetorValue(carburetor, (data) => data.matrix);
+
+            seen.push(matrix);
+
+            return <div className="value">{matrix.get('row')?.get('a')}</div>;
+        };
+
+        const {container, unmount} = render(<MatrixView/>);
+
+        expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+        const firstSnapshot = seen[0];
+
+        act(() => carburetor.setCell('row', 'a', 2));
+
+        expect(container.querySelector('.value')?.textContent).toEqual('2');
+        // The inner Map was detached too: the earlier snapshot still reads the old value.
+        expect(firstSnapshot.get('row')?.get('a')).toEqual(1);
+        expect(firstSnapshot.get('row')).not.toBe(carburetor.getData().matrix.get('row'));
+
+        unmount();
+    });
+
+    test('a plain result carrying Map, Set and Date detaches all of them (R7-01)', () => {
+        const carburetor = new MixedCarburetor(getMixedData());
+        const seen: Array<{index: Map<string, number>; tags: Set<string>; stamp: Date}> = [];
+
+        const MixedView = () => {
+            const value = useCarburetorValue(carburetor, (data) =>
+                ({index: data.index, tags: data.tags, stamp: data.stamp}));
+
+            seen.push(value);
+
+            return <div className="value">{value.index.get('a')}:{value.tags.size}:{value.stamp.getTime()}</div>;
+        };
+
+        const {container, unmount} = render(<MixedView/>);
+
+        expect(container.querySelector('.value')?.textContent).toEqual('1:1:1000');
+
+        act(() => carburetor.mutateAll());
+
+        expect(container.querySelector('.value')?.textContent).toEqual('2:2:2000');
+        // None of the opaque members of the earlier snapshot moved with the store.
+        expect(seen[0].index.get('a')).toEqual(1);
+        expect(seen[0].tags.has('y')).toEqual(false);
+        expect(seen[0].stamp.getTime()).toEqual(1000);
 
         unmount();
     });
