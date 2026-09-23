@@ -42,18 +42,6 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * its committed description — ending the subscription; the declaration stays reusable.
      */
     protected connections: IConnection[];
-    /**
-     * The facades connect()/connectSelection() have handed out, parallel to `connections` (one
-     * per persistent declaration, in the same order).
-     *
-     * `connect()`'s return value is otherwise not retained anywhere on the instance — the caller
-     * usually assigns it straight to a field of their own — so this is the only way
-     * componentWillUnmount can reach each declaration's underlying read-proxy cache and call its
-     * `release()` (R3-07): without it, a mounted-then-unmounted component's watcher slot sits in
-     * its store's shared invalidation scope until garbage collection happens to notice the view
-     * is unreachable, and nothing here forces that to happen promptly.
-     */
-    protected connectionViews: object[];
     /** The render attempt currently open, if any; recorders write only while this is set. */
     protected renderAttempt: IRenderAttempt | undefined;
     /** The last closed attempt, waiting for the commit that may consume it. */
@@ -268,6 +256,14 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * so the instance keeps its ordinary shape: own keys, property descriptors and the
      * prototype chain are the target's own. The raw render and the boundary built for it live
      * in this closure, so a boundary is built exactly once per raw render per instance.
+     *
+     * The ordinary get/set traps forward through `receiver` (this same proxy), not `target`
+     * (R4-01): a subclass getter/setter that touches a native `#private` field runs with
+     * `this` bound to whichever object `Reflect.get`/`Reflect.set` were given as receiver, and
+     * that field was installed on the proxy (a derived constructor's returned object replaces
+     * `this` for the rest of construction). Forwarding through the raw target instead brand-
+     * checked the wrong object and threw. Plain data properties — `props`, `state`, React's own
+     * internal fields — are unaffected either way: a receiver only matters to an accessor.
      */
     private withRenderBoundary;
     /**
@@ -443,10 +439,17 @@ export declare class AntiHookComponent<P = {}, S = {}> extends React.Component<P
      * invalidation scope, so an unmounted component stops being scanned on the next write or
      * cache construction there instead of waiting on garbage collection (R3-07).
      *
-     * Reaching a view's cache resolves it one last time — a declaration that was never actually
-     * read during this component's life builds one now, on the way out, then releases it
-     * immediately — which is safe: resolution outside a render attempt is already the
-     * declaration-time shape probe's own behavior, records nothing, and subscribes nothing.
+     * Read from `this.connections`, not a separately populated/cleared list: a connection's
+     * declaration is never pruned, so its `view` reference survives a StrictMode-replayed
+     * componentWillUnmount/componentDidMount pair intact, and a real unmount later still finds
+     * whichever facade the persistent declaration currently owns — even one built after a root
+     * replacement that happened between the replay and the real unmount (R4-05). A list
+     * populated once by connect()/connectSelection() and unconditionally emptied here on every
+     * unmount, replay included, had nothing to repopulate it before that later real unmount.
+     *
+     * `PROXY_CACHE` is a peek, not a read (R4-09): a declaration never actually read during
+     * this component's life has no cache built for it, and the facade answers `undefined`
+     * instead of resolving the source and minting one from scratch just to release it here.
      *
      * Each view is released in isolation, the same way `releaseEffects` isolates each cleanup:
      * one view whose source can no longer be resolved must not cost the views after it their

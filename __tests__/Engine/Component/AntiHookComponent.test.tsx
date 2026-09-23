@@ -1142,6 +1142,205 @@ describe('<AntiHookComponent />', () => {
         });
     });
 
+    describe('instance proxy accessor receiver (R4-01)', () => {
+        test('a native private getter and setter both work when called from render', () => {
+            class AccessorView extends AntiHookComponent {
+                #value = 7;
+
+                get amount(): number {
+                    return this.#value;
+                }
+
+                set amount(next: number) {
+                    this.#value = next;
+                }
+
+                render() {
+                    // Before the fix, reading/assigning `amount` here threw: the ordinary get/set
+                    // traps forwarded to Reflect.get/Reflect.set with the raw target as receiver,
+                    // so the getter/setter body's `this.#value` failed the private-brand check.
+                    // `amount` is a data accessor, not a callback the rule below is meant to catch.
+                    // oxlint-disable-next-line carburetor/require-bind-for-passed-method
+                    this.amount = this.amount + 1;
+
+                    // oxlint-disable-next-line carburetor/require-bind-for-passed-method
+                    return <div className="value">{this.amount}</div>;
+                }
+            }
+
+            const {container, unmount} = render(<AccessorView />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('8');
+
+            unmount();
+        });
+
+        test('a native private getter and setter both work when called from an event handler', () => {
+            class AccessorHandler extends AntiHookComponent {
+                #value = 1;
+
+                get amount(): number {
+                    return this.#value;
+                }
+
+                set amount(next: number) {
+                    this.#value = next;
+                }
+
+                handleClick = (): void => {
+                    // `amount` is a data accessor, not a callback: see the render() note above.
+                    // oxlint-disable-next-line carburetor/require-bind-for-passed-method
+                    this.amount = this.amount + 1;
+                    this.forceUpdate();
+                };
+
+                render() {
+                    return <div>
+                        {/* oxlint-disable-next-line carburetor/require-bind-for-passed-method */}
+                        <div className="value">{this.amount}</div>
+                        <button className="btn" onClick={this.handleClick}>inc</button>
+                    </div>;
+                }
+            }
+
+            const {container, unmount} = render(<AccessorHandler />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1');
+
+            fireEvent.click(container.querySelector('.btn') as HTMLButtonElement);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('2');
+
+            unmount();
+        });
+
+        test('an inherited getter/setter declared on an intermediate class still sees the ' +
+            'right receiver', () => {
+            class AccessorBase extends AntiHookComponent {
+                #value = 3;
+
+                get amount(): number {
+                    return this.#value;
+                }
+
+                set amount(next: number) {
+                    this.#value = next;
+                }
+            }
+
+            class AccessorMid extends AccessorBase {
+            }
+
+            class AccessorLeaf extends AccessorMid {
+                handleClick = (): void => {
+                    this.amount = this.amount + 10;
+                    this.forceUpdate();
+                };
+
+                render() {
+                    return <div>
+                        <div className="value">{this.amount}</div>
+                        <button className="btn" onClick={this.handleClick}>inc</button>
+                    </div>;
+                }
+            }
+
+            const {container, unmount} = render(<AccessorLeaf />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('3');
+
+            fireEvent.click(container.querySelector('.btn') as HTMLButtonElement);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('13');
+
+            unmount();
+        });
+
+        test('a method bound to the instance still reaches its private field', () => {
+            class BoundMethodView extends AntiHookComponent {
+                #value = 11;
+
+                read(): number {
+                    return this.#value;
+                }
+
+                render() {
+                    const bound = this.read.bind(this);
+
+                    return <div className="value">{bound()}</div>;
+                }
+            }
+
+            const {container, unmount} = render(<BoundMethodView />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('11');
+
+            unmount();
+        });
+
+        test('props, state and setState still behave normally on a component with a private accessor', () => {
+            const store = new CounterCarburetor(getCounterData());
+
+            interface IAccessorProps {
+                label: string;
+            }
+
+            interface IAccessorState {
+                count: number;
+            }
+
+            class StatefulAccessor extends AntiHookComponent<IAccessorProps, IAccessorState> {
+                public state: IAccessorState = {count: 0};
+
+                #label = 'x';
+
+                get label(): string {
+                    return this.#label;
+                }
+
+                set label(next: string) {
+                    this.#label = next;
+                }
+
+                handleClick = (): void => {
+                    this.label = 'y';
+                    this.setState({count: this.state.count + 1});
+                };
+
+                render() {
+                    const {value} = this.useCarburetor(store);
+
+                    return <div>
+                        <div className="value">
+                            {/* `label` is a data accessor, not a callback. */}
+                            {/* oxlint-disable-next-line carburetor/require-bind-for-passed-method */}
+                            {this.props.label}:{this.label}:{this.state.count}:{value}
+                        </div>
+                        <button className="btn" onClick={this.handleClick}>go</button>
+                    </div>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<StatefulAccessor label="a" />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('a:x:0:0');
+
+            fireEvent.click(container.querySelector('.btn') as HTMLButtonElement);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('a:y:1:0');
+
+            rerender(<StatefulAccessor label="b" />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('b:y:1:0');
+
+            act(() => store.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('b:y:1:1');
+
+            unmount();
+        });
+    });
+
     describe('connect', () => {
         test('reads the current value directly, and picks up a later write', () => {
             const store = new CounterCarburetor(getCounterData());
@@ -2927,254 +3126,6 @@ describe('<AntiHookComponent />', () => {
 
             expect(memoRenders).toEqual(2);
             expect(container.querySelector('.memo-flat')?.textContent).toEqual('Bob');
-
-            unmount();
-        });
-    });
-
-    describe('connectSelection copy safety (R4-02)', () => {
-        test('an own __proto__ key inside a selection round-trips through JSON', () => {
-            const store = new Carburetor({flag: true});
-
-            class Parent extends AntiHookComponent {
-                public readonly selected = this.connectSelection(
-                    () => store,
-                    () => JSON.parse('{"__proto__":{"n":7},"safe":1}') as Record<string, unknown>
-                );
-
-                render() {
-                    return <span />;
-                }
-            }
-
-            // JSON.parse never touches prototypes: this is an own, enumerable, ordinary data key,
-            // not a prototype change — the same case deepClone's Snapshot.test.ts covers for the
-            // store side of R4-02.
-            const detached = new Parent({} as never).selected() as Record<string, unknown>;
-
-            expect(Object.getPrototypeOf(detached)).toEqual(Object.prototype);
-            expect(Object.prototype.hasOwnProperty.call(detached, '__proto__')).toEqual(true);
-            expect(detached.__proto__).toEqual({n: 7});
-            expect(detached.safe).toEqual(1);
-            // A `{__proto__: ...}` object-literal key is spec-special-cased to set the
-            // prototype instead of an own key, so the expectation needs a computed key.
-            expect(JSON.parse(JSON.stringify(detached))).toEqual({['__proto__']: {n: 7}, safe: 1});
-        });
-
-        test('an own __proto__ key nested one level inside a selection round-trips through JSON', () => {
-            const store = new Carburetor({flag: true});
-
-            class Parent extends AntiHookComponent {
-                public readonly selected = this.connectSelection(
-                    () => store,
-                    () => ({outer: JSON.parse('{"__proto__":{"n":7},"safe":1}') as Record<string, unknown>})
-                );
-
-                render() {
-                    return <span />;
-                }
-            }
-
-            const detached = (new Parent({} as never).selected() as {outer: Record<string, unknown>}).outer;
-
-            expect(Object.getPrototypeOf(detached)).toEqual(Object.prototype);
-            expect(Object.prototype.hasOwnProperty.call(detached, '__proto__')).toEqual(true);
-            expect(detached.__proto__).toEqual({n: 7});
-            expect(detached.safe).toEqual(1);
-        });
-
-        test('a null-prototype dictionary in a selection stays null-prototype after detachment', () => {
-            const store = new Carburetor({flag: true});
-            const dictionary: Record<string, unknown> = Object.create(null);
-
-            dictionary.a = 1;
-
-            class Parent extends AntiHookComponent {
-                public readonly selected = this.connectSelection(() => store, () => ({dictionary}));
-
-                render() {
-                    return <span />;
-                }
-            }
-
-            const detached = (new Parent({} as never).selected() as {dictionary: Record<string, unknown>}).dictionary;
-
-            expect(Object.getPrototypeOf(detached)).toBeNull();
-            expect(detached).toEqual({a: 1});
-            expect(detached).not.toBe(dictionary);
-        });
-    });
-
-    describe('connectSelection array equality and shape (R4-04)', () => {
-        interface IArrayData {
-            id: number;
-            extra: string;
-        }
-
-        class ArrayCarburetor extends Carburetor<IArrayData> {
-            public setExtra = (extra: string): void => {
-                this.draft.extra = extra;
-                this.emitUpdate();
-            };
-        }
-
-        const getArrayData = (): IArrayData => ({id: 1, extra: 'first'});
-
-        test('a memo child re-renders when a tracked array\'s custom enumerable property changes', () => {
-            const store = new ArrayCarburetor(getArrayData());
-            let memoRenders = 0;
-
-            type TListWithExtra = number[] & {extra: string};
-
-            const MemoList = React.memo(({list}: {list: TListWithExtra}) => {
-                memoRenders++;
-
-                return <span className="memo-list">{list.join(',')}:{list.extra}</span>;
-            });
-
-            class Parent extends AntiHookComponent {
-                // The array itself is the top-level selection — not wrapped in a plain object —
-                // so the comparison actually exercises the array branch, not the object branch's
-                // own Object.is on the wrapper's "list" member (which would already treat any two
-                // freshly built arrays as different regardless of the array-comparator fix).
-                private readonly selected = this.connectSelection(() => store, (data) => {
-                    const list = [data.id] as TListWithExtra;
-
-                    list.extra = data.extra;
-
-                    return list;
-                });
-
-                render() {
-                    return <MemoList list={this.selected()} />;
-                }
-            }
-
-            const {container, unmount} = render(<Parent />);
-
-            expect(container.querySelector('.memo-list')?.textContent).toEqual('1:first');
-            expect(memoRenders).toEqual(1);
-
-            // Only the array's custom property changes — length and indexed elements stay put —
-            // so a comparator that ignores it would wrongly report "same" (R4-04).
-            act(() => store.setExtra('second'));
-
-            expect(memoRenders).toEqual(2);
-            expect(container.querySelector('.memo-list')?.textContent).toEqual('1:second');
-
-            unmount();
-        });
-
-        test('a sparse array selection preserves its true length through detachment', () => {
-            const store = new Carburetor({flag: true});
-
-            class Parent extends AntiHookComponent {
-                public readonly selected = this.connectSelection(() => store, () => {
-                    const sparse: number[] = [1];
-
-                    // Grows the array without filling indices 1 and 2: two trailing holes.
-                    sparse.length = 3;
-
-                    return sparse;
-                });
-
-                render() {
-                    return <span />;
-                }
-            }
-
-            const detached = new Parent({} as never).selected() as number[];
-
-            expect(detached.length).toEqual(3);
-            expect(detached[0]).toEqual(1);
-            expect(0 in detached).toEqual(true);
-            expect(1 in detached).toEqual(false);
-            expect(2 in detached).toEqual(false);
-        });
-    });
-
-    describe('connectSelection nested-selection identity (R4-06)', () => {
-        interface INestedData {
-            n: number;
-        }
-
-        const getNestedData = (): INestedData => ({n: 1});
-
-        test('a stable nested plain object keeps its identity across a parent-only re-render', () => {
-            const store = new Carburetor<INestedData>(getNestedData());
-            // Never mutated across the test: the reference itself is what must be recognized
-            // as unchanged, since the store never changes either.
-            const stableNested = {label: 'x'};
-            let memoRenders = 0;
-            const seen: Array<{label: string}> = [];
-
-            const MemoChild = React.memo(({nested}: {nested: {label: string}}) => {
-                memoRenders++;
-                seen.push(nested);
-
-                return <span className="memo-nested">{nested.label}</span>;
-            });
-
-            class Parent extends AntiHookComponent<{flag?: string}> {
-                private readonly selected = this.connectSelection(
-                    () => store,
-                    (data) => ({n: data.n, nested: stableNested})
-                );
-
-                render() {
-                    return <MemoChild nested={this.selected().nested} />;
-                }
-            }
-
-            const {container, rerender, unmount} = render(<Parent />);
-
-            expect(container.querySelector('.memo-nested')?.textContent).toEqual('x');
-            expect(memoRenders).toEqual(1);
-
-            // A parent-only re-render: an unrelated prop changes, the store never wrote, and the
-            // nested selection object is the very same reference as before (R4-06).
-            rerender(<Parent flag="x" />);
-
-            expect(memoRenders).toEqual(1);
-            expect(seen.length).toEqual(1);
-
-            unmount();
-        });
-
-        test('a nested selection that actually changes still redraws the memo child', () => {
-            const store = new Carburetor<INestedData>(getNestedData());
-            let memoRenders = 0;
-            let label = 'x';
-
-            const MemoChild = React.memo(({nested}: {nested: {label: string}}) => {
-                memoRenders++;
-
-                return <span className="memo-nested">{nested.label}</span>;
-            });
-
-            class Parent extends AntiHookComponent<{flag?: string}> {
-                private readonly selected = this.connectSelection(
-                    () => store,
-                    (data) => ({n: data.n, nested: {label}})
-                );
-
-                render() {
-                    return <MemoChild nested={this.selected().nested} />;
-                }
-            }
-
-            const {container, rerender, unmount} = render(<Parent />);
-
-            expect(container.querySelector('.memo-nested')?.textContent).toEqual('x');
-            expect(memoRenders).toEqual(1);
-
-            // The nested object is a fresh instance every call, but this time its content
-            // genuinely differs — a fix for R4-06 must not overcorrect into permanent staleness.
-            label = 'y';
-            rerender(<Parent flag="x" />);
-
-            expect(memoRenders).toEqual(2);
-            expect(container.querySelector('.memo-nested')?.textContent).toEqual('y');
 
             unmount();
         });

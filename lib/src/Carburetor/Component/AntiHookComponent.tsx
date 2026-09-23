@@ -113,19 +113,6 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      */
     protected connections: IConnection[] = [];
 
-    /**
-     * The facades connect()/connectSelection() have handed out, parallel to `connections` (one
-     * per persistent declaration, in the same order).
-     *
-     * `connect()`'s return value is otherwise not retained anywhere on the instance — the caller
-     * usually assigns it straight to a field of their own — so this is the only way
-     * componentWillUnmount can reach each declaration's underlying read-proxy cache and call its
-     * `release()` (R3-07): without it, a mounted-then-unmounted component's watcher slot sits in
-     * its store's shared invalidation scope until garbage collection happens to notice the view
-     * is unreachable, and nothing here forces that to happen promptly.
-     */
-    protected connectionViews: object[] = [];
-
     /** The render attempt currently open, if any; recorders write only while this is set. */
     protected renderAttempt: IRenderAttempt | undefined = undefined;
 
@@ -302,9 +289,11 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * first read so a prop swap re-points the connection at the new store
      */
     public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> => {
-        const view = buildPersistentView(this.declareConnection(source));
+        const declared = this.declareConnection(source);
+        const view = buildPersistentView(declared);
 
-        this.connectionViews.push(view);
+        // Recorded on the connection itself, not a separate list (R4-05): see IConnection.view.
+        declared.connection.view = view;
 
         return view;
     };
@@ -354,9 +343,11 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         source: ICarburetor<T> | (() => ICarburetor<T>),
         select: (data: TReadonly<T>) => R
     ): (() => R) => {
-        const view = buildPersistentView(this.declareConnection(source));
+        const declared = this.declareConnection(source);
+        const view = buildPersistentView(declared);
 
-        this.connectionViews.push(view);
+        // Recorded on the connection itself, not a separate list (R4-05): see IConnection.view.
+        declared.connection.view = view;
 
         let snapshot: {value: R} | undefined = undefined;
         let escapeReported = false;
@@ -482,6 +473,14 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * so the instance keeps its ordinary shape: own keys, property descriptors and the
      * prototype chain are the target's own. The raw render and the boundary built for it live
      * in this closure, so a boundary is built exactly once per raw render per instance.
+     *
+     * The ordinary get/set traps forward through `receiver` (this same proxy), not `target`
+     * (R4-01): a subclass getter/setter that touches a native `#private` field runs with
+     * `this` bound to whichever object `Reflect.get`/`Reflect.set` were given as receiver, and
+     * that field was installed on the proxy (a derived constructor's returned object replaces
+     * `this` for the rest of construction). Forwarding through the raw target instead brand-
+     * checked the wrong object and threw. Plain data properties — `props`, `state`, React's own
+     * internal fields — are unaffected either way: a receiver only matters to an accessor.
      */
     private withRenderBoundary(): this {
         let rawRender: unknown;
@@ -498,13 +497,13 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         const proxy = new Proxy(this as unknown as object, {
             get: (target: object, key: string | symbol): unknown => {
                 if (key !== RENDER_KEY) {
-                    return Reflect.get(target, key, target);
+                    return Reflect.get(target, key, receiver);
                 }
 
                 // A render the definition traps absorbed lives only in this closure; anything
                 // else — a prototype-method render, or no render at all — is looked up on the
                 // target like a plain property read.
-                const raw = wrapped ? rawRender : Reflect.get(target, RENDER_KEY, target);
+                const raw = wrapped ? rawRender : Reflect.get(target, RENDER_KEY, receiver);
 
                 if (typeof raw !== 'function') {
                     return raw;
@@ -521,7 +520,7 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             },
             set: (target: object, key: string | symbol, value: unknown): boolean => {
                 if (key !== RENDER_KEY) {
-                    return Reflect.set(target, key, value, target);
+                    return Reflect.set(target, key, value, receiver);
                 }
 
                 // Absorbed, never forwarded: the render exists only through `get`, so there is
@@ -994,23 +993,32 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * invalidation scope, so an unmounted component stops being scanned on the next write or
      * cache construction there instead of waiting on garbage collection (R3-07).
      *
-     * Reaching a view's cache resolves it one last time — a declaration that was never actually
-     * read during this component's life builds one now, on the way out, then releases it
-     * immediately — which is safe: resolution outside a render attempt is already the
-     * declaration-time shape probe's own behavior, records nothing, and subscribes nothing.
+     * Read from `this.connections`, not a separately populated/cleared list: a connection's
+     * declaration is never pruned, so its `view` reference survives a StrictMode-replayed
+     * componentWillUnmount/componentDidMount pair intact, and a real unmount later still finds
+     * whichever facade the persistent declaration currently owns — even one built after a root
+     * replacement that happened between the replay and the real unmount (R4-05). A list
+     * populated once by connect()/connectSelection() and unconditionally emptied here on every
+     * unmount, replay included, had nothing to repopulate it before that later real unmount.
+     *
+     * `PROXY_CACHE` is a peek, not a read (R4-09): a declaration never actually read during
+     * this component's life has no cache built for it, and the facade answers `undefined`
+     * instead of resolving the source and minting one from scratch just to release it here.
      *
      * Each view is released in isolation, the same way `releaseEffects` isolates each cleanup:
      * one view whose source can no longer be resolved must not cost the views after it their
      * release.
      */
     protected releaseConnectionViews(): void {
-        const views = this.connectionViews;
-
-        this.connectionViews = [];
-
         const failures: unknown[] = [];
 
-        views.forEach((view: object) => {
+        this.connections.forEach((connection: IConnection) => {
+            const view = connection.view;
+
+            if (view === undefined) {
+                return;
+            }
+
             try {
                 const cache = (view as {[PROXY_CACHE]?: {release?: () => void}})[PROXY_CACHE];
 

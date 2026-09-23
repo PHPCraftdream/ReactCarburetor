@@ -1,4 +1,5 @@
 import { liveViews } from "../../Store/Tracking/liveViews.mjs";
+import { PROXY_CACHE } from "../../Store/Tracking/Models.mjs";
 const buildPersistentView = (source)=>{
     const { getCarburetor, recorder, resolveAttemptSource } = source;
     let cachedTarget;
@@ -30,7 +31,10 @@ const buildPersistentView = (source)=>{
         throw new Error("Carburetor: data read through connect() is read-only. Write through carburetor methods — they write via draft and know which paths changed.");
     };
     const facade = new Proxy(arrayFacade ? [] : {}, {
-        get: (_target, key)=>Reflect.get(resolveView(), key),
+        get: (_target, key)=>{
+            if (key === PROXY_CACHE) return void 0 === cachedView ? void 0 : Reflect.get(cachedView, PROXY_CACHE);
+            return Reflect.get(resolveView(), key);
+        },
         has: (_target, key)=>Reflect.has(resolveView(), key),
         ownKeys: (_target)=>Reflect.ownKeys(resolveView()),
         getOwnPropertyDescriptor: (_target, key)=>{

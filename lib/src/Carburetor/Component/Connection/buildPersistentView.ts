@@ -1,6 +1,7 @@
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {IConnectionSource} from "@/Carburetor/Component/Models/Connection";
 import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
+import {PROXY_CACHE} from "@/Carburetor/Store/Tracking/Models";
 
 /**
  * Builds the persistent view one connect()-family declaration reads through: the once-only
@@ -109,7 +110,17 @@ export const buildPersistentView = <T extends object>(source: IConnectionSource<
     // forwards to the current view instead, which is what lets the same Proxy instance
     // survive a rebuild underneath it. Which of the two it is fixes the facade's kind.
     const facade = new Proxy((arrayFacade ? [] : {}) as unknown as TReadonly<T>, {
-        get: (_target: TReadonly<T>, key: string | symbol): unknown => Reflect.get(resolveView() as object, key),
+        get: (_target: TReadonly<T>, key: string | symbol): unknown => {
+            if (key === PROXY_CACHE) {
+                // A peek, not a read (R4-09): an owner releasing this view on unmount must not
+                // force resolveView() — resolving a connection that was declared but never
+                // actually read would build a cache from scratch just to immediately release
+                // it. Answered from whatever resolveView() has already built, if anything.
+                return cachedView === undefined ? undefined : Reflect.get(cachedView as object, PROXY_CACHE);
+            }
+
+            return Reflect.get(resolveView() as object, key);
+        },
         has: (_target: TReadonly<T>, key: string | symbol): boolean => Reflect.has(resolveView() as object, key),
         ownKeys: (_target: TReadonly<T>): ArrayLike<string | symbol> => Reflect.ownKeys(resolveView() as object),
         getOwnPropertyDescriptor: (_target: TReadonly<T>, key: string | symbol): PropertyDescriptor | undefined => {

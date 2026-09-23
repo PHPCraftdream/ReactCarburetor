@@ -1022,6 +1022,116 @@ describe("connect()/connectSelection() release their watcher on unmount (R3-07 w
     });
 });
 
+describe('a replayed unmount/mount pair does not strand a later cache (R4-05, R4-09)', () => {
+    test('a real unmount releases the cache built after a StrictMode-replayed remount and a root replacement', () => {
+        const store = new TreeCarburetor(getTreeData());
+
+        class TitleView extends AntiHookComponent {
+            private readonly connection = this.connect(() => store);
+
+            public render() {
+                const view = this.connection;
+                const title = view.items.a ? view.items.a.title : view.items.b.title;
+
+                return React.createElement('div', {className: 'title'}, title);
+            }
+        }
+
+        const ref = React.createRef<TitleView>();
+        const {container, unmount} = render(React.createElement(TitleView, {ref}));
+
+        expect(container.querySelector('.title')?.textContent).toEqual('first');
+
+        const instance = ref.current as TitleView;
+
+        // A StrictMode replay: componentWillUnmount then componentDidMount on the SAME
+        // instance, with no fresh render behind either — invoked directly so the sequence is
+        // deterministic rather than depending on React's own StrictMode timing (only fires at
+        // initial mount, and does not itself insert a root replacement in between).
+        act(() => {
+            instance.componentWillUnmount();
+            instance.componentDidMount();
+        });
+
+        // A root data replacement: buildPersistentView's resolveView() notices the new data
+        // object the next time the still-mounted component reads its view (the replayed
+        // componentDidMount's restored subscription forces that render) and mints a fresh
+        // cache — a second watcher this component now owns.
+        act(() => {
+            store.setData(getTreeData());
+        });
+
+        expect(container.querySelector('.title')?.textContent).toEqual('first');
+
+        const rootAfterReplacement = store.getData();
+
+        unmount();
+
+        // A fresh probe on the SAME (replaced) root: bounded at 1 proves the real unmount
+        // released the new cache's watcher. Before the fix, releaseConnectionViews() read from
+        // a `connectionViews` list the replay's earlier (first) unmount had already emptied —
+        // with nothing to repopulate it before this real unmount — so the post-replacement
+        // cache leaked and this probe would have reported 2.
+        const probe = store.read(() => {});
+        const probeCache = cacheOf(probe) as IProxyCacheHandle;
+
+        expect(store.getData()).toBe(rootAfterReplacement);
+        expect(probeCache.watcherCount()).toEqual(1);
+    });
+
+    test('unmounting a connection that was declared but never read costs it zero reads and ' +
+        'zero extra resolver calls', () => {
+        const store = new TreeCarburetor(getTreeData());
+        let resolverCalls = 0;
+        let readCalls = 0;
+
+        const originalRead = store.read;
+
+        store.read = ((record) => {
+            readCalls++;
+
+            return originalRead(record);
+        }) as typeof store.read;
+
+        const resolveSource = (): TreeCarburetor => {
+            resolverCalls++;
+
+            return store;
+        };
+
+        class UnusedConnection extends AntiHookComponent {
+            private readonly unused = this.connect(resolveSource);
+
+            public render() {
+                // Declared, never touched: exactly the shape R4-09 targets.
+                void this.unused;
+
+                return React.createElement('div', {className: 'marker'}, 'ok');
+            }
+        }
+
+        const {container, unmount} = render(React.createElement(UnusedConnection));
+
+        expect(container.querySelector('.marker')?.textContent).toEqual('ok');
+
+        // The declare-time shape probe (buildPersistentView, at the field initializer) is the
+        // only resolver call a mount that never reads the view may cost; the view's own read()
+        // proxy is never minted at all.
+        const resolverCallsAtMount = resolverCalls;
+        const readCallsAtMount = readCalls;
+
+        expect(readCallsAtMount).toEqual(0);
+
+        unmount();
+
+        // Before the fix, releaseConnectionViews() reached the facade's PROXY_CACHE hatch
+        // unconditionally, which forwarded through resolveView() — resolving the source again
+        // and minting a read proxy from scratch just to immediately release it.
+        expect(resolverCalls).toEqual(resolverCallsAtMount);
+        expect(readCalls).toEqual(readCallsAtMount);
+    });
+});
+
 describe('WeakRef is a stated runtime dependency, not a silent one (R3-08)', () => {
     test('the engine requires a global WeakRef and package.json states the runtime floor', () => {
         expect(typeof WeakRef).toBe('function');

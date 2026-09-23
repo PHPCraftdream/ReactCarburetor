@@ -79,6 +79,15 @@ export interface IConnection extends IDependencySlot {
      * attempt, so a prop swap is noticed by the next render, not re-probed per field.
      */
     getCarburetor: () => ICarburetorSubscription;
+    /**
+     * The connect()/connectSelection() facade this declaration built, if either was ever
+     * called on it (R4-05). Set once and never cleared, alongside the connection itself, so
+     * ownership of the facade's read-proxy cache survives a StrictMode replay's
+     * componentWillUnmount/componentDidMount pair the same way the declaration does — unlike a
+     * separately populated list, which a replayed unmount would empty with no fresh render to
+     * repopulate it before the eventual real unmount.
+     */
+    view?: object;
 }
 
 /**

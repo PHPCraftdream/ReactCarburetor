@@ -25,7 +25,6 @@ class AntiHookComponent extends __rspack_external_react.Component {
     effects = {};
     tracked = {};
     connections = [];
-    connectionViews = [];
     renderAttempt = void 0;
     pendingAttempt = void 0;
     committedAttempt = void 0;
@@ -64,13 +63,15 @@ class AntiHookComponent extends __rspack_external_react.Component {
     };
     declareConnection = (source)=>declareConnection(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
     connect = (source)=>{
-        const view = buildPersistentView(this.declareConnection(source));
-        this.connectionViews.push(view);
+        const declared = this.declareConnection(source);
+        const view = buildPersistentView(declared);
+        declared.connection.view = view;
         return view;
     };
     connectSelection = (source, select)=>{
-        const view = buildPersistentView(this.declareConnection(source));
-        this.connectionViews.push(view);
+        const declared = this.declareConnection(source);
+        const view = buildPersistentView(declared);
+        declared.connection.view = view;
         let snapshot;
         let escapeReported = false;
         return ()=>{
@@ -114,8 +115,8 @@ class AntiHookComponent extends __rspack_external_react.Component {
         let receiver;
         const proxy = new Proxy(this, {
             get: (target, key)=>{
-                if (key !== RENDER_KEY) return Reflect.get(target, key, target);
-                const raw = wrapped ? rawRender : Reflect.get(target, RENDER_KEY, target);
+                if (key !== RENDER_KEY) return Reflect.get(target, key, receiver);
+                const raw = wrapped ? rawRender : Reflect.get(target, RENDER_KEY, receiver);
                 if ('function' != typeof raw) return raw;
                 if (void 0 === boundary || rawRender !== raw) {
                     rawRender = raw;
@@ -124,7 +125,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
                 return boundary;
             },
             set: (target, key, value)=>{
-                if (key !== RENDER_KEY) return Reflect.set(target, key, value, target);
+                if (key !== RENDER_KEY) return Reflect.set(target, key, value, receiver);
                 rawRender = value;
                 wrapped = 'function' == typeof value;
                 boundary = wrapped ? this.buildRenderBoundary(value, receiver) : void 0;
@@ -330,10 +331,10 @@ class AntiHookComponent extends __rspack_external_react.Component {
         this.renderAttempt = void 0;
     }
     releaseConnectionViews() {
-        const views = this.connectionViews;
-        this.connectionViews = [];
         const failures = [];
-        views.forEach((view)=>{
+        this.connections.forEach((connection)=>{
+            const view = connection.view;
+            if (void 0 === view) return;
             try {
                 var _cache_release;
                 const cache = view[PROXY_CACHE];
