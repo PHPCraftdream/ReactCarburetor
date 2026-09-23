@@ -13,7 +13,7 @@ export class Row extends AntiHookComponent {
     }
 
     sync() {
-        store.getData();
+        store.getData(this.props.id);
     }
 
     render() {

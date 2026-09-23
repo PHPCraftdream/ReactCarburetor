@@ -1,5 +1,7 @@
 import type {IPlugin} from "./Models.mts";
 import {RECOMMENDED} from "./recommended.mts";
+import {requireMethodForClosure} from "./Rules/Allocations/requireMethodForClosure.mts";
+import {requireModuleFunction} from "./Rules/Allocations/requireModuleFunction.mts";
 import {noAsyncTransaction} from "./Rules/Boundaries/noAsyncTransaction.mts";
 import {noModuleLevelStore} from "./Rules/Boundaries/noModuleLevelStore.mts";
 import {noUntrackableStoreData} from "./Rules/Boundaries/noUntrackableStoreData.mts";
@@ -56,6 +58,8 @@ const plugin: IPlugin = {
         'require-bind-for-passed-method': requireBindForPassedMethod,
         'require-effect-deps': requireEffectDeps,
         'require-emit-after-draft-write': requireEmitAfterDraftWrite,
+        'require-method-for-closure': requireMethodForClosure,
+        'require-module-function': requireModuleFunction,
         'require-subscription-disposal': requireSubscriptionDisposal,
         'require-super-in-lifecycle': requireSuperInLifecycle,
     },

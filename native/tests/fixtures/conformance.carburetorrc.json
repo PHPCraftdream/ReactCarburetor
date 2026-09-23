@@ -20,6 +20,8 @@
     "carburetor/require-bind-for-passed-method": "error",
     "carburetor/require-effect-deps": "error",
     "carburetor/require-emit-after-draft-write": "error",
+    "carburetor/require-method-for-closure": "error",
+    "carburetor/require-module-function": "error",
     "carburetor/require-subscription-disposal": "error",
     "carburetor/require-super-in-lifecycle": "error"
   }

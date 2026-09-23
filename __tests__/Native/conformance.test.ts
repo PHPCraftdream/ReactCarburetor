@@ -4,10 +4,10 @@ import * as path from "node:path";
 import {describe, expect, test} from "@rstest/core";
 
 /**
- * Runs both implementations of the 22 carburetor rules over the same fixture corpus and asserts
+ * Runs both implementations of the 24 carburetor rules over the same fixture corpus and asserts
  * they find the same problems in the same places.
  *
- * The corpus is `plugin/__fixtures__/{reads,writes,lifecycle,effects,boundaries,
+ * The corpus is `plugin/__fixtures__/{allocations,reads,writes,lifecycle,effects,boundaries,
  * lifecycleClassProperty}`, already written so every rule fires exactly once — the same files the
  * JS plugin's own host tests exercise. Comparison is on `(file, line, column, rule)`: that is the
  * behavioural contract a consumer depends on. Message text is compared too, because both
@@ -25,6 +25,7 @@ const NATIVE_BINARY: string = path.join(
 const NATIVE_CONFIG: string = path.join('native', 'tests', 'fixtures', 'conformance.carburetorrc.json');
 const JS_CONFIG: string = path.join('plugin', '__fixtures__', 'oxlintrc.json');
 const CORPUS: readonly string[] = [
+    'allocations.tsx',
     'reads.tsx',
     'writes.tsx',
     'lifecycle.tsx',
@@ -116,11 +117,11 @@ describe('conformance: native binary vs the JavaScript plugin', () => {
         expect(nativeKeys).toEqual(jsKeys);
     });
 
-    test('every one of the 22 rules is represented in the corpus', () => {
+    test('every one of the 24 rules is represented in the corpus', () => {
         const seen = new Set(nativeDiagnostics().map((diagnostic) => diagnostic.rule));
 
         // no-module-level-store is off by default in both implementations but is force-enabled by
         // both configs above specifically so this corpus can prove it fires identically too.
-        expect(seen.size).toBe(22);
+        expect(seen.size).toBe(24);
     });
 });

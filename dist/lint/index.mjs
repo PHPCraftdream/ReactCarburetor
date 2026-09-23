@@ -25,6 +25,8 @@ const RECOMMENDED = {
     'carburetor/require-bind-for-passed-method': 'error',
     'carburetor/require-effect-deps': 'warn',
     'carburetor/require-emit-after-draft-write': 'error',
+    'carburetor/require-method-for-closure': 'warn',
+    'carburetor/require-module-function': 'warn',
     "carburetor/require-subscription-disposal": 'warn',
     'carburetor/require-super-in-lifecycle': 'error'
 };
@@ -199,6 +201,8 @@ const nativeRule = (id, description)=>({
             };
         }
     });
+const requireMethodForClosure = nativeRule('carburetor/require-method-for-closure', 'Declare a closure that depends on the class as a method, so it is not rebuilt on every call.');
+const requireModuleFunction = nativeRule('carburetor/require-module-function', 'Declare code that uses nothing from the class at module level, so it is built once.');
 const noAsyncTransaction = nativeRule('carburetor/no-async-transaction', 'Keep a transaction or update body synchronous.');
 const noModuleLevelStore = nativeRule('carburetor/no-module-level-store', 'Create stores per request through a scope, not once per module.');
 const noUntrackableStoreData = nativeRule('carburetor/no-untrackable-store-data', 'Keep plain objects and arrays in a store; convert at the edges.');
@@ -246,6 +250,8 @@ const src_plugin = {
         'require-bind-for-passed-method': requireBindForPassedMethod,
         'require-effect-deps': requireEffectDeps,
         'require-emit-after-draft-write': requireEmitAfterDraftWrite,
+        'require-method-for-closure': requireMethodForClosure,
+        'require-module-function': requireModuleFunction,
         "require-subscription-disposal": requireSubscriptionDisposal,
         'require-super-in-lifecycle': requireSuperInLifecycle
     }

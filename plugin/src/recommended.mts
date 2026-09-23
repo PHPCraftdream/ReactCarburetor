@@ -33,6 +33,8 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/require-bind-for-passed-method': 'error',
     'carburetor/require-effect-deps': 'warn',
     'carburetor/require-emit-after-draft-write': 'error',
+    'carburetor/require-method-for-closure': 'warn',
+    'carburetor/require-module-function': 'warn',
     'carburetor/require-subscription-disposal': 'warn',
     'carburetor/require-super-in-lifecycle': 'error',
 };

@@ -22,7 +22,7 @@ export class Row extends AntiHookComponent<{id: string}> {
     }
 
     protected sync(): void {
-        store.getData();
+        store.getData(this.props.id);
     }
 
     public render() {

@@ -76,6 +76,8 @@ until your project changes shape.
 | `require-bind-for-passed-method` | error | A component method passed as a value without `@bind`, losing its receiver | [H22](hazards.md) |
 | `require-effect-deps` | warn | A prop or piece of state read by an effect but missing from its dependencies | [H16](hazards.md) |
 | `require-emit-after-draft-write` | error | A method that writes through `draft` and never publishes | [H6](hazards.md) |
+| `require-method-for-closure` | warn | A closure inside a class member that depends only on the class, rebuilt on every call of the member — declare it as a method | [H28](hazards.md) |
+| `require-module-function` | warn | A closure or member that uses nothing from the class, rebuilt per call or per instance — declare it at module level | [H29](hazards.md) |
 | `require-subscription-disposal` | warn | A subscription whose id is discarded, so it can never be released | [H20](hazards.md) |
 | `require-super-in-lifecycle` | error | A lifecycle override that skips `super`, disabling effects, cleanup or the props gate | [H12](hazards.md) |
 
