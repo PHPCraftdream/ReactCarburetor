@@ -26,7 +26,12 @@ function renderPlusIcon() {
     );
 }
 
-/** One counter pill. */
+/** One counter pill.
+ * @param label - caption before the count
+ * @param value - count, or undefined before the first emit
+ * @param tone - color classes
+ * @param testId - test selector
+ */
 function renderCounter(label: string, value: number | undefined, tone: string, testId: string) {
     return (
         <span className={'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ' + tone}>
