@@ -180,7 +180,7 @@ export class Computed<R> implements IComputed<R> {
 
             if ('read' in source) {
                 return source.read((path: TPath) => {
-                    dependency.reads.add(path);
+                    this.recordDependencyRead(dependency, path);
                 });
             }
 
@@ -195,6 +195,40 @@ export class Computed<R> implements IComputed<R> {
         this.valid = true;
 
         this.attachDependencies(collected);
+    };
+
+    /**
+     * Records one path read through a dependency, amending an established registration
+     * when the read arrives after the body's own evaluation.
+     *
+     * The value a computed hands out stays live: a consumer reading a deeper leaf off it
+     * re-enters the read proxy the value was built from, whose recorder reports here long
+     * after attachDependencies published the read set. The store copied that set at
+     * subscription time, so the mutation alone reaches no registration — while the leaf is
+     * exactly what that consumer renders from, and a write to it must wake this computed.
+     * Re-subscribing the dependency under this computed's own id replaces the registration
+     * with the amended set, the same way a fresh edge is published.
+     *
+     * During the body's own evaluation the dependency being filled is not yet the published
+     * one (attachDependencies swaps it in after the body returns), so nothing is amended
+     * there; once nobody listens there is no registration to amend either.
+     *
+     * @param dependency - the dependency edge the read belongs to
+     * @param path - the path the read proxy reported
+     */
+    protected recordDependencyRead = (dependency: IDependency, path: TPath): void => {
+        if (dependency.reads.has(path)) {
+            return;
+        }
+
+        dependency.reads.add(path);
+
+        const published = dependency === this.dependencies[dependency.source.getUID()];
+        const observed = Object.keys(this.subscribers).length > 0;
+
+        if (published && observed) {
+            dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
+        }
     };
 
     /** Swaps in a fresh dependency set, keeping every edge the body still reads. */

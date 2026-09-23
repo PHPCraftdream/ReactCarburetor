@@ -60,7 +60,7 @@ class Computed {
             };
             collected[cuid] = dependency;
             if ('read' in source) return source.read((path)=>{
-                dependency.reads.add(path);
+                this.recordDependencyRead(dependency, path);
             });
             dependency.reads.add(WILDCARD_PATH);
             return source.get();
@@ -68,6 +68,16 @@ class Computed {
         this.value = this.body(track);
         this.valid = true;
         this.attachDependencies(collected);
+    };
+    recordDependencyRead = (dependency, path)=>{
+        if (dependency.reads.has(path)) return;
+        dependency.reads.add(path);
+        const published = dependency === this.dependencies[dependency.source.getUID()];
+        const observed = Object.keys(this.subscribers).length > 0;
+        if (published && observed) dependency.source.subscribe(this.onDependencyChanged, {
+            id: this.uid,
+            reads: dependency.reads
+        });
     };
     attachDependencies = (collected)=>{
         const fresh = this.diffDependencies(collected);

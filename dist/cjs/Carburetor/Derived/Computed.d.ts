@@ -1,6 +1,6 @@
 import { IDict, TSubscriber } from "../Models/Base.js";
 import { IComputed, TComputeBody } from "../Models/Derived.js";
-import { TPathSet } from "../Models/Paths.js";
+import { TPath, TPathSet } from "../Models/Paths.js";
 import { ICarburetorSubscription, ISubscribeOptions } from "../Models/Store.js";
 interface IDependency {
     source: ICarburetorSubscription;
@@ -76,6 +76,26 @@ export declare class Computed<R> implements IComputed<R> {
     protected hasDrifted: () => boolean;
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
     protected recompute: () => void;
+    /**
+     * Records one path read through a dependency, amending an established registration
+     * when the read arrives after the body's own evaluation.
+     *
+     * The value a computed hands out stays live: a consumer reading a deeper leaf off it
+     * re-enters the read proxy the value was built from, whose recorder reports here long
+     * after attachDependencies published the read set. The store copied that set at
+     * subscription time, so the mutation alone reaches no registration — while the leaf is
+     * exactly what that consumer renders from, and a write to it must wake this computed.
+     * Re-subscribing the dependency under this computed's own id replaces the registration
+     * with the amended set, the same way a fresh edge is published.
+     *
+     * During the body's own evaluation the dependency being filled is not yet the published
+     * one (attachDependencies swaps it in after the body returns), so nothing is amended
+     * there; once nobody listens there is no registration to amend either.
+     *
+     * @param dependency - the dependency edge the read belongs to
+     * @param path - the path the read proxy reported
+     */
+    protected recordDependencyRead: (dependency: IDependency, path: TPath) => void;
     /** Swaps in a fresh dependency set, keeping every edge the body still reads. */
     protected attachDependencies: (collected: IDict<IDependency>) => void;
     /**
