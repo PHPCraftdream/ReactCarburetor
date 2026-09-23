@@ -5,8 +5,8 @@
 (the closing cleanup pass) were assessed and closed in a follow-up change: R3-10 was kept as a
 documentation/lint-only outcome (see `docs/hazards.md`, H23) plus a pinning regression test, since
 wrapping `getEntry()`'s `data` was judged disruptive for this codebase (see that change's own
-summary for the reasoning); R3-11 got an actual fix in `buildPersistentView.ts`. *(Orchestrator:
-fill in that change's merge commit hash here once it lands on `master`.)*
+summary for the reasoning); R3-11 got an actual fix in `buildPersistentView.ts`, landed as
+`5f41f17` (full commit range for the round: `87c7385..5f41f17` on `master`).
 
 Reviewed revision: `7abfd18` on `master`.
 
