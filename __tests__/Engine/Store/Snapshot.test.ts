@@ -9,6 +9,9 @@ interface ITestData {
 
 const getTestData = (): ITestData => ({a: 0, nested: {list: [1, 2]}});
 
+const TAG = Symbol('tag');
+const DEEP_TAG = Symbol('deepTag');
+
 class TestCarburetor extends Carburetor<ITestData> {
     public setA = (a: number) => {
         this.draft.a = a;
@@ -130,6 +133,90 @@ describe('snapshot / restore', () => {
         expect(Object.getPrototypeOf(clone.dictionary)).toBeNull();
         expect(clone.dictionary).toEqual({a: 1});
         expect(clone.dictionary).not.toBe(dictionary);
+    });
+
+    // R5-05: Object.keys() sees string keys only, so a symbol-keyed field survived tracking but
+    // silently vanished from every local snapshot/restore round trip.
+    test('deepClone preserves own enumerable symbol keys (R5-05)', () => {
+        const tag = Symbol('tag');
+        const deep = Symbol('deep');
+        const hidden = Symbol('hidden');
+        const source: Record<string | symbol, unknown> = {
+            plain: 1,
+            [tag]: {count: 1},
+            nested: {deep: {[deep]: {n: 2}}},
+        };
+
+        // A non-enumerable own symbol is invisible to a spread, so the copy leaves it out too.
+        Object.defineProperty(source, hidden, {value: 'secret', enumerable: false});
+
+        const clone = deepClone(source) as Record<string | symbol, unknown>;
+        const sourceNested = source.nested as Record<string | symbol, unknown>;
+        const cloneNested = clone.nested as Record<string | symbol, unknown>;
+        const sourceNestedDeep = sourceNested.deep as Record<string | symbol, unknown>;
+        const cloneNestedDeep = cloneNested.deep as Record<string | symbol, unknown>;
+
+        expect(clone.plain).toEqual(1);
+        expect(clone[tag]).toEqual({count: 1});
+        expect(clone[tag]).not.toBe(source[tag]);
+        expect(cloneNestedDeep[deep]).toEqual({n: 2});
+        expect(cloneNestedDeep[deep]).not.toBe(sourceNestedDeep[deep]);
+        expect(Object.getOwnPropertySymbols(clone)).toEqual([tag]);
+    });
+
+    // R5-05: a symbol-keyed field is tracked by the proxies, but snapshot() dropped it and
+    // restore() left it absent — a silent loss on a purely local, in-memory round trip.
+    test('a snapshot round trip preserves a symbol-keyed field beside a string field (R5-05)', () => {
+        const tagValue = {count: 1};
+        const initial = {...getTestData(), [TAG]: tagValue} as unknown as ITestData;
+        const carburetor = new TestCarburetor(initial);
+
+        const taken = carburetor.snapshot() as unknown as Record<string | symbol, unknown>;
+
+        expect(taken.a).toEqual(0);
+        expect(taken[TAG]).toEqual({count: 1});
+        expect(taken[TAG]).not.toBe(tagValue);
+
+        carburetor.setData({...getTestData(), a: 5, [TAG]: {count: 99}} as unknown as ITestData);
+        carburetor.restore(taken);
+
+        const data = carburetor.getData() as unknown as Record<string | symbol, unknown>;
+
+        expect(data.a).toEqual(0);
+        expect(data[TAG]).toEqual({count: 1});
+        expect(data[TAG]).not.toBe(taken[TAG]);
+        expect(Object.getOwnPropertySymbols(data)).toEqual([TAG]);
+    });
+
+    test('a snapshot round trip preserves a symbol key nested several levels deep (R5-05)', () => {
+        const deepValue = {n: 7};
+        const initial = {
+            ...getTestData(),
+            nested: {list: [1, 2], deep: {[DEEP_TAG]: deepValue}},
+        } as unknown as ITestData;
+        const carburetor = new TestCarburetor(initial);
+
+        const taken = carburetor.snapshot() as unknown as {
+            nested: {deep: Record<PropertyKey, unknown>};
+        };
+
+        expect(taken.nested.deep[DEEP_TAG]).toEqual({n: 7});
+        expect(taken.nested.deep[DEEP_TAG]).not.toBe(deepValue);
+
+        // A state swap that lost the symbol-keyed branch entirely must not survive a restore.
+        carburetor.setData({...getTestData(), a: 3} as unknown as ITestData);
+        carburetor.restore(taken);
+
+        const data = carburetor.getData() as unknown as {
+            a: number;
+            nested: {list: number[]; deep: Record<PropertyKey, unknown>};
+        };
+
+        expect(data.a).toEqual(0);
+        expect(data.nested.list).toEqual([1, 2]);
+        expect(data.nested.deep[DEEP_TAG]).toEqual({n: 7});
+        expect(data.nested.deep[DEEP_TAG]).not.toBe(taken.nested.deep[DEEP_TAG]);
+        expect(Object.getOwnPropertySymbols(data.nested.deep)).toEqual([DEEP_TAG]);
     });
 });
 
