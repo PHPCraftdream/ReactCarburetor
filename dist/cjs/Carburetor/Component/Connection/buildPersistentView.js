@@ -36,12 +36,17 @@ const buildPersistentView = (source)=>{
     let cachedTarget;
     let cachedView;
     let arrayFacade = false;
+    let probeError;
     try {
         arrayFacade = Array.isArray(getCarburetor().getData());
-    } catch  {}
+    } catch (error) {
+        probeError = error;
+    }
     const assertDeclaredKind = (data)=>{
         if (Array.isArray(data) === arrayFacade) return;
-        throw new Error(arrayFacade ? "Carburetor: this connect() view was declared for an array root, but its source now resolves to a root that is not an array. One persistent view cannot change its object/array kind; declare a separate connection for the other store." : "Carburetor: this connect() view is fixed as an object view because its source was not resolvable at declaration time (a scope-backed resolver resolves after construction), but the resolved root is an array. Read an array-rooted scoped store through useCarburetor in render instead.");
+        const mismatch = new Error(arrayFacade ? "Carburetor: this connect() view was declared for an array root, but its source now resolves to a root that is not an array. One persistent view cannot change its object/array kind; declare a separate connection for the other store." : void 0 === probeError ? "Carburetor: this connect() view is fixed as an object view because its source was not resolvable at declaration time (a scope-backed resolver resolves after construction), but the resolved root is an array. Read an array-rooted scoped store through useCarburetor in render instead." : 'Carburetor: this connect() view is fixed as an object view because reading its source threw during declaration (see this error\'s "cause") — a scope-backed resolver not yet ready throws the same way, but this may instead be a genuine resolver bug — and the resolved root is now an array. Read an array-rooted scoped store through useCarburetor in render instead.');
+        if (void 0 !== probeError) mismatch.cause = probeError;
+        throw mismatch;
     };
     const resolveView = ()=>{
         const carburetor = resolveAttemptSource();

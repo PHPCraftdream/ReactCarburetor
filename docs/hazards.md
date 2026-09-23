@@ -850,6 +850,23 @@ replaces it without warning.
 **Rule** `no-external-data-mutation` — **error**, the same rule as H8: both `getData()` and
 `getEntry()` hand out live state.
 
+**Status (round-3 review, R3-10).** Reassessed and kept as documentation-plus-lint, not changed to a
+runtime-wrapped return: `getEntry()`'s `data` field would need to become a read proxy, but the view is
+built and read on every `useResource()` render — a hot path — and a wrapper rebuilt there would need
+its own per-entry memoization to avoid a fresh object identity (and a broken `shallowEqual` prop gate)
+on every read. Reusing `createReadProxy` also does not fit `T`'s shape here: it is unconstrained
+(primitives, `Map`/`Set`, class instances are all legal resource payloads), and it needs the reading
+side's own `TPathRecorder`, which `getEntry()`'s call sites do not have. A `data: TReadonly<T>` type
+change was considered too: for a generic, unconstrained `T` it does not cleanly narrow `IResourceView<T>`
+against the `data: T` it inherits from `IResourceEntry<T>`, so every generic call site would need to
+either widen or cast. Freezing the stored object at write time was also considered and rejected: this
+engine deliberately refuses to wrap frozen branches during tracked reads instead of serving one (see
+`createReadProxy`'s own "Frozen data is refused, not wrapped" rule) — freezing resource data would make
+a plain `useCarburetor(cache)` read into `entries.<key>.data` throw in development, trading one hazard
+for a worse one. `no-external-data-mutation` catches the documented `getEntry(...).data.x = ...` shape
+already; a regression test pins the current mutable-escape behavior so a later change cannot alter this
+contract by accident. See `docs/js-review-round-3-2026-09-23.md`, R3-10.
+
 ### H24 — arguments that cannot become a key
 
 **Wrong**

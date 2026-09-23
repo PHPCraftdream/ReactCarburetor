@@ -483,6 +483,33 @@ describe('ResourceCache', () => {
     });
 });
 
+describe('ResourceCache.getEntry (R3-10: a documented mutable escape, H23 — pinned, not changed)', () => {
+    test('mutating a returned view\'s data field mutates the cache with no version bump or notification', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+
+        void cache.load('a');
+        loader.pending[0].resolve({id: 'a', name: 'Ann'});
+        await flush();
+
+        let notified = 0;
+        cache.subscribe(() => notified++, {id: 'watcher', reads: readsOf(cache.pathOf('a'))});
+
+        const versionBefore = cache.getVersion();
+        const view = cache.getEntry('a');
+
+        // H23: known and documented, not a regression. Pinned here so a future change to
+        // getEntry()/the view cache cannot silently make this either safer (a wrapped/frozen
+        // `data`) or worse (e.g. sharing the view object itself across distinct keys) without
+        // this test forcing that change to be a deliberate, reviewed one.
+        (view.data as IUser).name = 'edited';
+
+        expect(cache.getEntry('a').data).toEqual({id: 'a', name: 'edited'});
+        expect(cache.getVersion()).toEqual(versionBefore);
+        expect(notified).toEqual(0);
+    });
+});
+
 describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restored snapshot)', () => {
     test('restore during a refresh discards a late success and keeps the restored data', async () => {
         const loader = makeLoader();

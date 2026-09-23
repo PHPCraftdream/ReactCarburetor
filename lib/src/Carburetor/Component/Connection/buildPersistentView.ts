@@ -26,13 +26,21 @@ export const buildPersistentView = <T extends object>(source: IConnectionSource<
     // silently wrong view.
     let arrayFacade = false;
 
+    // Captured, not discarded (R3-11): a scope-backed resolver throws this same way before its
+    // context is filled in — the expected "not ready yet" case, which must not fail
+    // construction — but an arbitrary resolver bug throws identically, and nothing at this
+    // call site can tell the two apart without cooperation from the resolver itself. The probe
+    // stays permissive either way; what changes is that a swallowed error is kept, so it can
+    // still be attached to a later kind mismatch this call may have caused by locking in the
+    // wrong facade shape, instead of being lost the moment the mismatch's own message is built.
+    let probeError: unknown;
+
     try {
         // A shape probe, not a read: no render attempt is open, so nothing records, and
         // nothing here subscribes — the declaration stays subscription-free until commit.
         arrayFacade = Array.isArray(getCarburetor().getData());
-    } catch {
-        // The source is not resolvable yet; the real resolution error, if any, surfaces
-        // unguarded at the first real read below.
+    } catch (error) {
+        probeError = error;
     }
 
     // A new underlying data object must keep the declared kind: same kind — the rebuild is
@@ -44,16 +52,30 @@ export const buildPersistentView = <T extends object>(source: IConnectionSource<
             return;
         }
 
-        throw new Error(
+        const mismatch = new Error(
             arrayFacade
                 ? 'Carburetor: this connect() view was declared for an array root, but its source now ' +
                   'resolves to a root that is not an array. One persistent view cannot change its ' +
                   'object/array kind; declare a separate connection for the other store.'
-                : 'Carburetor: this connect() view is fixed as an object view because its source was not ' +
-                  'resolvable at declaration time (a scope-backed resolver resolves after construction), ' +
-                  'but the resolved root is an array. Read an array-rooted scoped store through ' +
-                  'useCarburetor in render instead.'
+                : probeError === undefined
+                    ? 'Carburetor: this connect() view is fixed as an object view because its source was not ' +
+                      'resolvable at declaration time (a scope-backed resolver resolves after construction), ' +
+                      'but the resolved root is an array. Read an array-rooted scoped store through ' +
+                      'useCarburetor in render instead.'
+                    : 'Carburetor: this connect() view is fixed as an object view because reading its source ' +
+                      'threw during declaration (see this error\'s "cause") — a scope-backed resolver not yet ' +
+                      'ready throws the same way, but this may instead be a genuine resolver bug — and the ' +
+                      'resolved root is now an array. Read an array-rooted scoped store through useCarburetor ' +
+                      'in render instead.'
         );
+
+        // Not a typed ErrorOptions constructor argument: that needs an ES2022 lib the project
+        // does not target. Setting it directly is the same runtime shape, cause included.
+        if (probeError !== undefined) {
+            (mismatch as Error & {cause?: unknown}).cause = probeError;
+        }
+
+        throw mismatch;
     };
 
     // Rebuilds only when the wrapped data object itself changed — a normal field write

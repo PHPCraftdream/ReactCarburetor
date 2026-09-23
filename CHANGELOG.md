@@ -287,6 +287,61 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   as a write. It now requires the key to already be an own property and compares with `Object.is`.
 - A nested branch of a `connect()`/`read()` view still allowed `setPrototypeOf`/`preventExtensions`
   to reach the real backing object, even though the outer view already rejected both.
+- The render boundary called a subclass's `render()` with the raw base instance as receiver, while
+  the base constructor actually returns a Proxy over that instance. A subclass's native `#private`
+  field or method is installed on the returned proxy, so the mismatched receiver failed the
+  brand check the first time `render()` (or a prototype method it called) touched one. The
+  boundary now closes over and calls against that same returned proxy.
+- `reportLiveViewEscape` and `detachSelection` only inspected or copied one level of a
+  `connectSelection()` result, so a live store view nested inside a plain object or array — or
+  reachable only through a symbol key — escaped undetected and undetached, leaving a memo child
+  silently stale after a change the owner's shallow copy did not carry. Both are now bounded,
+  cycle-safe recursive traversals covering any depth.
+- `ResourceCache` inherited `restore()` from `Carburetor`, which replaced data but left the
+  request/controller maps untouched, so a pre-restore refresh's late answer still passed the
+  currency check and overwrote the restored entry. `restore()` is now a request-generation
+  boundary: every in-flight controller/request/failure/view-cache entry is aborted and cleared
+  before the restored state is installed.
+- A restored `ResourceCache` entry or single-slot resource snapshot could carry `refreshing`/
+  `Pending` with zero live work behind it, leaving a mounted reader stuck showing an indefinite
+  pending/refreshing indicator. Restore and hydrate now normalize `refreshing` to `false` and
+  `Pending` to `Idle` — restore has no render/effect to attribute a fresh request to, so it
+  serializes the answer only, and an entry still marked `invalidated` gets refetched through the
+  existing `useResource` fetch gate once mounted.
+- A plain object's symbol-keyed branch bypassed both tracking proxies: reading it returned the
+  raw, unwrapped object (mutable, unrecorded), and a nested `draft` write under a symbol key
+  changed data without publishing. Both traps now record a wildcard for a symbol-keyed access and
+  wrap a trackable value the same way a string-keyed branch already is.
+- `invalidate()` pushed a new record onto an unbounded array per write, so an idle-but-live view
+  retained a growing invalidation worklist even for the same path written repeatedly. Records are
+  now keyed by path, so a later write to a pending path replaces that path's record instead of
+  piling up beside it.
+- Every fresh `read()` view (including the one `useCarburetor` builds on every render) registered
+  a `WeakRef` watcher that was only pruned by a later retirement pass, itself only triggered by a
+  write — a read-only workload accumulated watcher slots indefinitely. The proxy cache now also
+  retires on construction, and exposes an explicit `release()` a view can call when its owner
+  knows its lifecycle is over, independent of GC timing.
+- `WeakRef` was a hard runtime dependency with no stated floor; the first tracked `read()` threw
+  outright wherever it was absent. `package.json`'s `engines.node` now states `>=14.6.0`, where
+  `WeakRef` shipped unflagged.
+- An unequal-depth computed graph (a node read both directly and through a derived chain) could
+  recompute a node's body twice per write: an eager `get()` during a sibling's settlement already
+  reran it against current inputs, then the node's own deferred `settle()` recomputed it again
+  unconditionally. Both now check the existing valid/drifted state first and skip the redundant
+  recompute when an eager pull already caught the node up.
+- `ResourceCache.getEntry()`/`useResource()` still hand out the entry's stored `data` object
+  itself, so mutating a field on it changes the cache silently — this is a known, documented sharp
+  edge (`docs/hazards.md`, H23), not newly introduced. Reassessed in the round-3 review and kept
+  as documentation-plus-lint rather than a runtime-wrapped return: `data`'s type is an
+  unconstrained generic, the view is rebuilt on every render of a hot path, and this store
+  deliberately refuses to wrap a frozen branch during a tracked read rather than serve one, which
+  rules out the read-only strategies considered. A regression test now pins the current behavior.
+- `connect()`'s and `connectSelection()`'s declaration-time shape probe caught every exception from
+  its one resolver call as "source not resolvable yet," which also silently discarded a resolver's
+  genuine, unrelated error; if a later call then returned the other object/array kind, the
+  boundary error blamed a deferred source and gave no way to see what had actually gone wrong. The
+  probe's error is now kept and attached as the `cause` of that boundary error instead of
+  discarded, while a resolver that is legitimately not ready yet still declares exactly as before.
 
 ### Removed
 

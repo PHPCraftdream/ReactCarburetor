@@ -1,5 +1,13 @@
 # JavaScript review, round 3 — 2026-09-23
 
+**Status: fully implemented.** R3-01 through R3-09 landed as `66461fc`, `5be1a00`, `3d31f62`,
+`bc9119a`/`e51f111`, and `bd8d747` (commit range `87c7385..bd8d747` on `master`). R3-10 and R3-11
+(the closing cleanup pass) were assessed and closed in a follow-up change: R3-10 was kept as a
+documentation/lint-only outcome (see `docs/hazards.md`, H23) plus a pinning regression test, since
+wrapping `getEntry()`'s `data` was judged disruptive for this codebase (see that change's own
+summary for the reasoning); R3-11 got an actual fix in `buildPersistentView.ts`. *(Orchestrator:
+fill in that change's merge commit hash here once it lands on `master`.)*
+
 Reviewed revision: `7abfd18` on `master`.
 
 Scope: the JS/TS state engine, class component integration, derived values, resources,
