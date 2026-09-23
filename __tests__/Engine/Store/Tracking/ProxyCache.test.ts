@@ -922,6 +922,106 @@ describe('watcher slots release explicitly, independent of GC timing (R3-07)', (
     });
 });
 
+describe("connect()/connectSelection() release their watcher on unmount (R3-07 wiring)", () => {
+    test("mounting and unmounting a connect() view ten times leaves the store's watcher count bounded", () => {
+        const store = new TreeCarburetor(getTreeData());
+
+        class TitleView extends AntiHookComponent {
+            private readonly connection = this.connect(() => store);
+
+            public render() {
+                const view = this.connection;
+                const title = view.items.a ? view.items.a.title : view.items.b.title;
+
+                return React.createElement('div', {className: 'title'}, title);
+            }
+        }
+
+        for (let i = 0; i < 10; i++) {
+            const {unmount} = render(React.createElement(TitleView));
+
+            unmount();
+        }
+
+        // A fresh read through the raw store is the same probe the existing R3-07 unit test
+        // above uses: it adds exactly one watcher of its own, so a bounded total here proves the
+        // ten real mount/unmount cycles through the public connect() API left none of their own
+        // behind, without relying on garbage collection to have run by now.
+        const probe = store.read(() => {});
+        const probeCache = cacheOf(probe) as IProxyCacheHandle;
+
+        expect(probeCache.watcherCount()).toEqual(1);
+    });
+
+    test('mounting and unmounting a connectSelection() view ten times leaves the watcher count bounded', () => {
+        const store = new TreeCarburetor(getTreeData());
+
+        class Row extends AntiHookComponent {
+            private readonly row = this.connectSelection(() => store, (data) => ({title: data.items.a.title}));
+
+            public render() {
+                return React.createElement('div', {className: 'title'}, this.row().title);
+            }
+        }
+
+        for (let i = 0; i < 10; i++) {
+            const {unmount} = render(React.createElement(Row));
+
+            unmount();
+        }
+
+        const probe = store.read(() => {});
+        const probeCache = cacheOf(probe) as IProxyCacheHandle;
+
+        expect(probeCache.watcherCount()).toEqual(1);
+    });
+
+    test("a still-mounted component's connect() view is never released out from under it", () => {
+        const store = new TreeCarburetor(getTreeData());
+
+        class TitleView extends AntiHookComponent {
+            private readonly connection = this.connect(() => store);
+
+            public render() {
+                const view = this.connection;
+                const title = view.items.a ? view.items.a.title : view.items.b.title;
+
+                return React.createElement('div', {className: 'title'}, title);
+            }
+        }
+
+        const {container, unmount} = render(React.createElement(TitleView));
+
+        expect(container.querySelector('.title')?.textContent).toEqual('first');
+
+        // Several writes and re-renders while still mounted: componentWillUnmount never ran, so
+        // releaseConnectionViews() never ran either — a premature release would either throw on
+        // the next read or serve stale data, and neither happens here.
+        for (let i = 0; i < 5; i++) {
+            const title = 'edited' + i;
+
+            act(() => store.setATitle(title));
+            expect(container.querySelector('.title')?.textContent).toEqual(title);
+        }
+
+        act(() => store.deleteA());
+        expect(container.querySelector('.title')?.textContent).toEqual('second');
+
+        const probe = store.read(() => {});
+        const probeCache = cacheOf(probe) as IProxyCacheHandle;
+
+        // The still-mounted view's own watcher is still live in the scope, plus the write
+        // proxy's own watcher — created once, lazily, on the first draft access above, and kept
+        // for the store's whole lifetime regardless of how many writes follow — and the probe's
+        // own slot on top of both. Three, not two, but still bounded: none of the five writes
+        // above grew it further, and the still-mounted view's slot in particular was never
+        // dropped while still in use.
+        expect(probeCache.watcherCount()).toEqual(3);
+
+        unmount();
+    });
+});
+
 describe('WeakRef is a stated runtime dependency, not a silent one (R3-08)', () => {
     test('the engine requires a global WeakRef and package.json states the runtime floor', () => {
         expect(typeof WeakRef).toBe('function');

@@ -35,6 +35,7 @@ const EResourceStatus_js_namespaceObject = require("../Models/Enums/EResourceSta
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../Store/Diagnostics/DiagnosticsInstance.js");
+const Models_js_namespaceObject = require("../Store/Tracking/Models.js");
 const DevelopmentFlag_js_namespaceObject = require("../Store/Utils/DevelopmentFlag.js");
 const buildPersistentView_js_namespaceObject = require("./Connection/buildPersistentView.js");
 const declareConnection_js_namespaceObject = require("./Connection/declareConnection.js");
@@ -56,6 +57,7 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
     effects = {};
     tracked = {};
     connections = [];
+    connectionViews = [];
     renderAttempt = void 0;
     pendingAttempt = void 0;
     committedAttempt = void 0;
@@ -82,6 +84,7 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         this.runTeardownStage("the component-wide unUseEffects callback threw while a component unmounted", ()=>this.unUseEffects(this.props), failures);
         this.runTeardownStage('an effect cleanup threw while a component unmounted', ()=>this.releaseEffects(), failures);
         this.runTeardownStage("releasing subscriptions threw while a component unmounted", ()=>this.releaseSubscriptions(), failures);
+        this.runTeardownStage("releasing a connect() view's cache threw while a component unmounted", ()=>this.releaseConnectionViews(), failures);
         failures.forEach((failure)=>this.reportTeardownFailure(failure));
     }
     useCarburetor = (carburetor)=>{
@@ -92,9 +95,14 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
         });
     };
     declareConnection = (source)=>(0, declareConnection_js_namespaceObject.declareConnection)(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
-    connect = (source)=>(0, buildPersistentView_js_namespaceObject.buildPersistentView)(this.declareConnection(source));
+    connect = (source)=>{
+        const view = (0, buildPersistentView_js_namespaceObject.buildPersistentView)(this.declareConnection(source));
+        this.connectionViews.push(view);
+        return view;
+    };
     connectSelection = (source, select)=>{
         const view = (0, buildPersistentView_js_namespaceObject.buildPersistentView)(this.declareConnection(source));
+        this.connectionViews.push(view);
         let snapshot;
         let escapeReported = false;
         return ()=>{
@@ -352,6 +360,21 @@ class AntiHookComponent extends external_react_namespaceObject.Component {
             this.releaseSlot(connection.uid, connection);
         });
         this.renderAttempt = void 0;
+    }
+    releaseConnectionViews() {
+        const views = this.connectionViews;
+        this.connectionViews = [];
+        const failures = [];
+        views.forEach((view)=>{
+            try {
+                var _cache_release;
+                const cache = view[Models_js_namespaceObject.PROXY_CACHE];
+                null == cache || null == (_cache_release = cache.release) || _cache_release.call(cache);
+            } catch (error) {
+                failures.push(error);
+            }
+        });
+        failures.forEach((error)=>this.reportTeardownFailure("releasing a connect() view's cache threw while a component unmounted: " + describeFailure(error) + '. The teardown completed anyway.'));
     }
 }
 exports.AntiHookComponent = __webpack_exports__.AntiHookComponent;

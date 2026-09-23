@@ -8,6 +8,7 @@ import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {PROXY_CACHE} from "@/Carburetor/Store/Tracking/Models";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {
     IAttemptEntry,
@@ -112,6 +113,19 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      */
     protected connections: IConnection[] = [];
 
+    /**
+     * The facades connect()/connectSelection() have handed out, parallel to `connections` (one
+     * per persistent declaration, in the same order).
+     *
+     * `connect()`'s return value is otherwise not retained anywhere on the instance — the caller
+     * usually assigns it straight to a field of their own — so this is the only way
+     * componentWillUnmount can reach each declaration's underlying read-proxy cache and call its
+     * `release()` (R3-07): without it, a mounted-then-unmounted component's watcher slot sits in
+     * its store's shared invalidation scope until garbage collection happens to notice the view
+     * is unreachable, and nothing here forces that to happen promptly.
+     */
+    protected connectionViews: object[] = [];
+
     /** The render attempt currently open, if any; recorders write only while this is set. */
     protected renderAttempt: IRenderAttempt | undefined = undefined;
 
@@ -199,6 +213,8 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
             () => this.releaseEffects(), failures);
         this.runTeardownStage('releasing subscriptions threw while a component unmounted',
             () => this.releaseSubscriptions(), failures);
+        this.runTeardownStage("releasing a connect() view's cache threw while a component unmounted",
+            () => this.releaseConnectionViews(), failures);
 
         failures.forEach((failure: string) => this.reportTeardownFailure(failure));
     }
@@ -285,8 +301,13 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
      * @param source - the carburetor to read, or a function resolving it at each attempt's
      * first read so a prop swap re-points the connection at the new store
      */
-    public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> =>
-        buildPersistentView(this.declareConnection(source));
+    public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> => {
+        const view = buildPersistentView(this.declareConnection(source));
+
+        this.connectionViews.push(view);
+
+        return view;
+    };
 
     /**
      * A typed selection of this component's connected data, safe to hand a child gated by
@@ -334,6 +355,8 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         select: (data: TReadonly<T>) => R
     ): (() => R) => {
         const view = buildPersistentView(this.declareConnection(source));
+
+        this.connectionViews.push(view);
 
         let snapshot: {value: R} | undefined = undefined;
         let escapeReported = false;
@@ -964,5 +987,42 @@ export class AntiHookComponent<P = {}, S = {}> extends React.Component<P, S> {
         });
 
         this.renderAttempt = undefined;
+    }
+
+    /**
+     * Drops every connect()/connectSelection() view's watcher slot from its store's shared
+     * invalidation scope, so an unmounted component stops being scanned on the next write or
+     * cache construction there instead of waiting on garbage collection (R3-07).
+     *
+     * Reaching a view's cache resolves it one last time — a declaration that was never actually
+     * read during this component's life builds one now, on the way out, then releases it
+     * immediately — which is safe: resolution outside a render attempt is already the
+     * declaration-time shape probe's own behavior, records nothing, and subscribes nothing.
+     *
+     * Each view is released in isolation, the same way `releaseEffects` isolates each cleanup:
+     * one view whose source can no longer be resolved must not cost the views after it their
+     * release.
+     */
+    protected releaseConnectionViews(): void {
+        const views = this.connectionViews;
+
+        this.connectionViews = [];
+
+        const failures: unknown[] = [];
+
+        views.forEach((view: object) => {
+            try {
+                const cache = (view as {[PROXY_CACHE]?: {release?: () => void}})[PROXY_CACHE];
+
+                cache?.release?.();
+            } catch (error: unknown) {
+                failures.push(error);
+            }
+        });
+
+        failures.forEach((error: unknown) => this.reportTeardownFailure(
+            "releasing a connect() view's cache threw while a component unmounted: " +
+            describeFailure(error) + '. The teardown completed anyway.'
+        ));
     }
 }

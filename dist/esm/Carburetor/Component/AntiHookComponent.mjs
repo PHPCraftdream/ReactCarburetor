@@ -2,6 +2,7 @@ import { EResourceStatus } from "../Models/Enums/EResourceStatus.mjs";
 import { getUid } from "../Store/Utils/getUid.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 import { diagnostics } from "../Store/Diagnostics/DiagnosticsInstance.mjs";
+import { PROXY_CACHE } from "../Store/Tracking/Models.mjs";
 import { IS_DEVELOPMENT } from "../Store/Utils/DevelopmentFlag.mjs";
 import { buildPersistentView } from "./Connection/buildPersistentView.mjs";
 import { declareConnection } from "./Connection/declareConnection.mjs";
@@ -24,6 +25,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
     effects = {};
     tracked = {};
     connections = [];
+    connectionViews = [];
     renderAttempt = void 0;
     pendingAttempt = void 0;
     committedAttempt = void 0;
@@ -50,6 +52,7 @@ class AntiHookComponent extends __rspack_external_react.Component {
         this.runTeardownStage("the component-wide unUseEffects callback threw while a component unmounted", ()=>this.unUseEffects(this.props), failures);
         this.runTeardownStage('an effect cleanup threw while a component unmounted', ()=>this.releaseEffects(), failures);
         this.runTeardownStage("releasing subscriptions threw while a component unmounted", ()=>this.releaseSubscriptions(), failures);
+        this.runTeardownStage("releasing a connect() view's cache threw while a component unmounted", ()=>this.releaseConnectionViews(), failures);
         failures.forEach((failure)=>this.reportTeardownFailure(failure));
     }
     useCarburetor = (carburetor)=>{
@@ -60,9 +63,14 @@ class AntiHookComponent extends __rspack_external_react.Component {
         });
     };
     declareConnection = (source)=>declareConnection(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
-    connect = (source)=>buildPersistentView(this.declareConnection(source));
+    connect = (source)=>{
+        const view = buildPersistentView(this.declareConnection(source));
+        this.connectionViews.push(view);
+        return view;
+    };
     connectSelection = (source, select)=>{
         const view = buildPersistentView(this.declareConnection(source));
+        this.connectionViews.push(view);
         let snapshot;
         let escapeReported = false;
         return ()=>{
@@ -320,6 +328,21 @@ class AntiHookComponent extends __rspack_external_react.Component {
             this.releaseSlot(connection.uid, connection);
         });
         this.renderAttempt = void 0;
+    }
+    releaseConnectionViews() {
+        const views = this.connectionViews;
+        this.connectionViews = [];
+        const failures = [];
+        views.forEach((view)=>{
+            try {
+                var _cache_release;
+                const cache = view[PROXY_CACHE];
+                null == cache || null == (_cache_release = cache.release) || _cache_release.call(cache);
+            } catch (error) {
+                failures.push(error);
+            }
+        });
+        failures.forEach((error)=>this.reportTeardownFailure("releasing a connect() view's cache threw while a component unmounted: " + describeFailure(error) + '. The teardown completed anyway.'));
     }
 }
 export { AntiHookComponent };
