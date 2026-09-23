@@ -65,6 +65,11 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
         );
     }
 
+    /** One row; carburetor comes from props, id is the map callback's only argument. */
+    public renderTodoItem = (id: string) => {
+        return <TodoItem key={id} carburetor={this.props.carburetor} id={id}/>;
+    };
+
     /** Reads the order and the counters only: a todo's own fields are read by its row. */
     public render() {
         const {carburetor} = this.props;
@@ -114,9 +119,7 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
                 <ul className="divide-y divide-slate-200/70 border-y dark:divide-slate-800 dark:border-slate-800">
                     {orderIds.length === 0
                         ? this.renderEmpty()
-                        : orderIds.map((id: string) => (
-                            <TodoItem key={id} carburetor={carburetor} id={id}/>
-                        ))}
+                        : orderIds.map(this.renderTodoItem)}
                 </ul>
 
                 <footer className="flex items-center justify-between gap-3 px-5 py-3 font-mono text-[11px] text-slate-400 dark:text-slate-500">
