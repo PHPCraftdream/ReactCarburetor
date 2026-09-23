@@ -30,6 +30,7 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     Computed: ()=>Computed
 });
+const containsExoticValue_js_namespaceObject = require("../Store/Utils/containsExoticValue.js");
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const isExoticValue_js_namespaceObject = require("../Store/Utils/isExoticValue.js");
 const UpdateWaveInstance_js_namespaceObject = require("../Store/Scheduling/UpdateWaveInstance.js");
@@ -213,7 +214,8 @@ class Computed {
         if (!this.valid || this.hasDrifted()) this.recompute();
         const baseline = void 0 !== this.announced ? this.announced.value : previous;
         const moved = void 0 !== this.announced && this.driftedSince(this.announced.versions);
-        const unchanged = Object.is(baseline, this.value) && !((0, isExoticValue_js_namespaceObject.isExoticValue)(this.value) && moved);
+        const opaque = (0, isExoticValue_js_namespaceObject.isExoticValue)(this.value) || (0, containsExoticValue_js_namespaceObject.containsExoticValue)(this.value);
+        const unchanged = Object.is(baseline, this.value) && !(opaque && moved);
         if (unchanged) return;
         this.announced = {
             value: this.value,

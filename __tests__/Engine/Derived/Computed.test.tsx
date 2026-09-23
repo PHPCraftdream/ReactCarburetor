@@ -1162,6 +1162,136 @@ describe('computed', () => {
         });
     });
 
+    describe('stable plain envelopes hiding exotic members (R7-02)', () => {
+        test('a stable envelope wrapping an exotic value notifies after the wrapped value mutates', () => {
+            const carburetor = new IndexedCarburetor(getIndexData());
+            let notified = 0;
+
+            // One envelope object, reused across evaluations; only its member is refreshed.
+            const envelope: {index: Map<string, number>} = {index: new Map<string, number>()};
+
+            const wrapped = computed<{index: Map<string, number>}>((read) => {
+                envelope.index = read(carburetor).index;
+
+                return envelope;
+            });
+
+            wrapped.subscribe(() => notified++, {id: 'listener'});
+
+            expect(wrapped.getVersion()).toEqual(0);
+            expect(wrapped.get().index.get('a')).toEqual(1);
+
+            carburetor.setIndex('a', 2);
+
+            expect(notified).toEqual(1);
+            expect(wrapped.getVersion()).toEqual(1);
+            expect(wrapped.get().index.get('a')).toEqual(2);
+        });
+
+        test('an exotic member below nested plain containers is found and notifies', () => {
+            const carburetor = new IndexedCarburetor(getIndexData());
+            let notified = 0;
+
+            interface IPage {
+                index: Map<string, number>;
+            }
+
+            const envelope: {pages: IPage[]} = {pages: []};
+
+            const wrapped = computed<{pages: IPage[]}>((read) => {
+                envelope.pages = [{index: read(carburetor).index}];
+
+                return envelope;
+            });
+
+            wrapped.subscribe(() => notified++, {id: 'listener'});
+
+            expect(wrapped.get().pages[0].index.get('a')).toEqual(1);
+
+            carburetor.setIndex('a', 2);
+
+            expect(notified).toEqual(1);
+            expect(wrapped.getVersion()).toEqual(1);
+            expect(wrapped.get().pages[0].index.get('a')).toEqual(2);
+        });
+
+        test('an envelope that cycles through plain containers terminates and notifies', () => {
+            const carburetor = new IndexedCarburetor(getIndexData());
+            let notified = 0;
+
+            // The Map is reachable only through the cycle envelope -> child -> host -> envelope,
+            // so the walk must survive the loop to find it.
+            const child: {host: unknown; index: Map<string, number>} = {
+                host: undefined,
+                index: new Map<string, number>(),
+            };
+
+            const envelope: {child: {host: unknown; index: Map<string, number>}} = {child};
+
+            child.host = envelope;
+
+            const wrapped = computed<{child: {host: unknown; index: Map<string, number>}}>((read) => {
+                child.index = read(carburetor).index;
+
+                return envelope;
+            });
+
+            wrapped.subscribe(() => notified++, {id: 'listener'});
+
+            expect(wrapped.get().child.index.get('a')).toEqual(1);
+
+            carburetor.setIndex('a', 2);
+
+            expect(notified).toEqual(1);
+            expect(wrapped.getVersion()).toEqual(1);
+            expect(wrapped.get().child.index.get('a')).toEqual(2);
+        });
+
+        test('a freshly constructed envelope already notifies through the reference check (control)', () => {
+            const carburetor = new IndexedCarburetor(getIndexData());
+            let notified = 0;
+
+            const wrapped = computed<{index: Map<string, number>}>((read) => ({
+                index: read(carburetor).index,
+            }));
+
+            wrapped.subscribe(() => notified++, {id: 'listener'});
+
+            expect(wrapped.getVersion()).toEqual(0);
+
+            carburetor.setIndex('a', 2);
+
+            expect(notified).toEqual(1);
+            expect(wrapped.getVersion()).toEqual(1);
+            expect(wrapped.get().index.get('a')).toEqual(2);
+        });
+
+        test('a stable envelope holding only plain data still stays quiet (control)', () => {
+            const carburetor = new CounterCarburetor({n: 1});
+            let notified = 0;
+
+            const envelope: {n: number} = {n: 0};
+
+            const wrapped = computed<{n: number}>((read) => {
+                envelope.n = read(carburetor).n;
+
+                return envelope;
+            });
+
+            wrapped.subscribe(() => notified++, {id: 'listener'});
+
+            expect(wrapped.get()).toEqual({n: 1});
+
+            // The write re-runs the body and even changes the plain member's value, but with no
+            // exotic member inside, the reference check keeps the notification suppressed.
+            carburetor.setN(2);
+
+            expect(notified).toEqual(0);
+            expect(wrapped.getVersion()).toEqual(0);
+            expect(wrapped.get()).toEqual({n: 2});
+        });
+    });
+
     describe('live results shared across consumers (R5-03)', () => {
         interface IUserLike {
             user: {

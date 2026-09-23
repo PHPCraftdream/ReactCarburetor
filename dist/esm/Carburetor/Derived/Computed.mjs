@@ -1,3 +1,4 @@
+import { containsExoticValue } from "../Store/Utils/containsExoticValue.mjs";
 import { getUid } from "../Store/Utils/getUid.mjs";
 import { isExoticValue } from "../Store/Utils/isExoticValue.mjs";
 import { updateWave } from "../Store/Scheduling/UpdateWaveInstance.mjs";
@@ -181,7 +182,8 @@ class Computed {
         if (!this.valid || this.hasDrifted()) this.recompute();
         const baseline = void 0 !== this.announced ? this.announced.value : previous;
         const moved = void 0 !== this.announced && this.driftedSince(this.announced.versions);
-        const unchanged = Object.is(baseline, this.value) && !(isExoticValue(this.value) && moved);
+        const opaque = isExoticValue(this.value) || containsExoticValue(this.value);
+        const unchanged = Object.is(baseline, this.value) && !(opaque && moved);
         if (unchanged) return;
         this.announced = {
             value: this.value,

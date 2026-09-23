@@ -2,6 +2,7 @@ import {IDict, TSubscriber} from "@/Carburetor/Models/Base";
 import {IComputed, TComputeBody, TComputedReader} from "@/Carburetor/Models/Derived";
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carburetor/Models/Store";
+import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {isExoticValue} from "@/Carburetor/Store/Utils/isExoticValue";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
@@ -488,10 +489,13 @@ export class Computed<R> implements IComputed<R> {
 
         // An exotic result is judged by its dependencies, not its reference (R6-02): the same
         // Map can have been mutated in place since it was announced, so Object.is alone would
-        // suppress a notification the dependency genuinely earned. Plain results keep the
+        // suppress a notification the dependency genuinely earned. A plain envelope holding an
+        // exotic member is judged the same way (R7-02): the envelope can keep its identity
+        // across evaluations while the wrapped value mutates in place. Plain results keep the
         // reference check by itself.
         const moved = this.announced !== undefined && this.driftedSince(this.announced.versions);
-        const unchanged = Object.is(baseline, this.value) && !(isExoticValue(this.value) && moved);
+        const opaque = isExoticValue(this.value) || containsExoticValue(this.value);
+        const unchanged = Object.is(baseline, this.value) && !(opaque && moved);
 
         if (unchanged) {
             return;

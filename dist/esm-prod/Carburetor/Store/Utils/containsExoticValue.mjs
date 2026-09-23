@@ -1,0 +1,1 @@
+import{isExoticValue as e}from"./isExoticValue.mjs";let t=t=>{if(null===t||"object"!=typeof t)return!1;let o=new WeakSet,l=t=>!!e(t)||!(null===t||"object"!=typeof t||o.has(t))&&(o.add(t),Object.values(t).some(e=>l(e)));return l(t)};export{t as containsExoticValue};
