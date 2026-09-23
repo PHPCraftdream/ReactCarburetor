@@ -40,10 +40,17 @@ interface IInvalidationRecord {
 interface IInvalidationScope {
     /** Bumped by every invalidation: caches compare it against their last sweep to notice new ones. */
     revision: number;
-    /** The published writes, ascending by revision; retired records are dropped from it. */
-    records: Array<IInvalidationRecord>;
+    /**
+     * The published writes, keyed by path: a later write to a path already pending replaces that
+     * path's record instead of piling up alongside it (R3-06) — the newest record for a path always
+     * evicts a superset of what an older one for the same path would, so keeping only the newest
+     * loses nothing any cache still needs.
+     */
+    records: Map<TPath, IInvalidationRecord>;
     /** The caches sharing this scope, weakly: a dropped view must not pin records or entries. */
     watchers: Set<WeakRef<ICacheState>>;
+    /** Cumulative count of records a retire pass has examined; test introspection only (R3-06). */
+    visitedRecords: number;
 }
 
 /** The invalidation scopes, keyed by the raw object the proxies front. */
@@ -78,6 +85,32 @@ const needsRecord = (state: ICacheState, record: IInvalidationRecord): boolean =
 };
 
 /**
+ * The `createProxyCache` contract plus the engine's own test introspection: `release` drops this
+ * cache's watcher slot explicitly, independent of whether the JS engine has collected it yet, and
+ * `visitedRecords`/`watcherCount` expose the retirement ledger's scan cost and raw watcher count
+ * directly, so a test never has to infer either one from real garbage-collection timing (R3-06,
+ * R3-07). Deliberately not part of `IProxyCache` in Models.ts, and not exported: production code
+ * never calls these, and the factory below hands one back typed only as the public contract —
+ * a test that needs this surface asserts its shape locally, the same way it already reads the
+ * `PROXY_CACHE` hatch through a manual cast.
+ */
+interface IProxyCacheHandle extends IProxyCache {
+    /**
+     * Drops this cache's watcher from the shared scope right away. A view that knows its own
+     * lifecycle (e.g. on unmount/detach) can call this so its slot stops being scanned and stops
+     * holding records back, without waiting for a write to trigger retirement or for garbage
+     * collection to run at all.
+     */
+    release: () => void;
+
+    /** How many records a retire pass has examined in total, across this scope's lifetime. */
+    visitedRecords: () => number;
+
+    /** How many watcher slots the shared scope currently holds, pruned or not. */
+    watcherCount: () => number;
+}
+
+/**
  * Cache of proxies for nested branches, with explicit ownership of obsolete targets: the map holds a branch's
  * source and wrapper only while the branch is still the live value at its path. It also remembers the source object:
  * if the value behind a path has been replaced, the proxy over the old object is no longer valid and gets recreated.
@@ -94,9 +127,16 @@ const needsRecord = (state: ICacheState, record: IInvalidationRecord): boolean =
  *
  * The published records are a worklist, not a history: each is retired the moment no live
  * cache needs it — every cache sharing the scope has swept through it, or none of the ones
- * that have not holds an entry it would evict. A long-lived dictionary churning through
- * temporary keys therefore keeps a ledger proportional to its live caches, and a sweep walks
- * pending records only, never the writes of a lifetime.
+ * that have not holds an entry it would evict. Repeated writes to the SAME path never grow this
+ * worklist either: a new record for a path replaces that path's pending record instead of
+ * queuing beside it (R3-06), so an idle view that never re-consults its cache still leaves the
+ * ledger proportional to the distinct paths touched, not to how many times each was written.
+ *
+ * A fresh cache also prunes the watcher set on construction, not only on a write — a read-only
+ * run that never writes still gets a retirement pass every time a new view is created (R3-07).
+ * That still leans on garbage collection having actually run by then, so a view whose owner
+ * knows it is done should call `release()` instead of waiting on either a write or the
+ * collector: it drops the watcher slot immediately and unconditionally.
  *
  * @param target - the raw object the proxies asking for this cache front; scopes are shared
  * per raw object, so a read proxy and the write proxies over the same data observe the same
@@ -105,14 +145,17 @@ const needsRecord = (state: ICacheState, record: IInvalidationRecord): boolean =
 export const createProxyCache = (target: object): IProxyCache => {
     const scope: IInvalidationScope = scopes.get(target) ?? {
         revision: 0,
-        records: [],
+        records: new Map<TPath, IInvalidationRecord>(),
         watchers: new Set<WeakRef<ICacheState>>(),
+        visitedRecords: 0,
     };
 
     scopes.set(target, scope);
 
     const state: ICacheState = {syncedAt: scope.revision, entries: new Map<TPath, IProxyCacheEntry>()};
-    scope.watchers.add(new WeakRef(state));
+    const watcherRef: WeakRef<ICacheState> = new WeakRef(state);
+
+    scope.watchers.add(watcherRef);
 
     /**
      * Drops the records no live cache needs any more. A record goes once every live cache has
@@ -139,26 +182,40 @@ export const createProxyCache = (target: object): IProxyCache => {
             }
         }
 
-        scope.records = scope.records.filter((record) => {
+        for (const [path, record] of scope.records) {
+            scope.visitedRecords++;
+
             if (record.revision <= sweptThrough) {
-                return false;
+                scope.records.delete(path);
+
+                continue;
             }
 
             if (!precise) {
-                return true;
+                continue;
             }
+
+            let stillNeeded = false;
 
             for (const watcher of scope.watchers) {
                 const watched = watcher.deref();
 
                 if (watched !== undefined && watched.syncedAt < record.revision && needsRecord(watched, record)) {
-                    return true;
+                    stillNeeded = true;
+
+                    break;
                 }
             }
 
-            return false;
-        });
+            if (!stillNeeded) {
+                scope.records.delete(path);
+            }
+        }
     };
+
+    // A read-only run that never writes never reaches retire() through invalidate() either —
+    // pruning here means every fresh view also runs a retirement pass, not just every write.
+    retire(false);
 
     /** Applies every record published after this cache's last sweep, then retires what no live cache needs. */
     const sweep = (): void => {
@@ -170,7 +227,7 @@ export const createProxyCache = (target: object): IProxyCache => {
 
         state.syncedAt = scope.revision;
 
-        for (const record of scope.records) {
+        for (const record of scope.records.values()) {
             if (record.revision <= applied) {
                 continue;
             }
@@ -198,15 +255,20 @@ export const createProxyCache = (target: object): IProxyCache => {
         state.entries.set(path, {source, proxy, revision: scope.revision});
 
         return proxy;
-    }) as IProxyCache;
+    }) as IProxyCacheHandle;
 
     cache.invalidate = (path: TPath): void => {
         scope.revision++;
-        scope.records.push({path, revision: scope.revision});
+        scope.records.set(path, {path, revision: scope.revision});
         retire(false);
     };
 
     cache.sweep = sweep;
+
+    cache.release = (): void => {
+        scope.watchers.delete(watcherRef);
+        retire(false);
+    };
 
     cache.owns = (path: TPath, source: object): boolean => {
         const entry = state.entries.get(path);
@@ -216,7 +278,11 @@ export const createProxyCache = (target: object): IProxyCache => {
 
     cache.size = (): number => state.entries.size;
 
-    cache.pending = (): number => scope.records.length;
+    cache.pending = (): number => scope.records.size;
+
+    cache.visitedRecords = (): number => scope.visitedRecords;
+
+    cache.watcherCount = (): number => scope.watchers.size;
 
     return cache;
 };

@@ -44,15 +44,17 @@ const needsRecord = (state, record)=>{
 const createProxyCache = (target)=>{
     const scope = scopes.get(target) ?? {
         revision: 0,
-        records: [],
-        watchers: new Set()
+        records: new Map(),
+        watchers: new Set(),
+        visitedRecords: 0
     };
     scopes.set(target, scope);
     const state = {
         syncedAt: scope.revision,
         entries: new Map()
     };
-    scope.watchers.add(new WeakRef(state));
+    const watcherRef = new WeakRef(state);
+    scope.watchers.add(watcherRef);
     const retire = (precise)=>{
         for (const watcher of scope.watchers)if (void 0 === watcher.deref()) scope.watchers.delete(watcher);
         let sweptThrough = scope.revision;
@@ -60,21 +62,30 @@ const createProxyCache = (target)=>{
             const watched = watcher.deref();
             if (void 0 !== watched && watched.syncedAt < sweptThrough) sweptThrough = watched.syncedAt;
         }
-        scope.records = scope.records.filter((record)=>{
-            if (record.revision <= sweptThrough) return false;
-            if (!precise) return true;
+        for (const [path, record] of scope.records){
+            scope.visitedRecords++;
+            if (record.revision <= sweptThrough) {
+                scope.records.delete(path);
+                continue;
+            }
+            if (!precise) continue;
+            let stillNeeded = false;
             for (const watcher of scope.watchers){
                 const watched = watcher.deref();
-                if (void 0 !== watched && watched.syncedAt < record.revision && needsRecord(watched, record)) return true;
+                if (void 0 !== watched && watched.syncedAt < record.revision && needsRecord(watched, record)) {
+                    stillNeeded = true;
+                    break;
+                }
             }
-            return false;
-        });
+            if (!stillNeeded) scope.records.delete(path);
+        }
     };
+    retire(false);
     const sweep = ()=>{
         if (state.syncedAt === scope.revision) return;
         const applied = state.syncedAt;
         state.syncedAt = scope.revision;
-        for (const record of scope.records)if (!(record.revision <= applied)) {
+        for (const record of scope.records.values())if (!(record.revision <= applied)) {
             for (const [path, entry] of state.entries)if (entry.revision < record.revision && covers(record.path, path)) state.entries.delete(path);
         }
         retire(true);
@@ -93,19 +104,25 @@ const createProxyCache = (target)=>{
     };
     cache.invalidate = (path)=>{
         scope.revision++;
-        scope.records.push({
+        scope.records.set(path, {
             path,
             revision: scope.revision
         });
         retire(false);
     };
     cache.sweep = sweep;
+    cache.release = ()=>{
+        scope.watchers.delete(watcherRef);
+        retire(false);
+    };
     cache.owns = (path, source)=>{
         const entry = state.entries.get(path);
         return void 0 !== entry && entry.source === source;
     };
     cache.size = ()=>state.entries.size;
-    cache.pending = ()=>scope.records.length;
+    cache.pending = ()=>scope.records.size;
+    cache.visitedRecords = ()=>scope.visitedRecords;
+    cache.watcherCount = ()=>scope.watchers.size;
     return cache;
 };
 exports.createProxyCache = __webpack_exports__.createProxyCache;

@@ -1,3 +1,5 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
@@ -5,6 +7,18 @@ import {AntiHookComponent, Carburetor, TPath} from '@/Carburetor';
 import {createProxyCache} from '@/Carburetor/Store/Tracking/createProxyCache';
 import {IProxyCache, PROXY_CACHE} from '@/Carburetor/Store/Tracking/Models';
 import {TReadonly} from '@/Carburetor/Models/Base';
+
+/**
+ * The R3-06/R3-07 introspection surface `createProxyCache` attaches but does not export as a
+ * type (it stays out of the one-export-per-file layout rule and out of the public `IProxyCache`
+ * contract): declared locally here, the same way `cacheOf` below reads the `PROXY_CACHE` hatch
+ * through a manual cast rather than an exported type.
+ */
+interface IProxyCacheHandle extends IProxyCache {
+    release: () => void;
+    visitedRecords: () => number;
+    watcherCount: () => number;
+}
 
 interface IBranch {
     title: string;
@@ -861,5 +875,65 @@ describe('structural mutation is rejected at every read-proxy level (R2-12)', ()
         expect(container.querySelector('.title')?.textContent).toEqual('edited');
 
         unmount();
+    });
+});
+
+describe('same-path writes coalesce in the invalidation ledger (R3-06)', () => {
+    test('five writes to one path an idle view holds leave one record, not five', () => {
+        const target = {};
+        const idle = createProxyCache(target) as IProxyCacheHandle;
+        const writer = createProxyCache(target) as IProxyCacheHandle;
+        const o = {name: 'p'};
+
+        // Mints the one live entry an idle view holds; it is never consulted again below.
+        idle('p', o, () => ({side: 'idle'}));
+
+        for (let i = 0; i < 5; i++) {
+            writer.invalidate('p');
+        }
+
+        // An append-only worklist would report one record per write (5), because the idle
+        // view's stale entry makes every one of them look necessary until it is consulted.
+        expect(writer.pending()).toEqual(1);
+
+        // Each write's retire pass should scan the one coalesced record it actually needs to,
+        // not an ever-growing history: an append-only ledger visits 1+2+3+4+5 = 15 records
+        // over the same five writes, not 5.
+        expect(writer.visitedRecords()).toEqual(5);
+    });
+});
+
+describe('watcher slots release explicitly, independent of GC timing (R3-07)', () => {
+    test('release() keeps the watcher ledger from growing across discarded read-only views', () => {
+        const target = {};
+
+        for (let i = 0; i < 25; i++) {
+            const view = createProxyCache(target) as IProxyCacheHandle;
+
+            view.release();
+        }
+
+        // None of the 25 discarded views needs to have actually been garbage collected here:
+        // release() drops each watcher slot immediately and unconditionally, so only the
+        // still-alive probe below counts.
+        const probe = createProxyCache(target) as IProxyCacheHandle;
+
+        expect(probe.watcherCount()).toEqual(1);
+    });
+});
+
+describe('WeakRef is a stated runtime dependency, not a silent one (R3-08)', () => {
+    test('the engine requires a global WeakRef and package.json states the runtime floor', () => {
+        expect(typeof WeakRef).toBe('function');
+        expect(() => createProxyCache({})).not.toThrow();
+
+        const packageJsonPath = path.join(__dirname, '..', '..', '..', '..', 'package.json');
+        const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
+            engines?: {node?: string};
+        };
+
+        // WeakRef shipped unflagged in V8 8.4 / Node 14.6.0: the floor below that throws
+        // "WeakRef is not a constructor" on the very first tracked read.
+        expect(packageJson.engines?.node).toBe('>=14.6.0');
     });
 });

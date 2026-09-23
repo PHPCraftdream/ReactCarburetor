@@ -53,6 +53,9 @@
     "CHANGELOG.md"
   ],
   "sideEffects": false,
+  "engines": {
+    "node": ">=14.6.0"
+  },
   "scripts": {
     "build": "rslib build",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p plugin/tsconfig.json && tsc --noEmit -p plugin/internal/tsconfig.json && tsc --noEmit -p tsconfig.types.json",
