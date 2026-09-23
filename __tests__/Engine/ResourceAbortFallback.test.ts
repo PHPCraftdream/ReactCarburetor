@@ -105,3 +105,99 @@ describe('resource loads without a global AbortController (R5-04)', () => {
         });
     });
 });
+
+describe('the fallback signal satisfies a standard loader (R6-01)', () => {
+    test('a loader calling addEventListener starts and settles under both resource classes', async () => {
+        // The module-level `reported` flag was consumed by the first test above, so neither
+        // block below lets the development diagnostic through the console guard.
+        await withoutAbortController(async () => {
+            const resource = new ResourceCarburetor<string>((_args: undefined, signal: AbortSignal) => {
+                signal.addEventListener('abort', (): void => undefined);
+
+                return Promise.resolve('loaded');
+            });
+
+            await resource.load(undefined);
+
+            expect(resource.getData().status).toEqual(EResourceStatus.Success);
+            expect(resource.getData().data).toEqual('loaded');
+
+            const cache = new ResourceCache<string, string>((_args: string, signal: AbortSignal) => {
+                signal.addEventListener('abort', (): void => undefined);
+
+                return Promise.resolve('loaded');
+            });
+
+            await cache.load('a');
+
+            expect(cache.getEntry('a').status).toEqual(EResourceStatus.Success);
+            expect(cache.getEntry('a').data).toEqual('loaded');
+        });
+    });
+
+    test('aborting an in-flight load fires the registered abort listener', async () => {
+        await withoutAbortController(async () => {
+            let aborts = 0;
+            let resolveLoad: (value: string) => void = () => undefined;
+
+            const resource = new ResourceCarburetor<string>((_args: undefined, signal: AbortSignal) => {
+                signal.addEventListener('abort', (): void => {
+                    aborts += 1;
+                });
+
+                return new Promise<string>((resolve: (value: string) => void) => {
+                    resolveLoad = resolve;
+                });
+            });
+
+            const loading = resource.load(undefined);
+            resource.abort();
+
+            expect(aborts).toEqual(1);
+
+            resolveLoad('too late');
+            await loading;
+            await flush();
+
+            expect(resource.getData().status).toEqual(EResourceStatus.Idle);
+        });
+    });
+
+    test('removeEventListener stops a listener from firing', async () => {
+        await withoutAbortController(async () => {
+            let kept = 0;
+            let removed = 0;
+            let resolveLoad: (value: string) => void = () => undefined;
+
+            const onRemoved = (): void => {
+                removed += 1;
+            };
+
+            const onKept = (): void => {
+                kept += 1;
+            };
+
+            const resource = new ResourceCarburetor<string>((_args: undefined, signal: AbortSignal) => {
+                signal.addEventListener('abort', onRemoved);
+                signal.addEventListener('abort', onKept);
+                signal.removeEventListener('abort', onRemoved);
+
+                return new Promise<string>((resolve: (value: string) => void) => {
+                    resolveLoad = resolve;
+                });
+            });
+
+            const loading = resource.load(undefined);
+            resource.abort();
+
+            expect(removed).toEqual(0);
+            expect(kept).toEqual(1);
+
+            resolveLoad('too late');
+            await loading;
+            await flush();
+
+            expect(resource.getData().status).toEqual(EResourceStatus.Idle);
+        });
+    });
+});
