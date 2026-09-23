@@ -88,6 +88,7 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("require-bind-for-passed-method", Severity::Error),
     ("require-effect-deps", Severity::Warn),
     ("require-emit-after-draft-write", Severity::Error),
+    ("require-method-for-closure", Severity::Warn),
     ("require-subscription-disposal", Severity::Warn),
     ("require-super-in-lifecycle", Severity::Error),
 ];

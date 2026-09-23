@@ -6,6 +6,7 @@ use crate::config::{Config, Severity};
 use crate::fix::Fix;
 use crate::{Diagnostic, Source};
 
+mod allocations;
 mod boundaries;
 mod effects;
 mod lifecycle;
@@ -19,7 +20,11 @@ type Check = fn(&Program<'_>, &Source<'_>) -> Vec<Diagnostic>;
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check); 22] = [
+const REGISTRY: [(&str, Check); 23] = [
+    (
+        allocations::require_method_for_closure::RULE,
+        allocations::require_method_for_closure::check,
+    ),
     (no_lifecycle_class_property::RULE, no_lifecycle_class_property::check),
     (reads::no_computed_get_in_computed::RULE, reads::no_computed_get_in_computed::check),
     (reads::no_computed_get_in_render::RULE, reads::no_computed_get_in_render::check),
