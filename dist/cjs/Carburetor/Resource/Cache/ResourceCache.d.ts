@@ -74,19 +74,23 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
     restore: (data: IResourceCacheData<T>) => void;
     /** Records that an entry was asked for, which is what eviction orders by. */
     protected touch: (key: string) => void;
-    /** The arguments the most recent `keyOf` encoded, paired with the key below. */
+    /** The arguments the most recent `keyOf` encoded, paired with the JSON and key below. */
     protected lastKeyArgs: TArgs | undefined;
-    /** The key those arguments produced; a hit requires both slots to agree. */
+    /** The JSON those arguments encoded to when their key was taken; a memo hit must reproduce it. */
+    protected lastKeyJson: string | undefined;
+    /** The key those arguments produced; a hit requires the reference and its JSON to agree. */
     protected lastKeyValue: string | undefined;
+    /** Whether the same-reference mutation has been reported, so one render loop cannot bury the console. */
+    protected keyMutationReported: boolean;
     /**
      * The key an argument set is stored under, exposed so a caller can read one entry's path.
      *
      * Memoized on the most recent arguments, by reference: `useResource` asks for `pathOf(args)`
      * and then `getEntry(args)` within one render, and encoding the same object twice per render
-     * is pure waste. A different reference recomputes, so the memo never answers with another
-     * argument set's key. The one answer it can get wrong is a caller mutating an args object in
-     * place between calls, which reads as the previous key — arguments here are value keys and
-     * are expected to stay immutable once built.
+     * is pure waste. The memo is only trusted after the argument's current values still encode to
+     * the JSON its key was taken from (R6-05): arguments are value keys, so an object mutated in
+     * place between calls is re-keyed by what it now says — the previous entry stays under its own
+     * key — and development reports the mutation once, since nothing in `TArgs` can forbid it.
      */
     keyOf: (args: TArgs) => string;
     /**

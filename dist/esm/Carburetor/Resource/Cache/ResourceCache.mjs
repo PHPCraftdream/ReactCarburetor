@@ -1,5 +1,6 @@
 import { EResourceStatus } from "../../Models/Enums/EResourceStatus.mjs";
 import { Carburetor } from "../../Store/Carburetor.mjs";
+import { diagnostics } from "../../Store/Diagnostics/DiagnosticsInstance.mjs";
 import { PATH_SEPARATOR } from "../../Store/Paths/PathSeparator.mjs";
 import { joinPath } from "../../Store/Paths/joinPath.mjs";
 import { deepClone } from "../../Store/Utils/deepClone.mjs";
@@ -52,11 +53,21 @@ class ResourceCache extends Carburetor {
         this.lastUsed.set(key, this.useTick);
     };
     lastKeyArgs = void 0;
+    lastKeyJson = void 0;
     lastKeyValue = void 0;
+    keyMutationReported = false;
     keyOf = (args)=>{
-        if (this.lastKeyArgs === args && void 0 !== this.lastKeyValue) return this.lastKeyValue;
+        const json = JSON.stringify(void 0 === args ? null : args);
+        const memoized = this.lastKeyArgs === args && void 0 !== this.lastKeyValue;
+        if (memoized && this.lastKeyJson === json && void 0 !== this.lastKeyValue) return this.lastKeyValue;
         const key = encodeCacheKey(args);
+        const development = "u" > typeof process && 'production' !== process.env.NODE_ENV;
+        if (memoized && development && !this.keyMutationReported) {
+            this.keyMutationReported = true;
+            diagnostics.report(`a resource arguments object was mutated after its key was taken: the same reference now encodes to a different entry (${this.lastKeyValue} became ${key}), and the new key is the one being used. Build a fresh object per query rather than mutating one in place.`);
+        }
         this.lastKeyArgs = args;
+        this.lastKeyJson = json;
         this.lastKeyValue = key;
         return key;
     };

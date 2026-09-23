@@ -32,6 +32,7 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const EResourceStatus_js_namespaceObject = require("../../Models/Enums/EResourceStatus.js");
 const Carburetor_js_namespaceObject = require("../../Store/Carburetor.js");
+const DiagnosticsInstance_js_namespaceObject = require("../../Store/Diagnostics/DiagnosticsInstance.js");
 const PathSeparator_js_namespaceObject = require("../../Store/Paths/PathSeparator.js");
 const joinPath_js_namespaceObject = require("../../Store/Paths/joinPath.js");
 const deepClone_js_namespaceObject = require("../../Store/Utils/deepClone.js");
@@ -84,11 +85,21 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         this.lastUsed.set(key, this.useTick);
     };
     lastKeyArgs = void 0;
+    lastKeyJson = void 0;
     lastKeyValue = void 0;
+    keyMutationReported = false;
     keyOf = (args)=>{
-        if (this.lastKeyArgs === args && void 0 !== this.lastKeyValue) return this.lastKeyValue;
+        const json = JSON.stringify(void 0 === args ? null : args);
+        const memoized = this.lastKeyArgs === args && void 0 !== this.lastKeyValue;
+        if (memoized && this.lastKeyJson === json && void 0 !== this.lastKeyValue) return this.lastKeyValue;
         const key = (0, external_encodeCacheKey_js_namespaceObject.encodeCacheKey)(args);
+        const development = "u" > typeof process && 'production' !== process.env.NODE_ENV;
+        if (memoized && development && !this.keyMutationReported) {
+            this.keyMutationReported = true;
+            DiagnosticsInstance_js_namespaceObject.diagnostics.report(`a resource arguments object was mutated after its key was taken: the same reference now encodes to a different entry (${this.lastKeyValue} became ${key}), and the new key is the one being used. Build a fresh object per query rather than mutating one in place.`);
+        }
         this.lastKeyArgs = args;
+        this.lastKeyJson = json;
         this.lastKeyValue = key;
         return key;
     };

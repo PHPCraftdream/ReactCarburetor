@@ -702,3 +702,72 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
         expect(fresh.getEntry('a').invalidated).toBeFalsy();
     });
 });
+
+describe('ResourceCache.keyOf (R6-05: a mutated argument object is keyed by its current values)', () => {
+    test('a query object mutated between two loads is loaded and read under the new key', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+
+        const query = {id: 'a'};
+
+        void cache.load(query);
+        loader.pending[0].resolve({id: 'a', name: 'Ann'});
+        await flush();
+
+        // The report's exact scenario: one object, mutated in place between calls.
+        query.id = 'b';
+
+        // The mutation diagnostic routes through console.error, and the suite's console guard
+        // fails a test that lets output through uncaptured: capture it here; its once-per-cache
+        // contract is asserted in its own test below.
+        const reports: unknown[][] = [];
+        const spy = rstest.spyOn(console, 'error').mockImplementation((...args: unknown[]): void => {
+            reports.push(args);
+        });
+
+        void cache.load(query);
+
+        spy.mockRestore();
+
+        // The second load is a real loader call: the stale memoized key is not reused.
+        expect(loader.calls).toEqual(['a', 'b']);
+        expect(reports.length).toEqual(1);
+
+        loader.pending[1].resolve({id: 'b', name: 'Bob'});
+        await flush();
+
+        expect(cache.getEntry(query).data).toEqual({id: 'b', name: 'Bob'});
+        expect(cache.getEntry(query).status).toEqual(EResourceStatus.Success);
+        // The old answer stays untouched under the key its own values still produce.
+        expect(cache.getEntry({id: 'a'}).data).toEqual({id: 'a', name: 'Ann'});
+    });
+
+    test('the same-reference mutation is reported once per cache, not once per call', () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+
+        const query = {id: 'a'};
+
+        cache.keyOf(query);
+
+        const reports: unknown[][] = [];
+        const spy = rstest.spyOn(console, 'error').mockImplementation((...args: unknown[]): void => {
+            reports.push(args);
+        });
+
+        query.id = 'b';
+        expect(cache.keyOf(query)).toEqual(cache.keyOf({id: 'b'}));
+
+        // Unchanged reads between mutations report nothing further...
+        expect(cache.keyOf(query)).toEqual(cache.keyOf({id: 'b'}));
+
+        // ...and neither does a second mutation: one report per cache.
+        query.id = 'c';
+        expect(cache.keyOf(query)).toEqual(cache.keyOf({id: 'c'}));
+
+        spy.mockRestore();
+
+        expect(reports.length).toEqual(1);
+        expect(String(reports[0][0])).toContain('mutated');
+    });
+});

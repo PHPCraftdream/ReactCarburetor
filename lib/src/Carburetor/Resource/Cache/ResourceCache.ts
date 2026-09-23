@@ -8,6 +8,7 @@ import {
 } from "@/Carburetor/Models/Resource";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
+import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
@@ -15,6 +16,11 @@ import {describeError} from "@/Carburetor/Resource/describeError";
 import {createAbortHandle} from "@/Carburetor/Resource/createAbortHandle";
 import {encodeCacheKey} from "./encodeCacheKey";
 import {getInitialCacheEntry} from "./getInitialCacheEntry";
+
+// Declared locally rather than through @types/node, like DevelopmentFlag does: bundlers
+// substitute this exact member expression at build time, which keeps the guarded block
+// in keyOf droppable from a production bundle.
+declare const process: {env: {NODE_ENV?: string}} | undefined;
 
 /** Long enough that a screen's worth of reads shares one request, short enough to feel live. */
 const DEFAULT_TTL: number = 30_000;
@@ -133,29 +139,54 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
         this.lastUsed.set(key, this.useTick);
     };
 
-    /** The arguments the most recent `keyOf` encoded, paired with the key below. */
+    /** The arguments the most recent `keyOf` encoded, paired with the JSON and key below. */
     protected lastKeyArgs: TArgs | undefined = undefined;
-    /** The key those arguments produced; a hit requires both slots to agree. */
+    /** The JSON those arguments encoded to when their key was taken; a memo hit must reproduce it. */
+    protected lastKeyJson: string | undefined = undefined;
+    /** The key those arguments produced; a hit requires the reference and its JSON to agree. */
     protected lastKeyValue: string | undefined = undefined;
+    /** Whether the same-reference mutation has been reported, so one render loop cannot bury the console. */
+    protected keyMutationReported: boolean = false;
 
     /**
      * The key an argument set is stored under, exposed so a caller can read one entry's path.
      *
      * Memoized on the most recent arguments, by reference: `useResource` asks for `pathOf(args)`
      * and then `getEntry(args)` within one render, and encoding the same object twice per render
-     * is pure waste. A different reference recomputes, so the memo never answers with another
-     * argument set's key. The one answer it can get wrong is a caller mutating an args object in
-     * place between calls, which reads as the previous key — arguments here are value keys and
-     * are expected to stay immutable once built.
+     * is pure waste. The memo is only trusted after the argument's current values still encode to
+     * the JSON its key was taken from (R6-05): arguments are value keys, so an object mutated in
+     * place between calls is re-keyed by what it now says — the previous entry stays under its own
+     * key — and development reports the mutation once, since nothing in `TArgs` can forbid it.
      */
     public keyOf = (args: TArgs): string => {
-        if (this.lastKeyArgs === args && this.lastKeyValue !== undefined) {
+        // The one stringify the memo cannot skip: it is the validation. It mirrors encodeCacheKey's
+        // encoding (undefined becomes null), so the compared strings describe the same values.
+        const json = JSON.stringify(args === undefined ? null : args) as string;
+
+        const memoized = this.lastKeyArgs === args && this.lastKeyValue !== undefined;
+
+        if (memoized && this.lastKeyJson === json && this.lastKeyValue !== undefined) {
             return this.lastKeyValue;
         }
 
         const key = encodeCacheKey(args);
 
+        // A local over the same member expression the other diagnostics compare: bundlers
+        // substitute it at build time, so this block still drops from a production bundle.
+        const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+
+        if (memoized && development && !this.keyMutationReported) {
+            this.keyMutationReported = true;
+
+            diagnostics.report(
+                'a resource arguments object was mutated after its key was taken: the same reference now ' +
+                `encodes to a different entry (${this.lastKeyValue} became ${key}), and the new key is the ` +
+                'one being used. Build a fresh object per query rather than mutating one in place.'
+            );
+        }
+
         this.lastKeyArgs = args;
+        this.lastKeyJson = json;
         this.lastKeyValue = key;
 
         return key;
