@@ -67,6 +67,8 @@ is documented as such, defaults to `warn` at most, and states its heuristic.
 | H25 | `require-invalidate-after-mutation` | cache | off | no |
 | H26 | `no-store-write-in-render` (shared with H11) | cache | error | no |
 | H27 | none — a judgement about the data | cache | — | — |
+| H29 | `require-method-for-closure` | allocations | warn | no |
+| H30 | `require-module-function` | allocations | warn | no |
 
 Three of these overlap with a runtime diagnostic the engine already reports in development
 (H6, H14, H17). The rule is still worth having: it fires on code paths that were never
@@ -76,10 +78,11 @@ All four syntactic forms of a change count wherever a rule looks for one: `x.y =
 `delete x.y`, and an in-place array method (`push`, `splice`, `sort`, …). A rule that handled only
 assignment would miss three quarters of the hazard.
 
-**22 rules are implemented**, covering H1–H23 and H26: reads (H1–H5), writes (H6–H11), lifecycle
-(H12, H13, H21, H22), effects (H14–H16) and boundaries (H17–H20), with H23 and H26 folded into the
-rules they share. H24 and H25 are specified and named but not written yet; H27 cannot be a rule at
-all. Detection lives in `native/src/rules/`, tested there with oxc's own parser over hand-written
+**24 rules are implemented**, covering H1–H23, H26, H29 and H30: reads (H1–H5), writes (H6–H11),
+lifecycle (H12, H13, H21, H22), effects (H14–H16), boundaries (H17–H20) and allocations (H29, H30),
+with H23 and H26 folded into the rules they share. H24 and H25 are specified and named but not
+written yet; H27 cannot be a rule at all. Detection lives in `native/src/rules/`, tested there with
+oxc's own parser over hand-written
 edge cases; `plugin/src/Rules/` is now a thin bridge that calls that binary once per lint run and
 reports through whichever host is running, so oxlint's `RuleTester` — which never writes its
 synthetic snippets to disk — cannot exercise it. `__tests__/Native/conformance.test.ts` and
@@ -940,6 +943,148 @@ simply wrong, and `invalidate` is the only thing that can rescue it.
 **Right.** Give data the user edits a short lifetime, or none at all, and invalidate on write.
 
 **Rule** none. This is a judgement about the data, and a linter has no way to make it.
+
+## Allocations
+
+Allocation hazards cost work instead of correctness: the value stays right, nothing errors, and the
+engine builds function objects it did not need — once per call of a member, or once per instance
+where once per module would do. They are catalogued here in the same form, because the cost is as
+invisible as a wrong value: nothing fails, the profile just gets slowly worse. Same family as H21,
+which is about the props gate a fresh handler defeats; these two are about the allocation itself.
+
+### H29 — a closure inside a member that depends only on the class
+
+**Wrong**
+
+```tsx
+public render() {
+    const {orderIds, carburetor} = this.props;
+
+    return <ul>{orderIds.map((id: string) =>
+        <TodoItem key={id} carburetor={carburetor} id={id}/>)}
+    </ul>;
+}
+```
+
+The arrow's only class connection is what `this` could hand it: `orderIds` and `carburetor` are
+destructured from `this.props`, and the one value that is not — `id` — arrives as the map callback's
+own argument.
+
+**Why it is silent.** Nothing errors and no value is ever wrong. The closure is simply rebuilt on
+every call of the member — on every render, when the member is render — and when the result is
+handed to a child as a prop, the fresh reference defeats the props gate exactly as H21's handlers
+do. The type system cannot see an allocation, and a runtime assertion would have nothing to catch,
+because the output is correct every time.
+
+**Right**
+
+```tsx
+@bind
+private renderTodoItem(id: string): JSX.Element {
+    return <TodoItem key={id} carburetor={this.props.carburetor} id={id}/>;
+}
+
+public render() {
+    return <ul>{this.props.orderIds.map(this.renderTodoItem)}</ul>;
+}
+```
+
+The method is declared once; `@bind` keeps it on the prototype and makes it safe to pass as a value
+(H22); the map callback's argument flows in as an ordinary parameter.
+
+**Rule** `require-method-for-closure` — **warn**.
+
+**Detection.** An arrow or function expression nested inside the *body* of a member of a component
+class — not itself the member's body. The report requires that the rewrite it asks for leaves no
+per-call allocation behind: every capture must either be this-derived (a `this.props` chain,
+destructured or plain), which the method re-reads from `this`, or — only when the closure is a
+directly-called helper rather than a callback handed somewhere — a never-written local that becomes
+a method parameter, since a parameter carries the value at call time where the capture froze it. A
+capture the closure writes blocks the report outright. The message names the recipe: re-read the
+this-derived values from `this` inside it, take the plain locals as parameters, decorate with `@bind`
+when the closure is handed over as a value. A closure that does nothing but forward to `this.<name>`
+gets shorter advice — pass the method itself, bound once.
+
+Scope is component classes only: a direct `extends AntiHookComponent`/`ScopedAntiHookComponent`, or
+a base declared in the same file; store classes are never analysed. Component-element JSX attributes
+stay H21's; DOM-element ones are this rule's. Callbacks passed to `useEffect`, `update`,
+`transaction` and `computed` are left to the error-level rules that inspect those bodies, and a
+closure that runs in render and calls `useCarburetor` or `getData` is left to the render-scoped
+rules, which would lose their subject if it moved out of render.
+
+**False positives.** The rewrite can change behaviour in one visible way: a DOM handler extracted
+into a method re-reads `this.props` at call time, where the closure froze the value at creation.
+For callbacks that run during render the two coincide; for a handler that fires after the render
+that built it, the method sees current props — the idiomatic behaviour for class components, but a
+change, which is why the message names the re-read. The rewrite is also sometimes more verbose than
+the allocation it avoids, which is why this is a `warn` to judge rather than an `error` to obey.
+
+### H30 — a member or closure that uses nothing from the class
+
+**Wrong**
+
+```tsx
+export class TodoApp extends AntiHookComponent {
+    /** The plus icon on the add button. */
+    public renderPlusIcon() {
+        return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg>;
+    }
+
+    #formatCount(value: number): string {
+        return value.toLocaleString();
+    }
+}
+```
+
+Neither member reads `this`, touches `super` or `#private` state, or names a type parameter of the
+class. The demo's `renderPlusIcon`, `renderCounter` and `renderEmpty` are the shape in the wild.
+
+**Why it is silent.** Again no value is ever wrong. The cost depends on the member's kind, and the
+message says which: a closure is rebuilt on every call of the member (every render, for render); a
+function-valued field or a `@bind` method is allocated once per instance, so a hundred instances pay
+it a hundred times; a plain prototype method allocates nothing at all. It is reported all the same,
+for the reason that covers all three: code that uses nothing from the class does not belong in the
+class. At module level one copy serves every instance and every call.
+
+**Right**
+
+```tsx
+/** The plus icon on the add button. */
+export function renderPlusIcon() {
+    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg>;
+}
+```
+
+Call sites inside the class become `renderPlusIcon()`.
+
+**Rule** `require-module-function` — **warn**.
+
+**Detection.** Two shapes. The closure case is H29's machinery with the answer flipped: a closure
+inside a member body of a component class with no class dependency — no `this`, `super` or
+`#private`, no this-derived capture — and every capture passable on H29's terms, which for a
+callback means no captures at all and for a directly-called helper means never-written locals that
+become parameters. It is report-only, because hoisting loses the contextual typing the callback's
+parameters enjoy today. The member case is a method or a function-valued field with a body whose
+signature and body show no class dependency. Visibility is *not* the boundary — the rule
+deliberately fires on an ordinary-looking `#private` helper, and on public and protected members
+alike: as soon as extraction is possible, report it, and for `#private` it always is, nothing
+outside the class being able to reference it. The named exclusions are the cases where extraction
+is genuinely impossible whatever the body does: the React lifecycle and static names React calls on
+the instance, the component base's own override points (`useEffects`, `useEffect`, `connect`,
+`useComputed`, …) which the base calls as `this.<name>()`, and any member of a class with an
+`implements` clause — a contract the linter cannot verify. Mechanical exclusions apply regardless:
+`constructor`, getters and setters, `accessor`, body-less declarations, `override`, decorated
+members, computed names. Both name lists are pinned by tests against the sources they come from;
+the rule's own source carries the full list. The member case ships an autofix (`--fix`) that moves
+the member above the class as a module function and rewrites its `this.<name>` references; the
+closure case reports without one. Scope is H29's: component classes only, store classes never
+analysed.
+
+**False positives.** A member that some other file calls as `instance.<name>()` looks extractable to
+an analysis with no cross-file resolution — the same documented blindness every rule here has — and
+the no-visibility-split policy accepts the report rather than guessing. The `implements` exclusion
+exists for the same reason in the one case a contract is visible. The escape hatch is a disable
+comment directly above the member.
 
 ## Not hazards
 

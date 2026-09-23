@@ -15,7 +15,7 @@ Measured on this repository — 157 source files, best of several runs:
 | Pass | Time |
 |------|------|
 | oxlint's own native rules, whole tree | 315 ms |
-| the same plus 22 rules as a JavaScript plugin | 585 ms |
+| the same plus 24 rules as a JavaScript plugin | 585 ms |
 | this binary, whole tree | **20 ms** |
 
 So the JavaScript rule layer costs 270 ms, and the native pass that replaces it costs 20 ms —

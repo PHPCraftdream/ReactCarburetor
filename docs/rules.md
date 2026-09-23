@@ -5,7 +5,8 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 Everything shipped is about the safety of carburetor logic — a write nobody hears, a component that
-never subscribes, an effect whose cleanup is dropped. The repository keeps a second, unpublished
+never subscribes, an effect whose cleanup is dropped — or about allocation hygiene, where nothing is
+wrong but a function object is rebuilt on every call. The repository keeps a second, unpublished
 plugin for its own house style (import direction, line length, documentation); those rules are not
 in the package, because they are this project's taste rather than the library's semantics.
 

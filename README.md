@@ -542,11 +542,11 @@ function as the third argument when the selector builds a new object.
 
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
-subscribed to, or when an effect's cleanup is silently dropped. The package ships 22 rules for
-exactly those. [docs/rules.md](docs/rules.md) is the reference by rule name — what each catches, its
-options, how to switch one off — and [docs/hazards.md](docs/hazards.md) is the same material by
-mistake, with the code that triggers it, why it is silent at runtime, and where the rule can be
-wrong.
+subscribed to, or when an effect's cleanup is silently dropped. The package ships 24 rules for
+exactly those, and for the allocations a class rebuilds for nothing. [docs/rules.md](docs/rules.md)
+is the reference by rule name — what each catches, its options, how to switch one off — and
+[docs/hazards.md](docs/hazards.md) is the same material by mistake, with the code that triggers it,
+why it is silent at runtime, and where the rule can be wrong.
 
 One plugin serves both hosts, because oxlint's JS plugin API is ESLint's.
 

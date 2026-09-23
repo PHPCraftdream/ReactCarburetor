@@ -47,16 +47,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   property — and the reference stays stable across renders, which is what the props gate needs:
   a handler built in render makes a child's props compare as changed every time. Requires no
   `experimentalDecorators`.
-- `react-carburetor/lint`: 22 lint rules for the ways consumer code can go wrong silently — a write
+- `react-carburetor/lint`: 24 lint rules for the ways consumer code can go wrong silently — a write
   that reaches no subscriber, a component reading state it never subscribed to, an effect whose
-  cleanup is dropped, a computed that never invalidates. One plugin serves both hosts, since oxlint's
-  JS plugin API is ESLint's: oxlint consumers add one `extends` line pointing at the shipped
-  `recommended.oxlintrc.json`, ESLint v9 consumers spread `carburetor.configs.recommended` into a
-  flat config.
-- A native Rust port of all 22 rules (`native/`), and the JavaScript plugin rewritten into a thin
+  cleanup is dropped, a computed that never invalidates, an allocation rebuilt for nothing. One
+  plugin serves both hosts, since oxlint's JS plugin API is ESLint's: oxlint consumers add one
+  `extends` line pointing at the shipped `recommended.oxlintrc.json`, ESLint v9 consumers spread
+  `carburetor.configs.recommended` into a flat config.
+- `require-method-for-closure` and `require-module-function`: two `warn` rules for avoidable
+  allocations in component classes — a closure inside a member that only the class could supply,
+  rebuilt on every call of the member, and a closure or member that uses nothing from the class and
+  belongs at module level. `require-module-function`'s member reports carry an autofix (`--fix`)
+  that moves the member above the class as a module function and rewrites `this.<name>` references;
+  the closure reports and `require-method-for-closure` have none, because a callback's parameters
+  are contextually typed and the annotations a declared function needs cannot be inferred.
+- A native Rust port of all 24 rules (`native/`), and the JavaScript plugin rewritten into a thin
   bridge that calls it: the whole set of rules now has one implementation, not a JavaScript one and
   a native one kept in sync by hand. Measured on this repository, the native pass takes 20 ms
-  against the 270 ms the 22 rules cost as a JavaScript plugin — the difference is multiplied by
+  against the 270 ms the 24 rules cost as a JavaScript plugin — the difference is multiplied by
   every project that depends on this library, which is the reason it exists. The bridge spawns the
   binary exactly once per lint run and shares that one result across every rule and every file,
   including under ESLint's `--concurrency`, where several worker threads coordinate through a lock
