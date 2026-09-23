@@ -385,26 +385,35 @@ describe('ResourceCache', () => {
     });
 
     test('an entry crossing its ttl gets a fresh view object with no write in between', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 50});
+        // A fake clock, not a tight real-time race: `isStale` reads Date.now(), and a real
+        // 50ms window can already have elapsed under load by the time `fresh` is read, making
+        // the "still fresh" assertion below flake independent of anything this test verifies.
+        rstest.useFakeTimers();
 
-        void cache.load('a');
-        loader.pending[0].resolve({id: 'a', name: 'Ann'});
-        await flush();
+        try {
+            const loader = makeLoader();
+            const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 50});
 
-        const fresh = cache.getEntry('a');
+            void cache.load('a');
+            loader.pending[0].resolve({id: 'a', name: 'Ann'});
+            await rstest.advanceTimersByTimeAsync(0);
 
-        expect(fresh.stale).toBe(false);
+            const fresh = cache.getEntry('a');
 
-        await new Promise(resolve => setTimeout(resolve, 120));
+            expect(fresh.stale).toBe(false);
 
-        const expired = cache.getEntry('a');
+            await rstest.advanceTimersByTimeAsync(120);
 
-        expect(expired).not.toBe(fresh);
-        expect(expired.stale).toBe(true);
-        expect(expired.data).toEqual({id: 'a', name: 'Ann'});
-        // Time alone moved the verdict; the loader was never asked again.
-        expect(loader.calls).toEqual(['a']);
+            const expired = cache.getEntry('a');
+
+            expect(expired).not.toBe(fresh);
+            expect(expired.stale).toBe(true);
+            expect(expired.data).toEqual({id: 'a', name: 'Ann'});
+            // Time alone moved the verdict; the loader was never asked again.
+            expect(loader.calls).toEqual(['a']);
+        } finally {
+            rstest.useRealTimers();
+        }
     });
 
     test('reads of an absent key are never cached', () => {
