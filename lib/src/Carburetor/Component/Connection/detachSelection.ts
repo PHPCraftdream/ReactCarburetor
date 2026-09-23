@@ -46,7 +46,9 @@ const detachDeep = (value: unknown, seen: WeakMap<object, unknown>): unknown => 
 
     if (!isArray && !isPlainObject(value)) {
         // Exotic objects (Map, Date, class instances) would lose their prototype to a copy, so
-        // they — and whatever they hold — pass through untouched, exactly as before.
+        // they — and whatever they hold — pass through untouched, exactly as before. Their
+        // identity can survive an in-place mutation, which is why `sameSelection` treats any
+        // selection holding one as changed instead of trusting `Object.is`.
         return value;
     }
 

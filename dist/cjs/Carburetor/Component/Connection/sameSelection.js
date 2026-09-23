@@ -32,28 +32,35 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const external_isPlainObject_js_namespaceObject = require("./isPlainObject.js");
 const external_ownEnumerableKeys_js_namespaceObject = require("./ownEnumerableKeys.js");
-const sameKeyedContent = (snapshot, next, seen)=>{
+const isExotic = (value)=>'object' == typeof value && null !== value && !Array.isArray(value) && !(0, external_isPlainObject_js_namespaceObject.isPlainObject)(value);
+const sameKeyedContent = (snapshot, next, previousToFresh, freshToPrevious)=>{
     const previousKeys = (0, external_ownEnumerableKeys_js_namespaceObject.ownEnumerableKeys)(snapshot);
     const freshKeys = (0, external_ownEnumerableKeys_js_namespaceObject.ownEnumerableKeys)(next);
     if (previousKeys.length !== freshKeys.length) return false;
     const previousMembers = snapshot;
     const freshMembers = next;
-    return previousKeys.every((key)=>Object.prototype.hasOwnProperty.call(freshMembers, key) && sameValue(previousMembers[key], freshMembers[key], seen));
+    return previousKeys.every((key)=>Object.prototype.hasOwnProperty.call(freshMembers, key) && sameValue(previousMembers[key], freshMembers[key], previousToFresh, freshToPrevious));
 };
-const sameValue = (a, b, seen)=>{
+const sameValue = (a, b, previousToFresh, freshToPrevious)=>{
+    if (isExotic(a) || isExotic(b)) return false;
     if (Object.is(a, b)) return true;
     if ('object' != typeof a || null === a || 'object' != typeof b || null === b) return false;
-    if (seen.get(a) === b) return true;
+    const mapped = previousToFresh.get(a);
+    if (void 0 !== mapped) return mapped === b;
+    if (void 0 !== freshToPrevious.get(b)) return false;
     if (Array.isArray(a) || Array.isArray(b)) {
         if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
-        seen.set(a, b);
-        return sameKeyedContent(a, b, seen);
+        previousToFresh.set(a, b);
+        freshToPrevious.set(b, a);
+        return sameKeyedContent(a, b, previousToFresh, freshToPrevious);
     }
     if (!(0, external_isPlainObject_js_namespaceObject.isPlainObject)(a) || !(0, external_isPlainObject_js_namespaceObject.isPlainObject)(b)) return false;
-    seen.set(a, b);
-    return sameKeyedContent(a, b, seen);
+    if (Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
+    previousToFresh.set(a, b);
+    freshToPrevious.set(b, a);
+    return sameKeyedContent(a, b, previousToFresh, freshToPrevious);
 };
-const sameSelection = (snapshot, next)=>sameValue(snapshot, next, new WeakMap());
+const sameSelection = (snapshot, next)=>sameValue(snapshot, next, new WeakMap(), new WeakMap());
 exports.sameSelection = __webpack_exports__.sameSelection;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "sameSelection"
