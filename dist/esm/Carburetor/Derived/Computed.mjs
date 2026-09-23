@@ -140,6 +140,7 @@ class Computed {
         this.dependencies = {};
     };
     onDependencyChanged = ()=>{
+        if (this.valid && !this.hasDrifted()) return;
         this.markStale();
         if (updateWave.isActive()) return void updateWave.defer(this.uid, this.settle);
         this.settle();
@@ -155,7 +156,7 @@ class Computed {
     };
     settle = ()=>{
         const previous = this.value;
-        this.recompute();
+        if (!this.valid || this.hasDrifted()) this.recompute();
         const baseline = void 0 !== this.announced ? this.announced.value : previous;
         if (Object.is(baseline, this.value)) return;
         this.announced = {

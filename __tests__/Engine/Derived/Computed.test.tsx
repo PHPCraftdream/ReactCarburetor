@@ -41,6 +41,9 @@ class CounterCarburetor extends Carburetor<{n: number}> {
     };
 }
 
+const delta = (before: number[], after: number[]): number[] =>
+    after.map((count: number, index: number): number => count - before[index]);
+
 describe('computed', () => {
     test('computes lazily and memoizes the result', () => {
         const carburetor = new ListCarburetor(getData());
@@ -576,9 +579,6 @@ describe('computed', () => {
     });
 
     describe('dependency maintenance', () => {
-        const delta = (before: number[], after: number[]): number[] =>
-            after.map((count: number, index: number): number => count - before[index]);
-
         test('one source change evaluates each node of a four-node chain once', () => {
             const carburetor = new ListCarburetor(getData());
             const calls: number[] = [0, 0, 0, 0];
@@ -848,11 +848,11 @@ describe('computed', () => {
 
             carburetor.setDone('a', true);
 
-            // other and total each recompute twice: the mid-wave read of total recomputes
-            // them eagerly while their settlements are still queued, and each queued
-            // settlement then re-runs. That is the freshness design doing its job, not
-            // dependency churn — what this pins is that the read saw settled values.
-            expect(delta(afterSubscribe, calls)).toEqual([1, 2, 2]);
+            // The mid-wave read of total recomputes other and total eagerly while their
+            // settlements are still queued; each queued settlement then finds itself
+            // already fresh against the same upstream state and does not rerun the body —
+            // what this pins is that the read saw settled values at no extra cost.
+            expect(delta(afterSubscribe, calls)).toEqual([1, 1, 1]);
             expect(seenMidWave).toEqual(11);
             expect(total.get()).toEqual(11);
             expect(innerNotifications).toEqual(1);
@@ -895,7 +895,10 @@ describe('computed', () => {
 
             expect(carburetor.getData().n).toEqual(2);
             expect(doubled.get()).toEqual(4);
-            expect(runs).toEqual(3);
+            // One eval for the initial mount, one for the mid-wave pull; the queued
+            // settlement finds itself already fresh against that same pull and does not
+            // rerun the body.
+            expect(runs).toEqual(2);
             // The first real change was delivered to the observer and reached the DOM.
             expect(seen).toEqual([4]);
             expect(container.querySelector('.value')?.textContent).toEqual('4');
@@ -946,6 +949,46 @@ describe('computed', () => {
             carburetor.setN(2);
 
             // 5 would be a mixed-generation value: the new n combined with the old b.
+            expect(delivered).toEqual([7]);
+            expect(total.get()).toEqual(7);
+        });
+
+        test('R3-09: a direct-plus-derived diamond evaluates each node once per write', () => {
+            const carburetor = new CounterCarburetor({n: 1});
+            const calls = [0, 0, 0];
+
+            const a = computed<number>((read) => {
+                calls[0]++;
+
+                return read(carburetor).n * 2;
+            });
+            const b = computed<number>((read) => {
+                calls[1]++;
+
+                return read(a) + 1;
+            });
+            // total reaches n both directly and through a -> b, so the write reaches it
+            // once directly and once by cascading through the derived chain.
+            const total = computed<number>((read) => {
+                calls[2]++;
+
+                return read(carburetor).n + read(b);
+            });
+
+            const delivered: number[] = [];
+            total.subscribe(() => delivered.push(total.get()), {id: 'listener'});
+
+            expect(total.get()).toEqual(4);
+            expect(calls).toEqual([1, 1, 1]);
+
+            const afterSubscribe = [...calls];
+
+            carburetor.setN(2);
+
+            // Each node's body runs exactly once for the write: a settlement that finds
+            // its value already fresh — recomputed earlier in the same wave by another
+            // node's eager pull — does not rerun the body a second time.
+            expect(delta(afterSubscribe, calls)).toEqual([1, 1, 1]);
             expect(delivered).toEqual([7]);
             expect(total.get()).toEqual(7);
         });

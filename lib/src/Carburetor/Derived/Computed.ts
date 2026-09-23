@@ -346,6 +346,15 @@ export class Computed<R> implements IComputed<R> {
 
     /** Invalidates on a dependency write, and settles once the wave around it has passed. */
     protected onDependencyChanged = (): void => {
+        // An upstream announcement can arrive after something else already pulled this
+        // value fresh — an eager get() during a sibling's settlement, for instance. Once
+        // recomputed, this value's own recorded versions bottom out at the same raw stores
+        // the announcement traces back to, so a clean hasDrifted() here means the pull
+        // already saw everything this notification is reporting: nothing to act on.
+        if (this.valid && !this.hasDrifted()) {
+            return;
+        }
+
         // Invalidation travels before any settlement runs: everything downstream is marked
         // stale now, so a settlement that pulls a dependent's cached value recomputes it
         // from current inputs instead of combining a new input with a stale derived one.
@@ -405,7 +414,14 @@ export class Computed<R> implements IComputed<R> {
     protected settle = (): void => {
         const previous = this.value;
 
-        this.recompute();
+        // A settlement queued while this value was stale can find it already valid by the
+        // time its turn comes: an eager get() elsewhere in the wave — pulled by another
+        // node's own settlement — already reran the body against the same upstream state
+        // this settlement was deferred to wait for. Recomputing again would just repeat
+        // that call for no new input.
+        if (!this.valid || this.hasDrifted()) {
+            this.recompute();
+        }
 
         // The judgment is against the publication baseline, not `previous`: a read that
         // landed mid-wave can have refreshed the cache without the observer ever seeing
