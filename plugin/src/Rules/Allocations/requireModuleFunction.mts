@@ -6,7 +6,7 @@ import type {IRule} from "#src/Models.mts";
  *
  * Detection lives in the native crate now (native/src/rules/), which the JS plugin calls once
  * per lint run and reports through -- see plugin/src/Utils/Native/nativeBridge.mts for why,
- * and native/src/rules/ for the rule itself. See docs/hazards.md, H29.
+ * and native/src/rules/ for the rule itself. See docs/hazards.md, H30.
  */
 export const requireModuleFunction: IRule = nativeRule(
     'carburetor/require-module-function',

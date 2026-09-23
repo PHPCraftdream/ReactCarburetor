@@ -6,7 +6,7 @@ import type {IRule} from "#src/Models.mts";
  *
  * Detection lives in the native crate now (native/src/rules/), which the JS plugin calls once
  * per lint run and reports through -- see plugin/src/Utils/Native/nativeBridge.mts for why,
- * and native/src/rules/ for the rule itself. See docs/hazards.md, H28.
+ * and native/src/rules/ for the rule itself. See docs/hazards.md, H29.
  */
 export const requireMethodForClosure: IRule = nativeRule(
     'carburetor/require-method-for-closure',

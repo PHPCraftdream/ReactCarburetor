@@ -1,4 +1,4 @@
-//! H28: a closure inside a component's member that the class could own as a method.
+//! H29: a closure inside a component's member that the class could own as a method.
 //!
 //! Every call of the member builds the closure again — every render, when the member is `render` —
 //! an allocation the class does not need: what the closure reads is either already on `this` or a
@@ -11,7 +11,7 @@
 //! A plain local captured by a callback blocks the report — passing it by value would freeze a
 //! value that is supposed to change — and so does a closure that writes one. A closure that is
 //! nothing but a forward to a method gets shorter advice: pass the method itself, bound once.
-//! See docs/hazards.md, H28.
+//! See docs/hazards.md, H29.
 
 use std::collections::HashMap;
 

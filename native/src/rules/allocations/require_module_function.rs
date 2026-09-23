@@ -1,11 +1,11 @@
-//! H29: a closure or a member that uses nothing from the class it sits in.
+//! H30: a closure or a member that uses nothing from the class it sits in.
 //!
 //! Every call of the member builds the closure again — every render, when the member is `render` —
 //! and a function-valued field is rebuilt once per instance: allocations the module does not need,
 //! because the code depends on nothing around it. Where `require-method-for-closure` reports the
 //! closures the class could own, this rule reports the opposite corner — the code that does not
 //! need the class at all and can be declared once at module level, where one copy serves every
-//! instance and every call. See docs/hazards.md, H29.
+//! instance and every call. See docs/hazards.md, H30.
 //!
 //! A member is only a candidate when nothing outside this analysis's reach calls it by name: React
 //! calls the lifecycle hooks on the instance, the component base calls its own override points as
