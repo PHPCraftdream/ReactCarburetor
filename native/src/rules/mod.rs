@@ -98,6 +98,17 @@ pub fn report_with_fix(
     }
 }
 
+/// Whether the source could contain a recognized component base.
+///
+/// Escaped identifiers include a backslash in source spelling, so keep those on the full parse
+/// path instead of risking a false negative in this raw-text fast path.
+fn may_contain_component_base(text: &str) -> bool {
+    text.contains('\\')
+        || crate::rules::support::bases::COMPONENT_BASES
+            .iter()
+            .any(|base| text.contains(base))
+}
+
 /// Runs the rules the configuration leaves on over one parsed file.
 ///
 /// A rule set to `off` is not merely filtered out of the output — it never runs, so turning rules
@@ -106,12 +117,14 @@ pub fn run(program: &Program<'_>, source: &Source, config: &Config) -> Vec<Diagn
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let method_severity = config.severity(allocations::require_method_for_closure::RULE);
     let module_severity = config.severity(allocations::require_module_function::RULE);
-    let shared_allocation_semantic =
-        if method_severity != Severity::Off && module_severity != Severity::Off {
-            Some(crate::rules::support::closures::build_semantic(program))
-        } else {
-            None
-        };
+    let allocation_semantic = if (method_severity != Severity::Off
+        || module_severity != Severity::Off)
+        && may_contain_component_base(source.text)
+    {
+        Some(crate::rules::support::closures::build_semantic(program))
+    } else {
+        None
+    };
 
     for (rule, check) in REGISTRY {
         let severity = config.severity(rule);
@@ -120,17 +133,24 @@ pub fn run(program: &Program<'_>, source: &Source, config: &Config) -> Vec<Diagn
             continue;
         }
 
-        let reports = match (rule, shared_allocation_semantic.as_ref()) {
-            (allocations::require_method_for_closure::RULE, Some(semantic)) => {
-                allocations::require_method_for_closure::check_with_semantic(
-                    program, source, semantic,
-                )
-            }
-            (allocations::require_module_function::RULE, Some(semantic)) => {
-                allocations::require_module_function::check_with_semantic(program, source, semantic)
-            }
-            _ => check(program, source),
-        };
+        let reports =
+            match rule {
+                allocations::require_method_for_closure::RULE => allocation_semantic
+                    .as_ref()
+                    .map_or_else(Vec::new, |semantic| {
+                        allocations::require_method_for_closure::check_with_semantic(
+                            program, source, semantic,
+                        )
+                    }),
+                allocations::require_module_function::RULE => allocation_semantic
+                    .as_ref()
+                    .map_or_else(Vec::new, |semantic| {
+                        allocations::require_module_function::check_with_semantic(
+                            program, source, semantic,
+                        )
+                    }),
+                _ => check(program, source),
+            };
 
         diagnostics.extend(reports.into_iter().map(|mut diagnostic| {
             diagnostic.severity = severity;
@@ -234,5 +254,68 @@ class Widget extends AntiHookComponent {
             [allocations::require_module_function::RULE]
         );
         assert_eq!(module_only[0].severity, Severity::Error);
+    }
+
+    #[test]
+    fn allocation_prefilter_keeps_direct_and_same_file_component_bases() {
+        let direct = run_with(ALLOCATION_SOURCE, Severity::Error, Severity::Off);
+        assert_eq!(
+            direct[0].rule,
+            allocations::require_method_for_closure::RULE
+        );
+
+        let subclass = run_with(
+            r#"
+class Base extends AntiHookComponent {}
+class Widget extends Base {
+    render() {
+        return this.items.map((item) => this.renderItem(item));
+    }
+}
+"#,
+            Severity::Error,
+            Severity::Off,
+        );
+        assert_eq!(
+            subclass
+                .iter()
+                .map(|diagnostic| diagnostic.rule.as_str())
+                .collect::<Vec<_>>(),
+            [allocations::require_method_for_closure::RULE]
+        );
+    }
+
+    #[test]
+    fn allocation_prefilter_falls_back_for_escaped_component_base_identifiers() {
+        let source = r#"
+class Widget extends AntiHook\u0043omponent {
+    render() {
+        return this.items.map((item) => this.renderItem(item));
+    }
+}
+"#;
+        assert!(may_contain_component_base(source));
+        let diagnostics = run_with(source, Severity::Error, Severity::Off);
+
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.rule.as_str())
+                .collect::<Vec<_>>(),
+            [allocations::require_method_for_closure::RULE]
+        );
+    }
+
+    #[test]
+    fn allocation_prefilter_skips_files_without_component_markers() {
+        let source = r#"
+class Widget {
+    render() {
+        return this.items.map((item) => this.renderItem(item));
+    }
+}
+"#;
+        assert!(!may_contain_component_base(source));
+        assert!(run_with(source, Severity::Error, Severity::Error).is_empty());
     }
 }
