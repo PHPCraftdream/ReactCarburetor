@@ -31,6 +31,7 @@ __webpack_require__.d(__webpack_exports__, {
     Computed: ()=>Computed
 });
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
+const isExoticValue_js_namespaceObject = require("../Store/Utils/isExoticValue.js");
 const UpdateWaveInstance_js_namespaceObject = require("../Store/Scheduling/UpdateWaveInstance.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../Store/Diagnostics/DiagnosticsInstance.js");
@@ -62,7 +63,10 @@ class Computed {
         if (!this.valid || wasUnobserved && this.hasDrifted()) this.recompute();
         else if (wasUnobserved) this.observeDependencies();
         if (wasUnobserved && this.valid) this.announced = {
-            value: this.value
+            value: this.value,
+            versions: {
+                ...this.versions
+            }
         };
         return id;
     };
@@ -82,6 +86,14 @@ class Computed {
             const recorded = this.versions[cuid];
             return recorded.source.getVersion() !== recorded.version;
         });
+    driftedSince = (record)=>{
+        const moved = Object.keys(record).some((cuid)=>{
+            const recorded = record[cuid];
+            return recorded.source.getVersion() !== recorded.version;
+        });
+        if (moved) return true;
+        return Object.keys(this.versions).some((cuid)=>!(cuid in record));
+    };
     recompute = ()=>{
         const collected = {};
         const track = (source)=>{
@@ -200,9 +212,14 @@ class Computed {
         const previous = this.value;
         if (!this.valid || this.hasDrifted()) this.recompute();
         const baseline = void 0 !== this.announced ? this.announced.value : previous;
-        if (Object.is(baseline, this.value)) return;
+        const moved = void 0 !== this.announced && this.driftedSince(this.announced.versions);
+        const unchanged = Object.is(baseline, this.value) && !((0, isExoticValue_js_namespaceObject.isExoticValue)(this.value) && moved);
+        if (unchanged) return;
         this.announced = {
-            value: this.value
+            value: this.value,
+            versions: {
+                ...this.versions
+            }
         };
         this.version++;
         this.deliver();

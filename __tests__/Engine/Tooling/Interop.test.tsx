@@ -71,6 +71,27 @@ class NestedCarburetor extends Carburetor<INestedData> {
     };
 }
 
+interface IIndexedData {
+    index: Map<string, number>;
+    title: string;
+}
+
+const getIndexData = (): IIndexedData => ({index: new Map([['a', 1]]), title: 't'});
+
+class IndexedCarburetor extends Carburetor<IIndexedData> {
+    public setIndex = (key: string, value: number) => {
+        this.draft.index.set(key, value);
+
+        this.emitUpdate();
+    };
+
+    public setTitle = (title: string) => {
+        this.draft.title = title;
+
+        this.emitUpdate();
+    };
+}
+
 describe('hooks interop', () => {
     test('a function component reads a carburetor and re-renders on change', () => {
         const carburetor = new ProfileCarburetor(getData());
@@ -316,6 +337,64 @@ describe('hooks interop', () => {
 
         act(() => carburetor.setName('bob'));
         expect(container.querySelector('.name')?.textContent).toEqual('bob');
+
+        unmount();
+    });
+
+    test('a Map-valued selector re-renders after an in-place mutation and snapshots stay detached (R6-03)', () => {
+        const carburetor = new IndexedCarburetor(getIndexData());
+        let renders = 0;
+        const seen: Array<Map<string, number>> = [];
+
+        const IndexView = () => {
+            renders++;
+
+            const index = useCarburetorValue(carburetor, (data) => data.index);
+
+            seen.push(index);
+
+            return <div className="value">{index.get('a')}</div>;
+        };
+
+        const {container, unmount} = render(<IndexView/>);
+
+        expect(container.querySelector('.value')?.textContent).toEqual('1');
+        expect(seen.length).toEqual(1);
+
+        const firstSnapshot = seen[0];
+
+        act(() => carburetor.setIndex('a', 2));
+
+        expect(container.querySelector('.value')?.textContent).toEqual('2');
+        expect(renders).toBeGreaterThan(1);
+        // The earlier snapshot is a detached copy: it did not mutate with the store.
+        expect(firstSnapshot.get('a')).toEqual(1);
+
+        unmount();
+    });
+
+    test('a primitive selector on the same store is not woken by an unrelated Map write (R6-03 control)', () => {
+        const carburetor = new IndexedCarburetor(getIndexData());
+        let renders = 0;
+
+        const TitleView = () => {
+            renders++;
+
+            const title = useCarburetorValue(carburetor, (data) => data.title);
+
+            return <div className="title">{title}</div>;
+        };
+
+        const {container, unmount} = render(<TitleView/>);
+        const afterMount = renders;
+
+        act(() => carburetor.setIndex('a', 2));
+        expect(renders).toEqual(afterMount);
+        expect(container.querySelector('.title')?.textContent).toEqual('t');
+
+        act(() => carburetor.setTitle('u'));
+        expect(renders).toBeGreaterThan(afterMount);
+        expect(container.querySelector('.title')?.textContent).toEqual('u');
 
         unmount();
     });

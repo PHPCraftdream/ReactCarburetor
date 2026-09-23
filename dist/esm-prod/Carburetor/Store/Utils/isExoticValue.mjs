@@ -1,0 +1,1 @@
+let t=t=>{if(null===t||"object"!=typeof t||Array.isArray(t))return!1;let e=Object.getPrototypeOf(t);return e!==Object.prototype&&null!==e};export{t as isExoticValue};

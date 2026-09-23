@@ -1,9 +1,28 @@
 import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { deepClone, isTrackable } from "../Carburetor/index.mjs";
+import { isExoticValue } from "../Carburetor/Store/Utils/isExoticValue.mjs";
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
     return true;
+};
+const snapshotOpaque = (value)=>{
+    if (value instanceof Date) return new Date(value.getTime());
+    if (value instanceof Map) {
+        const copy = new Map();
+        value.forEach((member, key)=>{
+            copy.set(key, deepClone(member));
+        });
+        return copy;
+    }
+    if (value instanceof Set) {
+        const copy = new Set();
+        value.forEach((member)=>{
+            copy.add(deepClone(member));
+        });
+        return copy;
+    }
+    return value;
 };
 const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const cache = useRef({
@@ -57,6 +76,7 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
         const reads = new Set();
         let next = select(carburetor.read((path)=>reads.add(path)));
         if (isTrackable(next)) next = deepClone(next);
+        else if (isExoticValue(next)) next = snapshotOpaque(next);
         pendingReads.current = reads;
         if (entry.filled && isEqual(entry.value, next)) {
             cache.current = {

@@ -41,6 +41,20 @@ class CounterCarburetor extends Carburetor<{n: number}> {
     };
 }
 
+interface IIndexedData {
+    index: Map<string, number>;
+}
+
+const getIndexData = (): IIndexedData => ({index: new Map([['a', 1]])});
+
+class IndexedCarburetor extends Carburetor<IIndexedData> {
+    public setIndex = (key: string, value: number) => {
+        this.draft.index.set(key, value);
+
+        this.emitUpdate();
+    };
+}
+
 const delta = (before: number[], after: number[]): number[] =>
     after.map((count: number, index: number): number => count - before[index]);
 
@@ -1083,6 +1097,68 @@ describe('computed', () => {
 
             expect(outer.get()).toEqual(40);
             expect(notified).toEqual(1);
+        });
+    });
+
+    describe('exotic results (R6-02)', () => {
+        test('a coarse-path Map mutation notifies subscribers even though the result reference is unchanged', () => {
+            const carburetor = new IndexedCarburetor(getIndexData());
+            let notified = 0;
+
+            const index = computed<Map<string, number>>((read) => read(carburetor).index);
+
+            index.subscribe(() => notified++, {id: 'listener'});
+
+            expect(index.getVersion()).toEqual(0);
+
+            carburetor.setIndex('a', 2);
+
+            expect(notified).toEqual(1);
+            expect(index.getVersion()).toEqual(1);
+            expect(index.get().get('a')).toEqual(2);
+        });
+
+        test('a component reading a Map-valued computed re-renders after a coarse mutation', () => {
+            const carburetor = new IndexedCarburetor(getIndexData());
+            let renders = 0;
+
+            const index = computed<Map<string, number>>((read) => read(carburetor).index);
+
+            class ValueView extends AntiHookComponent {
+                render() {
+                    renders++;
+
+                    return <div className="value">{this.useComputed(index).get('a')}</div>;
+                }
+            }
+
+            const view = render(<ValueView />);
+            expect(view.container.querySelector('.value')?.textContent).toEqual('1');
+            expect(renders).toEqual(1);
+
+            act(() => carburetor.setIndex('a', 2));
+
+            expect(view.container.querySelector('.value')?.textContent).toEqual('2');
+            expect(renders).toEqual(2);
+
+            view.unmount();
+        });
+
+        test('an equal primitive result after a recompute still stays quiet (control)', () => {
+            const carburetor = new IndexedCarburetor(getIndexData());
+            let notified = 0;
+
+            const size = computed<number>((read) => read(carburetor).index.size);
+
+            size.subscribe(() => notified++, {id: 'listener'});
+
+            // The write lands on a tracked path and the body recomputes, but the result is the
+            // same primitive: the reference check must keep suppressing the notification.
+            carburetor.setIndex('a', 1);
+
+            expect(notified).toEqual(0);
+            expect(size.getVersion()).toEqual(0);
+            expect(size.get()).toEqual(1);
         });
     });
 

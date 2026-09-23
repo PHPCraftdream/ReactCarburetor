@@ -1,5 +1,6 @@
 import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react";
 import {deepClone, ICarburetor, isTrackable, TPath, TPathSet, TSubscriber} from "@/Carburetor";
+import {isExoticValue} from "@/Carburetor/Store/Utils/isExoticValue";
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<T extends object, R> {
@@ -30,6 +31,42 @@ const sameReads = (a: TPathSet, b: TPathSet): boolean => {
     }
 
     return true;
+};
+
+/**
+ * A detached copy of an opaque selector result: a live Map, Set or Date mutates in place while
+ * its reference stays identical, so it can neither certify equality nor serve as the immutable
+ * snapshot React's external-store contract requires.
+ *
+ * Class instances have no generic safe copy and stay live — the same known limit `detachSelection`
+ * documents. Plain containers never reach here: `isTrackable` routes them to `deepClone`.
+ */
+const snapshotOpaque = <T>(value: T): T => {
+    if (value instanceof Date) {
+        return new Date(value.getTime()) as unknown as T;
+    }
+
+    if (value instanceof Map) {
+        const copy = new Map<unknown, unknown>();
+
+        value.forEach((member: unknown, key: unknown) => {
+            copy.set(key, deepClone(member));
+        });
+
+        return copy as unknown as T;
+    }
+
+    if (value instanceof Set) {
+        const copy = new Set<unknown>();
+
+        value.forEach((member: unknown) => {
+            copy.add(deepClone(member));
+        });
+
+        return copy as unknown as T;
+    }
+
+    return value;
 };
 
 /**
@@ -138,6 +175,12 @@ export const useCarburetorValue = <T extends object, R>(
         // heuristic.
         if (isTrackable(next)) {
             next = deepClone(next);
+        } else if (isExoticValue(next)) {
+            // R6-03: reusing the previous snapshot by reference is only safe for immutable
+            // values. A live Map mutated in place would keep its reference across versions,
+            // so Object.is would certify the mutation as "equal" and React would never see
+            // it: hand out a fresh detached copy per store version instead.
+            next = snapshotOpaque(next);
         }
 
         pendingReads.current = reads;

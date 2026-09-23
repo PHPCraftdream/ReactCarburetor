@@ -3,6 +3,7 @@ import {IComputed, TComputeBody, TComputedReader} from "@/Carburetor/Models/Deri
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
+import {isExoticValue} from "@/Carburetor/Store/Utils/isExoticValue";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
@@ -28,9 +29,10 @@ interface IDependencyVersion {
     version: number;
 }
 
-/** The value the last notification carried. */
+/** The value the last notification carried, and the dependency versions it was read from. */
 interface IAnnouncement<R> {
     value: R;
+    versions: IDict<IDependencyVersion>;
 }
 
 /**
@@ -124,7 +126,7 @@ export class Computed<R> implements IComputed<R> {
         // settlement is judged against. A body that just threw leaves the baseline alone —
         // there is nothing successful to be told about yet.
         if (wasUnobserved && this.valid) {
-            this.announced = {value: this.value as R};
+            this.announced = {value: this.value as R, versions: {...this.versions}};
         }
 
         return id;
@@ -166,6 +168,26 @@ export class Computed<R> implements IComputed<R> {
 
             return recorded.source.getVersion() !== recorded.version;
         });
+    };
+
+    /**
+     * Whether any dependency moved since the given version snapshot was taken.
+     *
+     * @param record - the versions captured at an earlier moment, e.g. alongside an announcement
+     */
+    protected driftedSince = (record: IDict<IDependencyVersion>): boolean => {
+        const moved = Object.keys(record).some((cuid: string) => {
+            const recorded = record[cuid];
+
+            return recorded.source.getVersion() !== recorded.version;
+        });
+
+        if (moved) {
+            return true;
+        }
+
+        // A body that now reads a store the snapshot never saw has changed inputs too.
+        return Object.keys(this.versions).some((cuid: string) => !(cuid in record));
     };
 
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
@@ -464,11 +486,18 @@ export class Computed<R> implements IComputed<R> {
         // successful value, and then the last cached value is all there is to compare with.
         const baseline = this.announced !== undefined ? this.announced.value : previous;
 
-        if (Object.is(baseline, this.value)) {
+        // An exotic result is judged by its dependencies, not its reference (R6-02): the same
+        // Map can have been mutated in place since it was announced, so Object.is alone would
+        // suppress a notification the dependency genuinely earned. Plain results keep the
+        // reference check by itself.
+        const moved = this.announced !== undefined && this.driftedSince(this.announced.versions);
+        const unchanged = Object.is(baseline, this.value) && !(isExoticValue(this.value) && moved);
+
+        if (unchanged) {
             return;
         }
 
-        this.announced = {value: this.value as R};
+        this.announced = {value: this.value as R, versions: {...this.versions}};
         this.version++;
         this.deliver();
     };

@@ -11,9 +11,10 @@ interface IDependencyVersion {
     source: ICarburetorSubscription;
     version: number;
 }
-/** The value the last notification carried. */
+/** The value the last notification carried, and the dependency versions it was read from. */
 interface IAnnouncement<R> {
     value: R;
+    versions: IDict<IDependencyVersion>;
 }
 /**
  * A memoized derived value. The paths its body reads become its dependencies, so it is
@@ -74,6 +75,12 @@ export declare class Computed<R> implements IComputed<R> {
     protected isStale: () => boolean;
     /** Whether any store this value was computed from moved since it was read. */
     protected hasDrifted: () => boolean;
+    /**
+     * Whether any dependency moved since the given version snapshot was taken.
+     *
+     * @param record - the versions captured at an earlier moment, e.g. alongside an announcement
+     */
+    protected driftedSince: (record: IDict<IDependencyVersion>) => boolean;
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
     protected recompute: () => void;
     /**

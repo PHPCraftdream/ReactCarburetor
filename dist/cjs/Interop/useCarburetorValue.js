@@ -32,10 +32,29 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const external_react_namespaceObject = require("react");
 const index_js_namespaceObject = require("../Carburetor/index.js");
+const isExoticValue_js_namespaceObject = require("../Carburetor/Store/Utils/isExoticValue.js");
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
     return true;
+};
+const snapshotOpaque = (value)=>{
+    if (value instanceof Date) return new Date(value.getTime());
+    if (value instanceof Map) {
+        const copy = new Map();
+        value.forEach((member, key)=>{
+            copy.set(key, (0, index_js_namespaceObject.deepClone)(member));
+        });
+        return copy;
+    }
+    if (value instanceof Set) {
+        const copy = new Set();
+        value.forEach((member)=>{
+            copy.add((0, index_js_namespaceObject.deepClone)(member));
+        });
+        return copy;
+    }
+    return value;
 };
 const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const cache = (0, external_react_namespaceObject.useRef)({
@@ -89,6 +108,7 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
         const reads = new Set();
         let next = select(carburetor.read((path)=>reads.add(path)));
         if ((0, index_js_namespaceObject.isTrackable)(next)) next = (0, index_js_namespaceObject.deepClone)(next);
+        else if ((0, isExoticValue_js_namespaceObject.isExoticValue)(next)) next = snapshotOpaque(next);
         pendingReads.current = reads;
         if (entry.filled && isEqual(entry.value, next)) {
             cache.current = {
