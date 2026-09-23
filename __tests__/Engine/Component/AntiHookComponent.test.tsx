@@ -99,21 +99,29 @@ let countUnUseEffects: number = 0;
 let countUseEffectA: number = 0;
 let countUseEffectB: number = 0;
 
+const useEffectA = (): void => {
+    countUseEffectA++;
+};
+
+const useEffectB = (): void => {
+    countUseEffectB++;
+};
+
+const renderArrayItem = (item: {id: number}): React.ReactNode =>
+    <li key={item.id} className="item">{item.id}</li>;
+
 describe('<AntiHookComponent />', () => {
     test('re-renders on carburetor update without any hooks', () => {
         const store = new CounterCarburetor(getCounterData());
+        const handleClickInc = (): void => store.incValue();
 
         class Counter extends AntiHookComponent {
-            handleClickInc = () => {
-                store.incValue();
-            };
-
             render() {
                 const {value} = this.useCarburetor(store);
 
                 return <div>
                     <div className="value">{value}</div>
-                    <button className="btn-inc" onClick={this.handleClickInc}>inc</button>
+                    <button className="btn-inc" onClick={handleClickInc}>inc</button>
                 </div>;
             }
         }
@@ -197,19 +205,11 @@ describe('<AntiHookComponent />', () => {
         countUseEffectB = 0;
 
         class Effects extends AntiHookComponent<IProps> {
-            useEffectA = () => {
-                countUseEffectA++;
-            };
-
-            useEffectB = () => {
-                countUseEffectB++;
-            };
-
             protected useEffects(): void {
                 const {a, b} = this.props;
 
-                this.useEffect(this.useEffectA, 'useEffectA', [a]);
-                this.useEffect(this.useEffectB, 'useEffectB', [b]);
+                this.useEffect(useEffectA, 'useEffectA', [a]);
+                this.useEffect(useEffectB, 'useEffectB', [b]);
 
                 countUseEffects++;
             }
@@ -265,6 +265,9 @@ describe('<AntiHookComponent />', () => {
 
     test('an effect cleanup runs before the effect re-runs and on unmount', () => {
         const log: string[] = [];
+        const closeChannel = (channel: string): void => {
+            log.push('close:' + channel);
+        };
 
         class Subscription extends AntiHookComponent<{channel: string}> {
             protected useEffects(): void {
@@ -273,7 +276,9 @@ describe('<AntiHookComponent />', () => {
                         const channel = this.props.channel;
                         log.push('open:' + channel);
 
-                        return () => log.push('close:' + channel);
+                        // Cleanup must keep the channel captured when this effect was set up.
+                        // carburetor-disable-next-line carburetor/require-method-for-closure
+                        return () => closeChannel(channel);
                     },
                     'channel',
                     [this.props.channel]
@@ -297,6 +302,9 @@ describe('<AntiHookComponent />', () => {
 
     test('an effect with unchanged deps neither re-runs nor cleans up', () => {
         const log: string[] = [];
+        const cleanup = (): void => {
+            log.push('cleanup');
+        };
 
         class Watcher extends AntiHookComponent<{channel: string; unrelated: number}> {
             protected useEffects(): void {
@@ -304,7 +312,7 @@ describe('<AntiHookComponent />', () => {
                     () => {
                         log.push('run');
 
-                        return () => log.push('cleanup');
+                        return cleanup;
                     },
                     'channel',
                     [this.props.channel]
@@ -383,6 +391,14 @@ describe('<AntiHookComponent />', () => {
         test('a throwing effect cleanup still unmounts the rest and releases the subscription', () => {
             const log: string[] = [];
             const store = new CounterCarburetor(getCounterData());
+            const closeA = (): void => {
+                log.push('close:a');
+
+                throw new Error('cleanup a failed');
+            };
+            const closeB = (): void => {
+                log.push('close:b');
+            };
 
             class TwoCleanups extends AntiHookComponent {
                 protected useEffects(): void {
@@ -390,11 +406,7 @@ describe('<AntiHookComponent />', () => {
                         () => {
                             log.push('open:a');
 
-                            return () => {
-                                log.push('close:a');
-
-                                throw new Error('cleanup a failed');
-                            };
+                            return closeA;
                         },
                         'a',
                         []
@@ -404,7 +416,7 @@ describe('<AntiHookComponent />', () => {
                         () => {
                             log.push('open:b');
 
-                            return () => log.push('close:b');
+                            return closeB;
                         },
                         'b',
                         []
@@ -445,13 +457,16 @@ describe('<AntiHookComponent />', () => {
         test('a throwing component-wide unUseEffects still tears down effects and subscriptions', () => {
             const log: string[] = [];
             const store = new CounterCarburetor(getCounterData());
+            const closeA = (): void => {
+                log.push('close:a');
+            };
 
             class BrokenTeardown extends AntiHookComponent {
                 protected useEffects(): void {
                     this.useEffect(() => {
                         log.push('open:a');
 
-                        return () => log.push('close:a');
+                        return closeA;
                     }, 'a', []);
                 }
 
@@ -490,6 +505,13 @@ describe('<AntiHookComponent />', () => {
         test('replacing an effect whose old cleanup throws still runs the new effect', () => {
             const log: string[] = [];
             const store = new CounterCarburetor(getCounterData());
+            const closeChannel = (channel: string): void => {
+                log.push('close:' + channel);
+
+                if (channel === 'a') {
+                    throw new Error('cleanup a failed');
+                }
+            };
 
             class Channel extends AntiHookComponent<{channel: string}> {
                 protected useEffects(): void {
@@ -498,13 +520,9 @@ describe('<AntiHookComponent />', () => {
                             const channel = this.props.channel;
                             log.push('open:' + channel);
 
-                            return () => {
-                                log.push('close:' + channel);
-
-                                if (channel === 'a') {
-                                    throw new Error('cleanup a failed');
-                                }
-                            };
+                            // Cleanup must keep the channel captured when this effect was set up.
+                            // carburetor-disable-next-line carburetor/require-method-for-closure
+                            return () => closeChannel(channel);
                         },
                         'channel',
                         [this.props.channel]
@@ -547,6 +565,9 @@ describe('<AntiHookComponent />', () => {
 
         test('replacing an effect whose new setup throws leaves no stale cleanup behind', () => {
             const log: string[] = [];
+            const cleanup = (): void => {
+                log.push('cleanup');
+            };
 
             class BrokenSetup extends AntiHookComponent<{fail: boolean}> {
                 protected useEffects(): void {
@@ -558,7 +579,7 @@ describe('<AntiHookComponent />', () => {
 
                             log.push('open');
 
-                            return () => log.push('cleanup');
+                            return cleanup;
                         },
                         'effect',
                         [this.props.fail]
@@ -615,6 +636,11 @@ describe('<AntiHookComponent />', () => {
 
         test('a throwing setup still reports the replaced cleanup that threw before it', () => {
             const log: string[] = [];
+            const cleanup = (): void => {
+                log.push('cleanup');
+
+                throw new Error('cleanup failed');
+            };
 
             class Both extends AntiHookComponent<{fail: boolean}> {
                 protected useEffects(): void {
@@ -626,11 +652,7 @@ describe('<AntiHookComponent />', () => {
 
                             log.push('open');
 
-                            return () => {
-                                log.push('cleanup');
-
-                                throw new Error('cleanup failed');
-                            };
+                            return cleanup;
                         },
                         'effect',
                         [this.props.fail]
@@ -1956,7 +1978,7 @@ describe('<AntiHookComponent />', () => {
                 public readonly view = this.connect(() => store);
 
                 render() {
-                    return <ul>{this.view.map(item => <li key={item.id} className="item">{item.id}</li>)}</ul>;
+                    return <ul>{this.view.map(renderArrayItem)}</ul>;
                 }
             }
 
