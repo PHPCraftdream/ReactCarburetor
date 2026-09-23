@@ -45,11 +45,14 @@ class CarburetorScope {
     };
     has = (token)=>this.instances.has(token.id);
     dehydrate = ()=>{
-        const state = {};
+        const entries = [];
         this.instances.forEach((instance, id)=>{
-            if (this.isInspectable(instance)) state[id] = instance.toJSON();
+            if (this.isInspectable(instance)) entries.push([
+                id,
+                instance.toJSON()
+            ]);
         });
-        return state;
+        return Object.fromEntries(entries);
     };
     hydrate = (state, tokens)=>{
         const claimed = new Set();

@@ -45,15 +45,18 @@ export class CarburetorScope {
      * Take this after rendering on the server and send it to the client.
      */
     public dehydrate = (): IDict<unknown> => {
-        const state: IDict<unknown> = {};
+        // Object.fromEntries creates own data properties (CreateDataPropertyOrThrow), unlike
+        // `state[id] = value`, which would invoke the inherited `__proto__` accessor setter
+        // for an id literally named "__proto__" instead of storing it as an own key.
+        const entries: Array<[string, unknown]> = [];
 
         this.instances.forEach((instance: unknown, id: string) => {
             if (this.isInspectable(instance)) {
-                state[id] = instance.toJSON();
+                entries.push([id, instance.toJSON()]);
             }
         });
 
-        return state;
+        return Object.fromEntries(entries);
     };
 
     /**

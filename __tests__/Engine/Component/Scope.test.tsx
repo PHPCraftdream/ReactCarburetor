@@ -193,4 +193,37 @@ describe('CarburetorScope', () => {
 
         expect(failing).toThrow(/no scope found/);
     });
+
+    // R4-03: `state[id] = value` on a plain `{}` would invoke the inherited `__proto__`
+    // accessor setter for this id instead of storing an own key, so the wire payload
+    // silently dropped the value and a client hydrated the token's default instead.
+    test('a token named "__proto__" round-trips its value through JSON between independent scopes', () => {
+        const protoToken = carburetorToken<CounterCarburetor>(() => new CounterCarburetor({value: 0}), '__proto__');
+
+        const server = new CarburetorScope();
+        server.get(protoToken).inc();
+        server.get(protoToken).inc();
+        server.get(protoToken).inc();
+
+        const dehydrated = server.dehydrate();
+
+        // The wire dictionary itself must carry the value as an own key, not as a
+        // prototype reassignment, before it is ever stringified.
+        expect(Object.prototype.hasOwnProperty.call(dehydrated, '__proto__')).toBeTruthy();
+        expect(Object.getPrototypeOf(dehydrated)).toBe(Object.prototype);
+
+        const wire = JSON.stringify(dehydrated);
+        const parsedWire = JSON.parse(wire);
+
+        // An object literal with a "__proto__" key has the very same pitfall, so the
+        // expectation is built the same own-property-safe way instead of `toEqual({...})`.
+        expect(Object.keys(parsedWire)).toEqual(['__proto__']);
+        expect(Object.prototype.hasOwnProperty.call(parsedWire, '__proto__')).toBeTruthy();
+        expect(parsedWire.__proto__).toEqual({value: 3});
+
+        const client = new CarburetorScope();
+        client.hydrate(parsedWire, [protoToken]);
+
+        expect(client.get(protoToken).getData().value).toEqual(3);
+    });
 });
