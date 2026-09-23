@@ -53,10 +53,18 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
             if (key === external_Models_js_namespaceObject.PROXY_CACHE) return cached;
             cached.sweep();
             const value = Reflect.get(source, key, proxy);
-            if ('symbol' == typeof key) return value;
+            if ('symbol' == typeof key) {
+                record(WildcardPath_js_namespaceObject.WILDCARD_PATH);
+                if (!(0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return value;
+                if (lockedAgainstWrapping(source, key)) {
+                    if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(String(key));
+                    return value;
+                }
+                return cached(WildcardPath_js_namespaceObject.WILDCARD_PATH, value, ()=>createReadProxy(value, record, WildcardPath_js_namespaceObject.WILDCARD_PATH, aliases));
+            }
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
             if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) {
-                aliases?.note(value, path);
+                null == aliases || aliases.note(value, path);
                 record((0, BranchMarker_js_namespaceObject.branchPath)(path));
                 if (lockedAgainstWrapping(source, key)) {
                     if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(path);
@@ -80,7 +88,19 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
         getOwnPropertyDescriptor: (source, key)=>{
             cached.sweep();
             const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
-            if (void 0 === descriptor || 'symbol' == typeof key) return descriptor;
+            if (void 0 === descriptor) return descriptor;
+            if ('symbol' == typeof key) {
+                record(WildcardPath_js_namespaceObject.WILDCARD_PATH);
+                const symbolValue = descriptor.value;
+                if ((0, external_isTrackable_js_namespaceObject.isTrackable)(symbolValue)) {
+                    if (lockedAgainstWrapping(source, key, descriptor)) {
+                        if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(String(key));
+                        return descriptor;
+                    }
+                    descriptor.value = cached(WildcardPath_js_namespaceObject.WILDCARD_PATH, symbolValue, ()=>createReadProxy(symbolValue, record, WildcardPath_js_namespaceObject.WILDCARD_PATH, aliases));
+                }
+                return descriptor;
+            }
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
             const value = descriptor.value;
             if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) {

@@ -13,15 +13,15 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
     const cached = createProxyCache(target);
     const isArray = Array.isArray(target);
     const writtenPath = (key)=>{
-        if ('symbol' == typeof key) return WILDCARD_PATH;
+        if ('symbol' == typeof key || basePath === WILDCARD_PATH) return WILDCARD_PATH;
         return isArray ? basePath || WILDCARD_PATH : joinPath(basePath, key);
     };
     const proxy = new Proxy(target, {
         get: (source, key)=>{
             if (key === PROXY_CACHE) return cached;
             const value = Reflect.get(source, key);
-            if ('symbol' == typeof key || 'function' == typeof value) return value;
-            const path = joinPath(basePath, key);
+            if ('function' == typeof value) return value;
+            const path = 'symbol' == typeof key || basePath === WILDCARD_PATH ? WILDCARD_PATH : joinPath(basePath, key);
             if (isTrackable(value)) return cached(path, value, ()=>createWriteProxy(value, record, path, aliases));
             if (null !== value && 'object' == typeof value) record(path);
             return value;
@@ -30,16 +30,16 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
             const previous = Reflect.get(source, key);
             const raw = unwrapWriteProxy(value);
             if (Object.prototype.hasOwnProperty.call(source, key) && Object.is(previous, raw)) return true;
-            aliases?.checkWrite(source, basePath);
-            aliases?.forget(previous);
+            null == aliases || aliases.checkWrite(source, basePath);
+            null == aliases || aliases.forget(previous);
             const path = writtenPath(key);
             record(path);
             cached.invalidate(path);
             return Reflect.set(source, key, raw);
         },
         defineProperty: (source, key, descriptor)=>{
-            aliases?.checkWrite(source, basePath);
-            aliases?.forget(Reflect.get(source, key));
+            null == aliases || aliases.checkWrite(source, basePath);
+            null == aliases || aliases.forget(Reflect.get(source, key));
             const path = writtenPath(key);
             record(path);
             cached.invalidate(path);
@@ -47,8 +47,8 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
         },
         deleteProperty: (source, key)=>{
             if (!Reflect.has(source, key)) return true;
-            aliases?.checkWrite(source, basePath);
-            aliases?.forget(Reflect.get(source, key));
+            null == aliases || aliases.checkWrite(source, basePath);
+            null == aliases || aliases.forget(Reflect.get(source, key));
             const path = writtenPath(key);
             record(path);
             cached.invalidate(path);

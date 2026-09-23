@@ -21,10 +21,18 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
             if (key === PROXY_CACHE) return cached;
             cached.sweep();
             const value = Reflect.get(source, key, proxy);
-            if ('symbol' == typeof key) return value;
+            if ('symbol' == typeof key) {
+                record(WILDCARD_PATH);
+                if (!isTrackable(value)) return value;
+                if (lockedAgainstWrapping(source, key)) {
+                    if (IS_DEVELOPMENT) throw lockedError(String(key));
+                    return value;
+                }
+                return cached(WILDCARD_PATH, value, ()=>createReadProxy(value, record, WILDCARD_PATH, aliases));
+            }
             const path = joinPath(basePath, key);
             if (isTrackable(value)) {
-                aliases?.note(value, path);
+                null == aliases || aliases.note(value, path);
                 record(branchPath(path));
                 if (lockedAgainstWrapping(source, key)) {
                     if (IS_DEVELOPMENT) throw lockedError(path);
@@ -48,7 +56,19 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
         getOwnPropertyDescriptor: (source, key)=>{
             cached.sweep();
             const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
-            if (void 0 === descriptor || 'symbol' == typeof key) return descriptor;
+            if (void 0 === descriptor) return descriptor;
+            if ('symbol' == typeof key) {
+                record(WILDCARD_PATH);
+                const symbolValue = descriptor.value;
+                if (isTrackable(symbolValue)) {
+                    if (lockedAgainstWrapping(source, key, descriptor)) {
+                        if (IS_DEVELOPMENT) throw lockedError(String(key));
+                        return descriptor;
+                    }
+                    descriptor.value = cached(WILDCARD_PATH, symbolValue, ()=>createReadProxy(symbolValue, record, WILDCARD_PATH, aliases));
+                }
+                return descriptor;
+            }
             const path = joinPath(basePath, key);
             const value = descriptor.value;
             if (isTrackable(value)) {

@@ -106,7 +106,25 @@ export const createReadProxy = <T extends object>(
             const value: unknown = Reflect.get(source, key, proxy);
 
             if (typeof key === 'symbol') {
-                return value;
+                // A symbol has no place in a dotted path: the read is recorded as the
+                // wildcard, so any future write anywhere invalidates it, and a trackable
+                // value is wrapped read-only just like a string-keyed branch is — nothing
+                // hands out a raw, mutable object here either.
+                record(WILDCARD_PATH);
+
+                if (!isTrackable(value)) {
+                    return value;
+                }
+
+                if (lockedAgainstWrapping(source, key)) {
+                    if (IS_DEVELOPMENT) {
+                        throw lockedError(String(key));
+                    }
+
+                    return value;
+                }
+
+                return cached(WILDCARD_PATH, value, () => createReadProxy(value, record, WILDCARD_PATH, aliases));
             }
 
             const path = joinPath(basePath, key);
@@ -170,7 +188,33 @@ export const createReadProxy = <T extends object>(
             const descriptor: PropertyDescriptor | undefined =
                 Reflect.getOwnPropertyDescriptor(source, key);
 
-            if (descriptor === undefined || typeof key === 'symbol') {
+            if (descriptor === undefined) {
+                return descriptor;
+            }
+
+            if (typeof key === 'symbol') {
+                // Same wildcard treatment as `get`: the descriptor route is a second way
+                // to reach a symbol-keyed branch and must not hand out a raw, untracked value.
+                record(WILDCARD_PATH);
+
+                const symbolValue: unknown = descriptor.value;
+
+                if (isTrackable(symbolValue)) {
+                    if (lockedAgainstWrapping(source, key, descriptor)) {
+                        if (IS_DEVELOPMENT) {
+                            throw lockedError(String(key));
+                        }
+
+                        return descriptor;
+                    }
+
+                    descriptor.value = cached(
+                        WILDCARD_PATH,
+                        symbolValue,
+                        () => createReadProxy(symbolValue, record, WILDCARD_PATH, aliases)
+                    );
+                }
+
                 return descriptor;
             }
 

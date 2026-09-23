@@ -54,7 +54,9 @@ export const createWriteProxy = <T extends object>(
     const writtenPath = (key: string | symbol): TPath => {
         // A symbol has no place in a dotted path, so a write through one cannot be
         // attributed. Everything is treated as changed rather than the write lost.
-        if (typeof key === 'symbol') {
+        // The same holds once already inside an opaque symbol-keyed branch (basePath
+        // is itself the wildcard): nothing below it can be named more precisely either.
+        if (typeof key === 'symbol' || basePath === WILDCARD_PATH) {
             return WILDCARD_PATH;
         }
 
@@ -72,11 +74,17 @@ export const createWriteProxy = <T extends object>(
 
             const value: unknown = Reflect.get(source, key);
 
-            if (typeof key === 'symbol' || typeof value === 'function') {
+            if (typeof value === 'function') {
                 return value;
             }
 
-            const path = joinPath(basePath, key);
+            // A symbol key has no dotted path, and once already inside an opaque
+            // symbol-keyed branch (basePath already the wildcard) nothing below it can
+            // be named more precisely either: every path from here on is the wildcard,
+            // so a nested write anywhere under it still records and publishes.
+            const path = typeof key === 'symbol' || basePath === WILDCARD_PATH
+                ? WILDCARD_PATH
+                : joinPath(basePath, key);
 
             if (isTrackable(value)) {
                 return cached(path, value, () => createWriteProxy(value, record, path, aliases));
