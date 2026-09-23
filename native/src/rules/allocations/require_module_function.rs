@@ -837,12 +837,21 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
 pub fn check(program: &Program<'_>, source: &Source<'_>) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
 
+    check_with_semantic(program, source, &semantic)
+}
+
+/// Runs the rule with a semantic pass shared by the allocation-rule pair.
+pub(in crate::rules) fn check_with_semantic<'a>(
+    program: &Program<'a>,
+    source: &Source<'_>,
+    semantic: &Semantic<'a>,
+) -> Vec<Diagnostic> {
     walk_rule(
         program,
         Check {
             source,
             program,
-            semantic: &semantic,
+            semantic,
             classes: HashMap::new(),
             statements: top_level_class_statements(program),
             diagnostics: Vec::new(),
