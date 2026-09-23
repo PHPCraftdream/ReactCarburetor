@@ -45,6 +45,13 @@ build and in a pre-stripped production build that the `production` export condit
 The advertised range is `^18.0.0 || ^19.0.0`; the test suite and the demo app are exercised
 locally and in CI against React 19.3 only — the 18.x range is not separately verified.
 
+The proxy cache behind every tracked read requires a global `WeakRef` — this is a browser
+library, not just a Node one, so the requirement is a runtime capability, not only the
+`engines.node` floor in `package.json`. Any environment without it (see
+[MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakRef)
+or [caniuse](https://caniuse.com/mdn-javascript_builtins_weakref) for supported browser
+versions) throws a clear, actionable error on the first tracked read instead of running.
+
 ## Core ideas
 
 ### Read through the carburetor, write through its methods

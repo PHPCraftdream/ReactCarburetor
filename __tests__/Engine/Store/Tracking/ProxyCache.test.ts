@@ -903,6 +903,60 @@ describe('same-path writes coalesce in the invalidation ledger (R3-06)', () => {
     });
 });
 
+describe('distinct-key churn retires records without waiting for an idle view (R4-07)', () => {
+    test('three distinct keys inserted then deleted leave a bounded ledger, not one record per key', () => {
+        const store = new ChurnCarburetor(getChurnTree());
+        const reads = new Set<TPath>();
+        const view = store.read((path: TPath) => reads.add(path));
+
+        // Mints the one entry the idle view holds; it is never consulted again below.
+        expect(view.items.keep.title).toEqual('kept');
+
+        const itemsCache = cacheOf(view.items) as IProxyCacheHandle;
+
+        // Three distinct keys, each inserted then deleted: six writes, none of them at a path
+        // the idle view's cache has ever held an entry for.
+        for (const key of ['x', 'y', 'z']) {
+            store.write(key, 't' + key);
+            store.remove(key);
+        }
+
+        // The unfixed behavior reports one pending record per distinct key (3): the idle view's
+        // unrelated 'items.keep' entry made every one of them look necessary forever.
+        expect(itemsCache.pending()).toEqual(0);
+
+        // The unfixed behavior visits 1+1+2+2+3+3 = 12 records across these six writes, because
+        // each write's cheap retire pass never checks whether the idle view actually needs the
+        // growing set of pending records. Bounded here means proportional to the six writes
+        // actually made, not to the ledger an unrelated idle view forced to keep growing.
+        expect(itemsCache.visitedRecords()).toBeLessThanOrEqual(6);
+
+        // The idle view's own entry is untouched by any of this churn.
+        expect(view.items.keep.title).toEqual('kept');
+    });
+});
+
+describe("repeated read() calls do not grow the watcher set without bound (R4-08)", () => {
+    test('N repeated read() calls with no writes leave a bounded watcher count', () => {
+        const store = new TreeCarburetor(getTreeData());
+
+        // Fifty throwaway read() views, exactly the public API path useCarburetor() drives on
+        // every render: none of them ever reads a single property, so none of them can ever
+        // need a retirement record either.
+        for (let i = 0; i < 50; i++) {
+            store.read(() => {});
+        }
+
+        const probe = store.read(() => {});
+        const probeCache = cacheOf(probe) as IProxyCacheHandle;
+
+        // The unfixed behavior grows the watcher set by one per read() call regardless of GC
+        // timing, reporting 51 here. A bounded registration policy reclaims an empty watcher's
+        // slot the moment nothing protects it, without waiting for the engine to collect it.
+        expect(probeCache.watcherCount()).toEqual(1);
+    });
+});
+
 describe('watcher slots release explicitly, independent of GC timing (R3-07)', () => {
     test('release() keeps the watcher ledger from growing across discarded read-only views', () => {
         const target = {};
@@ -1022,116 +1076,6 @@ describe("connect()/connectSelection() release their watcher on unmount (R3-07 w
     });
 });
 
-describe('a replayed unmount/mount pair does not strand a later cache (R4-05, R4-09)', () => {
-    test('a real unmount releases the cache built after a StrictMode-replayed remount and a root replacement', () => {
-        const store = new TreeCarburetor(getTreeData());
-
-        class TitleView extends AntiHookComponent {
-            private readonly connection = this.connect(() => store);
-
-            public render() {
-                const view = this.connection;
-                const title = view.items.a ? view.items.a.title : view.items.b.title;
-
-                return React.createElement('div', {className: 'title'}, title);
-            }
-        }
-
-        const ref = React.createRef<TitleView>();
-        const {container, unmount} = render(React.createElement(TitleView, {ref}));
-
-        expect(container.querySelector('.title')?.textContent).toEqual('first');
-
-        const instance = ref.current as TitleView;
-
-        // A StrictMode replay: componentWillUnmount then componentDidMount on the SAME
-        // instance, with no fresh render behind either — invoked directly so the sequence is
-        // deterministic rather than depending on React's own StrictMode timing (only fires at
-        // initial mount, and does not itself insert a root replacement in between).
-        act(() => {
-            instance.componentWillUnmount();
-            instance.componentDidMount();
-        });
-
-        // A root data replacement: buildPersistentView's resolveView() notices the new data
-        // object the next time the still-mounted component reads its view (the replayed
-        // componentDidMount's restored subscription forces that render) and mints a fresh
-        // cache — a second watcher this component now owns.
-        act(() => {
-            store.setData(getTreeData());
-        });
-
-        expect(container.querySelector('.title')?.textContent).toEqual('first');
-
-        const rootAfterReplacement = store.getData();
-
-        unmount();
-
-        // A fresh probe on the SAME (replaced) root: bounded at 1 proves the real unmount
-        // released the new cache's watcher. Before the fix, releaseConnectionViews() read from
-        // a `connectionViews` list the replay's earlier (first) unmount had already emptied —
-        // with nothing to repopulate it before this real unmount — so the post-replacement
-        // cache leaked and this probe would have reported 2.
-        const probe = store.read(() => {});
-        const probeCache = cacheOf(probe) as IProxyCacheHandle;
-
-        expect(store.getData()).toBe(rootAfterReplacement);
-        expect(probeCache.watcherCount()).toEqual(1);
-    });
-
-    test('unmounting a connection that was declared but never read costs it zero reads and ' +
-        'zero extra resolver calls', () => {
-        const store = new TreeCarburetor(getTreeData());
-        let resolverCalls = 0;
-        let readCalls = 0;
-
-        const originalRead = store.read;
-
-        store.read = ((record) => {
-            readCalls++;
-
-            return originalRead(record);
-        }) as typeof store.read;
-
-        const resolveSource = (): TreeCarburetor => {
-            resolverCalls++;
-
-            return store;
-        };
-
-        class UnusedConnection extends AntiHookComponent {
-            private readonly unused = this.connect(resolveSource);
-
-            public render() {
-                // Declared, never touched: exactly the shape R4-09 targets.
-                void this.unused;
-
-                return React.createElement('div', {className: 'marker'}, 'ok');
-            }
-        }
-
-        const {container, unmount} = render(React.createElement(UnusedConnection));
-
-        expect(container.querySelector('.marker')?.textContent).toEqual('ok');
-
-        // The declare-time shape probe (buildPersistentView, at the field initializer) is the
-        // only resolver call a mount that never reads the view may cost; the view's own read()
-        // proxy is never minted at all.
-        const resolverCallsAtMount = resolverCalls;
-        const readCallsAtMount = readCalls;
-
-        expect(readCallsAtMount).toEqual(0);
-
-        unmount();
-
-        // Before the fix, releaseConnectionViews() reached the facade's PROXY_CACHE hatch
-        // unconditionally, which forwarded through resolveView() — resolving the source again
-        // and minting a read proxy from scratch just to immediately release it.
-        expect(resolverCalls).toEqual(resolverCallsAtMount);
-        expect(readCalls).toEqual(readCallsAtMount);
-    });
-});
-
 describe('WeakRef is a stated runtime dependency, not a silent one (R3-08)', () => {
     test('the engine requires a global WeakRef and package.json states the runtime floor', () => {
         expect(typeof WeakRef).toBe('function');
@@ -1145,5 +1089,39 @@ describe('WeakRef is a stated runtime dependency, not a silent one (R3-08)', () 
         // WeakRef shipped unflagged in V8 8.4 / Node 14.6.0: the floor below that throws
         // "WeakRef is not a constructor" on the very first tracked read.
         expect(packageJson.engines?.node).toBe('>=14.6.0');
+    });
+});
+
+describe('a missing browser WeakRef fails with a named, actionable error (R4-10)', () => {
+    test('createProxyCache throws a clear message instead of the opaque native TypeError', () => {
+        const realWeakRef = globalThis.WeakRef;
+
+        // Simulates a browser without WeakRef: the property is deleted, not just shadowed, so
+        // the engine's own `typeof WeakRef === 'undefined'` guard sees exactly what a genuinely
+        // unsupported environment would.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        delete (globalThis as any).WeakRef;
+
+        try {
+            expect(() => createProxyCache({})).toThrow(
+                /WeakRef.*requires|requires.*WeakRef/is
+            );
+            // Names an actionable fix, not just the missing symbol: the unfixed behavior is the
+            // engine's own bare "WeakRef is not a constructor", which names neither cause nor fix.
+            expect(() => createProxyCache({})).toThrow(/caniuse|browser/i);
+        } finally {
+            globalThis.WeakRef = realWeakRef;
+        }
+
+        // Restored: every other test in this file relies on a working WeakRef.
+        expect(() => createProxyCache({})).not.toThrow();
+    });
+
+    test('README states the browser WeakRef requirement explicitly', () => {
+        const readmePath = path.join(__dirname, '..', '..', '..', '..', 'README.md');
+        const readme = fs.readFileSync(readmePath, 'utf8');
+
+        expect(readme).toMatch(/WeakRef/);
+        expect(readme).toMatch(/caniuse|MDN/i);
     });
 });

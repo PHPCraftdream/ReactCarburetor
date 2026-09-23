@@ -27,6 +27,16 @@ import { IProxyCache } from "./Models.mjs";
  * knows it is done should call `release()` instead of waiting on either a write or the
  * collector: it drops the watcher slot immediately and unconditionally.
  *
+ * A watcher holding zero entries needs no record, by construction: `needsRecord` can only ever
+ * answer true for a watcher with at least one entry. Pruning such a watcher from `watchers`
+ * therefore loses nothing — it cannot silently strand a stale entry, because it has none — and
+ * it drops without waiting for the runtime to actually collect it (R4-07/R4-08). A watcher that
+ * later mints its first entry re-adds its own slot at that moment, so protection resumes exactly
+ * when it starts having something to protect. This is also why every write's retirement pass now
+ * runs the full per-entry check immediately (no more cheap/deferred split): the entries a live
+ * scope holds at any moment are already bounded by what is actually cached, so the check's cost
+ * tracks that live state instead of the object's lifetime write history.
+ *
  * @param target - the raw object the proxies asking for this cache front; scopes are shared
  * per raw object, so a read proxy and the write proxies over the same data observe the same
  * invalidations.
