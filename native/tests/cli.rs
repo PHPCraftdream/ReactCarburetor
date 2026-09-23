@@ -342,6 +342,28 @@ fn fix_dry_run_previews_without_writing() {
 }
 
 #[test]
+fn fix_dry_run_previews_a_module_function_extraction_without_writing() {
+    // A `require-module-function` member: `--fix-dry-run` must preview the extraction on stdout
+    // and leave the file byte for byte as it was.
+    let original = "class Widget extends AntiHookComponent {\n    format(value: number): string {\n        return value.toFixed(2);\n    }\n}\n";
+    let dir = workspace(&[("widget.tsx", original)]);
+
+    let output = run_in(&dir, &["--fix-dry-run", "widget.tsx"]);
+    assert_eq!(code(&output), 0, "{}", stdout(&output));
+
+    let printed = stdout(&output);
+    assert!(printed.contains("--- "), "{printed}");
+    assert!(printed.contains("+ function format(value: number): string {"), "{printed}");
+    assert!(printed.contains("- class Widget extends AntiHookComponent {"), "{printed}");
+    assert!(printed.contains("- ") && printed.contains("+ "), "{printed}");
+    assert!(printed.contains("no problems found"), "{printed}");
+
+    assert_eq!(std::fs::read_to_string(dir.join("widget.tsx")).unwrap(), original, "dry-run must not write");
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
 fn fix_resolves_two_violations_that_start_out_needing_more_than_one_pass() {
     // Two lifecycle properties in one file: each is its own, non-overlapping fix, but this proves
     // a single `--fix` invocation drives the loop far enough to land every fixable violation, not
