@@ -142,8 +142,8 @@ wasm, and the npm package installs a prebuilt platform binary. That is by design
 stable ABI and oxc's AST types move between releases.
 
 So the native path is a **binary of our own**, in `native/`, called by the plugin once per lint run
-rather than compiled into the linter. It is 20 ms over this whole tree against the 270 ms the
-JavaScript rule layer used to cost — see `native/README.md` for the measurements and for why "once
+rather than compiled into the linter. An earlier 22-rule benchmark recorded 20 ms natively against
+270 ms for the JavaScript rule layer — see `native/README.md` for current measurements and why "once
 per run" is achievable in ESLint's multithreaded mode. All 24 rules under `plugin/src/Rules/` are
 now this bridge: each one is `nativeRule(id, description)`
 (`plugin/src/Utils/Native/nativeRule.mts`), a few lines that read the one shared result and report

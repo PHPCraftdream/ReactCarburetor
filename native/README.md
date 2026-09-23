@@ -10,20 +10,25 @@ cargo build --release
 
 ## Why native, in numbers
 
-Measured on this repository — 157 source files, best of several runs:
+Earlier 22-rule measurement on a 157-file tree, best of several runs:
 
 | Pass | Time |
 |------|------|
 | oxlint's own native rules, whole tree | 315 ms |
 | the same plus 22 rules as a JavaScript plugin (historical baseline) | 585 ms |
-| this binary, whole tree | **20 ms** |
+| native binary at the time, whole tree | **20 ms** |
 
-The recorded JavaScript-plugin measurement is a historical 22-rule baseline; the shipped linter
-now has 24 rules. Against that baseline, the JavaScript rule layer costs 270 ms, and the native pass
-that replaces it costs 20 ms —
-including walking the tree, parsing every file and serialising the result. Parsing dominates that
-number and is already paid, so adding the remaining rules adds visits over a tree that is already
-built; the figure will grow, and it is re-measured as rules land rather than assumed.
+That JavaScript rule layer cost 270 ms; the old native pass took 20 ms including tree walking,
+parsing and result serialization. These are historical figures, not timings for the current
+24-rule build.
+
+On 2026-09-24, a local Windows release build scanned the current `lib/src` tree (88 TS/TSX files)
+in seven alternating on/off pairs after two warmups per mode. The median end-to-end times were
+**16.7 ms** with both allocation rules enabled and **15.6 ms** with both disabled. The 1.1 ms
+difference is within the observed run-to-run spread; it is a local trend, not a CI threshold or a
+comparison with the older 157-file measurement. The off mode added
+`--rule=carburetor/require-method-for-closure=off` and
+`--rule=carburetor/require-module-function=off` to the command above.
 
 The reason this matters is not developer patience. These rules run on every commit in every project
 that uses the library, so the difference is multiplied by all of them — the same argument the engine

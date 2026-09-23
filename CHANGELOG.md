@@ -63,10 +63,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `require-method-for-closure` have none, because callback parameter annotations cannot be inferred.
 - A native Rust port of all 24 rules (`native/`), and the JavaScript plugin rewritten into a thin
   bridge that calls it: the whole set of rules now has one implementation, not a JavaScript one and
-  a native one kept in sync by hand. Measured on this repository, the native pass takes 20 ms
-  against the historical 270 ms 22-rule JavaScript-plugin baseline — the difference is multiplied by
-  every project that depends on this library, which is the reason it exists. The bridge spawns the
-  binary exactly once per lint run and shares that one result across every rule and every file,
+  a native one kept in sync by hand. An earlier 22-rule benchmark recorded 20 ms for the native
+  pass versus 270 ms for the JavaScript rule layer; current 24-rule timings are in `native/README.md`.
+  The bridge spawns the binary exactly once per lint run and shares that one result across every rule
+  and every file,
   including under ESLint's `--concurrency`, where several worker threads coordinate through a lock
   file in the OS temp directory rather than each spawning their own copy. Every rule keeps
   reporting through the host it always did — suppression comments, editor diagnostics and per-rule
