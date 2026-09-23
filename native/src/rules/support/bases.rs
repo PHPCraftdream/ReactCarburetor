@@ -66,3 +66,28 @@ pub const SYNCHRONOUS_CALLBACKS: [&str; 12] = [
     "findLast",
     "sort",
 ];
+
+/// The calls whose callback arguments are off-limits for closure extraction.
+///
+/// Each name protects an existing rule that inspects the callback body in place: `useEffect`
+/// protects `no-async-effect` and `require-effect-deps`, `update` protects the draft tracking in
+/// `support/walk.rs` and `no-async-transaction`, `transaction` protects `no-async-transaction`,
+/// `computed` protects `no-computed-get-in-computed`. Moving a closure out from under one of those
+/// rules would blind it, which is worse than the allocation being reported.
+pub const EXCLUDED_CALLBACK_APIS: [&str; 4] = ["useEffect", "update", "transaction", "computed"];
+
+/// The tracked-data APIs a render-executing closure may not call.
+///
+/// A closure that runs during render and calls one of these is excluded from closure extraction:
+/// moving it out of render would make `no-use-carburetor-outside-render` report a false positive
+/// and would hide the read or write from `no-get-data-in-render` / `no-store-write-in-render`.
+pub const RENDER_TRACKED_APIS: [&str; 8] = [
+    "useCarburetor",
+    "useComputed",
+    "useResource",
+    "getData",
+    "getEntry",
+    "emitUpdate",
+    "emitSoon",
+    "emitByKey",
+];

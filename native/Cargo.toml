@@ -12,6 +12,7 @@ oxc_allocator = "=0.150.0"
 oxc_ast = "=0.150.0"
 oxc_ast_visit = "=0.150.0"
 oxc_parser = "=0.150.0"
+oxc_semantic = "=0.150.0"
 oxc_span = "=0.150.0"
 # Only for `ScopeFlags`, which `Visit::visit_function` takes and a rule has to forward. Already in
 # the graph through oxc_ast, so naming it here costs nothing but has to be pinned with the rest.
