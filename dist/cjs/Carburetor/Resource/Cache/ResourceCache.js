@@ -36,10 +36,12 @@ const PathSeparator_js_namespaceObject = require("../../Store/Paths/PathSeparato
 const joinPath_js_namespaceObject = require("../../Store/Paths/joinPath.js");
 const deepClone_js_namespaceObject = require("../../Store/Utils/deepClone.js");
 const external_describeError_js_namespaceObject = require("../describeError.js");
+const external_createAbortHandle_js_namespaceObject = require("../createAbortHandle.js");
 const external_encodeCacheKey_js_namespaceObject = require("./encodeCacheKey.js");
 const external_getInitialCacheEntry_js_namespaceObject = require("./getInitialCacheEntry.js");
 const DEFAULT_TTL = 30000;
 const DEFAULT_MAX_ENTRIES = 100;
+const ENTRIES_PREFIX = `entries${PathSeparator_js_namespaceObject.PATH_SEPARATOR}`;
 class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
     loader;
     ttl;
@@ -167,17 +169,22 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         return Date.now() - entry.updatedAt > this.ttl;
     };
     isViewCurrent = (view, entry, stale)=>view.stale === stale && view.status === entry.status && view.data === entry.data && view.error === entry.error && view.updatedAt === entry.updatedAt && view.refreshing === entry.refreshing && view.invalidated === entry.invalidated && view.failed === entry.failed;
-    isRetained = (key)=>{
-        const prefix = (0, joinPath_js_namespaceObject.joinPath)('entries', key);
-        return Object.keys(this.subscribers).some((id)=>{
-            const reads = this.subscribers[id].reads;
-            return Array.from(reads).some((read)=>read === prefix || read.startsWith(`${prefix}${PathSeparator_js_namespaceObject.PATH_SEPARATOR}`));
+    retainedKeys = ()=>{
+        const retained = new Set();
+        Object.keys(this.subscribers).forEach((id)=>{
+            this.subscribers[id].reads.forEach((read)=>{
+                if (!read.startsWith(ENTRIES_PREFIX)) return;
+                const segment = read.slice(ENTRIES_PREFIX.length).split(PathSeparator_js_namespaceObject.PATH_SEPARATOR)[0];
+                if (segment) retained.add(segment);
+            });
         });
+        return retained;
     };
     evict = (deferNotification = false)=>{
         const keys = Object.keys(this.data.entries);
         if (keys.length <= this.maxEntries) return;
-        const candidates = keys.filter((key)=>!this.requests.has(key) && !this.isRetained(key)).sort((left, right)=>(this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0));
+        const retained = this.retainedKeys();
+        const candidates = keys.filter((key)=>!this.requests.has(key) && !retained.has((0, joinPath_js_namespaceObject.joinPath)('', key))).sort((left, right)=>(this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0));
         const excess = keys.length - this.maxEntries;
         const doomed = candidates.slice(0, excess);
         if (0 === doomed.length) return;
@@ -222,7 +229,7 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
     fetch = (key, args, deferNotification = false)=>{
         const known = this.requests.get(key);
         if (known) return known;
-        const controller = new AbortController();
+        const controller = (0, external_createAbortHandle_js_namespaceObject.createAbortHandle)();
         this.controllers.set(key, controller);
         this.markLoading(key, deferNotification);
         let answer;

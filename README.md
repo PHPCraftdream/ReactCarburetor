@@ -43,7 +43,10 @@ npm install react-carburetor
 React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal
 build and in a pre-stripped production build that the `production` export condition selects.
 The advertised range is `^18.0.0 || ^19.0.0`; the test suite and the demo app are exercised
-locally and in CI against React 19.3 only — the 18.x range is not separately verified.
+locally and in CI against React 19.3, and CI also runs the suite against React 18.3 in a
+dedicated compatibility job. That job skips one `AntiHookComponent` test file whose
+expectations are tied to React 19's development-mode error reporting — React 18 logs and
+replays render throws differently — so that file is exercised in full on the 19.3 leg.
 
 The proxy cache behind every tracked read requires a global `WeakRef` — this is a browser
 library, not just a Node one, so the requirement is a runtime capability, not only the
@@ -51,6 +54,13 @@ library, not just a Node one, so the requirement is a runtime capability, not on
 [MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakRef)
 or [caniuse](https://caniuse.com/mdn-javascript_builtins_weakref) for supported browser
 versions) throws a clear, actionable error on the first tracked read instead of running.
+
+Async resources carry one capability floor of their own: a global `AbortController`, which
+Node added in 14.17.0 while the `engines.node` floor in `package.json` is the older `WeakRef`
+one. Where it is missing, `ResourceCarburetor` and `ResourceCache` still load, settle, and
+discard superseded answers — the state machine only reads `signal.aborted` — but a request
+cannot be cancelled in flight, since the loader's signal never fires, and development reports
+the degradation once.
 
 ## Core ideas
 

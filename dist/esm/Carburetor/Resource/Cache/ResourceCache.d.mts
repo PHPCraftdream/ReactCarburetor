@@ -170,13 +170,19 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
      */
     protected isViewCurrent: (view: IResourceView<T>, entry: IResourceEntry<T>, stale: boolean) => boolean;
     /**
-     * Whether a component is reading this entry right now.
+     * The entry keys some subscriber is reading right now, answered in one pass.
      *
-     * Subscriber read paths are the only honest answer available, and they are exactly what the
-     * engine already tracks. A subscriber with no read set — devtools, persistence — is deliberately
-     * not counted: it watches everything, and counting it would pin the whole cache in memory.
+     * Eviction used to ask isRetained(key) per candidate, and every call re-enumerated all
+     * subscribers and materialized their read paths to compare a string prefix — one pass cost
+     * entries × subscribers walks of the same sets. Inverting the question, which keys do the
+     * read paths pin, is answered once per pass and turns each candidate's check into a set
+     * lookup, with the rule unchanged: a key is retained when some recorded read equals its
+     * path or lives beneath it. Subscriber read paths are the only honest answer available, and
+     * they are exactly what the engine already tracks. A subscriber with no read set —
+     * devtools, persistence — is deliberately not counted: it watches everything, and counting
+     * it would pin the whole cache in memory.
      */
-    protected isRetained: (key: string) => boolean;
+    protected retainedKeys: () => Set<string>;
     /**
      * Keeps the cache within its bound, dropping the least recently used entries first.
      *

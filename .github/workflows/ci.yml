@@ -80,6 +80,43 @@ jobs:
         working-directory: lib
         run: npm run build
 
+  # The React 18 half of the advertised peer range (R5-08): the Library job runs the suite
+  # on React 19.3 only. This leg swaps React 18.3 into both trees — the root install and the
+  # demo app's own copy, whose jsx runtime the lib/src sources resolve, since only exact
+  # `react` imports are aliased — and reruns the suite. One AntiHookComponent test file stays
+  # excluded here because its expectations are version-sensitive rather than broken on 18:
+  # two of its tests trip the console guard because React 18 logs render throws ("The above
+  # error occurred in ...") where React 19 does not, and one counts render attempts that
+  # React 18's development replay doubles. The file runs in full on the 19.3 leg above.
+  react-18:
+    name: Library on React 18
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      - name: Install the demo app
+        working-directory: lib
+        run: npm ci
+
+      # --no-save: the swap is this job's environment, not a change to what the other jobs
+      # build, typecheck and publish against ^19.3. 18.3 is the newest of the advertised
+      # 18.x line — the same newest-of-minor the 19.3 job covers — and the oldest line with
+      # `act` exported from `react`, which the test harness imports.
+      - name: Swap in React 18
+        run: |
+          npm install --no-save react@18.3.1 react-dom@18.3.1
+          cd lib && npm install --no-save react@18.3.1 react-dom@18.3.1
+
+      - name: Test
+        run: npx rstest run __tests__/Engine __tests__/Demo --exclude __tests__/Engine/Component/AntiHookComponent.test.tsx
+
   native:
     name: Native linter
     runs-on: ubuntu-latest

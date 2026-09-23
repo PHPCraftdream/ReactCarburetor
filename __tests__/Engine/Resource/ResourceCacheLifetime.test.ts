@@ -434,4 +434,62 @@ describe('ResourceCache lifetime', () => {
 
         expect(cache.getEntry('a').data).toEqual('Ann');
     });
+
+    test('one eviction pass materializes each subscriber once, not once per candidate (R5-06)', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 3, ttl: 60_000});
+
+        await fill(cache, loader, ['a', 'b', 'c']);
+
+        /** Counts how often the cache walked one subscriber's read paths. */
+        class CountingReads extends Set<TPath> {
+            public enumerations: number = 0;
+
+            public forEach(callback: (value: TPath, value2: TPath, set: Set<TPath>) => void, thisArg?: unknown): void {
+                this.enumerations += 1;
+                super.forEach(callback, thisArg);
+            }
+
+            public [Symbol.iterator](): IterableIterator<TPath> {
+                this.enumerations += 1;
+
+                return super[Symbol.iterator]();
+            }
+        }
+
+        const subscribers = (): Record<string, {reads: Set<TPath>}> =>
+            (cache as unknown as {subscribers: Record<string, {reads: Set<TPath>}>}).subscribers;
+        const counters: CountingReads[] = [];
+
+        // Three pinned entries, three readers — the report's bounded scenario. subscribe()
+        // copies the set, so the counting set replaces the copy the store actually keeps.
+        ['a', 'b', 'c'].forEach((key: string) => {
+            const id = cache.subscribe(() => undefined, {id: `reader-${key}`, reads: readsOf(cache.pathOf(key))});
+            const counted = new CountingReads(subscribers()[id].reads);
+
+            subscribers()[id].reads = counted;
+            counters.push(counted);
+        });
+
+        const materializations = (): number =>
+            counters.reduce((sum: number, reads: CountingReads) => sum + reads.enumerations, 0);
+
+        void cache.load('d');
+
+        // One pass: the pending key is skipped, and each reader's set was walked once to build
+        // the retained set. The old per-candidate check walked the same three sets nine times.
+        expect(materializations()).toEqual(3);
+
+        loader.settle[3]('value-d');
+        await flush();
+
+        // The second pass, at settlement, walked each reader once more — and retention itself
+        // survived the batching: the three read entries stay, the unread fourth one goes.
+        expect(materializations()).toEqual(6);
+        expect(Object.keys(cache.getData().entries)).toEqual([
+            cache.keyOf('a'),
+            cache.keyOf('b'),
+            cache.keyOf('c'),
+        ]);
+    });
 });

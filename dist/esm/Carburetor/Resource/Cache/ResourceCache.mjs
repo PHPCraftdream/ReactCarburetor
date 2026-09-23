@@ -4,10 +4,12 @@ import { PATH_SEPARATOR } from "../../Store/Paths/PathSeparator.mjs";
 import { joinPath } from "../../Store/Paths/joinPath.mjs";
 import { deepClone } from "../../Store/Utils/deepClone.mjs";
 import { describeError } from "../describeError.mjs";
+import { createAbortHandle } from "../createAbortHandle.mjs";
 import { encodeCacheKey } from "./encodeCacheKey.mjs";
 import { getInitialCacheEntry } from "./getInitialCacheEntry.mjs";
 const DEFAULT_TTL = 30000;
 const DEFAULT_MAX_ENTRIES = 100;
+const ENTRIES_PREFIX = `entries${PATH_SEPARATOR}`;
 class ResourceCache extends Carburetor {
     loader;
     ttl;
@@ -135,17 +137,22 @@ class ResourceCache extends Carburetor {
         return Date.now() - entry.updatedAt > this.ttl;
     };
     isViewCurrent = (view, entry, stale)=>view.stale === stale && view.status === entry.status && view.data === entry.data && view.error === entry.error && view.updatedAt === entry.updatedAt && view.refreshing === entry.refreshing && view.invalidated === entry.invalidated && view.failed === entry.failed;
-    isRetained = (key)=>{
-        const prefix = joinPath('entries', key);
-        return Object.keys(this.subscribers).some((id)=>{
-            const reads = this.subscribers[id].reads;
-            return Array.from(reads).some((read)=>read === prefix || read.startsWith(`${prefix}${PATH_SEPARATOR}`));
+    retainedKeys = ()=>{
+        const retained = new Set();
+        Object.keys(this.subscribers).forEach((id)=>{
+            this.subscribers[id].reads.forEach((read)=>{
+                if (!read.startsWith(ENTRIES_PREFIX)) return;
+                const segment = read.slice(ENTRIES_PREFIX.length).split(PATH_SEPARATOR)[0];
+                if (segment) retained.add(segment);
+            });
         });
+        return retained;
     };
     evict = (deferNotification = false)=>{
         const keys = Object.keys(this.data.entries);
         if (keys.length <= this.maxEntries) return;
-        const candidates = keys.filter((key)=>!this.requests.has(key) && !this.isRetained(key)).sort((left, right)=>(this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0));
+        const retained = this.retainedKeys();
+        const candidates = keys.filter((key)=>!this.requests.has(key) && !retained.has(joinPath('', key))).sort((left, right)=>(this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0));
         const excess = keys.length - this.maxEntries;
         const doomed = candidates.slice(0, excess);
         if (0 === doomed.length) return;
@@ -190,7 +197,7 @@ class ResourceCache extends Carburetor {
     fetch = (key, args, deferNotification = false)=>{
         const known = this.requests.get(key);
         if (known) return known;
-        const controller = new AbortController();
+        const controller = createAbortHandle();
         this.controllers.set(key, controller);
         this.markLoading(key, deferNotification);
         let answer;

@@ -34,6 +34,7 @@ const EResourceStatus_js_namespaceObject = require("../Models/Enums/EResourceSta
 const Carburetor_js_namespaceObject = require("../Store/Carburetor.js");
 const deepClone_js_namespaceObject = require("../Store/Utils/deepClone.js");
 const external_getInitialResourceData_js_namespaceObject = require("./getInitialResourceData.js");
+const external_createAbortHandle_js_namespaceObject = require("./createAbortHandle.js");
 const describeError = (error)=>{
     if (error instanceof Error) return error.message;
     return String(error);
@@ -100,7 +101,7 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
         const key = this.keyOf(args);
         if (this.pendingRequest && this.pendingKey === key) return this.pendingRequest;
         this.cancelInFlight();
-        const controller = new AbortController();
+        const controller = (0, external_createAbortHandle_js_namespaceObject.createAbortHandle)();
         this.controller = controller;
         this.pendingKey = key;
         this.lastArgs = args;

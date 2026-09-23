@@ -12,12 +12,16 @@ import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {describeError} from "@/Carburetor/Resource/describeError";
+import {createAbortHandle} from "@/Carburetor/Resource/createAbortHandle";
 import {encodeCacheKey} from "./encodeCacheKey";
 import {getInitialCacheEntry} from "./getInitialCacheEntry";
 
 /** Long enough that a screen's worth of reads shares one request, short enough to feel live. */
 const DEFAULT_TTL: number = 30_000;
 const DEFAULT_MAX_ENTRIES: number = 100;
+
+/** The path prefix every entry lives under, joined once here rather than per candidate. */
+const ENTRIES_PREFIX: string = `entries${PATH_SEPARATOR}`;
 
 /**
  * Many async answers, keyed by the arguments that produced them.
@@ -364,24 +368,39 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
     };
 
     /**
-     * Whether a component is reading this entry right now.
+     * The entry keys some subscriber is reading right now, answered in one pass.
      *
-     * Subscriber read paths are the only honest answer available, and they are exactly what the
-     * engine already tracks. A subscriber with no read set — devtools, persistence — is deliberately
-     * not counted: it watches everything, and counting it would pin the whole cache in memory.
+     * Eviction used to ask isRetained(key) per candidate, and every call re-enumerated all
+     * subscribers and materialized their read paths to compare a string prefix — one pass cost
+     * entries × subscribers walks of the same sets. Inverting the question, which keys do the
+     * read paths pin, is answered once per pass and turns each candidate's check into a set
+     * lookup, with the rule unchanged: a key is retained when some recorded read equals its
+     * path or lives beneath it. Subscriber read paths are the only honest answer available, and
+     * they are exactly what the engine already tracks. A subscriber with no read set —
+     * devtools, persistence — is deliberately not counted: it watches everything, and counting
+     * it would pin the whole cache in memory.
      */
-    protected isRetained = (key: string): boolean => {
-        // The prefix is built by `joinPath`, not hand-concatenated, so it is the same path
-        // representation `pathOf` hands out and the one a subscriber's recorded reads hold.
-        const prefix = joinPath('entries', key);
+    protected retainedKeys = (): Set<string> => {
+        const retained = new Set<string>();
 
-        return Object.keys(this.subscribers).some((id: string) => {
-            const reads = this.subscribers[id].reads;
+        Object.keys(this.subscribers).forEach((id: string) => {
+            this.subscribers[id].reads.forEach((read: TPath) => {
+                if (!read.startsWith(ENTRIES_PREFIX)) {
+                    return;
+                }
 
-            return Array.from(reads).some((read: TPath) => {
-                return read === prefix || read.startsWith(`${prefix}${PATH_SEPARATOR}`);
+                // The key travels escaped, so it is one segment: the first one after `entries.`
+                // is the whole key, whether the read stopped at the entry or recorded a leaf
+                // beneath it.
+                const segment = read.slice(ENTRIES_PREFIX.length).split(PATH_SEPARATOR)[0];
+
+                if (segment) {
+                    retained.add(segment);
+                }
             });
         });
+
+        return retained;
     };
 
     /**
@@ -404,8 +423,11 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
             return;
         }
 
+        // The subscriber scan happens once for the whole pass, not once per candidate.
+        const retained = this.retainedKeys();
+
         const candidates = keys
-            .filter((key: string) => !this.requests.has(key) && !this.isRetained(key))
+            .filter((key: string) => !this.requests.has(key) && !retained.has(joinPath('', key)))
             .sort((left: string, right: string) => {
                 return (this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0);
             });
@@ -517,7 +539,7 @@ export class ResourceCache<T, TArgs = void> extends Carburetor<IResourceCacheDat
             return known;
         }
 
-        const controller = new AbortController();
+        const controller = createAbortHandle();
 
         this.controllers.set(key, controller);
         this.markLoading(key, deferNotification);

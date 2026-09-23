@@ -4,6 +4,7 @@ import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {getInitialResourceData} from "./getInitialResourceData";
+import {createAbortHandle} from "./createAbortHandle";
 
 /** The message a failure is stored under: the state has to stay serializable. */
 const describeError = (error: unknown): string => {
@@ -212,7 +213,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
 
         this.cancelInFlight();
 
-        const controller = new AbortController();
+        const controller = createAbortHandle();
 
         this.controller = controller;
         this.pendingKey = key;

@@ -2,6 +2,7 @@ import { EResourceStatus } from "../Models/Enums/EResourceStatus.mjs";
 import { Carburetor } from "../Store/Carburetor.mjs";
 import { deepClone } from "../Store/Utils/deepClone.mjs";
 import { getInitialResourceData } from "./getInitialResourceData.mjs";
+import { createAbortHandle } from "./createAbortHandle.mjs";
 const describeError = (error)=>{
     if (error instanceof Error) return error.message;
     return String(error);
@@ -68,7 +69,7 @@ class ResourceCarburetor extends Carburetor {
         const key = this.keyOf(args);
         if (this.pendingRequest && this.pendingKey === key) return this.pendingRequest;
         this.cancelInFlight();
-        const controller = new AbortController();
+        const controller = createAbortHandle();
         this.controller = controller;
         this.pendingKey = key;
         this.lastArgs = args;

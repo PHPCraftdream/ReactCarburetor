@@ -1,0 +1,1 @@
+import"../Store/Diagnostics/DiagnosticsInstance.mjs";let t=()=>{if("function"==typeof AbortController)return new AbortController;let t={signal:{aborted:!1},abort(){t.signal.aborted=!0}};return t};export{t as createAbortHandle};
