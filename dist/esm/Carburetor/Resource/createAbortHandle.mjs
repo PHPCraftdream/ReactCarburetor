@@ -20,11 +20,37 @@ const createAbortHandle = ()=>{
         if (-1 === at) return;
         listeners.splice(at, 1);
     };
+    let onAbort = null;
+    const invoke = (listener, event)=>{
+        if ('function' == typeof listener) return void listener(event);
+        listener.handleEvent(event);
+    };
+    const throwIfAborted = ()=>{
+        if (signal.aborted) {
+            const error = new Error('This operation was aborted');
+            error.name = 'AbortError';
+            throw error;
+        }
+    };
+    const reportListenerError = (error)=>{
+        if ("u" < typeof process || 'production' === process.env.NODE_ENV) return;
+        diagnostics.report("an abort listener threw while the stand-in signal was delivering the abort event; the remaining listeners still ran and the error did not escape abort(): " + (error instanceof Error ? error.message : String(error)));
+    };
     Object.defineProperty(signal, 'addEventListener', {
         value: addEventListener
     });
     Object.defineProperty(signal, 'removeEventListener', {
         value: removeEventListener
+    });
+    Object.defineProperty(signal, 'throwIfAborted', {
+        value: throwIfAborted
+    });
+    Object.defineProperty(signal, 'onabort', {
+        get: ()=>onAbort,
+        set: (handler)=>{
+            const usable = 'function' == typeof handler || 'object' == typeof handler && null !== handler && 'function' == typeof handler.handleEvent;
+            onAbort = usable ? handler : null;
+        }
     });
     const handle = {
         signal,
@@ -33,14 +59,22 @@ const createAbortHandle = ()=>{
             signal.aborted = true;
             const firing = listeners.slice();
             listeners.length = 0;
+            const event = {
+                type: 'abort',
+                target: signal
+            };
             firing.forEach((listener)=>{
-                const event = {
-                    type: 'abort',
-                    target: signal
-                };
-                if ('function' == typeof listener) return void listener(event);
-                listener.handleEvent(event);
+                try {
+                    invoke(listener, event);
+                } catch (error) {
+                    reportListenerError(error);
+                }
             });
+            if (null !== onAbort) try {
+                invoke(onAbort, event);
+            } catch (error) {
+                reportListenerError(error);
+            }
         }
     };
     return handle;

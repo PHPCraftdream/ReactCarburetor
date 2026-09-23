@@ -25,14 +25,14 @@ let reported = false;
  * `engines.node` advertises 14.6.0 — the `WeakRef` floor — so the oldest advertised runtime
  * has no such global, and constructing the real one made every load throw before it could
  * start (R5-04). There the request degrades to unabortable, and development says so once:
- * the loader receives a signal that honors abort() and fires the abort listeners it
- * registered, so it can still be told to stop its work; what remains is that the stand-in
- * is not a native `AbortSignal`, so an API demanding native identity (fetch among them)
- * rejects it and the request itself is never interrupted. The state machine above the
- * loader does not degrade — a superseded or aborted answer is still discarded on landing,
- * because that comparison reads `signal.aborted`, which the stand-in honors. Browsers and
- * every newer Node ship the real thing, so the first branch is the one that runs in
- * practice.
+ * the loader receives a signal that honors abort(), fires the abort listeners it registered,
+ * and answers throwIfAborted() and an onabort assignment the way the native one does, so it
+ * can still be told to stop its work; what remains is that the stand-in is not a native
+ * `AbortSignal`, so an API demanding native identity (fetch among them) rejects it and the
+ * request itself is never interrupted. The state machine above the loader does not degrade —
+ * a superseded or aborted answer is still discarded on landing, because that comparison reads
+ * `signal.aborted`, which the stand-in honors. Browsers and every newer Node ship the real
+ * thing, so the first branch is the one that runs in practice.
  */
 export const createAbortHandle = (): AbortController => {
     if (typeof AbortController === 'function') {
@@ -80,12 +80,70 @@ export const createAbortHandle = (): AbortController => {
         listeners.splice(at, 1);
     };
 
+    // The onabort handler: assignment replaces it rather than accumulating, and null clears
+    // it — the attribute-style counterpart of the listener list above, kept separate so the
+    // two registrations stay independent exactly as they are natively.
+    let onAbort: TShimListener | null = null;
+
+    const invoke = (listener: TShimListener, event: IShimEvent): void => {
+        if (typeof listener === 'function') {
+            listener(event);
+
+            return;
+        }
+
+        listener.handleEvent(event);
+    };
+
+    // The native one throws a DOMException named AbortError; without that global — and
+    // without pulling in a dependency — an Error carrying the same name is the closest
+    // match the advertised floor allows.
+    const throwIfAborted = (): void => {
+        if (signal.aborted) {
+            const error = new Error('This operation was aborted');
+
+            error.name = 'AbortError';
+
+            throw error;
+        }
+    };
+
+    // One listener's exception must not stop the event: native delivery reaches every
+    // listener and reports a throwing one without throwing out of abort(), and the engine's
+    // cancelInFlight() relies on that to finish its cleanup (R7-03). Development-only, like
+    // the report above, so a production bundle drops it.
+    const reportListenerError = (error: unknown): void => {
+        if (typeof process === 'undefined' || process.env.NODE_ENV === 'production') {
+            return;
+        }
+
+        diagnostics.report(
+            'an abort listener threw while the stand-in signal was delivering the abort event; ' +
+            'the remaining listeners still ran and the error did not escape abort(): ' +
+            (error instanceof Error ? error.message : String(error))
+        );
+    };
+
     // Defined rather than assigned, so the descriptor keeps its defaults and the listener
     // surface stays non-enumerable: an equality check against the bare {aborted: false}
     // flag — what the R5-04 tests assert — compares enumerable properties only and still
     // sees a signal that is exactly that flag.
     Object.defineProperty(signal, 'addEventListener', {value: addEventListener});
     Object.defineProperty(signal, 'removeEventListener', {value: removeEventListener});
+    Object.defineProperty(signal, 'throwIfAborted', {value: throwIfAborted});
+
+    Object.defineProperty(signal, 'onabort', {
+        get: (): TShimListener | null => onAbort,
+        set: (handler: unknown): void => {
+            const usable = typeof handler === 'function' || (
+                typeof handler === 'object' &&
+                handler !== null &&
+                typeof (handler as {handleEvent?: unknown}).handleEvent === 'function'
+            );
+
+            onAbort = usable ? handler as TShimListener : null;
+        },
+    });
 
     const handle = {
         signal,
@@ -103,23 +161,31 @@ export const createAbortHandle = (): AbortController => {
 
             listeners.length = 0;
 
+            const event: IShimEvent = {type: 'abort', target: signal};
+
             firing.forEach((listener: TShimListener): void => {
-                const event: IShimEvent = {type: 'abort', target: signal};
-
-                if (typeof listener === 'function') {
-                    listener(event);
-
-                    return;
+                try {
+                    invoke(listener, event);
+                } catch (error: unknown) {
+                    reportListenerError(error);
                 }
-
-                listener.handleEvent(event);
             });
+
+            // Delivered after the listener list: the shim does not interleave the two
+            // surfaces by registration order the way a native dispatch would.
+            if (onAbort !== null) {
+                try {
+                    invoke(onAbort, event);
+                } catch (error: unknown) {
+                    reportListenerError(error);
+                }
+            }
         },
     };
 
     // The engine touches the handle only through signal.aborted and abort(), which the
-    // stand-in implements; the loader receives the signal typed as AbortSignal and finds the
-    // listener surface a standard loader uses, leaving native signal identity as the one
-    // thing the stand-in still cannot offer.
+    // stand-in implements; the loader receives the signal typed as AbortSignal and finds
+    // the surface a standard loader uses — listener registration, throwIfAborted, onabort —
+    // leaving native signal identity as the one thing the stand-in still cannot offer.
     return handle as unknown as AbortController;
 };

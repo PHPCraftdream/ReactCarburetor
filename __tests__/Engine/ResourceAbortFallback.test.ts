@@ -1,5 +1,6 @@
 import {EResourceStatus, ResourceCarburetor} from "@/Carburetor";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {createAbortHandle} from "@/Carburetor/Resource/createAbortHandle";
 import {rstest} from '@rstest/core';
 
 const flush = async (): Promise<void> => {
@@ -198,6 +199,208 @@ describe('the fallback signal satisfies a standard loader (R6-01)', () => {
             await flush();
 
             expect(resource.getData().status).toEqual(EResourceStatus.Idle);
+        });
+    });
+});
+
+describe('abort delivery survives a throwing listener (R7-03)', () => {
+    test('abort() delivers to every listener even when one throws, and the error does not escape', async () => {
+        // The throwing listener is reported through diagnostics, which routes through
+        // console.error: capture it, assert on it, restore — the console guard otherwise
+        // fails the test.
+        const reports: unknown[][] = [];
+        const spy = rstest.spyOn(console, 'error').mockImplementation((...args: unknown[]): void => {
+            reports.push(args);
+        });
+
+        await withoutAbortController(async () => {
+            const calls: string[] = [];
+            const handle = createAbortHandle();
+
+            handle.signal.addEventListener('abort', (): void => {
+                calls.push('throwing');
+                throw new Error('listener boom');
+            });
+            handle.signal.addEventListener('abort', (): void => {
+                calls.push('second');
+            });
+
+            expect((): void => handle.abort()).not.toThrow();
+            expect(calls).toEqual(['throwing', 'second']);
+            expect(handle.signal.aborted).toBe(true);
+        });
+
+        spy.mockRestore();
+
+        // The degradation report also fires when this file runs before any other shim use,
+        // so look for the listener error itself rather than counting reports.
+        const messages: string[] = reports.map((args: unknown[]): string => String(args[0]));
+
+        expect(messages.some((message: string): boolean => {
+            return message.includes('listener boom');
+        })).toBe(true);
+    });
+
+    test('a throwing listener no longer leaves a resource stuck Pending', async () => {
+        const reports: unknown[][] = [];
+        const spy = rstest.spyOn(console, 'error').mockImplementation((...args: unknown[]): void => {
+            reports.push(args);
+        });
+
+        await withoutAbortController(async () => {
+            let resolveLoad: (value: string) => void = () => undefined;
+            let observed: AbortSignal | undefined;
+
+            const resource = new ResourceCarburetor<string>((_args: undefined, signal: AbortSignal) => {
+                observed = signal;
+                signal.addEventListener('abort', (): void => {
+                    throw new Error('listener boom');
+                });
+                signal.addEventListener('abort', (): void => undefined);
+
+                return new Promise<string>((resolve: (value: string) => void): void => {
+                    resolveLoad = resolve;
+                });
+            });
+
+            const loading = resource.load(undefined);
+
+            expect(resource.getData().status).toEqual(EResourceStatus.Pending);
+            expect((): void => resource.abort()).not.toThrow();
+
+            resolveLoad('too late');
+            await loading;
+            await flush();
+
+            expect(observed?.aborted).toBe(true);
+            expect(resource.getData().status).toEqual(EResourceStatus.Idle);
+            expect(resource.getData().data).toBeUndefined();
+        });
+
+        spy.mockRestore();
+
+        const messages: string[] = reports.map((args: unknown[]): string => String(args[0]));
+
+        expect(messages.some((message: string): boolean => {
+            return message.includes('listener boom');
+        })).toBe(true);
+    });
+});
+
+describe('the fallback signal carries the rest of the advertised surface (R7-04)', () => {
+    test('throwIfAborted does nothing before abort and throws an abort error after', async () => {
+        await withoutAbortController(async () => {
+            const handle = createAbortHandle();
+
+            expect((): void => handle.signal.throwIfAborted()).not.toThrow();
+
+            handle.abort();
+
+            let thrown: unknown;
+
+            try {
+                handle.signal.throwIfAborted();
+            } catch (error: unknown) {
+                thrown = error;
+            }
+
+            expect(thrown instanceof Error).toBe(true);
+            expect((thrown as Error).name).toEqual('AbortError');
+            expect(String((thrown as Error).message)).toContain('abort');
+        });
+    });
+
+    test('onabort fires exactly once when the signal aborts', async () => {
+        await withoutAbortController(async () => {
+            let calls = 0;
+            const handle = createAbortHandle();
+
+            const handler = (): void => {
+                calls += 1;
+            };
+
+            handle.signal.onabort = handler;
+
+            expect(handle.signal.onabort).toBe(handler);
+
+            handle.abort();
+            handle.abort();
+
+            expect(calls).toEqual(1);
+        });
+    });
+
+    test('reassigning onabort replaces the handler instead of accumulating', async () => {
+        await withoutAbortController(async () => {
+            let firstCalls = 0;
+            let secondCalls = 0;
+            const handle = createAbortHandle();
+
+            handle.signal.onabort = (): void => {
+                firstCalls += 1;
+            };
+            handle.signal.onabort = (): void => {
+                secondCalls += 1;
+            };
+
+            handle.abort();
+
+            expect(firstCalls).toEqual(0);
+            expect(secondCalls).toEqual(1);
+        });
+    });
+
+    test('setting onabort back to null detaches the handler', async () => {
+        await withoutAbortController(async () => {
+            let calls = 0;
+            const handle = createAbortHandle();
+
+            const handler = (): void => {
+                calls += 1;
+            };
+
+            handle.signal.onabort = handler;
+
+            expect(handle.signal.onabort).toBe(handler);
+            // The accessor must stay non-enumerable like the listener surface: the R5-04
+            // equality test compares enumerable properties only.
+            expect(Object.keys(handle.signal)).toEqual(['aborted']);
+
+            handle.signal.onabort = null;
+
+            expect(handle.signal.onabort).toBeNull();
+
+            handle.abort();
+
+            expect(calls).toEqual(0);
+        });
+    });
+
+    test('a loader using throwIfAborted and onabort starts and settles under both resource classes', async () => {
+        await withoutAbortController(async () => {
+            const resource = new ResourceCarburetor<string>((_args: undefined, signal: AbortSignal) => {
+                signal.throwIfAborted();
+                signal.onabort = (): void => undefined;
+
+                return Promise.resolve('loaded');
+            });
+
+            await resource.load(undefined);
+
+            expect(resource.getData().status).toEqual(EResourceStatus.Success);
+            expect(resource.getData().data).toEqual('loaded');
+
+            const cache = new ResourceCache<string, string>((_args: string, signal: AbortSignal): Promise<string> => {
+                signal.throwIfAborted();
+                signal.onabort = (): void => undefined;
+
+                return Promise.resolve('loaded');
+            });
+
+            await cache.load('a');
+
+            expect(cache.getEntry('a').status).toEqual(EResourceStatus.Success);
+            expect(cache.getEntry('a').data).toEqual('loaded');
         });
     });
 });
