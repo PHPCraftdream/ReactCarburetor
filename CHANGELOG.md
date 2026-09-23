@@ -270,7 +270,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   lifecycle hook actually being called.
 - `connectSelection()`'s equality check ignored key presence/removal at equal cardinality (a key
   swapped for another with the same count) and symbol-keyed properties, so some real content
-  changes did not update a memoized child.
+  changes did not update a memoized child. The later conservative treatment of exotic selection
+  members (Map/Set/Date/class instances) as always-changed was reassessed in the round-6 review
+  and kept as a deliberate correctness-over-performance tradeoff, to be revisited only if
+  real-app profiling shows a measurable cost.
 - An abandoned render (one that suspended or threw) could leave a queued resource load to fire at
   a later, unrelated commit on the same instance. Deferred loads now live on the render attempt
   itself and are discarded with it.

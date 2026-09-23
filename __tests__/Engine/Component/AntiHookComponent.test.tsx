@@ -19,6 +19,12 @@ import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
 import {TReadonly, TSubscriber} from '@/Carburetor/Models/Base';
 import {ISubscribeOptions} from '@/Carburetor/Models/Store';
 
+// R6-07: the majors differ in how an uncaught render throw surfaces — 19 logs nothing, 18
+// reports the error and a component stack through console.error — and in how often a failed
+// render attempt runs under the development replay. The few assertions observing that
+// behavior branch on the installed major; everything else here is version-neutral.
+const REACT_MAJOR = Number.parseInt(React.version, 10);
+
 interface ICounterData {
     value: number;
     other: number;
@@ -2190,13 +2196,31 @@ describe('<AntiHookComponent />', () => {
 
             const scope = new CarburetorScope();
 
-            expect(() => {
-                render(
-                    <CarburetorProvider scope={scope}>
-                        <ScopedList />
-                    </CarburetorProvider>
-                );
-            }).toThrow('array');
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (...args: unknown[]) => reported.push(args.map(String).join(' '));
+
+            try {
+                expect(() => {
+                    render(
+                        <CarburetorProvider scope={scope}>
+                            <ScopedList />
+                        </CarburetorProvider>
+                    );
+                }).toThrow('array');
+            } finally {
+                console.error = original;
+            }
+
+            // React 19 logs nothing for the uncaught throw; React 18 reports it with the
+            // component stack it unwound through.
+            if (REACT_MAJOR >= 19) {
+                expect(reported.length).toEqual(0);
+            } else {
+                expect(reported.filter((message: string) =>
+                    message.includes('The above error occurred in the <ScopedList> component')).length).toEqual(1);
+            }
         });
 
         test('a source() swap that changes the root kind fails loudly instead of serving a mixed view', () => {
@@ -2217,7 +2241,25 @@ describe('<AntiHookComponent />', () => {
 
             expect(container.querySelector('.value')?.textContent).toEqual('1');
 
-            expect(() => rerender(<Swapper useArray={false} />)).toThrow('kind');
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (...args: unknown[]) => reported.push(args.map(String).join(' '));
+
+            try {
+                expect(() => rerender(<Swapper useArray={false} />)).toThrow('kind');
+            } finally {
+                console.error = original;
+            }
+
+            // React 19 logs nothing for the uncaught throw; React 18 reports it with the
+            // component stack it unwound through.
+            if (REACT_MAJOR >= 19) {
+                expect(reported.length).toEqual(0);
+            } else {
+                expect(reported.filter((message: string) =>
+                    message.includes('The above error occurred in the <Swapper> component')).length).toEqual(1);
+            }
 
             unmount();
         });
@@ -3901,15 +3943,33 @@ describe('<AntiHookComponent />', () => {
                 }
             }
 
-            expect(() => render(<Boom />)).toThrow('boom');
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (...args: unknown[]) => reported.push(args.map(String).join(' '));
+
+            try {
+                expect(() => render(<Boom />)).toThrow('boom');
+            } finally {
+                console.error = original;
+            }
 
             // The attempt that threw is abandoned: what it collected is never published and no
             // subscription is installed for a component that never committed.
             expect(store.subscriberCount()).toEqual(0);
             expect(store.subscribeReads.length).toEqual(0);
             // React 19 retries an errored render once before propagating it: both attempts run
-            // here, and both are abandoned by the boundary.
-            expect(renders).toEqual(2);
+            // here, and both are abandoned. React 18's development replay doubles each attempt,
+            // so a failed mount there runs four renders.
+            expect(renders).toEqual(REACT_MAJOR >= 19 ? 2 : 4);
+            // React 19 logs nothing for the uncaught throw; React 18 reports it with the
+            // component stack it unwound through.
+            if (REACT_MAJOR >= 19) {
+                expect(reported.length).toEqual(0);
+            } else {
+                expect(reported.filter((message: string) =>
+                    message.includes('The above error occurred in the <Boom> component')).length).toEqual(1);
+            }
         });
 
         test('a failed update render publishes nothing new and leaves no leak', () => {

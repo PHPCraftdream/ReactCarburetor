@@ -83,11 +83,11 @@ jobs:
   # The React 18 half of the advertised peer range (R5-08): the Library job runs the suite
   # on React 19.3 only. This leg swaps React 18.3 into both trees — the root install and the
   # demo app's own copy, whose jsx runtime the lib/src sources resolve, since only exact
-  # `react` imports are aliased — and reruns the suite. One AntiHookComponent test file stays
-  # excluded here because its expectations are version-sensitive rather than broken on 18:
-  # two of its tests trip the console guard because React 18 logs render throws ("The above
-  # error occurred in ...") where React 19 does not, and one counts render attempts that
-  # React 18's development replay doubles. The file runs in full on the 19.3 leg above.
+  # `react` imports are aliased — and reruns the suite. The whole suite runs here since R6-07:
+  # the few AntiHookComponent assertions that observe React's own uncaught-error logging
+  # (18 reports the throw and a component stack where 19 logs nothing) and error-replay
+  # render counts (18's development replay doubles the retried attempts, 2 → 4) branch on the
+  # installed major at runtime, so no file is excluded.
   react-18:
     name: Library on React 18
     runs-on: ubuntu-latest
@@ -108,14 +108,16 @@ jobs:
       # --no-save: the swap is this job's environment, not a change to what the other jobs
       # build, typecheck and publish against ^19.3. 18.3 is the newest of the advertised
       # 18.x line — the same newest-of-minor the 19.3 job covers — and the oldest line with
-      # `act` exported from `react`, which the test harness imports.
+      # `act` exported from `react`, which the test harness imports. Coverage note: this pins
+      # 18.3.1 exactly; the peer range's 18.0.0 floor and the point releases between are not
+      # separately exercised — a gap in coverage, not a claim that they fail.
       - name: Swap in React 18
         run: |
           npm install --no-save react@18.3.1 react-dom@18.3.1
           cd lib && npm install --no-save react@18.3.1 react-dom@18.3.1
 
       - name: Test
-        run: npx rstest run __tests__/Engine __tests__/Demo --exclude __tests__/Engine/Component/AntiHookComponent.test.tsx
+        run: npx rstest run __tests__/Engine __tests__/Demo
 
   native:
     name: Native linter

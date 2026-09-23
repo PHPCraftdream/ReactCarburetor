@@ -43,10 +43,12 @@ npm install react-carburetor
 React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal
 build and in a pre-stripped production build that the `production` export condition selects.
 The advertised range is `^18.0.0 || ^19.0.0`; the test suite and the demo app are exercised
-locally and in CI against React 19.3, and CI also runs the suite against React 18.3 in a
-dedicated compatibility job. That job skips one `AntiHookComponent` test file whose
-expectations are tied to React 19's development-mode error reporting — React 18 logs and
-replays render throws differently — so that file is exercised in full on the 19.3 leg.
+locally and in CI against React 19.3, and CI also runs the full suite against React 18.3.1 in
+a dedicated compatibility job — the handful of `AntiHookComponent` assertions that observe
+React's own uncaught-error logging (18 reports the throw where 19 is silent) and error-replay
+render counts branch on the installed major at runtime, so nothing is excluded. 18.3.1 is the
+newest of the 18.x line; the range's `18.0.0` floor and the point releases between are not
+separately exercised — a coverage gap, not a report that they fail.
 
 The proxy cache behind every tracked read requires a global `WeakRef` — this is a browser
 library, not just a Node one, so the requirement is a runtime capability, not only the

@@ -4,6 +4,24 @@ Reviewed revision: `6761e9e` on `master`. Scope: JS/TS state engine, resource AP
 derived values, React interop, cache keying, and the published compatibility contract.
 Native/Rust implementation was outside scope. This change adds only this review document.
 
+## Status
+
+**R6-06: closed as an accepted tradeoff, no code change.** The conservative exotic check in
+`sameSelection.ts` (R5-02, commit `3259154`) deliberately treats any Map/Set/Date or class
+instance inside a selection as changed, so an in-place mutation can never serve a stale
+memoized child — at the cost of redrawing that child on an unrelated parent-prop update.
+That is an intentional correctness-over-performance tradeoff, not a regression; the report's
+recommendation stands: profile a real interface before optimizing, and revisit only if such
+profiling shows a measurable cost.
+
+**R6-07: implemented.** The three `AntiHookComponent` assertions that observe React's own
+behavior — the uncaught-render-throw console logging (18 logs the error and a component
+stack where 19 is silent) and the errored-mount render count (18's development replay
+doubles the retried attempts, 2 → 4) — now branch on the installed React major at runtime,
+and the React 18 CI job runs the file instead of excluding it. The job installs 18.3.1
+while the advertised peer floor is 18.0.0; that coverage gap is recorded in the CI
+configuration and README. The file was verified locally under both React 19.3.0 and 18.3.1.
+
 ## Assessment and priorities
 
 The round-five work repaired its targeted controls: selection comparison now preserves object
