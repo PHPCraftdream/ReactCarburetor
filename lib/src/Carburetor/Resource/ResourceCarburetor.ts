@@ -88,10 +88,19 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         // reconstructed Error. Restoring a non-failure clears any stale one.
         this.lastError = data.status === EResourceStatus.Error && data.error ? new Error(data.error) : undefined;
 
+        // A restored Pending status has no live request behind it (R3-04): this slot's fields
+        // do not carry the arguments a fresh request would need, so restore cannot start one
+        // itself the way it could serve a settled answer. Normalizing to Idle is what abort()
+        // already leaves behind a cancelled request — a plain status reader sees no work
+        // outstanding, instead of a Pending that nothing will ever settle. Whatever `data` the
+        // snapshot carried travels through untouched, exactly as abort() also leaves it, and an
+        // explicit load()/suspend() with the right arguments fetches normally afterward.
+        const status = data.status === EResourceStatus.Pending ? EResourceStatus.Idle : data.status;
+
         // The key rides in the snapshot, not in the state: the four state fields are installed
         // explicitly so the live IResourceData contract stays exactly what it was.
         this.setData(deepClone({
-            status: data.status,
+            status,
             data: data.data,
             error: data.error,
             updatedAt: data.updatedAt,

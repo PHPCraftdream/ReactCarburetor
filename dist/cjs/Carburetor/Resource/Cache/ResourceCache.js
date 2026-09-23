@@ -34,6 +34,7 @@ const EResourceStatus_js_namespaceObject = require("../../Models/Enums/EResource
 const Carburetor_js_namespaceObject = require("../../Store/Carburetor.js");
 const PathSeparator_js_namespaceObject = require("../../Store/Paths/PathSeparator.js");
 const joinPath_js_namespaceObject = require("../../Store/Paths/joinPath.js");
+const deepClone_js_namespaceObject = require("../../Store/Utils/deepClone.js");
 const external_describeError_js_namespaceObject = require("../describeError.js");
 const external_encodeCacheKey_js_namespaceObject = require("./encodeCacheKey.js");
 const external_getInitialCacheEntry_js_namespaceObject = require("./getInitialCacheEntry.js");
@@ -56,6 +57,26 @@ class ResourceCache extends Carburetor_js_namespaceObject.Carburetor {
         this.ttl = void 0 === options.ttl ? DEFAULT_TTL : options.ttl;
         this.maxEntries = void 0 === options.maxEntries ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
+    restore = (data)=>{
+        this.controllers.forEach((controller)=>controller.abort());
+        this.controllers.clear();
+        this.requests.clear();
+        this.failures.clear();
+        this.viewCache.clear();
+        this.lastUsed.clear();
+        const entries = {};
+        Object.keys(data.entries).forEach((key)=>{
+            const entry = data.entries[key];
+            entries[key] = {
+                ...entry,
+                refreshing: false,
+                status: entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Pending ? EResourceStatus_js_namespaceObject.EResourceStatus.Idle : entry.status
+            };
+        });
+        this.setData((0, deepClone_js_namespaceObject.deepClone)({
+            entries
+        }));
+    };
     touch = (key)=>{
         this.useTick += 1;
         this.lastUsed.set(key, this.useTick);

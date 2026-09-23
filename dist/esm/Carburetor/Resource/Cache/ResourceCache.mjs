@@ -2,6 +2,7 @@ import { EResourceStatus } from "../../Models/Enums/EResourceStatus.mjs";
 import { Carburetor } from "../../Store/Carburetor.mjs";
 import { PATH_SEPARATOR } from "../../Store/Paths/PathSeparator.mjs";
 import { joinPath } from "../../Store/Paths/joinPath.mjs";
+import { deepClone } from "../../Store/Utils/deepClone.mjs";
 import { describeError } from "../describeError.mjs";
 import { encodeCacheKey } from "./encodeCacheKey.mjs";
 import { getInitialCacheEntry } from "./getInitialCacheEntry.mjs";
@@ -24,6 +25,26 @@ class ResourceCache extends Carburetor {
         this.ttl = void 0 === options.ttl ? DEFAULT_TTL : options.ttl;
         this.maxEntries = void 0 === options.maxEntries ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
+    restore = (data)=>{
+        this.controllers.forEach((controller)=>controller.abort());
+        this.controllers.clear();
+        this.requests.clear();
+        this.failures.clear();
+        this.viewCache.clear();
+        this.lastUsed.clear();
+        const entries = {};
+        Object.keys(data.entries).forEach((key)=>{
+            const entry = data.entries[key];
+            entries[key] = {
+                ...entry,
+                refreshing: false,
+                status: entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status
+            };
+        });
+        this.setData(deepClone({
+            entries
+        }));
+    };
     touch = (key)=>{
         this.useTick += 1;
         this.lastUsed.set(key, this.useTick);

@@ -1,4 +1,4 @@
-import {EResourceStatus, TPath, TPathSet} from "@/Carburetor";
+import {CarburetorHistory, EResourceStatus, TPath, TPathSet} from "@/Carburetor";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 
 const makeLoader = () => {
@@ -408,5 +408,30 @@ describe('ResourceCache lifetime', () => {
         cache.forgetAll();
 
         expect(viewCache().size).toEqual(0);
+    });
+
+    test('CarburetorHistory undo discards a late in-flight answer from before the undo (R3-03)', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const history = new CarburetorHistory(cache);
+
+        void cache.load('a');
+        loader.settle[0]('Ann');
+        await flush();
+
+        void cache.refresh('a');
+        expect(cache.getEntry('a').refreshing).toBeTruthy();
+
+        history.undo();
+
+        expect(cache.getEntry('a').data).toEqual('Ann');
+        expect(cache.getEntry('a').refreshing).toBeFalsy();
+
+        // The refresh that was in flight when undo() ran belongs to a generation the undo
+        // replaced.
+        loader.settle[1]('late');
+        await flush();
+
+        expect(cache.getEntry('a').data).toEqual('Ann');
     });
 });

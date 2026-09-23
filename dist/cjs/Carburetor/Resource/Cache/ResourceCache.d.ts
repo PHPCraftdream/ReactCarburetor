@@ -54,6 +54,24 @@ export declare class ResourceCache<T, TArgs = void> extends Carburetor<IResource
      * so `{}` is the entirely default cache
      */
     constructor(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions);
+    /**
+     * Installs a snapshot as a request-generation boundary: everything the cache started before
+     * this call is cancelled and forgotten before the restored entries land, so a late answer
+     * from before the restore has nothing left to write into (R3-03).
+     *
+     * `restore` cannot reach the base class's implementation through `super`: every base member
+     * is an instance field, not a prototype method (see `ResourceCarburetor.snapshot`'s own note
+     * on this, TS2855), so the wholesale-replace step is repeated here directly.
+     *
+     * Restored entries are also normalized (R3-04): `refreshing` is always cleared and a
+     * `Pending` status — which this cache only ever pairs with no data — resets to `Idle`,
+     * because hydrating into a fresh instance starts zero real requests. `invalidated` and
+     * `failed` travel through unchanged, so an entry that genuinely needs a refresh is still
+     * marked stale and gets one through the ordinary `useResource` fetch gate the next time it
+     * is read — restore does not itself start a request, since it has no render/effect to
+     * attribute one to.
+     */
+    restore: (data: IResourceCacheData<T>) => void;
     /** Records that an entry was asked for, which is what eviction orders by. */
     protected touch: (key: string) => void;
     /** The arguments the most recent `keyOf` encoded, paired with the key below. */

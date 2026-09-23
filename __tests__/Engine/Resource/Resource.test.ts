@@ -527,4 +527,72 @@ describe('ResourceCarburetor', () => {
         expect(resource.getData().status).toEqual(EResourceStatus.Success);
         expect(resource.getData().data).toEqual('b-data-2');
     });
+
+    test('restoring a Pending snapshot into a fresh instance leaves no false pending claim (R3-04)', async () => {
+        const gate = deferred<string>();
+        const source = new ResourceCarburetor<string>(() => gate.promise);
+
+        const stalled = source.load(undefined);
+        expect(source.getData().status).toEqual(EResourceStatus.Pending);
+
+        // A Pending snapshot: nothing about it names the arguments a fresh request would need.
+        const snapshot = source.snapshot();
+
+        let freshCalls = 0;
+        const fresh = new ResourceCarburetor<string>(() => {
+            freshCalls++;
+
+            return Promise.resolve('fresh-data');
+        });
+
+        fresh.restore(snapshot);
+
+        // No request exists behind the fresh instance: a plain status reader must not be told
+        // one is on its way forever.
+        expect(fresh.getData().status).toEqual(EResourceStatus.Idle);
+        expect(fresh.getData().data).toEqual(undefined);
+
+        // The slot is genuinely idle, not merely reporting so: an explicit load still fetches.
+        await fresh.load(undefined);
+
+        expect(freshCalls).toEqual(1);
+        expect(fresh.getData().status).toEqual(EResourceStatus.Success);
+        expect(fresh.getData().data).toEqual('fresh-data');
+
+        gate.resolve('late');
+        await stalled;
+    });
+
+    test('restoring a Pending snapshot that already carries data preserves it under Idle', async () => {
+        const gates: IDeferred<string>[] = [deferred<string>(), deferred<string>()];
+        let calls = 0;
+
+        const source = new ResourceCarburetor<string>(() => gates[calls++].promise);
+
+        const first = source.load(undefined);
+        gates[0].resolve('first');
+        await first;
+
+        expect(source.getData().data).toEqual('first');
+
+        // A second start leaves the previous answer's data in place while going Pending —
+        // this resource's own existing "refresh" shape (start() clears error, not data).
+        const reload = source.reload();
+
+        expect(source.getData().status).toEqual(EResourceStatus.Pending);
+        expect(source.getData().data).toEqual('first');
+
+        const snapshot = source.snapshot();
+
+        const fresh = new ResourceCarburetor<string>(() => gates[1].promise);
+
+        fresh.restore(snapshot);
+
+        // Normalized to Idle, with the last-good data preserved for a plain reader.
+        expect(fresh.getData().status).toEqual(EResourceStatus.Idle);
+        expect(fresh.getData().data).toEqual('first');
+
+        gates[1].resolve('second');
+        await reload;
+    });
 });

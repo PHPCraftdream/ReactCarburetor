@@ -408,4 +408,100 @@ describe('a component reading a resource cache', () => {
 
         unmount();
     });
+
+    test('scope hydration normalizes a refreshing+invalidated entry before a reader mounts (R3-04)', async () => {
+        const loader = makeLoader();
+        const token = carburetorToken(
+            () => new ResourceCache<string, string>(loader.load, {ttl: 60_000}),
+            'resource-cache-restore-test/scope-cache'
+        );
+
+        const server = new CarburetorScope();
+        const serverCache = server.get(token);
+
+        void serverCache.load('a');
+        loader.settle[0]('Ann');
+        await flush();
+
+        serverCache.invalidate('a');
+        void serverCache.refresh('a');
+
+        const state = server.dehydrate();
+
+        // The client re-creates its cache with its own loader, but through the same token
+        // declaration: server and client are different processes sharing one token, not two
+        // independent tokens that happen to share a name.
+        const clientLoader = makeLoader();
+        const client = new CarburetorScope();
+
+        client.set(token, new ResourceCache<string, string>(clientLoader.load, {ttl: 60_000}));
+        client.hydrate(state, [token]);
+
+        const clientCache = client.get(token);
+        const entry = clientCache.getEntry('a');
+
+        expect(entry.refreshing).toBeFalsy();
+        expect(entry.invalidated).toBeTruthy();
+        expect(entry.data).toEqual('Ann');
+        expect(entry.stale).toBeTruthy();
+
+        void clientCache.refresh('a');
+        expect(clientLoader.calls).toEqual(['a']);
+
+        clientLoader.settle[0]('Anna');
+        await flush();
+
+        expect(clientCache.getEntry('a').data).toEqual('Anna');
+    });
+
+    test('a mounted reader refetches a hydrated entry that was refreshing and invalidated (R3-04)', async () => {
+        const loader = makeLoader();
+        const token = carburetorToken(
+            () => new ResourceCache<string, string>(loader.load, {ttl: 60_000}),
+            'resource-cache-restore-test/refreshing-invalidated'
+        );
+
+        const server = new CarburetorScope();
+        const serverCache = server.get(token);
+
+        void serverCache.load('a');
+        loader.settle[0]('first');
+        await flush();
+
+        // Invalidated and mid-refresh at the moment the server state was captured: zero client
+        // requests will ever exist for this snapshot once it crosses the boundary.
+        serverCache.invalidate('a');
+        void serverCache.refresh('a');
+
+        const state = server.dehydrate();
+
+        // The client re-creates its cache with its own loader, but through the same token
+        // declaration: server and client are different processes sharing one token, not two
+        // independent tokens that happen to share a name.
+        const clientLoader = makeLoader();
+        const client = new CarburetorScope();
+
+        client.set(token, new ResourceCache<string, string>(clientLoader.load, {ttl: 60_000}));
+        client.hydrate(state, [token]);
+
+        const clientCache = client.get(token);
+
+        // Before a component ever mounts: the hydrated entry must not claim live work.
+        expect(clientCache.getEntry('a').refreshing).toBeFalsy();
+
+        const {container, unmount} = render(<Row cache={clientCache} id="a"/>);
+
+        // Stale data is shown immediately, and the mount's own commit queues a real fetch —
+        // not an indefinite refresh indicator over data nothing is renewing.
+        expect(container.querySelector('.value')?.textContent).toEqual('first');
+        expect(clientLoader.calls).toEqual(['a']);
+
+        clientLoader.settle[0]('refreshed');
+        await flush();
+
+        expect(container.querySelector('.value')?.textContent).toEqual('refreshed');
+        expect(clientCache.getEntry('a').invalidated).toBeFalsy();
+
+        unmount();
+    });
 });

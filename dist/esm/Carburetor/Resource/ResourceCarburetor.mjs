@@ -26,8 +26,9 @@ class ResourceCarburetor extends Carburetor {
         const settled = data.status === EResourceStatus.Success || data.status === EResourceStatus.Error;
         this.settledKey = settled ? data.key : void 0;
         this.lastError = data.status === EResourceStatus.Error && data.error ? new Error(data.error) : void 0;
+        const status = data.status === EResourceStatus.Pending ? EResourceStatus.Idle : data.status;
         this.setData(deepClone({
-            status: data.status,
+            status,
             data: data.data,
             error: data.error,
             updatedAt: data.updatedAt
