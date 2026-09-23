@@ -168,7 +168,7 @@ describe('a missing binary fails loudly', () => {
 });
 
 describe('the bridge, through the real host', () => {
-    test('the native binary runs exactly once for 6 files and 22 rules', () => {
+    test('the native binary runs exactly once for 6 files and 24 rules', () => {
         const {pid} = runOxlint(path.join('plugin', '__fixtures__', 'oxlintrc.json'), CORPUS);
         const ownResults = bridgeResultFiles().filter((name) => name.startsWith(`carburetor-lint-${pid}-`));
 

@@ -15,10 +15,12 @@ Measured on this repository — 157 source files, best of several runs:
 | Pass | Time |
 |------|------|
 | oxlint's own native rules, whole tree | 315 ms |
-| the same plus 24 rules as a JavaScript plugin | 585 ms |
+| the same plus 22 rules as a JavaScript plugin (historical baseline) | 585 ms |
 | this binary, whole tree | **20 ms** |
 
-So the JavaScript rule layer costs 270 ms, and the native pass that replaces it costs 20 ms —
+The recorded JavaScript-plugin measurement is a historical 22-rule baseline; the shipped linter
+now has 24 rules. Against that baseline, the JavaScript rule layer costs 270 ms, and the native pass
+that replaces it costs 20 ms —
 including walking the tree, parsing every file and serialising the result. Parsing dominates that
 number and is already paid, so adding the remaining rules adds visits over a tree that is already
 built; the figure will grow, and it is re-measured as rules land rather than assumed.

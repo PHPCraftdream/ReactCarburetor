@@ -10,9 +10,9 @@ import type {INativeDiagnostic} from "#src/Utils/Native/INativeDiagnostic.mts";
 /**
  * Runs the native binary once per lint run and hands every rule its own slice of the result.
  *
- * "Once" is the whole point: these 22 checks used to be a JavaScript plugin, measured at 270 ms
- * over this repository against 20 ms for the same work natively (see native/README.md). Losing
- * that gain to running the binary once per rule per file — 22 times over, once per file — would
+ * "Once" is the whole point: the original 22 checks were a JavaScript plugin, measured at 270 ms
+ * over this repository against the current 20 ms native pass (see native/README.md). Losing
+ * that gain to running the binary once per rule per file — 24 times over, once per file — would
  * spend the saving faster than it was made. So the first rule any host asks to run triggers one
  * process over the whole project; every rule after that, in every file, reads from the same result.
  *

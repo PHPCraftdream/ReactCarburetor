@@ -56,14 +56,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `require-method-for-closure` and `require-module-function`: two `warn` rules for avoidable
   allocations in component classes — a closure inside a member that only the class could supply,
   rebuilt on every call of the member, and a closure or member that uses nothing from the class and
-  belongs at module level. `require-module-function`'s member reports carry an autofix (`--fix`)
-  that moves the member above the class as a module function and rewrites `this.<name>` references;
-  the closure reports and `require-method-for-closure` have none, because a callback's parameters
-  are contextually typed and the annotations a declared function needs cannot be inferred.
+  belongs at module level. Eligible method and arrow-field reports from `require-module-function`
+  carry an autofix (`--fix`) that moves the function above the class and rewrites `this.<name>`
+  references. Function-expression fields, methods with explicit `this` parameters, and members
+  whose references cannot safely be rewritten are report-only; closure reports and
+  `require-method-for-closure` have none, because callback parameter annotations cannot be inferred.
 - A native Rust port of all 24 rules (`native/`), and the JavaScript plugin rewritten into a thin
   bridge that calls it: the whole set of rules now has one implementation, not a JavaScript one and
   a native one kept in sync by hand. Measured on this repository, the native pass takes 20 ms
-  against the 270 ms the 24 rules cost as a JavaScript plugin — the difference is multiplied by
+  against the historical 270 ms 22-rule JavaScript-plugin baseline — the difference is multiplied by
   every project that depends on this library, which is the reason it exists. The bridge spawns the
   binary exactly once per lint run and shares that one result across every rule and every file,
   including under ESLint's `--concurrency`, where several worker threads coordinate through a lock

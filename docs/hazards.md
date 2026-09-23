@@ -1075,10 +1075,11 @@ the instance, the component base's own override points (`useEffects`, `useEffect
 `implements` clause — a contract the linter cannot verify. Mechanical exclusions apply regardless:
 `constructor`, getters and setters, `accessor`, body-less declarations, `override`, decorated
 members, computed names. Both name lists are pinned by tests against the sources they come from;
-the rule's own source carries the full list. The member case ships an autofix (`--fix`) that moves
-the member above the class as a module function and rewrites its `this.<name>` references; the
-closure case reports without one. Scope is H29's: component classes only, store classes never
-analysed.
+the rule's own source carries the full list. Eligible methods and arrow-function fields ship an
+autofix (`--fix`) that moves the function above the class and rewrites its `this.<name>` references.
+Function-expression fields, methods with an explicit `this` parameter, and members whose references
+cannot all be safely rewritten are report-only; the closure case also reports without a fix. Scope
+is H29's: component classes only, store classes never analysed.
 
 **False positives.** A member that some other file calls as `instance.<name>()` looks extractable to
 an analysis with no cross-file resolution — the same documented blindness every rule here has — and

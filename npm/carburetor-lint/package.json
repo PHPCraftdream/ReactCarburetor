@@ -1,7 +1,7 @@
 {
   "name": "carburetor-lint",
   "version": "0.1.0",
-  "description": "React Carburetor's native linter: 22 rules for consumer code, one process over a directory tree, with --fix.",
+  "description": "React Carburetor's native linter: 24 rules for consumer code, one process over a directory tree, with --fix.",
   "bin": {
     "carburetor-lint": "bin/carburetor-lint.js"
   },
