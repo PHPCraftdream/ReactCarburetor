@@ -38,6 +38,9 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     protected settledKey: string | undefined = undefined;
     /** The arguments of the most recent start, which reload() replays. */
     protected lastArgs: TArgs | undefined = undefined;
+    /** The key of that same start, which tells reload() a replay exists: unlike `pendingKey`,
+     * abort() and restore() leave it in place. */
+    protected lastKey: string | undefined = undefined;
     /** The raw rejection behind the described state.error, kept whole for suspend to rethrow. */
     protected lastError: unknown = undefined;
 
@@ -148,7 +151,9 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
 
     /** Repeats the last load with the same arguments. */
     public reload = (): Promise<void> => {
-        if (this.pendingKey === undefined) {
+        // The replay target is the last requested start, not the in-flight key: abort() clears
+        // the key of the request it cancels, while what was requested last stays repeatable.
+        if (this.lastKey === undefined) {
             return Promise.resolve();
         }
 
@@ -218,6 +223,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.controller = controller;
         this.pendingKey = key;
         this.lastArgs = args;
+        this.lastKey = key;
 
         // `load` and `reload` both come through here, so starting a request replaces
         // whatever the slot held: the old answer stops being served from this moment.

@@ -25,6 +25,9 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
     protected settledKey: string | undefined;
     /** The arguments of the most recent start, which reload() replays. */
     protected lastArgs: TArgs | undefined;
+    /** The key of that same start, which tells reload() a replay exists: unlike `pendingKey`,
+     * abort() and restore() leave it in place. */
+    protected lastKey: string | undefined;
     /** The raw rejection behind the described state.error, kept whole for suspend to rethrow. */
     protected lastError: unknown;
     /**

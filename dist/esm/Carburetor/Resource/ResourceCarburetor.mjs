@@ -14,6 +14,7 @@ class ResourceCarburetor extends Carburetor {
     pendingRequest = void 0;
     settledKey = void 0;
     lastArgs = void 0;
+    lastKey = void 0;
     lastError = void 0;
     constructor(loader, scheduler){
         super(getInitialResourceData(), scheduler), this.loader = loader;
@@ -46,7 +47,7 @@ class ResourceCarburetor extends Carburetor {
     };
     load = (args)=>this.start(args, false);
     reload = ()=>{
-        if (void 0 === this.pendingKey) return Promise.resolve();
+        if (void 0 === this.lastKey) return Promise.resolve();
         const args = this.lastArgs;
         this.pendingKey = void 0;
         this.pendingRequest = void 0;
@@ -73,6 +74,7 @@ class ResourceCarburetor extends Carburetor {
         this.controller = controller;
         this.pendingKey = key;
         this.lastArgs = args;
+        this.lastKey = key;
         this.settledKey = void 0;
         this.draft.status = EResourceStatus.Pending;
         this.draft.error = void 0;

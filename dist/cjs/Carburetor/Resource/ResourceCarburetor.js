@@ -46,6 +46,7 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
     pendingRequest = void 0;
     settledKey = void 0;
     lastArgs = void 0;
+    lastKey = void 0;
     lastError = void 0;
     constructor(loader, scheduler){
         super((0, external_getInitialResourceData_js_namespaceObject.getInitialResourceData)(), scheduler), this.loader = loader;
@@ -78,7 +79,7 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
     };
     load = (args)=>this.start(args, false);
     reload = ()=>{
-        if (void 0 === this.pendingKey) return Promise.resolve();
+        if (void 0 === this.lastKey) return Promise.resolve();
         const args = this.lastArgs;
         this.pendingKey = void 0;
         this.pendingRequest = void 0;
@@ -105,6 +106,7 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
         this.controller = controller;
         this.pendingKey = key;
         this.lastArgs = args;
+        this.lastKey = key;
         this.settledKey = void 0;
         this.draft.status = EResourceStatus_js_namespaceObject.EResourceStatus.Pending;
         this.draft.error = void 0;

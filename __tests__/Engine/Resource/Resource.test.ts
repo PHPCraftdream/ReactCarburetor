@@ -595,4 +595,126 @@ describe('ResourceCarburetor', () => {
         gates[1].resolve('second');
         await reload;
     });
+
+    test('reload repeats the last request after an abort', async () => {
+        const requested: string[] = [];
+        const gates: IDeferred<string>[] = [deferred<string>(), deferred<string>()];
+        let calls = 0;
+
+        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+            requested.push(args.id);
+
+            return gates[calls++].promise;
+        });
+
+        const loading = resource.load({id: 'a'});
+        resource.abort();
+
+        gates[0].resolve('ignored');
+        await loading;
+        await flush();
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Idle);
+
+        // abort() cancelled the request but not the memory of what was requested last.
+        const reloaded = resource.reload();
+
+        expect(requested).toEqual(['a', 'a']);
+
+        gates[1].resolve('a-again');
+        await reloaded;
+
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+        expect(resource.getData().data).toEqual('a-again');
+        expect(resource.suspend({id: 'a'})).toEqual('a-again');
+    });
+
+    test('reload before any load stays an intentional no-op', async () => {
+        let calls = 0;
+
+        const resource = new ResourceCarburetor<number>(() => {
+            calls++;
+
+            return Promise.resolve(calls);
+        });
+
+        await resource.reload();
+
+        expect(calls).toEqual(0);
+        expect(resource.getData().status).toEqual(EResourceStatus.Idle);
+    });
+
+    test('a restore into an instance that never loaded leaves reload a no-op', async () => {
+        let sourceCalls = 0;
+
+        const source = new ResourceCarburetor<string>(() => {
+            sourceCalls++;
+
+            return Promise.resolve('source-data');
+        });
+
+        await source.load(undefined);
+
+        expect(sourceCalls).toEqual(1);
+
+        let freshCalls = 0;
+
+        const fresh = new ResourceCarburetor<string>(() => {
+            freshCalls++;
+
+            return Promise.resolve('fresh-data');
+        });
+
+        fresh.restore(JSON.parse(JSON.stringify(source.snapshot())));
+
+        expect(fresh.getData().status).toEqual(EResourceStatus.Success);
+        expect(fresh.suspend(undefined)).toEqual('source-data');
+
+        // The snapshot names the answer's key, not the arguments that produced it: restore
+        // serves the answer but cannot establish what reload would repeat.
+        await fresh.reload();
+
+        expect(freshCalls).toEqual(0);
+        expect(fresh.getData().status).toEqual(EResourceStatus.Success);
+        expect(fresh.getData().data).toEqual('source-data');
+    });
+
+    test('restore keeps an aborted load replayable by reload', async () => {
+        const requested: string[] = [];
+        const gates: IDeferred<string>[] = [deferred<string>(), deferred<string>()];
+        let calls = 0;
+
+        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+            requested.push(args.id);
+
+            return gates[calls++].promise;
+        });
+
+        const loading = resource.load({id: 'a'});
+        resource.abort();
+
+        gates[0].resolve('ignored');
+        await loading;
+
+        // A settled answer from elsewhere is restored over the aborted slot.
+        resource.restore({
+            status: EResourceStatus.Success,
+            data: 'restored',
+            error: undefined,
+            updatedAt: 1,
+            key: JSON.stringify({id: 'b'}),
+        });
+
+        expect(resource.getData().data).toEqual('restored');
+
+        // reload repeats what THIS instance last requested ('a'), not the restored key.
+        const reloaded = resource.reload();
+
+        expect(requested).toEqual(['a', 'a']);
+
+        gates[1].resolve('a-again');
+        await reloaded;
+
+        expect(resource.getData().data).toEqual('a-again');
+    });
 });
