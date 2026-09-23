@@ -31,13 +31,21 @@ __webpack_require__.d(__webpack_exports__, {
     deepClone: ()=>deepClone
 });
 const isTrackable_js_namespaceObject = require("../Tracking/isTrackable.js");
+const definePlainProperty = (target, key, value)=>{
+    Object.defineProperty(target, key, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true
+    });
+};
 const deepClone = (value)=>{
     if (!(0, isTrackable_js_namespaceObject.isTrackable)(value)) return value;
     if (Array.isArray(value)) return value.map((item)=>deepClone(item));
     const source = value;
-    const result = {};
+    const result = Object.create(Object.getPrototypeOf(source));
     Object.keys(source).forEach((key)=>{
-        result[key] = deepClone(source[key]);
+        definePlainProperty(result, key, deepClone(source[key]));
     });
     return result;
 };

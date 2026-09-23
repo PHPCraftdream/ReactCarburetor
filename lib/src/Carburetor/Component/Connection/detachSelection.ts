@@ -2,6 +2,17 @@ import {isPlainObject} from "./isPlainObject";
 import {ownEnumerableKeys} from "./ownEnumerableKeys";
 
 /**
+ * Installs `key` as a genuine own data property, bypassing any inherited accessor a plain
+ * `target[key] = value` assignment would invoke instead — the case that matters is a source
+ * object with an own enumerable key literally named `__proto__`: assigning it would reset the
+ * target's prototype rather than store the value. Same policy `deepClone` uses for its own
+ * container copies, so a source's shape survives a copy identically either way.
+ */
+const definePlainProperty = (target: object, key: string | symbol, value: unknown): void => {
+    Object.defineProperty(target, key, {value, writable: true, enumerable: true, configurable: true});
+};
+
+/**
  * Deep, cycle-safe detachment of one value: plain objects and arrays are walked recursively and
  * rebuilt as fresh containers, at any depth, own enumerable string and symbol keys included.
  *
@@ -39,15 +50,25 @@ const detachDeep = (value: unknown, seen: WeakMap<object, unknown>): unknown => 
         return value;
     }
 
-    const target: Record<string | symbol, unknown> | unknown[] = isArray ? [] : {};
+    // Object.create(getPrototypeOf(value)) keeps a null-prototype dictionary null-prototype
+    // instead of always landing on Object.prototype the way `{}` would; arrays keep the plain
+    // Array.prototype shape a `[]` literal already has.
+    const target: Record<string | symbol, unknown> | unknown[] =
+        isArray ? [] : Object.create(Object.getPrototypeOf(value));
 
     seen.set(value, target);
 
     const source = value as Record<string | symbol, unknown>;
 
     ownEnumerableKeys(value).forEach((key: string | symbol): void => {
-        (target as Record<string | symbol, unknown>)[key] = detachDeep(source[key], seen);
+        definePlainProperty(target, key, detachDeep(source[key], seen));
     });
+
+    if (isArray) {
+        // Own enumerable keys skip holes, so a sparse source's true length would otherwise be
+        // lost — the highest defined index alone would understate it.
+        (target as unknown[]).length = (value as unknown[]).length;
+    }
 
     return target;
 };

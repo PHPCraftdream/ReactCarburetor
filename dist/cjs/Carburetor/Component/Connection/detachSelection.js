@@ -32,17 +32,26 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const external_isPlainObject_js_namespaceObject = require("./isPlainObject.js");
 const external_ownEnumerableKeys_js_namespaceObject = require("./ownEnumerableKeys.js");
+const definePlainProperty = (target, key, value)=>{
+    Object.defineProperty(target, key, {
+        value,
+        writable: true,
+        enumerable: true,
+        configurable: true
+    });
+};
 const detachDeep = (value, seen)=>{
     if ('object' != typeof value || null === value) return value;
     if (seen.has(value)) return seen.get(value);
     const isArray = Array.isArray(value);
     if (!isArray && !(0, external_isPlainObject_js_namespaceObject.isPlainObject)(value)) return value;
-    const target = isArray ? [] : {};
+    const target = isArray ? [] : Object.create(Object.getPrototypeOf(value));
     seen.set(value, target);
     const source = value;
     (0, external_ownEnumerableKeys_js_namespaceObject.ownEnumerableKeys)(value).forEach((key)=>{
-        target[key] = detachDeep(source[key], seen);
+        definePlainProperty(target, key, detachDeep(source[key], seen));
     });
+    if (isArray) target.length = value.length;
     return target;
 };
 const detachSelection = (value)=>detachDeep(value, new WeakMap());

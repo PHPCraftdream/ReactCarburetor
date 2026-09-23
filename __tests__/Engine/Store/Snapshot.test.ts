@@ -80,6 +80,57 @@ describe('snapshot / restore', () => {
         expect(clone.date).toBe(date);
         expect(clone.list).not.toBe(source.list);
     });
+
+    // R4-02: `target[key] = value` for a key literally named `__proto__` invokes the inherited
+    // accessor setter instead of installing an own data property, silently losing the key and
+    // repointing the copy's own prototype.
+    test('a snapshot round trip preserves an own __proto__ key at the root (R4-02)', () => {
+        const parsed = JSON.parse('{"__proto__":{"n":7},"safe":1}') as Record<string, unknown>;
+
+        // JSON.parse never touches prototypes: this is an own, enumerable, ordinary data key.
+        expect(Object.prototype.hasOwnProperty.call(parsed, '__proto__')).toEqual(true);
+        expect(Object.getPrototypeOf(parsed)).toEqual(Object.prototype);
+
+        const carburetor = new TestCarburetor(parsed as unknown as ITestData);
+        const taken = carburetor.snapshot() as unknown as Record<string, unknown>;
+
+        expect(Object.getPrototypeOf(taken)).toEqual(Object.prototype);
+        expect(Object.prototype.hasOwnProperty.call(taken, '__proto__')).toEqual(true);
+        expect(taken.__proto__).toEqual({n: 7});
+        expect(taken.safe).toEqual(1);
+        // A `{__proto__: ...}` object-literal key is spec-special-cased to set the prototype
+        // instead of an own key, so the expectation must use a computed key to mean an own one.
+        expect(JSON.parse(JSON.stringify(taken))).toEqual({['__proto__']: {n: 7}, safe: 1});
+    });
+
+    test('a snapshot round trip preserves an own __proto__ key nested inside another object (R4-02)', () => {
+        const parsed = JSON.parse('{"outer":{"__proto__":{"n":7},"safe":1}}') as Record<string, unknown>;
+        const outer = parsed.outer as Record<string, unknown>;
+
+        expect(Object.prototype.hasOwnProperty.call(outer, '__proto__')).toEqual(true);
+        expect(Object.getPrototypeOf(outer)).toEqual(Object.prototype);
+
+        const carburetor = new TestCarburetor(parsed as unknown as ITestData);
+        const taken = carburetor.snapshot() as unknown as Record<string, unknown>;
+        const takenOuter = taken.outer as Record<string, unknown>;
+
+        expect(Object.getPrototypeOf(takenOuter)).toEqual(Object.prototype);
+        expect(Object.prototype.hasOwnProperty.call(takenOuter, '__proto__')).toEqual(true);
+        expect(takenOuter.__proto__).toEqual({n: 7});
+        expect(takenOuter.safe).toEqual(1);
+        expect(JSON.parse(JSON.stringify(taken))).toEqual({outer: {['__proto__']: {n: 7}, safe: 1}});
+    });
+
+    test('deepClone preserves a null-prototype dictionary through the copy (R4-02)', () => {
+        const dictionary: Record<string, unknown> = Object.create(null);
+        dictionary.a = 1;
+
+        const clone = deepClone({dictionary});
+
+        expect(Object.getPrototypeOf(clone.dictionary)).toBeNull();
+        expect(clone.dictionary).toEqual({a: 1});
+        expect(clone.dictionary).not.toBe(dictionary);
+    });
 });
 
 describe('watch', () => {

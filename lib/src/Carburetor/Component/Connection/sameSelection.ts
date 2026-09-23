@@ -2,50 +2,11 @@ import {isPlainObject} from "./isPlainObject";
 import {ownEnumerableKeys} from "./ownEnumerableKeys";
 
 /**
- * Whether a fresh selection has the same content as the snapshot already handed out, so "same"
- * here means the handed-out snapshot may keep its identity — and the gated child keeps its
- * bail-out.
- *
- * A plain object compares its own enumerable string and symbol keys — the exact set a shallow
- * spread copies — for membership plus `Object.is` values, and an array compares its length and
- * elements with `Object.is`, the exact set `Array.from` copies. The detached previous snapshot
- * is compared against the raw fresh selection: a shallow copy shares every member with its
- * source, so identity differences introduced by detaching say nothing about content.
- *
- * @param snapshot - the snapshot already handed out, possibly detached from its source
- * @param next - the fresh selection to compare it against
+ * Own-enumerable-key equality shared by the array and plain-object branches of `sameValue`:
+ * same key set (strings and symbols alike — `detachSelection`'s exact copied set, arrays
+ * included) and every value recursively `sameValue`.
  */
-export const sameSelection = (snapshot: unknown, next: unknown): boolean => {
-    if (Object.is(snapshot, next)) {
-        return true;
-    }
-
-    const snapshotIsArray = Array.isArray(snapshot);
-    const nextIsArray = Array.isArray(next);
-
-    if (snapshotIsArray || nextIsArray) {
-        if (!snapshotIsArray || !nextIsArray) {
-            return false;
-        }
-
-        // Deliberate asymmetry with the plain-object branch below: `Array.from` copies indices
-        // and nothing else — no extra own properties, no symbol keys — so element-wise Object.is
-        // already covers the whole copied set of an array.
-
-        // Bindings narrowed ahead of the callback: a `.every` body runs outside the guards'
-        // narrowing reach.
-        const previousMembers = snapshot as unknown[];
-        const freshMembers = next as unknown[];
-
-        return previousMembers.length === freshMembers.length &&
-            previousMembers.every((member: unknown, index: number): boolean =>
-                Object.is(member, freshMembers[index]));
-    }
-
-    if (!isPlainObject(snapshot) || !isPlainObject(next)) {
-        return false;
-    }
-
+const sameKeyedContent = (snapshot: object, next: object, seen: WeakMap<object, object>): boolean => {
     const previousKeys = ownEnumerableKeys(snapshot);
     const freshKeys = ownEnumerableKeys(next);
 
@@ -63,5 +24,67 @@ export const sameSelection = (snapshot: unknown, next: unknown): boolean => {
     // `{b: undefined}`, say — is a content change even though the counts match.
     return previousKeys.every((key: string | symbol): boolean =>
         Object.prototype.hasOwnProperty.call(freshMembers, key) &&
-        Object.is(previousMembers[key], freshMembers[key]));
+        sameValue(previousMembers[key], freshMembers[key], seen));
 };
+
+/**
+ * Deep, cycle-safe structural equality between a value already handed out (possibly a detached
+ * copy) and a freshly read one (possibly still live).
+ *
+ * A detached copy never shares a reference with the live data it was built from — a fresh
+ * container every call, and a fresh proxy for every nested live-view read — so a comparison
+ * that stopped at `Object.is` on a nested plain object or array would report a change on every
+ * call regardless of content, even when nothing the child can see actually changed. Recursing by
+ * own enumerable key — the exact set `detachSelection` copies, arrays' custom properties and
+ * true length included — is what makes "same content" and "same handed-out identity" agree at
+ * every depth, not only the top one.
+ *
+ * A pair already on the current comparison path is treated as equal: the only way that
+ * situation arises is a cycle in the compared data (mirrors `detachSelection`'s own cycle
+ * guard), not a real mismatch this recursion could otherwise resolve.
+ *
+ * @param seen - previous-side object -> the fresh-side object it is being compared against on
+ * this call's path, so a cycle reuses that verdict instead of recursing forever
+ */
+const sameValue = (a: unknown, b: unknown, seen: WeakMap<object, object>): boolean => {
+    if (Object.is(a, b)) {
+        return true;
+    }
+
+    if (typeof a !== 'object' || a === null || typeof b !== 'object' || b === null) {
+        return false;
+    }
+
+    if (seen.get(a) === b) {
+        return true;
+    }
+
+    if (Array.isArray(a) || Array.isArray(b)) {
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+            return false;
+        }
+
+        seen.set(a, b);
+
+        return sameKeyedContent(a, b, seen);
+    }
+
+    if (!isPlainObject(a) || !isPlainObject(b)) {
+        return false;
+    }
+
+    seen.set(a, b);
+
+    return sameKeyedContent(a, b, seen);
+};
+
+/**
+ * Whether a fresh selection has the same content as the snapshot already handed out, so "same"
+ * here means the handed-out snapshot may keep its identity — and the gated child keeps its
+ * bail-out.
+ *
+ * @param snapshot - the snapshot already handed out, possibly detached from its source
+ * @param next - the fresh selection to compare it against
+ */
+export const sameSelection = (snapshot: unknown, next: unknown): boolean =>
+    sameValue(snapshot, next, new WeakMap<object, object>());

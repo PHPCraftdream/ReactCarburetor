@@ -2932,6 +2932,254 @@ describe('<AntiHookComponent />', () => {
         });
     });
 
+    describe('connectSelection copy safety (R4-02)', () => {
+        test('an own __proto__ key inside a selection round-trips through JSON', () => {
+            const store = new Carburetor({flag: true});
+
+            class Parent extends AntiHookComponent {
+                public readonly selected = this.connectSelection(
+                    () => store,
+                    () => JSON.parse('{"__proto__":{"n":7},"safe":1}') as Record<string, unknown>
+                );
+
+                render() {
+                    return <span />;
+                }
+            }
+
+            // JSON.parse never touches prototypes: this is an own, enumerable, ordinary data key,
+            // not a prototype change — the same case deepClone's Snapshot.test.ts covers for the
+            // store side of R4-02.
+            const detached = new Parent({} as never).selected() as Record<string, unknown>;
+
+            expect(Object.getPrototypeOf(detached)).toEqual(Object.prototype);
+            expect(Object.prototype.hasOwnProperty.call(detached, '__proto__')).toEqual(true);
+            expect(detached.__proto__).toEqual({n: 7});
+            expect(detached.safe).toEqual(1);
+            // A `{__proto__: ...}` object-literal key is spec-special-cased to set the
+            // prototype instead of an own key, so the expectation needs a computed key.
+            expect(JSON.parse(JSON.stringify(detached))).toEqual({['__proto__']: {n: 7}, safe: 1});
+        });
+
+        test('an own __proto__ key nested one level inside a selection round-trips through JSON', () => {
+            const store = new Carburetor({flag: true});
+
+            class Parent extends AntiHookComponent {
+                public readonly selected = this.connectSelection(
+                    () => store,
+                    () => ({outer: JSON.parse('{"__proto__":{"n":7},"safe":1}') as Record<string, unknown>})
+                );
+
+                render() {
+                    return <span />;
+                }
+            }
+
+            const detached = (new Parent({} as never).selected() as {outer: Record<string, unknown>}).outer;
+
+            expect(Object.getPrototypeOf(detached)).toEqual(Object.prototype);
+            expect(Object.prototype.hasOwnProperty.call(detached, '__proto__')).toEqual(true);
+            expect(detached.__proto__).toEqual({n: 7});
+            expect(detached.safe).toEqual(1);
+        });
+
+        test('a null-prototype dictionary in a selection stays null-prototype after detachment', () => {
+            const store = new Carburetor({flag: true});
+            const dictionary: Record<string, unknown> = Object.create(null);
+
+            dictionary.a = 1;
+
+            class Parent extends AntiHookComponent {
+                public readonly selected = this.connectSelection(() => store, () => ({dictionary}));
+
+                render() {
+                    return <span />;
+                }
+            }
+
+            const detached = (new Parent({} as never).selected() as {dictionary: Record<string, unknown>}).dictionary;
+
+            expect(Object.getPrototypeOf(detached)).toBeNull();
+            expect(detached).toEqual({a: 1});
+            expect(detached).not.toBe(dictionary);
+        });
+    });
+
+    describe('connectSelection array equality and shape (R4-04)', () => {
+        interface IArrayData {
+            id: number;
+            extra: string;
+        }
+
+        class ArrayCarburetor extends Carburetor<IArrayData> {
+            public setExtra = (extra: string): void => {
+                this.draft.extra = extra;
+                this.emitUpdate();
+            };
+        }
+
+        const getArrayData = (): IArrayData => ({id: 1, extra: 'first'});
+
+        test('a memo child re-renders when a tracked array\'s custom enumerable property changes', () => {
+            const store = new ArrayCarburetor(getArrayData());
+            let memoRenders = 0;
+
+            type TListWithExtra = number[] & {extra: string};
+
+            const MemoList = React.memo(({list}: {list: TListWithExtra}) => {
+                memoRenders++;
+
+                return <span className="memo-list">{list.join(',')}:{list.extra}</span>;
+            });
+
+            class Parent extends AntiHookComponent {
+                // The array itself is the top-level selection — not wrapped in a plain object —
+                // so the comparison actually exercises the array branch, not the object branch's
+                // own Object.is on the wrapper's "list" member (which would already treat any two
+                // freshly built arrays as different regardless of the array-comparator fix).
+                private readonly selected = this.connectSelection(() => store, (data) => {
+                    const list = [data.id] as TListWithExtra;
+
+                    list.extra = data.extra;
+
+                    return list;
+                });
+
+                render() {
+                    return <MemoList list={this.selected()} />;
+                }
+            }
+
+            const {container, unmount} = render(<Parent />);
+
+            expect(container.querySelector('.memo-list')?.textContent).toEqual('1:first');
+            expect(memoRenders).toEqual(1);
+
+            // Only the array's custom property changes — length and indexed elements stay put —
+            // so a comparator that ignores it would wrongly report "same" (R4-04).
+            act(() => store.setExtra('second'));
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-list')?.textContent).toEqual('1:second');
+
+            unmount();
+        });
+
+        test('a sparse array selection preserves its true length through detachment', () => {
+            const store = new Carburetor({flag: true});
+
+            class Parent extends AntiHookComponent {
+                public readonly selected = this.connectSelection(() => store, () => {
+                    const sparse: number[] = [1];
+
+                    // Grows the array without filling indices 1 and 2: two trailing holes.
+                    sparse.length = 3;
+
+                    return sparse;
+                });
+
+                render() {
+                    return <span />;
+                }
+            }
+
+            const detached = new Parent({} as never).selected() as number[];
+
+            expect(detached.length).toEqual(3);
+            expect(detached[0]).toEqual(1);
+            expect(0 in detached).toEqual(true);
+            expect(1 in detached).toEqual(false);
+            expect(2 in detached).toEqual(false);
+        });
+    });
+
+    describe('connectSelection nested-selection identity (R4-06)', () => {
+        interface INestedData {
+            n: number;
+        }
+
+        const getNestedData = (): INestedData => ({n: 1});
+
+        test('a stable nested plain object keeps its identity across a parent-only re-render', () => {
+            const store = new Carburetor<INestedData>(getNestedData());
+            // Never mutated across the test: the reference itself is what must be recognized
+            // as unchanged, since the store never changes either.
+            const stableNested = {label: 'x'};
+            let memoRenders = 0;
+            const seen: Array<{label: string}> = [];
+
+            const MemoChild = React.memo(({nested}: {nested: {label: string}}) => {
+                memoRenders++;
+                seen.push(nested);
+
+                return <span className="memo-nested">{nested.label}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{flag?: string}> {
+                private readonly selected = this.connectSelection(
+                    () => store,
+                    (data) => ({n: data.n, nested: stableNested})
+                );
+
+                render() {
+                    return <MemoChild nested={this.selected().nested} />;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent />);
+
+            expect(container.querySelector('.memo-nested')?.textContent).toEqual('x');
+            expect(memoRenders).toEqual(1);
+
+            // A parent-only re-render: an unrelated prop changes, the store never wrote, and the
+            // nested selection object is the very same reference as before (R4-06).
+            rerender(<Parent flag="x" />);
+
+            expect(memoRenders).toEqual(1);
+            expect(seen.length).toEqual(1);
+
+            unmount();
+        });
+
+        test('a nested selection that actually changes still redraws the memo child', () => {
+            const store = new Carburetor<INestedData>(getNestedData());
+            let memoRenders = 0;
+            let label = 'x';
+
+            const MemoChild = React.memo(({nested}: {nested: {label: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-nested">{nested.label}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{flag?: string}> {
+                private readonly selected = this.connectSelection(
+                    () => store,
+                    (data) => ({n: data.n, nested: {label}})
+                );
+
+                render() {
+                    return <MemoChild nested={this.selected().nested} />;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent />);
+
+            expect(container.querySelector('.memo-nested')?.textContent).toEqual('x');
+            expect(memoRenders).toEqual(1);
+
+            // The nested object is a fresh instance every call, but this time its content
+            // genuinely differs — a fix for R4-06 must not overcorrect into permanent staleness.
+            label = 'y';
+            rerender(<Parent flag="x" />);
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-nested')?.textContent).toEqual('y');
+
+            unmount();
+        });
+    });
+
     describe('under StrictMode', () => {
         test('restores subscriptions when StrictMode replays the mount lifecycles', () => {
             const store = new CounterCarburetor(getCounterData());

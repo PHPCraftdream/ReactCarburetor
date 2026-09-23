@@ -1,1 +1,1 @@
-import{isTrackable as r}from"../Tracking/isTrackable.mjs";let e=t=>{if(!r(t))return t;if(Array.isArray(t))return t.map(r=>e(r));let a={};return Object.keys(t).forEach(r=>{a[r]=e(t[r])}),a};export{e as deepClone};
+import{isTrackable as e}from"../Tracking/isTrackable.mjs";let r=t=>{if(!e(t))return t;if(Array.isArray(t))return t.map(e=>r(e));let a=Object.create(Object.getPrototypeOf(t));return Object.keys(t).forEach(e=>{Object.defineProperty(a,e,{value:r(t[e]),writable:!0,enumerable:!0,configurable:!0})}),a};export{r as deepClone};
