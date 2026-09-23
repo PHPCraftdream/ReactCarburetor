@@ -1,9 +1,9 @@
-import { spawnSync } from "node:child_process";
-import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { fileURLToPath } from "node:url";
-import * as __rspack_external_node_path_806ed179 from "node:path";
-import * as __rspack_external_node_os_4f3c9d58 from "node:os";
+import { spawnSync } from "child_process";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync } from "fs";
+import { createRequire } from "module";
+import { fileURLToPath } from "url";
+import * as __rspack_external_path from "path";
+import * as __rspack_external_os from "os";
 const RECOMMENDED = {
     'carburetor/no-async-effect': 'error',
     'carburetor/no-async-transaction': 'error',
@@ -51,14 +51,15 @@ const platformPackageNames = (platform = process.platform, arch = process.arch)=
 };
 const reportLibc = ()=>{
     try {
-        const header = process.report?.getReport().header;
-        return header?.glibcVersionRuntime ? 'gnu' : header ? 'musl' : void 0;
+        var _process_report;
+        const header = null == (_process_report = process.report) ? void 0 : _process_report.getReport().header;
+        return (null == header ? void 0 : header.glibcVersionRuntime) ? 'gnu' : header ? 'musl' : void 0;
     } catch  {
         return;
     }
 };
 const BINARY_NAME = 'win32' === process.platform ? 'carburetor-lint.exe' : 'carburetor-lint';
-const HERE = __rspack_external_node_path_806ed179.dirname(fileURLToPath(import.meta.url));
+const HERE = __rspack_external_path.dirname(fileURLToPath(import.meta.url));
 const requireFrom = createRequire(import.meta.url);
 const resolveBinary = ()=>{
     const override = process.env.CARBURETOR_LINT_BIN;
@@ -74,10 +75,10 @@ const workspaceBinary = ()=>{
             'release',
             'debug'
         ]){
-            const candidate = __rspack_external_node_path_806ed179.join(directory, 'native', 'target', profile, BINARY_NAME);
+            const candidate = __rspack_external_path.join(directory, 'native', 'target', profile, BINARY_NAME);
             if (existsSync(candidate)) return candidate;
         }
-        const parent = __rspack_external_node_path_806ed179.dirname(directory);
+        const parent = __rspack_external_path.dirname(directory);
         if (parent === directory) return;
         directory = parent;
     }
@@ -97,7 +98,7 @@ const sleepSync = (milliseconds)=>{
 };
 const runPaths = (cwd)=>{
     const digest = Buffer.from(cwd).toString('base64url').slice(0, 24);
-    const base = __rspack_external_node_path_806ed179.join(__rspack_external_node_os_4f3c9d58.tmpdir(), `carburetor-lint-${process.pid}-${digest}`);
+    const base = __rspack_external_path.join(__rspack_external_os.tmpdir(), `carburetor-lint-${process.pid}-${digest}`);
     return {
         lock: `${base}.lock`,
         result: `${base}.json`
@@ -125,7 +126,7 @@ const runBinary = (cwd, resolve = resolveBinary)=>{
 const runNativeOnce = (cwd, resolve = resolveBinary)=>{
     if (cached) return cached;
     const { lock, result } = runPaths(cwd);
-    mkdirSync(__rspack_external_node_path_806ed179.dirname(lock), {
+    mkdirSync(__rspack_external_path.dirname(lock), {
         recursive: true
     });
     let isRunner = false;
@@ -168,7 +169,7 @@ const nativeRule = (id, description)=>({
             return {
                 'Program:exit' () {
                     const diagnostics = runNativeOnce(process.cwd());
-                    const file = __rspack_external_node_path_806ed179.relative(process.cwd(), context.filename).replace(/\\/g, '/');
+                    const file = __rspack_external_path.relative(process.cwd(), context.filename).replace(/\\/g, '/');
                     const text = context.sourceCode.getText();
                     diagnostics.filter((diagnostic)=>diagnostic.file.replace(/^\.\//, '') === file && diagnostic.rule === id).forEach((diagnostic)=>{
                         const offset = offsetAt(text, diagnostic.line, diagnostic.column);

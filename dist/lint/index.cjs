@@ -57,16 +57,16 @@ const RECOMMENDED = {
     "carburetor/require-subscription-disposal": 'warn',
     'carburetor/require-super-in-lifecycle': 'error'
 };
-const external_node_path_namespaceObject = require("node:path");
+const external_path_namespaceObject = require("path");
 const offsetAt = (text, line, column)=>{
     const lines = text.split('\n');
     let offset = 0;
     for(let index = 0; index < line - 1 && index < lines.length; index++)offset += lines[index].length + 1;
     return offset + (column - 1);
 };
-const external_node_child_process_namespaceObject = require("node:child_process");
-const external_node_fs_namespaceObject = require("node:fs");
-const external_node_os_namespaceObject = require("node:os");
+const external_child_process_namespaceObject = require("child_process");
+const external_fs_namespaceObject = require("fs");
+const external_os_namespaceObject = require("os");
 const platformPackageNames = (platform = process.platform, arch = process.arch)=>{
     if ('linux' === platform) {
         const order = 'musl' === reportLibc() ? [
@@ -84,20 +84,21 @@ const platformPackageNames = (platform = process.platform, arch = process.arch)=
 };
 const reportLibc = ()=>{
     try {
-        const header = process.report?.getReport().header;
-        return header?.glibcVersionRuntime ? 'gnu' : header ? 'musl' : void 0;
+        var _process_report;
+        const header = null == (_process_report = process.report) ? void 0 : _process_report.getReport().header;
+        return (null == header ? void 0 : header.glibcVersionRuntime) ? 'gnu' : header ? 'musl' : void 0;
     } catch  {
         return;
     }
 };
-const external_node_module_namespaceObject = require("node:module");
-const external_node_url_namespaceObject = require("node:url");
+const external_module_namespaceObject = require("module");
+const external_url_namespaceObject = require("url");
 const BINARY_NAME = 'win32' === process.platform ? 'carburetor-lint.exe' : 'carburetor-lint';
-const HERE = external_node_path_namespaceObject.dirname((0, external_node_url_namespaceObject.fileURLToPath)(__rslib_import_meta_url__));
-const requireFrom = (0, external_node_module_namespaceObject.createRequire)(__rslib_import_meta_url__);
+const HERE = external_path_namespaceObject.dirname((0, external_url_namespaceObject.fileURLToPath)(__rslib_import_meta_url__));
+const requireFrom = (0, external_module_namespaceObject.createRequire)(__rslib_import_meta_url__);
 const resolveBinary = ()=>{
     const override = process.env.CARBURETOR_LINT_BIN;
-    if (override && (0, external_node_fs_namespaceObject.existsSync)(override)) return override;
+    if (override && (0, external_fs_namespaceObject.existsSync)(override)) return override;
     const platformPackage = platformPackageBinary();
     if (platformPackage) return platformPackage;
     return workspaceBinary();
@@ -109,10 +110,10 @@ const workspaceBinary = ()=>{
             'release',
             'debug'
         ]){
-            const candidate = external_node_path_namespaceObject.join(directory, 'native', 'target', profile, BINARY_NAME);
-            if ((0, external_node_fs_namespaceObject.existsSync)(candidate)) return candidate;
+            const candidate = external_path_namespaceObject.join(directory, 'native', 'target', profile, BINARY_NAME);
+            if ((0, external_fs_namespaceObject.existsSync)(candidate)) return candidate;
         }
-        const parent = external_node_path_namespaceObject.dirname(directory);
+        const parent = external_path_namespaceObject.dirname(directory);
         if (parent === directory) return;
         directory = parent;
     }
@@ -120,7 +121,7 @@ const workspaceBinary = ()=>{
 const platformPackageBinary = ()=>{
     for (const name of platformPackageNames())try {
         const binary = requireFrom.resolve(`${name}/${BINARY_NAME}`);
-        if ((0, external_node_fs_namespaceObject.existsSync)(binary)) return binary;
+        if ((0, external_fs_namespaceObject.existsSync)(binary)) return binary;
     } catch  {}
 };
 const ALL_RULE_IDS = Object.keys(RECOMMENDED);
@@ -132,7 +133,7 @@ const sleepSync = (milliseconds)=>{
 };
 const runPaths = (cwd)=>{
     const digest = Buffer.from(cwd).toString('base64url').slice(0, 24);
-    const base = external_node_path_namespaceObject.join(external_node_os_namespaceObject.tmpdir(), `carburetor-lint-${process.pid}-${digest}`);
+    const base = external_path_namespaceObject.join(external_os_namespaceObject.tmpdir(), `carburetor-lint-${process.pid}-${digest}`);
     return {
         lock: `${base}.lock`,
         result: `${base}.json`
@@ -145,7 +146,7 @@ const runBinary = (cwd, resolve = resolveBinary)=>{
             '--rule',
             `${id}=error`
         ]);
-    const result = (0, external_node_child_process_namespaceObject.spawnSync)(binary, [
+    const result = (0, external_child_process_namespaceObject.spawnSync)(binary, [
         '--format=json',
         ...args,
         '.'
@@ -160,34 +161,34 @@ const runBinary = (cwd, resolve = resolveBinary)=>{
 const runNativeOnce = (cwd, resolve = resolveBinary)=>{
     if (cached) return cached;
     const { lock, result } = runPaths(cwd);
-    (0, external_node_fs_namespaceObject.mkdirSync)(external_node_path_namespaceObject.dirname(lock), {
+    (0, external_fs_namespaceObject.mkdirSync)(external_path_namespaceObject.dirname(lock), {
         recursive: true
     });
     let isRunner = false;
     try {
-        (0, external_node_fs_namespaceObject.closeSync)((0, external_node_fs_namespaceObject.openSync)(lock, 'wx'));
+        (0, external_fs_namespaceObject.closeSync)((0, external_fs_namespaceObject.openSync)(lock, 'wx'));
         isRunner = true;
     } catch  {
         isRunner = false;
     }
     if (isRunner) try {
         cached = runBinary(cwd, resolve);
-        (0, external_node_fs_namespaceObject.writeFileSync)(result, JSON.stringify(cached));
+        (0, external_fs_namespaceObject.writeFileSync)(result, JSON.stringify(cached));
         return cached;
     } catch (error) {
-        (0, external_node_fs_namespaceObject.writeFileSync)(result, JSON.stringify({
+        (0, external_fs_namespaceObject.writeFileSync)(result, JSON.stringify({
             error: error instanceof Error ? error.message : String(error)
         }));
         throw error;
     } finally{
         try {
-            (0, external_node_fs_namespaceObject.unlinkSync)(lock);
+            (0, external_fs_namespaceObject.unlinkSync)(lock);
         } catch  {}
     }
     const deadline = Date.now() + WAIT_TIMEOUT_MS;
-    while(!(0, external_node_fs_namespaceObject.existsSync)(result) && Date.now() < deadline)sleepSync(POLL_INTERVAL_MS);
-    if (!(0, external_node_fs_namespaceObject.existsSync)(result)) throw new Error(`react-carburetor/lint: another worker ran the native binary but produced no result within ${WAIT_TIMEOUT_MS} ms. Run the binary directly to see why.`);
-    const payload = JSON.parse((0, external_node_fs_namespaceObject.readFileSync)(result, 'utf8'));
+    while(!(0, external_fs_namespaceObject.existsSync)(result) && Date.now() < deadline)sleepSync(POLL_INTERVAL_MS);
+    if (!(0, external_fs_namespaceObject.existsSync)(result)) throw new Error(`react-carburetor/lint: another worker ran the native binary but produced no result within ${WAIT_TIMEOUT_MS} ms. Run the binary directly to see why.`);
+    const payload = JSON.parse((0, external_fs_namespaceObject.readFileSync)(result, 'utf8'));
     if (!Array.isArray(payload)) throw new Error(`react-carburetor/lint: the worker that ran the native binary failed: ${payload.error}`);
     cached = payload;
     return cached;
@@ -203,7 +204,7 @@ const nativeRule = (id, description)=>({
             return {
                 'Program:exit' () {
                     const diagnostics = runNativeOnce(process.cwd());
-                    const file = external_node_path_namespaceObject.relative(process.cwd(), context.filename).replace(/\\/g, '/');
+                    const file = external_path_namespaceObject.relative(process.cwd(), context.filename).replace(/\\/g, '/');
                     const text = context.sourceCode.getText();
                     diagnostics.filter((diagnostic)=>diagnostic.file.replace(/^\.\//, '') === file && diagnostic.rule === id).forEach((diagnostic)=>{
                         const offset = offsetAt(text, diagnostic.line, diagnostic.column);
