@@ -3,10 +3,14 @@
 Thanks for taking the time. This project has a narrow design thesis, so the most useful
 contributions are the ones that sharpen it rather than widen it.
 
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md). Report possible security
+vulnerabilities privately using the [security policy](SECURITY.md), not a public issue.
+
 ## Design rules
 
-- **No hooks in the public API.** State lives outside the tree; components are classes.
-  A change that requires consumers to write hooks is out of scope.
+- **No hooks in the core API.** State lives outside the tree; components are classes.
+  An optional hooks interop bridge exists, but a change that requires core consumers to
+  write hooks is out of scope.
 - **Never create an unnecessary re-render.** Precision beats smoothing. If something
   re-renders too often, fix the invalidation, don't add a delay.
 - **Render stays pure.** Subscriptions are established in the commit phase, never during render.
@@ -194,7 +198,7 @@ rule.
 ## Getting started
 
 ```bash
-npm install
+npm ci
 npm run build        # Rslib: bundleless library, bundled lint plugin, declarations via tsgo
 npm run typecheck    # TypeScript 7, library and plugin
 npm run lint         # oxlint: native rules, type-aware rules, and this project's own 24
@@ -206,14 +210,15 @@ npm run test:rules   # just the lint rules, when that is what you changed
 The demo app has its own package:
 
 ```bash
-cd lib && npm install && npm start
+cd lib && npm ci && npm start
 ```
 
-Note that the repository does not commit lockfiles, so use `npm install` rather than `npm ci`.
+The repository commits both npm lockfiles. Use `npm ci` for a reproducible checkout;
+do not refresh dependencies or versions as part of an unrelated change.
 
 ## Pull requests
 
-- Keep the four commands above green. A failing or flaky test is fixed in the same change,
+- Keep the checks above green. A failing or flaky test is fixed in the same change,
   not deferred.
 - Add a regression test for every bug fix. Several of the subtle bugs in this codebase were
   only visible through tests that render real DOM, so prefer a test that exercises the

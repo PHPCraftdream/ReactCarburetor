@@ -1,7 +1,7 @@
 {
   "name": "react-carburetor",
   "version": "0.1.0",
-  "description": "React state engine with anti-hook component: state lives outside the tree, components subscribe to the exact fields they read.",
+  "description": "Fine-grained React state management with a hook-free class-component core, async resources, and native lint rules.",
   "main": "./dist/cjs/Carburetor/index.js",
   "module": "./dist/esm/Carburetor/index.mjs",
   "types": "./dist/cjs/Carburetor/index.d.ts",
@@ -89,13 +89,18 @@
   },
   "keywords": [
     "react",
+    "typescript",
     "state",
     "state-management",
     "store",
     "class-components",
     "no-hooks",
     "fine-grained",
+    "fine-grained-reactivity",
     "reactivity",
+    "async-resources",
+    "eslint-plugin",
+    "oxlint",
     "proxy",
     "carburetor"
   ],

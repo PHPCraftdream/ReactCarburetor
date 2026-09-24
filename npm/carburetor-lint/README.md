@@ -21,3 +21,8 @@ npm keeps only the one whose `os`/`cpu`/`libc` fields match. Supported platforms
 The same binary powers the `react-carburetor/lint` oxlint/ESLint plugin — install this package
 next to `react-carburetor` and the plugin finds it. See the repository's `native/README.md` for
 the full option reference, exit codes, configuration file and suppression comments.
+
+## License
+
+Choose either MIT or Apache-2.0. The package includes [LICENSE](LICENSE),
+[LICENSE-MIT](LICENSE-MIT), and [LICENSE-APACHE](LICENSE-APACHE).

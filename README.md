@@ -1,24 +1,43 @@
 # React Carburetor
 
+[![CI](https://github.com/PHPCraftdream/ReactCarburetor/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/PHPCraftdream/ReactCarburetor/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
+[![React 18 and 19](https://img.shields.io/badge/React-18%20%7C%2019-61dafb.svg?logo=react)](#install)
+[![Status: pre-release](https://img.shields.io/badge/status-pre--release-orange.svg)](#install)
+
 State lives outside the React tree. Class components read it directly, and each component
 subscribes to **exactly the fields it read** — so a write wakes only the components that
 actually depend on it.
 
-No hooks. No dependency arrays to avoid unnecessary re-renders — path-precise subscriptions
-handle that automatically. Effects still take one, to control when the effect itself reruns,
+The core API needs no hooks. Path-precise subscriptions avoid unnecessary re-renders
+without dependency arrays. Effects still take one, to control when the effect itself reruns,
 the same as React's `useEffect`. No memoization to maintain, and nothing for a compiler to
 optimize after the fact: the unnecessary re-renders are never created in the first place.
 
-```tsx
-export class Counter extends AntiHookComponent {
-    handleClick = () => {
-        counterCarburetor.inc();
-    };
+[Install and try it](#install) · [Core ideas](#core-ideas) · [API](#api) ·
+[Lint rules](docs/rules.md) · [Async cache](docs/promise-cache.md) ·
+[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) ·
+[Code of Conduct](CODE_OF_CONDUCT.md)
 
+```tsx
+import {AntiHookComponent, Carburetor} from 'react-carburetor';
+
+class CounterCarburetor extends Carburetor<{value: number}> {
+    inc(): void {
+        this.update((draft) => {
+            draft.value += 1;
+        });
+    }
+}
+
+const counterCarburetor = new CounterCarburetor({value: 0});
+const increment = () => counterCarburetor.inc();
+
+export class Counter extends AntiHookComponent {
     render() {
         const {value} = this.useCarburetor(counterCarburetor);
 
-        return <button onClick={this.handleClick}>{value}</button>;
+        return <button onClick={increment}>{value}</button>;
     }
 }
 ```
@@ -35,6 +54,21 @@ A component reads what it needs, that read becomes its subscription, and a write
 only the intersecting paths.
 
 ## Install
+
+The first public npm release is still being prepared: `react-carburetor` and
+`carburetor-lint` are not published on npm yet. To try the current source and demo:
+
+```bash
+git clone https://github.com/PHPCraftdream/ReactCarburetor.git
+cd ReactCarburetor
+npm ci
+npm run build
+cd lib
+npm ci
+npm start
+```
+
+After the npm release, install the library in a React project with:
 
 ```bash
 npm install react-carburetor
@@ -57,12 +91,12 @@ library, not just a Node one, so the requirement is a runtime capability, not on
 or [caniuse](https://caniuse.com/mdn-javascript_builtins_weakref) for supported browser
 versions) throws a clear, actionable error on the first tracked read instead of running.
 
-Async resources carry one capability floor of their own: a global `AbortController`, which
-Node added in 14.17.0 while the `engines.node` floor in `package.json` is the older `WeakRef`
-one. Where it is missing, `ResourceCarburetor` and `ResourceCache` still load, settle, and
-discard superseded answers — the state machine only reads `signal.aborted` — but a request
-cannot be cancelled in flight, since the loader's signal never fires, and development reports
-the degradation once.
+Async resources use a global `AbortController`, which Node added in 14.17.0 while the
+`engines.node` floor in `package.json` is older. Where it is missing, a stand-in signal
+supports abort listeners, `onabort` and `throwIfAborted`; late answers are still discarded.
+The stand-in is not a native `AbortSignal`, so APIs that require native signal identity
+(including `fetch`) may reject it. Provide a compatible `AbortController` in that runtime
+when passing the signal to such APIs; development reports the limitation once.
 
 ## Core ideas
 
@@ -604,8 +638,9 @@ The rules are implemented once, in Rust (`native/src/rules/`). What `react-carbu
 ships is a bridge: it runs that binary once per lint run and reports through the host's own
 `context.report`. Two ways to run them, good at different things.
 
-**Standalone (`carburetor-lint`)** — `npm i -D carburetor-lint` fetches the one binary matching
-your machine, and then the rules run without starting a linter: `npx carburetor-lint
+**Standalone (`carburetor-lint`)** — after its first npm release,
+`npm i -D carburetor-lint` fetches the one binary matching your machine, and
+the rules run without starting a linter: `npx carburetor-lint
 --fix-dry-run src` to see what would change, `--fix` to change it. This is the fast path —
 about 20 ms over this repository against 585 ms for the same rules through oxlint — and the
 only one that rewrites code. It reads its own `.carburetorrc.json` (or `--rule`/`--config`),
@@ -719,14 +754,14 @@ one todo and only that row's counter moves.
 
 ```bash
 cd lib
-npm install
+npm ci
 npm start
 ```
 
 ## Development
 
 ```bash
-npm install
+npm ci
 npm run build       # Rslib: ESM + CJS, plus pre-stripped production outputs, dts via tsgo
 npm run typecheck   # TypeScript 7
 npm run lint        # oxlint with type-aware rules
@@ -740,12 +775,10 @@ be run on every change.
 
 ## License
 
-Dual-licensed under either of
+Dual-licensed as `MIT OR Apache-2.0`: choose either license (see [LICENSE](LICENSE)):
 
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
 - MIT license ([LICENSE-MIT](LICENSE-MIT))
-
-at your option.
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for
 inclusion in this project by you, as defined in the Apache-2.0 license, shall be dual

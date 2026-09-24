@@ -4,7 +4,7 @@ A Todo app built on the library from this repository: class components only, no 
 React 19 + Rsbuild + Tailwind CSS.
 
 ```bash
-npm install
+npm ci
 npm start     # dev server
 npm run build # production build into ./build
 ```

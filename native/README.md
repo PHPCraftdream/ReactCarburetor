@@ -107,6 +107,9 @@ form the base class actually dispatches to.
 
 ## The npm packages
 
+The packages below are prepared but not yet published on npm. Build from source
+using the command above until the first public release.
+
 The binary ships the way oxlint ships its own: `carburetor-lint` on npm is a launcher script
 that finds the compiled binary and hands it your arguments, stdio and exit code, and the
 megabytes live in a platform package beside it, `carburetor-lint-<platform>`. The launcher
@@ -132,6 +135,9 @@ project using `react-carburetor/lint` should install `carburetor-lint` alongside
 neither a platform package nor a `CARBURETOR_LINT_BIN` override nor a workspace build is
 present, the bridge fails loudly, naming the missing platform package — a missing binary is a
 broken install to report, never a silent, wrong "no problems".
+
+The source and every npm tarball are offered under `MIT OR Apache-2.0`; see the
+repository's [dual-license notice](../LICENSE).
 
 ## Layout
 

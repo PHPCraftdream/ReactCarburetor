@@ -6,7 +6,10 @@
     "carburetor-lint": "bin/carburetor-lint.js"
   },
   "files": [
-    "bin"
+    "bin",
+    "LICENSE",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
   ],
   "license": "MIT OR Apache-2.0",
   "repository": {

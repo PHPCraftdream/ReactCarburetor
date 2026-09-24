@@ -14,6 +14,9 @@
     "x64"
   ],
   "files": [
-    "carburetor-lint.exe"
+    "carburetor-lint.exe",
+    "LICENSE",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
   ]
 }

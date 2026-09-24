@@ -17,6 +17,9 @@
     "glibc"
   ],
   "files": [
-    "carburetor-lint"
+    "carburetor-lint",
+    "LICENSE",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
   ]
 }
