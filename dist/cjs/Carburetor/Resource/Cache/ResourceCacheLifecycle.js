@@ -43,6 +43,7 @@ const DEFAULT_MAX_ENTRIES = 100;
 const ENTRIES_PREFIX = `entries${PathSeparator_js_namespaceObject.PATH_SEPARATOR}`;
 class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
     loader;
+    restoreGeneration = 0;
     ttl;
     maxEntries;
     requests = new Map();
@@ -59,6 +60,7 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.maxEntries = void 0 === options.maxEntries ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
     restore = (data)=>{
+        const generation = ++this.restoreGeneration;
         const controllers = Array.from(this.controllers.entries());
         this.controllers.clear();
         this.requests.clear();
@@ -66,6 +68,7 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.viewCache.clear();
         this.lastUsed.clear();
         controllers.forEach(([, controller])=>controller.abort());
+        if (generation !== this.restoreGeneration) return;
         const entries = {};
         Object.keys(data.entries).forEach((key)=>{
             const entry = data.entries[key];

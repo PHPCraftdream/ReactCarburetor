@@ -1,9 +1,11 @@
 /** The per-instance report a caller can wire in: fired for each live class instance handed over. */
 type TReportLiveInstance = (instance: object) => void;
 /**
- * A fully detached copy of a value: plain objects, arrays, Maps, Sets and Dates are all rebuilt at
- * any depth — inside a plain container, a Map or Set, or a Map key — own enumerable string and
- * symbol keys included, a null-prototype dictionary staying null-prototype.
+ * Recursively detaches plain objects, arrays, Maps, Sets and Dates.
+ * Own string and symbol data descriptors are preserved; accessors are rejected without invocation.
+ *
+ * A null-prototype dictionary stays null-prototype. An accessor cannot produce a detached
+ * snapshot because its value may remain connected to mutable source state.
  *
  * That is the boundary `deepClone` deliberately does not provide: the store's own
  * snapshot/restore round trip carries opaque values by reference, while a React snapshot handed to

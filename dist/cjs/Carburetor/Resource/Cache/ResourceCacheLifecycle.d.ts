@@ -3,6 +3,8 @@ import { Carburetor } from "../../Store/Carburetor.js";
 /** Owns cache entry lifecycles, request state and eviction. */
 export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
     protected loader: TResourceLoader<T, TArgs>;
+    /** Identifies the latest restore when an abort listener restores again. */
+    private restoreGeneration;
     /** Time before a successful entry becomes stale, in milliseconds. */
     protected ttl: number;
     /** Maximum number of unretained entries to keep. */

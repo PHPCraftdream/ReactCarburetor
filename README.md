@@ -393,6 +393,8 @@ if (profile.getData().status === EResourceStatus.Error) {
 Concurrent loads with the same arguments share one request; a load with different arguments
 aborts the previous one. The state stays serializable — the failure is stored as a message,
 with the original rejection available through `getLastError()`.
+If a synchronous subscriber or abort listener supersedes a load before its loader starts,
+that load rejects with `AbortError` instead of reporting a successful load that never ran.
 
 It also works under Suspense, which class components support by throwing the pending promise:
 
@@ -540,6 +542,8 @@ function as the third argument when the selector builds a new object.
 Selected plain objects, arrays, `Map`, `Set` and `Date` values are detached for a stable
 React snapshot. A class instance cannot be copied safely, so selecting one directly or
 inside another value throws an actionable error; select the fields you render instead.
+Own data fields are preserved even when non-enumerable; accessor fields are rejected
+because their getters cannot provide a detached snapshot without running user code.
 
 ## Lint rules
 

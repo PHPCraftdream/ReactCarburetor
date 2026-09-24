@@ -108,4 +108,43 @@ describe('detachOpaque', () => {
         expect(Object.keys(copy.sparse)).toEqual(['2']);
         expect(0 in copy.sparse).toEqual(false);
     });
+
+    test('non-enumerable data descriptors are detached with their flags preserved', () => {
+        const box = new Instance(2);
+        const source = {};
+        const reported: object[] = [];
+
+        Object.defineProperty(source, 'hidden', {
+            value: box,
+            writable: false,
+            enumerable: false,
+            configurable: true,
+        });
+
+        const copy = detachOpaque(source, (instance: object) => reported.push(instance));
+        const sourceDescriptor = Object.getOwnPropertyDescriptor(source, 'hidden');
+        const copyDescriptor = Object.getOwnPropertyDescriptor(copy, 'hidden');
+
+        expect(copyDescriptor?.value).toBe(box);
+        expect(copyDescriptor?.enumerable).toEqual(false);
+        expect(copyDescriptor?.writable).toEqual(false);
+        expect(copyDescriptor?.configurable).toEqual(true);
+        expect(reported).toEqual([box]);
+        expect(sourceDescriptor?.value).toBe(box);
+    });
+
+    test('accessor descriptors are rejected without invoking their getter', () => {
+        let getterCalls = 0;
+        const getter = (): number => {
+            getterCalls++;
+
+            return 7;
+        };
+        const source = {};
+
+        Object.defineProperty(source, 'hidden', {get: getter, enumerable: false});
+
+        expect(() => detachOpaque(source)).toThrow('cannot snapshot accessor property hidden');
+        expect(getterCalls).toEqual(0);
+    });
 });

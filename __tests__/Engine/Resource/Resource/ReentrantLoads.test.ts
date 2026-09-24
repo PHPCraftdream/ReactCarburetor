@@ -60,13 +60,14 @@ describe('ResourceCarburetor reentrant loads', () => {
         expect(started[0].signal.aborted).toBe(false);
 
         gates.b.resolve('current');
-        await Promise.all([first, second]);
+        await expect(first).rejects.toMatchObject({name: 'AbortError'});
+        await second;
 
         expect(resource.getData().data).toEqual('current');
         expect(resource.getData().status).toEqual(EResourceStatus.Success);
     });
 
-    test('abort during notification keeps late settlement from replacing idle', async () => {
+    test('abort during notification rejects work that never reached its loader', async () => {
         let calls = 0;
         const resource = new ResourceCarburetor<string, string>(() => {
             calls++;
@@ -81,7 +82,7 @@ describe('ResourceCarburetor reentrant loads', () => {
         expect(calls).toEqual(0);
         expect(resource.getData().status).toEqual(EResourceStatus.Idle);
 
-        await request;
+        await expect(request).rejects.toMatchObject({name: 'AbortError'});
 
         expect(resource.getData().status).toEqual(EResourceStatus.Idle);
         expect(resource.getData().data).toBeUndefined();
@@ -120,7 +121,7 @@ describe('ResourceCarburetor reentrant loads', () => {
         expect(resource.getData().data).toBe('retried');
     });
 
-    test('an abort listener replacement takes ownership over the outer start', async () => {
+    test('a different-key abort-listener replacement rejects the superseded outer start', async () => {
         const gates = [deferred<string>(), deferred<string>(), deferred<string>()];
         const signals: AbortSignal[] = [];
         const keys: string[] = [];
@@ -145,8 +146,9 @@ describe('ResourceCarburetor reentrant loads', () => {
         expect(signals[1].aborted).toBe(false);
         expect(resource.getData().status).toBe(EResourceStatus.Pending);
 
+        await expect(outer).rejects.toMatchObject({name: 'AbortError'});
         gates[1].resolve('current');
-        await Promise.all([outer, reentrant]);
+        await reentrant;
         gates[0].resolve('stale');
         await first;
 

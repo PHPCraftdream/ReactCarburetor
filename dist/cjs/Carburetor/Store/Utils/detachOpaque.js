@@ -31,14 +31,12 @@ __webpack_require__.d(__webpack_exports__, {
     detachOpaque: ()=>detachOpaque
 });
 const isTrackable_js_namespaceObject = require("../Tracking/isTrackable.js");
-const ownEnumerableKeys = (source)=>Reflect.ownKeys(source).filter((key)=>Object.prototype.propertyIsEnumerable.call(source, key));
-const definePlainProperty = (target, key, value)=>{
-    Object.defineProperty(target, key, {
-        value,
-        writable: true,
-        enumerable: true,
-        configurable: true
-    });
+const detachedDescriptor = (source, key, seen, onLiveInstance)=>{
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
+    if (!descriptor) return;
+    if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) throw new Error('detachOpaque() cannot snapshot accessor property ' + String(key) + ': select plain data fields instead.');
+    descriptor.value = detach(Reflect.get(source, key), seen, onLiveInstance);
+    return descriptor;
 };
 const detach = (value, seen, onLiveInstance)=>{
     if (null === value || 'object' != typeof value) return value;
@@ -68,17 +66,22 @@ const detach = (value, seen, onLiveInstance)=>{
     if (Array.isArray(value)) {
         const copy = [];
         seen.set(value, copy);
-        value.forEach((item, index)=>{
-            copy[index] = detach(item, seen, onLiveInstance);
+        Reflect.ownKeys(value).forEach((key)=>{
+            if ('length' !== key) {
+                const descriptor = detachedDescriptor(value, key, seen, onLiveInstance);
+                if (descriptor) Object.defineProperty(copy, key, descriptor);
+            }
         });
-        copy.length = value.length;
+        const length = Object.getOwnPropertyDescriptor(value, 'length');
+        if (length) Object.defineProperty(copy, 'length', length);
         return copy;
     }
     const source = value;
     const result = Object.create(Object.getPrototypeOf(source));
     seen.set(value, result);
-    ownEnumerableKeys(source).forEach((key)=>{
-        definePlainProperty(result, key, detach(source[key], seen, onLiveInstance));
+    Reflect.ownKeys(source).forEach((key)=>{
+        const descriptor = detachedDescriptor(source, key, seen, onLiveInstance);
+        if (descriptor) Object.defineProperty(result, key, descriptor);
     });
     return result;
 };

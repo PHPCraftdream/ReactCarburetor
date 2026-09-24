@@ -1,23 +1,32 @@
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 
 /**
- * The own enumerable keys of a plain container — strings and symbols alike, in `Reflect.ownKeys`
- * order. Written locally rather than imported from Component/Connection: Store must not reach
- * into Component, and `deepClone`'s helper is exactly this filter.
+ * Copies an own data descriptor without invoking an accessor. Accessors cannot make
+ * stable snapshots, so they are rejected with an actionable error.
  */
-const ownEnumerableKeys = (source: object): Array<string | symbol> =>
-    Reflect.ownKeys(source).filter((key: string | symbol): boolean =>
-        Object.prototype.propertyIsEnumerable.call(source, key));
+const detachedDescriptor = (
+    source: object,
+    key: string | symbol,
+    seen: WeakMap<object, unknown>,
+    onLiveInstance: TReportLiveInstance | undefined
+): PropertyDescriptor | undefined => {
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
 
-/**
- * Installs `key` as a genuine own data property, bypassing any inherited accessor a plain
- * `target[key] = value` assignment would invoke instead — the case that matters is a source
- * object with an own enumerable key literally named `__proto__`: assigning it would reset the
- * target's prototype rather than store the value. Same policy `deepClone` uses for its own
- * container copies, so a source's shape survives a copy identically either way.
- */
-const definePlainProperty = (target: object, key: string | symbol, value: unknown): void => {
-    Object.defineProperty(target, key, {value, writable: true, enumerable: true, configurable: true});
+    if (!descriptor) {
+        return undefined;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        throw new Error(
+            'detachOpaque() cannot snapshot accessor property ' + String(key) +
+            ': select plain data fields instead.'
+        );
+    }
+
+    // A data-property read lets the store's read proxy record the selected path.
+    descriptor.value = detach(Reflect.get(source, key), seen, onLiveInstance);
+
+    return descriptor;
 };
 
 /** The per-instance report a caller can wire in: fired for each live class instance handed over. */
@@ -87,13 +96,22 @@ const detach = (
 
         seen.set(value, copy);
 
-        // forEach skips holes and index assignment keeps them, so a sparse source stays sparse;
-        // the full length is restored in case the highest defined index alone would understate it.
-        value.forEach((item: unknown, index: number): void => {
-            copy[index] = detach(item, seen, onLiveInstance);
+        // Defining data descriptors preserves holes and flags without invoking indexed getters.
+        Reflect.ownKeys(value).forEach((key: string | symbol): void => {
+            if (key !== 'length') {
+                const descriptor = detachedDescriptor(value, key, seen, onLiveInstance);
+
+                if (descriptor) {
+                    Object.defineProperty(copy, key, descriptor);
+                }
+            }
         });
 
-        copy.length = value.length;
+        const length = Object.getOwnPropertyDescriptor(value, 'length');
+
+        if (length) {
+            Object.defineProperty(copy, 'length', length);
+        }
 
         return copy;
     }
@@ -105,17 +123,23 @@ const detach = (
 
     seen.set(value, result);
 
-    ownEnumerableKeys(source).forEach((key: string | symbol): void => {
-        definePlainProperty(result, key, detach(source[key], seen, onLiveInstance));
+    Reflect.ownKeys(source).forEach((key: string | symbol): void => {
+        const descriptor = detachedDescriptor(source, key, seen, onLiveInstance);
+
+        if (descriptor) {
+            Object.defineProperty(result, key, descriptor);
+        }
     });
 
     return result;
 };
 
 /**
- * A fully detached copy of a value: plain objects, arrays, Maps, Sets and Dates are all rebuilt at
- * any depth — inside a plain container, a Map or Set, or a Map key — own enumerable string and
- * symbol keys included, a null-prototype dictionary staying null-prototype.
+ * Recursively detaches plain objects, arrays, Maps, Sets and Dates.
+ * Own string and symbol data descriptors are preserved; accessors are rejected without invocation.
+ *
+ * A null-prototype dictionary stays null-prototype. An accessor cannot produce a detached
+ * snapshot because its value may remain connected to mutable source state.
  *
  * That is the boundary `deepClone` deliberately does not provide: the store's own
  * snapshot/restore round trip carries opaque values by reference, while a React snapshot handed to

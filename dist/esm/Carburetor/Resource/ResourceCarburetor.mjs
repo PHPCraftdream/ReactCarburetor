@@ -7,6 +7,11 @@ const describeError = (error)=>{
     if (error instanceof Error) return error.message;
     return String(error);
 };
+const createSupersededError = ()=>{
+    const error = new Error('Resource request was superseded before it started');
+    error.name = 'AbortError';
+    return error;
+};
 class ResourceCarburetor extends Carburetor {
     loader;
     controller = void 0;
@@ -79,7 +84,10 @@ class ResourceCarburetor extends Carburetor {
         if (this.pendingRequest && this.pendingKey === key) return this.pendingRequest;
         const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
-        if (this.operationVersion !== operationVersion) return this.pendingKey === key && this.pendingRequest ? this.pendingRequest : Promise.resolve();
+        if (this.operationVersion !== operationVersion) {
+            if (this.pendingKey === key && this.pendingRequest) return this.pendingRequest;
+            return Promise.reject(createSupersededError());
+        }
         const controller = createAbortHandle();
         this.controller = controller;
         this.pendingKey = key;
@@ -99,7 +107,7 @@ class ResourceCarburetor extends Carburetor {
         if (deferNotification) this.emitSoon();
         else this.emitUpdate();
         if (!this.isCurrent(controller)) {
-            resolveRequest();
+            rejectRequest(createSupersededError());
             return request;
         }
         let answer;

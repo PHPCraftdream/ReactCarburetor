@@ -186,6 +186,48 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
         expect(cache.getEntry('a').status).toEqual(EResourceStatus.Success);
     });
 
+    test('a nested restore wins and keeps requests started by its abort listener', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+
+        void cache.load('a');
+        loader.pending[0].resolve({id: 'a', name: 'outer'});
+        await flush();
+        const outerSnapshot = cache.snapshot();
+
+        const innerLoader = makeLoader();
+        const innerCache = new ResourceCache<IUser, string>(innerLoader.load, {ttl: 60_000});
+
+        void innerCache.load('a');
+        innerLoader.pending[0].resolve({id: 'a', name: 'inner'});
+        await flush();
+        const innerSnapshot = innerCache.snapshot();
+
+        const original = cache.load('b');
+        let retry: Promise<void> | undefined;
+
+        loader.pending[1].signal.addEventListener('abort', () => {
+            cache.restore(innerSnapshot);
+            retry = cache.load('b');
+        });
+
+        cache.restore(outerSnapshot);
+
+        expect(cache.getEntry('a').data).toEqual({id: 'a', name: 'inner'});
+        expect(loader.calls).toEqual(['a', 'b', 'b']);
+        expect(loader.pending[1].signal.aborted).toBeTruthy();
+        expect(loader.pending[2].signal.aborted).toBeFalsy();
+        expect(cache.getEntry('b').status).toEqual(EResourceStatus.Pending);
+
+        loader.pending[1].resolve({id: 'b', name: 'obsolete'});
+        loader.pending[2].resolve({id: 'b', name: 'retry'});
+        await Promise.all([original, retry]);
+
+        expect(cache.getEntry('a').data).toEqual({id: 'a', name: 'inner'});
+        expect(cache.getEntry('b').data).toEqual({id: 'b', name: 'retry'});
+        expect(cache.getEntry('b').status).toEqual(EResourceStatus.Success);
+    });
+
     test('restore cancels in-flight requests across several independent keys at once', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});

@@ -15,6 +15,15 @@ const describeError = (error: unknown): string => {
     return String(error);
 };
 
+/** A request that never reached its loader rejects as cancelled instead of appearing successful. */
+const createSupersededError = (): Error => {
+    const error = new Error('Resource request was superseded before it started');
+
+    error.name = 'AbortError';
+
+    return error;
+};
+
 /**
  * An async value with an explicit status, so loading and failure are part of the state
  * rather than something every component reinvents. Concurrent loads with the same
@@ -242,11 +251,13 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.cancelInFlight();
 
         // A synchronous abort listener may have started a newer request. If it is for the
-        // same key, join it; otherwise this start was superseded before it could begin.
+        // same key, join it; otherwise this request never reached its loader and rejects.
         if (this.operationVersion !== operationVersion) {
-            return this.pendingKey === key && this.pendingRequest
-                ? this.pendingRequest
-                : Promise.resolve();
+            if (this.pendingKey === key && this.pendingRequest) {
+                return this.pendingRequest;
+            }
+
+            return Promise.reject(createSupersededError());
         }
 
         const controller = createAbortHandle();
@@ -279,9 +290,9 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         }
 
         // A synchronous subscriber may replace or abort this request during publication.
-        // Do not start a loader whose result is already obsolete.
+        // Reject work that never reached its loader instead of reporting false success.
         if (!this.isCurrent(controller)) {
-            resolveRequest();
+            rejectRequest(createSupersededError());
 
             return request;
         }

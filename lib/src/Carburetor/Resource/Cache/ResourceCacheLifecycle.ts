@@ -21,6 +21,8 @@ const ENTRIES_PREFIX: string = `entries${PATH_SEPARATOR}`;
 
 /** Owns cache entry lifecycles, request state and eviction. */
 export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
+    /** Identifies the latest restore when an abort listener restores again. */
+    private restoreGeneration: number = 0;
     /** Time before a successful entry becomes stale, in milliseconds. */
     protected ttl: number;
     /** Maximum number of unretained entries to keep. */
@@ -54,6 +56,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
 
     /** Restore entries without reviving in-flight requests. */
     public restore = (data: IResourceCacheData<T>): void => {
+        const generation = ++this.restoreGeneration;
         const controllers = Array.from(this.controllers.entries());
 
         // Old requests must stop being joinable before abort listeners can re-enter.
@@ -64,6 +67,11 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.lastUsed.clear();
 
         controllers.forEach(([, controller]: [string, AbortController]) => controller.abort());
+
+        // A nested restore owns publication once it has started.
+        if (generation !== this.restoreGeneration) {
+            return;
+        }
 
         const entries: IResourceCacheData<T>['entries'] = {};
 
