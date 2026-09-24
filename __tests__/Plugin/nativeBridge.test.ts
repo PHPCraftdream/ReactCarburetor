@@ -1,5 +1,5 @@
 import {spawnSync} from "node:child_process";
-import {existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync} from "node:fs";
+import {existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {describe, expect, test} from "@rstest/core";
@@ -31,6 +31,16 @@ const CORPUS: readonly string[] = [
 /** `carburetor-lint-<pid>-<digest>.json`, the marker `runNativeOnce` leaves after it runs. */
 const bridgeResultFiles = (): string[] =>
     readdirSync(os.tmpdir()).filter((name) => name.startsWith('carburetor-lint-') && name.endsWith('.json'));
+
+const markerIdentity = (name: string): string | undefined => {
+    try {
+        const file = statSync(path.join(os.tmpdir(), name), {bigint: true});
+
+        return `${file.dev}:${file.ino}:${file.mtimeNs}:${file.ctimeNs}:${file.size}`;
+    } catch {
+        return undefined;
+    }
+};
 
 interface IOxlintRun {
     output: string;
@@ -169,12 +179,16 @@ describe('a missing binary fails loudly', () => {
 
 describe('the bridge, through the real host', () => {
     test('the native binary runs exactly once for 6 files and 24 rules', () => {
+        const before = new Map(bridgeResultFiles().map((name) => [name, markerIdentity(name)]));
         const {pid} = runOxlint(path.join('plugin', '__fixtures__', 'oxlintrc.json'), CORPUS);
-        const ownResults = bridgeResultFiles().filter((name) => name.startsWith(`carburetor-lint-${pid}-`));
+        const ownResults = bridgeResultFiles().filter((name) => {
+            if (!name.startsWith(`carburetor-lint-${pid}-`)) return false;
+            const current = markerIdentity(name);
 
-        // Exactly one result file under this run's own pid: one spawn, however many (rule, file)
-        // pairs asked for it. Filtering by pid, rather than by "new since before", is what keeps
-        // this assertion honest when other test files spawn real oxlint processes concurrently.
+            return current !== undefined && current !== before.get(name);
+        });
+
+        // An old temp marker can share a reused PID; count only files this run changed.
         expect(ownResults.length).toBe(1);
     });
 
