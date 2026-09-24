@@ -1,5 +1,5 @@
 import { ICarburetorToken } from "../Models/Tooling.mjs";
-import { AntiHookComponent } from "./AntiHookComponent.mjs";
+import { AntiHookComponent } from "./AntiHookComponent/AntiHookComponent.mjs";
 import { CarburetorScope } from "./Scope/CarburetorScope.mjs";
 /**
  * A component that resolves its carburetors from the surrounding scope rather than from

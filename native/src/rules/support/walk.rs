@@ -12,8 +12,9 @@ use std::collections::HashSet;
 
 use oxc_ast::ast::{
     Argument, ArrowFunctionExpression, AssignmentExpression, CallExpression, Class, Expression,
-    Function, IdentifierReference, JSXAttribute, MemberExpression, MethodDefinition, Program,
-    PropertyDefinition, UnaryExpression, UpdateExpression, VariableDeclarator,
+    Function, IdentifierReference, JSXAttribute, JSXElementName, JSXMemberExpression,
+    JSXMemberExpressionObject, MemberExpression, MethodDefinition, Program, PropertyDefinition,
+    UnaryExpression, UpdateExpression, VariableDeclarator,
 };
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::{GetSpan, Span};
@@ -39,12 +40,14 @@ pub struct Context {
     pub member_span: Option<Span>,
     /// The span of the innermost enclosing class, the only stable identity a class has.
     pub class_span: Option<Span>,
-    /// The tag name of the JSX element an attribute belongs to, when it is a plain name.
+    /// The tag name of the JSX element an attribute belongs to.
     ///
     /// oxc's AST carries no parent pointer, so an attribute cannot look upward for its opening
     /// element the way the JS plugin's pseudo-AST does; the walker records the name on the way
     /// down instead.
     pub jsx_element: Option<String>,
+    /// Whether the JSX element is a component rather than a lowercase DOM tag.
+    pub jsx_component: bool,
     /// The walk is inside an `update(...)` callback, which publishes when it returns.
     pub in_update: bool,
     /// The name that callback gave its draft parameter, when it named one.
@@ -68,6 +71,7 @@ impl Context {
             member_span: None,
             class_span: None,
             jsx_element: None,
+            jsx_component: false,
             in_update: false,
             update_draft: None,
             in_render: false,
@@ -353,19 +357,46 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
 
     fn visit_jsx_opening_element(&mut self, element: &oxc_ast::ast::JSXOpeningElement<'a>) {
         let outer = self.context.jsx_element.take();
+        let outer_component = self.context.jsx_component;
 
-        self.context.jsx_element = match &element.name {
-            oxc_ast::ast::JSXElementName::Identifier(identifier) => Some(identifier.name.to_string()),
-            oxc_ast::ast::JSXElementName::IdentifierReference(identifier) => {
-                Some(identifier.name.to_string())
-            }
-            _ => None,
-        };
+        let (name, component) = jsx_element_name(&element.name);
+        self.context.jsx_element = name;
+        self.context.jsx_component = component;
 
         walk::walk_jsx_opening_element(self, element);
 
         self.context.jsx_element = outer;
+        self.context.jsx_component = outer_component;
     }
+}
+
+fn jsx_element_name(name: &JSXElementName<'_>) -> (Option<String>, bool) {
+    match name {
+        JSXElementName::Identifier(identifier) => {
+            let name = identifier.name.to_string();
+            let component = name.chars().next().is_some_and(char::is_uppercase);
+
+            (Some(name), component)
+        }
+        JSXElementName::IdentifierReference(identifier) => {
+            let name = identifier.name.to_string();
+            let component = name.chars().next().is_some_and(char::is_uppercase);
+
+            (Some(name), component)
+        }
+        JSXElementName::MemberExpression(member) => (Some(jsx_member_name(member)), true),
+        _ => (None, false),
+    }
+}
+
+fn jsx_member_name(member: &JSXMemberExpression<'_>) -> String {
+    let object = match &member.object {
+        JSXMemberExpressionObject::IdentifierReference(identifier) => identifier.name.to_string(),
+        JSXMemberExpressionObject::MemberExpression(member) => jsx_member_name(member),
+        JSXMemberExpressionObject::ThisExpression(_) => String::from("this"),
+    };
+
+    format!("{object}.{}", member.property.name)
 }
 
 /// Runs one rule over one parsed file.

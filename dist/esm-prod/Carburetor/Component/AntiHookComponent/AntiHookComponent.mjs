@@ -1,0 +1,1 @@
+import{AntiHookComponentSubscriptions as o}from"./Subscriptions.mjs";class s extends o{}export{s as AntiHookComponent};

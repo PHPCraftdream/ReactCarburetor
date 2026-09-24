@@ -43,6 +43,8 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     protected lastKey: string | undefined = undefined;
     /** The raw rejection behind the described state.error, kept whole for suspend to rethrow. */
     protected lastError: unknown = undefined;
+    /** Whether lastError belongs to the current Error state, including when it is undefined. */
+    protected hasLastError: boolean = false;
 
     /**
      * Takes the loader this resource calls, and starts out empty.
@@ -90,7 +92,8 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         // The raw rejection cannot cross the serialization boundary: what the snapshot carries
         // is the message describeError() extracted, so the restored failure rethrows from a
         // reconstructed Error. Restoring a non-failure clears any stale one.
-        this.lastError = data.status === EResourceStatus.Error && data.error ? new Error(data.error) : undefined;
+        this.hasLastError = data.status === EResourceStatus.Error;
+        this.lastError = this.hasLastError ? new Error(data.error || '') : undefined;
 
         // A restored Pending status has no live request behind it (R3-04): this slot's fields
         // do not carry the arguments a fresh request would need, so restore cannot start one
@@ -134,7 +137,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         }
 
         if (state.status === EResourceStatus.Error && this.settledKey === key) {
-            throw this.lastError || new Error(state.error || 'Carburetor: resource failed');
+            throw this.hasLastError ? this.lastError : new Error(state.error || 'Carburetor: resource failed');
         }
 
         if (this.pendingRequest && this.pendingKey === key) {
@@ -224,6 +227,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.pendingKey = key;
         this.lastArgs = args;
         this.lastKey = key;
+        this.hasLastError = false;
 
         // `load` and `reload` both come through here, so starting a request replaces
         // whatever the slot held: the old answer stops being served from this moment.
@@ -232,10 +236,26 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.draft.status = EResourceStatus.Pending;
         this.draft.error = undefined;
 
+        let resolveRequest: () => void = () => undefined;
+        let rejectRequest: (error: unknown) => void = () => undefined;
+        const request = new Promise<void>((resolve, reject) => {
+            resolveRequest = resolve;
+            rejectRequest = reject;
+        });
+        this.pendingRequest = request;
+
         if (deferNotification) {
             this.emitSoon();
         } else {
             this.emitUpdate();
+        }
+
+        // A synchronous subscriber may replace or abort this request during publication.
+        // Do not start a loader whose result is already obsolete.
+        if (!this.isCurrent(controller)) {
+            resolveRequest();
+
+            return request;
         }
 
         // A loader may throw before returning its promise; routing the throw through the same
@@ -248,16 +268,16 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             answer = Promise.reject(error);
         }
 
-        this.pendingRequest = answer.then(
+        void answer.then(
             (data: T) => {
                 this.settleSuccess(controller, key, data);
             },
             (error: unknown) => {
                 this.settleError(controller, key, error);
             }
-        );
+        ).then(resolveRequest, rejectRequest);
 
-        return this.pendingRequest;
+        return request;
     };
 
     /** The identity of a set of arguments, for telling one request from another. */
@@ -289,6 +309,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.pendingRequest = undefined;
         this.settledKey = key;
         this.lastError = undefined;
+        this.hasLastError = false;
 
         this.draft.status = EResourceStatus.Success;
         this.draft.data = data;
@@ -316,6 +337,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.pendingRequest = undefined;
         this.settledKey = key;
         this.lastError = error;
+        this.hasLastError = true;
 
         this.draft.status = EResourceStatus.Error;
         this.draft.error = describeError(error);

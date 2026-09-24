@@ -26,20 +26,23 @@ contributions are the ones that sharpen it rather than widen it.
 
 ## Project layout
 
-Two structural rules keep the tree navigable:
+Three structural rules keep the tree navigable:
 
 - **One export per file.** A file carries a single class, function, constant or enum, and is
   named after it. The exceptions are `Models.ts` files (and the `Models/` folder), which group
-  related types and interfaces, and `index.ts` barrels, which only re-export. Type-only files
-  are always named `Models.ts` so the rule can be checked mechanically.
+  related types and interfaces, `index.ts` barrels, which only re-export, and test-only
+  `support`/`fixtures`/`helpers` files, which share setup across test modules. Type-only files are always
+  named `Models.ts` so the rule can be checked mechanically.
 - **Enums instead of string unions.** A closed set of values is an enum in `Models/Enums/`
   (`EResourceStatus`, `EDevToolsAction`), not a union of string literals, and never a bare
   string literal in a comparison — a typo should be a compile error, not a branch that never
   runs.
 - **At most seven entries per directory.** When a folder outgrows that, its contents are
   regrouped into subfolders by meaning rather than left as a flat list.
+- **At most 600 physical lines per code file.** This includes tests and native Rust code; split
+  large files by responsibility. Documentation, dependencies and generated output are excluded.
 
-Both rules are checked by `npm run check:layout`, which runs in CI — they are enforced rather than
+All three rules are checked by `npm run check:layout`, which runs in CI — they are enforced rather than
 remembered.
 
 Singletons live next to their class in a file suffixed with `Instance`
@@ -195,7 +198,7 @@ npm install
 npm run build        # Rslib: bundleless library, bundled lint plugin, declarations via tsgo
 npm run typecheck    # TypeScript 7, library and plugin
 npm run lint         # oxlint: native rules, type-aware rules, and this project's own 24
-npm run check:layout # the two structural rules above
+npm run check:layout # the three structural rules above
 npm test             # Rstest + @testing-library/react
 npm run test:rules   # just the lint rules, when that is what you changed
 ```

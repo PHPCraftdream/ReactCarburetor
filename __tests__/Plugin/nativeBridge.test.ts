@@ -20,13 +20,13 @@ import {resolveBinary} from "@plugin/Utils/Native/resolveBinary.mts";
  */
 const ROOT: string = process.cwd();
 const CORPUS: readonly string[] = [
-    'reads.tsx',
-    'writes.tsx',
-    'lifecycle.tsx',
-    'effects.tsx',
-    'boundaries.ts',
-    'lifecycleClassProperty.tsx',
-].map((name) => path.join('plugin', '__fixtures__', name));
+    path.join('plugin', '__fixtures__', 'data', 'reads.tsx'),
+    path.join('plugin', '__fixtures__', 'data', 'writes.tsx'),
+    path.join('plugin', '__fixtures__', 'lifecycle', 'lifecycle.tsx'),
+    path.join('plugin', '__fixtures__', 'operations', 'effects.tsx'),
+    path.join('plugin', '__fixtures__', 'operations', 'boundaries.ts'),
+    path.join('plugin', '__fixtures__', 'lifecycle', 'lifecycleClassProperty.tsx'),
+];
 
 /** `carburetor-lint-<pid>-<digest>.json`, the marker `runNativeOnce` leaves after it runs. */
 const bridgeResultFiles = (): string[] =>
@@ -191,7 +191,8 @@ describe('the bridge, through the real host', () => {
 
     test('a rule the config leaves off never asks the bridge to report it', () => {
         const config = path.join('plugin', '__fixtures__', 'oxlintrc.json');
-        const full = runOxlint(config, [path.join('plugin', '__fixtures__', 'reads.tsx')]);
+        const reads = path.join('plugin', '__fixtures__', 'data', 'reads.tsx');
+        const full = runOxlint(config, [reads]);
 
         expect(full.output).toContain('no-get-data-in-render');
 
@@ -200,7 +201,7 @@ describe('the bridge, through the real host', () => {
         // finding is invisible however wide the native scan was.
         const narrow = runOxlint(
             path.join('__tests__', 'Plugin', 'fixtures', 'onlyEscaping.oxlintrc.json'),
-            [path.join('plugin', '__fixtures__', 'reads.tsx')],
+            [reads],
         );
 
         expect(narrow.output).not.toContain('no-get-data-in-render');

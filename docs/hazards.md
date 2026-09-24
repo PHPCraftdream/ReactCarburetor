@@ -995,8 +995,9 @@ The method is declared once; `@bind` keeps it on the prototype and makes it safe
 **Rule** `require-method-for-closure` — **warn**.
 
 **Detection.** An arrow or function expression nested inside the *body* of a member of a component
-class — not itself the member's body. The report requires that the rewrite it asks for leaves no
-per-call allocation behind: every capture must either be this-derived (a `this.props` chain,
+class, including an arrow-valued field — not itself the member's body. The rule reports only when
+the proposed extraction leaves no per-call allocation behind: every capture must either be
+this-derived (a `this.props` chain,
 destructured or plain), which the method re-reads from `this`, or — only when the closure is a
 directly-called helper rather than a callback handed somewhere — a never-written local that becomes
 a method parameter, since a parameter carries the value at call time where the capture froze it. A
@@ -1041,8 +1042,8 @@ class. The demo's `renderPlusIcon`, `renderCounter` and `renderEmpty` are the sh
 
 **Why it is silent.** Again no value is ever wrong. The cost depends on the member's kind, and the
 message says which: a closure is rebuilt on every call of the member (every render, for render); a
-function-valued field or a `@bind` method is allocated once per instance, so a hundred instances pay
-it a hundred times; a plain prototype method allocates nothing at all. It is reported all the same,
+function-valued field is allocated once per instance, so a hundred instances pay it a hundred
+times; a plain prototype method allocates nothing at all. It is reported all the same,
 for the reason that covers all three: code that uses nothing from the class does not belong in the
 class. At module level one copy serves every instance and every call.
 
@@ -1075,10 +1076,12 @@ the instance, the component base's own override points (`useEffects`, `useEffect
 `implements` clause — a contract the linter cannot verify. Mechanical exclusions apply regardless:
 `constructor`, getters and setters, `accessor`, body-less declarations, `override`, decorated
 members, computed names. The component-base list is pinned by a test against its source; the rule's
-own source carries both full lists. Eligible methods and arrow-function fields ship an
-autofix (`--fix`) that moves the function above the class and rewrites its `this.<name>` references.
-Function-expression fields, methods with an explicit `this` parameter, and members whose references
-cannot all be safely rewritten are report-only; the closure case also reports without a fix. Scope
+own source carries both full lists. Only eligible `#private` methods and arrow-function fields ship
+an autofix (`--fix`) that moves the function above the class and rewrites its `this.#name` references.
+Public and protected members remain report-only because callers in other files cannot be ruled out.
+Overloads, function-expression fields, methods with an explicit `this` parameter, and members whose
+references cannot all be safely rewritten are also report-only. The extraction preserves the body's
+source bytes, including meaningful whitespace in literals and JSX. The closure case has no fix. Scope
 is H29's: component classes only, store classes never analysed.
 
 **False positives.** A member that some other file calls as `instance.<name>()` looks extractable to

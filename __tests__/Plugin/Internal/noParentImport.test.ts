@@ -28,7 +28,7 @@ tester.run('no-parent-import', rule, {
         },
         {
             name: 'a package import',
-            filename: 'lib/src/Carburetor/Component/AntiHookComponent.tsx',
+            filename: 'lib/src/Carburetor/Component/AntiHookComponent/AntiHookComponent.tsx',
             code: `import * as React from "react";`,
         },
         {

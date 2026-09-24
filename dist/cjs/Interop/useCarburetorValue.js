@@ -31,9 +31,7 @@ __webpack_require__.d(__webpack_exports__, {
     useCarburetorValue: ()=>useCarburetorValue
 });
 const external_react_namespaceObject = require("react");
-const DiagnosticsInstance_js_namespaceObject = require("../Carburetor/Store/Diagnostics/DiagnosticsInstance.js");
 const detachOpaque_js_namespaceObject = require("../Carburetor/Store/Utils/detachOpaque.js");
-const DevelopmentFlag_js_namespaceObject = require("../Carburetor/Store/Utils/DevelopmentFlag.js");
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
@@ -41,7 +39,7 @@ const sameReads = (a, b)=>{
 };
 const describeInstance = (instance)=>{
     var _Object_getPrototypeOf_constructor, _Object_getPrototypeOf;
-    return (null == (_Object_getPrototypeOf = Object.getPrototypeOf(instance)) ? void 0 : null == (_Object_getPrototypeOf_constructor = _Object_getPrototypeOf.constructor) ? void 0 : _Object_getPrototypeOf_constructor.name) || 'untracked class';
+    return (null == (_Object_getPrototypeOf = Object.getPrototypeOf(instance)) ? void 0 : null == (_Object_getPrototypeOf_constructor = _Object_getPrototypeOf.constructor) ? void 0 : _Object_getPrototypeOf_constructor.name) || 'class';
 };
 const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const cache = (0, external_react_namespaceObject.useRef)({
@@ -54,7 +52,6 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const pendingReads = (0, external_react_namespaceObject.useRef)(new Set());
     const active = (0, external_react_namespaceObject.useRef)(null);
     const notify = (0, external_react_namespaceObject.useRef)(null);
-    const liveInstanceReported = (0, external_react_namespaceObject.useRef)(false);
     const install = (0, external_react_namespaceObject.useCallback)(()=>{
         const onStoreChange = notify.current;
         if (!onStoreChange) return;
@@ -95,13 +92,9 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
         if (entry.filled && entry.carburetor === carburetor && entry.select === select && entry.version === version) return entry.value;
         const reads = new Set();
         let next = select(carburetor.read((path)=>reads.add(path)));
-        if (null !== next && 'object' == typeof next) {
-            const reportLiveInstance = DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT && !liveInstanceReported.current ? (instance)=>{
-                liveInstanceReported.current = true;
-                DiagnosticsInstance_js_namespaceObject.diagnostics.report('useCarburetorValue() handed React a live ' + describeInstance(instance) + " instance. A class instance has no safe copy, so the same object is handed out again after every store change and an in-place mutation is certified as unchanged — the component renders stale data. Select plain values instead: the fields the component renders, or a plain object built from them.");
-            } : void 0;
-            next = (0, detachOpaque_js_namespaceObject.detachOpaque)(next, reportLiveInstance);
-        }
+        if (null !== next && 'object' == typeof next) next = (0, detachOpaque_js_namespaceObject.detachOpaque)(next, (instance)=>{
+            throw new Error('useCarburetorValue() cannot select a live ' + describeInstance(instance) + " instance because in-place changes cannot produce a safe React snapshot. Select the fields the component renders or return a plain object of those fields.");
+        });
         pendingReads.current = reads;
         if (entry.filled && isEqual(entry.value, next)) {
             cache.current = {

@@ -245,7 +245,7 @@ jobs:
           BIN="native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}"
           ${{ matrix.emulator }} "$BIN" --help
           set +e
-          OUT=$(${{ matrix.emulator }} "$BIN" --format=json --rule no-get-data-in-render=error plugin/__fixtures__/reads.tsx)
+          OUT=$(${{ matrix.emulator }} "$BIN" --format=json --rule no-get-data-in-render=error plugin/__fixtures__/data/reads.tsx)
           CODE=$?
           set -e
           [ "$CODE" -eq 1 ] || { echo "expected exit 1 (findings), got $CODE" >&2; exit 1; }

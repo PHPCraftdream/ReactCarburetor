@@ -4,7 +4,6 @@ import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carburetor/Models/Store";
 import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
-import {isExoticValue} from "@/Carburetor/Store/Utils/isExoticValue";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
@@ -493,9 +492,14 @@ export class Computed<R> implements IComputed<R> {
         // exotic member is judged the same way (R7-02): the envelope can keep its identity
         // across evaluations while the wrapped value mutates in place. Plain results keep the
         // reference check by itself.
+        const sameReference = Object.is(baseline, this.value);
         const moved = this.announced !== undefined && this.driftedSince(this.announced.versions);
-        const opaque = isExoticValue(this.value) || containsExoticValue(this.value);
-        const unchanged = Object.is(baseline, this.value) && !(opaque && moved);
+        // Only a stable reference with changed dependencies can hide an in-place exotic mutation.
+        // A new result reference already proves a change; an unmoved dependency proves there is
+        // nothing new to inspect. Besides avoiding needless traversal, this keeps caller getters
+        // out of settlement unless their result can affect notification semantics.
+        const opaqueChanged = sameReference && moved && containsExoticValue(this.value);
+        const unchanged = sameReference && !opaqueChanged;
 
         if (unchanged) {
             return;

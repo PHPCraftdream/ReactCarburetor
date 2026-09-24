@@ -16,6 +16,7 @@ class ResourceCarburetor extends Carburetor {
     lastArgs = void 0;
     lastKey = void 0;
     lastError = void 0;
+    hasLastError = false;
     constructor(loader, scheduler){
         super(getInitialResourceData(), scheduler), this.loader = loader;
     }
@@ -27,7 +28,8 @@ class ResourceCarburetor extends Carburetor {
         this.cancelInFlight();
         const settled = data.status === EResourceStatus.Success || data.status === EResourceStatus.Error;
         this.settledKey = settled ? data.key : void 0;
-        this.lastError = data.status === EResourceStatus.Error && data.error ? new Error(data.error) : void 0;
+        this.hasLastError = data.status === EResourceStatus.Error;
+        this.lastError = this.hasLastError ? new Error(data.error || '') : void 0;
         const status = data.status === EResourceStatus.Pending ? EResourceStatus.Idle : data.status;
         this.setData(deepClone({
             status,
@@ -41,7 +43,7 @@ class ResourceCarburetor extends Carburetor {
         const state = this.data;
         const key = this.keyOf(args);
         if (state.status === EResourceStatus.Success && this.settledKey === key) return state.data;
-        if (state.status === EResourceStatus.Error && this.settledKey === key) throw this.lastError || new Error(state.error || 'Carburetor: resource failed');
+        if (state.status === EResourceStatus.Error && this.settledKey === key) throw this.hasLastError ? this.lastError : new Error(state.error || 'Carburetor: resource failed');
         if (this.pendingRequest && this.pendingKey === key) throw this.pendingRequest;
         throw this.start(args, true);
     };
@@ -75,23 +77,35 @@ class ResourceCarburetor extends Carburetor {
         this.pendingKey = key;
         this.lastArgs = args;
         this.lastKey = key;
+        this.hasLastError = false;
         this.settledKey = void 0;
         this.draft.status = EResourceStatus.Pending;
         this.draft.error = void 0;
+        let resolveRequest = ()=>void 0;
+        let rejectRequest = ()=>void 0;
+        const request = new Promise((resolve, reject)=>{
+            resolveRequest = resolve;
+            rejectRequest = reject;
+        });
+        this.pendingRequest = request;
         if (deferNotification) this.emitSoon();
         else this.emitUpdate();
+        if (!this.isCurrent(controller)) {
+            resolveRequest();
+            return request;
+        }
         let answer;
         try {
             answer = this.loader(args, controller.signal);
         } catch (error) {
             answer = Promise.reject(error);
         }
-        this.pendingRequest = answer.then((data)=>{
+        answer.then((data)=>{
             this.settleSuccess(controller, key, data);
         }, (error)=>{
             this.settleError(controller, key, error);
-        });
-        return this.pendingRequest;
+        }).then(resolveRequest, rejectRequest);
+        return request;
     };
     keyOf = (args)=>JSON.stringify(void 0 === args ? null : args);
     isCurrent = (controller)=>this.controller === controller && !controller.signal.aborted;
@@ -101,6 +115,7 @@ class ResourceCarburetor extends Carburetor {
         this.pendingRequest = void 0;
         this.settledKey = key;
         this.lastError = void 0;
+        this.hasLastError = false;
         this.draft.status = EResourceStatus.Success;
         this.draft.data = data;
         this.draft.error = void 0;
@@ -113,6 +128,7 @@ class ResourceCarburetor extends Carburetor {
         this.pendingRequest = void 0;
         this.settledKey = key;
         this.lastError = error;
+        this.hasLastError = true;
         this.draft.status = EResourceStatus.Error;
         this.draft.error = describeError(error);
         this.draft.updatedAt = Date.now();

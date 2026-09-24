@@ -1,5 +1,5 @@
 import { ICarburetorToken } from "../Models/Tooling.js";
-import { AntiHookComponent } from "./AntiHookComponent.js";
+import { AntiHookComponent } from "./AntiHookComponent/AntiHookComponent.js";
 import { CarburetorScope } from "./Scope/CarburetorScope.js";
 /**
  * A component that resolves its carburetors from the surrounding scope rather than from

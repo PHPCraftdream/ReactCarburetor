@@ -1,0 +1,1 @@
+export {AntiHookComponent} from './AntiHookComponent';

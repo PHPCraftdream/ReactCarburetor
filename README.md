@@ -537,6 +537,9 @@ const NameBadge = () => {
 
 Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe. Pass an equality
 function as the third argument when the selector builds a new object.
+Selected plain objects, arrays, `Map`, `Set` and `Date` values are detached for a stable
+React snapshot. A class instance cannot be copied safely, so selecting one directly or
+inside another value throws an actionable error; select the fields you render instead.
 
 ## Lint rules
 

@@ -22,7 +22,7 @@ const runNode = (script: string, extraEnv: Record<string, string> = {}) => {
         throw result.error;
     }
 
-    return {status: result.status, stdout: result.stdout || ''};
+    return {status: result.status, stdout: result.stdout || '', stderr: result.stderr || ''};
 };
 
 // Each side is a whole process. The server declares and instantiates an extra carburetor the
@@ -87,7 +87,7 @@ describe('hydration across processes', () => {
 
         const server = runNode(SERVER_SCRIPT);
 
-        expect(server.status).toEqual(0);
+        expect(server.status, server.stderr).toEqual(0);
 
         const sent = JSON.parse(server.stdout);
 
@@ -95,7 +95,7 @@ describe('hydration across processes', () => {
 
         const client = runNode(CLIENT_SCRIPT, {CARBURETOR_WIRE: server.stdout});
 
-        expect(client.status).toEqual(0);
+        expect(client.status, client.stderr).toEqual(0);
 
         const received = JSON.parse(client.stdout);
 

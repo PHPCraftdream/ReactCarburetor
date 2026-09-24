@@ -34,7 +34,7 @@ describe('lint plugin in the oxlint host', () => {
     test('reports the fixture through the real binary', () => {
         const output = runOxlint([
             '-c', 'plugin/__fixtures__/oxlintrc.json',
-            'plugin/__fixtures__/lifecycleClassProperty.tsx',
+            'plugin/__fixtures__/lifecycle/lifecycleClassProperty.tsx',
         ]);
 
         expect(output).toContain(RULE_ID);
@@ -47,7 +47,7 @@ describe('lint plugin in the oxlint host', () => {
     test('every rule in the reads group fires on its fixture', () => {
         const output = runOxlint([
             '-c', 'plugin/__fixtures__/oxlintrc.json',
-            'plugin/__fixtures__/reads.tsx',
+            'plugin/__fixtures__/data/reads.tsx',
         ]);
 
         const expected: string[] = [
@@ -67,7 +67,7 @@ describe('lint plugin in the oxlint host', () => {
     test('every rule in the writes group fires on its fixture', () => {
         const output = runOxlint([
             '-c', 'plugin/__fixtures__/oxlintrc.json',
-            'plugin/__fixtures__/writes.tsx',
+            'plugin/__fixtures__/data/writes.tsx',
         ]);
 
         const expected: string[] = [
@@ -87,7 +87,7 @@ describe('lint plugin in the oxlint host', () => {
     test('every rule in the lifecycle group fires on its fixture', () => {
         const output = runOxlint([
             '-c', 'plugin/__fixtures__/oxlintrc.json',
-            'plugin/__fixtures__/lifecycle.tsx',
+            'plugin/__fixtures__/lifecycle/lifecycle.tsx',
         ]);
 
         const expected: string[] = [
@@ -105,7 +105,7 @@ describe('lint plugin in the oxlint host', () => {
     test('every rule in the effects group fires on its fixture', () => {
         const output = runOxlint([
             '-c', 'plugin/__fixtures__/oxlintrc.json',
-            'plugin/__fixtures__/effects.tsx',
+            'plugin/__fixtures__/operations/effects.tsx',
         ]);
 
         const expected: string[] = [
@@ -122,7 +122,7 @@ describe('lint plugin in the oxlint host', () => {
     test('every rule in the boundaries group fires on its fixture', () => {
         const output = runOxlint([
             '-c', 'plugin/__fixtures__/oxlintrc.json',
-            'plugin/__fixtures__/boundaries.ts',
+            'plugin/__fixtures__/operations/boundaries.ts',
         ]);
 
         const expected: string[] = [

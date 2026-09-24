@@ -146,6 +146,51 @@ class MixedCarburetor extends Carburetor<IMixedData> {
     };
 }
 
+class SelectorErrorBoundary extends React.Component<
+    {children: React.ReactNode},
+    {message: string | null}
+> {
+    public state = {message: null as string | null};
+
+    public static getDerivedStateFromError(error: unknown): {message: string} {
+        return {message: error instanceof Error ? error.message : String(error)};
+    }
+
+    public render(): React.ReactNode {
+        return this.state.message
+            ? <div role="alert">{this.state.message}</div>
+            : this.props.children;
+    }
+}
+
+const expectClassSelectorError = (select: (data: IBoxedData) => unknown): void => {
+    const carburetor = new BoxedCarburetor({box: new Box(1)});
+
+    const ValueView = () => {
+        const value = useCarburetorValue(carburetor, select);
+
+        return <div>{String(value)}</div>;
+    };
+
+    const original = console.error;
+
+    console.error = () => undefined;
+
+    try {
+        const {container, unmount} = render(
+            <SelectorErrorBoundary><ValueView/></SelectorErrorBoundary>
+        );
+
+        expect(container.querySelector('[role="alert"]')?.textContent)
+            .toContain('useCarburetorValue() cannot select a live Box instance');
+        expect(container.textContent).toContain('Select the fields the component renders');
+
+        unmount();
+    } finally {
+        console.error = original;
+    }
+};
+
 describe('hooks interop', () => {
     test('a function component reads a carburetor and re-renders on change', () => {
         const carburetor = new ProfileCarburetor(getData());
@@ -453,42 +498,12 @@ describe('hooks interop', () => {
         unmount();
     });
 
-    test('a class-instance selector result is handed out live, reported once in development (R7-01)', () => {
-        const carburetor = new BoxedCarburetor({box: new Box(1)});
-        const reported: string[] = [];
-        const original = console.error;
+    test('a class-instance selector result fails through an error boundary in every build (R7-01)', () => {
+        expectClassSelectorError((data) => data.box);
+    });
 
-        console.error = (message: string) => reported.push(message);
-
-        const BoxView = () => {
-            const box = useCarburetorValue(carburetor, (data) => data.box);
-
-            return <div className="value">{String(box.value)}</div>;
-        };
-
-        try {
-            const {container, unmount} = render(<BoxView/>);
-
-            // The instance reaches the component live the moment it is selected: the report is
-            // about the declaration, not about any particular write.
-            expect(reported.length).toEqual(1);
-            expect(reported[0]).toContain('useCarburetorValue() handed React a live Box instance');
-
-            expect(container.querySelector('.value')?.textContent).toEqual('1');
-
-            act(() => carburetor.setBoxValue(2));
-
-            // No safe copy exists, so the documented boundary stands: the same live instance is
-            // handed out again, Object.is certifies it unchanged, and the DOM stays stale — the
-            // report above is what names the hazard and the fix ("Select plain values").
-            expect(container.querySelector('.value')?.textContent).toEqual('1');
-            // The report is not repeated per store version.
-            expect(reported.length).toEqual(1);
-
-            unmount();
-        } finally {
-            console.error = original;
-        }
+    test('a nested class-instance selector result also fails through an error boundary (R7-01)', () => {
+        expectClassSelectorError((data) => ({box: data.box}));
     });
 
     test('a plain envelope wrapping a Map updates and leaves earlier snapshots detached (R7-01)', () => {

@@ -7,9 +7,9 @@ import {describe, expect, test} from "@rstest/core";
  * Runs both implementations of the 24 carburetor rules over the same fixture corpus and asserts
  * they find the same problems in the same places.
  *
- * The corpus is `plugin/__fixtures__/{allocations,reads,writes,lifecycle,effects,boundaries,
- * lifecycleClassProperty}`, already written so every rule fires exactly once — the same files the
- * JS plugin's own host tests exercise. Comparison is on `(file, line, column, rule)`: that is the
+ * The corpus is grouped by topic under `plugin/__fixtures__`, written so every rule fires exactly
+ * once — the same files the JS plugin's host tests exercise. Comparison is on
+ * `(file, line, column, rule)`: that is the
  * behavioural contract a consumer depends on. Message text is compared too, because both
  * implementations deliberately share the same wording word for word; a mismatch there means one
  * side drifted from the other, not that phrasing is free to differ.
@@ -25,14 +25,14 @@ const NATIVE_BINARY: string = path.join(
 const NATIVE_CONFIG: string = path.join('native', 'tests', 'fixtures', 'conformance.carburetorrc.json');
 const JS_CONFIG: string = path.join('plugin', '__fixtures__', 'oxlintrc.json');
 const CORPUS: readonly string[] = [
-    'allocations.tsx',
-    'reads.tsx',
-    'writes.tsx',
-    'lifecycle.tsx',
-    'effects.tsx',
-    'boundaries.ts',
-    'lifecycleClassProperty.tsx',
-].map((name) => path.join('plugin', '__fixtures__', name));
+    path.join('plugin', '__fixtures__', 'data', 'allocations.tsx'),
+    path.join('plugin', '__fixtures__', 'data', 'reads.tsx'),
+    path.join('plugin', '__fixtures__', 'data', 'writes.tsx'),
+    path.join('plugin', '__fixtures__', 'lifecycle', 'lifecycle.tsx'),
+    path.join('plugin', '__fixtures__', 'operations', 'effects.tsx'),
+    path.join('plugin', '__fixtures__', 'operations', 'boundaries.ts'),
+    path.join('plugin', '__fixtures__', 'lifecycle', 'lifecycleClassProperty.tsx'),
+];
 
 interface IDiagnostic {
     file: string;

@@ -345,7 +345,7 @@ fn fix_dry_run_previews_without_writing() {
 fn fix_dry_run_previews_a_module_function_extraction_without_writing() {
     // A `require-module-function` member: `--fix-dry-run` must preview the extraction on stdout
     // and leave the file byte for byte as it was.
-    let original = "class Widget extends AntiHookComponent {\n    format(value: number): string {\n        return value.toFixed(2);\n    }\n}\n";
+    let original = "class Widget extends AntiHookComponent {\n    #format(value: number): string {\n        return value.toFixed(2);\n    }\n}\n";
     let dir = workspace(&[("widget.tsx", original)]);
 
     let output = run_in(&dir, &["--fix-dry-run", "widget.tsx"]);

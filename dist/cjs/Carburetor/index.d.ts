@@ -27,7 +27,7 @@ export * from './Resource/ResourceCarburetor.js';
 export * from './Resource/Cache/ResourceCache.js';
 export * from './Resource/Cache/encodeCacheKey.js';
 export * from './Resource/Cache/getInitialCacheEntry.js';
-export * from './Component/AntiHookComponent.js';
+export * from './Component/AntiHookComponent/index.js';
 export * from './Component/bind.js';
 export * from './Component/Scope/CarburetorContext.js';
 export * from './Component/Scope/CarburetorProvider.js';

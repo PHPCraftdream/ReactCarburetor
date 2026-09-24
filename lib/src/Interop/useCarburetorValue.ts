@@ -1,8 +1,6 @@
 import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react";
 import {ICarburetor, TPath, TPathSet, TSubscriber} from "@/Carburetor";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {detachOpaque} from "@/Carburetor/Store/Utils/detachOpaque";
-import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<T extends object, R> {
@@ -35,14 +33,17 @@ const sameReads = (a: TPathSet, b: TPathSet): boolean => {
     return true;
 };
 
-/** Names a live instance for the development report: the class name when one is reachable. */
+/** Names a class value in the selector error when its class name is available. */
 const describeInstance = (instance: object): string =>
-    Object.getPrototypeOf(instance)?.constructor?.name || 'untracked class';
+    Object.getPrototypeOf(instance)?.constructor?.name || 'class';
 
 /**
  * Subscribes to exactly the paths the selector reads, the same precision the class API
  * gets. The selector result is cached per store version, so useSyncExternalStore sees a
  * stable snapshot even when the selector builds a new object.
+ *
+ * A selected class instance cannot be detached safely and throws; select its rendered
+ * fields as plain values instead.
  *
  * @param carburetor - the store read and subscribed to; swapping it unsubscribes the previous
  * one and reconciles against the new read set
@@ -69,10 +70,6 @@ export const useCarburetorValue = <T extends object, R>(
     const pendingReads = useRef<TPathSet>(new Set<TPath>());
     const active = useRef<IActiveSubscription<T> | null>(null);
     const notify = useRef<TSubscriber | null>(null);
-
-    // Reported once per hook instance: the mistake is the selector's declaration, and one
-    // complaint names it.
-    const liveInstanceReported = useRef(false);
 
     const install = useCallback((): void => {
         const onStoreChange = notify.current;
@@ -149,24 +146,16 @@ export const useCarburetorValue = <T extends object, R>(
         // heuristic. R7-01: the detach recurses, so a Map, Set or Date nested at any depth is
         // copied too and an opaque member can no longer keep an earlier snapshot alive.
         if (next !== null && typeof next === 'object') {
-            // R7-01: a class instance still passes through live — no generic safe copy exists —
-            // but no longer silently. Development reports it once and names the fix; production
-            // compiles the report out and leaves the documented pass-through behavior unchanged.
-            const reportLiveInstance = IS_DEVELOPMENT && !liveInstanceReported.current
-                ? (instance: object): void => {
-                    liveInstanceReported.current = true;
-
-                    diagnostics.report(
-                        'useCarburetorValue() handed React a live ' + describeInstance(instance) +
-                        ' instance. A class instance has no safe copy, so the same object is handed ' +
-                        'out again after every store change and an in-place mutation is certified as ' +
-                        'unchanged — the component renders stale data. Select plain values instead: ' +
-                        'the fields the component renders, or a plain object built from them.'
-                    );
-                }
-                : undefined;
-
-            next = detachOpaque(next, reportLiveInstance);
+            // Class instances have no generic safe copy. Passing one through would make
+            // useSyncExternalStore certify in-place changes as unchanged, so reject it in every
+            // build, including when nested inside an otherwise plain result.
+            next = detachOpaque(next, (instance: object): void => {
+                throw new Error(
+                    'useCarburetorValue() cannot select a live ' + describeInstance(instance) +
+                    ' instance because in-place changes cannot produce a safe React snapshot. ' +
+                    'Select the fields the component renders or return a plain object of those fields.'
+                );
+            });
         }
 
         pendingReads.current = reads;

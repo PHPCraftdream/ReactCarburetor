@@ -35,7 +35,7 @@ export * from './Resource/Cache/ResourceCache';
 export * from './Resource/Cache/encodeCacheKey';
 export * from './Resource/Cache/getInitialCacheEntry';
 
-export * from './Component/AntiHookComponent';
+export * from './Component/AntiHookComponent/index';
 export * from './Component/bind';
 export * from './Component/Scope/CarburetorContext';
 export * from './Component/Scope/CarburetorProvider';

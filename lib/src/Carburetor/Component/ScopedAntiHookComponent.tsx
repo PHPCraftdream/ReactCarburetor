@@ -1,5 +1,5 @@
 import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
-import {AntiHookComponent} from "./AntiHookComponent";
+import {AntiHookComponent} from "./AntiHookComponent/AntiHookComponent";
 import {CarburetorContext} from "./Scope/CarburetorContext";
 import {CarburetorScope} from "./Scope/CarburetorScope";
 

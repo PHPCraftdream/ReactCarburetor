@@ -32,7 +32,6 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const containsExoticValue_js_namespaceObject = require("../Store/Utils/containsExoticValue.js");
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
-const isExoticValue_js_namespaceObject = require("../Store/Utils/isExoticValue.js");
 const UpdateWaveInstance_js_namespaceObject = require("../Store/Scheduling/UpdateWaveInstance.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../Store/Diagnostics/DiagnosticsInstance.js");
@@ -213,9 +212,10 @@ class Computed {
         const previous = this.value;
         if (!this.valid || this.hasDrifted()) this.recompute();
         const baseline = void 0 !== this.announced ? this.announced.value : previous;
+        const sameReference = Object.is(baseline, this.value);
         const moved = void 0 !== this.announced && this.driftedSince(this.announced.versions);
-        const opaque = (0, isExoticValue_js_namespaceObject.isExoticValue)(this.value) || (0, containsExoticValue_js_namespaceObject.containsExoticValue)(this.value);
-        const unchanged = Object.is(baseline, this.value) && !(opaque && moved);
+        const opaqueChanged = sameReference && moved && (0, containsExoticValue_js_namespaceObject.containsExoticValue)(this.value);
+        const unchanged = sameReference && !opaqueChanged;
         if (unchanged) return;
         this.announced = {
             value: this.value,

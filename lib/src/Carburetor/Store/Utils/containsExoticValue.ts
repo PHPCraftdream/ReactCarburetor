@@ -20,17 +20,36 @@ export const containsExoticValue = (value: unknown): boolean => {
     const visited: WeakSet<object> = new WeakSet<object>();
 
     const walk = (candidate: unknown): boolean => {
-        if (isExoticValue(candidate)) {
+        try {
+            if (isExoticValue(candidate)) {
+                return true;
+            }
+
+            if (candidate === null || typeof candidate !== 'object' || visited.has(candidate)) {
+                return false;
+            }
+
+            visited.add(candidate);
+
+            return Reflect.ownKeys(candidate).some((key: string | symbol): boolean => {
+                const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
+
+                if (!descriptor?.enumerable) {
+                    return false;
+                }
+
+                // Accessors are opaque: reading one would run caller code during settlement.
+                // Treat it as exotic so dependency changes still notify conservatively.
+                if (!("value" in descriptor)) {
+                    return true;
+                }
+
+                return walk(descriptor.value);
+            });
+        } catch {
+            // A proxy can reject reflection. Notifying is safer when its members are opaque.
             return true;
         }
-
-        if (candidate === null || typeof candidate !== 'object' || visited.has(candidate)) {
-            return false;
-        }
-
-        visited.add(candidate);
-
-        return Object.values(candidate).some((member: unknown): boolean => walk(member));
     };
 
     return walk(value);

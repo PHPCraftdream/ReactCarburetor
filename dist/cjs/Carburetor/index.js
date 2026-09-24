@@ -1,7 +1,7 @@
 "use strict";
 var __webpack_modules__ = {
-    "./Component/AntiHookComponent" (module) {
-        module.exports = require("./Component/AntiHookComponent.js");
+    "./Component/AntiHookComponent/index" (module) {
+        module.exports = require("./Component/AntiHookComponent/index.js");
     },
     "./Component/Scope/CarburetorContext" (module) {
         module.exports = require("./Component/Scope/CarburetorContext.js");
@@ -236,8 +236,8 @@ var __webpack_exports__ = {};
     __webpack_require__.re(__webpack_exports__, _Resource_Cache_encodeCacheKey__rspack_import_27, "default");
     var _Resource_Cache_getInitialCacheEntry__rspack_import_28 = __webpack_require__("./Resource/Cache/getInitialCacheEntry");
     __webpack_require__.re(__webpack_exports__, _Resource_Cache_getInitialCacheEntry__rspack_import_28, "default");
-    var _Component_AntiHookComponent__rspack_import_29 = __webpack_require__("./Component/AntiHookComponent");
-    __webpack_require__.re(__webpack_exports__, _Component_AntiHookComponent__rspack_import_29, "default");
+    var _Component_AntiHookComponent_index__rspack_import_29 = __webpack_require__("./Component/AntiHookComponent/index");
+    __webpack_require__.re(__webpack_exports__, _Component_AntiHookComponent_index__rspack_import_29, "default");
     var _Component_bind__rspack_import_30 = __webpack_require__("./Component/bind");
     __webpack_require__.re(__webpack_exports__, _Component_bind__rspack_import_30, "default");
     var _Component_Scope_CarburetorContext__rspack_import_31 = __webpack_require__("./Component/Scope/CarburetorContext");
