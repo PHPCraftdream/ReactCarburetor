@@ -45,6 +45,8 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     protected lastError: unknown = undefined;
     /** Whether lastError belongs to the current Error state, including when it is undefined. */
     protected hasLastError: boolean = false;
+    /** Changes when a newer operation takes ownership during synchronous abort callbacks. */
+    protected operationVersion: number = 0;
 
     /**
      * Takes the loader this resource calls, and starts out empty.
@@ -75,12 +77,20 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * with it: the data alone says nothing about which arguments produced it.
      */
     public restore = (data: IResourceSnapshot<T>): void => {
+        const operationVersion = ++this.operationVersion;
+
         // A restored snapshot replaces the answer wholesale, so a request still in flight is
         // serving a state about to stop existing: fire its handle and drop its bookkeeping,
         // the same mechanism abort() relies on. Its settlement later fails isCurrent() and
         // lands nowhere, which keeps the restored state from being corrupted by the stale
         // response. Unlike abort(), nothing is published here: the restored state follows.
         this.cancelInFlight();
+
+        // Abort listeners run synchronously and may start a replacement or restore another
+        // snapshot. That newer operation owns the slot and must not be overwritten here.
+        if (this.operationVersion !== operationVersion) {
+            return;
+        }
 
         // Identity is re-established BEFORE the state lands: setData() notifies subscribers
         // synchronously, and a suspend() from such a callback must see key and data agree.
@@ -174,7 +184,13 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             return;
         }
 
+        const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
+
+        // An abort listener may have started a new request. Preserve its Pending state.
+        if (this.operationVersion !== operationVersion) {
+            return;
+        }
 
         // A cancelled request leaves nothing on its way: Pending would claim an answer no one
         // will ever deliver, so the slot goes back to the state it starts in.
@@ -189,14 +205,17 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * publishes the slot going idle.
      */
     protected cancelInFlight = (): void => {
-        if (!this.controller) {
+        const controller = this.controller;
+
+        if (!controller) {
             return;
         }
 
-        this.controller.abort();
+        // Detach before dispatch: AbortSignal listeners run synchronously and may load again.
         this.controller = undefined;
         this.pendingRequest = undefined;
         this.pendingKey = undefined;
+        controller.abort();
         // `settledKey` needs no clearing: this only runs with a request in flight, and the
         // `start` that armed it already reset the stored answer's key.
     };
@@ -219,7 +238,16 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             return this.pendingRequest;
         }
 
+        const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
+
+        // A synchronous abort listener may have started a newer request. If it is for the
+        // same key, join it; otherwise this start was superseded before it could begin.
+        if (this.operationVersion !== operationVersion) {
+            return this.pendingKey === key && this.pendingRequest
+                ? this.pendingRequest
+                : Promise.resolve();
+        }
 
         const controller = createAbortHandle();
 

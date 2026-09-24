@@ -5,6 +5,9 @@ import { TSelector, TValueComparator } from "./Models.mjs";
  * gets. The selector result is cached per store version, so useSyncExternalStore sees a
  * stable snapshot even when the selector builds a new object.
  *
+ * A selected class instance cannot be detached safely and throws; select its rendered
+ * fields as plain values instead.
+ *
  * @param carburetor - the store read and subscribed to; swapping it unsubscribes the previous
  * one and reconciles against the new read set
  * @param select - run on a tracked read of the store, so the paths it touches become exactly

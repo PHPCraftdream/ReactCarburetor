@@ -32,6 +32,8 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
     protected lastError: unknown;
     /** Whether lastError belongs to the current Error state, including when it is undefined. */
     protected hasLastError: boolean;
+    /** Changes when a newer operation takes ownership during synchronous abort callbacks. */
+    protected operationVersion: number;
     /**
      * Takes the loader this resource calls, and starts out empty.
      *

@@ -59,12 +59,13 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.maxEntries = void 0 === options.maxEntries ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
     restore = (data)=>{
-        this.controllers.forEach((controller)=>controller.abort());
+        const controllers = Array.from(this.controllers.entries());
         this.controllers.clear();
         this.requests.clear();
         this.failures.clear();
         this.viewCache.clear();
         this.lastUsed.clear();
+        controllers.forEach(([, controller])=>controller.abort());
         const entries = {};
         Object.keys(data.entries).forEach((key)=>{
             const entry = data.entries[key];
@@ -73,6 +74,10 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
                 refreshing: false,
                 status: entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Pending ? EResourceStatus_js_namespaceObject.EResourceStatus.Idle : entry.status
             };
+        });
+        this.controllers.forEach((_controller, key)=>{
+            const entry = this.data.entries[key];
+            if (entry) entries[key] = entry;
         });
         this.setData((0, deepClone_js_namespaceObject.deepClone)({
             entries
@@ -176,9 +181,12 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
     abortKey = (key)=>{
         const controller = this.controllers.get(key);
         if (!controller) return;
+        if (this.controllers.get(key) === controller) {
+            this.controllers.delete(key);
+            this.requests.delete(key);
+        }
         controller.abort();
-        this.controllers.delete(key);
-        this.requests.delete(key);
+        if (this.controllers.has(key)) return;
         const entry = this.data.entries[key];
         if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Pending) return void this.update((draft)=>{
             draft.entries[key].status = EResourceStatus_js_namespaceObject.EResourceStatus.Idle;
@@ -191,7 +199,7 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         const key = this.keyOf(args);
         const entry = this.data.entries[key];
         this.touch(key);
-        if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success && void 0 !== entry.data) return entry.data;
+        if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success) return entry.data;
         if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error) throw this.failures.has(key) ? this.failures.get(key) : new Error(entry.error || 'Carburetor: resource failed');
         const known = this.requests.get(key);
         throw known || this.fetch(key, args, true);
@@ -230,7 +238,7 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
     markLoading = (key, deferNotification)=>{
         const entry = this.data.entries[key];
         const draft = this.draft;
-        if (entry) if (void 0 === entry.data) {
+        if (entry) if (entry.status !== EResourceStatus_js_namespaceObject.EResourceStatus.Success) {
             draft.entries[key].status = EResourceStatus_js_namespaceObject.EResourceStatus.Pending;
             draft.entries[key].error = void 0;
         } else draft.entries[key].refreshing = true;
@@ -263,7 +271,8 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.controllers.delete(key);
         this.requests.delete(key);
         this.failures.set(key, error);
-        const hasData = this.data.entries[key] && void 0 !== this.data.entries[key].data;
+        const entry = this.data.entries[key];
+        const hasData = entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success || void 0 !== entry.data;
         this.update((draft)=>{
             draft.entries[key].error = (0, external_describeError_js_namespaceObject.describeError)(error);
             draft.entries[key].refreshing = false;

@@ -34,7 +34,7 @@ export const containsExoticValue = (value: unknown): boolean => {
             return Reflect.ownKeys(candidate).some((key: string | symbol): boolean => {
                 const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
 
-                if (!descriptor?.enumerable) {
+                if (!descriptor) {
                     return false;
                 }
 
@@ -44,6 +44,7 @@ export const containsExoticValue = (value: unknown): boolean => {
                     return true;
                 }
 
+                // Non-enumerable data members can hide mutable values just like enumerable ones.
                 return walk(descriptor.value);
             });
         } catch {

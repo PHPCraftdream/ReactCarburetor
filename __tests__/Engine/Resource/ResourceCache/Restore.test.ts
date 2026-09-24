@@ -160,6 +160,32 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
         expect(cache.getEntry('b').data).toBeUndefined();
     });
 
+    test('restore preserves a same-key request started by an abort listener', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, string>(loader.load);
+        const snapshot = cache.snapshot();
+        const original = cache.load('a');
+        let retry: Promise<void> | undefined;
+
+        loader.pending[0].signal.addEventListener('abort', () => {
+            retry = cache.load('a');
+        });
+
+        cache.restore(snapshot);
+
+        expect(loader.calls).toEqual(['a', 'a']);
+        expect(loader.pending[0].signal.aborted).toBeTruthy();
+        expect(loader.pending[1].signal.aborted).toBeFalsy();
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Pending);
+
+        loader.pending[0].resolve({id: 'a', name: 'obsolete'});
+        loader.pending[1].resolve({id: 'a', name: 'retry'});
+        await Promise.all([original, retry]);
+
+        expect(cache.getEntry('a').data).toEqual({id: 'a', name: 'retry'});
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Success);
+    });
+
     test('restore cancels in-flight requests across several independent keys at once', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});

@@ -198,6 +198,62 @@ describe('computed', () => {
     });
 
     describe('safe exotic result inspection (R8-01/R8-02/R8-05)', () => {
+        test('a non-enumerable Map member notifies after a coarse mutation', () => {
+            const carburetor = new IndexedCarburetor(getIndexData());
+            const envelope: {index?: Map<string, number>} = {};
+            let notified = 0;
+
+            Object.defineProperty(envelope, 'index', {
+                configurable: true,
+                value: new Map<string, number>(),
+                writable: true,
+            });
+
+            const wrapped = computed((read) => {
+                envelope.index = read(carburetor).index;
+
+                return envelope;
+            });
+
+            wrapped.subscribe(() => notified++, {id: 'listener'});
+            expect(wrapped.get().index?.get('a')).toEqual(1);
+
+            carburetor.setIndex('a', 2);
+
+            expect(notified).toEqual(1);
+            expect(wrapped.getVersion()).toEqual(1);
+            expect(wrapped.get().index?.get('a')).toEqual(2);
+        });
+
+        test('a non-enumerable accessor is conservative and is never invoked', () => {
+            const carburetor = new CounterCarburetor({n: 1});
+            const result: {n?: number} = {};
+            let getterCalls = 0;
+            let notified = 0;
+
+            Object.defineProperty(result, 'value', {
+                get: () => {
+                    getterCalls++;
+
+                    return 1;
+                },
+            });
+
+            const value = computed((read) => {
+                result.n = read(carburetor).n;
+
+                return result;
+            });
+
+            value.subscribe(() => notified++, {id: 'listener'});
+            carburetor.setN(2);
+
+            expect(getterCalls).toEqual(0);
+            expect(notified).toEqual(1);
+            expect(value.getVersion()).toEqual(1);
+            expect(value.get()).toBe(result);
+        });
+
         test('a stable envelope detects an enumerable symbol-keyed Map mutation', () => {
             const carburetor = new IndexedCarburetor(getIndexData());
             const indexKey = Symbol('index');

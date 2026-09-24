@@ -41,7 +41,7 @@ const containsExoticValue = (value)=>{
             visited.add(candidate);
             return Reflect.ownKeys(candidate).some((key)=>{
                 const descriptor = Object.getOwnPropertyDescriptor(candidate, key);
-                if (!(null == descriptor ? void 0 : descriptor.enumerable)) return false;
+                if (!descriptor) return false;
                 if (!("value" in descriptor)) return true;
                 return walk(descriptor.value);
             });

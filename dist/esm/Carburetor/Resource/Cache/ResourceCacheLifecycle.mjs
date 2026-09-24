@@ -27,12 +27,13 @@ class ResourceCacheLifecycle extends Carburetor {
         this.maxEntries = void 0 === options.maxEntries ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
     restore = (data)=>{
-        this.controllers.forEach((controller)=>controller.abort());
+        const controllers = Array.from(this.controllers.entries());
         this.controllers.clear();
         this.requests.clear();
         this.failures.clear();
         this.viewCache.clear();
         this.lastUsed.clear();
+        controllers.forEach(([, controller])=>controller.abort());
         const entries = {};
         Object.keys(data.entries).forEach((key)=>{
             const entry = data.entries[key];
@@ -41,6 +42,10 @@ class ResourceCacheLifecycle extends Carburetor {
                 refreshing: false,
                 status: entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status
             };
+        });
+        this.controllers.forEach((_controller, key)=>{
+            const entry = this.data.entries[key];
+            if (entry) entries[key] = entry;
         });
         this.setData(deepClone({
             entries
@@ -144,9 +149,12 @@ class ResourceCacheLifecycle extends Carburetor {
     abortKey = (key)=>{
         const controller = this.controllers.get(key);
         if (!controller) return;
+        if (this.controllers.get(key) === controller) {
+            this.controllers.delete(key);
+            this.requests.delete(key);
+        }
         controller.abort();
-        this.controllers.delete(key);
-        this.requests.delete(key);
+        if (this.controllers.has(key)) return;
         const entry = this.data.entries[key];
         if (entry && entry.status === EResourceStatus.Pending) return void this.update((draft)=>{
             draft.entries[key].status = EResourceStatus.Idle;
@@ -159,7 +167,7 @@ class ResourceCacheLifecycle extends Carburetor {
         const key = this.keyOf(args);
         const entry = this.data.entries[key];
         this.touch(key);
-        if (entry && entry.status === EResourceStatus.Success && void 0 !== entry.data) return entry.data;
+        if (entry && entry.status === EResourceStatus.Success) return entry.data;
         if (entry && entry.status === EResourceStatus.Error) throw this.failures.has(key) ? this.failures.get(key) : new Error(entry.error || 'Carburetor: resource failed');
         const known = this.requests.get(key);
         throw known || this.fetch(key, args, true);
@@ -198,7 +206,7 @@ class ResourceCacheLifecycle extends Carburetor {
     markLoading = (key, deferNotification)=>{
         const entry = this.data.entries[key];
         const draft = this.draft;
-        if (entry) if (void 0 === entry.data) {
+        if (entry) if (entry.status !== EResourceStatus.Success) {
             draft.entries[key].status = EResourceStatus.Pending;
             draft.entries[key].error = void 0;
         } else draft.entries[key].refreshing = true;
@@ -231,7 +239,8 @@ class ResourceCacheLifecycle extends Carburetor {
         this.controllers.delete(key);
         this.requests.delete(key);
         this.failures.set(key, error);
-        const hasData = this.data.entries[key] && void 0 !== this.data.entries[key].data;
+        const entry = this.data.entries[key];
+        const hasData = entry.status === EResourceStatus.Success || void 0 !== entry.data;
         this.update((draft)=>{
             draft.entries[key].error = describeError(error);
             draft.entries[key].refreshing = false;

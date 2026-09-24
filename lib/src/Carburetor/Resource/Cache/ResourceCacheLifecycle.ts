@@ -54,12 +54,16 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
 
     /** Restore entries without reviving in-flight requests. */
     public restore = (data: IResourceCacheData<T>): void => {
-        this.controllers.forEach((controller: AbortController) => controller.abort());
+        const controllers = Array.from(this.controllers.entries());
+
+        // Old requests must stop being joinable before abort listeners can re-enter.
         this.controllers.clear();
         this.requests.clear();
         this.failures.clear();
         this.viewCache.clear();
         this.lastUsed.clear();
+
+        controllers.forEach(([, controller]: [string, AbortController]) => controller.abort());
 
         const entries: IResourceCacheData<T>['entries'] = {};
 
@@ -71,6 +75,15 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
                 refreshing: false,
                 status: entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status,
             };
+        });
+
+        // A synchronous abort listener may have started a new request; keep its live state.
+        this.controllers.forEach((_controller: AbortController, key: string) => {
+            const entry = this.data.entries[key];
+
+            if (entry) {
+                entries[key] = entry;
+            }
         });
 
         this.setData(deepClone({entries}));
@@ -269,9 +282,17 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
             return;
         }
 
+        if (this.controllers.get(key) === controller) {
+            this.controllers.delete(key);
+            this.requests.delete(key);
+        }
+
         controller.abort();
-        this.controllers.delete(key);
-        this.requests.delete(key);
+
+        // Abort listeners run synchronously and may already own this key again.
+        if (this.controllers.has(key)) {
+            return;
+        }
 
         const entry = this.data.entries[key];
 
@@ -297,8 +318,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
 
         this.touch(key);
 
-        if (entry && entry.status === EResourceStatus.Success && entry.data !== undefined) {
-            return entry.data;
+        if (entry && entry.status === EResourceStatus.Success) {
+            return entry.data as T;
         }
 
         if (entry && entry.status === EResourceStatus.Error) {
@@ -375,7 +396,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
 
         if (!entry) {
             draft.entries[key] = {...getInitialCacheEntry<T>(), status: EResourceStatus.Pending};
-        } else if (entry.data === undefined) {
+        } else if (entry.status !== EResourceStatus.Success) {
             draft.entries[key].status = EResourceStatus.Pending;
             draft.entries[key].error = undefined;
         } else {
@@ -440,7 +461,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.requests.delete(key);
         this.failures.set(key, error);
 
-        const hasData = this.data.entries[key] && this.data.entries[key].data !== undefined;
+        const entry = this.data.entries[key];
+        const hasData = entry.status === EResourceStatus.Success || entry.data !== undefined;
 
         this.update((draft: IResourceCacheData<T>) => {
             draft.entries[key].error = describeError(error);

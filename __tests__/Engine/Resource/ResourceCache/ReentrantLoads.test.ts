@@ -88,4 +88,68 @@ describe('ResourceCache reentrant loads', () => {
         expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
         expect(cache.getEntry('a').data).toBeUndefined();
     });
+
+    test('an abort listener can retry the same key without joining the cancelled request', async () => {
+        const resolvers: Array<(value: string) => void> = [];
+        const signals: AbortSignal[] = [];
+        const cache = new ResourceCache<string, string>((_key, signal) => {
+            signals.push(signal);
+
+            return new Promise<string>((resolve) => {
+                resolvers.push(resolve);
+            });
+        });
+        const original = cache.load('a');
+        let retry: Promise<void> | undefined;
+
+        signals[0].addEventListener('abort', () => {
+            retry = cache.load('a');
+        });
+
+        cache.abort('a');
+
+        expect(retry).toBeDefined();
+        expect(retry).not.toBe(original);
+        expect(signals[0].aborted).toBeTruthy();
+        expect(signals[1].aborted).toBeFalsy();
+        expect(resolvers).toHaveLength(2);
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Pending);
+
+        resolvers[0]('cancelled');
+        resolvers[1]('retried');
+        await Promise.all([original, retry]);
+
+        expect(cache.getEntry('a').data).toEqual('retried');
+    });
+
+    test('a different-key load started by an abort listener remains registered', async () => {
+        const resolvers: Record<string, (value: string) => void> = {};
+        const signals: Record<string, AbortSignal> = {};
+        const cache = new ResourceCache<string, string>((key, signal) => {
+            signals[key] = signal;
+
+            return new Promise<string>((resolve) => {
+                resolvers[key] = resolve;
+            });
+        });
+        const original = cache.load('a');
+        let other: Promise<void> | undefined;
+
+        signals.a.addEventListener('abort', () => {
+            other = cache.load('b');
+        });
+
+        cache.abort('a');
+
+        expect(signals.a.aborted).toBeTruthy();
+        expect(signals.b.aborted).toBeFalsy();
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
+        expect(cache.getEntry('b').status).toEqual(EResourceStatus.Pending);
+
+        resolvers.a('cancelled');
+        resolvers.b('other');
+        await Promise.all([original, other]);
+
+        expect(cache.getEntry('b').data).toEqual('other');
+    });
 });

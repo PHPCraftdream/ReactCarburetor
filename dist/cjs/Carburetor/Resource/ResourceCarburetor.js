@@ -49,6 +49,7 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
     lastKey = void 0;
     lastError = void 0;
     hasLastError = false;
+    operationVersion = 0;
     constructor(loader, scheduler){
         super((0, external_getInitialResourceData_js_namespaceObject.getInitialResourceData)(), scheduler), this.loader = loader;
     }
@@ -57,7 +58,9 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
             key: this.settledKey
         });
     restore = (data)=>{
+        const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
+        if (this.operationVersion !== operationVersion) return;
         const settled = data.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success || data.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error;
         this.settledKey = settled ? data.key : void 0;
         this.hasLastError = data.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error;
@@ -89,21 +92,26 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
     };
     abort = ()=>{
         if (!this.controller) return;
+        const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
+        if (this.operationVersion !== operationVersion) return;
         this.draft.status = EResourceStatus_js_namespaceObject.EResourceStatus.Idle;
         this.emitUpdate();
     };
     cancelInFlight = ()=>{
-        if (!this.controller) return;
-        this.controller.abort();
+        const controller = this.controller;
+        if (!controller) return;
         this.controller = void 0;
         this.pendingRequest = void 0;
         this.pendingKey = void 0;
+        controller.abort();
     };
     start = (args, deferNotification)=>{
         const key = this.keyOf(args);
         if (this.pendingRequest && this.pendingKey === key) return this.pendingRequest;
+        const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
+        if (this.operationVersion !== operationVersion) return this.pendingKey === key && this.pendingRequest ? this.pendingRequest : Promise.resolve();
         const controller = (0, external_createAbortHandle_js_namespaceObject.createAbortHandle)();
         this.controller = controller;
         this.pendingKey = key;
