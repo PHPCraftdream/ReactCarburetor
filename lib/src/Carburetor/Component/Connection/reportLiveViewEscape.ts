@@ -1,7 +1,6 @@
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
 import {isPlainObject} from "./isPlainObject";
-import {ownEnumerableKeys} from "./ownEnumerableKeys";
 
 /** Renders one path segment for the report: a symbol reads as `[Symbol(...)]`, a string as-is. */
 const describeSegment = (segment: string | symbol): string =>
@@ -9,7 +8,8 @@ const describeSegment = (segment: string | symbol): string =>
 
 /**
  * Depth-first search for the first live view reachable from `value`, through plain objects and
- * arrays at any depth and through enumerable string and symbol keys alike.
+ * arrays at any depth and through own string and symbol data properties alike. Accessors are
+ * skipped here and rejected by detachment, so inspecting the result never invokes a getter.
  *
  * A plain container already on the current path is skipped instead of walked again: the only
  * way this could fail to terminate is a cycle the selection's own data introduced, not the
@@ -46,10 +46,15 @@ const findLiveView = (
 
     // Binding narrowed ahead of the callback: a `for...of` body over a computed key list runs
     // outside the guards' narrowing reach.
-    const members = value as Record<string | symbol, unknown>;
+    for (const key of Reflect.ownKeys(value)) {
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
 
-    for (const key of ownEnumerableKeys(value)) {
-        const found = findLiveView(members[key], visited, [...path, key]);
+        if (descriptor === undefined || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+            continue;
+        }
+
+        // Reading the data property through the view preserves its dependency tracking.
+        const found = findLiveView(Reflect.get(value, key), visited, [...path, key]);
 
         if (found !== undefined) {
             return found;

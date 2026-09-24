@@ -1,7 +1,6 @@
 import { diagnostics } from "../../Store/Diagnostics/DiagnosticsInstance.mjs";
 import { liveViews } from "../../Store/Tracking/liveViews.mjs";
 import { isPlainObject } from "./isPlainObject.mjs";
-import { ownEnumerableKeys } from "./ownEnumerableKeys.mjs";
 const describeSegment = (segment)=>'symbol' == typeof segment ? '[' + segment.toString() + ']' : segment;
 const findLiveView = (value, visited, path)=>{
     if (liveViews.has(value)) return path;
@@ -9,9 +8,10 @@ const findLiveView = (value, visited, path)=>{
     if (!Array.isArray(value) && !isPlainObject(value)) return;
     if (visited.has(value)) return;
     visited.add(value);
-    const members = value;
-    for (const key of ownEnumerableKeys(value)){
-        const found = findLiveView(members[key], visited, [
+    for (const key of Reflect.ownKeys(value)){
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (void 0 === descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) continue;
+        const found = findLiveView(Reflect.get(value, key), visited, [
             ...path,
             key
         ]);

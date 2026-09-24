@@ -152,4 +152,117 @@ describe('ResourceCache reentrant loads', () => {
 
         expect(cache.getEntry('b').data).toEqual('other');
     });
+
+    test('forget preserves a same-key request started by an abort listener', async () => {
+        const resolvers: Array<(value: string) => void> = [];
+        const signals: AbortSignal[] = [];
+        let calls = 0;
+        const cache = new ResourceCache<string, string>((_key, signal) => {
+            calls++;
+            signals.push(signal);
+
+            return new Promise<string>((resolve) => {
+                resolvers.push(resolve);
+            });
+        });
+        const original = cache.load('a');
+        let replacement: Promise<void> | undefined;
+
+        signals[0].addEventListener('abort', () => {
+            replacement = cache.load('a');
+        });
+
+        cache.forget('a');
+
+        expect(replacement).toBeDefined();
+        expect(replacement).not.toBe(original);
+        expect(signals[1].aborted).toBeFalsy();
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Pending);
+
+        resolvers[0]('cancelled');
+        resolvers[1]('replacement');
+        await Promise.all([original, replacement]);
+
+        expect(cache.getEntry('a').data).toEqual('replacement');
+        await cache.load('a');
+        expect(calls).toEqual(2);
+    });
+
+    test('forgetAll preserves a same-key request started during cancellation', async () => {
+        const resolvers: Array<(value: string) => void> = [];
+        const signals: AbortSignal[] = [];
+        const cache = new ResourceCache<string, string>((_key, signal) => {
+            signals.push(signal);
+
+            return new Promise<string>((resolve) => {
+                resolvers.push(resolve);
+            });
+        });
+        const original = cache.load('a');
+        let replacement: Promise<void> | undefined;
+
+        signals[0].addEventListener('abort', () => {
+            replacement = cache.load('a');
+        });
+
+        cache.forgetAll();
+
+        expect(replacement).toBeDefined();
+        expect(signals[1].aborted).toBeFalsy();
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Pending);
+
+        resolvers[0]('cancelled');
+        resolvers[1]('replacement');
+        await Promise.all([original, replacement]);
+
+        expect(cache.getEntry('a').data).toEqual('replacement');
+    });
+
+    test('settling without a stored entry clears request bookkeeping', async () => {
+        const resolvers: Array<(value: string) => void> = [];
+        let calls = 0;
+        const cache = new ResourceCache<string, string>(() => {
+            calls++;
+
+            return new Promise<string>((resolve) => {
+                resolvers.push(resolve);
+            });
+        });
+        const first = cache.load('a');
+
+        cache.setData({entries: {}});
+        resolvers[0]('discarded');
+        await first;
+
+        const second = cache.load('a');
+
+        expect(calls).toEqual(2);
+        resolvers[1]('fresh');
+        await second;
+        expect(cache.getEntry('a').data).toEqual('fresh');
+    });
+
+    test('failed settlement without a stored entry also permits a fresh load', async () => {
+        const rejectors: Array<(error: Error) => void> = [];
+        let calls = 0;
+        const cache = new ResourceCache<string, string>(() => {
+            calls++;
+
+            return new Promise<string>((_resolve, reject) => {
+                rejectors.push(reject);
+            });
+        });
+        const first = cache.load('a');
+
+        cache.setData({entries: {}});
+        rejectors[0](new Error('discarded'));
+        await first;
+
+        const second = cache.load('a');
+
+        expect(calls).toEqual(2);
+        rejectors[1](new Error('fresh failure'));
+        await second;
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Error);
+    });
 });

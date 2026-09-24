@@ -1,20 +1,39 @@
 import {isPlainObject} from "./isPlainObject";
-import {ownEnumerableKeys} from "./ownEnumerableKeys";
-
 /**
- * Installs `key` as a genuine own data property, bypassing any inherited accessor a plain
- * `target[key] = value` assignment would invoke instead — the case that matters is a source
- * object with an own enumerable key literally named `__proto__`: assigning it would reset the
- * target's prototype rather than store the value. Same policy `deepClone` uses for its own
- * container copies, so a source's shape survives a copy identically either way.
+ * Copies one own data descriptor without invoking an accessor.
+ *
+ * @param source - the container whose property is copied
+ * @param key - the property key to read
+ * @param seen - source containers and their in-progress copies
  */
-const definePlainProperty = (target: object, key: string | symbol, value: unknown): void => {
-    Object.defineProperty(target, key, {value, writable: true, enumerable: true, configurable: true});
+const detachedDescriptor = (
+    source: object,
+    key: string | symbol,
+    seen: WeakMap<object, unknown>
+): PropertyDescriptor | undefined => {
+    const descriptor = Object.getOwnPropertyDescriptor(source, key);
+
+    if (descriptor === undefined) {
+        return undefined;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        throw new Error(
+            'detachSelection() cannot snapshot accessor property ' + String(key) +
+            ': select plain data fields instead.'
+        );
+    }
+
+    // Read through the view proxy so selecting this descriptor keeps render tracking precise.
+    descriptor.value = detachDeep(Reflect.get(source, key), seen);
+
+    return descriptor;
 };
 
 /**
  * Deep, cycle-safe detachment of one value: plain objects and arrays are walked recursively and
- * rebuilt as fresh containers, at any depth, own enumerable string and symbol keys included.
+ * rebuilt as fresh containers, at any depth, with all own string and symbol data descriptors.
+ * Accessors are rejected without invoking their getters.
  *
  * A live connect()/connectSelection() branch reached along the way answers the same shape
  * questions as a plain container (its facade mimics `Object.prototype`/array-ness exactly, see
@@ -52,24 +71,33 @@ const detachDeep = (value: unknown, seen: WeakMap<object, unknown>): unknown => 
         return value;
     }
 
-    // Object.create(getPrototypeOf(value)) keeps a null-prototype dictionary null-prototype
-    // instead of always landing on Object.prototype the way `{}` would; arrays keep the plain
-    // Array.prototype shape a `[]` literal already has.
-    const target: Record<string | symbol, unknown> | unknown[] =
-        isArray ? [] : Object.create(Object.getPrototypeOf(value));
+    // Preserve null-prototype dictionaries and custom array prototypes.
+    const target: Record<string | symbol, unknown> | unknown[] = isArray
+        ? Object.setPrototypeOf([], Object.getPrototypeOf(value)) as unknown[]
+        : Object.create(Object.getPrototypeOf(value));
 
     seen.set(value, target);
 
     const source = value as Record<string | symbol, unknown>;
 
-    ownEnumerableKeys(value).forEach((key: string | symbol): void => {
-        definePlainProperty(target, key, detachDeep(source[key], seen));
+    Reflect.ownKeys(value).forEach((key: string | symbol): void => {
+        if (isArray && key === 'length') {
+            return;
+        }
+
+        const descriptor = detachedDescriptor(source, key, seen);
+
+        if (descriptor !== undefined) {
+            Object.defineProperty(target, key, descriptor);
+        }
     });
 
     if (isArray) {
-        // Own enumerable keys skip holes, so a sparse source's true length would otherwise be
-        // lost — the highest defined index alone would understate it.
-        (target as unknown[]).length = (value as unknown[]).length;
+        const length = Object.getOwnPropertyDescriptor(value, 'length');
+
+        if (length !== undefined) {
+            Object.defineProperty(target, 'length', length);
+        }
     }
 
     return target;
@@ -78,7 +106,6 @@ const detachDeep = (value: unknown, seen: WeakMap<object, unknown>): unknown => 
 /**
  * The detached form of a selection's value — the form safe to hand a child, at any depth.
  *
- * @see detachDeep for what "detached" means at each level; this is only its entry point, with a
- * fresh cycle guard per call.
+ * @see detachDeep for the descriptor policy; this entry point supplies a fresh cycle guard.
  */
 export const detachSelection = (value: unknown): unknown => detachDeep(value, new WeakMap<object, unknown>());

@@ -31,15 +31,19 @@ __webpack_require__.d(__webpack_exports__, {
     sameSelection: ()=>sameSelection
 });
 const external_isPlainObject_js_namespaceObject = require("./isPlainObject.js");
-const external_ownEnumerableKeys_js_namespaceObject = require("./ownEnumerableKeys.js");
 const isExotic = (value)=>'object' == typeof value && null !== value && !Array.isArray(value) && !(0, external_isPlainObject_js_namespaceObject.isPlainObject)(value);
 const sameKeyedContent = (snapshot, next, previousToFresh, freshToPrevious)=>{
-    const previousKeys = (0, external_ownEnumerableKeys_js_namespaceObject.ownEnumerableKeys)(snapshot);
-    const freshKeys = (0, external_ownEnumerableKeys_js_namespaceObject.ownEnumerableKeys)(next);
+    const previousKeys = Reflect.ownKeys(snapshot);
+    const freshKeys = Reflect.ownKeys(next);
     if (previousKeys.length !== freshKeys.length) return false;
-    const previousMembers = snapshot;
-    const freshMembers = next;
-    return previousKeys.every((key)=>Object.prototype.hasOwnProperty.call(freshMembers, key) && sameValue(previousMembers[key], freshMembers[key], previousToFresh, freshToPrevious));
+    return previousKeys.every((key)=>{
+        const previousDescriptor = Object.getOwnPropertyDescriptor(snapshot, key);
+        const freshDescriptor = Object.getOwnPropertyDescriptor(next, key);
+        if (void 0 === previousDescriptor || void 0 === freshDescriptor) return false;
+        if (!Object.prototype.hasOwnProperty.call(previousDescriptor, 'value') || !Object.prototype.hasOwnProperty.call(freshDescriptor, 'value')) throw new Error('sameSelection() cannot compare accessor property ' + String(key) + ': select plain data fields instead.');
+        if (previousDescriptor.enumerable !== freshDescriptor.enumerable || previousDescriptor.configurable !== freshDescriptor.configurable || previousDescriptor.writable !== freshDescriptor.writable) return false;
+        return sameValue(Reflect.get(snapshot, key), Reflect.get(next, key), previousToFresh, freshToPrevious);
+    });
 };
 const sameValue = (a, b, previousToFresh, freshToPrevious)=>{
     if (isExotic(a) || isExotic(b)) return false;
@@ -49,7 +53,7 @@ const sameValue = (a, b, previousToFresh, freshToPrevious)=>{
     if (void 0 !== mapped) return mapped === b;
     if (void 0 !== freshToPrevious.get(b)) return false;
     if (Array.isArray(a) || Array.isArray(b)) {
-        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
         previousToFresh.set(a, b);
         freshToPrevious.set(b, a);
         return sameKeyedContent(a, b, previousToFresh, freshToPrevious);

@@ -1,7 +1,6 @@
 /**
  * The detached form of a selection's value — the form safe to hand a child, at any depth.
  *
- * @see detachDeep for what "detached" means at each level; this is only its entry point, with a
- * fresh cycle guard per call.
+ * @see detachDeep for the descriptor policy; this entry point supplies a fresh cycle guard.
  */
 export declare const detachSelection: (value: unknown) => unknown;

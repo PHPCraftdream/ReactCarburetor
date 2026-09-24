@@ -179,16 +179,15 @@ class TodoList extends AntiHookComponent<ITodoProps> {
 
 `select` reads the same tracked view `connect` hands out, so the owner subscribes to exactly
 the paths the selection touches. What the call returns is detached plain data: plain objects
-and arrays are shallow-copied, and the snapshot's identity changes only when the selected
-content changes — members compared with `Object.is`, one level deep, the same comparison a
-props gate applies. The gated child therefore re-renders exactly when the selected data
-changed and keeps its bail-out otherwise: a write to another row does not redraw it, while
-replacing a nested object or the whole store does.
+and arrays are copied recursively, including non-enumerable own data fields and symbol keys.
+Accessors are rejected without running their getters. The snapshot keeps its identity while
+the selected content and reference-sharing topology stay the same, so a gated child avoids
+unrelated redraws. Mutable exotic values remain a conservative always-changed boundary.
 
 The selector runs on every render — that is what keeps the owner's subscription fresh — while
-the snapshot object itself is reused until the content actually changes, so nothing is cloned
-per render beyond the one selection object. A selection that hands out a live view (the
-facade, or a branch of it) as the snapshot or inside it is reported once in development:
+the snapshot object itself is reused until the content actually changes. A selection that hands
+out a live view (the facade, or a branch of it) as the snapshot or inside it is reported once
+in development:
 select plain values — primitives, or plain objects and arrays built from them.
 
 ### Precise invalidation

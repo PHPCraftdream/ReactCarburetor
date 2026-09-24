@@ -33,7 +33,6 @@ __webpack_require__.d(__webpack_exports__, {
 const DiagnosticsInstance_js_namespaceObject = require("../../Store/Diagnostics/DiagnosticsInstance.js");
 const liveViews_js_namespaceObject = require("../../Store/Tracking/liveViews.js");
 const external_isPlainObject_js_namespaceObject = require("./isPlainObject.js");
-const external_ownEnumerableKeys_js_namespaceObject = require("./ownEnumerableKeys.js");
 const describeSegment = (segment)=>'symbol' == typeof segment ? '[' + segment.toString() + ']' : segment;
 const findLiveView = (value, visited, path)=>{
     if (liveViews_js_namespaceObject.liveViews.has(value)) return path;
@@ -41,9 +40,10 @@ const findLiveView = (value, visited, path)=>{
     if (!Array.isArray(value) && !(0, external_isPlainObject_js_namespaceObject.isPlainObject)(value)) return;
     if (visited.has(value)) return;
     visited.add(value);
-    const members = value;
-    for (const key of (0, external_ownEnumerableKeys_js_namespaceObject.ownEnumerableKeys)(value)){
-        const found = findLiveView(members[key], visited, [
+    for (const key of Reflect.ownKeys(value)){
+        const descriptor = Object.getOwnPropertyDescriptor(value, key);
+        if (void 0 === descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) continue;
+        const found = findLiveView(Reflect.get(value, key), visited, [
             ...path,
             key
         ]);

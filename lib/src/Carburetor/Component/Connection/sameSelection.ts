@@ -1,5 +1,4 @@
 import {isPlainObject} from "./isPlainObject";
-import {ownEnumerableKeys} from "./ownEnumerableKeys";
 
 /**
  * Whether the value is an object `detachSelection` passes through untouched — a Map, Set, Date,
@@ -11,9 +10,7 @@ const isExotic = (value: unknown): boolean =>
     typeof value === 'object' && value !== null && !Array.isArray(value) && !isPlainObject(value);
 
 /**
- * Own-enumerable-key equality shared by the array and plain-object branches of `sameValue`:
- * same key set (strings and symbols alike — `detachSelection`'s exact copied set, arrays
- * included) and every value recursively `sameValue`.
+ * Own-data-descriptor equality shared by arrays and plain objects, including hidden keys.
  */
 const sameKeyedContent = (
     snapshot: object,
@@ -21,24 +18,47 @@ const sameKeyedContent = (
     previousToFresh: WeakMap<object, object>,
     freshToPrevious: WeakMap<object, object>
 ): boolean => {
-    const previousKeys = ownEnumerableKeys(snapshot);
-    const freshKeys = ownEnumerableKeys(next);
+    const previousKeys = Reflect.ownKeys(snapshot);
+    const freshKeys = Reflect.ownKeys(next);
 
     if (previousKeys.length !== freshKeys.length) {
         return false;
     }
 
-    // Bindings narrowed ahead of the callback: a `.every` body runs outside the guards'
-    // narrowing reach.
-    const previousMembers = snapshot as Record<string | symbol, unknown>;
-    const freshMembers = next as Record<string | symbol, unknown>;
+    return previousKeys.every((key: string | symbol): boolean => {
+        const previousDescriptor = Object.getOwnPropertyDescriptor(snapshot, key);
+        const freshDescriptor = Object.getOwnPropertyDescriptor(next, key);
 
-    // Equal cardinality plus every previous key present on the fresh object leaves the two key
-    // sets no room to differ, so a key swapped for another one — `{a: undefined}` becoming
-    // `{b: undefined}`, say — is a content change even though the counts match.
-    return previousKeys.every((key: string | symbol): boolean =>
-        Object.prototype.hasOwnProperty.call(freshMembers, key) &&
-        sameValue(previousMembers[key], freshMembers[key], previousToFresh, freshToPrevious));
+        if (previousDescriptor === undefined || freshDescriptor === undefined) {
+            return false;
+        }
+
+        if (
+            !Object.prototype.hasOwnProperty.call(previousDescriptor, 'value') ||
+            !Object.prototype.hasOwnProperty.call(freshDescriptor, 'value')
+        ) {
+            throw new Error(
+                'sameSelection() cannot compare accessor property ' + String(key) +
+                ': select plain data fields instead.'
+            );
+        }
+
+        if (
+            previousDescriptor.enumerable !== freshDescriptor.enumerable ||
+            previousDescriptor.configurable !== freshDescriptor.configurable ||
+            previousDescriptor.writable !== freshDescriptor.writable
+        ) {
+            return false;
+        }
+
+        // Reads go through a live view's proxy to keep this render's dependency paths intact.
+        return sameValue(
+            Reflect.get(snapshot, key),
+            Reflect.get(next, key),
+            previousToFresh,
+            freshToPrevious
+        );
+    });
 };
 
 /**
@@ -49,9 +69,9 @@ const sameKeyedContent = (
  * container every call, and a fresh proxy for every nested live-view read — so a comparison
  * that stopped at `Object.is` on a nested plain object or array would report a change on every
  * call regardless of content, even when nothing the child can see actually changed. Recursing by
- * own enumerable key — the exact set `detachSelection` copies, arrays' custom properties and
- * true length included — is what makes "same content" and "same handed-out identity" agree at
- * every depth, not only the top one.
+ * own data descriptor — the exact set and flags `detachSelection` copies, arrays' holes,
+ * custom properties and true length included — is what makes "same content" and "same handed-out
+ * identity" agree at every depth, not only the top one.
  *
  * Content alone is not the whole contract (R5-01): the comparison also preserves the reference
  * sharing `detachSelection` deliberately keeps. The pair maps record how the two graphs are
@@ -106,7 +126,10 @@ const sameValue = (
     }
 
     if (Array.isArray(a) || Array.isArray(b)) {
-        if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+        if (
+            !Array.isArray(a) || !Array.isArray(b) ||
+            a.length !== b.length || Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)
+        ) {
             return false;
         }
 

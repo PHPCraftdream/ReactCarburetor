@@ -102,6 +102,7 @@ class ResourceCacheLifecycle extends Carburetor {
     };
     forgetKey = (key)=>{
         this.abortKey(key);
+        if (this.controllers.has(key)) return;
         this.failures.delete(key);
         this.lastUsed.delete(key);
         this.viewCache.delete(key);
@@ -222,7 +223,15 @@ class ResourceCacheLifecycle extends Carburetor {
     };
     isCurrent = (key, controller)=>this.controllers.get(key) === controller && !controller.signal.aborted;
     settleSuccess = (key, controller, data)=>{
-        if (!this.isCurrent(key, controller) || !this.data.entries[key]) return;
+        if (!this.isCurrent(key, controller)) return;
+        if (!this.data.entries[key]) {
+            this.controllers.delete(key);
+            this.requests.delete(key);
+            this.failures.delete(key);
+            this.lastUsed.delete(key);
+            this.viewCache.delete(key);
+            return;
+        }
         this.controllers.delete(key);
         this.requests.delete(key);
         this.failures.delete(key);
@@ -238,7 +247,15 @@ class ResourceCacheLifecycle extends Carburetor {
         this.evict();
     };
     settleFailure = (key, controller, error)=>{
-        if (!this.isCurrent(key, controller) || !this.data.entries[key]) return;
+        if (!this.isCurrent(key, controller)) return;
+        if (!this.data.entries[key]) {
+            this.controllers.delete(key);
+            this.requests.delete(key);
+            this.failures.delete(key);
+            this.lastUsed.delete(key);
+            this.viewCache.delete(key);
+            return;
+        }
         this.controllers.delete(key);
         this.requests.delete(key);
         this.failures.set(key, error);

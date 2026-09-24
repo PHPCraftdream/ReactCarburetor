@@ -178,6 +178,12 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     /** Remove the entry at a resolved cache key. */
     protected forgetKey = (key: string): void => {
         this.abortKey(key);
+
+        // An abort listener may have started a newer request for this key.
+        if (this.controllers.has(key)) {
+            return;
+        }
+
         this.failures.delete(key);
         this.lastUsed.delete(key);
         this.viewCache.delete(key);
@@ -434,7 +440,17 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
      * @param data - Loaded resource value.
      */
     protected settleSuccess = (key: string, controller: AbortController, data: T): void => {
-        if (!this.isCurrent(key, controller) || !this.data.entries[key]) {
+        if (!this.isCurrent(key, controller)) {
+            return;
+        }
+
+        if (!this.data.entries[key]) {
+            this.controllers.delete(key);
+            this.requests.delete(key);
+            this.failures.delete(key);
+            this.lastUsed.delete(key);
+            this.viewCache.delete(key);
+
             return;
         }
 
@@ -461,7 +477,17 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
      * @param error - Raw request failure.
      */
     protected settleFailure = (key: string, controller: AbortController, error: unknown): void => {
-        if (!this.isCurrent(key, controller) || !this.data.entries[key]) {
+        if (!this.isCurrent(key, controller)) {
+            return;
+        }
+
+        if (!this.data.entries[key]) {
+            this.controllers.delete(key);
+            this.requests.delete(key);
+            this.failures.delete(key);
+            this.lastUsed.delete(key);
+            this.viewCache.delete(key);
+
             return;
         }
 
