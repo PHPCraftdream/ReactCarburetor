@@ -1,5 +1,8 @@
 import {spawnSync} from "node:child_process";
-import {closeSync, existsSync, mkdirSync, openSync, readFileSync, unlinkSync, writeFileSync} from "node:fs";
+import {
+    closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync,
+    writeFileSync,
+} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {RECOMMENDED} from "#src/recommended.mts";
@@ -10,19 +13,19 @@ import type {INativeDiagnostic} from "#src/Utils/Native/INativeDiagnostic.mts";
 /**
  * Runs the native binary once per lint run and hands every rule its own slice of the result.
  *
- * "Once" is the whole point: an older 22-rule benchmark measured 270 ms in JavaScript against
- * 20 ms natively (see native/README.md). Losing
- * that gain to running the binary once per rule per file — 24 times over, once per file — would
- * spend the saving faster than it was made. So the first rule any host asks to run triggers one
- * process over the whole project; every rule after that, in every file, reads from the same result.
+ * "Once" matters for speed (20 ms native vs. 270 ms in JS per native/README.md), so the first rule
+ * any host asks to run triggers one process for the whole project; module-scope `cached` makes that
+ * free within one JS thread. ESLint's `--concurrency` mode is the exception — worker threads share
+ * `process.pid` but not module state — so the cross-thread half uses the filesystem: a lock file
+ * elects one runner, the rest poll for the result it writes. oxlint itself calls JS plugins from a
+ * single thread (verified against its bundle), so this dance is inert there; it exists for hosts
+ * that do run several threads in one process.
  *
- * Module-scope state does this for free within one process: the plugin module loads once and
- * `create()` runs once per rule per file, but the state above `create()` survives across all of
- * them. ESLint's `--concurrency` mode is the exception — several worker threads, each its own JS
- * engine with its own module state, sharing only `process.pid` — so the cross-thread half of this
- * uses the filesystem: the first worker to create a lock file becomes the runner and the rest wait
- * for the result file it writes, using `Atomics.wait` as a blocking sleep rather than a spin loop,
- * since a rule's visitor cannot be asynchronous.
+ * The result path is named after the lock file's own `dev`/`ino`, not just pid and cwd, so a
+ * leftover file from a dead process with a reused pid can never collide with this run's file.
+ * Writes are published via temp-name-then-`renameSync` so a reader never sees a half written file.
+ * Lock and result files live in their own temp subdirectory and are deleted at process exit, once
+ * no later-arriving thread could still need them.
  */
 
 /** Every rule id native knows, whatever this project's own config says about severity. */
@@ -34,25 +37,162 @@ const WAIT_TIMEOUT_MS = 30_000;
 /** How long each `Atomics.wait` sleeps before checking again for the result file. */
 const POLL_INTERVAL_MS = 20;
 
+/** All lock/result files live here, not loose in the temp root, so a scan of them stays cheap. */
+const BRIDGE_DIR = path.join(os.tmpdir(), 'carburetor-lint');
+
+/** This process's own start time; a lock older than this cannot belong to a thread of this run. */
+const PROCESS_START_MS = Date.now() - Math.round(process.uptime() * 1000);
+
+/** mtime granularity slack, so a lock created moments before this process is not misjudged foreign. */
+const STALE_LOCK_TOLERANCE_MS = 2_000;
+
+/** Bounds the claim retry loop against a lock that keeps vanishing mid-check. */
+const MAX_CLAIM_ATTEMPTS = 5;
+
 let cached: INativeDiagnostic[] | undefined;
+
+/** This run's own lock/result files, deleted together once nothing can read them anymore. */
+const pendingCleanup = new Set<string>();
+let cleanupRegistered = false;
 
 /** Sleeps synchronously; a rule's visitor has no `await` to reach for. */
 const sleepSync = (milliseconds: number): void => {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 };
 
-/** Where this run's lock and result live, namespaced by pid and cwd so two runs cannot collide. */
-const runPaths = (cwd: string): {lock: string; result: string} => {
+/** This run's lock path and cwd digest; the digest also scopes the leftover-file sweep. */
+const runPaths = (cwd: string): {lock: string; digest: string} => {
     const digest = Buffer.from(cwd).toString('base64url').slice(0, 24);
-    const base = path.join(os.tmpdir(), `carburetor-lint-${process.pid}-${digest}`);
 
-    return {lock: `${base}.lock`, result: `${base}.json`};
+    return {lock: path.join(BRIDGE_DIR, `${process.pid}-${digest}.lock`), digest};
 };
 
-/** Runs the binary over `cwd`, forcing every rule on so a project's own config cannot turn one
- * off from underneath native and lose diagnostics the host still wants reported. The host, not
- * native, decides what actually surfaces: a rule this call finds is only ever reported through the
- * rule of that same id, and the host never calls that rule's `create()` unless it is enabled. */
+/** The result path for a given lock instance: the lock's own filesystem identity, immune to a
+ * leftover lock from a dead process with a reused pid ever pointing at the same file. */
+const resultPathFor = (lock: string, identity: {dev: number; ino: number}): string =>
+    lock.replace(/\.lock$/, `.${identity.dev.toString(36)}${identity.ino.toString(36)}.json`);
+
+/** True if `pid` names a live process; `EPERM` still means it exists, just owned by someone else. */
+const isAlive = (pid: number): boolean => {
+    try {
+        process.kill(pid, 0);
+
+        return true;
+    } catch (error) {
+        return (error as {code?: string}).code === 'EPERM';
+    }
+};
+
+/** Deletes this cwd's leftover lock/result files from pids no longer running; never a live one's. */
+const sweepStaleFiles = (digest: string): void => {
+    let entries: string[];
+
+    try {
+        entries = readdirSync(BRIDGE_DIR);
+    } catch {
+        return;
+    }
+
+    const pattern = new RegExp(`^(\\d+)-${digest}(?:\\.[0-9a-z]+)?\\.(?:lock|json)$`);
+
+    for (const name of entries) {
+        const match = pattern.exec(name);
+        const pid = match === null ? undefined : Number(match[1]);
+
+        if (pid === undefined || pid === process.pid || isAlive(pid)) {
+            continue;
+        }
+
+        try {
+            unlinkSync(path.join(BRIDGE_DIR, name));
+        } catch {
+            // Another process's own sweep may have already cleared it; nothing to do either way.
+        }
+    }
+};
+
+/** Unlinks this run's own files once nothing running could still need them, at process exit. */
+const scheduleCleanup = (...paths: string[]): void => {
+    paths.forEach((file) => pendingCleanup.add(file));
+
+    if (cleanupRegistered) {
+        return;
+    }
+
+    cleanupRegistered = true;
+    process.once('exit', () => {
+        for (const file of pendingCleanup) {
+            try {
+                unlinkSync(file);
+            } catch {
+                // Never written, or already gone; nothing to do either way.
+            }
+        }
+    });
+};
+
+/** Writes `content` so a reader only ever sees it complete: a temp name, then one atomic rename. */
+const writeAtomic = (target: string, content: string): void => {
+    const tmp = `${target}.${process.pid}-${Math.random().toString(36).slice(2)}.tmp`;
+
+    writeFileSync(tmp, content);
+
+    try {
+        renameSync(tmp, target);
+    } catch (error) {
+        try {
+            unlinkSync(tmp);
+        } catch {
+            // Best-effort; the rename failure below is the one that matters.
+        }
+
+        throw error;
+    }
+};
+
+/** True if `lock` predates this process's own start, meaning it cannot belong to any thread of it. */
+const isForeignAndDead = (lock: string): boolean => {
+    try {
+        return statSync(lock).mtimeMs < PROCESS_START_MS - STALE_LOCK_TOLERANCE_MS;
+    } catch {
+        return false;
+    }
+};
+
+/** Elects this thread the runner by creating `lock`, reclaiming it first only if it predates this
+ * process (so it cannot be a live sibling thread's). Retries if the lock vanishes mid-check. */
+const claimLock = (lock: string): {isRunner: boolean; identity: {dev: number; ino: number}} => {
+    for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt++) {
+        try {
+            closeSync(openSync(lock, 'wx'));
+
+            return {isRunner: true, identity: statSync(lock)};
+        } catch {
+            // Someone else holds it, or it just vanished; both are sorted out below.
+        }
+
+        if (isForeignAndDead(lock)) {
+            try {
+                unlinkSync(lock);
+            } catch {
+                // A sibling thread may already be reclaiming it; the retry above settles it either way.
+            }
+
+            continue;
+        }
+
+        try {
+            return {isRunner: false, identity: statSync(lock)};
+        } catch {
+            // The lock vanished between our failed create and this stat; retry from the top.
+        }
+    }
+
+    throw new Error('react-carburetor/lint: could not claim or read the native bridge lock.');
+};
+
+/** Runs the binary over `cwd` with every rule forced on, so the host — not native — decides what
+ * a rule's own `create()` actually surfaces. */
 const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinary): INativeDiagnostic[] => {
     const binary = resolve();
 
@@ -86,48 +226,38 @@ const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinar
 /** Runs the native binary once for this process, sharing the result across worker threads.
  * The resolver is injectable so a test can stage an install with no binary.
  *
- * @param cwd - the project the binary lints; its digest also names this run's lock and result
- * files in the temp directory
- * @param resolve - consulted only by the worker that wins the lock; waiters read the written
- * result file and never resolve
+ * @param cwd - the project the binary lints; its digest also names this run's lock file
+ * @param resolve - consulted only by the worker that wins the lock; waiters never resolve
  */
 export const runNativeOnce = (cwd: string, resolve: () => string | undefined = resolveBinary): INativeDiagnostic[] => {
     if (cached) {
         return cached;
     }
 
-    const {lock, result} = runPaths(cwd);
+    const {lock, digest} = runPaths(cwd);
 
-    mkdirSync(path.dirname(lock), {recursive: true});
+    mkdirSync(BRIDGE_DIR, {recursive: true});
 
-    let isRunner = false;
+    const {isRunner, identity} = claimLock(lock);
+    const result = resultPathFor(lock, identity);
 
-    try {
-        closeSync(openSync(lock, 'wx'));
-        isRunner = true;
-    } catch {
-        isRunner = false;
-    }
+    scheduleCleanup(lock, result);
 
     if (isRunner) {
+        sweepStaleFiles(digest);
+
         try {
             cached = runBinary(cwd, resolve);
-            writeFileSync(result, JSON.stringify(cached));
+            writeAtomic(result, JSON.stringify(cached));
 
             return cached;
         } catch (error) {
             // The waiters would otherwise spend their whole timeout waiting for a result that
             // will never come and then report nothing; hand them this failure so every worker
             // fails the same loud way the runner did.
-            writeFileSync(result, JSON.stringify({error: error instanceof Error ? error.message : String(error)}));
+            writeAtomic(result, JSON.stringify({error: error instanceof Error ? error.message : String(error)}));
 
             throw error;
-        } finally {
-            try {
-                unlinkSync(lock);
-            } catch {
-                // Another process may have already cleared it; nothing to do either way.
-            }
         }
     }
 
