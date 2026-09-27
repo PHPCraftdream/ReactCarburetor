@@ -378,7 +378,9 @@ describe('the bridge, through the real host', () => {
         } finally {
             rmSync(isolatedTemp, {recursive: true, force: true});
         }
-    });
+    // A real oxlint process: ~0.2 s alone, but over 5 s under a full parallel suite; the
+    // spawnSync tests beside it never meet a timeout, this async one would at the default 5 s.
+    }, 30_000);
 
     test('every rule reports through the real host at the right place', () => {
         const {output} = runOxlint(path.join('plugin', '__fixtures__', 'oxlintrc.json'), CORPUS);
