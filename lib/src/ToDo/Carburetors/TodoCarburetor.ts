@@ -1,8 +1,7 @@
-import {Carburetor, getUid} from "@/Carburetor";
+import {Carburetor, deepClone, EResourceStatus, getUid, ResourceCarburetor} from "@/Carburetor";
 import {ITodo, IToDoClientAPI, ITodoList} from "@/ToDo/API/Models";
 import {getDefaultTodos} from "@/ToDo/API/getDefaultTodos";
 import {TDeleteTodo, TUpdateTodo} from "./Models";
-import {someCarburetor} from "./SomeCarburetorInstance";
 
 export class TodoCarburetor extends Carburetor<ITodoList> {
     /**
@@ -19,6 +18,14 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
      * the full pass.
      */
     private derivationKeptInline: boolean = false;
+
+    /**
+     * The request behind the list: its own store with a status, so a component shows loading,
+     * failure and cancel without the list itself knowing about requests.
+     */
+    public readonly list = new ResourceCarburetor<ITodoList, undefined>(
+        (_args: undefined, signal: AbortSignal) => this.api.getTodoList(signal)
+    );
 
     /**
      * Takes the API the list is loaded and saved through, plus the state to start from.
@@ -57,9 +64,17 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
         });
     };
 
-    /** Replaces the whole list with what the API returns. */
-    public loadData = () => {
-        void this.api.getTodoList().then(this.setData);
+    /**
+     * Replaces the whole list with what the API returns. A failed or cancelled request leaves
+     * the list as it was; its status stays on `list` for the interface to show.
+     */
+    public loadData = (): Promise<void> => {
+        return this.list.load(undefined).then(this.applyLoadedList, this.ignoreSuperseded);
+    };
+
+    /** Cancels a load in flight; the list keeps what it had. */
+    public abortLoad = (): void => {
+        this.list.abort();
     };
 
     /** Adds an empty item at the top of the order. */
@@ -103,13 +118,46 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
         }
     };
 
+    /** Marks every todo done in one update; preEmit recounts and re-sorts once. */
+    public completeAll = (): void => {
+        const {items} = this.data;
+        const open = Object.keys(items).filter((id: string) => !items[id].done);
+
+        if (open.length === 0) {
+            return;
+        }
+
+        this.update((draft: ITodoList) => {
+            open.forEach((id: string) => {
+                draft.items[id].done = true;
+            });
+        });
+    };
+
+    /** Removes every done todo in one update. */
+    public clearCompleted = (): void => {
+        const {items, orderIds} = this.data;
+        const done = new Set(Object.keys(items).filter((id: string) => items[id].done));
+
+        if (done.size === 0) {
+            return;
+        }
+
+        this.update((draft: ITodoList) => {
+            done.forEach((id: string) => {
+                delete draft.items[id];
+            });
+            draft.orderIds = orderIds.filter((id: string) => !done.has(id));
+        });
+    };
+
     /**
      * Recomputes the derived fields before an update goes out, so they never lag the items.
      *
      * A single-item action has kept them current inline and asks for that to be trusted;
      * every other path — initial data replacement, a restore, anything unrecognized — takes
      * the whole-list pass, so hydration never publishes stale counters. An emit that recorded
-     * no path changed nothing, so it neither derives nor moves the timestamp.
+     * no path changed nothing, so it does not derive.
      */
     protected preEmit = () => {
         const keptInline: boolean = this.derivationKeptInline;
@@ -126,9 +174,19 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
             this.countStats();
             this.sortItems();
         }
-
-        someCarburetor.setEmittedMessage((new Date()).toISOString());
     };
+
+    /** Takes the resource's answer, copied: the list mutates its data, the resource must not see it. */
+    protected applyLoadedList = (): void => {
+        const {status, data} = this.list.getData();
+
+        if (status === EResourceStatus.Success && data) {
+            this.setData(deepClone(data));
+        }
+    };
+
+    /** A load replaced by a newer one before it started rejects; the newer one carries on. */
+    protected ignoreSuperseded = (): void => undefined;
 
     /** Writes the done/active counters, which components read instead of counting again. */
     protected countStats = () => {

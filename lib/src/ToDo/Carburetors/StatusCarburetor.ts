@@ -1,7 +1,7 @@
 import {Carburetor} from "@/Carburetor";
-import {ISomeCarburetor} from "./Models";
+import {IStatusData} from "./Models";
 
-export class SomeCarburetor extends Carburetor<ISomeCarburetor> {
+export class StatusCarburetor extends Carburetor<IStatusData> {
     /** Render counter is demo instrumentation, not state — it does not belong in data. */
     protected renderCount: number = 0;
 
@@ -13,8 +13,8 @@ export class SomeCarburetor extends Carburetor<ISomeCarburetor> {
     };
 
     /** Records when the last update went out, which the demo displays. */
-    public setEmittedMessage = (emittedMessage: string): ISomeCarburetor => {
-        this.update((draft: ISomeCarburetor) => {
+    public setEmittedMessage = (emittedMessage: string): IStatusData => {
+        this.update((draft: IStatusData) => {
             draft.emittedMessage = emittedMessage;
         });
 
