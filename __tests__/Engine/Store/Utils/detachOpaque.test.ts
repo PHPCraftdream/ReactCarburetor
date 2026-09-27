@@ -8,6 +8,45 @@ class Instance {
     }
 }
 
+class TaggedMap extends Map<string, number> {
+    #tag: string;
+
+    public constructor(tag: string, entries: [string, number][]) {
+        super(entries);
+        this.#tag = tag;
+    }
+
+    public tag(): string {
+        return this.#tag;
+    }
+}
+
+class TaggedSet extends Set<string> {
+    #tag: string;
+
+    public constructor(tag: string, members: string[]) {
+        super(members);
+        this.#tag = tag;
+    }
+
+    public tag(): string {
+        return this.#tag;
+    }
+}
+
+class TaggedDate extends Date {
+    #tag: string;
+
+    public constructor(tag: string, time: number) {
+        super(time);
+        this.#tag = tag;
+    }
+
+    public tag(): string {
+        return this.#tag;
+    }
+}
+
 describe('detachOpaque', () => {
     test('primitives and functions pass through unchanged', () => {
         const fn = (): void => undefined;
@@ -131,6 +170,49 @@ describe('detachOpaque', () => {
         expect(copyDescriptor?.configurable).toEqual(true);
         expect(reported).toEqual([box]);
         expect(sourceDescriptor?.value).toBe(box);
+    });
+
+    test('a Map/Set/Date subclass passes through live and is reported, not rebuilt as the base class (R12-02)', () => {
+        const taggedMap = new TaggedMap('m', [['a', 1]]);
+        const taggedSet = new TaggedSet('s', ['x']);
+        const taggedDate = new TaggedDate('d', 1000);
+        const reported: object[] = [];
+
+        const source = {taggedMap, taggedSet, taggedDate};
+        const copy = detachOpaque(source, (instance: object) => reported.push(instance));
+
+        expect(copy.taggedMap).toBe(taggedMap);
+        expect(copy.taggedSet).toBe(taggedSet);
+        expect(copy.taggedDate).toBe(taggedDate);
+        expect((copy.taggedMap as TaggedMap).tag()).toEqual('m');
+        expect((copy.taggedSet as TaggedSet).tag()).toEqual('s');
+        expect((copy.taggedDate as TaggedDate).tag()).toEqual('d');
+        expect(reported).toEqual([taggedMap, taggedSet, taggedDate]);
+    });
+
+    test('a nested Map subclass member is also passed through live, not silently downgraded (R12-02)', () => {
+        const taggedMap = new TaggedMap('inner', [['a', 1]]);
+        const reported: object[] = [];
+
+        const copy = detachOpaque({list: [{taggedMap}]}, (instance: object) => reported.push(instance));
+
+        expect(copy.list[0].taggedMap).toBe(taggedMap);
+        expect(reported).toEqual([taggedMap]);
+    });
+
+    test('plain Map, Set and Date are still copied and detached (control for R12-02)', () => {
+        const map = new Map([['a', 1]]);
+        const set = new Set(['x']);
+        const date = new Date(1000);
+
+        const copy = detachOpaque({map, set, date});
+
+        expect(copy.map).not.toBe(map);
+        expect(copy.map.get('a')).toEqual(1);
+        expect(copy.set).not.toBe(set);
+        expect(copy.set.has('x')).toEqual(true);
+        expect(copy.date).not.toBe(date);
+        expect(copy.date.getTime()).toEqual(1000);
     });
 
     test('accessor descriptors are rejected without invoking their getter', () => {

@@ -10,8 +10,8 @@ const detach = (value, seen, onLiveInstance)=>{
     if (null === value || 'object' != typeof value) return value;
     const known = seen.get(value);
     if (void 0 !== known) return known;
-    if (value instanceof Date) return new Date(value.getTime());
-    if (value instanceof Map) {
+    if (value instanceof Date && Object.getPrototypeOf(value) === Date.prototype) return new Date(value.getTime());
+    if (value instanceof Map && Object.getPrototypeOf(value) === Map.prototype) {
         const copy = new Map();
         seen.set(value, copy);
         value.forEach((member, key)=>{
@@ -19,7 +19,7 @@ const detach = (value, seen, onLiveInstance)=>{
         });
         return copy;
     }
-    if (value instanceof Set) {
+    if (value instanceof Set && Object.getPrototypeOf(value) === Set.prototype) {
         const copy = new Set();
         seen.set(value, copy);
         value.forEach((member)=>{

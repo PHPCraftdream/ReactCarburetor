@@ -54,11 +54,12 @@ const detach = (
         return known;
     }
 
-    if (value instanceof Date) {
+    // Exact prototype: a subclass falls through to the class-instance guard, not a lossy rebuild.
+    if (value instanceof Date && Object.getPrototypeOf(value) === Date.prototype) {
         return new Date(value.getTime());
     }
 
-    if (value instanceof Map) {
+    if (value instanceof Map && Object.getPrototypeOf(value) === Map.prototype) {
         const copy = new Map<unknown, unknown>();
 
         seen.set(value, copy);
@@ -70,7 +71,7 @@ const detach = (
         return copy;
     }
 
-    if (value instanceof Set) {
+    if (value instanceof Set && Object.getPrototypeOf(value) === Set.prototype) {
         const copy = new Set<unknown>();
 
         seen.set(value, copy);
@@ -145,10 +146,10 @@ const detach = (
  * snapshot/restore round trip carries opaque values by reference, while a React snapshot handed to
  * `useSyncExternalStore` must stay immutable under in-place mutation.
  *
- * A class instance — anything else with a prototype of its own — has no generic safe copy and
- * passes through live, at the root and nested alike; `onLiveInstance` lets the caller hear about
- * each one. A detached Map key is a new object, so a lookup into the copy with the original key
- * object misses: read through the copy's own keys.
+ * A class instance — anything else with a prototype of its own, including a Map/Set/Date
+ * subclass — has no generic safe copy and passes through live, at the root and nested alike;
+ * `onLiveInstance` lets the caller hear about each one. A detached Map key is a new object, so a
+ * lookup into the copy with the original key object misses: read through the copy's own keys.
  *
  * @param value - the value to detach
  * @param onLiveInstance - optional report fired for each live class instance the copy has to hand
