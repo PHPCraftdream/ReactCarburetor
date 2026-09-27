@@ -44,6 +44,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     protected abstract keyOf: (args: TArgs) => string;
 
     /** Configure request lifecycle and cache capacity.
+     *
      * @param loader - Function that loads a resource.
      * @param options - Cache and scheduler settings.
      */
@@ -207,6 +208,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     };
 
     /** Check whether a cached view still reflects its entry.
+     *
      * @param view - Previously published view.
      * @param entry - Current stored entry.
      * @param stale - Current freshness verdict.
@@ -348,6 +350,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     };
 
     /** Start or reuse a request for an entry.
+     *
      * @param key - Resolved cache key.
      * @param args - Loader arguments.
      * @param deferNotification - Whether to defer the update notification.
@@ -401,6 +404,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     };
 
     /** Publish the loading state of an entry.
+     *
      * @param key - Resolved cache key.
      * @param deferNotification - Whether to defer the update notification.
      */
@@ -427,6 +431,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     };
 
     /** Check that a request still owns the entry.
+     *
      * @param key - Resolved cache key.
      * @param controller - Controller belonging to the request.
      */
@@ -435,6 +440,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     };
 
     /** Store the value returned by a current request.
+     *
      * @param key - Resolved cache key.
      * @param controller - Controller belonging to the request.
      * @param data - Loaded resource value.
@@ -472,6 +478,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     };
 
     /** Store the failure returned by a current request.
+     *
      * @param key - Resolved cache key.
      * @param controller - Controller belonging to the request.
      * @param error - Raw request failure.

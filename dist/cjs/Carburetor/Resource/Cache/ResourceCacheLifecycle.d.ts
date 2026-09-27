@@ -24,6 +24,7 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
     /** Resolve arguments to an entry key. */
     protected abstract keyOf: (args: TArgs) => string;
     /** Configure request lifecycle and cache capacity.
+     *
      * @param loader - Function that loads a resource.
      * @param options - Cache and scheduler settings.
      */
@@ -53,6 +54,7 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
     /** Report whether the entry needs a fresh request. */
     protected isStale: (entry: IResourceEntry<T>) => boolean;
     /** Check whether a cached view still reflects its entry.
+     *
      * @param view - Previously published view.
      * @param entry - Current stored entry.
      * @param stale - Current freshness verdict.
@@ -67,28 +69,33 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
     /** Return a ready value or throw its pending request or failure. */
     suspend: (args: TArgs) => T;
     /** Start or reuse a request for an entry.
+     *
      * @param key - Resolved cache key.
      * @param args - Loader arguments.
      * @param deferNotification - Whether to defer the update notification.
      */
     protected fetch: (key: string, args: TArgs, deferNotification?: boolean) => Promise<void>;
     /** Publish the loading state of an entry.
+     *
      * @param key - Resolved cache key.
      * @param deferNotification - Whether to defer the update notification.
      */
     protected markLoading: (key: string, deferNotification: boolean) => void;
     /** Check that a request still owns the entry.
+     *
      * @param key - Resolved cache key.
      * @param controller - Controller belonging to the request.
      */
     protected isCurrent: (key: string, controller: AbortController) => boolean;
     /** Store the value returned by a current request.
+     *
      * @param key - Resolved cache key.
      * @param controller - Controller belonging to the request.
      * @param data - Loaded resource value.
      */
     protected settleSuccess: (key: string, controller: AbortController, data: T) => void;
     /** Store the failure returned by a current request.
+     *
      * @param key - Resolved cache key.
      * @param controller - Controller belonging to the request.
      * @param error - Raw request failure.

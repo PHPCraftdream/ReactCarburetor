@@ -81,6 +81,7 @@ The internal rules, and the two decisions inside them that are not obvious:
 | `max-line-length` | 120 columns, a tab counting to its tab stop |
 | `require-tsdoc` | a `/** */` block on every function, method, function-valued property and exported `const` function |
 | `no-blank-line-after-tsdoc` | nothing between the closing `*/` and the declaration; `--fix` removes it |
+| `tsdoc-blank-line-before-tags` | exactly one blank ` *` line between a doc's description and its first block tag (`@param`, `@returns`…); `--fix` inserts or collapses to one |
 
 `max-line-length` **ignores string literals by default**, unlike `eslint/max-len`. The demo's long
 lines are all `className` attributes holding Tailwind class lists and one SVG path; wrapping them

@@ -23,6 +23,7 @@ export declare class ResourceCache<T, TArgs = void> extends ResourceCacheLifecyc
     /** Whether the mutable-arguments diagnostic was already reported. */
     protected keyMutationReported: boolean;
     /** Create a keyed cache for a resource loader.
+     *
      * @param loader - Function that loads a resource.
      * @param options - Cache and scheduler settings.
      */

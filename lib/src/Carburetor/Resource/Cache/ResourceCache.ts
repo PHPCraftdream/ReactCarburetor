@@ -35,6 +35,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
     protected keyMutationReported: boolean = false;
 
     /** Create a keyed cache for a resource loader.
+     *
      * @param loader - Function that loads a resource.
      * @param options - Cache and scheduler settings.
      */
