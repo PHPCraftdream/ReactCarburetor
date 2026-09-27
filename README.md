@@ -214,7 +214,9 @@ class TodoList extends AntiHookComponent<ITodoProps> {
 `select` reads the same tracked view `connect` hands out, so the owner subscribes to exactly
 the paths the selection touches. What the call returns is detached plain data: plain objects
 and arrays are copied recursively, including non-enumerable own data fields and symbol keys.
-Accessors are rejected without running their getters. The snapshot keeps its identity while
+Accessors are rejected without running their getters, and so is an `Array` subclass, whose copy
+would carry its prototype but not its private state — select `Array.from(value)` or the fields
+the child needs instead. The snapshot keeps its identity while
 the selected content and reference-sharing topology stay the same, so a gated child avoids
 unrelated redraws. Mutable exotic values remain a conservative always-changed boundary.
 
@@ -574,7 +576,8 @@ Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe. Pass an equ
 function as the third argument when the selector builds a new object.
 Selected plain objects, arrays, `Map`, `Set` and `Date` values are detached for a stable
 React snapshot. A class instance cannot be copied safely, so selecting one directly or
-inside another value throws an actionable error; select the fields you render instead.
+inside another value throws an actionable error; select the fields you render instead. A
+`Map`, `Set` or `Date` subclass counts as a class instance here, not as the built-in.
 Own data fields are preserved even when non-enumerable; accessor fields are rejected
 because their getters cannot provide a detached snapshot without running user code.
 

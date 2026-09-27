@@ -190,6 +190,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `require-module-function`'s autofix, extracting a `#name` method, also rewrote `this.name`
+  calls to a same-named public member, silently redirecting them to the extracted function. The
+  reference scan and the overload check now match only the target's own `this.#name` form.
+- `connectSelection()` copied an `Array` subclass by swapping the prototype onto a plain array,
+  yielding an `instanceof` impostor whose methods threw on their private fields. It now rejects
+  the subclass with an actionable error.
+- `useCarburetorValue()` rebuilt `Map`, `Set` and `Date` subclasses as the base built-in, dropping
+  their prototype and private fields without reporting it. A subclass now reaches the same
+  actionable class-instance error as any other class instance.
+- The lint plugin's native bridge left one result file per lint run in the temp directory and
+  never removed it; with a reused process id a waiting worker could read an earlier run's
+  diagnostics, or a result still being written. Bridge files now live in a `carburetor-lint`
+  temp subdirectory, are named after the lock's own file identity, are published by atomic
+  rename and are deleted at process exit; files of dead processes are swept.
 - `require-bind-for-passed-method` reported `this.method.bind(this)` as an unbound reference,
   because it treated `this.method` as passed by value everywhere except a call's own callee or an
   assignment's own target — missing that `this.method` sitting as the object of `.bind`'s property
