@@ -126,6 +126,10 @@ const sameValue = (
     }
 
     if (Array.isArray(a) || Array.isArray(b)) {
+        // `a` (already handed out) can never be an Array subclass — detachSelection() rejects one
+        // before a snapshot holding it is ever built (R12-01) — so a fresh `b` that is one always
+        // fails this prototype check and falls through to that same rejection instead of being
+        // reported "same" or silently forged here.
         if (
             !Array.isArray(a) || !Array.isArray(b) ||
             a.length !== b.length || Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)

@@ -1,4 +1,15 @@
 import {isPlainObject} from "./isPlainObject";
+
+/**
+ * The constructor name for an Array-subclass rejection message, or a fallback for an anonymous
+ * class expression.
+ */
+const arraySubclassName = (value: object): string => {
+    const ctor: unknown = (Object.getPrototypeOf(value) as {constructor?: unknown} | null)?.constructor;
+
+    return typeof ctor === 'function' && ctor.name ? ctor.name : 'an anonymous class';
+};
+
 /**
  * Copies one own data descriptor without invoking an accessor.
  *
@@ -35,6 +46,12 @@ const detachedDescriptor = (
  * rebuilt as fresh containers, at any depth, with all own string and symbol data descriptors.
  * Accessors are rejected without invoking their getters.
  *
+ * An Array subclass is an explicit boundary, at any depth: `Object.setPrototypeOf` alone would
+ * forge an `instanceof Subclass` copy whose constructor never ran and whose native private
+ * fields were never installed (R12-01), so it is rejected instead of copied. Only an array whose
+ * own prototype is exactly `Array.prototype` or `null` — the same plain/null-prototype pair
+ * `isPlainObject` allows for objects — is copied.
+ *
  * A live connect()/connectSelection() branch reached along the way answers the same shape
  * questions as a plain container (its facade mimics `Object.prototype`/array-ness exactly, see
  * `buildPersistentView`), so it is walked the same way as one — reading each of its keys through
@@ -63,6 +80,21 @@ const detachDeep = (value: unknown, seen: WeakMap<object, unknown>): unknown => 
 
     const isArray = Array.isArray(value);
 
+    if (isArray) {
+        const arrayPrototype: object | null = Object.getPrototypeOf(value);
+
+        if (arrayPrototype !== Array.prototype && arrayPrototype !== null) {
+            const name = arraySubclassName(value);
+
+            throw new Error(
+                'detachSelection() cannot snapshot an Array subclass (' + name + '): copying it would forge ' +
+                'an "instanceof ' + name + '" object whose constructor never ran and whose private fields ' +
+                'were never installed. Select a plain array (for example Array.from(value)) or project the ' +
+                'fields the child needs instead.'
+            );
+        }
+    }
+
     if (!isArray && !isPlainObject(value)) {
         // Exotic objects (Map, Date, class instances) would lose their prototype to a copy, so
         // they — and whatever they hold — pass through untouched, exactly as before. Their
@@ -71,7 +103,8 @@ const detachDeep = (value: unknown, seen: WeakMap<object, unknown>): unknown => 
         return value;
     }
 
-    // Preserve null-prototype dictionaries and custom array prototypes.
+    // Preserve null-prototype dictionaries and null-prototype arrays; a non-null array prototype
+    // here is already proven to be exactly Array.prototype.
     const target: Record<string | symbol, unknown> | unknown[] = isArray
         ? Object.setPrototypeOf([], Object.getPrototypeOf(value)) as unknown[]
         : Object.create(Object.getPrototypeOf(value));
