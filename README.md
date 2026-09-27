@@ -753,7 +753,10 @@ the exported surface so one does not slip in by accident.
 
 The `lib/` folder contains a Todo app built on the library (React 19, Rsbuild, Tailwind).
 Each row shows its own render counter, so you can watch precise invalidation at work: edit
-one todo and only that row's counter moves.
+one todo and only that row's counter moves. It uses the library's features where an app would
+need them — scoped stores, async resources and a cache, computeds, selections, transactions,
+undo/redo, persistence, throttling and the hooks interop; [lib/README.md](lib/README.md) maps
+each feature to the file that uses it.
 
 ```bash
 cd lib

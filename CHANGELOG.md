@@ -75,8 +75,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   binary and the (now retired) reference behaviour over one shared fixture corpus and requires
   identical output, file by file, line by line, rule by rule.
 - House style rules in the unpublished plugin, on for the whole repository: `max-line-length`
-  (120 columns, a tab counted to its tab stop), `require-tsdoc` and `no-blank-line-after-tsdoc`,
-  which fixes itself under `oxlint --fix`. `max-line-length` ignores string literals by default,
+  (120 columns, a tab counted to its tab stop), `require-tsdoc`, `no-blank-line-after-tsdoc` and
+  `tsdoc-blank-line-before-tags` (exactly one blank line between a description and its first
+  block tag), the last two fixing themselves under `oxlint --fix`. `max-line-length` ignores string literals by default,
   because the demo's long lines are Tailwind class lists that are worse wrapped, and
   `require-tsdoc` measures only the summary paragraph, so the rationale below it stays free to be
   as long as it needs to be. Every function, method and function-valued property in the library,
@@ -141,6 +142,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- The demo app uses the library's whole feature set where an app would need it: stores resolved
+  from a `CarburetorScope`, the list loaded through a `ResourceCarburetor` with cancel and reload,
+  per-todo details in a `ResourceCache`, a filter with computed visible ids, a
+  `connectSelection()` stats child behind the props gate, bulk actions in a `transaction`,
+  undo/redo, a persisted filter, a throttled status store and a hooks-interop badge.
+- The internal lint rules' `RuleTester` suites run from one test file: each `RuleTester` process
+  reserves a ~6 GB buffer, and one worker per rule file intermittently failed that allocation.
 - `carburetorToken(create, name)`: a token's `id` is a caller-chosen name instead of a number
   from the process-local counter shared with stores and components. `CarburetorScope.dehydrate()`
   keys its payload by it and `hydrate()` matches on it across the server/client boundary, which a
