@@ -95,6 +95,8 @@ impl<'a> Extracted<'a> {
 struct OverloadScan<'a> {
     class_span: Span,
     name: &'a str,
+    /// A public `name(...)` signature does not belong to a `#name` target, and vice versa.
+    private: bool,
     has_signature: bool,
 }
 
@@ -108,17 +110,26 @@ impl<'a> Visit<'a> for OverloadScan<'a> {
             let ClassElement::MethodDefinition(method) = element else {
                 return false;
             };
+            let is_private = matches!(method.key, PropertyKey::PrivateIdentifier(_));
+
             method.kind == MethodDefinitionKind::Method
                 && method.value.body.is_none()
+                && is_private == self.private
                 && member_name(&method.key) == Some(self.name)
         });
     }
 }
 
-pub(super) fn has_overload_signature(program: &Program<'_>, class_span: Span, name: &str) -> bool {
+pub(super) fn has_overload_signature(
+    program: &Program<'_>,
+    class_span: Span,
+    name: &str,
+    private: bool,
+) -> bool {
     let mut scan = OverloadScan {
         class_span,
         name,
+        private,
         has_signature: false,
     };
     scan.visit_program(program);
@@ -234,7 +245,7 @@ pub(super) fn member_fix(
     }
 
     if let Extracted::Method(_) = extracted {
-        if has_overload_signature(program, class_span, name) {
+        if has_overload_signature(program, class_span, name, truly_private) {
             return None;
         }
     }
@@ -247,9 +258,9 @@ pub(super) fn member_fix(
         }
     }
 
-    // Every reference to the member in this file must have the `this.<name>` form the rewrite
-    // knows how to replace.
-    let references = scan_references(program, name, class_span);
+    // Every reference to the member in this file must have the `this.<name>` / `this.#<name>`
+    // form the rewrite knows how to replace.
+    let references = scan_references(program, name, truly_private, class_span);
 
     if references.blocked {
         return None;
@@ -257,7 +268,8 @@ pub(super) fn member_fix(
 
     // The free function the member becomes must not collide: a like-named module binding makes
     // the declaration illegal, and a like-named binding visible at a rewritten call site would
-    // capture the call.
+    // capture the call. Class members are not bindings, so a same-named public member cannot
+    // collide.
     let scoping = semantic.scoping();
 
     if module_binding(scoping, name) {

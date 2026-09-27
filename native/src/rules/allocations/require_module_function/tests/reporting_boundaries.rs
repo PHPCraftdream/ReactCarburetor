@@ -151,6 +151,112 @@ class Widget extends AntiHookComponent {
 }
 
 #[test]
+fn a_same_named_public_method_keeps_its_this_reference_when_the_private_one_is_extracted() {
+    // The bug: `this.format(1)` (the public method, which reads `this.props.prefix`) must not
+    // be rewritten just because a private `#format` sharing the bare name `format` is extracted.
+    let source = r#"
+class Row extends AntiHookComponent {
+    format(value: number): string {
+        return this.props.prefix + value;
+    }
+
+    #format(value: number): string {
+        return String(value);
+    }
+
+    render() {
+        return this.format(1) + this.#format(2);
+    }
+}
+"#;
+
+    assert_eq!(
+        fixed(source),
+        r#"
+function format(value: number): string {
+        return String(value);
+    }
+
+class Row extends AntiHookComponent {
+    format(value: number): string {
+        return this.props.prefix + value;
+    }
+
+    render() {
+        return this.format(1) + format(2);
+    }
+}
+"#
+    );
+}
+
+#[test]
+fn a_lone_private_method_of_the_same_shape_still_gets_fixed() {
+    // Control for the test above: with no public `format` in the class, the same extraction
+    // and rewrite happen exactly as before.
+    let source = r#"
+class Row extends AntiHookComponent {
+    #format(value: number): string {
+        return String(value);
+    }
+
+    render() {
+        return this.#format(2);
+    }
+}
+"#;
+
+    assert_eq!(
+        fixed(source),
+        r#"
+function format(value: number): string {
+        return String(value);
+    }
+
+class Row extends AntiHookComponent {
+    render() {
+        return format(2);
+    }
+}
+"#
+    );
+}
+
+#[test]
+fn a_public_overload_signature_of_the_same_name_does_not_block_the_private_fix() {
+    // Step-2 audit finding: `has_overload_signature` used to key on the bare name alone, so a
+    // public `format` overload signature would block the unrelated private `#format`'s fix.
+    let source = r#"
+class Row extends AntiHookComponent {
+    format(value: number): string;
+    format(value: number): string {
+        return this.props.prefix + value;
+    }
+
+    #format(): string {
+        return "unrelated";
+    }
+}
+"#;
+
+    assert_eq!(
+        fixed(source),
+        r#"
+function format(): string {
+        return "unrelated";
+    }
+
+class Row extends AntiHookComponent {
+    format(value: number): string;
+    format(value: number): string {
+        return this.props.prefix + value;
+    }
+}
+"#
+    );
+}
+
+#[test]
 fn an_arrow_field_becomes_a_module_level_const() {
     let source = r#"
 class Widget extends AntiHookComponent {
