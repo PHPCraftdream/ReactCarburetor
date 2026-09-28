@@ -300,21 +300,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A four-node computed chain re-subscribed every edge on every recompute — ten body calls per
   source write. Unchanged edges are kept now, and each node evaluates once.
 - The proxy cache kept every branch wrapper forever, pinning deleted and replaced data objects; an
-  obsolete entry is now released when a write covers its path.
+  obsolete entry is now collectable on its own, the moment nothing outside the cache still
+  references the raw object it was minted for.
 - A title-only todo edit ran the full count and sort derivation; the work now stays proportional
   to the action.
 - `connect()` and `connectSelection()` resolved their source on every field access; the resolver
   now runs at most once per render attempt, shared with the baseline version capture.
 - The DevTools connector re-cloned every connected store on every notification; snapshots of
   stores whose version did not change are now reused.
-- Views release replaced or deleted branches on every kind of read now: primitive leaf reads,
-  `in` checks and key enumeration sweep the proxy cache like branch fetches do, so a view left
-  reading only a count or an emptied dictionary no longer pins the removed subtree for its
-  lifetime.
-- The proxy cache's invalidation ledger is bounded: a published write record is retired once no
-  live cache needs it — every cache sharing the raw object's scope has swept through it, or none
-  of the laggards holds an entry it would evict — so the metadata tracks live caches and pending
-  writes instead of lifetime write churn, and a sweep stops rescanning retired history.
 - A computed's first real change could be silently absorbed by another subscriber reading it
   mid-wave, between invalidation and settlement. Publication is now judged against the last value
   actually delivered, kept independently of the evaluation cache a mid-wave read can refresh.
@@ -379,18 +372,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   raw, unwrapped object (mutable, unrecorded), and a nested `draft` write under a symbol key
   changed data without publishing. Both traps now record a wildcard for a symbol-keyed access and
   wrap a trackable value the same way a string-keyed branch already is.
-- `invalidate()` pushed a new record onto an unbounded array per write, so an idle-but-live view
-  retained a growing invalidation worklist even for the same path written repeatedly. Records are
-  now keyed by path, so a later write to a pending path replaces that path's record instead of
-  piling up beside it.
-- Every fresh `read()` view (including the one `useCarburetor` builds on every render) registered
-  a `WeakRef` watcher that was only pruned by a later retirement pass, itself only triggered by a
-  write — a read-only workload accumulated watcher slots indefinitely. The proxy cache now also
-  retires on construction, and exposes an explicit `release()` a view can call when its owner
-  knows its lifecycle is over, independent of GC timing.
-- `WeakRef` was a hard runtime dependency with no stated floor; the first tracked `read()` threw
-  outright wherever it was absent. `package.json`'s `engines.node` now states `>=14.6.0`, where
-  `WeakRef` shipped unflagged.
+- `useCarburetor`/`connect()` made server-rendering N components over one shared store an O(N²)
+  cost: every fresh read proxy's cache registered a watcher in an invalidation ledger kept per
+  raw object, and every proxy construction, read and write walked every watcher ever registered
+  against it. The ledger — watchers, revisions, `retire()`, `invalidate()`, and the runtime
+  `WeakRef` requirement it rested on — is gone. Each proxy tree now caches its branch wrappers
+  in a `WeakMap` keyed by the branch's own raw object: a removed or replaced branch's entry is
+  collectable the moment nothing outside the cache still references it, so eviction needs no
+  read-driven sweep, no write-driven invalidation and no explicit `release()`.
 - An unequal-depth computed graph (a node read both directly and through a derived chain) could
   recompute a node's body twice per write: an eager `get()` during a sibling's settlement already
   reran it against current inputs, then the node's own deferred `settle()` recomputed it again

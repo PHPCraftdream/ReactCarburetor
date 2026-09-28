@@ -65,26 +65,4 @@ export declare abstract class AntiHookComponentSubscriptions<P = {}, S = {}> ext
      * through a fresh attempt, which clears descriptions wholesale, not through this method.
      */
     protected releaseSubscriptions(): void;
-    /**
-     * Drops every connect()/connectSelection() view's watcher slot from its store's shared
-     * invalidation scope, so an unmounted component stops being scanned on the next write or
-     * cache construction there instead of waiting on garbage collection (R3-07).
-     *
-     * Read from `this.connections`, not a separately populated/cleared list: a connection's
-     * declaration is never pruned, so its `view` reference survives a StrictMode-replayed
-     * componentWillUnmount/componentDidMount pair intact, and a real unmount later still finds
-     * whichever facade the persistent declaration currently owns — even one built after a root
-     * replacement that happened between the replay and the real unmount (R4-05). A list
-     * populated once by connect()/connectSelection() and unconditionally emptied here on every
-     * unmount, replay included, had nothing to repopulate it before that later real unmount.
-     *
-     * `PROXY_CACHE` is a peek, not a read (R4-09): a declaration never actually read during
-     * this component's life has no cache built for it, and the facade answers `undefined`
-     * instead of resolving the source and minting one from scratch just to release it here.
-     *
-     * Each view is released in isolation, the same way `releaseEffects` isolates each cleanup:
-     * one view whose source can no longer be resolved must not cost the views after it their
-     * release.
-     */
-    protected releaseConnectionViews(): void;
 }

@@ -53,14 +53,11 @@ class AntiHookComponentReads extends external_Foundation_js_namespaceObject.Anti
     declareConnection = (source)=>(0, declareConnection_js_namespaceObject.declareConnection)(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
     connect = (source)=>{
         const declared = this.declareConnection(source);
-        const view = (0, buildPersistentView_js_namespaceObject.buildPersistentView)(declared);
-        declared.connection.view = view;
-        return view;
+        return (0, buildPersistentView_js_namespaceObject.buildPersistentView)(declared);
     };
     connectSelection = (source, select)=>{
         const declared = this.declareConnection(source);
         const view = (0, buildPersistentView_js_namespaceObject.buildPersistentView)(declared);
-        declared.connection.view = view;
         let snapshot;
         let escapeReported = false;
         return ()=>{

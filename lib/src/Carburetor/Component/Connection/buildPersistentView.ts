@@ -1,5 +1,6 @@
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {IConnectionSource} from "@/Carburetor/Component/Models/Connection";
+import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
 import {PROXY_CACHE} from "@/Carburetor/Store/Tracking/Models";
 
@@ -112,10 +113,9 @@ export const buildPersistentView = <T extends object>(source: IConnectionSource<
     const facade = new Proxy((arrayFacade ? [] : {}) as unknown as TReadonly<T>, {
         get: (_target: TReadonly<T>, key: string | symbol): unknown => {
             if (key === PROXY_CACHE) {
-                // A peek, not a read (R4-09): an owner releasing this view on unmount must not
-                // force resolveView() — resolving a connection that was declared but never
-                // actually read would build a cache from scratch just to immediately release
-                // it. Answered from whatever resolveView() has already built, if anything.
+                // A peek, not a read: asking for the hatch must not force resolveView() on a
+                // connection that was declared but never actually read. Answered from whatever
+                // resolveView() has already built, if anything; test introspection only.
                 return cachedView === undefined ? undefined : Reflect.get(cachedView as object, PROXY_CACHE);
             }
 
@@ -164,8 +164,11 @@ export const buildPersistentView = <T extends object>(source: IConnectionSource<
         defineProperty: forbidWrite,
     }) as TReadonly<T>;
 
-    // Noted so the child-prop snapshot boundary recognizes this view as live.
-    liveViews.note(facade);
+    // Noted so the escape diagnostic recognizes this view as live; its only reader is
+    // development-only, so populating the registry is too.
+    if (IS_DEVELOPMENT) {
+        liveViews.note(facade);
+    }
 
     return facade;
 };

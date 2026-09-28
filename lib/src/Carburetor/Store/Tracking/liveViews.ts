@@ -1,12 +1,13 @@
 /**
  * The registry of live views the engine hands out: every read proxy built by createReadProxy
  * (the store root and each branch) and every persistent connect()/connectSelection() facade is
- * noted here at creation.
+ * noted here at creation, development only.
  *
- * `has` is what the child-prop snapshot boundary consults before handing data onward: a value
- * it answers true for is a live view, not detached data — a child reading it in its own render
- * does so outside the owning component's render attempt, the reads record nothing, and no
- * subscription covers what the child sees.
+ * `has` is what `reportLiveViewEscape` consults: a value it answers true for is a live view,
+ * not detached data — a child reading it in its own render does so outside the owning
+ * component's render attempt, the reads record nothing, and no subscription covers what the
+ * child sees. `note` is called only under `IS_DEVELOPMENT`, since `has`'s one caller is itself
+ * development-only and a production bundle folds both away.
  *
  * Membership is a WeakSet: a view nothing references anymore costs nothing, and a replaced
  * data object is never kept alive by its former view. Internal to the engine — deliberately

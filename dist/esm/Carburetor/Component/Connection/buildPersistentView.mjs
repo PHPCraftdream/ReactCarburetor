@@ -1,3 +1,4 @@
+import { IS_DEVELOPMENT } from "../../Store/Utils/DevelopmentFlag.mjs";
 import { liveViews } from "../../Store/Tracking/liveViews.mjs";
 import { PROXY_CACHE } from "../../Store/Tracking/Models.mjs";
 const buildPersistentView = (source)=>{
@@ -54,7 +55,7 @@ const buildPersistentView = (source)=>{
         deleteProperty: forbidWrite,
         defineProperty: forbidWrite
     });
-    liveViews.note(facade);
+    if (IS_DEVELOPMENT) liveViews.note(facade);
     return facade;
 };
 export { buildPersistentView };

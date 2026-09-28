@@ -125,8 +125,6 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
             () => this.releaseEffects(), failures);
         this.runTeardownStage('releasing subscriptions threw while a component unmounted',
             () => this.releaseSubscriptions(), failures);
-        this.runTeardownStage("releasing a connect() view's cache threw while a component unmounted",
-            () => this.releaseConnectionViews(), failures);
 
         failures.forEach((failure: string) => this.reportTeardownFailure(failure));
     }
@@ -306,7 +304,6 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     protected abstract releaseEffects(): void;
     protected abstract commitSubscriptions(): void;
     protected abstract releaseSubscriptions(): void;
-    protected abstract releaseConnectionViews(): void;
     protected abstract reportTeardownFailure: (failure: string) => void;
     protected abstract runTeardownStage: (what: string, stage: () => void, failures: string[]) => void;
 }

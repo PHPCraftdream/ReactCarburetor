@@ -6,8 +6,8 @@ import { createProxyCache } from "./createProxyCache.mjs";
 import { PROXY_CACHE } from "./Models.mjs";
 import { liveViews } from "./liveViews.mjs";
 import { isTrackable } from "./isTrackable.mjs";
-const createReadProxy = (target, record, basePath = '', aliases)=>{
-    const cached = createProxyCache(target);
+const createReadProxy = (target, record, basePath = '', aliases, cache)=>{
+    const cached = cache ?? createProxyCache();
     const forbidWrite = ()=>{
         throw new Error("Carburetor: data read through useCarburetor is read-only. Write through carburetor methods — they write via draft and know which paths changed.");
     };
@@ -19,7 +19,6 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
     const proxy = new Proxy(target, {
         get: (source, key)=>{
             if (key === PROXY_CACHE) return cached;
-            cached.sweep();
             const value = Reflect.get(source, key, proxy);
             if ('symbol' == typeof key) {
                 record(WILDCARD_PATH);
@@ -28,7 +27,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
                     if (IS_DEVELOPMENT) throw lockedError(String(key));
                     return value;
                 }
-                return cached(WILDCARD_PATH, value, ()=>createReadProxy(value, record, WILDCARD_PATH, aliases));
+                return cached(WILDCARD_PATH, value, ()=>createReadProxy(value, record, WILDCARD_PATH, aliases, cached));
             }
             const path = joinPath(basePath, key);
             if (isTrackable(value)) {
@@ -38,23 +37,20 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
                     if (IS_DEVELOPMENT) throw lockedError(path);
                     return value;
                 }
-                return cached(path, value, ()=>createReadProxy(value, record, path, aliases));
+                return cached(path, value, ()=>createReadProxy(value, record, path, aliases, cached));
             }
             record(path);
             return value;
         },
         has: (source, key)=>{
-            cached.sweep();
             if ('string' == typeof key) record(joinPath(basePath, key));
             return Reflect.has(source, key);
         },
         ownKeys: (source)=>{
-            cached.sweep();
             record(basePath || WILDCARD_PATH);
             return Reflect.ownKeys(source);
         },
         getOwnPropertyDescriptor: (source, key)=>{
-            cached.sweep();
             const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
             if (void 0 === descriptor) return descriptor;
             if ('symbol' == typeof key) {
@@ -65,7 +61,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
                         if (IS_DEVELOPMENT) throw lockedError(String(key));
                         return descriptor;
                     }
-                    descriptor.value = cached(WILDCARD_PATH, symbolValue, ()=>createReadProxy(symbolValue, record, WILDCARD_PATH, aliases));
+                    descriptor.value = cached(WILDCARD_PATH, symbolValue, ()=>createReadProxy(symbolValue, record, WILDCARD_PATH, aliases, cached));
                 }
                 return descriptor;
             }
@@ -76,7 +72,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
                     if (IS_DEVELOPMENT) throw lockedError(path);
                     return descriptor;
                 }
-                descriptor.value = cached(path, value, ()=>createReadProxy(value, record, path, aliases));
+                descriptor.value = cached(path, value, ()=>createReadProxy(value, record, path, aliases, cached));
             }
             return descriptor;
         },
@@ -86,7 +82,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
         defineProperty: forbidWrite,
         deleteProperty: forbidWrite
     });
-    liveViews.note(proxy);
+    if (IS_DEVELOPMENT) liveViews.note(proxy);
     return proxy;
 };
 export { createReadProxy };

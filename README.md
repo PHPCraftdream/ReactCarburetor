@@ -89,13 +89,6 @@ only on a real version mismatch, and a plain-JS project needs nothing. See
 [`docs/react-compatibility.md`](docs/react-compatibility.md) for how the library binds to the
 consumer's own React, what a duplicate-React install looks like, and how compatibility is tested.
 
-The proxy cache behind every tracked read requires a global `WeakRef` — this is a browser
-library, not just a Node one, so the requirement is a runtime capability, not only the
-`engines.node` floor in `package.json`. Any environment without it (see
-[MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakRef)
-or [caniuse](https://caniuse.com/mdn-javascript_builtins_weakref) for supported browser
-versions) throws a clear, actionable error on the first tracked read instead of running.
-
 Async resources use a global `AbortController`, which Node added in 14.17.0 while the
 `engines.node` floor in `package.json` is older. Where it is missing, a stand-in signal
 supports abort listeners, `onabort` and `throwIfAborted`; late answers are still discarded.

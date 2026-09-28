@@ -33,7 +33,6 @@ class AntiHookComponentFoundation extends __rspack_external_react.Component {
         this.runTeardownStage("the component-wide unUseEffects callback threw while a component unmounted", ()=>this.unUseEffects(this.props), failures);
         this.runTeardownStage('an effect cleanup threw while a component unmounted', ()=>this.releaseEffects(), failures);
         this.runTeardownStage("releasing subscriptions threw while a component unmounted", ()=>this.releaseSubscriptions(), failures);
-        this.runTeardownStage("releasing a connect() view's cache threw while a component unmounted", ()=>this.releaseConnectionViews(), failures);
         failures.forEach((failure)=>this.reportTeardownFailure(failure));
     }
     withRenderBoundary() {

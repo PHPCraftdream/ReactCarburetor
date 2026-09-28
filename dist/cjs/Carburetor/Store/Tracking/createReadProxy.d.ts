@@ -1,4 +1,5 @@
 import { TPath, TPathRecorder, TAliasLedger } from "../../Models/Paths.js";
+import { IProxyCache } from "./Models.js";
 /**
  * Read proxy: every field access is recorded as a path. Writing through it is forbidden —
  * `set`, `deleteProperty` and `defineProperty` all throw — and `getOwnPropertyDescriptor`
@@ -34,5 +35,8 @@ import { TPath, TPathRecorder, TAliasLedger } from "../../Models/Paths.js";
  * and its emptiness is what makes ownKeys record the wildcard
  * @param aliases - development-only: notes each branch object under its path so a second
  * path to the same object is reported; production hands in undefined
+ * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
+ * this undefined and mints one, and every nested branch receives it back so the tree caches
+ * as one unit
  */
-export declare const createReadProxy: <T extends object>(target: T, record: TPathRecorder, basePath?: TPath, aliases?: TAliasLedger) => T;
+export declare const createReadProxy: <T extends object>(target: T, record: TPathRecorder, basePath?: TPath, aliases?: TAliasLedger, cache?: IProxyCache) => T;

@@ -30,6 +30,7 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     buildPersistentView: ()=>buildPersistentView
 });
+const DevelopmentFlag_js_namespaceObject = require("../../Store/Utils/DevelopmentFlag.js");
 const liveViews_js_namespaceObject = require("../../Store/Tracking/liveViews.js");
 const Models_js_namespaceObject = require("../../Store/Tracking/Models.js");
 const buildPersistentView = (source)=>{
@@ -86,7 +87,7 @@ const buildPersistentView = (source)=>{
         deleteProperty: forbidWrite,
         defineProperty: forbidWrite
     });
-    liveViews_js_namespaceObject.liveViews.note(facade);
+    if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) liveViews_js_namespaceObject.liveViews.note(facade);
     return facade;
 };
 exports.buildPersistentView = __webpack_exports__.buildPersistentView;

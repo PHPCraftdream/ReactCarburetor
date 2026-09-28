@@ -160,7 +160,7 @@ describe('the write proxy skips only SameValue no-ops over existing own keys (R2
         expect(hasOwn(leaf, 'nan')).toBe(true);
     });
 
-    test('a no-op write publishes no invalidation; a real write into the same scope does', () => {
+    test('a no-op write keeps the same wrapper; a real write mints a fresh one', () => {
         const store = new LeafCarburetor(getTree());
         const rawLeaf = store.getData().leaf;
         let capturedCache: unknown = undefined;
@@ -176,8 +176,8 @@ describe('the write proxy skips only SameValue no-ops over existing own keys (R2
         expect(wrapper).toBeDefined();
         expect(cache.owns('leaf', rawLeaf)).toBe(true);
 
-        // Rewriting the branch with the value it already holds is a no-op: nothing enters
-        // the invalidation ledger, so the next consult keeps the wrapper as it is.
+        // Rewriting the branch with the value it already holds is a no-op: the raw object
+        // identity never changes, so the next consult keeps the wrapper as it is.
         store.rewriteLeaf(wrapper as ILeaf);
 
         let again: unknown = undefined;
@@ -186,15 +186,22 @@ describe('the write proxy skips only SameValue no-ops over existing own keys (R2
             again = draft.leaf;
         });
 
-        expect(cache.pending()).toEqual(0);
         expect(cache.owns('leaf', rawLeaf)).toBe(true);
         expect(again).toBe(wrapper);
 
-        // A real branch write publishes into the same ledger: the record stands until a
-        // consult applies it.
-        store.rewriteLeaf({zero: 1, nan: NaN, count: 1, keep: {title: 'fresh'}});
+        // A real branch write replaces the raw object: the next read mints a fresh wrapper.
+        const freshLeaf: ILeaf = {zero: 1, nan: NaN, count: 1, keep: {title: 'fresh'}};
 
-        expect(cache.pending()).toEqual(1);
+        store.rewriteLeaf(freshLeaf);
+
+        let fresh: unknown = undefined;
+
+        store.edit((draft: ITree) => {
+            fresh = draft.leaf;
+        });
+
+        expect(fresh).not.toBe(wrapper);
+        expect(cache.owns('leaf', freshLeaf)).toBe(true);
     });
 
     test('re-assigning the same primitive stays a no-op', () => {

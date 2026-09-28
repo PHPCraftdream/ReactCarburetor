@@ -30,11 +30,9 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     AntiHookComponentSubscriptions: ()=>AntiHookComponentSubscriptions
 });
-const Models_js_namespaceObject = require("../../Store/Tracking/Models.js");
 const external_Effects_js_namespaceObject = require("./Effects.js");
 const CONNECTION_ATTEMPT_KEY = "c:";
 const TRACKED_ATTEMPT_KEY = "t:";
-const describeFailure = (error)=>error instanceof Error ? error.message : String(error);
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
@@ -124,21 +122,6 @@ class AntiHookComponentSubscriptions extends external_Effects_js_namespaceObject
             this.releaseSlot(connection.uid, connection);
         });
         this.renderAttempt = void 0;
-    }
-    releaseConnectionViews() {
-        const failures = [];
-        this.connections.forEach((connection)=>{
-            const view = connection.view;
-            if (void 0 === view) return;
-            try {
-                var _cache_release;
-                const cache = view[Models_js_namespaceObject.PROXY_CACHE];
-                null == cache || null == (_cache_release = cache.release) || _cache_release.call(cache);
-            } catch (error) {
-                failures.push(error);
-            }
-        });
-        failures.forEach((error)=>this.reportTeardownFailure("releasing a connect() view's cache threw while a component unmounted: " + describeFailure(error) + '. The teardown completed anyway.'));
     }
 }
 exports.AntiHookComponentSubscriptions = __webpack_exports__.AntiHookComponentSubscriptions;

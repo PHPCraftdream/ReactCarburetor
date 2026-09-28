@@ -41,8 +41,8 @@ const unwrapWriteProxy = (value)=>{
     const target = proxyTargets.get(value);
     return target ?? value;
 };
-const createWriteProxy = (target, record, basePath = '', aliases)=>{
-    const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)(target);
+const createWriteProxy = (target, record, basePath = '', aliases, cache)=>{
+    const cached = cache ?? (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
     const isArray = Array.isArray(target);
     const writtenPath = (key)=>{
         if ('symbol' == typeof key || basePath === WildcardPath_js_namespaceObject.WILDCARD_PATH) return WildcardPath_js_namespaceObject.WILDCARD_PATH;
@@ -54,7 +54,7 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
             const value = Reflect.get(source, key);
             if ('function' == typeof value) return value;
             const path = 'symbol' == typeof key || basePath === WildcardPath_js_namespaceObject.WILDCARD_PATH ? WildcardPath_js_namespaceObject.WILDCARD_PATH : (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
-            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return cached(path, value, ()=>createWriteProxy(value, record, path, aliases));
+            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return cached(path, value, ()=>createWriteProxy(value, record, path, aliases, cached));
             if (null !== value && 'object' == typeof value) record(path);
             return value;
         },
@@ -66,7 +66,6 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
             null == aliases || aliases.forget(previous);
             const path = writtenPath(key);
             record(path);
-            cached.invalidate(path);
             return Reflect.set(source, key, raw);
         },
         defineProperty: (source, key, descriptor)=>{
@@ -74,7 +73,6 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
             null == aliases || aliases.forget(Reflect.get(source, key));
             const path = writtenPath(key);
             record(path);
-            cached.invalidate(path);
             return Reflect.defineProperty(source, key, descriptor);
         },
         deleteProperty: (source, key)=>{
@@ -83,7 +81,6 @@ const createWriteProxy = (target, record, basePath = '', aliases)=>{
             null == aliases || aliases.forget(Reflect.get(source, key));
             const path = writtenPath(key);
             record(path);
-            cached.invalidate(path);
             return Reflect.deleteProperty(source, key);
         }
     });

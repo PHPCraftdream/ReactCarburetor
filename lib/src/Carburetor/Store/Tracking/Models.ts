@@ -17,16 +17,17 @@ import {TPath} from "@/Carburetor/Models/Paths";
 export const PROXY_CACHE: unique symbol = Symbol('carburetor.proxyCache');
 
 /**
- * The ownership contract of the branch cache: entries are keyed by path within one cache, one
- * cache belongs to one recorder's proxy tree, and an entry survives only while its source is
- * still the live value at its path. Keying by raw object identity alone would hand a wrapper
- * that records under one path and recorder to a reader of another.
+ * The ownership contract of the branch cache: one cache belongs to one proxy tree, and an
+ * entry survives only while its source is still the live value at its path. Keying by raw
+ * object identity alone would hand one path's wrapper to another path reaching the same
+ * object; keying by path alone would hand a stale wrapper to a source that replaced it without
+ * ever being read at that path again.
  */
 export interface IProxyCache {
     /**
-     * Answers with the proxy for (path, source), reusing the cached one while the entry is
-     * current and creating a fresh one through `create` on a miss or after the old one was
-     * evicted.
+     * Answers with the proxy for (path, source): the cached one when `source` is already
+     * cached under `path`, a fresh one through `create` otherwise. A path mismatch and a
+     * replaced source both mint fresh, unconditionally — there is no separate eviction step.
      *
      * @param path - the full path the branch was read at.
      * @param source - the raw value the branch holds right now.
@@ -35,44 +36,11 @@ export interface IProxyCache {
     (path: TPath, source: object, create: () => object): object;
 
     /**
-     * Marks `path` — and every cached path below it — obsolete: current entries there are
-     * dropped the next time anything consults this cache. Publishing is separate from
-     * sweeping, so a write costs one revision bump and one map entry, and the sweep is paid
-     * by the next reader instead of the writer.
-     *
-     * @param path - the written path whose old subtree is no longer the live data.
-     */
-    invalidate: (path: TPath) => void;
-
-    /**
-     * Applies the invalidations published since this cache last swept, releasing the entries
-     * they made obsolete, and retires the records no live cache needs any more. The read proxy
-     * calls this from every data-access trap, so primitive reads and key enumeration release
-     * obsolete branches exactly like a branch fetch does; the cache call itself sweeps before
-     * answering. A no-op while nothing new was published.
-     */
-    sweep: () => void;
-
-    /**
-     * How many invalidation records the shared scope still holds unretired. The ledger is
-     * bounded by contract: this tracks the live caches' pending work, never the object's
-     * lifetime write churn. Test introspection, like `owns` and `size`.
-     */
-    pending: () => number;
-
-    /**
-     * Whether the cache currently holds an entry for (path, source). Reports the state as it
-     * is — it does NOT sweep first — so a test that wants to observe the engine's own eviction
-     * must consult the cache through the proxy (any path) before asking.
+     * Whether the cache currently holds an entry for (path, source). Test introspection only;
+     * production code never calls this.
      *
      * @param path - the path to look up.
      * @param source - the raw object the entry would have to be holding.
      */
     owns: (path: TPath, source: object) => boolean;
-
-    /**
-     * How many entries the cache holds right now, without sweeping: the deterministic
-     * ownership count the tests assert on.
-     */
-    size: () => number;
 }

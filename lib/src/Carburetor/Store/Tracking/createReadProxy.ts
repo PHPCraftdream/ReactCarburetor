@@ -4,7 +4,7 @@ import {branchPath} from "@/Carburetor/Store/Paths/BranchMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {createProxyCache} from "./createProxyCache";
-import {PROXY_CACHE} from "./Models";
+import {IProxyCache, PROXY_CACHE} from "./Models";
 import {liveViews} from "./liveViews";
 import {isTrackable} from "./isTrackable";
 
@@ -43,14 +43,18 @@ import {isTrackable} from "./isTrackable";
  * and its emptiness is what makes ownKeys record the wildcard
  * @param aliases - development-only: notes each branch object under its path so a second
  * path to the same object is reported; production hands in undefined
+ * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
+ * this undefined and mints one, and every nested branch receives it back so the tree caches
+ * as one unit
  */
 export const createReadProxy = <T extends object>(
     target: T,
     record: TPathRecorder,
     basePath: TPath = '',
-    aliases?: TAliasLedger
+    aliases?: TAliasLedger,
+    cache?: IProxyCache
 ): T => {
-    const cached = createProxyCache(target);
+    const cached: IProxyCache = cache ?? createProxyCache();
 
     const forbidWrite = (): never => {
         throw new Error(
@@ -89,16 +93,10 @@ export const createReadProxy = <T extends object>(
     const proxy = new Proxy(target, {
         get: (source: T, key: string | symbol): unknown => {
             // The introspection hatch is answered before anything else: it must not count as
-            // a read of the data, so nothing is recorded and the cache is neither filled nor
-            // swept by asking for it.
+            // a read of the data, so nothing is recorded by asking for it.
             if (key === PROXY_CACHE) {
                 return cached;
             }
-
-            // Any data access reclaims: a write may have obsoleted cached branches since the
-            // last read, and a primitive read must release them exactly like a branch fetch
-            // does. The cache itself no-ops while nothing new was published.
-            cached.sweep();
 
             // The proxy itself is the receiver: a getter then sees the proxy as `this`, so its
             // internal reads (`get doubled() { return this.n * 2 }`) land in the recording
@@ -124,7 +122,11 @@ export const createReadProxy = <T extends object>(
                     return value;
                 }
 
-                return cached(WILDCARD_PATH, value, () => createReadProxy(value, record, WILDCARD_PATH, aliases));
+                return cached(
+                    WILDCARD_PATH,
+                    value,
+                    () => createReadProxy(value, record, WILDCARD_PATH, aliases, cached)
+                );
             }
 
             const path = joinPath(basePath, key);
@@ -146,7 +148,7 @@ export const createReadProxy = <T extends object>(
                     return value;
                 }
 
-                return cached(path, value, () => createReadProxy(value, record, path, aliases));
+                return cached(path, value, () => createReadProxy(value, record, path, aliases, cached));
             }
 
             record(path);
@@ -154,9 +156,6 @@ export const createReadProxy = <T extends object>(
             return value;
         },
         has: (source: T, key: string | symbol): boolean => {
-            // A presence check is a data access: it reclaims obsolete branches like any other.
-            cached.sweep();
-
             if (typeof key === 'string') {
                 record(joinPath(basePath, key));
             }
@@ -164,10 +163,6 @@ export const createReadProxy = <T extends object>(
             return Reflect.has(source, key);
         },
         ownKeys: (source: T): ArrayLike<string | symbol> => {
-            // Enumeration reclaims too: `Object.keys` after a deletion must release the deleted
-            // branches even when no object-valued key is ever fetched again.
-            cached.sweep();
-
             // Enumerating keys reads the structure as a whole.
             record(basePath || WILDCARD_PATH);
 
@@ -181,10 +176,6 @@ export const createReadProxy = <T extends object>(
             source: T,
             key: string | symbol
         ): PropertyDescriptor | undefined => {
-            // Descriptor reads reclaim like gets: `for...in` passes through here, and even a
-            // structure-only read must release what earlier reads left cached.
-            cached.sweep();
-
             const descriptor: PropertyDescriptor | undefined =
                 Reflect.getOwnPropertyDescriptor(source, key);
 
@@ -211,7 +202,7 @@ export const createReadProxy = <T extends object>(
                     descriptor.value = cached(
                         WILDCARD_PATH,
                         symbolValue,
-                        () => createReadProxy(symbolValue, record, WILDCARD_PATH, aliases)
+                        () => createReadProxy(symbolValue, record, WILDCARD_PATH, aliases, cached)
                     );
                 }
 
@@ -233,7 +224,7 @@ export const createReadProxy = <T extends object>(
                 descriptor.value = cached(
                     path,
                     value,
-                    () => createReadProxy(value, record, path, aliases)
+                    () => createReadProxy(value, record, path, aliases, cached)
                 );
             }
 
@@ -251,9 +242,11 @@ export const createReadProxy = <T extends object>(
         deleteProperty: forbidWrite,
     }) as T;
 
-    // This proxy and every view reachable through it are live views: the child-prop snapshot
-    // boundary checks this before handing data onward.
-    liveViews.note(proxy);
+    // This proxy is a live view the escape diagnostic below walks selections for; the only
+    // reader of the registry is development-only, so populating it is too.
+    if (IS_DEVELOPMENT) {
+        liveViews.note(proxy);
+    }
 
     return proxy;
 };

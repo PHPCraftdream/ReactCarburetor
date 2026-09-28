@@ -21,14 +21,11 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
     declareConnection = (source)=>declareConnection(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
     connect = (source)=>{
         const declared = this.declareConnection(source);
-        const view = buildPersistentView(declared);
-        declared.connection.view = view;
-        return view;
+        return buildPersistentView(declared);
     };
     connectSelection = (source, select)=>{
         const declared = this.declareConnection(source);
         const view = buildPersistentView(declared);
-        declared.connection.view = view;
         let snapshot;
         let escapeReported = false;
         return ()=>{

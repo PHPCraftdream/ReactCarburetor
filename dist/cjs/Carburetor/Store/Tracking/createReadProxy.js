@@ -38,8 +38,8 @@ const external_createProxyCache_js_namespaceObject = require("./createProxyCache
 const external_Models_js_namespaceObject = require("./Models.js");
 const external_liveViews_js_namespaceObject = require("./liveViews.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
-const createReadProxy = (target, record, basePath = '', aliases)=>{
-    const cached = (0, external_createProxyCache_js_namespaceObject.createProxyCache)(target);
+const createReadProxy = (target, record, basePath = '', aliases, cache)=>{
+    const cached = cache ?? (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
     const forbidWrite = ()=>{
         throw new Error("Carburetor: data read through useCarburetor is read-only. Write through carburetor methods — they write via draft and know which paths changed.");
     };
@@ -51,7 +51,6 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
     const proxy = new Proxy(target, {
         get: (source, key)=>{
             if (key === external_Models_js_namespaceObject.PROXY_CACHE) return cached;
-            cached.sweep();
             const value = Reflect.get(source, key, proxy);
             if ('symbol' == typeof key) {
                 record(WildcardPath_js_namespaceObject.WILDCARD_PATH);
@@ -60,7 +59,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
                     if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(String(key));
                     return value;
                 }
-                return cached(WildcardPath_js_namespaceObject.WILDCARD_PATH, value, ()=>createReadProxy(value, record, WildcardPath_js_namespaceObject.WILDCARD_PATH, aliases));
+                return cached(WildcardPath_js_namespaceObject.WILDCARD_PATH, value, ()=>createReadProxy(value, record, WildcardPath_js_namespaceObject.WILDCARD_PATH, aliases, cached));
             }
             const path = (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
             if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) {
@@ -70,23 +69,20 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
                     if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(path);
                     return value;
                 }
-                return cached(path, value, ()=>createReadProxy(value, record, path, aliases));
+                return cached(path, value, ()=>createReadProxy(value, record, path, aliases, cached));
             }
             record(path);
             return value;
         },
         has: (source, key)=>{
-            cached.sweep();
             if ('string' == typeof key) record((0, joinPath_js_namespaceObject.joinPath)(basePath, key));
             return Reflect.has(source, key);
         },
         ownKeys: (source)=>{
-            cached.sweep();
             record(basePath || WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return Reflect.ownKeys(source);
         },
         getOwnPropertyDescriptor: (source, key)=>{
-            cached.sweep();
             const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
             if (void 0 === descriptor) return descriptor;
             if ('symbol' == typeof key) {
@@ -97,7 +93,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
                         if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(String(key));
                         return descriptor;
                     }
-                    descriptor.value = cached(WildcardPath_js_namespaceObject.WILDCARD_PATH, symbolValue, ()=>createReadProxy(symbolValue, record, WildcardPath_js_namespaceObject.WILDCARD_PATH, aliases));
+                    descriptor.value = cached(WildcardPath_js_namespaceObject.WILDCARD_PATH, symbolValue, ()=>createReadProxy(symbolValue, record, WildcardPath_js_namespaceObject.WILDCARD_PATH, aliases, cached));
                 }
                 return descriptor;
             }
@@ -108,7 +104,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
                     if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(path);
                     return descriptor;
                 }
-                descriptor.value = cached(path, value, ()=>createReadProxy(value, record, path, aliases));
+                descriptor.value = cached(path, value, ()=>createReadProxy(value, record, path, aliases, cached));
             }
             return descriptor;
         },
@@ -118,7 +114,7 @@ const createReadProxy = (target, record, basePath = '', aliases)=>{
         defineProperty: forbidWrite,
         deleteProperty: forbidWrite
     });
-    external_liveViews_js_namespaceObject.liveViews.note(proxy);
+    if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) external_liveViews_js_namespaceObject.liveViews.note(proxy);
     return proxy;
 };
 exports.createReadProxy = __webpack_exports__.createReadProxy;

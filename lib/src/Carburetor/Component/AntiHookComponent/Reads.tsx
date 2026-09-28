@@ -106,12 +106,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      */
     public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> => {
         const declared = this.declareConnection(source);
-        const view = buildPersistentView(declared);
 
-        // Recorded on the connection itself, not a separate list (R4-05): see IConnection.view.
-        declared.connection.view = view;
-
-        return view;
+        return buildPersistentView(declared);
     };
 
     /**
@@ -161,9 +157,6 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
     ): (() => R) => {
         const declared = this.declareConnection(source);
         const view = buildPersistentView(declared);
-
-        // Recorded on the connection itself, not a separate list (R4-05): see IConnection.view.
-        declared.connection.view = view;
 
         let snapshot: {value: R} | undefined = undefined;
         let escapeReported = false;

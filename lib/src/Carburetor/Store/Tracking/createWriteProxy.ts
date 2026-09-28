@@ -2,7 +2,7 @@ import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {createProxyCache} from "./createProxyCache";
-import {PROXY_CACHE} from "./Models";
+import {IProxyCache, PROXY_CACHE} from "./Models";
 import {isTrackable} from "./isTrackable";
 
 /**
@@ -28,9 +28,9 @@ const unwrapWriteProxy = (value: unknown): unknown => {
  * only wakes the subscribers that read it. Reads made elsewhere are consulted through the alias
  * ledger, so writing into an object that another path was read from is reported in development.
  *
- * A landed write also publishes its recorded path to the proxy cache scope every proxy over the
- * same raw object shares: the caches release the replaced or deleted branches' old wrappers the
- * next time they are consulted, so an obsolete branch stops being pinned by the write that ended it.
+ * A replaced or deleted branch's old wrapper needs no release here: the branch cache below
+ * keys entries by the raw object they wrap, so a branch no longer reachable from the data
+ * takes its cache entry with it once nothing else references it.
  *
  * @param target - the raw object the proxy fronts; it is filed in proxyTargets so a value
  * read back through draft is unwrapped before the write compares it
@@ -41,14 +41,18 @@ const unwrapWriteProxy = (value: unknown): unknown => {
  * writes collapse onto it (or the wildcard) instead of naming an index
  * @param aliases - consulted on every write to complain when it lands in an object another
  * path was read from; undefined outside development
+ * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
+ * this undefined and mints one, and every nested branch receives it back so the tree caches
+ * as one unit
  */
 export const createWriteProxy = <T extends object>(
     target: T,
     record: TPathRecorder,
     basePath: TPath = '',
-    aliases?: TAliasLedger
+    aliases?: TAliasLedger,
+    cache?: IProxyCache
 ): T => {
-    const cached = createProxyCache(target);
+    const cached: IProxyCache = cache ?? createProxyCache();
     const isArray: boolean = Array.isArray(target);
 
     const writtenPath = (key: string | symbol): TPath => {
@@ -87,7 +91,7 @@ export const createWriteProxy = <T extends object>(
                 : joinPath(basePath, key);
 
             if (isTrackable(value)) {
-                return cached(path, value, () => createWriteProxy(value, record, path, aliases));
+                return cached(path, value, () => createWriteProxy(value, record, path, aliases, cached));
             }
 
             // A Map, Set, Date or class instance cannot be wrapped, so `draft.index.set(...)`
@@ -123,12 +127,6 @@ export const createWriteProxy = <T extends object>(
             const path = writtenPath(key);
 
             record(path);
-            // The old subtree at this path is obsolete from here on: the published path makes
-            // every cache over this object release the entries still holding it the next time
-            // they are consulted. The granularity is the one `record` already reports — a
-            // whole array path for an index or `length` write, the wildcard for a symbol — so
-            // what the caches evict can never be narrower than what the write announced.
-            cached.invalidate(path);
 
             return Reflect.set(source, key, raw);
         },
@@ -141,9 +139,6 @@ export const createWriteProxy = <T extends object>(
             const path = writtenPath(key);
 
             record(path);
-            // The same publication the set trap makes: whatever this write replaces here is
-            // obsolete, and the caches over this object release it on their next consultation.
-            cached.invalidate(path);
 
             return Reflect.defineProperty(source, key, descriptor);
         },
@@ -158,9 +153,6 @@ export const createWriteProxy = <T extends object>(
             const path = writtenPath(key);
 
             record(path);
-            // The same publication the set trap makes: whatever this write deletes here is
-            // obsolete, and the caches over this object release it on their next consultation.
-            cached.invalidate(path);
 
             return Reflect.deleteProperty(source, key);
         },
