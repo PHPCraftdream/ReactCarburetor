@@ -1,7 +1,9 @@
 import {Carburetor} from "@/Carburetor";
-import {IConnection} from "@/Carburetor/Component/Models/Connection";
+import {IConnection, IConnectionSource, IRenderAttempt} from "@/Carburetor/Component/Models/Connection";
 import {declareConnection} from "@/Carburetor/Component/Connection/declareConnection";
 import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersistentView";
+import {ConnectionFacadeHandler} from "@/Carburetor/Component/Connection/ConnectionFacadeHandler";
+import {PROXY_CACHE} from "@/Carburetor/Store/Tracking/Models";
 
 /**
  * Builds one connection with no render attempt ever open — `resolveAttemptSource` then calls
@@ -102,5 +104,148 @@ describe('buildPersistentView shape probe (R3-11: a genuine resolver error must 
 
         expect(thrown).toBeInstanceOf(Error);
         expect((thrown as Error).cause).toBeUndefined();
+    });
+});
+
+/** A minimal, self-contained IConnectionSource — no declareConnection involved — for tests that
+ * only care about ConnectionFacadeHandler's own shape, not the declaration machinery behind it.
+ */
+const stubSource = <T extends object>(carburetor: Carburetor<T>): IConnectionSource<T> => ({
+    connection: {uid: 'stub', getCarburetor: () => carburetor, committed: undefined, installed: undefined},
+    getCarburetor: () => carburetor,
+    resolveAttemptSource: () => carburetor,
+    recorder: () => undefined,
+    arrayFacade: false,
+    probeError: undefined,
+    cachedTarget: undefined,
+    cachedView: undefined,
+});
+
+describe('ConnectionFacadeHandler traps are shared across declarations (R15-06)', () => {
+    test('a handler instance owns no trap functions of its own — every trap lives on the shared prototype', () => {
+        const handler = new ConnectionFacadeHandler(stubSource(new Carburetor<{value: number}>({value: 1})));
+
+        // The pre-fix shape built one object literal of a dozen trap closures per declaration:
+        // each trap would be this object's own property. A prototype method never is.
+        expect(Object.getOwnPropertyNames(handler)).toEqual(['source']);
+    });
+
+    test('two declarations\' handlers share the exact same trap functions and prototype', () => {
+        const handlerA = new ConnectionFacadeHandler(stubSource(new Carburetor<{value: number}>({value: 1})));
+        const handlerB = new ConnectionFacadeHandler(stubSource(new Carburetor<{value: number}>({value: 2})));
+
+        expect(Object.getPrototypeOf(handlerA)).toBe(Object.getPrototypeOf(handlerB));
+
+        (
+            [
+                'get', 'has', 'ownKeys', 'getOwnPropertyDescriptor', 'getPrototypeOf',
+                'setPrototypeOf', 'preventExtensions', 'set', 'deleteProperty', 'defineProperty',
+            ] as const
+        ).forEach((trap) => {
+            expect(handlerA[trap]).toBe(handlerB[trap]);
+        });
+    });
+
+    test('two persistent views built through the shared handler prototype stay independent', () => {
+        const storeA = new Carburetor<{value: number}>({value: 1});
+        const storeB = new Carburetor<{value: number}>({value: 100});
+
+        const viewA = buildPersistentView(declare(() => storeA));
+        const viewB = buildPersistentView(declare(() => storeB));
+
+        expect(viewA.value).toEqual(1);
+        expect(viewB.value).toEqual(100);
+
+        storeA.setData({value: 2});
+
+        // Rebuilding A's cached view must not disturb B's, even though both facades' traps
+        // resolve to the exact same shared function objects.
+        expect(viewA.value).toEqual(2);
+        expect(viewB.value).toEqual(100);
+    });
+});
+
+describe('buildPersistentView PROXY_CACHE peek (test-only introspection hatch)', () => {
+    test('peeking PROXY_CACHE before any real read never resolves the source', () => {
+        const store = new Carburetor<{value: number}>({value: 1});
+        let resolves = 0;
+
+        const resolver = (): Carburetor<{value: number}> => {
+            resolves += 1;
+
+            return store;
+        };
+
+        const view = buildPersistentView(declare(resolver));
+        const afterDeclare = resolves;
+
+        expect((view as unknown as {[PROXY_CACHE]?: unknown})[PROXY_CACHE]).toBeUndefined();
+        expect(resolves).toEqual(afterDeclare);
+
+        expect(view.value).toEqual(1);
+        expect((view as unknown as {[PROXY_CACHE]?: unknown})[PROXY_CACHE]).toBeDefined();
+    });
+});
+
+describe('resolveAttemptSource memoizes per attempt (declareConnection.ts)', () => {
+    test('reading several fields in one attempt resolves the source once, not once per read', () => {
+        const store = new Carburetor<{value: number; other: number}>({value: 1, other: 2});
+        let resolves = 0;
+
+        const resolver = (): Carburetor<{value: number; other: number}> => {
+            resolves += 1;
+
+            return store;
+        };
+
+        const attempt: IRenderAttempt = {
+            tracked: undefined, connections: undefined, sources: undefined,
+            deferredLoads: undefined, abandoned: false,
+        };
+
+        const declared = declareConnection<{value: number; other: number}>(
+            [] as IConnection[], () => attempt, resolver
+        );
+        const view = buildPersistentView(declared);
+
+        // The shape probe's one call, made with no attempt open.
+        expect(resolves).toEqual(1);
+
+        void view.value;
+        void view.other;
+        void view.value;
+
+        // One more call — this attempt's first read — and then the memo answers the rest.
+        expect(resolves).toEqual(2);
+    });
+});
+
+describe('buildPersistentView descriptor relaxation (array length stays non-configurable)', () => {
+    test('an ordinary array root\'s "length" is forwarded unchanged, matching the empty target\'s own', () => {
+        const store = new Carburetor<number[]>([1, 2, 3]);
+        const view = buildPersistentView(declare(() => store)) as unknown as number[];
+
+        // "length" is intrinsically non-configurable on every array, frozen or not — the facade's
+        // own empty array target owns it non-configurably too, so it is forwarded exactly as-is
+        // instead of being relaxed (relaxing it would contradict the target's own "length").
+        const length = Object.getOwnPropertyDescriptor(view, 'length');
+
+        expect(length?.configurable).toBe(false);
+        expect(length?.writable).toBe(true);
+        expect(length?.value).toEqual(3);
+    });
+
+    test('a frozen array root relaxes a non-configurable element descriptor to configurable', () => {
+        const store = new Carburetor<ReadonlyArray<number>>(Object.freeze([1, 2, 3]));
+        const view = buildPersistentView(declare(() => store)) as unknown as ReadonlyArray<number>;
+
+        // An element index is not one of the empty target's own properties, so its
+        // non-configurable descriptor (frozen source) is relaxed to configurable — the only
+        // lawful answer over an empty target, made safe because every mutation trap still
+        // rejects any write.
+        const element = Object.getOwnPropertyDescriptor(view, '0');
+
+        expect(element?.configurable).toBe(true);
+        expect(element?.value).toEqual(1);
     });
 });
