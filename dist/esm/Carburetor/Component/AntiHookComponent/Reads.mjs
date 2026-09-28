@@ -2,6 +2,7 @@ import { EResourceStatus } from "../../Models/Enums/EResourceStatus.mjs";
 import { WILDCARD_PATH } from "../../Store/Paths/WildcardPath.mjs";
 import { diagnostics } from "../../Store/Diagnostics/DiagnosticsInstance.mjs";
 import { IS_DEVELOPMENT } from "../../Store/Utils/DevelopmentFlag.mjs";
+import { buildTrackedView } from "./buildTrackedView.mjs";
 import { buildPersistentView } from "../Connection/buildPersistentView.mjs";
 import { declareConnection } from "../Connection/declareConnection.mjs";
 import { detachSelection } from "../Connection/detachSelection.mjs";
@@ -11,12 +12,13 @@ import { AntiHookComponentFoundation } from "./Foundation.mjs";
 const CONNECTION_ATTEMPT_KEY = "c:";
 const TRACKED_ATTEMPT_KEY = "t:";
 class AntiHookComponentReads extends AntiHookComponentFoundation {
+    trackedViews;
+    getRenderAttempt = ()=>this.renderAttempt;
     useCarburetor(carburetor) {
         const attempt = this.renderAttempt;
         const entry = this.track(carburetor);
-        return carburetor.read((path)=>{
-            if (void 0 !== attempt && this.renderAttempt === attempt) entry.reads.add(path);
-        });
+        if (void 0 === this.trackedViews) this.trackedViews = new WeakMap();
+        return buildTrackedView(this.trackedViews, carburetor, this.getRenderAttempt, attempt, entry);
     }
     declareConnection(source) {
         return declareConnection(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);

@@ -1,3 +1,4 @@
+import {TReadonly} from "@/Carburetor/Models/Base";
 import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 
@@ -59,6 +60,18 @@ export interface IDependencySlot {
  * description, which is what a replayed mount restores from.
  */
 export interface ITrackedCarburetor extends IDependencySlot {}
+
+/** `useCarburetor`'s persistent root view for one carburetor; see buildTrackedView. */
+export interface ITrackedView<T extends object> {
+    /** The data object this view was built for; a different object triggers a rebuild. */
+    data: T;
+    /** The read proxy itself, built once and reused for as long as `data` stays current. */
+    view: TReadonly<T>;
+    /** The render attempt captured at the most recent `useCarburetor()` call for this carburetor. */
+    attempt: IRenderAttempt | undefined;
+    /** That attempt's tracked entry, paired with `attempt`: where the recorder reports paths. */
+    entry: IAttemptEntry | undefined;
+}
 
 /**
  * A `connect()` declaration's bookkeeping: one persistent slot, independent of any one render.

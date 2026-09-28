@@ -1,7 +1,28 @@
 import {
     getCounterData, ObservedCarburetor, getTodoData, ListCarburetor,
-    act, rstest, fireEvent, render, AntiHookComponent,
+    act, rstest, fireEvent, render, AntiHookComponent, Carburetor,
+    TPath, TPathSet, TSubscriber, ISubscribeOptions,
 } from '../support';
+import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
+
+/** A non-trackable root: read() marks the wildcard and hands back raw data, no proxy involved. */
+class ObservedMapCarburetor extends Carburetor<Map<string, number>> {
+    public subscribeReads: TPathSet[] = [];
+
+    private readonly baseSubscribe = this.subscribe;
+
+    public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
+        this.subscribeReads.push(new Set<TPath>(options.reads ?? []));
+        return this.baseSubscribe(callback, options);
+    };
+
+    public setKey = (key: string, value: number): void => {
+        this.update((draft: Map<string, number>) => {
+            // oxlint-disable-next-line carburetor/no-untrackable-draft-mutation
+            draft.set(key, value);
+        });
+    };
+}
 
     describe('connected read work', () => {
         test('one render reading several fields resolves the source once and captures the baseline once', () => {
@@ -223,6 +244,171 @@ import {
             act(() => store.setDone('a', true));
 
             expect(container.querySelector('.value')?.textContent).toEqual('a-true');
+
+            unmount();
+        });
+
+        test('useCarburetor returns the same root view across renders while the data object is unchanged', () => {
+            const store = new ObservedCarburetor(getCounterData());
+            const seen: unknown[] = [];
+
+            class Stable extends AntiHookComponent<{tick: number}> {
+                render() {
+                    const view = this.useCarburetor(store);
+
+                    seen.push(view);
+
+                    return <div className="value">{view.value}</div>;
+                }
+            }
+
+            const {rerender, unmount} = render(<Stable tick={0} />);
+
+            rerender(<Stable tick={1} />);
+            rerender(<Stable tick={2} />);
+
+            expect(seen.length).toEqual(3);
+            expect(seen[0]).toBe(seen[1]);
+            expect(seen[1]).toBe(seen[2]);
+
+            unmount();
+        });
+
+        test('useCarburetor rebuilds its root view once setData replaces the data object', () => {
+            const store = new ObservedCarburetor(getCounterData());
+            const seen: unknown[] = [];
+
+            class Rebuild extends AntiHookComponent {
+                render() {
+                    const view = this.useCarburetor(store);
+
+                    seen.push(view);
+
+                    return <div className="value">{view.value}</div>;
+                }
+            }
+
+            const {container, unmount} = render(<Rebuild />);
+
+            expect(seen.length).toEqual(1);
+
+            act(() => {
+                store.setData({value: 9, other: 8});
+            });
+
+            expect(container.querySelector('.value')?.textContent).toEqual('9');
+            expect(seen.length).toEqual(2);
+            expect(seen[0]).not.toBe(seen[1]);
+
+            unmount();
+        });
+
+        test('a useCarburetor view read from a handler after commit gets current data and records nothing', () => {
+            const store = new ObservedCarburetor(getCounterData());
+            let handlerSaw = '';
+
+            class Reader extends AntiHookComponent {
+                private captured: {value: number; other: number} | undefined;
+
+                handleCheck = (): void => {
+                    const view = this.captured as {value: number; other: number};
+
+                    handlerSaw = view.value + '-' + view.other;
+                };
+
+                render() {
+                    this.captured = this.useCarburetor(store);
+
+                    return <div>
+                        <span className="value">{this.captured.value}</span>
+                        <button className="btn" onClick={this.handleCheck}>check</button>
+                    </div>;
+                }
+            }
+
+            const {container, unmount} = render(<Reader />);
+
+            expect(store.subscribeReads.length).toEqual(1);
+            expect([...store.subscribeReads[0]]).toEqual(['value']);
+
+            // A write to a field this render never read: no re-render, so the handler's later
+            // read is the first thing to see it.
+            act(() => store.incOther());
+
+            fireEvent.click(container.querySelector('.btn') as HTMLButtonElement);
+
+            // The handler read the persistent view outside render and saw current data...
+            expect(handlerSaw).toEqual('0-1');
+            // ...but recorded nothing: no new subscription was installed for it.
+            expect(store.subscribeReads.length).toEqual(1);
+
+            unmount();
+        });
+
+        test('a stale view read before the next render recalls useCarburetor adds nothing to it', () => {
+            const store = new ObservedCarburetor(getCounterData());
+            let staleView: {value: number; other: number} | undefined;
+
+            class Peek extends AntiHookComponent<{tick: number}> {
+                render() {
+                    // A stale read through last render's captured view, before this render's own
+                    // useCarburetor call refreshes which attempt the view's recorder reports to.
+                    if (staleView) {
+                        void staleView.other;
+                    }
+
+                    const view = this.useCarburetor(store);
+
+                    staleView = view;
+
+                    return <div className="value">{view.value}</div>;
+                }
+            }
+
+            const {rerender, unmount} = render(<Peek tick={0} />);
+
+            expect(store.subscribeReads.length).toEqual(1);
+            expect([...store.subscribeReads[0]]).toEqual(['value']);
+
+            rerender(<Peek tick={1} />);
+
+            // Had the stale pre-call read of `.other` counted toward this attempt, the read set
+            // would widen to ['value', 'other'] and force a fresh subscription; an unchanged
+            // read set instead skips re-registering entirely, so the count stays exactly as before.
+            expect(store.subscribeReads.length).toEqual(1);
+
+            unmount();
+        });
+
+        test('useCarburetor on a non-trackable root marks the wildcard on every render, not just the first', () => {
+            const store = new ObservedMapCarburetor(new Map<string, number>([['a', 1]]));
+
+            class Reader extends AntiHookComponent<{tick: number}> {
+                render() {
+                    const data = this.useCarburetor(store);
+
+                    return <div className="value">{data.get('a')}-{data.get('b') ?? 'none'}</div>;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Reader tick={0} />);
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1-none');
+            expect(store.subscribeReads.length).toEqual(1);
+            expect([...store.subscribeReads[0]]).toEqual([WILDCARD_PATH]);
+
+            rerender(<Reader tick={1} />);
+
+            // The read set is the wildcard again, unchanged from the first render, so the
+            // subscription is not re-registered — but it must have been marked again: nothing
+            // here may cache the non-trackable root's read past one render.
+            expect(store.subscribeReads.length).toEqual(1);
+
+            act(() => store.setKey('b', 2));
+
+            // Had the second render's attempt gone unmarked, this write would never reach the
+            // component: proof the wildcard was recorded again, not just remembered from render one.
+            expect(container.querySelector('.value')?.textContent).toEqual('1-2');
 
             unmount();
         });

@@ -15,6 +15,7 @@
 // allocation; nested proxies are built lazily, so they only appear in "read" rows.
 
 import {Carburetor} from '../dist/esm/Carburetor/Store/Carburetor.mjs';
+import {buildTrackedView} from '../dist/esm/Carburetor/Component/AntiHookComponent/buildTrackedView.mjs';
 
 // Every read feeds this accumulator and the total is checked once at the end: with the
 // result unconsumed, V8 hoists loop-invariant plain-object reads out of the timed loop
@@ -146,6 +147,50 @@ measure('create + read 50', 100000, () => trackedRead(wideStore, 50, readWide));
 measure('plain read 1', 2000000, () => readWide(wideData, 1));
 measure('plain read 10', 500000, () => readWide(wideData, 10));
 measure('plain read 50', 200000, () => readWide(wideData, 50));
+
+console.log('\nsteady state: useCarburetor\'s persistent view vs a fresh proxy every render');
+console.log('(a fresh proxy every render is the "create + read N" rows above; this is the same');
+console.log('read work through buildTrackedView\'s cache-hit path, unchanged data object)');
+
+/**
+ * One component's worth of `useCarburetor` bookkeeping, fabricated the way
+ * `AntiHookComponentReads` builds it: a per-carburetor view cache, a render attempt that
+ * stays open the whole loop (so every recorded path lands somewhere), and the tracked
+ * entry `track()` would hand out. Reused across iterations, like the real cache is reused
+ * across renders — only the entry's `reads` are cleared, mirroring the fresh Set a new
+ * render attempt starts with.
+ */
+const steadyState = (store) => {
+    const views = new WeakMap();
+    const attempt = {entries: new Map(), sources: new Map(), deferredLoads: [], abandoned: false};
+    const entry = {connection: undefined, source: store, baselineVersion: 0, reads: new Set()};
+    const getRenderAttempt = () => attempt;
+
+    // The one allocation, outside the timed loop: mirrors the first render, which still
+    // builds the proxy. Every timed call after this is a cache hit.
+    buildTrackedView(views, store, getRenderAttempt, attempt, entry);
+
+    return (reader, n) => {
+        entry.reads.clear();
+
+        const view = buildTrackedView(views, store, getRenderAttempt, attempt, entry);
+
+        reader(view, n);
+    };
+};
+
+const shallowSteady = steadyState(shallowStore);
+const deepSteady = steadyState(deepStore);
+const wideSteady = steadyState(wideStore);
+
+measure('shallow: cache hit + read 1', 500000, () => shallowSteady(readShallow, 1));
+measure('shallow: cache hit + read 8 (all keys)', 500000, () => shallowSteady(readShallow, 8));
+measure('shallow: cache hit + read 50 (revisited)', 100000, () => shallowSteady(readShallow, 50));
+measure('deep: cache hit + read 10 deep leaves', 200000, () => deepSteady(readDeepLeaves, 10));
+measure('deep: cache hit + read 50 deep leaves', 100000, () => deepSteady(readDeepLeaves, 50));
+measure('wide: cache hit + read 1', 500000, () => wideSteady(readWide, 1));
+measure('wide: cache hit + read 10', 200000, () => wideSteady(readWide, 10));
+measure('wide: cache hit + read 50', 100000, () => wideSteady(readWide, 50));
 
 // Keeps the accumulator observable, so no read above can be optimized away.
 if (sink === -1) {

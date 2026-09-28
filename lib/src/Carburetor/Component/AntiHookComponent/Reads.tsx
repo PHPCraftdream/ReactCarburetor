@@ -11,7 +11,9 @@ import {
     IAttemptEntry,
     IConnectionSource,
     IRenderAttempt,
+    ITrackedView,
 } from "@/Carburetor/Component/Models/Connection";
+import {buildTrackedView} from "@/Carburetor/Component/AntiHookComponent/buildTrackedView";
 import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersistentView";
 import {declareConnection} from "@/Carburetor/Component/Connection/declareConnection";
 import {detachSelection} from "@/Carburetor/Component/Connection/detachSelection";
@@ -22,25 +24,30 @@ import {AntiHookComponentFoundation} from "./Foundation";
 const CONNECTION_ATTEMPT_KEY = "c:";
 const TRACKED_ATTEMPT_KEY = "t:";
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
+    /** `useCarburetor`'s per-carburetor root views, created on first use; see buildTrackedView. */
+    private trackedViews: WeakMap<ICarburetorSubscription, ITrackedView<object>> | undefined;
+
+    /** Live accessor for the recorder built into a cached view, whose call site is long gone. */
+    private readonly getRenderAttempt = (): IRenderAttempt | undefined => this.renderAttempt;
+
     /**
      * The only way to read state in render: returns tracked data. The component
      * subscribes to exactly the fields it actually reads, and re-renders only when
      * those fields change.
      *
-     * A read is attributed to the render attempt that was open when `useCarburetor` itself
-     * ran — and to nothing else: the identity check inside the recorder stops a view captured
-     * by an older render and read later (from a handler, an effect) from adding paths to some
-     * other attempt's read set.
+     * The view is the same object across renders while the carburetor and its data object stay
+     * the same; `setData`/`restore` rebuild it. Reads outside the attempt that last called this
+     * method record nothing.
      */
     public useCarburetor<T extends object>(carburetor: ICarburetor<T>): TReadonly<T> {
         const attempt = this.renderAttempt;
         const entry = this.track(carburetor);
 
-        return carburetor.read((path: TPath) => {
-            if (attempt !== undefined && this.renderAttempt === attempt) {
-                entry.reads.add(path);
-            }
-        });
+        if (this.trackedViews === undefined) {
+            this.trackedViews = new WeakMap();
+        }
+
+        return buildTrackedView(this.trackedViews, carburetor, this.getRenderAttempt, attempt, entry);
     }
 
     /**

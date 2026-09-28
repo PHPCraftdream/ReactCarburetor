@@ -34,6 +34,7 @@ const EResourceStatus_js_namespaceObject = require("../../Models/Enums/EResource
 const WildcardPath_js_namespaceObject = require("../../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../../Store/Diagnostics/DiagnosticsInstance.js");
 const DevelopmentFlag_js_namespaceObject = require("../../Store/Utils/DevelopmentFlag.js");
+const external_buildTrackedView_js_namespaceObject = require("./buildTrackedView.js");
 const buildPersistentView_js_namespaceObject = require("../Connection/buildPersistentView.js");
 const declareConnection_js_namespaceObject = require("../Connection/declareConnection.js");
 const detachSelection_js_namespaceObject = require("../Connection/detachSelection.js");
@@ -43,12 +44,13 @@ const external_Foundation_js_namespaceObject = require("./Foundation.js");
 const CONNECTION_ATTEMPT_KEY = "c:";
 const TRACKED_ATTEMPT_KEY = "t:";
 class AntiHookComponentReads extends external_Foundation_js_namespaceObject.AntiHookComponentFoundation {
+    trackedViews;
+    getRenderAttempt = ()=>this.renderAttempt;
     useCarburetor(carburetor) {
         const attempt = this.renderAttempt;
         const entry = this.track(carburetor);
-        return carburetor.read((path)=>{
-            if (void 0 !== attempt && this.renderAttempt === attempt) entry.reads.add(path);
-        });
+        if (void 0 === this.trackedViews) this.trackedViews = new WeakMap();
+        return (0, external_buildTrackedView_js_namespaceObject.buildTrackedView)(this.trackedViews, carburetor, this.getRenderAttempt, attempt, entry);
     }
     declareConnection(source) {
         return (0, declareConnection_js_namespaceObject.declareConnection)(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);

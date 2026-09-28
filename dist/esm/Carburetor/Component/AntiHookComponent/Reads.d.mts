@@ -5,15 +5,18 @@ import { ICarburetor, ICarburetorSubscription } from "../../Models/Store.mjs";
 import { IAttemptEntry } from "../Models/Connection.mjs";
 import { AntiHookComponentFoundation } from "./Foundation.mjs";
 export declare abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
+    /** `useCarburetor`'s per-carburetor root views, created on first use; see buildTrackedView. */
+    private trackedViews;
+    /** Live accessor for the recorder built into a cached view, whose call site is long gone. */
+    private readonly getRenderAttempt;
     /**
      * The only way to read state in render: returns tracked data. The component
      * subscribes to exactly the fields it actually reads, and re-renders only when
      * those fields change.
      *
-     * A read is attributed to the render attempt that was open when `useCarburetor` itself
-     * ran — and to nothing else: the identity check inside the recorder stops a view captured
-     * by an older render and read later (from a handler, an effect) from adding paths to some
-     * other attempt's read set.
+     * The view is the same object across renders while the carburetor and its data object stay
+     * the same; `setData`/`restore` rebuild it. Reads outside the attempt that last called this
+     * method record nothing.
      */
     useCarburetor<T extends object>(carburetor: ICarburetor<T>): TReadonly<T>;
     /**

@@ -147,6 +147,17 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Performance:** `useCarburetor` now keeps one persistent root read view per (component
+  instance, carburetor), reused across renders while the carburetor's `getData()` object stays
+  the same, instead of allocating a fresh read-tracking proxy on every call — the same steady-state
+  reuse `connect()` already gave a declared view. Rebuilds only on `setData`/`restore` or a
+  different carburetor; a non-trackable root (`isTrackable` false) is unaffected, since `read()`
+  never builds a proxy for one anyway. The per-carburetor cache is a `WeakMap`, created lazily on
+  a component's first `useCarburetor` call, so a `connect()`-only component pays nothing for it.
+  Measured with `benchmarks/useCarburetorProxy.mjs`: a cache hit reading one field costs ~0.0003
+  ms/op against ~0.0010-0.0011 ms/op for a fresh proxy — roughly 3-4x faster in the common
+  few-fields-per-render case; the gain narrows as the number of fields read per render grows,
+  since the read work itself then dominates the one avoided allocation.
 - **Breaking:** a class-field `render` (`render = () => ...`) is no longer supported.
   `AntiHookComponentFoundation`'s constructor installs `render` as a non-configurable own
   accessor, so a subclass's class-field `render` throws a `TypeError` at construction instead of
