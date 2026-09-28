@@ -13,6 +13,15 @@ import {
 import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
 const RENDER_KEY = "render";
 
+/**
+ * Keys for the render accessor's per-instance state (`installRenderBoundary`). Symbol-keyed so
+ * no subclass field name, however generic, can ever collide with them: `renderRaw`, `boundary`
+ * or `assigned` are all plausible names for a subclass's own state.
+ */
+const RENDER_RAW: unique symbol = Symbol('carburetor.antiHookComponent.renderRaw');
+const RENDER_BOUNDARY: unique symbol = Symbol('carburetor.antiHookComponent.renderBoundary');
+const RENDER_ASSIGNED: unique symbol = Symbol('carburetor.antiHookComponent.renderAssigned');
+
 export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.Component<P, S> {
     /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
     protected uid: string = getUid();
@@ -52,6 +61,15 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      */
     protected committedAttempt: IRenderAttempt | undefined = undefined;
 
+    /** The raw render last seen: the prototype's, or whatever a constructor assigned. */
+    private [RENDER_RAW]: unknown = undefined;
+
+    /** The boundary built around the current raw render; rebuilt only when that render changes. */
+    private [RENDER_BOUNDARY]: (() => React.ReactNode) | undefined = undefined;
+
+    /** Whether a constructor assigned `render` directly, rather than leaving it on the prototype. */
+    private [RENDER_ASSIGNED] = false;
+
     /**
      * Installs the render-attempt boundary as a non-configurable own accessor, so the moment
      * `render` first exists — a prototype method looked up through it, or a value later
@@ -80,35 +98,59 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      * a constructor body): assignment goes through `[[Set]]`, which calls an accessor's setter,
      * not `[[DefineOwnProperty]]` — the two are distinguishable at the engine level, which is
      * why one can stay supported while the other is rejected.
+     *
+     * `get`/`set` are one shared function pair, not per-instance closures: V8 keeps accessor
+     * functions in the hidden class, so a fresh pair per instance drops every instance after the
+     * first into dictionary-mode properties. The state the pair needs lives in symbol-keyed fields.
      */
     private installRenderBoundary(): void {
-        let rawRender: unknown;
-        let boundary: (() => React.ReactNode) | undefined;
-        let assigned = false;
-
         Object.defineProperty(this, RENDER_KEY, {
             configurable: false,
             enumerable: false,
-            get: (): unknown => {
-                const raw = assigned ? rawRender : Reflect.get(Object.getPrototypeOf(this), RENDER_KEY, this);
-
-                if (typeof raw !== 'function') {
-                    return raw;
-                }
-
-                if (boundary === undefined || raw !== rawRender) {
-                    rawRender = raw;
-                    boundary = this.buildRenderBoundary(raw as () => React.ReactNode);
-                }
-
-                return boundary;
-            },
-            set: (value: unknown): void => {
-                assigned = typeof value === 'function';
-                rawRender = value;
-                boundary = assigned ? this.buildRenderBoundary(value as () => React.ReactNode) : undefined;
-            },
+            get: AntiHookComponentFoundation.renderGetter,
+            set: AntiHookComponentFoundation.renderSetter,
         });
+    }
+
+    /**
+     * Reads `render`: the value a constructor assigned, or else the prototype's, wrapped in the
+     * boundary that opens and closes a render attempt around it.
+     *
+     * Static, and referenced through the base class, so every instance shares it and no subclass
+     * member of the same name can replace it. Rebuilds the boundary only when the raw render changed.
+     */
+    private static renderGetter(this: AntiHookComponentFoundation<unknown, unknown>): unknown {
+        const raw = this[RENDER_ASSIGNED]
+            ? this[RENDER_RAW]
+            : Reflect.get(Object.getPrototypeOf(this), RENDER_KEY, this);
+
+        if (typeof raw !== 'function') {
+            return raw;
+        }
+
+        if (this[RENDER_BOUNDARY] === undefined || raw !== this[RENDER_RAW]) {
+            this[RENDER_RAW] = raw;
+            this[RENDER_BOUNDARY] = this.buildRenderBoundary(raw as () => React.ReactNode);
+        }
+
+        return this[RENDER_BOUNDARY];
+    }
+
+    /**
+     * Sets `render` directly — typically a constructor assignment — and rebuilds the boundary
+     * around the new value right away.
+     *
+     * Shared the same way as `renderGetter`.
+     *
+     * @param this - the instance whose `render` is assigned
+     * @param value - the value assigned to `this.render`; wrapped only when it is a function
+     */
+    private static renderSetter(this: AntiHookComponentFoundation<unknown, unknown>, value: unknown): void {
+        this[RENDER_ASSIGNED] = typeof value === 'function';
+        this[RENDER_RAW] = value;
+        this[RENDER_BOUNDARY] = this[RENDER_ASSIGNED]
+            ? this.buildRenderBoundary(value as () => React.ReactNode)
+            : undefined;
     }
 
     /**
