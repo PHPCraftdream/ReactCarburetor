@@ -1,6 +1,10 @@
 import {IDict, TDisposer, TReadonly, TSubscriber} from "@/Carburetor/Models/Base";
-import {TPath, TPathRecorder, TPathSet, TAliasLedger} from "@/Carburetor/Models/Paths";
-import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler, TSelector} from "@/Carburetor/Models/Store";
+import {
+    PATCH_OPAQUE, TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort, TPatchRecorder,
+} from "@/Carburetor/Models/Paths";
+import {
+    ICarburetor, INotifiable, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector,
+} from "@/Carburetor/Models/Store";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
@@ -53,7 +57,7 @@ interface ISubscriberRecord {
     callback: TSubscriber;
 }
 
-export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable {
+export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable, IPatchSource {
     /** The subscriber records the index points at: delivery schedules the callback it finds here. */
     protected subscribers: IDict<ISubscriberRecord> = {};
 
@@ -62,6 +66,9 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
     /** Development alias ledger handed to both proxies; undefined outside development. */
     protected aliases: TAliasLedger = createAliasLedger();
+
+    /** The currently attached patch listener, if any; shared with the write proxy tree (R16-07). */
+    protected patchPort: TPatchPort = {};
 
     /** The store's identity, minted once at construction. */
     protected uid: string = getUid();
@@ -172,7 +179,14 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         // instead of its no-path fallback for a write that bypassed draft, where nothing is
         // known and everything must wake.
         this.touchDraft();
-        diffPaths(previous, data).forEach((path: TPath) => this.recordWrite(path));
+
+        const changed = diffPaths(previous, data);
+        // Opaque to a patch listener (R16-07), only when something actually changed.
+        if (changed.size > 0) {
+            this.patchPort.listener?.(PATCH_OPAQUE);
+            changed.forEach((path: TPath) => this.recordWrite(path));
+        }
+
         this.emitUpdate();
 
         return data;
@@ -298,6 +312,21 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     }
 
     /**
+     * IPatchSource (R16-07): replaces any previously attached listener; needs no tree rebuild.
+     *
+     * @param listener - called per describable write, or PATCH_OPAQUE otherwise.
+     */
+    public attachPatchListener(listener: TPatchRecorder): TDisposer {
+        this.patchPort.listener = listener;
+
+        return () => {
+            if (this.patchPort.listener === listener) {
+                this.patchPort.listener = undefined;
+            }
+        };
+    }
+
+    /**
      * Runs `select` against a tracked read of the data, returning both the result and the
      * paths that produced it — the one place `watch()` reads, so its first call and every
      * later re-run go through the identical mechanism.
@@ -413,13 +442,16 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             // The store itself cannot be wrapped (a Map or a class instance as the root),
             // so a mutation through this reference is invisible. There is no path to be
             // precise about either, which makes the whole store the honest answer.
+            this.patchPort.listener?.(PATCH_OPAQUE);
             this.recordWrite(WILDCARD_PATH);
 
             return this.data;
         }
 
         if (!this.draftProxy) {
-            this.draftProxy = createWriteProxy(data, this.writeRecorder, '', this.aliases) as T;
+            this.draftProxy = createWriteProxy(
+                data, this.writeRecorder, '', this.aliases, undefined, this.patchPort
+            ) as T;
         }
 
         return this.draftProxy;
@@ -499,6 +531,8 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
     /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
     protected markAllChanged(): void {
+        // Always a real change, unlike emitUpdate()'s own bypass fallback below (R16-07).
+        this.patchPort.listener?.(PATCH_OPAQUE);
         this.recordWrite(WILDCARD_PATH);
     }
 
@@ -529,7 +563,11 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             return;
         }
 
-        // Writes bypassed draft: the changed paths are unknown, so treat everything as changed.
+        // Writes bypassed draft: unknown and opaque, same as the wildcard itself (R16-07).
+        if (!changed) {
+            this.patchPort.listener?.(PATCH_OPAQUE);
+        }
+
         const writes = changed || new Set<TPath>([WILDCARD_PATH]);
         this.version++;
         this.writeLog.record(this.version, writes);

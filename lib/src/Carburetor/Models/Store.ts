@@ -1,5 +1,5 @@
 import {TDisposer, TReadonly, TSubscriber, TUpdater} from "./Base";
-import {TPathSet} from "./Paths";
+import {TPathSet, TPatchRecorder} from "./Paths";
 
 /**
  * Picks the part of a carburetor's data one subscription cares about, run against a tracked
@@ -116,4 +116,21 @@ export interface ICarburetor<T> extends IInspectable {
 /** A carburetor as seen by the batch coordinator. */
 export interface INotifiable {
     notifyWrites: (writes: TPathSet) => void;
+}
+
+/**
+ * A store that can report the patches behind its own writes (R16-07) instead of only the paths
+ * that changed. `CarburetorHistory` is the one caller today: it records the patches for a small,
+ * invertible entry instead of a snapshot per change, falling back to a snapshot only for a
+ * change a patch cannot describe. Undo and redo still install the result through `restore()` —
+ * not a patch-specific apply — so a store that overrides `restore()` (a `ResourceCache` aborting
+ * in-flight requests, for one) keeps seeing every time-travel write the same way it always has.
+ */
+export interface IPatchSource {
+    /**
+     * Attaches one patch listener, replacing whichever one was attached before — a store has at
+     * most one at a time, the same way `draft` has one memoized proxy tree. The disposer detaches
+     * it; detaching an already-replaced listener is a no-op.
+     */
+    attachPatchListener: (listener: TPatchRecorder) => TDisposer;
 }

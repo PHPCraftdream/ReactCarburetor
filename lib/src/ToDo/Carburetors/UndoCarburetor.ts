@@ -1,4 +1,4 @@
-import {Carburetor, CarburetorHistory, ICarburetor, TDisposer} from "@/Carburetor";
+import {Carburetor, CarburetorHistory, ICarburetor, IPatchSource, TDisposer} from "@/Carburetor";
 import {IUndoData} from "./Models";
 
 /**
@@ -17,7 +17,7 @@ export class UndoCarburetor<T extends object> extends Carburetor<IUndoData> {
      *
      * @param source - the store undo and redo apply to
      */
-    constructor(source: ICarburetor<T>) {
+    constructor(source: ICarburetor<T> & IPatchSource) {
         super({canUndo: false, canRedo: false});
 
         this.history = new CarburetorHistory<T>(source, {limit: 50});

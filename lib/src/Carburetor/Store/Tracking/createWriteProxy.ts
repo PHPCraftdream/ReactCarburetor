@@ -1,11 +1,17 @@
-import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
+import {
+    IWritePatch, PATCH_ABSENT, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger, TPatchPort,
+} from "@/Carburetor/Models/Paths";
 import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {createProxyCache} from "./createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
 import {isTrackable} from "./isTrackable";
+
+/** A plain value safe to hand a patch listener: cloned so a later in-place write cannot alias it. */
+const patchValue = (value: unknown): unknown => (isTrackable(value) ? deepClone(value) : value);
 
 /**
  * Write proxies by the raw object each wraps. A value read back through draft arrives
@@ -56,6 +62,10 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * @param cache - the branch-wrapper cache this proxy's whole tree shares.
      * @param isArray - whether the target is an array, so index and `length` writes get their
      * array-specific attribution.
+     * @param patchPort - where this proxy's whole tree finds the currently attached patch
+     * listener, if any (R16-07); shared by every branch so attaching one needs no rebuild.
+     * @param basePathSegments - `basePath`'s own keys, unescaped; built once per branch (on a
+     * cache miss in `wrap`) and only read when a patch is actually being reported.
      */
     constructor(
         private readonly basePath: TPath,
@@ -63,6 +73,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         private readonly aliases: TAliasLedger | undefined,
         private readonly cache: IProxyCache,
         private readonly isArray: boolean,
+        private readonly patchPort: TPatchPort | undefined,
+        private readonly basePathSegments: readonly string[],
     ) {}
 
     /**
@@ -114,20 +126,51 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
     }
 
     /**
+     * Builds and delivers one patch for `key`, deep-cloning `previous`/`next` first (R16-07).
+     * Never called once `path` has already collapsed to the wildcard — that write is reported
+     * through `listener(PATCH_OPAQUE)` instead, at the call site that already knows it did.
+     *
+     * @param listener - the patch listener to deliver to; only read from `patchPort` once by
+     * each caller, so this takes it directly instead of re-reading the port.
+     * @param key - the property this patch describes; appended to `basePathSegments`.
+     * @param previous - the value before the write, or PATCH_ABSENT when `key` was not own.
+     * @param next - the value after the write, or PATCH_ABSENT when the write deleted `key`.
+     */
+    private reportPatch(
+        listener: (patch: IWritePatch | typeof PATCH_OPAQUE) => void,
+        key: string,
+        previous: unknown,
+        next: unknown
+    ): void {
+        listener({
+            segments: [...this.basePathSegments, key],
+            previous: patchValue(previous),
+            next: patchValue(next),
+        });
+    }
+
+    /**
      * The wrapper for (path, source): the cache's own entry on a hit, a fresh one filed on a
      * miss. Split from a single call taking a `create` thunk so a hit allocates no closure.
      *
+     * `basePathSegments` for the child is only built on a miss, same as the child proxy and
+     * handler themselves: a cache hit costs nothing beyond the lookup, patch listener or not.
+     *
      * @param path - the full path the branch was read at.
+     * @param key - the property `path` was reached through, appended to this branch's own
+     * segments to build the child's; a symbol key's child reuses this branch's segments
+     * unchanged, since every write under it already collapses onto the wildcard.
      * @param source - the raw branch object to wrap.
      */
-    private wrap(path: TPath, source: object): object {
+    private wrap(path: TPath, key: string | symbol, source: object): object {
         const cached = this.cache.get(path, source);
 
         if (cached !== undefined) {
             return cached;
         }
 
-        const proxy = createWriteProxy(source, this.record, path, this.aliases, this.cache);
+        const segments = typeof key === 'string' ? [...this.basePathSegments, key] : this.basePathSegments;
+        const proxy = createWriteProxy(source, this.record, path, this.aliases, this.cache, this.patchPort, segments);
 
         this.cache.set(path, source, proxy);
 
@@ -154,7 +197,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         if (isTrackable(value)) {
-            return this.wrap(this.writtenPath(key), value);
+            return this.wrap(this.writtenPath(key), key, value);
         }
 
         // A Map, Set, Date or class instance cannot be wrapped, so `draft.index.set(...)`
@@ -163,6 +206,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         // alone: they are copied, not mutated, and the path is never built for them at all —
         // a primitive read through draft records nothing, so building one would be pure waste.
         if (value !== null && typeof value === 'object') {
+            // Whatever changes inside it, if anything, cannot be described as a patch: a
+            // history attached to this store falls back to a full snapshot for this change.
+            this.patchPort?.listener?.(PATCH_OPAQUE);
             this.record(this.writtenPath(key));
         }
 
@@ -197,6 +243,15 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         this.aliases?.checkWrite(source, this.basePath);
         this.aliases?.forget(previous);
 
+        const listener = this.patchPort?.listener;
+        const path = this.writtenPath(key);
+
+        // A symbol key, or a write already inside an opaque branch, has no path to invert by —
+        // reported once here rather than at every place below that would otherwise build one.
+        if (listener && path === WILDCARD_PATH) {
+            listener(PATCH_OPAQUE);
+        }
+
         // A key that did not already exist changes the key set itself (R16-01): an index write
         // past the array's own end is exactly such a case, alongside an ordinary new object
         // key. A symbol key's write already collapses onto the wildcard below, which wakes an
@@ -215,7 +270,14 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (this.isArray && key === 'length' && typeof raw === 'number' && typeof previous === 'number'
             && raw < previous) {
             for (let removed = raw; removed < previous; removed++) {
-                this.record(joinPath(this.basePath, String(removed)));
+                const removedKey = String(removed);
+                const removedPath = joinPath(this.basePath, removedKey);
+
+                if (listener) {
+                    this.reportPatch(listener, removedKey, Reflect.get(source, removedKey), PATCH_ABSENT);
+                }
+
+                this.record(removedPath);
             }
 
             if (this.basePath !== WILDCARD_PATH) {
@@ -232,8 +294,6 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             ? (source as unknown as {length: number}).length
             : undefined;
 
-        const path = this.writtenPath(key);
-
         // Replacing a plain object/array with another of the same kind (R16-03): the data still
         // gets the new object wholesale below, but only the leaves that actually differ are
         // announced, instead of every reader under `path` regardless of what changed. A brand
@@ -242,14 +302,27 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         // kind, but the guard is checked here too so the common (primitive) write never pays for
         // building and walking a diff it would immediately answer with just `path`.
         if (wasOwn && isTrackable(previous) && isTrackable(raw) && Array.isArray(previous) === Array.isArray(raw)) {
-            diffPaths(previous, raw, path).forEach((changed: TPath) => this.record(changed));
+            const onPatch = listener && path !== WILDCARD_PATH ? listener : undefined;
+            const segments = onPatch ? [...this.basePathSegments, key as string] : [];
+
+            diffPaths(previous, raw, path, segments, onPatch).forEach((changed: TPath) => this.record(changed));
         } else {
+            if (listener && path !== WILDCARD_PATH) {
+                this.reportPatch(listener, key as string, wasOwn ? previous : PATCH_ABSENT, raw);
+            }
+
             this.record(path);
         }
 
         const wrote = Reflect.set(source, key, raw);
 
         if (previousLength !== undefined && (source as unknown as {length: number}).length !== previousLength) {
+            const newLength = (source as unknown as {length: number}).length;
+
+            if (listener) {
+                this.reportPatch(listener, 'length', previousLength, newLength);
+            }
+
             this.record(this.writtenPath('length'));
         }
 
@@ -266,15 +339,26 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * @param descriptor - the descriptor to install.
      */
     defineProperty(source: T, key: string | symbol, descriptor: PropertyDescriptor): boolean {
-        this.aliases?.checkWrite(source, this.basePath);
-        this.aliases?.forget(Reflect.get(source, key));
+        const previous = Reflect.get(source, key);
+        const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
 
-        if (!Object.prototype.hasOwnProperty.call(source, key) && typeof key === 'string'
-            && this.basePath !== WILDCARD_PATH) {
+        this.aliases?.checkWrite(source, this.basePath);
+        this.aliases?.forget(previous);
+
+        if (!wasOwn && typeof key === 'string' && this.basePath !== WILDCARD_PATH) {
             this.record(this.keysMarker());
         }
 
         const path = this.writtenPath(key);
+        const listener = this.patchPort?.listener;
+
+        if (listener) {
+            if (path === WILDCARD_PATH) {
+                listener(PATCH_OPAQUE);
+            } else {
+                this.reportPatch(listener, key as string, wasOwn ? previous : PATCH_ABSENT, descriptor.value);
+            }
+        }
 
         this.record(path);
 
@@ -294,14 +378,25 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return true;
         }
 
+        const previous = Reflect.get(source, key);
+
         this.aliases?.checkWrite(source, this.basePath);
-        this.aliases?.forget(Reflect.get(source, key));
+        this.aliases?.forget(previous);
 
         if (typeof key === 'string' && this.basePath !== WILDCARD_PATH) {
             this.record(this.keysMarker());
         }
 
         const path = this.writtenPath(key);
+        const listener = this.patchPort?.listener;
+
+        if (listener) {
+            if (path === WILDCARD_PATH) {
+                listener(PATCH_OPAQUE);
+            } else {
+                this.reportPatch(listener, key as string, previous, PATCH_ABSENT);
+            }
+        }
 
         this.record(path);
 
@@ -327,16 +422,23 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
  * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
  * this undefined and mints one, and every nested branch receives it back so the tree caches
  * as one unit.
+ * @param patchPort - where this tree finds its currently attached patch listener, if any
+ * (R16-07); threaded to every branch so attaching or detaching one needs no rebuild.
+ * @param basePathSegments - `basePath`'s own keys, unescaped; '' the empty array at the root.
  */
 export const createWriteProxy = <T extends object>(
     target: T,
     record: TPathRecorder,
     basePath: TPath = '',
     aliases?: TAliasLedger,
-    cache?: IProxyCache
+    cache?: IProxyCache,
+    patchPort?: TPatchPort,
+    basePathSegments: readonly string[] = [],
 ): T => {
     const cached: IProxyCache = cache ?? createProxyCache();
-    const handler = new WriteProxyHandler<T>(basePath, record, aliases, cached, Array.isArray(target));
+    const handler = new WriteProxyHandler<T>(
+        basePath, record, aliases, cached, Array.isArray(target), patchPort, basePathSegments
+    );
     const proxy = new Proxy(target, handler);
 
     proxyTargets.set(proxy, target);
