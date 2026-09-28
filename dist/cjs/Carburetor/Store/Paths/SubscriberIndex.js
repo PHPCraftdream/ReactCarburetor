@@ -37,47 +37,49 @@ class SubscriberIndex {
     branch = new Map();
     wildcard = new Set();
     readsById = new Map();
-    ancestorsById = new Map();
+    filedById = new Map();
     add(id, reads) {
-        this.remove(id);
+        const filed = this.filedById.get(id);
         this.readsById.set(id, reads);
-        const ancestors = new Map();
-        this.ancestorsById.set(id, ancestors);
-        reads.forEach((readPath)=>{
-            if (readPath === external_WildcardPath_js_namespaceObject.WILDCARD_PATH) return void this.wildcard.add(id);
-            this.file(id, readPath, ancestors);
+        if (!filed) return void this.registerFresh(id, reads);
+        const stale = [];
+        filed.forEach((path)=>{
+            if (!reads.has(path)) stale.push(path);
         });
+        stale.forEach((path)=>{
+            this.unfile(id, path);
+            filed.delete(path);
+        });
+        reads.forEach((path)=>{
+            if (path === external_WildcardPath_js_namespaceObject.WILDCARD_PATH || filed.has(path)) return;
+            this.file(id, path);
+            filed.add(path);
+        });
+        const wantsWildcard = reads.has(external_WildcardPath_js_namespaceObject.WILDCARD_PATH);
+        if (wantsWildcard) this.wildcard.add(id);
+        else this.wildcard.delete(id);
     }
     addPath(id, path) {
         const reads = this.readsById.get(id);
         if (!reads) return;
         reads.add(path);
         if (path === external_WildcardPath_js_namespaceObject.WILDCARD_PATH) return void this.wildcard.add(id);
-        const exactReaders = this.exact.get(path);
-        if (exactReaders && exactReaders.has(id)) return;
-        let ancestors = this.ancestorsById.get(id);
-        if (!ancestors) {
-            ancestors = new Map();
-            this.ancestorsById.set(id, ancestors);
-        }
-        this.file(id, path, ancestors);
+        const filed = this.filedById.get(id);
+        if (filed.has(path)) return;
+        this.file(id, path);
+        filed.add(path);
     }
     remove(id) {
-        const reads = this.readsById.get(id);
-        if (!reads) return;
-        const ancestors = this.ancestorsById.get(id);
+        const filed = this.filedById.get(id);
+        if (!filed) return;
         this.readsById.delete(id);
-        this.ancestorsById.delete(id);
+        this.filedById.delete(id);
         this.wildcard.delete(id);
-        reads.forEach((readPath)=>{
-            this.unregister(this.exact, readPath, id);
-            const chain = (null == ancestors ? void 0 : ancestors.get(readPath)) || this.ancestorsOf(readPath);
-            chain.forEach((ancestor)=>this.unregister(this.branch, ancestor, id));
-        });
+        filed.forEach((path)=>this.unfile(id, path));
     }
     match(writes) {
         if (writes.has(external_WildcardPath_js_namespaceObject.WILDCARD_PATH)) return new Set(this.readsById.keys());
-        const matched = new Set(this.wildcard);
+        const matched = this.wildcard.size > 0 ? new Set(this.wildcard) : new Set();
         writes.forEach((writePath)=>{
             this.collect(this.exact.get(writePath), matched);
             this.collect(this.branch.get(writePath), matched);
@@ -88,11 +90,22 @@ class SubscriberIndex {
     hasReaderAt(path) {
         return this.exact.has(path) || this.branch.has(path);
     }
-    file(id, path, ancestors) {
+    registerFresh(id, reads) {
+        const filed = new Set();
+        this.filedById.set(id, filed);
+        reads.forEach((path)=>{
+            if (path === external_WildcardPath_js_namespaceObject.WILDCARD_PATH) return void this.wildcard.add(id);
+            this.file(id, path);
+            filed.add(path);
+        });
+    }
+    file(id, path) {
         this.register(this.exact, path, id);
-        const chain = this.ancestorsOf(path);
-        ancestors.set(path, chain);
-        chain.forEach((ancestor)=>this.register(this.branch, ancestor, id));
+        this.ancestorsOf(path).forEach((ancestor)=>this.register(this.branch, ancestor, id));
+    }
+    unfile(id, path) {
+        this.unregister(this.exact, path, id);
+        this.ancestorsOf(path).forEach((ancestor)=>this.unregister(this.branch, ancestor, id));
     }
     ancestorsOf(path) {
         const chain = [];
@@ -106,19 +119,33 @@ class SubscriberIndex {
     }
     register(target, path, id) {
         const known = target.get(path);
-        if (known) return void known.add(id);
-        target.set(path, new Set([
-            id
-        ]));
+        if (void 0 === known) return void target.set(path, id);
+        if ('string' == typeof known) {
+            if (known === id) return;
+            target.set(path, new Set([
+                known,
+                id
+            ]));
+            return;
+        }
+        known.add(id);
     }
     unregister(target, path, id) {
         const known = target.get(path);
-        if (!known) return;
+        if (void 0 === known) return;
+        if ('string' == typeof known) {
+            if (known === id) target.delete(path);
+            return;
+        }
         known.delete(id);
-        if (0 === known.size) target.delete(path);
+        if (1 === known.size) {
+            const [remaining] = known;
+            target.set(path, remaining);
+        }
     }
     collect(source, target) {
-        if (!source) return;
+        if (void 0 === source) return;
+        if ('string' == typeof source) return void target.add(source);
         source.forEach((id)=>target.add(id));
     }
 }

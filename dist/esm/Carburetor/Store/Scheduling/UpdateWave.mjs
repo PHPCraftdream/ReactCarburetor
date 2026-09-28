@@ -2,11 +2,13 @@ import { diagnostics } from "../Diagnostics/DiagnosticsInstance.mjs";
 class UpdateWave {
     depth = 0;
     pending = new Map();
-    isActive = ()=>this.depth > 0;
-    begin = ()=>{
+    isActive() {
+        return this.depth > 0;
+    }
+    begin() {
         this.depth++;
-    };
-    end = ()=>{
+    }
+    end() {
         this.depth--;
         if (this.depth > 0) return;
         this.depth = 1;
@@ -29,9 +31,9 @@ class UpdateWave {
         } finally{
             this.depth = 0;
         }
-    };
-    defer = (uid, settle)=>{
+    }
+    defer(uid, settle) {
         this.pending.set(uid, settle);
-    };
+    }
 }
 export { UpdateWave };

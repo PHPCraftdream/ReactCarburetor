@@ -738,8 +738,9 @@ describes.
 | `preEmit()` *(protected)*       | Runs before notification — derive state here.                      |
 | `emitUpdate()` *(protected)*    | Notifies subscribers whose read paths intersect the writes.        |
 
-Members are prototype methods: override them with method syntax and reach the base through
-`super`. Bind one before handing it out as a callback (`onClick={() => store.load()}`).
+Members are prototype methods — here and on `ComponentUpdateThrottle`, `CarburetorScope`,
+`CarburetorHistory` and `Diagnostics`: override them with method syntax and reach the base through
+`super`. Bind one before handing it out as a callback (`onClick={() => history.undo()}`).
 
 ### `AntiHookComponent<P, S>`
 

@@ -35,22 +35,24 @@ const DiagnosticsInstance_js_namespaceObject = require("../Diagnostics/Diagnosti
 class UpdateBatch {
     depth = 0;
     pending = new Map();
-    isActive = ()=>this.depth > 0;
-    begin = ()=>{
+    isActive() {
+        return this.depth > 0;
+    }
+    begin() {
         this.depth++;
-    };
-    end = ()=>{
+    }
+    end() {
         this.depth--;
         if (this.depth > 0) return;
         this.depth = 0;
         this.flush();
-    };
-    add = (target, writes)=>{
+    }
+    add(target, writes) {
         const merged = this.pending.get(target);
         if (!merged) return void this.pending.set(target, writes);
         writes.forEach((path)=>merged.add(path));
-    };
-    flush = ()=>{
+    }
+    flush() {
         UpdateWaveInstance_js_namespaceObject.updateWave.begin();
         try {
             const failures = [];
@@ -71,7 +73,7 @@ class UpdateBatch {
         } finally{
             UpdateWaveInstance_js_namespaceObject.updateWave.end();
         }
-    };
+    }
 }
 exports.UpdateBatch = __webpack_exports__.UpdateBatch;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

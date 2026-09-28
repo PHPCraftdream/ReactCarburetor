@@ -24,6 +24,8 @@ export declare class CarburetorHistory<T extends object> {
     protected applying: boolean;
     /** The watch installed at construction; disconnect() runs it to stop recording. */
     protected dispose: TDisposer;
+    /** Bound once for `carburetor.watch`, called detached from `this`; forwards to the overridable `record`. */
+    private readonly recordBound;
     /**
      * Starts watching a carburetor, with the current state as the first entry.
      *
@@ -31,20 +33,27 @@ export declare class CarburetorHistory<T extends object> {
      * @param options - `limit` caps how far back undo reaches; defaults to 50 entries when omitted
      */
     constructor(carburetor: ICarburetor<T>, options?: IHistoryOptions);
-    /** Whether there is a past state to step back to. */
-    canUndo: () => boolean;
+    /**
+     * Whether there is a past state to step back to.
+     *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it. `undo`/`redo` are a
+     * breaking change from the earlier arrow fields — detaching them (for example
+     * `onClick={history.undo}`) now needs an explicit bind at the call site.
+     */
+    canUndo(): boolean;
     /** Whether an undone state is waiting to be stepped forward into. */
-    canRedo: () => boolean;
+    canRedo(): boolean;
     /** Steps one change back, or reports that there was nothing to step back to. */
-    undo: () => boolean;
+    undo(): boolean;
     /** Steps one undone change forward again. */
-    redo: () => boolean;
+    redo(): boolean;
     /** Forgets the recorded history, keeping the state as it is. */
-    clear: () => void;
+    clear(): void;
     /** Stops watching the carburetor: nothing is recorded after this. */
-    disconnect: () => void;
+    disconnect(): void;
     /** Records the state before a change, dropping the oldest entry past the limit. */
-    protected record: () => void;
+    protected record(): void;
     /** Installs a recorded state without recording the installation itself. */
-    protected apply: (state: T) => void;
+    protected apply(state: T): void;
 }

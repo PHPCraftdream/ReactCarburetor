@@ -34,11 +34,13 @@ const DiagnosticsInstance_js_namespaceObject = require("../Diagnostics/Diagnosti
 class UpdateWave {
     depth = 0;
     pending = new Map();
-    isActive = ()=>this.depth > 0;
-    begin = ()=>{
+    isActive() {
+        return this.depth > 0;
+    }
+    begin() {
         this.depth++;
-    };
-    end = ()=>{
+    }
+    end() {
         this.depth--;
         if (this.depth > 0) return;
         this.depth = 1;
@@ -61,10 +63,10 @@ class UpdateWave {
         } finally{
             this.depth = 0;
         }
-    };
-    defer = (uid, settle)=>{
+    }
+    defer(uid, settle) {
         this.pending.set(uid, settle);
-    };
+    }
 }
 exports.UpdateWave = __webpack_exports__.UpdateWave;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

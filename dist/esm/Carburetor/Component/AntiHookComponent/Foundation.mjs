@@ -1,6 +1,7 @@
 "use client";
 import { getUid } from "../../Store/Utils/getUid.mjs";
 import { shallowEqual } from "../shallowEqual.mjs";
+import { renderOwner } from "../../Derived/renderOwner.mjs";
 import * as __rspack_external_react from "react";
 const RENDER_KEY = "render";
 const RENDER_RAW = Symbol('carburetor.antiHookComponent.renderRaw');
@@ -8,8 +9,8 @@ const RENDER_BOUNDARY = Symbol('carburetor.antiHookComponent.renderBoundary');
 const RENDER_ASSIGNED = Symbol('carburetor.antiHookComponent.renderAssigned');
 class AntiHookComponentFoundation extends __rspack_external_react.Component {
     uid = getUid();
-    effects = {};
-    tracked = new Map();
+    effects = void 0;
+    tracked = void 0;
     connections = [];
     renderAttempt = void 0;
     pendingAttempt = void 0;
@@ -67,12 +68,19 @@ class AntiHookComponentFoundation extends __rspack_external_react.Component {
     buildRenderBoundary(realRender) {
         return ()=>{
             const attempt = this.openRenderAttempt();
+            const development = "u" > typeof process && 'production' !== process.env.NODE_ENV;
+            const previousOwner = development ? renderOwner.get() : void 0;
+            if (development) renderOwner.set({
+                uid: this.uid,
+                hasTracked: (source)=>void 0 !== attempt.tracked && attempt.tracked.has(source)
+            });
             try {
                 return realRender.call(this);
             } catch (error) {
                 attempt.abandoned = true;
                 throw error;
             } finally{
+                if (development) renderOwner.set(previousOwner);
                 this.closeRenderAttempt(attempt);
             }
         };

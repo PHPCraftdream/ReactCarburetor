@@ -436,3 +436,68 @@ anything will be recorded, so a primitive read through `draft` builds a path for
   models of the same data structures, not from a patched engine.
 - R15-09 is derived from the code.
 - No engine source was changed in this round.
+
+---
+
+## Resolution (same day)
+
+Every finding except R15-10 (1) was fixed on `react-compat`. Each fix was made by an agent in its
+own worktree, then reviewed and integrated one at a time, with a commit per finding. Every fix comes
+with regression tests, and each one was shown to fail against the pre-fix code.
+
+| Finding | Commit | Change |
+|---|---|---|
+| R15-04, R15-05, R15-09 (store) | `d006c59` | `SubscriberIndex.add` diffs a known id against what it filed; a single-subscriber bucket holds the bare id; the per-subscriber ancestor cache is gone; `emitUpdate` keeps an empty write set; `notifyWrites` allocates its failure list lazily |
+| R15-01, R15-08 | `2768ed6` | A symbol read records nothing. Read handlers memoize child paths and branch markers: one inline slot, and a Map only for branches read through several keys. The write proxy builds a path only when it records one. The proxy cache splits `get`/`set`, so a hit allocates nothing |
+| R15-02, R15-03, R15-10 (2, 3) | `868617c` | `computed(body, {equals})`; `extend` moved from `ICarburetorSubscription` to `ICarburetor`; README "Derived lists"; the demo drops its hand-written id memo; a development-only diagnostic for a computed result rendered by a non-subscriber |
+| R15-07 | `ed24689` | Throttle, scheduler, wave, batch, scope, history and diagnostics members are prototype methods; only the throttle's timer callback and the history's `watch` callback stay bound |
+| R15-09 (component) | `a6be80b` | Components allocate `tracked`/`effects` on first use, update commit slots in place, and release a consumed attempt's collections |
+| R15-06 | `650ae81` | One `ConnectionSource` object per declaration and one `ConnectionFacadeHandler` class with prototype traps; `Reads` reuses its bound attempt accessor; the stale `connect()` docstring is fixed |
+
+Integration corrections:
+- **The path memo.** The first version gave every read handler its own Map. That added 1041 B per
+  row to a 4000-row mount, because each row has its own small proxy tree. It was replaced by one
+  inline slot per handler, plus a Map only for branches read through several keys, which is
+  memory-neutral. The proxy cache became a class.
+- **The render-owner pointer** behind the R15-02 diagnostic allocated an object and a closure on
+  every render, in production too. It now runs in development only. Its type moved out of the
+  public `Models/` barrel.
+
+Before and after, on the built production engine (`dist/esm-prod` at `868a74f` against the rebuilt
+`dist`), with the same probes as the report:
+
+| Probe | Before | After |
+|---|---|---|
+| Renders after an unrelated write, for `concat` / `toString` / `String(obj)` | 1 / 1 / 1 | 0 / 0 / 0 |
+| 20 writes leaving a computed's ids equal: list renders | 20 | 20; 0 with `{equals: shallowEqual}` |
+| Re-subscribe with one added path, 1000 / 4000 paths | 1.7–2.4 / 9.4–10.8 ms | 0.10–0.11 / 1.2–1.4 ms |
+| List `push`, 1000 / 4000 rows | 5.3–13.4 / 26.6–38.4 ms | 1.7–3.8 / 10.3–20.5 ms |
+| Index bookkeeping per three-path subscriber | 1880 B | 483 B |
+| 3000-leaf walk through a persistent view | 2.1–3.0 ms | 1.34–1.43 ms |
+| Retained per `useCarburetor` row (4000 rows) | 8495 B | 6861 B |
+| Retained per `connect()` row (4000 rows) | 9608 B | 6904 B |
+
+A plain `React.Component` row retains 4168 B, so the engine's overhead per row fell from 4.3 KB to
+2.7 KB for `useCarburetor`, and from 5.4 KB to 2.7 KB for `connect()`. `connect()` now costs the same
+as `useCarburetor`, which was R15-06's target.
+
+The millisecond figures come from a machine that was not idle, so they vary between runs; the
+ranges are several runs each. The byte figures repeat to within a few bytes.
+
+Not changed:
+- **R15-02's O(visible rows) cost when a computed's live elements are passed to rows.** It is now
+  documented and diagnosed; the engine behaves as before (1 list render and 500 row renders at
+  1000 rows).
+- **R15-10 (1), render-time attribution**, which would let live elements cross component
+  boundaries cheaply. It stays a design decision.
+
+Verification at the integration point:
+- 860 tests;
+- `cargo test`: 350 + 24;
+- lint, typecheck, the demo's `tsc` and the layout check are clean;
+- consumer matrix: 16/16.
+
+`cargo test` first failed all 24 CLI tests. The cause was a stale test binary in the `native/target`
+directory, which agent worktrees share. The binary had been built in a removed round 14 worktree,
+and that worktree's path was compiled into it. The tests passed once it was rebuilt. Agent worktrees
+no longer share `native/target`.

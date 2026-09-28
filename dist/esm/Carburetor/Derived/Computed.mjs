@@ -1,12 +1,14 @@
-import { containsExoticValue } from "../Store/Utils/containsExoticValue.mjs";
 import { getUid } from "../Store/Utils/getUid.mjs";
 import { sharedSingleton } from "../Store/Utils/sharedSingleton.mjs";
 import { updateWave } from "../Store/Scheduling/UpdateWaveInstance.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 import { diagnostics } from "../Store/Diagnostics/DiagnosticsInstance.mjs";
+import { announceIsUnchanged } from "./announceIsUnchanged.mjs";
+import { reportComputedEscape } from "./reportComputedEscape.mjs";
 const invalidationEdges = sharedSingleton('invalidationEdges', ()=>new WeakMap());
 class Computed {
     body;
+    options;
     uid = getUid();
     version = 0;
     subscribers = new Map();
@@ -15,8 +17,9 @@ class Computed {
     announced = void 0;
     value = void 0;
     valid = false;
-    constructor(body){
+    constructor(body, options = {}){
         this.body = body;
+        this.options = options;
         invalidationEdges.set(this.onDependencyChanged, this.markStale);
     }
     getUID() {
@@ -43,7 +46,6 @@ class Computed {
         };
         return id;
     }
-    extend(_id, _path) {}
     unsubscribe(id) {
         if (!this.subscribers.has(id)) return;
         this.subscribers.delete(id);
@@ -94,8 +96,8 @@ class Computed {
         if (dependency.reads.has(path)) return;
         dependency.reads.add(path);
         const published = dependency === this.dependencies[dependency.source.getUID()];
-        const observed = this.subscribers.size > 0;
-        if (published && observed) dependency.source.extend(this.uid, path);
+        if (published && "u" > typeof process && 'production' !== process.env.NODE_ENV) reportComputedEscape(this, (id)=>this.subscribers.has(id));
+        if (published && this.subscribers.size > 0 && dependency.source.extend) dependency.source.extend(this.uid, path);
     }
     attachDependencies(collected) {
         const fresh = this.diffDependencies(collected);
@@ -186,11 +188,8 @@ class Computed {
     settle = ()=>{
         const previous = this.value;
         if (!this.valid || this.hasDrifted()) this.recompute();
-        const baseline = void 0 !== this.announced ? this.announced.value : previous;
-        const sameReference = Object.is(baseline, this.value);
         const moved = void 0 !== this.announced && this.driftedSince(this.announced.versions);
-        const opaqueChanged = sameReference && moved && containsExoticValue(this.value);
-        const unchanged = sameReference && !opaqueChanged;
+        const unchanged = announceIsUnchanged(this.announced, previous, this.value, moved, this.options.equals);
         if (unchanged) return;
         this.announced = {
             value: this.value,

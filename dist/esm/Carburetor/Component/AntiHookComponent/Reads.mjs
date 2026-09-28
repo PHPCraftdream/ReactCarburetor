@@ -20,7 +20,7 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
         return buildTrackedView(this.trackedViews, carburetor, this.getRenderAttempt, attempt, entry);
     }
     declareConnection(source) {
-        return declareConnection(this.connections, ()=>this.renderAttempt, source);
+        return declareConnection(this.connections, this.getRenderAttempt, source);
     }
     connect(source) {
         const declared = this.declareConnection(source);

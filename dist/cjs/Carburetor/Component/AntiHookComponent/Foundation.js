@@ -34,14 +34,15 @@ __webpack_require__.d(__webpack_exports__, {
 const external_react_namespaceObject = require("react");
 const getUid_js_namespaceObject = require("../../Store/Utils/getUid.js");
 const external_shallowEqual_js_namespaceObject = require("../shallowEqual.js");
+const renderOwner_js_namespaceObject = require("../../Derived/renderOwner.js");
 const RENDER_KEY = "render";
 const RENDER_RAW = Symbol('carburetor.antiHookComponent.renderRaw');
 const RENDER_BOUNDARY = Symbol('carburetor.antiHookComponent.renderBoundary');
 const RENDER_ASSIGNED = Symbol('carburetor.antiHookComponent.renderAssigned');
 class AntiHookComponentFoundation extends external_react_namespaceObject.Component {
     uid = (0, getUid_js_namespaceObject.getUid)();
-    effects = {};
-    tracked = new Map();
+    effects = void 0;
+    tracked = void 0;
     connections = [];
     renderAttempt = void 0;
     pendingAttempt = void 0;
@@ -99,12 +100,19 @@ class AntiHookComponentFoundation extends external_react_namespaceObject.Compone
     buildRenderBoundary(realRender) {
         return ()=>{
             const attempt = this.openRenderAttempt();
+            const development = "u" > typeof process && 'production' !== process.env.NODE_ENV;
+            const previousOwner = development ? renderOwner_js_namespaceObject.renderOwner.get() : void 0;
+            if (development) renderOwner_js_namespaceObject.renderOwner.set({
+                uid: this.uid,
+                hasTracked: (source)=>void 0 !== attempt.tracked && attempt.tracked.has(source)
+            });
             try {
                 return realRender.call(this);
             } catch (error) {
                 attempt.abandoned = true;
                 throw error;
             } finally{
+                if (development) renderOwner_js_namespaceObject.renderOwner.set(previousOwner);
                 this.closeRenderAttempt(attempt);
             }
         };

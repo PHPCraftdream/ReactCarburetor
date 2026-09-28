@@ -97,16 +97,16 @@ class Carburetor {
     notifyWrites(writes) {
         updateWave.begin();
         try {
-            const failures = [];
+            let failures;
             this.subscriberIndex.match(writes).forEach((id)=>{
                 const record = this.subscribers[id];
                 if (record) try {
                     this.scheduler.schedule(id, record.callback);
                 } catch (error) {
-                    failures.push(error);
+                    (failures ?? (failures = [])).push(error);
                 }
             });
-            failures.forEach((error)=>{
+            null == failures || failures.forEach((error)=>{
                 if ("u" > typeof process && 'production' !== process.env.NODE_ENV) diagnostics.report('a subscriber threw while a write was delivered: ' + (error instanceof Error ? error.message : String(error)) + '. The write had already landed, so the remaining subscribers were notified anyway.');
             });
         } finally{
@@ -160,7 +160,7 @@ class Carburetor {
         this.preEmit();
         const touched = this.draftTouched;
         const changed = this.writes.size > 0 ? this.writes : void 0;
-        this.writes = new Set();
+        if (changed) this.writes = new Set();
         this.draftTouched = false;
         if (!changed && touched) return;
         const writes = changed || new Set([

@@ -9,22 +9,27 @@ import { ICarburetorToken } from "../../Models/Tooling.js";
 export declare class CarburetorScope {
     /** The instances created or installed in this scope so far, keyed by token id. */
     protected instances: Map<string, unknown>;
-    /** The instance this token stands for, created once per scope on first use. */
-    get: <T extends unknown>(token: ICarburetorToken<T>) => T;
+    /**
+     * The instance this token stands for, created once per scope on first use.
+     *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     */
+    get<T extends unknown>(token: ICarburetorToken<T>): T;
     /**
      * Replaces an instance — useful for tests and for hydrating a prepared store.
      *
      * @param token - names the slot replaced; later `get` calls for it return the new instance
      * @param instance - stored as-is under the token's id; the factory inside the token never runs
      */
-    set: <T extends unknown>(token: ICarburetorToken<T>, instance: T) => void;
+    set<T extends unknown>(token: ICarburetorToken<T>, instance: T): void;
     /** Whether this scope already created an instance for the token. */
-    has: <T extends unknown>(token: ICarburetorToken<T>) => boolean;
+    has<T extends unknown>(token: ICarburetorToken<T>): boolean;
     /**
      * Serializable state of every carburetor created in this scope, keyed by token name.
      * Take this after rendering on the server and send it to the client.
      */
-    dehydrate: () => IDict<unknown>;
+    dehydrate(): IDict<unknown>;
     /**
      * Restores state produced by dehydrate. Tokens whose state is present are instantiated,
      * so the client starts from the same data the server rendered; anything not mentioned in
@@ -41,7 +46,7 @@ export declare class CarburetorScope {
      * @param tokens - the tokens to restore; ones absent from `state` are left to be created
      * on demand instead
      */
-    hydrate: (state: IDict<unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>) => void;
+    hydrate(state: IDict<unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>): void;
     /** Whether an instance can be serialized: a scope may hold things that cannot. */
-    protected isInspectable: (instance: unknown) => instance is IInspectable;
+    protected isInspectable(instance: unknown): instance is IInspectable;
 }

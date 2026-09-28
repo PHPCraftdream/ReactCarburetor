@@ -5,6 +5,15 @@ export declare abstract class AntiHookComponentSubscriptions<P = {}, S = {}> ext
      *
      * `forceUpdate` deliberately skips `shouldComponentUpdate`: the props gate must not be able
      * to swallow an update the component is itself subscribed to.
+     *
+     * Stays a per-instance arrow field rather than a shared prototype method: `subscribe` is
+     * handed a detached callback it stores and invokes with no receiver, so whatever reaches
+     * the store must already be bound to this instance. `renderGetter`/`renderSetter` can be one
+     * shared static pair (R14-05) only because React looks `render` up as a property of `this`
+     * and calls it as a method; a callback handed to `subscribe` gets no such lookup, so a bound
+     * function costs the same one-object-per-instance as this closure does. Subscribing keys by
+     * `uid`, not by this function's identity, but the identity still has to exist somewhere to
+     * be callable at all.
      */
     protected onCarburetorUpdate: () => void;
     /**
@@ -25,6 +34,32 @@ export declare abstract class AntiHookComponentSubscriptions<P = {}, S = {}> ext
      * read — a write landing in the gap is still detected, and force-updated away.
      */
     protected commitSubscriptions(): void;
+    /**
+     * Returns the tracked map, allocating it on first use.
+     *
+     * A `connect()`-only component never calls `useCarburetor`/`useComputed`/`useResource`, so
+     * it never needs this map; allocating it here, rather than as a class field default, keeps
+     * that component from paying for a collection it will never fill.
+     */
+    private ensureTracked;
+    /**
+     * Builds a fresh committed description out of one attempt entry.
+     *
+     * @param entry - the attempt's record for the source being committed
+     */
+    private buildDescription;
+    /**
+     * Publishes one attempt entry onto a slot's committed description, reusing the existing
+     * description object when there is one instead of allocating a fresh one every commit.
+     *
+     * Safe to mutate in place: a committed description is read only through `slot.committed`
+     * inside `alignSubscription`, in the same synchronous call that follows this one, and is
+     * never held past it or compared by identity anywhere else.
+     *
+     * @param slot - the tracked slot or connection being committed
+     * @param entry - the attempt's record for the source being committed
+     */
+    private applyDescription;
     /**
      * Brings one slot's registration in line with its committed description.
      *

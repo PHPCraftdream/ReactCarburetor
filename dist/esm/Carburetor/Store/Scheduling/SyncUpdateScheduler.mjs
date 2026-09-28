@@ -1,7 +1,7 @@
 class SyncUpdateScheduler {
-    schedule = (_uid, updater)=>{
+    schedule(_uid, updater) {
         updater();
-    };
-    cancel = (_uid)=>{};
+    }
+    cancel(_uid) {}
 }
 export { SyncUpdateScheduler };

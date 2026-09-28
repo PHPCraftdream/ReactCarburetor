@@ -13,21 +13,30 @@ declare const RENDER_ASSIGNED: unique symbol;
 export declare abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.Component<P, S> {
     /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
     protected uid: string;
-    /** Per-effect state: the deps it last ran with, and the cleanup it returned. */
+    /**
+     * Per-effect state: the deps it last ran with, and the cleanup it returned.
+     *
+     * Absent until the first `useEffect` call: a component that declares no effects never
+     * allocates this dictionary.
+     */
     protected effects: IDict<{
         deps: TEffectDeps;
         cleanup: TEffectCleanup | undefined;
-    }>;
+    }> | undefined;
     /**
      * Carburetors read through `useCarburetor`/`useComputed`/`useResource`: one dependency slot
      * per carburetor, keyed by the carburetor itself and written by commits out of what a fresh
      * render attempt collected.
      *
+     * Absent until the first commit that has something to track: a `connect()`-only component
+     * never reads through `useCarburetor`/`useComputed`/`useResource`, so it never allocates
+     * this map.
+     *
      * The committed descriptions outlive unmount: releaseSubscriptions keeps them, so a
      * replayed mount lifecycle can restore the subscriptions without a render to refill them.
      * The records themselves do not: a commit whose attempt never touched a record drops it.
      */
-    protected tracked: Map<ICarburetorSubscription, ITrackedCarburetor>;
+    protected tracked: Map<ICarburetorSubscription, ITrackedCarburetor> | undefined;
     /**
      * Persistent `connect()` declarations, in declaration order.
      *

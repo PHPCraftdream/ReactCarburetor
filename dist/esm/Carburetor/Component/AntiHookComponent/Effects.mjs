@@ -17,7 +17,8 @@ class AntiHookComponentEffects extends AntiHookComponentReads {
         }
     }
     useEffect(name, callBack, deps) {
-        const known = this.effects[name];
+        var _this_effects;
+        const known = null == (_this_effects = this.effects) ? void 0 : _this_effects[name];
         if (known && shallowEqual(known.deps, deps)) return;
         const failures = [];
         if (known && known.cleanup) try {
@@ -29,7 +30,7 @@ class AntiHookComponentEffects extends AntiHookComponentReads {
             deps,
             cleanup: void 0
         };
-        this.effects[name] = record;
+        this.ensureEffects()[name] = record;
         try {
             const cleanup = callBack();
             record.cleanup = 'function' == typeof cleanup ? cleanup : void 0;
@@ -37,9 +38,14 @@ class AntiHookComponentEffects extends AntiHookComponentReads {
             failures.forEach((error)=>this.reportTeardownFailure('an effect cleanup threw while an effect was replaced: ' + describeFailure(error) + '. The new effect ran anyway.'));
         }
     }
+    ensureEffects() {
+        if (void 0 === this.effects) this.effects = {};
+        return this.effects;
+    }
     releaseEffects() {
         const records = this.effects;
-        this.effects = {};
+        if (void 0 === records) return;
+        this.effects = void 0;
         const failures = [];
         Object.keys(records).forEach((name)=>{
             const cleanup = records[name].cleanup;

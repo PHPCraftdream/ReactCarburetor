@@ -3,22 +3,24 @@ import { diagnostics } from "../Diagnostics/DiagnosticsInstance.mjs";
 class UpdateBatch {
     depth = 0;
     pending = new Map();
-    isActive = ()=>this.depth > 0;
-    begin = ()=>{
+    isActive() {
+        return this.depth > 0;
+    }
+    begin() {
         this.depth++;
-    };
-    end = ()=>{
+    }
+    end() {
         this.depth--;
         if (this.depth > 0) return;
         this.depth = 0;
         this.flush();
-    };
-    add = (target, writes)=>{
+    }
+    add(target, writes) {
         const merged = this.pending.get(target);
         if (!merged) return void this.pending.set(target, writes);
         writes.forEach((path)=>merged.add(path));
-    };
-    flush = ()=>{
+    }
+    flush() {
         updateWave.begin();
         try {
             const failures = [];
@@ -39,6 +41,6 @@ class UpdateBatch {
         } finally{
             updateWave.end();
         }
-    };
+    }
 }
 export { UpdateBatch };

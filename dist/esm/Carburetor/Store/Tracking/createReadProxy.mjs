@@ -26,29 +26,71 @@ class ReadProxyHandler {
         this.aliases = aliases;
         this.cache = cache;
     }
+    firstKey = void 0;
+    firstPath = '';
+    childPaths = void 0;
+    firstBranch = void 0;
+    firstMarker = '';
+    branchMarkers = void 0;
+    childPath(key) {
+        if (key === this.firstKey) return this.firstPath;
+        if (void 0 === this.firstKey) {
+            this.firstKey = key;
+            this.firstPath = joinPath(this.basePath, key);
+            return this.firstPath;
+        }
+        const memo = this.childPaths ?? (this.childPaths = new Map());
+        let path = memo.get(key);
+        if (void 0 === path) {
+            path = joinPath(this.basePath, key);
+            memo.set(key, path);
+        }
+        return path;
+    }
+    branchMarker(path) {
+        if (path === this.firstBranch) return this.firstMarker;
+        if (void 0 === this.firstBranch) {
+            this.firstBranch = path;
+            this.firstMarker = branchPath(path);
+            return this.firstMarker;
+        }
+        const memo = this.branchMarkers ?? (this.branchMarkers = new Map());
+        let marker = memo.get(path);
+        if (void 0 === marker) {
+            marker = branchPath(path);
+            memo.set(path, marker);
+        }
+        return marker;
+    }
+    wrap(path, source) {
+        const cached = this.cache.get(path, source);
+        if (void 0 !== cached) return cached;
+        const proxy = createReadProxy(source, this.record, path, this.aliases, this.cache);
+        this.cache.set(path, source, proxy);
+        return proxy;
+    }
     get(source, key, receiver) {
         if (key === PROXY_CACHE) return this.cache;
         const value = Reflect.get(source, key, receiver);
         if (!isRecordable(source, key)) return value;
         if ('symbol' == typeof key) {
-            this.record(WILDCARD_PATH);
             if (!isTrackable(value)) return value;
             if (lockedAgainstWrapping(source, key)) {
                 if (IS_DEVELOPMENT) throw lockedError(String(key));
                 return value;
             }
-            return this.cache(WILDCARD_PATH, value, ()=>createReadProxy(value, this.record, WILDCARD_PATH, this.aliases, this.cache));
+            return this.wrap(WILDCARD_PATH, value);
         }
-        const path = joinPath(this.basePath, key);
+        const path = this.childPath(key);
         if (isTrackable(value)) {
             var _this_aliases;
             null == (_this_aliases = this.aliases) || _this_aliases.note(value, path);
-            this.record(branchPath(path));
+            this.record(this.branchMarker(path));
             if (lockedAgainstWrapping(source, key)) {
                 if (IS_DEVELOPMENT) throw lockedError(path);
                 return value;
             }
-            return this.cache(path, value, ()=>createReadProxy(value, this.record, path, this.aliases, this.cache));
+            return this.wrap(path, value);
         }
         this.record(path);
         return value;
@@ -56,10 +98,10 @@ class ReadProxyHandler {
     has(source, key) {
         const present = Reflect.has(source, key);
         if ('string' == typeof key && isRecordable(source, key)) {
-            const path = joinPath(this.basePath, key);
+            const path = this.childPath(key);
             const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
             const value = void 0 !== descriptor && 'value' in descriptor ? descriptor.value : void 0;
-            this.record(isTrackable(value) ? branchPath(path) : path);
+            this.record(isTrackable(value) ? this.branchMarker(path) : path);
         }
         return present;
     }
@@ -71,25 +113,24 @@ class ReadProxyHandler {
         const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
         if (void 0 === descriptor) return descriptor;
         if ('symbol' == typeof key) {
-            this.record(WILDCARD_PATH);
             const symbolValue = descriptor.value;
             if (isTrackable(symbolValue)) {
                 if (lockedAgainstWrapping(source, key, descriptor)) {
                     if (IS_DEVELOPMENT) throw lockedError(String(key));
                     return descriptor;
                 }
-                descriptor.value = this.cache(WILDCARD_PATH, symbolValue, ()=>createReadProxy(symbolValue, this.record, WILDCARD_PATH, this.aliases, this.cache));
+                descriptor.value = this.wrap(WILDCARD_PATH, symbolValue);
             }
             return descriptor;
         }
-        const path = joinPath(this.basePath, key);
+        const path = this.childPath(key);
         const value = descriptor.value;
         if (isTrackable(value)) {
             if (lockedAgainstWrapping(source, key, descriptor)) {
                 if (IS_DEVELOPMENT) throw lockedError(path);
                 return descriptor;
             }
-            descriptor.value = this.cache(path, value, ()=>createReadProxy(value, this.record, path, this.aliases, this.cache));
+            descriptor.value = this.wrap(path, value);
         }
         return descriptor;
     }

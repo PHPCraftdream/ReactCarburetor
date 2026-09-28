@@ -1,13 +1,8 @@
 import { ICarburetor } from "../../Models/Store.mjs";
 import { IConnection, IConnectionSource, IRenderAttempt } from "../Models/Connection.mjs";
 /**
- * Declares one connect()-family connection into its owner's persistent list and builds the
- * closures its view is read through, so both declarations share one piece of machinery.
- *
- * The declaration only ever pushes a connection and closes over it: React can construct an
- * instance and later decide never to commit it, so any subscription taken here would leak one
- * for a component that never mounted. Everything the recorder captures stays tentative until
- * the commit that consumes the attempt.
+ * Declares one connect()-family connection into its owner's persistent list and builds the one
+ * state object both its view and its recorder are read through.
  *
  * @param connections - the owner's persistent declaration list, appended to and never pruned
  * @param getAttempt - reads the render attempt currently open on the owner, if any

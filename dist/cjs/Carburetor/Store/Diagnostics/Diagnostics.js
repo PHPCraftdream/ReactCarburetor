@@ -33,14 +33,16 @@ __webpack_require__.d(__webpack_exports__, {
 const DevelopmentFlag_js_namespaceObject = require("../Utils/DevelopmentFlag.js");
 class Diagnostics {
     enabled = DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT;
-    isEnabled = ()=>this.enabled;
-    setEnabled = (enabled)=>{
+    isEnabled() {
+        return this.enabled;
+    }
+    setEnabled(enabled) {
         this.enabled = enabled;
-    };
-    report = (message)=>{
+    }
+    report(message) {
         if (!this.enabled) return;
         console.error('Carburetor: ' + message);
-    };
+    }
 }
 exports.Diagnostics = __webpack_exports__.Diagnostics;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

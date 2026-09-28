@@ -11,12 +11,17 @@ export declare class UpdateBatch {
     protected depth: number;
     /** Writes collected per carburetor while the transaction is open, delivered once at flush. */
     protected pending: Map<INotifiable, TPathSet>;
-    /** Whether a transaction is open, so writes are collected rather than delivered. */
-    isActive: () => boolean;
+    /**
+     * Whether a transaction is open, so writes are collected rather than delivered.
+     *
+     * A method, not an arrow field: every overridable member here is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     */
+    isActive(): boolean;
     /** Opens a transaction; nesting is counted, so only the outermost one delivers. */
-    begin: () => void;
+    begin(): void;
     /** Closes a transaction, delivering everything collected once the outermost one ends. */
-    end: () => void;
+    end(): void;
     /**
      * Merges writes into what a carburetor will be notified about.
      *
@@ -26,7 +31,7 @@ export declare class UpdateBatch {
      * must be handing over ownership (emitUpdate always does) rather than keeping it around to
      * mutate further
      */
-    add: (target: INotifiable, writes: TPathSet) => void;
+    add(target: INotifiable, writes: TPathSet): void;
     /** Delivers one notification pass per carburetor, draining what the passes add. */
-    protected flush: () => void;
+    protected flush(): void;
 }

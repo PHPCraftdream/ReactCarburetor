@@ -42,48 +42,66 @@ class AntiHookComponentSubscriptions extends external_Effects_js_namespaceObject
         this.forceUpdate();
     };
     commitSubscriptions() {
+        var _this_tracked;
         const attempt = this.pendingAttempt;
         const fresh = void 0 !== attempt && !attempt.abandoned && attempt !== this.committedAttempt;
         if (fresh) {
+            var _this_tracked1;
             this.committedAttempt = attempt;
             const trackedEntries = attempt.tracked;
             const connectionEntries = attempt.connections;
-            this.tracked.forEach((slot, source)=>{
+            null == (_this_tracked1 = this.tracked) || _this_tracked1.forEach((slot, source)=>{
+                var _this_tracked;
                 if (void 0 !== trackedEntries && trackedEntries.has(source)) return;
                 this.releaseSlot(this.uid, slot);
-                this.tracked.delete(source);
+                null == (_this_tracked = this.tracked) || _this_tracked.delete(source);
             });
             this.connections.forEach((connection)=>{
                 if (void 0 === connectionEntries || !connectionEntries.has(connection)) connection.committed = void 0;
             });
             if (void 0 !== trackedEntries) trackedEntries.forEach((entry, source)=>{
-                const description = {
-                    carburetor: entry.source,
-                    baselineVersion: entry.baselineVersion,
-                    reads: entry.reads
-                };
-                const known = this.tracked.get(source);
-                this.tracked.set(source, {
-                    committed: description,
-                    installed: known ? known.installed : void 0
+                var _this_tracked;
+                const existing = null == (_this_tracked = this.tracked) ? void 0 : _this_tracked.get(source);
+                if (existing) this.applyDescription(existing, entry);
+                else this.ensureTracked().set(source, {
+                    committed: this.buildDescription(entry),
+                    installed: void 0
                 });
             });
             if (void 0 !== connectionEntries) connectionEntries.forEach((entry, connection)=>{
-                connection.committed = {
-                    carburetor: entry.source,
-                    baselineVersion: entry.baselineVersion,
-                    reads: entry.reads
-                };
+                this.applyDescription(connection, entry);
             });
+            attempt.tracked = void 0;
+            attempt.connections = void 0;
+            attempt.sources = void 0;
         }
         let changedDuringRender = false;
-        this.tracked.forEach((slot)=>{
+        null == (_this_tracked = this.tracked) || _this_tracked.forEach((slot)=>{
             if (this.alignSubscription(this.uid, slot)) changedDuringRender = true;
         });
         this.connections.forEach((connection)=>{
             if (this.alignSubscription(connection.uid, connection)) changedDuringRender = true;
         });
         if (changedDuringRender) this.forceUpdate();
+    }
+    ensureTracked() {
+        if (void 0 === this.tracked) this.tracked = new Map();
+        return this.tracked;
+    }
+    buildDescription(entry) {
+        return {
+            carburetor: entry.source,
+            baselineVersion: entry.baselineVersion,
+            reads: entry.reads
+        };
+    }
+    applyDescription(slot, entry) {
+        const description = slot.committed;
+        if (description) {
+            description.carburetor = entry.source;
+            description.baselineVersion = entry.baselineVersion;
+            description.reads = entry.reads;
+        } else slot.committed = this.buildDescription(entry);
     }
     alignSubscription(uid, slot) {
         const committed = slot.committed;
@@ -118,7 +136,8 @@ class AntiHookComponentSubscriptions extends external_Effects_js_namespaceObject
         }
     }
     releaseSubscriptions() {
-        this.tracked.forEach((slot)=>{
+        var _this_tracked;
+        null == (_this_tracked = this.tracked) || _this_tracked.forEach((slot)=>{
             this.releaseSlot(this.uid, slot);
         });
         this.connections.forEach((connection)=>{

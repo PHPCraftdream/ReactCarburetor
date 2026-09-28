@@ -30,15 +30,17 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     Computed: ()=>Computed
 });
-const containsExoticValue_js_namespaceObject = require("../Store/Utils/containsExoticValue.js");
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
 const sharedSingleton_js_namespaceObject = require("../Store/Utils/sharedSingleton.js");
 const UpdateWaveInstance_js_namespaceObject = require("../Store/Scheduling/UpdateWaveInstance.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../Store/Diagnostics/DiagnosticsInstance.js");
+const external_announceIsUnchanged_js_namespaceObject = require("./announceIsUnchanged.js");
+const external_reportComputedEscape_js_namespaceObject = require("./reportComputedEscape.js");
 const invalidationEdges = (0, sharedSingleton_js_namespaceObject.sharedSingleton)('invalidationEdges', ()=>new WeakMap());
 class Computed {
     body;
+    options;
     uid = (0, getUid_js_namespaceObject.getUid)();
     version = 0;
     subscribers = new Map();
@@ -47,8 +49,9 @@ class Computed {
     announced = void 0;
     value = void 0;
     valid = false;
-    constructor(body){
+    constructor(body, options = {}){
         this.body = body;
+        this.options = options;
         invalidationEdges.set(this.onDependencyChanged, this.markStale);
     }
     getUID() {
@@ -75,7 +78,6 @@ class Computed {
         };
         return id;
     }
-    extend(_id, _path) {}
     unsubscribe(id) {
         if (!this.subscribers.has(id)) return;
         this.subscribers.delete(id);
@@ -126,8 +128,8 @@ class Computed {
         if (dependency.reads.has(path)) return;
         dependency.reads.add(path);
         const published = dependency === this.dependencies[dependency.source.getUID()];
-        const observed = this.subscribers.size > 0;
-        if (published && observed) dependency.source.extend(this.uid, path);
+        if (published && "u" > typeof process && 'production' !== process.env.NODE_ENV) (0, external_reportComputedEscape_js_namespaceObject.reportComputedEscape)(this, (id)=>this.subscribers.has(id));
+        if (published && this.subscribers.size > 0 && dependency.source.extend) dependency.source.extend(this.uid, path);
     }
     attachDependencies(collected) {
         const fresh = this.diffDependencies(collected);
@@ -218,11 +220,8 @@ class Computed {
     settle = ()=>{
         const previous = this.value;
         if (!this.valid || this.hasDrifted()) this.recompute();
-        const baseline = void 0 !== this.announced ? this.announced.value : previous;
-        const sameReference = Object.is(baseline, this.value);
         const moved = void 0 !== this.announced && this.driftedSince(this.announced.versions);
-        const opaqueChanged = sameReference && moved && (0, containsExoticValue_js_namespaceObject.containsExoticValue)(this.value);
-        const unchanged = sameReference && !opaqueChanged;
+        const unchanged = (0, external_announceIsUnchanged_js_namespaceObject.announceIsUnchanged)(this.announced, previous, this.value, moved, this.options.equals);
         if (unchanged) return;
         this.announced = {
             value: this.value,

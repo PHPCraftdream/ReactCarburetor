@@ -14,25 +14,30 @@ export declare class ComponentUpdateThrottle implements IUpdateScheduler {
     protected timeout: TTimerHandle;
     /** Updates waiting for the next flush, keyed by subscriber; letsUpdate() drains it until empty. */
     protected updaters: Map<string, TUpdater>;
+    /** Bound once for `setTimeout`, called detached from `this`; forwards to the overridable `letsUpdate`. */
+    private readonly letsUpdateBound;
     /** Takes the coalescing window in milliseconds. */
     constructor(updateTimeout?: number);
     /**
      * Queues one update per subscriber, so repeated writes collapse into one render.
+     *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
      *
      * @param uid - the subscriber's id, the queue key whose reuse replaces the still-unrun
      * update instead of queueing a second one
      * @param updater - the callback the flush runs; nothing here invokes it, and cancel()
      * before the window elapses drops it unrun
      */
-    schedule: (uid: string, updater: TUpdater) => void;
+    schedule(uid: string, updater: TUpdater): void;
     /** Drops a queued update, for a subscriber that unsubscribed before the flush. */
-    cancel: (uid: string) => void;
+    cancel(uid: string): void;
     /** Arms the flush, leaving an already armed one alone: the window must not slide. */
-    protected setupTimeout: () => void;
+    protected setupTimeout(): void;
     /** Disarms the flush timer. */
-    protected clearTimeout: () => void;
+    protected clearTimeout(): void;
     /** Runs one queued update; a seam for tests and subclasses. */
-    protected runUpdater: (updater: TUpdater) => void;
+    protected runUpdater(updater: TUpdater): void;
     /** Flushes the queue, including what the flush itself queues, and fails on a loop. */
-    protected letsUpdate: () => void;
+    protected letsUpdate(): void;
 }

@@ -1,1 +1,1 @@
-let e=()=>{let e=new WeakMap,t=(t,r,a)=>{let n=e.get(r);if(void 0!==n&&n.path===t)return n.proxy;let o=a();return e.set(r,{path:t,proxy:o}),o};return t.owns=(t,r)=>{let a=e.get(r);return void 0!==a&&a.path===t},t};export{e as createProxyCache};
+let e=()=>new t;class t{entries=new WeakMap;get(e,t){let r=this.entries.get(t);return void 0!==r&&r.path===e?r.proxy:void 0}set(e,t,r){this.entries.set(t,{path:e,proxy:r})}owns(e,t){let r=this.entries.get(t);return void 0!==r&&r.path===e}}export{e as createProxyCache};

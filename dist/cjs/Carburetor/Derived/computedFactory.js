@@ -31,7 +31,7 @@ __webpack_require__.d(__webpack_exports__, {
     computed: ()=>computed
 });
 const external_Computed_js_namespaceObject = require("./Computed.js");
-const computed = (body)=>new external_Computed_js_namespaceObject.Computed(body);
+const computed = (body, options)=>new external_Computed_js_namespaceObject.Computed(body, options);
 exports.computed = __webpack_exports__.computed;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "computed"

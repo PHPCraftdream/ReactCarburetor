@@ -52,7 +52,7 @@ class AntiHookComponentReads extends external_Foundation_js_namespaceObject.Anti
         return (0, external_buildTrackedView_js_namespaceObject.buildTrackedView)(this.trackedViews, carburetor, this.getRenderAttempt, attempt, entry);
     }
     declareConnection(source) {
-        return (0, declareConnection_js_namespaceObject.declareConnection)(this.connections, ()=>this.renderAttempt, source);
+        return (0, declareConnection_js_namespaceObject.declareConnection)(this.connections, this.getRenderAttempt, source);
     }
     connect(source) {
         const declared = this.declareConnection(source);

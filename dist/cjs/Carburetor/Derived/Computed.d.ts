@@ -1,9 +1,17 @@
 import { IDict, TSubscriber } from "../Models/Base.js";
-import { IComputed, TComputeBody } from "../Models/Derived.js";
+import { IComputed, IComputedOptions, TComputeBody } from "../Models/Derived.js";
 import { TPath, TPathSet } from "../Models/Paths.js";
 import { ICarburetorSubscription, ISubscribeOptions } from "../Models/Store.js";
+/**
+ * A dependency's source, with the store-only hook a live leaf read amends through. A computed
+ * source never has `extend` — it notifies at the granularity of its whole value — so the field
+ * is optional rather than widening `ICarburetorSubscription` itself for one caller.
+ */
+interface IDependencySource extends ICarburetorSubscription {
+    extend?: (id: string, path: TPath) => void;
+}
 interface IDependency {
-    source: ICarburetorSubscription;
+    source: IDependencySource;
     reads: TPathSet;
 }
 /** One store a value was computed from, and the version it held at the time. */
@@ -24,6 +32,7 @@ interface IAnnouncement<R> {
  */
 export declare class Computed<R> implements IComputed<R> {
     protected body: TComputeBody<R>;
+    protected options: IComputedOptions<R>;
     /** This computed's id, which dependencies are subscribed and released under. */
     protected uid: string;
     /** Moves only when a changed value is announced, letting a component spot writes across a render. */
@@ -47,8 +56,13 @@ export declare class Computed<R> implements IComputed<R> {
     protected value: R | undefined;
     /** Whether the cached value can be trusted; cleared when a dependency moves or the last listener leaves. */
     protected valid: boolean;
-    /** Takes the body whose reads become this value's dependencies. */
-    constructor(body: TComputeBody<R>);
+    /**
+     * Takes the body whose reads become this value's dependencies.
+     *
+     * @param body - runs against a tracking reader; everything it reads becomes a dependency
+     * @param options - `equals` judges two results by content instead of by reference
+     */
+    constructor(body: TComputeBody<R>, options?: IComputedOptions<R>);
     /** The identity a component or another computed subscribes by. */
     getUID(): string;
     /** Bumped once per delivered change, not on every recompute. */
@@ -64,15 +78,6 @@ export declare class Computed<R> implements IComputed<R> {
      * @param options - `id` keys the subscription for later unsubscribe; a uid is generated when omitted
      */
     subscribe(callback: TSubscriber, options?: ISubscribeOptions): string;
-    /**
-     * No-op: a computed notifies at the granularity of its whole value, so there is no
-     * finer path an existing subscription could be extended with. Kept only so a computed
-     * satisfies the subscription interface when it is itself used as a dependency source.
-     *
-     * @param _id - the subscription id; ignored, there is nothing to file
-     * @param _path - the path a caller would otherwise extend the subscription with; ignored
-     */
-    extend(_id: string, _path: TPath): void;
     /**
      * Drops a subscriber, and stops observing dependencies once the last one leaves.
      *
@@ -107,7 +112,10 @@ export declare class Computed<R> implements IComputed<R> {
      *
      * During the body's own evaluation the dependency being filled is not yet the published
      * one (attachDependencies swaps it in after the body returns), so nothing is amended
-     * there; once nobody listens there is no registration to amend either.
+     * there; once nobody listens there is no registration to amend either. `published` is
+     * also what the development escape diagnostic gates on: a read during the body's own
+     * evaluation is the computed computing itself, never a component rendering through a
+     * result that reached it through props (R15-02).
      *
      * @param dependency - the dependency edge the read belongs to
      * @param path - the path the read proxy reported
@@ -179,6 +187,10 @@ export declare class Computed<R> implements IComputed<R> {
      * The error escapes to the wave, which isolates it and keeps settling the other
      * computations; an explicit get() reruns the body and hands the error to its reader,
      * and the next write to a dependency retries it.
+     *
+     * The judgment itself — reference, the R6-02/R7-02 exotic-mutation carve-out, and the
+     * caller's `equals` — is `announceIsUnchanged`'s; see its docstring for exactly which
+     * case each rule covers and why `equals` cannot reach the exotic one.
      *
      * A bound field, not a method: `updateWave.defer` holds onto it and calls it detached
      * from `this` once the wave drains.

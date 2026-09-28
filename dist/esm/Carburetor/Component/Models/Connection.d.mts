@@ -144,8 +144,11 @@ export interface IRenderAttempt {
     abandoned: boolean;
 }
 /**
- * What one connect()-family declaration hands its owner: the registered connection plus the
- * closures the persistent view and the recorder are built on.
+ * What one connect()-family declaration hands its owner: the registered connection, the
+ * resolver/recorder the persistent view is built on, and the facade's own mutable state.
+ *
+ * One object serves both declareConnection's bookkeeping and the facade cache:
+ * `ConnectionFacadeHandler` reads and writes this instance instead of holding a second copy.
  */
 export interface IConnectionSource<T extends object> {
     /** The connection this declaration registered. */
@@ -156,4 +159,18 @@ export interface IConnectionSource<T extends object> {
     resolveAttemptSource: () => ICarburetor<T>;
     /** The read recorder every read through the persistent view reports to. */
     recorder: TPathRecorder;
+    /**
+     * Whether the facade is array-shaped; fixed once by buildPersistentView's declaration-time
+     * probe and never changed afterward — a Proxy's target kind cannot change after creation.
+     */
+    arrayFacade: boolean;
+    /**
+     * The shape probe's own error, when reading the source at declaration time threw — kept so
+     * it can be attached as a later kind-mismatch's cause instead of being discarded.
+     */
+    probeError: unknown;
+    /** The data object the persistent view was last built for; a different object rebuilds it. */
+    cachedTarget: T | undefined;
+    /** The persistent view built over `cachedTarget`; reused while `cachedTarget` stays current. */
+    cachedView: TReadonly<T> | undefined;
 }

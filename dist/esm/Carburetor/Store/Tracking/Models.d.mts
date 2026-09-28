@@ -19,18 +19,29 @@ export declare const PROXY_CACHE: unique symbol;
  * object identity alone would hand one path's wrapper to another path reaching the same
  * object; keying by path alone would hand a stale wrapper to a source that replaced it without
  * ever being read at that path again.
+ *
+ * `get`/`set` are split, not one call taking a `create` thunk, so a hit allocates nothing: a
+ * caller on the hot read path only builds the `() => createReadProxy(...)` closure after `get`
+ * has already answered undefined.
  */
 export interface IProxyCache {
     /**
-     * Answers with the proxy for (path, source): the cached one when `source` is already
-     * cached under `path`, a fresh one through `create` otherwise. A path mismatch and a
-     * replaced source both mint fresh, unconditionally — there is no separate eviction step.
+     * The cached proxy for (path, source), or undefined when `source` is not cached under
+     * `path` right now — a path mismatch or a replaced source both read as a miss.
      *
      * @param path - the full path the branch was read at.
      * @param source - the raw value the branch holds right now.
-     * @param create - builds the wrapper on a miss; never called while a current entry stands.
      */
-    (path: TPath, source: object, create: () => object): object;
+    get: (path: TPath, source: object) => object | undefined;
+    /**
+     * Files the wrapper built for (path, source) after a miss. Unconditional: there is no
+     * separate eviction step, a later `set` for the same source simply replaces the entry.
+     *
+     * @param path - the full path the branch was read at.
+     * @param source - the raw value the branch holds right now.
+     * @param proxy - the wrapper `get` will answer with for this (path, source) from now on.
+     */
+    set: (path: TPath, source: object, proxy: object) => void;
     /**
      * Whether the cache currently holds an entry for (path, source). Test introspection only;
      * production code never calls this.

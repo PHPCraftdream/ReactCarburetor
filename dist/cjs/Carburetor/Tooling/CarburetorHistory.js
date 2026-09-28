@@ -35,43 +35,48 @@ class CarburetorHistory {
     limit;
     applying = false;
     dispose;
+    recordBound = ()=>this.record();
     constructor(carburetor, options = {}){
         this.carburetor = carburetor;
         this.limit = options.limit || 50;
         this.current = carburetor.snapshot();
-        this.dispose = carburetor.watch(this.record);
+        this.dispose = carburetor.watch(this.recordBound);
     }
-    canUndo = ()=>this.past.length > 0;
-    canRedo = ()=>this.future.length > 0;
-    undo = ()=>{
+    canUndo() {
+        return this.past.length > 0;
+    }
+    canRedo() {
+        return this.future.length > 0;
+    }
+    undo() {
         const previous = this.past.pop();
         if (void 0 === previous) return false;
         this.future.push(this.current);
         this.apply(previous);
         return true;
-    };
-    redo = ()=>{
+    }
+    redo() {
         const next = this.future.pop();
         if (void 0 === next) return false;
         this.past.push(this.current);
         this.apply(next);
         return true;
-    };
-    clear = ()=>{
+    }
+    clear() {
         this.past = [];
         this.future = [];
-    };
-    disconnect = ()=>{
+    }
+    disconnect() {
         this.dispose();
-    };
-    record = ()=>{
+    }
+    record() {
         if (this.applying) return;
         this.past.push(this.current);
         if (this.past.length > this.limit) this.past.shift();
         this.future = [];
         this.current = this.carburetor.snapshot();
-    };
-    apply = (state)=>{
+    }
+    apply(state) {
         this.applying = true;
         try {
             this.carburetor.restore(state);
@@ -79,7 +84,7 @@ class CarburetorHistory {
         } finally{
             this.applying = false;
         }
-    };
+    }
 }
 __webpack_require__.d(__webpack_exports__, {
     CarburetorHistory: ()=>CarburetorHistory

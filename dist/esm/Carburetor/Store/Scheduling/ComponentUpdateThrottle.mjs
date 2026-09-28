@@ -4,27 +4,28 @@ class ComponentUpdateThrottle {
     maxUpdateDepth = 50;
     timeout = void 0;
     updaters = new Map();
+    letsUpdateBound = ()=>this.letsUpdate();
     constructor(updateTimeout = 40){
         this.updateTimeout = updateTimeout;
     }
-    schedule = (uid, updater)=>{
+    schedule(uid, updater) {
         this.updaters.set(uid, updater);
         this.setupTimeout();
-    };
-    cancel = (uid)=>{
+    }
+    cancel(uid) {
         this.updaters.delete(uid);
-    };
-    setupTimeout = ()=>{
-        if (!this.timeout) this.timeout = setTimeout(this.letsUpdate, this.updateTimeout);
-    };
-    clearTimeout = ()=>{
+    }
+    setupTimeout() {
+        if (!this.timeout) this.timeout = setTimeout(this.letsUpdateBound, this.updateTimeout);
+    }
+    clearTimeout() {
         if (this.timeout) clearTimeout(this.timeout);
         this.timeout = void 0;
-    };
-    runUpdater = (updater)=>{
+    }
+    runUpdater(updater) {
         updater();
-    };
-    letsUpdate = ()=>{
+    }
+    letsUpdate() {
         let depth = 0;
         const failures = [];
         try {
@@ -49,6 +50,6 @@ class ComponentUpdateThrottle {
             });
             this.clearTimeout();
         }
-    };
+    }
 }
 export { ComponentUpdateThrottle };

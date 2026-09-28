@@ -52,11 +52,20 @@ export declare abstract class AntiHookComponentEffects<P = {}, S = {}> extends A
      */
     protected useEffect(name: string, callBack: TEffect, deps: TEffectDeps): void;
     /**
+     * Returns the effects dictionary, allocating it on first use.
+     *
+     * A component that never calls `useEffect` never needs this dictionary; allocating it here,
+     * rather than as a class field default, keeps that component from paying for it.
+     */
+    private ensureEffects;
+    /**
      * Runs every effect's cleanup once, on unmount, and forgets them.
      *
      * Each cleanup is isolated, so one that throws costs the cleanups after it neither their
      * turn nor their record: the whole set is dropped once every cleanup has had its turn, and
      * what they collected is reported instead of thrown into the unmount that called this.
+     *
+     * Absent effects (never allocated) skip straight past: nothing ran, nothing to release.
      */
     protected releaseEffects(): void;
 }

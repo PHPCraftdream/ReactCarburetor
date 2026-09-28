@@ -9,6 +9,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `computed(body, {equals})`: a comparator that judges a recomputed result by content, so a
+  body that builds a new array or object (`filter`, `map`, a literal) re-renders nobody when the
+  content is unchanged. It runs only when the reference changed; an exotic result mutated in
+  place still announces. `{equals: shallowEqual}` covers arrays of ids.
+- A development diagnostic when a component renders through a computed's live result without
+  subscribing to it — the result reached it through props. README: "Derived lists".
 - `"use client"` on the modules that touch React's client API — the `AntiHookComponent` chain,
   `ScopedAntiHookComponent`, `CarburetorContext`, `CarburetorProvider` and both interop hooks — in
   all four builds, so a React Server Component can import the package without evaluating
@@ -155,6 +161,25 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Breaking:** `ComponentUpdateThrottle`, `CarburetorScope`, `CarburetorHistory` and
+  `Diagnostics` members are prototype methods instead of arrow-function fields, like the stores
+  below, so a subclass override written as a method is reached. Detached calls
+  (`onClick={history.undo}`, `const {get} = scope`) must bind or wrap in an arrow.
+- **Breaking:** `extend(id, path)` moved from `ICarburetorSubscription` to `ICarburetor`. Only
+  stores implement it; a custom subscription source no longer has to, and `Computed` no longer
+  carries a no-op.
+- **Performance:** a symbol read records nothing. Writes through symbols already wake every
+  subscriber, so `concat`, `Object.prototype.toString`, `String(obj)` and React's development
+  prop logging no longer subscribe a reader to every write in the store.
+- **Performance:** a read set that moves by one path re-registers only that path
+  (`SubscriberIndex` diffs against what it filed): 1.1 ms → 0.08 ms per re-subscribe at 1000
+  paths. Single-subscriber index buckets hold the bare id, and the per-subscriber ancestor cache
+  is gone: index bookkeeping fell from about 2.2 KB to 0.6 KB per three-path subscriber.
+- **Performance:** a `connect()` declaration keeps its state in one object and its facade traps on
+  a shared handler prototype. Components allocate `tracked` and `effects` on first use, update
+  commit slots in place, and release a consumed render attempt's collections. Read handlers
+  memoize child paths, the write proxy builds a path only when it records one, and a proxy-cache
+  hit allocates nothing.
 - **Breaking:** store, cache and computed members (`getData`, `read`, `subscribe`, `watch`,
   `setData`, `preEmit`, `emitUpdate`, …) are prototype methods instead of arrow-function fields,
   so a subclass can override them with method syntax and call `super`. Code that detaches a
@@ -177,8 +202,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Performance:** read and write proxies share their traps on a handler prototype (one small
   handler per proxy instead of eight closures); render attempts allocate their collections on
   first use and key them by object; `useCarburetorValue` keeps one root read view per hook;
-  `subscribe()` adopts its read set (`watch()` still copies); `SubscriberIndex` caches ancestor
-  chains; cache eviction asks the index for readers instead of scanning every subscriber.
+  `subscribe()` adopts its read set (`watch()` still copies); cache eviction asks the index for readers instead of scanning every subscriber.
 - **Breaking:** `SubscriberIndex`, `pathsIntersect`, `getUid`, `isTrackable`, `SyncUpdateScheduler`
   and its `syncUpdateScheduler` instance are no longer exported from the package entry point.
   They were building blocks that never needed a semver contract of their own; they stay inside
@@ -302,6 +326,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A subclass overriding `ComponentUpdateThrottle.runUpdater`, `CarburetorScope.get` or another
+  scheduler, scope, history or diagnostics member with method syntax was silently ignored.
 - A subclass overriding a store member with method syntax (`preEmit() {}`) was silently
   ignored: the base class's arrow-function field shadowed it.
 - Two copies of the library sharing one process — a duplicated install, or the same install

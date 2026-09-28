@@ -27,24 +27,24 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
-const createProxyCache = ()=>{
-    const entries = new WeakMap();
-    const cache = (path, source, create)=>{
-        const entry = entries.get(source);
-        if (void 0 !== entry && entry.path === path) return entry.proxy;
-        const proxy = create();
-        entries.set(source, {
+const createProxyCache = ()=>new ProxyCache();
+class ProxyCache {
+    entries = new WeakMap();
+    get(path, source) {
+        const entry = this.entries.get(source);
+        return void 0 !== entry && entry.path === path ? entry.proxy : void 0;
+    }
+    set(path, source, proxy) {
+        this.entries.set(source, {
             path,
             proxy
         });
-        return proxy;
-    };
-    cache.owns = (path, source)=>{
-        const entry = entries.get(source);
+    }
+    owns(path, source) {
+        const entry = this.entries.get(source);
         return void 0 !== entry && entry.path === path;
-    };
-    return cache;
-};
+    }
+}
 __webpack_require__.d(__webpack_exports__, {}, {
     createProxyCache: createProxyCache
 });

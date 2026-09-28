@@ -30,8 +30,6 @@ export interface ICarburetorSubscription {
     /** Write counter: lets a component detect data changes between render and commit. */
     getVersion: () => number;
     subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
-    /** Adds one path to an already-registered subscription's read set; an unknown id is a no-op. */
-    extend: (id: string, path: TPath) => void;
     unsubscribe: (id: string) => void;
 }
 /**
@@ -54,6 +52,15 @@ export interface ICarburetor<T> extends IInspectable {
     restore: (data: T) => void;
     /** Subscribes outside React: reacts to writes under `reads`, or every write when omitted. */
     watch: (callback: TSubscriber, reads?: TPathSet) => TDisposer;
+    /**
+     * Adds one path to an already-registered subscription's read set; an unknown id is a no-op.
+     *
+     * Only a store source ever receives this call: a computed notifies at the granularity of
+     * its whole value, so it has no finer path to extend a subscription with, and this member
+     * lives here rather than on `ICarburetorSubscription` so a third-party subscription source
+     * — a computed among them — does not have to carry a no-op just to satisfy the interface.
+     */
+    extend: (id: string, path: TPath) => void;
 }
 /** A carburetor as seen by the batch coordinator. */
 export interface INotifiable {

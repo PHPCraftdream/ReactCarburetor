@@ -54,17 +54,30 @@ class WriteProxyHandler {
         this.cache = cache;
         this.isArray = isArray;
     }
+    childPaths;
     writtenPath(key) {
         if ('symbol' == typeof key || this.basePath === WildcardPath_js_namespaceObject.WILDCARD_PATH) return WildcardPath_js_namespaceObject.WILDCARD_PATH;
-        return (0, joinPath_js_namespaceObject.joinPath)(this.basePath, key);
+        const memo = this.childPaths ?? (this.childPaths = new Map());
+        let path = memo.get(key);
+        if (void 0 === path) {
+            path = (0, joinPath_js_namespaceObject.joinPath)(this.basePath, key);
+            memo.set(key, path);
+        }
+        return path;
+    }
+    wrap(path, source) {
+        const cached = this.cache.get(path, source);
+        if (void 0 !== cached) return cached;
+        const proxy = createWriteProxy(source, this.record, path, this.aliases, this.cache);
+        this.cache.set(path, source, proxy);
+        return proxy;
     }
     get(source, key) {
         if (key === external_Models_js_namespaceObject.PROXY_CACHE) return this.cache;
         const value = Reflect.get(source, key);
         if ('function' == typeof value) return value;
-        const path = 'symbol' == typeof key || this.basePath === WildcardPath_js_namespaceObject.WILDCARD_PATH ? WildcardPath_js_namespaceObject.WILDCARD_PATH : (0, joinPath_js_namespaceObject.joinPath)(this.basePath, key);
-        if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return this.cache(path, value, ()=>createWriteProxy(value, this.record, path, this.aliases, this.cache));
-        if (null !== value && 'object' == typeof value) this.record(path);
+        if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return this.wrap(this.writtenPath(key), value);
+        if (null !== value && 'object' == typeof value) this.record(this.writtenPath(key));
         return value;
     }
     set(source, key, value) {

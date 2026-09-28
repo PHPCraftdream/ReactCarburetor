@@ -27,13 +27,14 @@ export declare abstract class AntiHookComponentReads<P = {}, S = {}> extends Ant
     /**
      * A persistent view of a carburetor's data, declared once and read directly in render.
      *
-     * `useCarburetor` allocates a fresh read-tracking proxy every render — for a component that
-     * always reads from the same store this is pure repeated cost. `connect()` instead builds
-     * the view once (a class field initializer is the intended call site) and hands back the
-     * exact same object for as long as the underlying data object does not change; what changes
-     * per render is only what the proxy's recorder collects: a read counts while a render
-     * attempt is open — the same boundary `useCarburetor` records under — so a conditional
-     * branch reading a different field next render still narrows or widens the subscription.
+     * `useCarburetor` also keeps a persistent root view per carburetor (see `buildTrackedView`),
+     * rebuilt only when its data object changes — but it is looked up by carburetor identity on
+     * every call, and declared inline in render. `connect()` instead builds the view once (a
+     * class field initializer is the intended call site) and hands back the exact same object
+     * for as long as the underlying data object does not change; what changes per render is
+     * only what the proxy's recorder collects: a read counts while a render attempt is open —
+     * the same boundary `useCarburetor` records under — so a conditional branch reading a
+     * different field next render still narrows or widens the subscription.
      *
      * The view stays live across `setData`/`restore`: those replace the store's data object
      * wholesale, which this method notices (the cached proxy is rebuilt only when the object it
