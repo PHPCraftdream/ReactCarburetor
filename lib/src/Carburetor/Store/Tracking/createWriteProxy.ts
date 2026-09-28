@@ -37,8 +37,9 @@ const unwrapWriteProxy = (value: unknown): unknown => {
  * @param record - the store's write sink, feeding the paths the next emitUpdate announces;
  * the get trap also reports unwrappable objects handed out raw, imprecise but never a lost
  * update
- * @param basePath - the dotted path this root answers for, '' being the store root; array
- * writes collapse onto it (or the wildcard) instead of naming an index
+ * @param basePath - the dotted path this root answers for, '' being the store root; a symbol
+ * key, or a write already inside an opaque symbol-keyed branch, still collapses onto the
+ * wildcard, but an index or `length` write on an array is named like any other key
  * @param aliases - consulted on every write to complain when it lands in an object another
  * path was read from; undefined outside development
  * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
@@ -64,8 +65,10 @@ export const createWriteProxy = <T extends object>(
             return WILDCARD_PATH;
         }
 
-        // Writing an index or `length` changes the array as a whole, not one separate path.
-        return isArray ? (basePath || WILDCARD_PATH) : joinPath(basePath, key);
+        // An index or `length` write on an array is named exactly like an object's own key:
+        // `items[5] = …` wakes `items.5`'s own readers, not every row under `items`, and
+        // `push` wakes whoever reads `items.length` without waking any existing row.
+        return joinPath(basePath, key);
     };
 
     const proxy = new Proxy(target, {
@@ -124,11 +127,39 @@ export const createWriteProxy = <T extends object>(
             aliases?.checkWrite(source, basePath);
             aliases?.forget(previous);
 
+            // A direct `length` write that shrinks the array truncates every index above the
+            // new length without a deleteProperty per index — the one array write `set` alone
+            // cannot attribute precisely. Each removed index is recorded on its own, so the
+            // row it held wakes and unmounts; pop/shift/splice already delete their removed
+            // indices explicitly and only ever shrink `length` to match afterwards, so this
+            // fires for them too, redundantly but harmlessly — the paths are recorded already.
+            if (isArray && key === 'length' && typeof raw === 'number' && typeof previous === 'number'
+                && raw < previous) {
+                for (let removed = raw; removed < previous; removed++) {
+                    record(joinPath(basePath, String(removed)));
+                }
+            }
+
+            // An index write past the current end grows `length` as an intrinsic side effect
+            // of the underlying array, before any explicit `Set(length, …)` call a method like
+            // `push` makes afterwards — which then finds the value already there and is
+            // skipped above as a no-op, recording nothing. Reading the length now, before this
+            // write lands, and comparing it after is what still wakes a reader of `length`.
+            const previousLength = isArray && typeof key === 'string' && key !== 'length'
+                ? (source as unknown as {length: number}).length
+                : undefined;
+
             const path = writtenPath(key);
 
             record(path);
 
-            return Reflect.set(source, key, raw);
+            const wrote = Reflect.set(source, key, raw);
+
+            if (previousLength !== undefined && (source as unknown as {length: number}).length !== previousLength) {
+                record(writtenPath('length'));
+            }
+
+            return wrote;
         },
         // Object.defineProperty never reaches the set trap, so without this the write
         // would land in the data and wake nobody.

@@ -9,6 +9,17 @@ import {liveViews} from "./liveViews";
 import {isTrackable} from "./isTrackable";
 
 /**
+ * Whether a key is worth recording at all: the object's own, or missing everywhere. A key
+ * found only on the prototype chain — `items.map`, `items.constructor`, the inherited
+ * `Symbol.iterator` every `for…of` and spread reads first — names no data of this object's
+ * own, so recording it buys a subscription that no write ever satisfies. An absent key still
+ * counts: nothing owns it yet, but a later own-key write must still wake a reader that probed
+ * early.
+ */
+const isRecordable = (source: object, key: string | symbol): boolean =>
+    Object.prototype.hasOwnProperty.call(source, key) || !(key in source);
+
+/**
  * Read proxy: every field access is recorded as a path. Writing through it is forbidden —
  * `set`, `deleteProperty` and `defineProperty` all throw — and `getOwnPropertyDescriptor`
  * wraps object values like `get` does, so no trap hands out raw state.
@@ -103,11 +114,20 @@ export const createReadProxy = <T extends object>(
             // instead of silently reading the raw target.
             const value: unknown = Reflect.get(source, key, proxy);
 
+            if (!isRecordable(source, key)) {
+                // Inherited: found on the prototype chain, not this object's own. The value
+                // is not this object's data — `Array.prototype.values` behind an inherited
+                // `Symbol.iterator`, `map`/`constructor` behind a string key — so nothing is
+                // recorded, and nothing is wrapped either: wrapping an inherited iterator
+                // would break the very protocol it exists to answer.
+                return value;
+            }
+
             if (typeof key === 'symbol') {
-                // A symbol has no place in a dotted path: the read is recorded as the
-                // wildcard, so any future write anywhere invalidates it, and a trackable
-                // value is wrapped read-only just like a string-keyed branch is — nothing
-                // hands out a raw, mutable object here either.
+                // A symbol has no place in a dotted path: an own (or absent) symbol read is
+                // recorded as the wildcard, so any future write anywhere invalidates it, and
+                // a trackable value is wrapped read-only just like a string-keyed branch is —
+                // nothing hands out a raw, mutable object here either.
                 record(WILDCARD_PATH);
 
                 if (!isTrackable(value)) {
@@ -156,11 +176,24 @@ export const createReadProxy = <T extends object>(
             return value;
         },
         has: (source: T, key: string | symbol): boolean => {
-            if (typeof key === 'string') {
-                record(joinPath(basePath, key));
+            const present = Reflect.has(source, key);
+
+            // `Array.prototype.map`/`forEach`/`filter`/`some`/`every`/`reduce` call this once
+            // per index before reading it: presence already has a precise path, the branch
+            // marker, so a trackable element records that, not the leaf `get` would record —
+            // otherwise laying out rows would subscribe to every field of every row. An
+            // inherited key (`'map' in items`) names no data of this object's own and records
+            // nothing; an absent key still records, so a later own-key add wakes the reader.
+            // The descriptor, not a get: a presence check must not run an accessor.
+            if (typeof key === 'string' && isRecordable(source, key)) {
+                const path = joinPath(basePath, key);
+                const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
+                const value: unknown = descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
+
+                record(isTrackable(value) ? branchPath(path) : path);
             }
 
-            return Reflect.has(source, key);
+            return present;
         },
         ownKeys: (source: T): ArrayLike<string | symbol> => {
             // Enumerating keys reads the structure as a whole.
