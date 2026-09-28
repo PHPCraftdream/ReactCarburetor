@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { detachOpaque } from "../Carburetor/Store/Utils/detachOpaque.mjs";
+import { sameSelection } from "../Carburetor/Component/Connection/sameSelection.mjs";
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
@@ -9,7 +10,13 @@ const describeInstance = (instance)=>{
     var _Object_getPrototypeOf_constructor, _Object_getPrototypeOf;
     return (null == (_Object_getPrototypeOf = Object.getPrototypeOf(instance)) ? void 0 : null == (_Object_getPrototypeOf_constructor = _Object_getPrototypeOf.constructor) ? void 0 : _Object_getPrototypeOf_constructor.name) || 'class';
 };
-const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
+const detach = (value)=>{
+    if (null === value || 'object' != typeof value) return value;
+    return detachOpaque(value, (instance)=>{
+        throw new Error('useCarburetorValue() cannot select a live ' + describeInstance(instance) + " instance because in-place changes cannot produce a safe React snapshot. Select the fields the component renders or return a plain object of those fields.");
+    });
+};
+const useCarburetorValue = (carburetor, select, isEqual = sameSelection)=>{
     const cache = useRef({
         carburetor: void 0,
         select: void 0,
@@ -59,12 +66,11 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
         const version = carburetor.getVersion();
         if (entry.filled && entry.carburetor === carburetor && entry.select === select && entry.version === version) return entry.value;
         const reads = new Set();
-        let next = select(carburetor.read((path)=>reads.add(path)));
-        if (null !== next && 'object' == typeof next) next = detachOpaque(next, (instance)=>{
-            throw new Error('useCarburetorValue() cannot select a live ' + describeInstance(instance) + " instance because in-place changes cannot produce a safe React snapshot. Select the fields the component renders or return a plain object of those fields.");
-        });
+        const fresh = select(carburetor.read((path)=>reads.add(path)));
         pendingReads.current = reads;
-        if (entry.filled && isEqual(entry.value, next)) {
+        const liveCompare = isEqual === sameSelection;
+        const candidate = liveCompare ? fresh : detach(fresh);
+        if (entry.filled && isEqual(entry.value, candidate)) {
             cache.current = {
                 carburetor,
                 select,
@@ -74,6 +80,7 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
             };
             return entry.value;
         }
+        const next = liveCompare ? detach(fresh) : candidate;
         cache.current = {
             carburetor,
             select,

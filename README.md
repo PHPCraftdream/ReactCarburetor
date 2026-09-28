@@ -577,14 +577,23 @@ const NameBadge = () => {
 };
 ```
 
-Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe. Pass an equality
-function as the third argument when the selector builds a new object.
+Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe.
 Selected plain objects, arrays, `Map`, `Set` and `Date` values are detached for a stable
 React snapshot. A class instance cannot be copied safely, so selecting one directly or
 inside another value throws an actionable error; select the fields you render instead. A
 `Map`, `Set` or `Date` subclass counts as a class instance here, not as the built-in.
 Own data fields are preserved even when non-enumerable; accessor fields are rejected
 because their getters cannot provide a detached snapshot without running user code.
+
+The third argument is the equality check that decides whether a recomputed selection
+counts as changed. It defaults to a structural comparison — own data properties and
+`Object.is` values, recursively through plain objects and arrays — because every
+selected object is detached into a fresh container, so `Object.is` itself could never
+call two of them equal: a selector rebuilt on every render, or a write that replaces an
+ancestor of the selected data without changing its content, would otherwise re-render
+every time. A `Map`, `Set`, `Date` or class instance still always compares as changed,
+since its content can mutate in place. Pass `Object.is` explicitly for the old,
+reference-only behavior.
 
 ## Lint rules
 

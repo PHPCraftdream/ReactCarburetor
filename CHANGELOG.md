@@ -157,6 +157,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   walks `Reflect.ownKeys` directly instead of building a filtered array first. Measured on a
   1000-row store: the persist write dropped from ~7.3 ms to ~1.2 ms per call, and `deepClone`
   itself from ~9.4 ms to ~2.6 ms.
+- `useCarburetorValue()`'s default `isEqual` is now the same structural comparison
+  `connectSelection()` uses — own data properties and `Object.is` values, recursively through
+  plain objects and arrays — instead of `Object.is`. Every selected object is detached into a
+  fresh container, so `Object.is` could never call two of them equal: an inline selector rebuilt
+  every render, or a write that replaced an ancestor of the selected data without changing its
+  content, always re-rendered. A `Map`, `Set`, `Date` or class instance still always compares as
+  changed. Pass `Object.is` explicitly for the previous behavior. The default comparison runs
+  before the selected value is detached, so a match skips the copy; a custom `isEqual` still
+  receives detached values.
 - The demo app uses the library's whole feature set where an app would need it: stores resolved
   from a `CarburetorScope`, the list loaded through a `ResourceCarburetor` with cancel and reload,
   per-todo details in a `ResourceCache`, a filter with computed visible ids, a

@@ -1,6 +1,7 @@
 import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react";
 import {ICarburetor, TPath, TPathSet, TSubscriber} from "@/Carburetor";
 import {detachOpaque} from "@/Carburetor/Store/Utils/detachOpaque";
+import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<T extends object, R> {
@@ -38,6 +39,27 @@ const describeInstance = (instance: object): string =>
     Object.getPrototypeOf(instance)?.constructor?.name || 'class';
 
 /**
+ * A detached copy of a selection. Class instances have no generic safe copy: passing one through
+ * would let useSyncExternalStore certify in-place changes as unchanged, so they are rejected in
+ * every build, nested ones included.
+ *
+ * @param value - the selector's result, possibly a live branch
+ */
+const detach = <R>(value: R): R => {
+    if (value === null || typeof value !== 'object') {
+        return value;
+    }
+
+    return detachOpaque(value, (instance: object): void => {
+        throw new Error(
+            'useCarburetorValue() cannot select a live ' + describeInstance(instance) +
+            ' instance because in-place changes cannot produce a safe React snapshot. ' +
+            'Select the fields the component renders or return a plain object of those fields.'
+        );
+    });
+};
+
+/**
  * Subscribes to exactly the paths the selector reads, the same precision the class API
  * gets. The selector result is cached per store version, so useSyncExternalStore sees a
  * stable snapshot even when the selector builds a new object.
@@ -50,12 +72,17 @@ const describeInstance = (instance: object): string =>
  * @param select - run on a tracked read of the store, so the paths it touches become exactly
  * what the subscription watches
  * @param isEqual - decides whether a recomputed result counts as changed; true keeps the old
- * reference, so React never sees a re-render
+ * reference, so React never sees a re-render. Defaults to the same structural comparison
+ * `connectSelection` uses: own data properties and `Object.is` values, recursively through
+ * plain objects and arrays. detachOpaque() rebuilds every plain container fresh, so `Object.is`
+ * itself could never call two detached objects equal — pass it explicitly to restore that
+ * stricter, reference-only behavior. A `Map`, `Set`, `Date` or class instance always compares
+ * as changed: its content can mutate in place, so no comparison of it can be trusted.
  */
 export const useCarburetorValue = <T extends object, R>(
     carburetor: ICarburetor<T>,
     select: TSelector<T, R>,
-    isEqual: TValueComparator<R> = Object.is
+    isEqual: TValueComparator<R> = sameSelection
 ): R => {
     const cache = useRef<ICacheEntry<T, R>>({
         carburetor: undefined,
@@ -136,37 +163,24 @@ export const useCarburetorValue = <T extends object, R>(
         }
 
         const reads = new Set<TPath>();
-        let next: R = select(carburetor.read((path: TPath) => reads.add(path)));
+        const fresh: R = select(carburetor.read((path: TPath) => reads.add(path)));
 
-        // A selector returning a branch hands back the live proxy, and traversal records no
-        // read — the subscription would watch nothing and the value would mutate in place.
-        // Detaching through the proxy fixes both at once: its ownKeys records the branch, every
-        // leaf is recorded on the way out, and the caller gets a detached copy. Selector-built
-        // fresh objects take the same copy, which keeps one rule instead of a proxy-detection
-        // heuristic. R7-01: the detach recurses, so a Map, Set or Date nested at any depth is
-        // copied too and an opaque member can no longer keep an earlier snapshot alive.
-        if (next !== null && typeof next === 'object') {
-            // Class instances have no generic safe copy. Passing one through would make
-            // useSyncExternalStore certify in-place changes as unchanged, so reject it in every
-            // build, including when nested inside an otherwise plain result.
-            next = detachOpaque(next, (instance: object): void => {
-                throw new Error(
-                    'useCarburetorValue() cannot select a live ' + describeInstance(instance) +
-                    ' instance because in-place changes cannot produce a safe React snapshot. ' +
-                    'Select the fields the component renders or return a plain object of those fields.'
-                );
-            });
-        }
-
+        // Walking a returned live branch (the comparison or the detach) records its leaves.
         pendingReads.current = reads;
 
-        if (entry.filled && isEqual(entry.value, next)) {
-            // Same value from a new pairing: keep the old reference — a stable snapshot avoids
-            // a pointless re-render — but re-key the entry so later calls hit the cache.
+        // The default comparison walks the live result like a detach would, so a match skips
+        // the copy. A custom comparator always gets detached values.
+        const liveCompare = isEqual === sameSelection;
+        const candidate: R = liveCompare ? fresh : detach(fresh);
+
+        if (entry.filled && isEqual(entry.value, candidate)) {
+            // Same value from a new pairing: keep the old reference, re-key the entry for later hits.
             cache.current = {carburetor, select, version, value: entry.value, filled: true};
 
             return entry.value;
         }
+
+        const next: R = liveCompare ? detach(fresh) : candidate;
 
         cache.current = {carburetor, select, version, value: next, filled: true};
 

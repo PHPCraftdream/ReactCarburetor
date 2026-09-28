@@ -32,6 +32,7 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const external_react_namespaceObject = require("react");
 const detachOpaque_js_namespaceObject = require("../Carburetor/Store/Utils/detachOpaque.js");
+const sameSelection_js_namespaceObject = require("../Carburetor/Component/Connection/sameSelection.js");
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
@@ -41,7 +42,13 @@ const describeInstance = (instance)=>{
     var _Object_getPrototypeOf_constructor, _Object_getPrototypeOf;
     return (null == (_Object_getPrototypeOf = Object.getPrototypeOf(instance)) ? void 0 : null == (_Object_getPrototypeOf_constructor = _Object_getPrototypeOf.constructor) ? void 0 : _Object_getPrototypeOf_constructor.name) || 'class';
 };
-const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
+const detach = (value)=>{
+    if (null === value || 'object' != typeof value) return value;
+    return (0, detachOpaque_js_namespaceObject.detachOpaque)(value, (instance)=>{
+        throw new Error('useCarburetorValue() cannot select a live ' + describeInstance(instance) + " instance because in-place changes cannot produce a safe React snapshot. Select the fields the component renders or return a plain object of those fields.");
+    });
+};
+const useCarburetorValue = (carburetor, select, isEqual = sameSelection_js_namespaceObject.sameSelection)=>{
     const cache = (0, external_react_namespaceObject.useRef)({
         carburetor: void 0,
         select: void 0,
@@ -91,12 +98,11 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
         const version = carburetor.getVersion();
         if (entry.filled && entry.carburetor === carburetor && entry.select === select && entry.version === version) return entry.value;
         const reads = new Set();
-        let next = select(carburetor.read((path)=>reads.add(path)));
-        if (null !== next && 'object' == typeof next) next = (0, detachOpaque_js_namespaceObject.detachOpaque)(next, (instance)=>{
-            throw new Error('useCarburetorValue() cannot select a live ' + describeInstance(instance) + " instance because in-place changes cannot produce a safe React snapshot. Select the fields the component renders or return a plain object of those fields.");
-        });
+        const fresh = select(carburetor.read((path)=>reads.add(path)));
         pendingReads.current = reads;
-        if (entry.filled && isEqual(entry.value, next)) {
+        const liveCompare = isEqual === sameSelection_js_namespaceObject.sameSelection;
+        const candidate = liveCompare ? fresh : detach(fresh);
+        if (entry.filled && isEqual(entry.value, candidate)) {
             cache.current = {
                 carburetor,
                 select,
@@ -106,6 +112,7 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
             };
             return entry.value;
         }
+        const next = liveCompare ? detach(fresh) : candidate;
         cache.current = {
             carburetor,
             select,
