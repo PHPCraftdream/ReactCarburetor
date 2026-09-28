@@ -292,3 +292,38 @@ These are proposals, not defects. They are worth deciding while the package is a
   checks apply there.
 - R13-08 and R13-09 are derived from the code. R13-01 through R13-07 were measured or
   reproduced.
+
+## Resolution (same day)
+
+Every finding was fixed on branch `react-compat`, one commit per item. The API proposals were
+decided by the user and applied as breaking changes, keeping the version at 0.1.0.
+
+| ID | Commit | Result |
+|---|---|---|
+| R13-01 | `a166c21` | Uid counter and claimed token names shared through `sharedSingleton`; the CJS/ESM lost-settlement regression runs against the built `dist` |
+| R13-02/03/05 | `a5cf42c` | Per-tree `WeakMap<source, {path, proxy}>` cache; the ledger, `WeakRef` requirement and unmount release are gone; `liveViews` is dev-only |
+| R13-04 | `9386cd9` | Computed subscribers in a `Map` |
+| R13-06 | `ac9bc89` | Instance Proxy removed (`render` is a non-configurable own accessor, a class-field `render` throws); nine fields became prototype methods |
+| R13-07 | `f19f6f0` | `persist` stringifies `getData()`; `deepClone` assigns keys |
+| R13-08 | `759c94d` | Structural default comparator, run live before detaching; a custom `isEqual` still gets detached values |
+| R13-09 | `a819e9f` | Key, read-set and write-set copies removed; frozen absent view; one serialization per `useResource` |
+| R13-10 | `5875878`, `9318be8` | Persistent `useCarburetor` root; internals unexported, `useEffect(name, cb, deps)`, `watch(cb, reads?)`, duplicate token name reported instead of thrown; lint rules adapted |
+
+The same probes after the fixes (`NODE_ENV=production`, built `dist/esm`, medians of five runs):
+
+| probe | before | after |
+|---|---:|---:|
+| SSR 1000 rows, `useCarburetor` / `connect` / plain | 291 / 158 / 3.1 ms | 20.8 / 16.2 / 1.4 ms |
+| SSR 4000 rows, `useCarburetor` / `connect` / plain | 2 599 / 2 526 / 6.8 ms | 60.9 / 59.5 / 3.4 ms |
+| 4000 read proxies over one object | 1 824 ms | 7.4 ms |
+| 2000 root writes, 0 / 1000 live readers | 6.4 / 533 ms | 5.9 / 5.9 ms |
+| computed, 5 waves, 1000 / 4000 subscribers | 264 / 9 843 ms | 0.8 / 2.2 ms |
+| `deepClone` / `persist` write, 1000 rows | 4.77 / 4.62 ms | 1.7 / 0.3 ms |
+
+Verification at `9318be8`:
+
+- full `npm test`: 737 passed;
+- `cargo test`: 348 lib tests and 24 CLI tests passed;
+- `npm run lint`: no errors;
+- `typecheck`, the demo typecheck and `check:layout`: clean;
+- `npm run test:consumers`: 13 of 13 passed.
