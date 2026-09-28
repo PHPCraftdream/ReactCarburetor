@@ -1,13 +1,14 @@
 import {IDict, TSubscriber} from "@/Carburetor/Models/Base";
-import {IComputed, TComputeBody, TComputedReader} from "@/Carburetor/Models/Derived";
+import {IComputed, IComputedOptions, TComputeBody, TComputedReader} from "@/Carburetor/Models/Derived";
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carburetor/Models/Store";
-import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {announceIsUnchanged} from "./announceIsUnchanged";
+import {reportComputedEscape} from "./reportComputedEscape";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
@@ -24,8 +25,17 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
 const invalidationEdges: WeakMap<TSubscriber, () => void> =
     sharedSingleton('invalidationEdges', () => new WeakMap<TSubscriber, () => void>());
 
+/**
+ * A dependency's source, with the store-only hook a live leaf read amends through. A computed
+ * source never has `extend` — it notifies at the granularity of its whole value — so the field
+ * is optional rather than widening `ICarburetorSubscription` itself for one caller.
+ */
+interface IDependencySource extends ICarburetorSubscription {
+    extend?: (id: string, path: TPath) => void;
+}
+
 interface IDependency {
-    source: ICarburetorSubscription;
+    source: IDependencySource;
     reads: TPathSet;
 }
 
@@ -75,8 +85,13 @@ export class Computed<R> implements IComputed<R> {
     /** Whether the cached value can be trusted; cleared when a dependency moves or the last listener leaves. */
     protected valid: boolean = false;
 
-    /** Takes the body whose reads become this value's dependencies. */
-    constructor(protected body: TComputeBody<R>) {
+    /**
+     * Takes the body whose reads become this value's dependencies.
+     *
+     * @param body - runs against a tracking reader; everything it reads becomes a dependency
+     * @param options - `equals` judges two results by content instead of by reference
+     */
+    constructor(protected body: TComputeBody<R>, protected options: IComputedOptions<R> = {}) {
         // Files this computed's invalidation callback so computations upstream of it can
         // reach it when they are invalidated — including when their settlement fails and
         // nothing is announced.
@@ -136,17 +151,6 @@ export class Computed<R> implements IComputed<R> {
         }
 
         return id;
-    }
-
-    /**
-     * No-op: a computed notifies at the granularity of its whole value, so there is no
-     * finer path an existing subscription could be extended with. Kept only so a computed
-     * satisfies the subscription interface when it is itself used as a dependency source.
-     *
-     * @param _id - the subscription id; ignored, there is nothing to file
-     * @param _path - the path a caller would otherwise extend the subscription with; ignored
-     */
-    public extend(_id: string, _path: TPath): void {
     }
 
     /**
@@ -259,7 +263,10 @@ export class Computed<R> implements IComputed<R> {
      *
      * During the body's own evaluation the dependency being filled is not yet the published
      * one (attachDependencies swaps it in after the body returns), so nothing is amended
-     * there; once nobody listens there is no registration to amend either.
+     * there; once nobody listens there is no registration to amend either. `published` is
+     * also what the development escape diagnostic gates on: a read during the body's own
+     * evaluation is the computed computing itself, never a component rendering through a
+     * result that reached it through props (R15-02).
      *
      * @param dependency - the dependency edge the read belongs to
      * @param path - the path the read proxy reported
@@ -272,9 +279,12 @@ export class Computed<R> implements IComputed<R> {
         dependency.reads.add(path);
 
         const published = dependency === this.dependencies[dependency.source.getUID()];
-        const observed = this.subscribers.size > 0;
 
-        if (published && observed) {
+        if (published && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+            reportComputedEscape(this, (id: string) => this.subscribers.has(id));
+        }
+
+        if (published && this.subscribers.size > 0 && dependency.source.extend) {
             dependency.source.extend(this.uid, path);
         }
     }
@@ -505,6 +515,10 @@ export class Computed<R> implements IComputed<R> {
      * computations; an explicit get() reruns the body and hands the error to its reader,
      * and the next write to a dependency retries it.
      *
+     * The judgment itself — reference, the R6-02/R7-02 exotic-mutation carve-out, and the
+     * caller's `equals` — is `announceIsUnchanged`'s; see its docstring for exactly which
+     * case each rule covers and why `equals` cannot reach the exotic one.
+     *
      * A bound field, not a method: `updateWave.defer` holds onto it and calls it detached
      * from `this` once the wave drains.
      */
@@ -520,27 +534,8 @@ export class Computed<R> implements IComputed<R> {
             this.recompute();
         }
 
-        // The judgment is against the publication baseline, not `previous`: a read that
-        // landed mid-wave can have refreshed the cache without the observer ever seeing
-        // the intermediate value, so what was last ANNOUNCED is what a change is measured
-        // from. `announced` is undefined only when observation never produced a
-        // successful value, and then the last cached value is all there is to compare with.
-        const baseline = this.announced !== undefined ? this.announced.value : previous;
-
-        // An exotic result is judged by its dependencies, not its reference (R6-02): the same
-        // Map can have been mutated in place since it was announced, so Object.is alone would
-        // suppress a notification the dependency genuinely earned. A plain envelope holding an
-        // exotic member is judged the same way (R7-02): the envelope can keep its identity
-        // across evaluations while the wrapped value mutates in place. Plain results keep the
-        // reference check by itself.
-        const sameReference = Object.is(baseline, this.value);
         const moved = this.announced !== undefined && this.driftedSince(this.announced.versions);
-        // Only a stable reference with changed dependencies can hide an in-place exotic mutation.
-        // A new result reference already proves a change; an unmoved dependency proves there is
-        // nothing new to inspect. Besides avoiding needless traversal, this keeps caller getters
-        // out of settlement unless their result can affect notification semantics.
-        const opaqueChanged = sameReference && moved && containsExoticValue(this.value);
-        const unchanged = sameReference && !opaqueChanged;
+        const unchanged = announceIsUnchanged(this.announced, previous, this.value as R, moved, this.options.equals);
 
         if (unchanged) {
             return;

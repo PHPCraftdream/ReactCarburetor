@@ -10,6 +10,10 @@ import {
     ITrackedCarburetor,
 } from "@/Carburetor/Component/Models/Connection";
 import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
+import {renderOwner} from "@/Carburetor/Derived/renderOwner";
+// See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
+declare const process: {env: {NODE_ENV?: string}} | undefined;
+
 const RENDER_KEY = "render";
 
 /**
@@ -234,6 +238,16 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     private buildRenderBoundary(realRender: () => React.ReactNode): () => React.ReactNode {
         return (): React.ReactNode => {
             const attempt = this.openRenderAttempt();
+            // Only the development escape diagnostic reads the owner; production allocates nothing here.
+            const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+            const previousOwner = development ? renderOwner.get() : undefined;
+
+            if (development) {
+                renderOwner.set({
+                    uid: this.uid,
+                    hasTracked: (source) => attempt.tracked !== undefined && attempt.tracked.has(source),
+                });
+            }
 
             try {
                 return realRender.call(this);
@@ -242,6 +256,10 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
 
                 throw error;
             } finally {
+                if (development) {
+                    renderOwner.set(previousOwner);
+                }
+
                 this.closeRenderAttempt(attempt);
             }
         };

@@ -343,6 +343,38 @@ inside the list wakes the computed and, through it, the consumer. Each newly rea
 to the existing subscription in O(path depth). Return plain values when you only need a count or
 a flag — the unchanged-result check then saves the re-render.
 
+A body that has to build a new array or object on every recompute — `filter`, `map`, `slice`, an
+object literal — cannot rely on that check: a new reference looks like a change even when its
+content is identical. Pass `equals` to judge the result by content instead:
+
+```ts
+export const visibleIds = computed<string[]>((read) => {
+    const {orderIds, items} = read(todoCarburetor);
+
+    return orderIds.filter((id) => !items[id].done);
+}, {equals: shallowEqual});
+```
+
+`shallowEqual` (also exported) compares an array element-wise, or an object key-by-key, with
+`Object.is`, so a recompute that lands on the same ids re-renders nobody. `equals` is consulted
+only when the reference actually changed — an in-place mutation of an exotic result (a `Map` or
+`Set` the computed hands back live) still announces regardless of `equals`, because `previous`
+and `next` would alias the same mutated object and there would be nothing new for `equals` to
+compare.
+
+### Derived lists
+
+A computed feeding a list should return ids or plain values, with each row reading the store
+itself — the way the demo's `TodoViews.visibleIds` and `TodoItem` do — rather than receiving the
+computed's live elements as props. A computed's result is live: every element the body returns is
+a fresh proxy on each recompute, so handing those elements to rows makes a one-field edit
+recompute the whole computed and re-render the parent and every visible row (500 renders at 1000
+rows, 2000 at 4000). Returning ids and reading the store per row lets a title edit wake exactly
+the one row that shows it, and adding `{equals}` (above) stops even the parent from re-rendering
+when the visible ids themselves do not change. In development, rendering through a computed's
+live result without being one of its subscribers — the value having reached a component through
+props — is reported once per computed.
+
 ### Transactions
 
 Writes inside `transaction` are delivered as one update per carburetor, however many stores
@@ -727,7 +759,7 @@ Members are prototype methods: override them with method syntax and reach the ba
 
 | export                                        | purpose                                     |
 |-----------------------------------------------|---------------------------------------------|
-| `computed(body)`                              | Memoized derived value.                     |
+| `computed(body, options?)`                    | Memoized derived value; `options.equals` judges the result by content instead of by reference. |
 | `transaction(body)`                           | One notification pass for a group of writes. |
 | `ComponentUpdateThrottle(ms)`                 | Coalescing for streaming sources.           |
 | `ResourceCarburetor(loader, scheduler?)`      | Async state with status and cancellation.    |

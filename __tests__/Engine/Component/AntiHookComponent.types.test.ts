@@ -1,5 +1,6 @@
 import {AntiHookComponent, Carburetor} from '@/Carburetor';
 import {TReadonly} from '@/Carburetor/Models/Base';
+import {ICarburetorSubscription} from '@/Carburetor/Models/Store';
 
 /**
  * Compile-time contract tests for the `connect()`/`connectSelection()` consumer API.
@@ -105,6 +106,29 @@ class InvalidConsumerAccess extends AntiHookComponent {
 }
 
 void InvalidConsumerAccess;
+
+// R15-10(2): `extend` moved off `ICarburetorSubscription` onto `ICarburetor`, so a third-party
+// subscription source — a computed among them — can implement the bare interface without
+// carrying an `extend` it would otherwise have to fake as a no-op. If `extend` were still
+// required here, this class would fail to compile.
+class MinimalSubscription implements ICarburetorSubscription {
+    public getUID(): string {
+        return 'minimal';
+    }
+
+    public getVersion(): number {
+        return 0;
+    }
+
+    public subscribe(): string {
+        return 'id';
+    }
+
+    public unsubscribe(): void {
+    }
+}
+
+void MinimalSubscription;
 
 /**
  * Everything tsc must reject, in one block. The function is never called at import time —

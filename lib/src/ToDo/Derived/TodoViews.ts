@@ -1,16 +1,7 @@
-import {computed, Computed, TComputedReader} from "@/Carburetor";
+import {computed, Computed, shallowEqual, TComputedReader} from "@/Carburetor";
 import {FilterCarburetor} from "@/ToDo/Carburetors/FilterCarburetor";
 import {TodoCarburetor} from "@/ToDo/Carburetors/TodoCarburetor";
 import {ETodoFilter} from "@/ToDo/Models/Enums/ETodoFilter";
-
-/** The previous array when the ids are the same, so an unchanged result keeps its identity. */
-const sameIdsOr = (previous: string[] | undefined, next: string[]): string[] => {
-    if (previous && previous.length === next.length && previous.every((id: string, at: number) => id === next[at])) {
-        return previous;
-    }
-
-    return next;
-};
 
 /**
  * Values derived from the list and the filter. Each computed reads only what it needs, so
@@ -27,9 +18,6 @@ export class TodoViews {
     /** A one-line summary, composed from `progress` through the reader. */
     public readonly summary: Computed<string>;
 
-    /** The last visibleIds result, reused while the ids stay the same. */
-    protected lastIds: string[] | undefined = undefined;
-
     /**
      * Builds the computeds over one scope's stores.
      *
@@ -37,7 +25,7 @@ export class TodoViews {
      * @param filter - the filter visibleIds applies
      */
     constructor(protected todos: TodoCarburetor, protected filter: FilterCarburetor) {
-        this.visibleIds = computed<string[]>(this.computeVisibleIds);
+        this.visibleIds = computed<string[]>(this.computeVisibleIds, {equals: shallowEqual});
         this.progress = computed<number>(this.computeProgress);
         this.summary = computed<string>(this.computeSummary);
     }
@@ -45,18 +33,19 @@ export class TodoViews {
     /**
      * Filters the order by completion; the All filter reads no item at all.
      *
+     * `visibleIds` is built with `{equals: shallowEqual}`, so a filter or completion write
+     * that leaves these ids the same wakes nobody, even though `filter`/`slice` return a new
+     * array every time.
+     *
      * @param read - records every path the body touches as a dependency
      */
     protected computeVisibleIds = (read: TComputedReader): string[] => {
         const {filter} = read(this.filter);
         const {orderIds, items} = read(this.todos);
-        const next = filter === ETodoFilter.All
+
+        return filter === ETodoFilter.All
             ? orderIds.slice()
             : orderIds.filter((id: string) => items[id].done === (filter === ETodoFilter.Done));
-
-        this.lastIds = sameIdsOr(this.lastIds, next);
-
-        return this.lastIds;
     };
 
     /**

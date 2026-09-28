@@ -2,7 +2,7 @@ import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {AntiHookComponent, Carburetor, computed} from '@/Carburetor';
-import {CounterCarburetor, IndexedCarburetor, getIndexData} from './fixtures';
+import {CounterCarburetor, IndexedCarburetor, ListCarburetor, getData, getIndexData} from './fixtures';
 
 describe('computed', () => {
     describe('exotic results (R6-02)', () => {
@@ -411,6 +411,96 @@ describe('computed', () => {
 
             expect(computes).toEqual(2);
             expect(joined.get()).toEqual('a,b,c,x');
+        });
+    });
+
+    describe('computed(body, {equals}) judges a changed reference by content (R15-03)', () => {
+        test('equals suppresses the announce when a fresh array has the same ids', () => {
+            const carburetor = new ListCarburetor(getData());
+            let notified = 0;
+
+            const sameIds = (before: string[], after: string[]): boolean =>
+                before.length === after.length && before.every((id: string, at: number) => id === after[at]);
+
+            const doneIds = computed<string[]>(
+                (read) => {
+                    const {items} = read(carburetor);
+
+                    return Object.keys(items).filter((id) => items[id].done);
+                },
+                {equals: sameIds}
+            );
+
+            doneIds.subscribe(() => notified++, {id: 'listener'});
+            expect(doneIds.get()).toEqual(['b']);
+
+            const before = doneIds.get();
+
+            // A whole-record replace — the shape a real "save" write takes — recomputes the
+            // body into a brand-new array with the same one id, even though `.done` itself did
+            // not move: exactly the case a hand-written memo like the demo's used to guard.
+            carburetor.replaceItem('b', {title: 'renamed', done: true});
+
+            expect(notified).toEqual(0);
+            expect(doneIds.getVersion()).toEqual(0);
+            expect(doneIds.get()).toEqual(['b']);
+            expect(doneIds.get()).not.toBe(before);
+        });
+
+        test('equals is not consulted when the reference is unchanged', () => {
+            const carburetor = new ListCarburetor(getData());
+            const fixed: string[] = ['stable'];
+            let equalsCalls = 0;
+            let notified = 0;
+
+            const value = computed<string[]>(
+                (read) => {
+                    // A real dependency — read but discarded — so the write below actually
+                    // reaches this computed and forces a recompute, instead of the write never
+                    // arriving because nothing was ever read.
+                    void read(carburetor).items.a.done;
+
+                    return fixed;
+                },
+                {
+                    equals: (before, after) => {
+                        equalsCalls++;
+
+                        return before === after;
+                    },
+                }
+            );
+
+            value.subscribe(() => notified++, {id: 'listener'});
+            expect(value.get()).toBe(fixed);
+
+            carburetor.setDone('a', true);
+
+            // The reference never moved — Object.is already says "unchanged" — so `equals`
+            // is never asked, and nobody is notified either way.
+            expect(equalsCalls).toEqual(0);
+            expect(notified).toEqual(0);
+        });
+
+        test('an exotic in-place mutation still announces even with an always-equal comparator', () => {
+            const carburetor = new IndexedCarburetor(getIndexData());
+            let notified = 0;
+
+            // `equals` says "always equal": if it could reach the exotic case, this would hide
+            // the coarse-path Map mutation R6-02 exists to catch.
+            const index = computed<Map<string, number>>(
+                (read) => read(carburetor).index,
+                {equals: () => true}
+            );
+
+            index.subscribe(() => notified++, {id: 'listener'});
+            expect(index.getVersion()).toEqual(0);
+
+            carburetor.setIndex('a', 2);
+
+            expect(notified).toEqual(1);
+            expect(index.getVersion()).toEqual(1);
+            expect(index.get().get('a')).toEqual(2);
         });
     });
 });

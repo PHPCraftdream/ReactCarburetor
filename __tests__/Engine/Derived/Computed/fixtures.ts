@@ -28,6 +28,13 @@ export class ListCarburetor extends Carburetor<ITodoLike> {
 
         this.emitUpdate();
     };
+
+    /** Replaces the whole item object, the way a real store's "save the record" write does. */
+    public replaceItem = (id: string, item: {title: string; done: boolean}) => {
+        this.draft.items[id] = item;
+
+        this.emitUpdate();
+    };
 }
 
 export class CounterCarburetor extends Carburetor<{n: number}> {

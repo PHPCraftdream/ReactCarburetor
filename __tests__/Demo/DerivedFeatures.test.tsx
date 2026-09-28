@@ -120,7 +120,7 @@ describe('demo: derived values and selections', () => {
         dispose();
     });
 
-    test('visibleIds keeps its identity when a recompute lands on the same ids', async () => {
+    test('visibleIds does not re-announce when a recompute lands on the same ids (equals: shallowEqual)', async () => {
         const {scope, dispose} = createTodoScope();
         const todos = scope.get(todoToken);
         const views = scope.get(viewsToken);
@@ -130,11 +130,16 @@ describe('demo: derived values and selections', () => {
         scope.get(filterToken).setFilter(ETodoFilter.Active);
 
         const before = views.visibleIds.get();
+        const versionBefore = views.visibleIds.getVersion();
         const first = todos.getData().items.workTodo1;
 
         todos.updateTodo({...first, title: 'still active'});
 
-        expect(views.visibleIds.get()).toBe(before);
+        // The body builds a fresh array every recompute (`filter` never returns the same
+        // reference), so the content — not the identity — is what {equals: shallowEqual} judges:
+        // the version stays put and nobody is notified.
+        expect(views.visibleIds.getVersion()).toEqual(versionBefore);
+        expect(views.visibleIds.get()).toEqual(before);
         expect(views.summary.get()).toEqual('0% done');
 
         views.visibleIds.unsubscribe(stop);

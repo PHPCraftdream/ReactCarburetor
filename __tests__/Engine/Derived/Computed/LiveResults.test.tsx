@@ -2,7 +2,7 @@ import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {rstest} from '@rstest/core';
-import {AntiHookComponent, Carburetor, computed} from '@/Carburetor';
+import {AntiHookComponent, Carburetor, computed, shallowEqual} from '@/Carburetor';
 
 describe('computed', () => {
     describe('live results shared across consumers (R5-03)', () => {
@@ -270,6 +270,205 @@ describe('computed', () => {
 
             expect(notified).toEqual(1);
             expect(boxed.get().n).toEqual(2);
+        });
+    });
+
+    describe('the development diagnostic reports a live result escaping through props (R15-02)', () => {
+        interface IRow {
+            title: string;
+        }
+
+        interface IRowListData {
+            items: IRow[];
+        }
+
+        class RowListCarburetor extends Carburetor<IRowListData> {
+            public setTitle = (index: number, title: string) => {
+                this.draft.items[index].title = title;
+
+                this.emitUpdate();
+            };
+        }
+
+        const getRowListData = (): IRowListData => ({
+            items: [{title: 'a'}, {title: 'b'}, {title: 'c'}],
+        });
+
+        /** Runs `body` with `console.error` captured instead of printed, and returns what it logged. */
+        const withCapturedConsoleError = (body: () => void): string[] => {
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (message: string) => reported.push(message);
+
+            try {
+                body();
+            } finally {
+                console.error = original;
+            }
+
+            return reported;
+        };
+
+        test('a row rendering a computed result received through props reports the escape once', () => {
+            const carburetor = new RowListCarburetor(getRowListData());
+            const rows = computed((read) => read(carburetor).items);
+
+            class Row extends AntiHookComponent<{todo: IRow}> {
+                render() {
+                    return <span className="row">{this.props.todo.title}</span>;
+                }
+            }
+
+            class RowsView extends AntiHookComponent {
+                render() {
+                    const items = this.useComputed(rows);
+
+                    return <div>{items.map((item: IRow, index: number) => <Row key={index} todo={item} />)}</div>;
+                }
+            }
+
+            const reported = withCapturedConsoleError(() => {
+                const view = render(<RowsView />);
+
+                // A second render exercises the same escape again — the report must not repeat.
+                act(() => carburetor.setTitle(0, 'renamed'));
+
+                view.unmount();
+            });
+
+            expect(reported.length).toEqual(1);
+            expect(reported[0]).toContain("live result");
+        });
+
+        test('a component reading its own useComputed() result in its own render never reports (control)', () => {
+            const carburetor = new RowListCarburetor(getRowListData());
+            const rows = computed((read) => read(carburetor).items);
+
+            class OwnReaderView extends AntiHookComponent {
+                render() {
+                    const items = this.useComputed(rows);
+
+                    return <div>{items.map((item: IRow) => item.title).join(',')}</div>;
+                }
+            }
+
+            const reported = withCapturedConsoleError(() => {
+                const view = render(<OwnReaderView />);
+
+                act(() => carburetor.setTitle(0, 'renamed'));
+
+                view.unmount();
+            });
+
+            expect(reported).toEqual([]);
+        });
+
+        test('the diagnostic is skipped in production', () => {
+            const carburetor = new RowListCarburetor(getRowListData());
+            const rows = computed((read) => read(carburetor).items);
+
+            class Row extends AntiHookComponent<{todo: IRow}> {
+                render() {
+                    return <span>{this.props.todo.title}</span>;
+                }
+            }
+
+            class RowsView extends AntiHookComponent {
+                render() {
+                    const items = this.useComputed(rows);
+
+                    return <div>{items.map((item: IRow, index: number) => <Row key={index} todo={item} />)}</div>;
+                }
+            }
+
+            const originalEnv = process.env.NODE_ENV;
+            let reported: string[] = [];
+
+            try {
+                process.env.NODE_ENV = 'production';
+
+                reported = withCapturedConsoleError(() => {
+                    const view = render(<RowsView />);
+
+                    view.unmount();
+                });
+            } finally {
+                process.env.NODE_ENV = originalEnv;
+            }
+
+            expect(reported).toEqual([]);
+        });
+    });
+
+    describe('computed(body, {equals}) skips the list re-render for an unchanged result (R15-03)', () => {
+        interface IRow {
+            title: string;
+            done: boolean;
+        }
+
+        interface IRowListData {
+            items: IRow[];
+        }
+
+        class RowListCarburetor extends Carburetor<IRowListData> {
+            public replaceItem = (index: number, item: IRow) => {
+                this.draft.items[index] = item;
+
+                this.emitUpdate();
+            };
+        }
+
+        const getRowListData = (): IRowListData => ({
+            items: [{title: 'a', done: false}, {title: 'b', done: true}, {title: 'c', done: false}],
+        });
+
+        /** One `ListView` reading a `visibleTitles` computed built with or without `{equals}`. */
+        const buildView = (useEquals: boolean) => {
+            const carburetor = new RowListCarburetor(getRowListData());
+            const visibleTitles = computed<string[]>(
+                (read) => read(carburetor).items.filter((item: IRow) => !item.done).map((item: IRow) => item.title),
+                useEquals ? {equals: shallowEqual} : undefined
+            );
+            let renders = 0;
+
+            class ListView extends AntiHookComponent {
+                render() {
+                    renders++;
+
+                    return <div>{this.useComputed(visibleTitles).join(',')}</div>;
+                }
+            }
+
+            const view = render(<ListView />);
+
+            return {carburetor, view, getRenders: (): number => renders};
+        };
+
+        test('a whole-record replace that leaves the visible titles the same causes 0 re-renders', () => {
+            const {carburetor, view, getRenders} = buildView(true);
+
+            expect(getRenders()).toEqual(1);
+
+            // A fresh reference every recompute (`filter`/`map` never return the same array), so
+            // only content equality — not identity — can suppress this announce.
+            act(() => carburetor.replaceItem(1, {title: 'b', done: true}));
+
+            expect(getRenders()).toEqual(1);
+
+            view.unmount();
+        });
+
+        test('the same write causes 1 re-render without {equals} (control)', () => {
+            const {carburetor, view, getRenders} = buildView(false);
+
+            expect(getRenders()).toEqual(1);
+
+            act(() => carburetor.replaceItem(1, {title: 'b', done: true}));
+
+            expect(getRenders()).toEqual(2);
+
+            view.unmount();
         });
     });
 });
