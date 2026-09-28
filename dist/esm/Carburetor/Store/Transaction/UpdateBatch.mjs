@@ -15,7 +15,7 @@ class UpdateBatch {
     };
     add = (target, writes)=>{
         const merged = this.pending.get(target);
-        if (!merged) return void this.pending.set(target, new Set(writes));
+        if (!merged) return void this.pending.set(target, writes);
         writes.forEach((path)=>merged.add(path));
     };
     flush = ()=>{

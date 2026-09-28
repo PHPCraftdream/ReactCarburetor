@@ -143,9 +143,9 @@ class Carburetor {
     preEmit = ()=>{};
     emitUpdate = ()=>{
         this.preEmit();
-        const changed = this.writes.size > 0 ? new Set(this.writes) : void 0;
         const touched = this.draftTouched;
-        this.writes.clear();
+        const changed = this.writes.size > 0 ? this.writes : void 0;
+        this.writes = new Set();
         this.draftTouched = false;
         if (!changed && touched) return;
         const writes = changed || new Set([

@@ -78,8 +78,14 @@ export interface IResourceCacheOptions {
  * component layer depends on this shape, the cache implements it, and neither imports the other.
  */
 export interface IResourceSource<T, TArgs> extends ICarburetorSubscription {
+    /** The cache key for one argument set; memoized while reference and JSON stay unchanged. */
+    keyOf(args: TArgs): string;
     /** The read path for one entry, so a component subscribes to that entry and nothing else. */
     pathOf(args: TArgs): TPath;
     getEntry(args: TArgs): IResourceView<T>;
+    /** Same as `pathOf`, for a caller already holding the key — args are not re-serialized. */
+    pathOfKey(key: string): TPath;
+    /** Same as `getEntry`, for a caller already holding the key — args are not re-serialized. */
+    getEntryByKey(key: string): IResourceView<T>;
     load(args: TArgs): Promise<void>;
 }

@@ -35,6 +35,10 @@ const joinPath_js_namespaceObject = require("../../Store/Paths/joinPath.js");
 const external_escapeCacheKey_js_namespaceObject = require("./escapeCacheKey.js");
 const external_getInitialCacheEntry_js_namespaceObject = require("./getInitialCacheEntry.js");
 const external_ResourceCacheLifecycle_js_namespaceObject = require("./ResourceCacheLifecycle.js");
+const ABSENT_VIEW = Object.freeze({
+    ...(0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)(),
+    stale: true
+});
 class ResourceCache extends external_ResourceCacheLifecycle_js_namespaceObject.ResourceCacheLifecycle {
     lastKeyArgs = void 0;
     lastKeyJson = void 0;
@@ -58,14 +62,12 @@ class ResourceCache extends external_ResourceCacheLifecycle_js_namespaceObject.R
         this.lastKeyValue = key;
         return key;
     };
-    pathOf = (args)=>(0, joinPath_js_namespaceObject.joinPath)('entries', this.keyOf(args));
-    getEntry = (args)=>{
-        const key = this.keyOf(args);
+    pathOf = (args)=>this.pathOfKey(this.keyOf(args));
+    pathOfKey = (key)=>(0, joinPath_js_namespaceObject.joinPath)('entries', key);
+    getEntry = (args)=>this.getEntryByKey(this.keyOf(args));
+    getEntryByKey = (key)=>{
         const stored = this.data.entries[key];
-        if (!stored) return {
-            ...(0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)(),
-            stale: true
-        };
+        if (!stored) return ABSENT_VIEW;
         this.touch(key);
         const stale = this.isStale(stored);
         const cached = this.viewCache.get(key);

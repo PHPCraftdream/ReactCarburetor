@@ -32,8 +32,12 @@ export declare class ResourceCache<T, TArgs = void> extends ResourceCacheLifecyc
     keyOf: (args: TArgs) => string;
     /** The read path of one entry, built with the same path segment escaping as store writes. */
     pathOf: (args: TArgs) => TPath;
+    /** The read path for an already-resolved key, so a caller holding one need not re-derive it. */
+    pathOfKey: (key: string) => TPath;
     /** The entry as it stands, with the freshness verdict computed now. */
     getEntry: (args: TArgs) => IResourceView<T>;
+    /** The entry for an already-resolved key, so a caller holding one need not re-derive it. */
+    getEntryByKey: (key: string) => IResourceView<T>;
     /** The raw rejection for one entry, which `error` can only describe. */
     getFailure: (args: TArgs) => unknown;
 }

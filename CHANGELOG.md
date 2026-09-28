@@ -147,6 +147,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Performance:** several small render/write-path allocations removed: attempt-map keys are
+  computed once instead of re-concatenated per read; a commit adopts its render attempt's read
+  set as the committed subscription description instead of copying it (the set is provably
+  immutable once the attempt closes); `emitUpdate`/`UpdateBatch` hand off the writes `Set` by
+  reference instead of copying it; `ResourceCache.getEntry` returns one shared frozen view for
+  every cache miss instead of a fresh object per call; `useResource` derives its cache key once
+  per render instead of serializing the arguments twice (once for the read path, once for the
+  entry); `escapeCacheKey` skips its escape pass when the key holds neither `~` nor `.`. `IResourceSource` gains `keyOf`,
+  `pathOfKey` and `getEntryByKey`; a custom implementation must add them.
 - **Performance:** `useCarburetor` now keeps one persistent root read view per (component
   instance, carburetor), reused across renders while the carburetor's `getData()` object stays
   the same, instead of allocating a fresh read-tracking proxy on every call — the same steady-state

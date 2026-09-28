@@ -429,10 +429,12 @@ describe('ResourceCache', () => {
 
         const again = cache.getEntry('missing');
 
-        // Built fresh every time, and no bookkeeping for keys that never loaded.
-        expect(again).not.toBe(first);
+        // One shared, frozen view answers every miss — same shape regardless of key or T — and
+        // no bookkeeping is kept for keys that never loaded.
+        expect(again).toBe(first);
         expect(again).toEqual(first);
         expect(viewCache().size).toEqual(0);
+        expect(Object.isFrozen(first)).toBe(true);
     });
 
     test('one pathOf plus one getEntry serializes the arguments once per lookup, cold and warm', () => {

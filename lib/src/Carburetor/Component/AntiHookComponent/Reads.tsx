@@ -221,9 +221,13 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         source: IResourceSource<T, TArgs>,
         args: TArgs
     ): IResourceView<T> {
-        this.track(source).reads.add(source.pathOf(args));
+        // Resolved once: pathOfKey/getEntryByKey both need the key, and keyOf serializes args
+        // to get it, so deriving it twice here would serialize the same args twice per render.
+        const key = source.keyOf(args);
 
-        const view = source.getEntry(args);
+        this.track(source).reads.add(source.pathOfKey(key));
+
+        const view = source.getEntryByKey(key);
         const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error && !view.failed;
 
         // The deferred load belongs to the render attempt that queued it, exactly like the reads
@@ -240,7 +244,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 });
             } else if (IS_DEVELOPMENT) {
                 diagnostics.report(
-                    'useResource() skipped the deferred load for entry ' + source.pathOf(args) +
+                    'useResource() skipped the deferred load for entry ' + source.pathOfKey(key) +
                     ' because it ran outside a render attempt. That is the only place a deferred ' +
                     'load can be attributed to a commit: run useResource() inside render(), the ' +
                     'way every other read API is meant to run, or refresh the entry from an effect.'
@@ -298,12 +302,12 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             return {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
         }
 
-        const cuid = source.getUID();
-        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + cuid);
+        const key = TRACKED_ATTEMPT_KEY + source.getUID();
+        let entry = attempt.entries.get(key);
 
         if (!entry) {
             entry = {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
-            attempt.entries.set(TRACKED_ATTEMPT_KEY + cuid, entry);
+            attempt.entries.set(key, entry);
         }
 
         return entry;

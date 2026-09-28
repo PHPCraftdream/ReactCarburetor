@@ -12,6 +12,12 @@ import {ResourceCacheLifecycle} from "./ResourceCacheLifecycle";
 
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
+// Every absent entry answers with the exact same shape regardless of T (data is always
+// undefined), so one frozen instance serves every miss instead of a fresh object per call.
+// Nothing ever mutates a view (see IResourceView's callers) or caches this one in viewCache,
+// so sharing it across keys and across ResourceCache instances is safe.
+const ABSENT_VIEW: IResourceView<unknown> = Object.freeze({...getInitialCacheEntry<unknown>(), stale: true});
+
 /**
  * Many async answers, keyed by the arguments that produced them.
  *
@@ -74,16 +80,25 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
 
     /** The read path of one entry, built with the same path segment escaping as store writes. */
     public pathOf = (args: TArgs): TPath => {
-        return joinPath('entries', this.keyOf(args));
+        return this.pathOfKey(this.keyOf(args));
+    };
+
+    /** The read path for an already-resolved key, so a caller holding one need not re-derive it. */
+    public pathOfKey = (key: string): TPath => {
+        return joinPath('entries', key);
     };
 
     /** The entry as it stands, with the freshness verdict computed now. */
     public getEntry = (args: TArgs): IResourceView<T> => {
-        const key = this.keyOf(args);
+        return this.getEntryByKey(this.keyOf(args));
+    };
+
+    /** The entry for an already-resolved key, so a caller holding one need not re-derive it. */
+    public getEntryByKey = (key: string): IResourceView<T> => {
         const stored = this.data.entries[key];
 
         if (!stored) {
-            return {...getInitialCacheEntry<T>(), stale: true};
+            return ABSENT_VIEW as IResourceView<T>;
         }
 
         this.touch(key);

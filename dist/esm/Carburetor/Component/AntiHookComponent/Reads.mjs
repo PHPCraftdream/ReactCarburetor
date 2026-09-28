@@ -47,15 +47,16 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
         return computed.get();
     }
     useResource(source, args) {
-        this.track(source).reads.add(source.pathOf(args));
-        const view = source.getEntry(args);
+        const key = source.keyOf(args);
+        this.track(source).reads.add(source.pathOfKey(key));
+        const view = source.getEntryByKey(key);
         const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error && !view.failed;
         const attempt = this.renderAttempt;
         if (worthFetching) {
             if (attempt) attempt.deferredLoads.push(()=>{
                 source.load(args);
             });
-            else if (IS_DEVELOPMENT) diagnostics.report('useResource() skipped the deferred load for entry ' + source.pathOf(args) + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
+            else if (IS_DEVELOPMENT) diagnostics.report('useResource() skipped the deferred load for entry ' + source.pathOfKey(key) + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
         }
         return view;
     }
@@ -74,8 +75,8 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
             baselineVersion: source.getVersion(),
             reads: new Set()
         };
-        const cuid = source.getUID();
-        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + cuid);
+        const key = TRACKED_ATTEMPT_KEY + source.getUID();
+        let entry = attempt.entries.get(key);
         if (!entry) {
             entry = {
                 connection: void 0,
@@ -83,7 +84,7 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
                 baselineVersion: source.getVersion(),
                 reads: new Set()
             };
-            attempt.entries.set(TRACKED_ATTEMPT_KEY + cuid, entry);
+            attempt.entries.set(key, entry);
         }
         return entry;
     }

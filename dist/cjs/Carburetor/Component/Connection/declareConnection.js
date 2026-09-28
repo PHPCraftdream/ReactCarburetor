@@ -39,21 +39,21 @@ const declareConnection = (connections, attemptKeyPrefix, getAttempt, source)=>{
         committed: void 0,
         installed: void 0
     };
+    const attemptKey = attemptKeyPrefix + connection.uid;
     connections.push(connection);
     const resolveAttemptSource = ()=>{
         const attempt = getAttempt();
         if (!attempt) return getCarburetor();
-        const key = attemptKeyPrefix + connection.uid;
-        const resolved = attempt.sources.get(key);
+        const resolved = attempt.sources.get(attemptKey);
         if (void 0 !== resolved) return resolved;
         const carburetor = getCarburetor();
-        attempt.sources.set(key, carburetor);
+        attempt.sources.set(attemptKey, carburetor);
         return carburetor;
     };
     const recorder = (path)=>{
         const attempt = getAttempt();
         if (!attempt) return;
-        let entry = attempt.entries.get(attemptKeyPrefix + connection.uid);
+        let entry = attempt.entries.get(attemptKey);
         if (!entry) {
             const carburetor = resolveAttemptSource();
             entry = {
@@ -62,7 +62,7 @@ const declareConnection = (connections, attemptKeyPrefix, getAttempt, source)=>{
                 baselineVersion: carburetor.getVersion(),
                 reads: new Set()
             };
-            attempt.entries.set(attemptKeyPrefix + connection.uid, entry);
+            attempt.entries.set(attemptKey, entry);
         }
         entry.reads.add(path);
     };

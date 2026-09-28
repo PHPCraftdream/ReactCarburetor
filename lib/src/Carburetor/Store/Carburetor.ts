@@ -328,10 +328,12 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     protected emitUpdate = () => {
         this.preEmit();
 
-        const changed: TPathSet | undefined = this.writes.size > 0 ? new Set<TPath>(this.writes) : undefined;
         const touched = this.draftTouched;
+        // Handed off, not copied: a fresh Set takes over as this.writes, so the caller below
+        // (notifyWrites, or the update batch) owns this one exclusively and may keep it as is.
+        const changed: TPathSet | undefined = this.writes.size > 0 ? this.writes : undefined;
 
-        this.writes.clear();
+        this.writes = new Set<TPath>();
         this.draftTouched = false;
 
         // Draft was used, but no value actually changed — there is nobody to wake.

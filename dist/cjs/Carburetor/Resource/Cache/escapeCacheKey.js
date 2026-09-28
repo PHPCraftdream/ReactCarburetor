@@ -31,7 +31,7 @@ __webpack_require__.d(__webpack_exports__, {
     escapeCacheKey: ()=>escapeCacheKey
 });
 const PathSeparator_js_namespaceObject = require("../../Store/Paths/PathSeparator.js");
-const escapeCacheKey = (json)=>json.split('~').join('~0').split(PathSeparator_js_namespaceObject.PATH_SEPARATOR).join('~1');
+const escapeCacheKey = (json)=>json.includes('~') || json.includes(PathSeparator_js_namespaceObject.PATH_SEPARATOR) ? json.split('~').join('~0').split(PathSeparator_js_namespaceObject.PATH_SEPARATOR).join('~1') : json;
 exports.escapeCacheKey = __webpack_exports__.escapeCacheKey;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "escapeCacheKey"

@@ -3,6 +3,10 @@ import { joinPath } from "../../Store/Paths/joinPath.mjs";
 import { escapeCacheKey } from "./escapeCacheKey.mjs";
 import { getInitialCacheEntry } from "./getInitialCacheEntry.mjs";
 import { ResourceCacheLifecycle } from "./ResourceCacheLifecycle.mjs";
+const ABSENT_VIEW = Object.freeze({
+    ...getInitialCacheEntry(),
+    stale: true
+});
 class ResourceCache extends ResourceCacheLifecycle {
     lastKeyArgs = void 0;
     lastKeyJson = void 0;
@@ -26,14 +30,12 @@ class ResourceCache extends ResourceCacheLifecycle {
         this.lastKeyValue = key;
         return key;
     };
-    pathOf = (args)=>joinPath('entries', this.keyOf(args));
-    getEntry = (args)=>{
-        const key = this.keyOf(args);
+    pathOf = (args)=>this.pathOfKey(this.keyOf(args));
+    pathOfKey = (key)=>joinPath('entries', key);
+    getEntry = (args)=>this.getEntryByKey(this.keyOf(args));
+    getEntryByKey = (key)=>{
         const stored = this.data.entries[key];
-        if (!stored) return {
-            ...getInitialCacheEntry(),
-            stale: true
-        };
+        if (!stored) return ABSENT_VIEW;
         this.touch(key);
         const stale = this.isStale(stored);
         const cached = this.viewCache.get(key);

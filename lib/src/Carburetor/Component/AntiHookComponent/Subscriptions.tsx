@@ -1,4 +1,4 @@
-import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
+import {TPathSet} from "@/Carburetor/Models/Paths";
 import {
     IAttemptEntry,
     IConnection,
@@ -83,14 +83,13 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
                 }
             });
 
-            // What the attempt read becomes the new committed description. The set is copied
-            // at this tentative-to-committed transition so a later read through a stale
-            // captured view cannot alter what a commit established.
+            // The attempt's read set becomes the committed description as-is: recorders write
+            // only while their attempt is open, and it has closed by now.
             attempt.entries.forEach((entry: IAttemptEntry, key: string) => {
                 const description: IDependencyDescription = {
                     carburetor: entry.source,
                     baselineVersion: entry.baselineVersion,
-                    reads: new Set<TPath>(entry.reads),
+                    reads: entry.reads,
                 };
 
                 if (entry.connection) {
@@ -169,7 +168,8 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             // adding a second one. The carburetor copies the read set, so reads happening later
             // outside render cannot extend an established subscription.
             committed.carburetor.subscribe(this.onCarburetorUpdate, {id: uid, reads: committed.reads});
-            slot.installed = {carburetor: committed.carburetor, reads: new Set<TPath>(committed.reads)};
+            // Shared: committed.reads is immutable, and subscribe() keeps its own copy.
+            slot.installed = {carburetor: committed.carburetor, reads: committed.reads};
         }
 
         return committed.carburetor.getVersion() !== committed.baselineVersion;

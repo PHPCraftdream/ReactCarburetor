@@ -59,7 +59,7 @@ class AntiHookComponentSubscriptions extends external_Effects_js_namespaceObject
                 const description = {
                     carburetor: entry.source,
                     baselineVersion: entry.baselineVersion,
-                    reads: new Set(entry.reads)
+                    reads: entry.reads
                 };
                 if (entry.connection) {
                     entry.connection.committed = description;
@@ -103,7 +103,7 @@ class AntiHookComponentSubscriptions extends external_Effects_js_namespaceObject
             });
             slot.installed = {
                 carburetor: committed.carburetor,
-                reads: new Set(committed.reads)
+                reads: committed.reads
             };
         }
         return committed.carburetor.getVersion() !== committed.baselineVersion;

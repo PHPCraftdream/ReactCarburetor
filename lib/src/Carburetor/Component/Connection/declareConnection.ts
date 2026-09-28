@@ -26,6 +26,9 @@ export const declareConnection = <T extends object>(
     const getCarburetor: () => ICarburetor<T> = typeof source === 'function' ? source : () => source;
 
     const connection: IConnection = {uid: getUid(), getCarburetor, committed: undefined, installed: undefined};
+    // Fixed for the declaration's whole lifetime, so every read and resolution reuses it
+    // instead of re-concatenating the same string.
+    const attemptKey = attemptKeyPrefix + connection.uid;
 
     connections.push(connection);
 
@@ -44,10 +47,9 @@ export const declareConnection = <T extends object>(
             return getCarburetor();
         }
 
-        const key = attemptKeyPrefix + connection.uid;
         // The key is this connection's alone and only this closure writes it, so the value
         // it names is always the ICarburetor<T> this declaration resolved.
-        const resolved = attempt.sources.get(key) as ICarburetor<T> | undefined;
+        const resolved = attempt.sources.get(attemptKey) as ICarburetor<T> | undefined;
 
         if (resolved !== undefined) {
             return resolved;
@@ -55,7 +57,7 @@ export const declareConnection = <T extends object>(
 
         const carburetor = getCarburetor();
 
-        attempt.sources.set(key, carburetor);
+        attempt.sources.set(attemptKey, carburetor);
 
         return carburetor;
     };
@@ -69,7 +71,7 @@ export const declareConnection = <T extends object>(
             return;
         }
 
-        let entry = attempt.entries.get(attemptKeyPrefix + connection.uid);
+        let entry = attempt.entries.get(attemptKey);
 
         if (!entry) {
             // The source and its baseline version are captured once, at the beginning of
@@ -85,7 +87,7 @@ export const declareConnection = <T extends object>(
                 baselineVersion: carburetor.getVersion(),
                 reads: new Set<TPath>(),
             };
-            attempt.entries.set(attemptKeyPrefix + connection.uid, entry);
+            attempt.entries.set(attemptKey, entry);
         }
 
         entry.reads.add(path);

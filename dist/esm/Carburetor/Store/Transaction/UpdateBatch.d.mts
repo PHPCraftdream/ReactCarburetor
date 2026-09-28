@@ -22,8 +22,9 @@ export declare class UpdateBatch {
      *
      * @param target - the carburetor the writes belong to; the map key that folds repeated
      * adds into the single notification pass flush() gives it
-     * @param writes - the paths changed; the first add copies the set, so the caller stays
-     * free to keep mutating its own
+     * @param writes - the paths changed; the first add adopts the set as given, so the caller
+     * must be handing over ownership (emitUpdate always does) rather than keeping it around to
+     * mutate further
      */
     add: (target: INotifiable, writes: TPathSet) => void;
     /** Delivers one notification pass per carburetor, draining what the passes add. */
