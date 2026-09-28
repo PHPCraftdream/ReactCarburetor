@@ -299,3 +299,150 @@ describe('a list of rows re-renders only what a write actually concerns', () => 
         unmount();
     });
 });
+
+const OWN_TAG: unique symbol = Symbol('list-render-precision/own-tag');
+
+interface ITaggedRoot {
+    tags: string[];
+    user: {name: string};
+    other: number;
+    [OWN_TAG]?: number;
+}
+
+const getTaggedRoot = (): ITaggedRoot => ({tags: ['x', 'y'], user: {name: 'Ann'}, other: 0});
+
+class TaggedRootCarburetor extends Carburetor<ITaggedRoot> {
+    public bumpOther = (): void => {
+        this.draft.other++;
+        this.emitUpdate();
+    };
+
+    public tag = (value: number): void => {
+        this.update((draft: ITaggedRoot): void => {
+            draft[OWN_TAG] = value;
+        });
+    };
+}
+
+interface ITaggedProps {
+    store: TaggedRootCarburetor;
+    onRender: () => void;
+}
+
+class ConcatReader extends AntiHookComponent<ITaggedProps> {
+    render() {
+        this.props.onRender();
+
+        const data = this.useCarburetor(this.props.store);
+        const joined = data.tags.concat(['z']).join(',');
+
+        return <span className="joined">{joined}</span>;
+    }
+}
+
+class ToStringTagReader extends AntiHookComponent<ITaggedProps> {
+    render() {
+        this.props.onRender();
+
+        const data = this.useCarburetor(this.props.store);
+        const tag = Object.prototype.toString.call(data.user);
+
+        return <span className="tag">{tag}</span>;
+    }
+}
+
+class ToPrimitiveReader extends AntiHookComponent<ITaggedProps> {
+    render() {
+        this.props.onRender();
+
+        const data = this.useCarburetor(this.props.store);
+        const text = `${data.user}`.length > 0 ? 'ok' : 'empty';
+
+        return <span className="text">{text}</span>;
+    }
+}
+
+class OwnTagReader extends AntiHookComponent<ITaggedProps> {
+    render() {
+        this.props.onRender();
+
+        const data = this.useCarburetor(this.props.store);
+
+        return <span className="own-tag">{data[OWN_TAG] ?? 'none'}</span>;
+    }
+}
+
+// R15-01: concat, Object.prototype.toString and String() each read a well-known symbol that
+// plain data never owns (Symbol.isConcatSpreadable, Symbol.toStringTag, Symbol.toPrimitive).
+// Before the fix, an absent symbol read recorded the wildcard, so any of these three in a
+// render body subscribed the component to every future write, not just ones touching what it
+// actually read.
+describe('well-known absent symbol reads do not subscribe to the whole store (R15-01)', () => {
+    test('Array.prototype.concat over a tracked array does not re-render on an unrelated write', () => {
+        const store = new TaggedRootCarburetor(getTaggedRoot());
+        let renders = 0;
+
+        const {container, unmount} = render(<ConcatReader store={store} onRender={() => renders++} />);
+
+        expect(container.querySelector('.joined')?.textContent).toEqual('x,y,z');
+        expect(renders).toEqual(1);
+
+        act(() => store.bumpOther());
+
+        expect(renders).toEqual(1);
+
+        unmount();
+    });
+
+    test('Object.prototype.toString.call over a tracked branch does not re-render on an unrelated write', () => {
+        const store = new TaggedRootCarburetor(getTaggedRoot());
+        let renders = 0;
+
+        const {container, unmount} = render(<ToStringTagReader store={store} onRender={() => renders++} />);
+
+        expect(container.querySelector('.tag')?.textContent).toEqual('[object Object]');
+        expect(renders).toEqual(1);
+
+        act(() => store.bumpOther());
+
+        expect(renders).toEqual(1);
+
+        unmount();
+    });
+
+    test('String(view) over a tracked branch does not re-render on an unrelated write', () => {
+        const store = new TaggedRootCarburetor(getTaggedRoot());
+        let renders = 0;
+
+        const {container, unmount} = render(<ToPrimitiveReader store={store} onRender={() => renders++} />);
+
+        expect(container.querySelector('.text')?.textContent).toEqual('ok');
+        expect(renders).toEqual(1);
+
+        act(() => store.bumpOther());
+
+        expect(renders).toEqual(1);
+
+        unmount();
+    });
+
+    test('an own symbol-keyed field still re-renders its reader when written through draft', () => {
+        const store = new TaggedRootCarburetor(getTaggedRoot());
+        let renders = 0;
+
+        const {container, unmount} = render(<OwnTagReader store={store} onRender={() => renders++} />);
+
+        expect(container.querySelector('.own-tag')?.textContent).toEqual('none');
+        expect(renders).toEqual(1);
+
+        // Nothing is recorded for the symbol key read itself (R15-01), but a write through a
+        // symbol key still collapses to the wildcard on the write side, which wakes every
+        // subscriber — the guarantee the fix must not break.
+        act(() => store.tag(7));
+
+        expect(container.querySelector('.own-tag')?.textContent).toEqual('7');
+        expect(renders).toEqual(2);
+
+        unmount();
+    });
+});

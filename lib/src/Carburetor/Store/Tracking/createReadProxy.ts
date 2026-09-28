@@ -112,6 +112,104 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
         private readonly cache: IProxyCache,
     ) {}
 
+    /** The first string key this instance resolved: the whole memo of most branches. */
+    private firstKey: string | undefined = undefined;
+    /** The path `firstKey` resolved to. */
+    private firstPath: TPath = '';
+
+    /** Every later key's path; created only once a second distinct key is read. */
+    private childPaths: Map<string, TPath> | undefined = undefined;
+
+    /** The first branch path this instance built a marker for, as `firstKey` does. */
+    private firstBranch: TPath | undefined = undefined;
+    /** The marker `firstBranch` resolved to. */
+    private firstMarker: TPath = '';
+
+    /** Every later branch marker; created only once a second distinct branch is read. */
+    private branchMarkers: Map<TPath, TPath> | undefined = undefined;
+
+    /**
+     * `joinPath(basePath, key)`, memoized: a persistent view reads the same keys every render,
+     * and a fresh string is re-hashed by every `Set`/index lookup downstream.
+     *
+     * One slot covers a branch read through a single key — a row's own tree mostly — without
+     * allocating; a Map appears only for a branch read through several keys.
+     *
+     * @param key - the own or absent string key being read.
+     */
+    private childPath(key: string): TPath {
+        if (key === this.firstKey) {
+            return this.firstPath;
+        }
+
+        if (this.firstKey === undefined) {
+            this.firstKey = key;
+            this.firstPath = joinPath(this.basePath, key);
+
+            return this.firstPath;
+        }
+
+        const memo = this.childPaths ?? (this.childPaths = new Map<string, TPath>());
+        let path = memo.get(key);
+
+        if (path === undefined) {
+            path = joinPath(this.basePath, key);
+            memo.set(key, path);
+        }
+
+        return path;
+    }
+
+    /**
+     * `branchPath(path)`, memoized the same way as `childPath`.
+     *
+     * @param path - the branch's own path, already resolved through `childPath`.
+     */
+    private branchMarker(path: TPath): TPath {
+        if (path === this.firstBranch) {
+            return this.firstMarker;
+        }
+
+        if (this.firstBranch === undefined) {
+            this.firstBranch = path;
+            this.firstMarker = branchPath(path);
+
+            return this.firstMarker;
+        }
+
+        const memo = this.branchMarkers ?? (this.branchMarkers = new Map<TPath, TPath>());
+        let marker = memo.get(path);
+
+        if (marker === undefined) {
+            marker = branchPath(path);
+            memo.set(path, marker);
+        }
+
+        return marker;
+    }
+
+    /**
+     * The wrapper for (path, source): the cache's own entry on a hit, a fresh one filed on a
+     * miss. Split from a single call taking a `create` thunk so a hit allocates no closure —
+     * `createReadProxy` and its arguments are only built once `cache.get` has already missed.
+     *
+     * @param path - the full path the branch was read at.
+     * @param source - the raw branch object to wrap.
+     */
+    private wrap(path: TPath, source: object): object {
+        const cached = this.cache.get(path, source);
+
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const proxy = createReadProxy(source, this.record, path, this.aliases, this.cache);
+
+        this.cache.set(path, source, proxy);
+
+        return proxy;
+    }
+
     /**
      * Records the read and wraps a trackable value read-only, or answers the introspection
      * hatch before any of that runs. Reaching into a branch subscribes to the branch marker
@@ -137,10 +235,14 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         if (typeof key === 'symbol') {
-            // A symbol has no place in a dotted path: an own (or absent) symbol read is
-            // recorded as the wildcard, so any future write anywhere invalidates it.
-            this.record(WILDCARD_PATH);
-
+            // A symbol has no place in a dotted path, and nothing is recorded for reading one:
+            // a write through a symbol key already collapses to the wildcard on the write side
+            // (WriteProxyHandler.writtenPath), and SubscriberIndex.match answers a wildcard
+            // write with every registered subscriber, not just the ones whose reads intersect
+            // it. Recording the wildcard here bought nothing but extra wake-ups for writes that
+            // cannot change the answer — Symbol.isConcatSpreadable (read by concat),
+            // Symbol.toStringTag (read by Object.prototype.toString) and Symbol.toPrimitive
+            // (read by String(obj)/`${obj}`) are the well-known absent ones that matter.
             if (!isTrackable(value)) {
                 return value;
             }
@@ -153,14 +255,10 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
                 return value;
             }
 
-            return this.cache(
-                WILDCARD_PATH,
-                value,
-                () => createReadProxy(value, this.record, WILDCARD_PATH, this.aliases, this.cache)
-            );
+            return this.wrap(WILDCARD_PATH, value);
         }
 
-        const path = joinPath(this.basePath, key);
+        const path = this.childPath(key);
 
         if (isTrackable(value)) {
             // Reaching into a branch is traversal, not a read: subscribing to `items` here
@@ -168,7 +266,7 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
             // instead, so a check that reads the branch itself (`!!data.user`) hears about
             // the branch being replaced without subscribing to leaves deep inside it.
             this.aliases?.note(value, path);
-            this.record(branchPath(path));
+            this.record(this.branchMarker(path));
 
             if (lockedAgainstWrapping(source, key)) {
                 if (IS_DEVELOPMENT) {
@@ -178,7 +276,7 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
                 return value;
             }
 
-            return this.cache(path, value, () => createReadProxy(value, this.record, path, this.aliases, this.cache));
+            return this.wrap(path, value);
         }
 
         this.record(path);
@@ -203,11 +301,11 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
         // nothing; an absent key still records, so a later own-key add wakes the reader. The
         // descriptor, not a get: a presence check must not run an accessor.
         if (typeof key === 'string' && isRecordable(source, key)) {
-            const path = joinPath(this.basePath, key);
+            const path = this.childPath(key);
             const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
             const value: unknown = descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
 
-            this.record(isTrackable(value) ? branchPath(path) : path);
+            this.record(isTrackable(value) ? this.branchMarker(path) : path);
         }
 
         return present;
@@ -242,10 +340,9 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         if (typeof key === 'symbol') {
-            // Same wildcard treatment as `get`: the descriptor route is a second way to reach
-            // a symbol-keyed branch and must not hand out a raw, untracked value.
-            this.record(WILDCARD_PATH);
-
+            // Same treatment as `get`: nothing is recorded for the symbol key itself, but the
+            // descriptor route is a second way to reach a symbol-keyed branch and must not
+            // hand out a raw, untracked value.
             const symbolValue: unknown = descriptor.value;
 
             if (isTrackable(symbolValue)) {
@@ -257,17 +354,13 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
                     return descriptor;
                 }
 
-                descriptor.value = this.cache(
-                    WILDCARD_PATH,
-                    symbolValue,
-                    () => createReadProxy(symbolValue, this.record, WILDCARD_PATH, this.aliases, this.cache)
-                );
+                descriptor.value = this.wrap(WILDCARD_PATH, symbolValue);
             }
 
             return descriptor;
         }
 
-        const path = joinPath(this.basePath, key);
+        const path = this.childPath(key);
         const value: unknown = descriptor.value;
 
         if (isTrackable(value)) {
@@ -279,11 +372,7 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
                 return descriptor;
             }
 
-            descriptor.value = this.cache(
-                path,
-                value,
-                () => createReadProxy(value, this.record, path, this.aliases, this.cache)
-            );
+            descriptor.value = this.wrap(path, value);
         }
 
         return descriptor;

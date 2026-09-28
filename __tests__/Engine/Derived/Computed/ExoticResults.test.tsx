@@ -1,7 +1,7 @@
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
-import {AntiHookComponent, computed} from '@/Carburetor';
+import {AntiHookComponent, Carburetor, computed} from '@/Carburetor';
 import {CounterCarburetor, IndexedCarburetor, getIndexData} from './fixtures';
 
 describe('computed', () => {
@@ -363,4 +363,54 @@ describe('computed', () => {
         });
     });
 
+    describe('a body calling Array.prototype.concat does not depend on the whole store (R15-01)', () => {
+        interface ITagsData {
+            tags: string[];
+            other: number;
+        }
+
+        class TagsCarburetor extends Carburetor<ITagsData> {
+            public bumpOther = (): void => {
+                this.draft.other++;
+                this.emitUpdate();
+            };
+
+            public pushTag = (tag: string): void => {
+                this.update((draft: ITagsData): void => {
+                    draft.tags.push(tag);
+                });
+            };
+        }
+
+        test('a write to an unrelated field does not recompute a computed whose body calls concat', () => {
+            const carburetor = new TagsCarburetor({tags: ['a', 'b'], other: 0});
+            let computes = 0;
+
+            const joined = computed<string>((read) => {
+                computes++;
+
+                return read(carburetor).tags.concat(['x']).join(',');
+            });
+
+            joined.subscribe(() => undefined, {id: 'listener'});
+
+            expect(computes).toEqual(1);
+            expect(joined.get()).toEqual('a,b,x');
+
+            // Symbol.isConcatSpreadable is read on both the tracked array and the plain
+            // argument, absent on each. Before R15-01 that recorded the wildcard, so this
+            // unrelated write recomputed the body; after the fix it must not.
+            carburetor.bumpOther();
+
+            expect(computes).toEqual(1);
+            expect(joined.get()).toEqual('a,b,x');
+
+            // A write that actually touches `tags` still recomputes: the fix narrows the
+            // dependency, it does not drop it.
+            carburetor.pushTag('c');
+
+            expect(computes).toEqual(2);
+            expect(joined.get()).toEqual('a,b,c,x');
+        });
+    });
 });

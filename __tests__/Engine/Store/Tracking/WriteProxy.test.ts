@@ -217,3 +217,70 @@ describe('the write proxy skips only SameValue no-ops over existing own keys (R2
         expect(wakes).toEqual(0);
     });
 });
+
+interface IProbeData {
+    leaf: {count: number; keep: {title: string}};
+    index: Map<string, number>;
+}
+
+const getProbeData = (): IProbeData => ({leaf: {count: 0, keep: {title: 'kept'}}, index: new Map([['a', 1]])});
+
+/**
+ * A store whose methods only read through draft, never write, so emitUpdate publishes exactly
+ * what `get` itself recorded — the R15-08 regression surface: building a path only where it is
+ * used must not change what a bare read records.
+ */
+class ProbeCarburetor extends Carburetor<IProbeData> {
+    public peekCount = (): void => {
+        void this.draft.leaf.count;
+        this.emitUpdate();
+    };
+
+    public peekBranch = (): void => {
+        void this.draft.leaf.keep;
+        this.emitUpdate();
+    };
+
+    public peekOpaque = (): void => {
+        void this.draft.index;
+        this.emitUpdate();
+    };
+}
+
+describe('R15-08: building the write-proxy path only where it is used records exactly what it used to', () => {
+    test('reading a primitive leaf through draft, with no write, records nothing', () => {
+        const store = new ProbeCarburetor(getProbeData());
+        let wakes = 0;
+
+        store.subscribe(() => wakes++, {id: 'count-reader', reads: new Set<TPath>(['leaf.count'])});
+
+        store.peekCount();
+
+        expect(wakes).toEqual(0);
+    });
+
+    test('reading a trackable branch through draft, with no write inside it, records nothing', () => {
+        const store = new ProbeCarburetor(getProbeData());
+        let wakes = 0;
+
+        store.subscribe(() => wakes++, {id: 'branch-reader', reads: new Set<TPath>(['leaf.keep'])});
+
+        store.peekBranch();
+
+        expect(wakes).toEqual(0);
+    });
+
+    test('reading an opaque (unwrappable) value through draft still records its own path, precisely', () => {
+        const store = new ProbeCarburetor(getProbeData());
+        let indexWakes = 0;
+        let unrelatedWakes = 0;
+
+        store.subscribe(() => indexWakes++, {id: 'index-reader', reads: new Set<TPath>(['index'])});
+        store.subscribe(() => unrelatedWakes++, {id: 'count-reader', reads: new Set<TPath>(['leaf.count'])});
+
+        store.peekOpaque();
+
+        expect(indexWakes).toEqual(1);
+        expect(unrelatedWakes).toEqual(0);
+    });
+});

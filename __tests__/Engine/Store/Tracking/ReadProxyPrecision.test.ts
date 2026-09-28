@@ -210,29 +210,105 @@ describe('iterating a tracked array reads the elements it visits, not the wildca
     });
 });
 
-describe('a symbol key keeps the wildcard treatment exactly when it is the object\'s own or absent', () => {
-    test('an own symbol-keyed read still records the wildcard', () => {
+describe('a symbol key records nothing, whether it is the object\'s own or absent (R15-01)', () => {
+    test('an own symbol-keyed read records nothing', () => {
         const carburetor = new TaggedCarburetor({items: [{title: 'a'}], [TAG]: 1});
         const reads = new Set<TPath>();
         const view = carburetor.read((path: TPath) => reads.add(path));
 
         expect(view[TAG]).toEqual(1);
-        expect(reads.has(WILDCARD_PATH)).toBe(true);
+        expect(reads.size).toEqual(0);
+        expect(reads.has(WILDCARD_PATH)).toBe(false);
     });
 
-    test('an absent symbol-keyed read still records the wildcard', () => {
+    test('an absent symbol-keyed read records nothing, but a later own-symbol write still wakes the reader', () => {
         const carburetor = new TaggedCarburetor({items: [{title: 'a'}]});
         const reads = new Set<TPath>();
         const view = carburetor.read((path: TPath) => reads.add(path));
         let wakes = 0;
 
         expect(view[TAG]).toBeUndefined();
-        expect(reads.has(WILDCARD_PATH)).toBe(true);
+        expect(reads.size).toEqual(0);
 
-        // The reader is conservative on purpose: a later own-symbol write must still reach it.
+        // Nothing was recorded, yet the guarantee still holds: a write through a symbol key
+        // collapses to the wildcard on the write side (WriteProxyHandler.writtenPath), and a
+        // wildcard write wakes every subscriber regardless of what it read.
         carburetor.subscribe(() => wakes++, {id: 'tag-reader', reads});
         carburetor.tag(5);
 
         expect(wakes).toEqual(1);
+    });
+
+    test('reading Object.prototype.toString.call, concat and String() on live data records no wildcard', () => {
+        const carburetor = new ListCarburetor(getListData());
+        const reads = new Set<TPath>();
+        const view = carburetor.read((path: TPath) => reads.add(path));
+
+        // Each of these reads a well-known, absent symbol: Symbol.toStringTag,
+        // Symbol.isConcatSpreadable and Symbol.toPrimitive respectively.
+        Object.prototype.toString.call(view);
+        view.items.concat([]);
+        String(view);
+
+        expect(reads.has(WILDCARD_PATH)).toBe(false);
+    });
+});
+
+interface IEscaped {
+    'a.b': number;
+    'a~b': number;
+    branch: {n: number};
+}
+
+const getEscaped = (): IEscaped => ({'a.b': 1, 'a~b': 2, branch: {n: 3}});
+
+class EscapedCarburetor extends Carburetor<IEscaped> {
+    public writeTilde = (v: number): void => {
+        this.update((draft: IEscaped): void => {
+            draft['a~b'] = v;
+        });
+    };
+}
+
+describe('R15-08: the per-handler path memo records exactly what joinPath/branchPath would', () => {
+    test('a repeated read of the same dotted key records the same escaped path every time', () => {
+        const carburetor = new EscapedCarburetor(getEscaped());
+        const reads: TPath[] = [];
+        const view = carburetor.read((path: TPath) => reads.push(path));
+
+        void view['a.b'];
+        void view['a.b'];
+        void view['a.b'];
+
+        expect(reads).toEqual(['a~1b', 'a~1b', 'a~1b']);
+    });
+
+    test('a tilde in a key is escaped to ~0, stays escaped on a repeated read, and still wakes on write', () => {
+        const carburetor = new EscapedCarburetor(getEscaped());
+        const reads: TPath[] = [];
+        const view = carburetor.read((path: TPath) => reads.push(path));
+        let wakes = 0;
+
+        void view['a~b'];
+        void view['a~b'];
+
+        expect(reads).toEqual(['a~0b', 'a~0b']);
+
+        carburetor.subscribe(() => wakes++, {id: 'tilde-reader', reads: new Set<TPath>(reads)});
+        carburetor.writeTilde(9);
+
+        expect(wakes).toEqual(1);
+    });
+
+    test('a repeated branch read records the same branch marker every time, and a leaf below it its own path', () => {
+        const carburetor = new EscapedCarburetor(getEscaped());
+        const reads: TPath[] = [];
+        const view = carburetor.read((path: TPath) => reads.push(path));
+
+        void view.branch;
+        void view.branch;
+        void view.branch.n;
+
+        expect(reads).toEqual(['branch.~p', 'branch.~p', 'branch.~p', 'branch.n']);
     });
 });

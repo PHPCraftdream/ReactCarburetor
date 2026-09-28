@@ -294,41 +294,47 @@ describe('proxy cache ownership', () => {
 });
 
 describe('createProxyCache', () => {
-    test('a hit reuses the wrapper for the same (path, source)', () => {
+    test('a miss answers undefined; a filed entry is then a hit for the same (path, source)', () => {
         const cache = createProxyCache();
         const x = {name: 'x'};
         const built = {version: 1};
 
-        const first = cache('p.x', x, () => built);
-        const second = cache('p.x', x, () => ({version: 2}));
+        expect(cache.get('p.x', x)).toBeUndefined();
 
-        expect(first).toBe(built);
-        expect(second).toBe(built);
+        cache.set('p.x', x, built);
+
+        expect(cache.get('p.x', x)).toBe(built);
         expect(cache.owns('p.x', x)).toBe(true);
     });
 
-    test('the same object read at a different path mints a fresh wrapper', () => {
+    test('the same object filed at a different path answers a miss at the old one', () => {
         const cache = createProxyCache();
         const shared = {name: 'shared'};
+        const atA = {at: 'a'};
+        const atB = {at: 'b'};
 
-        const atA = cache('a', shared, () => ({at: 'a'}));
-        const atB = cache('b', shared, () => ({at: 'b'}));
+        cache.set('a', shared, atA);
+        cache.set('b', shared, atB);
 
-        expect(atB).not.toBe(atA);
+        expect(cache.get('b', shared)).toBe(atB);
         // The cache holds one entry per source: the newer path wins, the older one is gone.
         expect(cache.owns('b', shared)).toBe(true);
         expect(cache.owns('a', shared)).toBe(false);
+        expect(cache.get('a', shared)).toBeUndefined();
     });
 
-    test('a different object at the same path always mints fresh, independent of the old one', () => {
+    test('a different object at the same path is filed independently of the old one', () => {
         const cache = createProxyCache();
         const before = {name: 'before'};
         const after = {name: 'after'};
+        const genOne = {gen: 1};
+        const genTwo = {gen: 2};
 
-        const first = cache('p', before, () => ({gen: 1}));
-        const second = cache('p', after, () => ({gen: 2}));
+        cache.set('p', before, genOne);
+        cache.set('p', after, genTwo);
 
-        expect(second).not.toBe(first);
+        expect(cache.get('p', before)).toBe(genOne);
+        expect(cache.get('p', after)).toBe(genTwo);
         expect(cache.owns('p', before)).toBe(true);
         expect(cache.owns('p', after)).toBe(true);
     });
@@ -337,12 +343,15 @@ describe('createProxyCache', () => {
         const cacheA = createProxyCache();
         const cacheB = createProxyCache();
         const shared = {name: 'shared'};
+        const wrapperA = {side: 'a'};
+        const wrapperB = {side: 'b'};
 
-        const wrapperA = cacheA('x', shared, () => ({side: 'a'}));
-        const wrapperB = cacheB('x', shared, () => ({side: 'b'}));
+        cacheA.set('x', shared, wrapperA);
+        cacheB.set('x', shared, wrapperB);
 
-        expect(wrapperB).not.toBe(wrapperA);
-        expect(cacheB('x', shared, () => ({side: 'b2'}))).toBe(wrapperB);
+        expect(cacheB.get('x', shared)).not.toBe(cacheA.get('x', shared));
+        expect(cacheA.get('x', shared)).toBe(wrapperA);
+        expect(cacheB.get('x', shared)).toBe(wrapperB);
     });
 
     // A removed branch's cache entry needs no explicit release to prove correct: it lives in

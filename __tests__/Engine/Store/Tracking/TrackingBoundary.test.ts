@@ -314,8 +314,8 @@ class SymbolBranchCarburetor extends Carburetor<ISymbolBranchData> {
     };
 }
 
-describe('symbol-keyed branches are tracked and wrapped (R3-05)', () => {
-    test('reading a symbol-keyed branch by direct property access records the wildcard and wraps it read-only', () => {
+describe('symbol-keyed branches are tracked and wrapped (R3-05, updated by R15-01)', () => {
+    test('reading a symbol-keyed branch by direct property access records nothing for the symbol itself, and wraps it read-only', () => {
         const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
         const reads = new Set<TPath>();
         const view = carburetor.read((path: TPath) => reads.add(path));
@@ -323,7 +323,9 @@ describe('symbol-keyed branches are tracked and wrapped (R3-05)', () => {
         const branch = view[BRANCH];
 
         expect(branch.n).toEqual(1);
-        expect(reads.has(WILDCARD_PATH)).toBe(true);
+        // The symbol key itself records nothing (R15-01): a write through it already
+        // collapses to the wildcard on the write side, so recording it here bought nothing.
+        expect(reads.has(WILDCARD_PATH)).toBe(false);
 
         // Wrapped, not the raw object: the same read-only contract every string-keyed
         // branch already has. A raw object would accept this assignment silently.
@@ -333,7 +335,7 @@ describe('symbol-keyed branches are tracked and wrapped (R3-05)', () => {
         expect(carburetor.getData()[BRANCH].n).toEqual(1);
     });
 
-    test('a direct symbol-key read wakes on any later write, having recorded the wildcard', () => {
+    test('a direct symbol-key read is not woken by an unrelated write, but is woken by a write into the branch', () => {
         const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
         const reads = new Set<TPath>();
         const view = carburetor.read((path: TPath) => reads.add(path));
@@ -343,14 +345,19 @@ describe('symbol-keyed branches are tracked and wrapped (R3-05)', () => {
 
         carburetor.subscribe(() => wakes++, {id: 'branch-reader', reads});
 
-        // Nothing named the branch's own path — an unrelated write is the only thing a
-        // wildcard-conservative read can rely on to invalidate correctly.
+        // R15-01: nothing was recorded for the symbol key, so an unrelated field write must
+        // not wake this reader anymore — the whole point of the fix.
         carburetor.bumpA();
+        expect(wakes).toEqual(0);
 
+        // A write into the branch itself still collapses to the wildcard on the write side
+        // (WriteProxyHandler.writtenPath), and a wildcard write wakes every subscriber
+        // regardless of what it recorded — the guarantee the fix must preserve.
+        carburetor.bumpBranch();
         expect(wakes).toEqual(1);
     });
 
-    test('a symbol-key descriptor read records the wildcard and wraps its value read-only', () => {
+    test('a symbol-key descriptor read records nothing for the symbol itself, and wraps its value read-only', () => {
         const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
         const reads = new Set<TPath>();
         const view = carburetor.read((path: TPath) => reads.add(path));
@@ -359,7 +366,7 @@ describe('symbol-keyed branches are tracked and wrapped (R3-05)', () => {
         const branch = descriptor?.value as {n: number};
 
         expect(branch.n).toEqual(1);
-        expect(reads.has(WILDCARD_PATH)).toBe(true);
+        expect(reads.has(WILDCARD_PATH)).toBe(false);
 
         expect(() => {
             branch.n = 99;
@@ -367,7 +374,7 @@ describe('symbol-keyed branches are tracked and wrapped (R3-05)', () => {
         expect(carburetor.getData()[BRANCH].n).toEqual(1);
     });
 
-    test('a descriptor-route symbol-key read wakes on any later write, having recorded the wildcard', () => {
+    test('a descriptor-route symbol-key read is not woken by an unrelated write, but is woken by a write into the branch', () => {
         const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
         const reads = new Set<TPath>();
         const view = carburetor.read((path: TPath) => reads.add(path));
@@ -379,7 +386,9 @@ describe('symbol-keyed branches are tracked and wrapped (R3-05)', () => {
         carburetor.subscribe(() => wakes++, {id: 'branch-descriptor-reader', reads});
 
         carburetor.bumpA();
+        expect(wakes).toEqual(0);
 
+        carburetor.bumpBranch();
         expect(wakes).toEqual(1);
     });
 

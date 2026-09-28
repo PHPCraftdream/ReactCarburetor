@@ -29,28 +29,45 @@ interface IProxyCacheEntry {
  * about in development — mints a fresh wrapper rather than serving one path's wrapper to
  * another's read.
  */
-export const createProxyCache = (): IProxyCache => {
-    const entries: WeakMap<object, IProxyCacheEntry> = new WeakMap();
+export const createProxyCache = (): IProxyCache => new ProxyCache();
 
-    const cache = ((path: TPath, source: object, create: () => object): object => {
-        const entry = entries.get(source);
+/** The cache itself: methods on the prototype, so one tree costs one object and its `WeakMap`. */
+class ProxyCache implements IProxyCache {
+    /** Entries by the raw branch object they wrap. */
+    private readonly entries: WeakMap<object, IProxyCacheEntry> = new WeakMap();
 
-        if (entry !== undefined && entry.path === path) {
-            return entry.proxy;
-        }
+    /**
+     * The cached proxy for (path, source), or undefined on a miss.
+     *
+     * @param path - the full path the branch was read at.
+     * @param source - the raw value the branch holds right now.
+     */
+    public get(path: TPath, source: object): object | undefined {
+        const entry = this.entries.get(source);
 
-        const proxy = create();
+        return entry !== undefined && entry.path === path ? entry.proxy : undefined;
+    }
 
-        entries.set(source, {path, proxy});
+    /**
+     * Files the wrapper built for (path, source), replacing any earlier entry for `source`.
+     *
+     * @param path - the full path the branch was read at.
+     * @param source - the raw value the branch holds right now.
+     * @param proxy - the wrapper to answer with from now on.
+     */
+    public set(path: TPath, source: object, proxy: object): void {
+        this.entries.set(source, {path, proxy});
+    }
 
-        return proxy;
-    }) as IProxyCache;
-
-    cache.owns = (path: TPath, source: object): boolean => {
-        const entry = entries.get(source);
+    /**
+     * Whether an entry for (path, source) stands; test introspection only.
+     *
+     * @param path - the path to look up.
+     * @param source - the raw object the entry would have to be holding.
+     */
+    public owns(path: TPath, source: object): boolean {
+        const entry = this.entries.get(source);
 
         return entry !== undefined && entry.path === path;
-    };
-
-    return cache;
-};
+    }
+}

@@ -64,11 +64,19 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
     ) {}
 
     /**
+     * This instance's own memo of `key -> joinPath(basePath, key)`, built lazily on first use —
+     * same rationale as the read proxy's memo of the same shape: a persistent draft-consuming
+     * caller reads the same key through the same handler repeatedly.
+     */
+    private childPaths?: Map<string, TPath>;
+
+    /**
      * The path a write to `key` is attributed to.
      *
      * A symbol has no place in a dotted path, so a write through one — or one already inside an
      * opaque symbol-keyed branch — collapses onto the wildcard; everything else is named like
-     * an object's own key, index and `length` included.
+     * an object's own key, index and `length` included, and memoized per key so a repeat write
+     * to the same key does not concatenate the path again.
      *
      * @param key - the property being written.
      */
@@ -77,7 +85,36 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return WILDCARD_PATH;
         }
 
-        return joinPath(this.basePath, key);
+        const memo = this.childPaths ?? (this.childPaths = new Map<string, TPath>());
+        let path = memo.get(key);
+
+        if (path === undefined) {
+            path = joinPath(this.basePath, key);
+            memo.set(key, path);
+        }
+
+        return path;
+    }
+
+    /**
+     * The wrapper for (path, source): the cache's own entry on a hit, a fresh one filed on a
+     * miss. Split from a single call taking a `create` thunk so a hit allocates no closure.
+     *
+     * @param path - the full path the branch was read at.
+     * @param source - the raw branch object to wrap.
+     */
+    private wrap(path: TPath, source: object): object {
+        const cached = this.cache.get(path, source);
+
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const proxy = createWriteProxy(source, this.record, path, this.aliases, this.cache);
+
+        this.cache.set(path, source, proxy);
+
+        return proxy;
     }
 
     /**
@@ -99,20 +136,17 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return value;
         }
 
-        const path = typeof key === 'symbol' || this.basePath === WILDCARD_PATH
-            ? WILDCARD_PATH
-            : joinPath(this.basePath, key);
-
         if (isTrackable(value)) {
-            return this.cache(path, value, () => createWriteProxy(value, this.record, path, this.aliases, this.cache));
+            return this.wrap(this.writtenPath(key), value);
         }
 
         // A Map, Set, Date or class instance cannot be wrapped, so `draft.index.set(...)`
         // mutates the real object behind the engine's back: no path is recorded here and
         // emitUpdate would conclude nothing changed unless this does it. Primitives are left
-        // alone: they are copied, not mutated.
+        // alone: they are copied, not mutated, and the path is never built for them at all —
+        // a primitive read through draft records nothing, so building one would be pure waste.
         if (value !== null && typeof value === 'object') {
-            this.record(path);
+            this.record(this.writtenPath(key));
         }
 
         return value;
