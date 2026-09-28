@@ -77,6 +77,21 @@ describe('carburetorToken', () => {
     test('an empty name is rejected', () => {
         expect(() => carburetorToken(() => new Carburetor({value: 0}), '')).toThrow(/non-empty/);
     });
+
+    test('claimed names live in the shared globalThis slot, not a module-local Set', () => {
+        const name = 'hydration-e2e/shared-slot-check';
+
+        carburetorToken(() => new Carburetor({value: 0}), name);
+
+        // The key sharedSingleton.ts builds for takenNames; read directly, since the module
+        // does not expose this as part of its actual API.
+        const slot = (globalThis as Record<symbol, {value: Set<string>} | undefined>)[
+            Symbol.for('react-carburetor/v1/takenNames')
+        ];
+
+        expect(slot).toBeDefined();
+        expect(slot!.value.has(name)).toBeTruthy();
+    });
 });
 
 describe('hydration across processes', () => {

@@ -1,7 +1,8 @@
 import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
+import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 
-/** Names already claimed in this process, so a second token cannot silently take one over. */
-const takenNames = new Set<string>();
+/** Names already claimed in this process, across library copies (see sharedSingleton). */
+const takenNames: Set<string> = sharedSingleton('takenNames', () => new Set<string>());
 
 /**
  * Names a carburetor: a scope creates one instance per name, carrying the factory that builds it.

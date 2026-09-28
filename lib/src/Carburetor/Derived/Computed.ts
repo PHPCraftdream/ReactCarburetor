@@ -4,6 +4,7 @@ import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carburetor/Models/Store";
 import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
+import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
@@ -15,8 +16,13 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
  * Maps a live computed's invalidation callback to the call that marks that computed's
  * cached value stale. Invalidation travels downstream along these edges — and only
  * these: a plain value observer is woken by a delivered change, never by a mark.
+ *
+ * Shared across every copy of the library in this process — see sharedSingleton — so an outer
+ * computed from one copy still gets marked when an inner computed from another copy's settlement
+ * fails without announcing.
  */
-const invalidationEdges: WeakMap<TSubscriber, () => void> = new WeakMap<TSubscriber, () => void>();
+const invalidationEdges: WeakMap<TSubscriber, () => void> =
+    sharedSingleton('invalidationEdges', () => new WeakMap<TSubscriber, () => void>());
 
 interface IDependency {
     source: ICarburetorSubscription;

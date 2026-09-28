@@ -9,6 +9,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `@types/react` is now an optional peer dependency (`^18.0.0 || ^19.0.0`): a TypeScript
+  consumer sees a warning on a real version mismatch, a plain-JS consumer sees nothing.
+- A consumer matrix (`npm run test:consumers`) packs the library and installs it into fresh npm
+  and pnpm projects across React 18/19 and ESM/CJS, typechecking and rendering a fixture
+  against each; a CI job runs it on every push. See `docs/react-compatibility.md`.
 - `AntiHookComponent.connect(source)`: a persistent view of a carburetor, built once (a field
   initializer is the intended call site) and read directly in render, instead of a fresh
   read-tracking proxy on every `useCarburetor` call. `source` is a carburetor or a function
@@ -198,6 +203,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Two copies of the library sharing one process — a duplicated install, or the same install
+  loaded through both its CJS and ESM builds — each built their own `CarburetorContext`,
+  update batch, update wave and `getUid()` counter, so `contextType` silently read `null` under
+  a live provider built by the other copy, a `transaction()` or `Computed` spanning both copies
+  could batch incorrectly, and two computeds minting the same uid in different copies could
+  drop one another's settlement (`UpdateWave.defer`) or steal one another's subscription
+  (`Carburetor.subscribe`). `carburetorToken`'s duplicate-name check was also per copy, so a
+  name taken in one copy went unnoticed in the other. All five are now shared across every copy
+  via a `globalThis`-keyed singleton, and development builds report once when a mismatch (a
+  foreign copy, or copies bound to different React installs) is detected.
 - `require-module-function`'s autofix, extracting a `#name` method, also rewrote `this.name`
   calls to a same-named public member, silently redirecting them to the extracted function. The
   reference scan and the overload check now match only the target's own `this.#name` form.

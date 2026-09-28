@@ -31,7 +31,8 @@ __webpack_require__.d(__webpack_exports__, {
     CarburetorContext: ()=>CarburetorContext
 });
 const external_react_namespaceObject = require("react");
-const CarburetorContext = external_react_namespaceObject.createContext(null);
+const sharedSingleton_js_namespaceObject = require("../../Store/Utils/sharedSingleton.js");
+const CarburetorContext = (0, sharedSingleton_js_namespaceObject.sharedSingleton)('CarburetorContext', ()=>external_react_namespaceObject.createContext(null), external_react_namespaceObject.Component);
 exports.CarburetorContext = __webpack_exports__.CarburetorContext;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "CarburetorContext"

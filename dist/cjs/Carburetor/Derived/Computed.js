@@ -32,10 +32,11 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const containsExoticValue_js_namespaceObject = require("../Store/Utils/containsExoticValue.js");
 const getUid_js_namespaceObject = require("../Store/Utils/getUid.js");
+const sharedSingleton_js_namespaceObject = require("../Store/Utils/sharedSingleton.js");
 const UpdateWaveInstance_js_namespaceObject = require("../Store/Scheduling/UpdateWaveInstance.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../Store/Diagnostics/DiagnosticsInstance.js");
-const invalidationEdges = new WeakMap();
+const invalidationEdges = (0, sharedSingleton_js_namespaceObject.sharedSingleton)('invalidationEdges', ()=>new WeakMap());
 class Computed {
     body;
     uid = (0, getUid_js_namespaceObject.getUid)();

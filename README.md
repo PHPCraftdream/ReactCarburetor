@@ -84,6 +84,11 @@ render counts branch on the installed major at runtime, so nothing is excluded. 
 newest of the 18.x line; the range's `18.0.0` floor and the point releases between are not
 separately exercised — a coverage gap, not a report that they fail.
 
+`@types/react` is an optional peer, `^18.0.0 || ^19.0.0`: a TypeScript project sees a warning
+only on a real version mismatch, and a plain-JS project needs nothing. See
+[`docs/react-compatibility.md`](docs/react-compatibility.md) for how the library binds to the
+consumer's own React, what a duplicate-React install looks like, and how compatibility is tested.
+
 The proxy cache behind every tracked read requires a global `WeakRef` — this is a browser
 library, not just a Node one, so the requirement is a runtime capability, not only the
 `engines.node` floor in `package.json`. Any environment without it (see

@@ -25,6 +25,9 @@ native/target/
 # /wrush task worktrees — always created here, in-tree
 /worktrees/
 
+# Consumer matrix: packed tarball + throwaway npm/pnpm consumer installs
+/.consumer-matrix/
+
 # Platform packages carry their compiled binary only in CI artifacts, never in git; the
 # launcher script lives in npm/carburetor-lint/bin/ and must stay tracked.
 npm/carburetor-lint-*/carburetor-lint

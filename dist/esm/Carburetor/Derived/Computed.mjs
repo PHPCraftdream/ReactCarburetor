@@ -1,9 +1,10 @@
 import { containsExoticValue } from "../Store/Utils/containsExoticValue.mjs";
 import { getUid } from "../Store/Utils/getUid.mjs";
+import { sharedSingleton } from "../Store/Utils/sharedSingleton.mjs";
 import { updateWave } from "../Store/Scheduling/UpdateWaveInstance.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 import { diagnostics } from "../Store/Diagnostics/DiagnosticsInstance.mjs";
-const invalidationEdges = new WeakMap();
+const invalidationEdges = sharedSingleton('invalidationEdges', ()=>new WeakMap());
 class Computed {
     body;
     uid = getUid();
