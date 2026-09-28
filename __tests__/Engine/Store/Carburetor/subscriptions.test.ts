@@ -226,14 +226,16 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(second).toEqual(1);
     });
 
-    test('the read set handed to subscribe is copied, not held live', () => {
+    test('mutating the read set after subscribing does not widen the subscription', () => {
         const carburetor = new TestCarburetor(getTestData());
         const reads = readsOf('a');
         let calls = 0;
 
         carburetor.subscribe(() => calls++, {id: 'subscriber', reads});
 
-        // Extending the caller's set afterwards must not widen the subscription.
+        // subscribe() adopts this set rather than copying it, but matching goes through the
+        // index (exact/branch), filed once at subscribe time: adding to the set directly,
+        // bypassing extend(), leaves the index untouched, so the subscription does not widen.
         reads.add('b');
         carburetor.setB(1);
 

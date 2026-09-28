@@ -32,6 +32,8 @@ export class SubscriberIndex {
     protected wildcard: Set<string> = new Set<string>();
     /** Read sets by id, for unregistering and for wildcard writes that match everyone. */
     protected readsById: Map<string, TPathSet> = new Map<string, TPathSet>();
+    /** Each read path's ancestor chain, cached per id at add/addPath time and reused by remove. */
+    protected ancestorsById: Map<string, Map<TPath, TPath[]>> = new Map<string, Map<TPath, TPath[]>>();
 
     /**
      * Registers what one subscriber reads, in both maps.
@@ -40,10 +42,14 @@ export class SubscriberIndex {
      * @param reads - the paths to file; the wildcard path routes the id to the wildcard
      * set instead of the maps.
      */
-    public add = (id: string, reads: TPathSet): void => {
+    public add(id: string, reads: TPathSet): void {
         // Re-registering the same id replaces its paths rather than adding a second entry.
         this.remove(id);
         this.readsById.set(id, reads);
+
+        const ancestors = new Map<TPath, TPath[]>();
+
+        this.ancestorsById.set(id, ancestors);
 
         reads.forEach((readPath: TPath) => {
             if (readPath === WILDCARD_PATH) {
@@ -52,10 +58,9 @@ export class SubscriberIndex {
                 return;
             }
 
-            this.register(this.exact, readPath, id);
-            this.eachAncestor(readPath, (ancestor: TPath) => this.register(this.branch, ancestor, id));
+            this.file(id, readPath, ancestors);
         });
-    };
+    }
 
     /**
      * Files one more path into an id's existing registration, leaving the rest of its
@@ -64,13 +69,19 @@ export class SubscriberIndex {
      * O(path depth) instead of O(read-set size): the incremental sibling `add` lacks,
      * for a dependency amended one leaf read at a time.
      *
+     * Whether the path is already filed is decided by the index's own state, not by
+     * whether `reads` already contains it: a caller may share `reads` with something that
+     * adds to it directly (a computed's own `dependency.reads`, which `Carburetor.subscribe`
+     * adopts without copying — see its comment) before calling here, and a membership check
+     * would then read as "already filed" for a path this index has never actually indexed.
+     *
      * @param id - the subscriber to extend; an id with no registration is left alone
      * @param path - the path to file; already-filed paths are a no-op
      */
-    public addPath = (id: string, path: TPath): void => {
+    public addPath(id: string, path: TPath): void {
         const reads = this.readsById.get(id);
 
-        if (!reads || reads.has(path)) {
+        if (!reads) {
             return;
         }
 
@@ -82,29 +93,50 @@ export class SubscriberIndex {
             return;
         }
 
-        this.register(this.exact, path, id);
-        this.eachAncestor(path, (ancestor: TPath) => this.register(this.branch, ancestor, id));
-    };
+        const exactReaders = this.exact.get(path);
+
+        if (exactReaders && exactReaders.has(id)) {
+            return;
+        }
+
+        let ancestors = this.ancestorsById.get(id);
+
+        if (!ancestors) {
+            ancestors = new Map<TPath, TPath[]>();
+            this.ancestorsById.set(id, ancestors);
+        }
+
+        this.file(id, path, ancestors);
+    }
 
     /** Forgets a subscriber, dropping every entry its read paths created. */
-    public remove = (id: string): void => {
+    public remove(id: string): void {
         const reads = this.readsById.get(id);
 
         if (!reads) {
             return;
         }
 
+        const ancestors = this.ancestorsById.get(id);
+
         this.readsById.delete(id);
+        this.ancestorsById.delete(id);
         this.wildcard.delete(id);
 
         reads.forEach((readPath: TPath) => {
             this.unregister(this.exact, readPath, id);
-            this.eachAncestor(readPath, (ancestor: TPath) => this.unregister(this.branch, ancestor, id));
+
+            // The common path reuses what add/addPath already computed; a path that somehow
+            // reached `reads` without going through either (there is no such caller today)
+            // falls back to recomputing, so unregistering stays correct either way.
+            const chain = ancestors?.get(readPath) || this.ancestorsOf(readPath);
+
+            chain.forEach((ancestor: TPath) => this.unregister(this.branch, ancestor, id));
         });
-    };
+    }
 
     /** The subscribers a set of written paths concerns: three lookups per write, no scan. */
-    public match = (writes: TPathSet): Set<string> => {
+    public match(writes: TPathSet): Set<string> {
         if (writes.has(WILDCARD_PATH)) {
             return new Set<string>(this.readsById.keys());
         }
@@ -114,30 +146,60 @@ export class SubscriberIndex {
         writes.forEach((writePath: TPath) => {
             this.collect(this.exact.get(writePath), matched);
             this.collect(this.branch.get(writePath), matched);
-            this.eachAncestor(writePath, (ancestor: TPath) => this.collect(this.exact.get(ancestor), matched));
+            this.ancestorsOf(writePath).forEach((ancestor: TPath) => this.collect(this.exact.get(ancestor), matched));
         });
 
         return matched;
-    };
+    }
 
     /**
-     * Visits every ancestor of a path, longest first, stopping before the root segment.
+     * Whether any subscriber reads exactly this path or somewhere below it.
+     *
+     * O(1): a cache's eviction check used this to ask, per candidate key, whether anyone is
+     * still reading it instead of scanning every subscriber's read set.
+     *
+     * @param path - the path to check, e.g. one cache entry's own path
+     */
+    public hasReaderAt(path: TPath): boolean {
+        return this.exact.has(path) || this.branch.has(path);
+    }
+
+    /**
+     * Registers one read path in both maps and caches its ancestor chain under the id, so a
+     * later `remove` can drop it from `branch` without slicing the path again.
+     *
+     * @param id - the subscriber the path belongs to
+     * @param path - the read path to file
+     * @param ancestors - that id's path -> ancestor-chain cache, written into in place
+     */
+    protected file(id: string, path: TPath, ancestors: Map<TPath, TPath[]>): void {
+        this.register(this.exact, path, id);
+
+        const chain = this.ancestorsOf(path);
+
+        ancestors.set(path, chain);
+        chain.forEach((ancestor: TPath) => this.register(this.branch, ancestor, id));
+    }
+
+    /**
+     * A path's ancestors, longest first, stopping before the root segment.
      *
      * @param path - the path to slice up; a single-segment path has no ancestors and
-     * invokes nothing.
-     * @param visit - called once per ancestor, `a.b` before `a` for `a.b.c`, never with
-     * the empty root.
+     * returns an empty array.
      */
-    protected eachAncestor = (path: TPath, visit: (ancestor: TPath) => void): void => {
+    protected ancestorsOf(path: TPath): TPath[] {
+        const chain: TPath[] = [];
         let cut = path.lastIndexOf(PATH_SEPARATOR);
 
         while (cut > 0) {
             const ancestor = path.slice(0, cut);
 
-            visit(ancestor);
+            chain.push(ancestor);
             cut = ancestor.lastIndexOf(PATH_SEPARATOR);
         }
-    };
+
+        return chain;
+    }
 
     /**
      * Adds an id to one map's entry for a path, creating the entry when it is the first.
@@ -146,7 +208,7 @@ export class SubscriberIndex {
      * @param path - the key whose bucket the id joins.
      * @param id - the subscriber to add; repeats are harmless, buckets are sets.
      */
-    protected register = (target: Map<TPath, Set<string>>, path: TPath, id: string): void => {
+    protected register(target: Map<TPath, Set<string>>, path: TPath, id: string): void {
         const known = target.get(path);
 
         if (known) {
@@ -156,7 +218,7 @@ export class SubscriberIndex {
         }
 
         target.set(path, new Set<string>([id]));
-    };
+    }
 
     /**
      * Removes an id, and the entry itself once it holds nobody: the maps stay bounded.
@@ -165,7 +227,7 @@ export class SubscriberIndex {
      * @param path - the bucket to drop the id from; a missing bucket is left alone.
      * @param id - the subscriber leaving; when its bucket empties, the key goes too.
      */
-    protected unregister = (target: Map<TPath, Set<string>>, path: TPath, id: string): void => {
+    protected unregister(target: Map<TPath, Set<string>>, path: TPath, id: string): void {
         const known = target.get(path);
 
         if (!known) {
@@ -177,7 +239,7 @@ export class SubscriberIndex {
         if (known.size === 0) {
             target.delete(path);
         }
-    };
+    }
 
     /**
      * Merges one bucket into the match set, tolerating a bucket that does not exist.
@@ -187,11 +249,11 @@ export class SubscriberIndex {
      * @param target - the match set one notifyWrites call is building; ids enter it,
      * never leave it.
      */
-    protected collect = (source: Set<string> | undefined, target: Set<string>): void => {
+    protected collect(source: Set<string> | undefined, target: Set<string>): void {
         if (!source) {
             return;
         }
 
         source.forEach((id: string) => target.add(id));
-    };
+    }
 }

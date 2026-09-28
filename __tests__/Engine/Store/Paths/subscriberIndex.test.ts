@@ -103,6 +103,23 @@ describe('SubscriberIndex', () => {
         expect(sorted(index.match(setOf('items.a1.title')))).toEqual([]);
     });
 
+    test('addPath still registers a path a caller already added to the shared reads set', () => {
+        // The scenario Carburetor.subscribe's adopt-not-copy design has to survive: a caller
+        // (a computed's own dependency.reads) may add a path to the very Set the index holds
+        // before calling addPath for it — subscribe() no longer copies that Set away first.
+        // Filing must be decided by the index's own state, not by Set membership, or this
+        // path would look "already filed" and never reach `exact`/`branch`.
+        const index = new SubscriberIndex();
+        const reads = setOf('items.a1.title');
+
+        index.add('reader', reads);
+        reads.add('items.a2.title');
+        index.addPath('reader', 'items.a2.title');
+
+        expect(sorted(index.match(setOf('items.a2.title')))).toEqual(['reader']);
+        expect(sorted(index.match(setOf('items.a2')))).toEqual(['reader']);
+    });
+
     test('addPath is a no-op for an id with no registration', () => {
         const index = new SubscriberIndex();
 

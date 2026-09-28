@@ -49,8 +49,12 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         super(loader, options);
     }
 
-    /** The key an argument set is stored under, memoized while both reference and JSON are unchanged. */
-    public keyOf = (args: TArgs): string => {
+    /**
+     * The key an argument set is stored under, memoized while both reference and JSON are unchanged.
+     *
+     * @param args - the loader arguments to derive the key from
+     */
+    public keyOf(args: TArgs): string {
         const json = JSON.stringify(args === undefined ? null : args) as string;
         const memoized = this.lastKeyArgs === args && this.lastKeyValue !== undefined;
 
@@ -76,25 +80,41 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         this.lastKeyValue = key;
 
         return key;
-    };
+    }
 
-    /** The read path of one entry, built with the same path segment escaping as store writes. */
-    public pathOf = (args: TArgs): TPath => {
+    /**
+     * The read path of one entry, built with the same path segment escaping as store writes.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public pathOf(args: TArgs): TPath {
         return this.pathOfKey(this.keyOf(args));
-    };
+    }
 
-    /** The read path for an already-resolved key, so a caller holding one need not re-derive it. */
-    public pathOfKey = (key: string): TPath => {
+    /**
+     * The read path for an already-resolved key, so a caller holding one need not re-derive it.
+     *
+     * @param key - the resolved cache key
+     */
+    public pathOfKey(key: string): TPath {
         return joinPath('entries', key);
-    };
+    }
 
-    /** The entry as it stands, with the freshness verdict computed now. */
-    public getEntry = (args: TArgs): IResourceView<T> => {
+    /**
+     * The entry as it stands, with the freshness verdict computed now.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public getEntry(args: TArgs): IResourceView<T> {
         return this.getEntryByKey(this.keyOf(args));
-    };
+    }
 
-    /** The entry for an already-resolved key, so a caller holding one need not re-derive it. */
-    public getEntryByKey = (key: string): IResourceView<T> => {
+    /**
+     * The entry for an already-resolved key, so a caller holding one need not re-derive it.
+     *
+     * @param key - the resolved cache key
+     */
+    public getEntryByKey(key: string): IResourceView<T> {
         const stored = this.data.entries[key];
 
         if (!stored) {
@@ -115,10 +135,14 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         this.viewCache.set(key, view);
 
         return view;
-    };
+    }
 
-    /** The raw rejection for one entry, which `error` can only describe. */
-    public getFailure = (args: TArgs): unknown => {
+    /**
+     * The raw rejection for one entry, which `error` can only describe.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public getFailure(args: TArgs): unknown {
         return this.failures.get(this.keyOf(args));
-    };
+    }
 }

@@ -6,9 +6,7 @@ import {
     IResourceView,
     TResourceLoader,
 } from "@/Carburetor/Models/Resource";
-import {TPath} from "@/Carburetor/Models/Paths";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
-import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {describeError} from "@/Carburetor/Resource/describeError";
@@ -17,7 +15,6 @@ import {getInitialCacheEntry} from "./getInitialCacheEntry";
 
 const DEFAULT_TTL: number = 30_000;
 const DEFAULT_MAX_ENTRIES: number = 100;
-const ENTRIES_PREFIX: string = `entries${PATH_SEPARATOR}`;
 
 /** Owns cache entry lifecycles, request state and eviction. */
 export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
@@ -40,8 +37,12 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     /** Stable views for unchanged entries. */
     protected viewCache: Map<string, IResourceView<T>> = new Map<string, IResourceView<T>>();
 
-    /** Resolve arguments to an entry key. */
-    protected abstract keyOf: (args: TArgs) => string;
+    /**
+     * Resolve arguments to an entry key.
+     *
+     * @param args - the loader arguments to derive the key from
+     */
+    protected abstract keyOf(args: TArgs): string;
 
     /** Configure request lifecycle and cache capacity.
      *
@@ -55,8 +56,12 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.maxEntries = options.maxEntries === undefined ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
 
-    /** Restore entries without reviving in-flight requests. */
-    public restore = (data: IResourceCacheData<T>): void => {
+    /**
+     * Restore entries without reviving in-flight requests.
+     *
+     * @param data - the snapshot to restore
+     */
+    public restore(data: IResourceCacheData<T>): void {
         const generation = ++this.restoreGeneration;
         const controllers = Array.from(this.controllers.entries());
 
@@ -96,16 +101,24 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         });
 
         this.setData(deepClone({entries}));
-    };
+    }
 
-    /** Record an entry access for eviction order. */
-    protected touch = (key: string): void => {
+    /**
+     * Record an entry access for eviction order.
+     *
+     * @param key - the entry accessed
+     */
+    protected touch(key: string): void {
         this.useTick += 1;
         this.lastUsed.set(key, this.useTick);
-    };
+    }
 
-    /** Load an entry unless its current value is fresh. */
-    public load = (args: TArgs): Promise<void> => {
+    /**
+     * Load an entry unless its current value is fresh.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public load(args: TArgs): Promise<void> {
         const key = this.keyOf(args);
         const entry = this.data.entries[key];
 
@@ -116,28 +129,40 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         }
 
         return this.fetch(key, args);
-    };
+    }
 
-    /** Request an entry even when its current value is fresh. */
-    public refresh = (args: TArgs): Promise<void> => {
+    /**
+     * Request an entry even when its current value is fresh.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public refresh(args: TArgs): Promise<void> {
         const key = this.keyOf(args);
 
         this.touch(key);
         return this.fetch(key, args);
-    };
+    }
 
-    /** Abort the request for one argument set. */
-    public abort = (args: TArgs): void => {
+    /**
+     * Abort the request for one argument set.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public abort(args: TArgs): void {
         this.abortKey(this.keyOf(args));
-    };
+    }
 
     /** Abort all in-flight requests. */
-    public abortAll = (): void => {
+    public abortAll(): void {
         Array.from(this.controllers.keys()).forEach((key: string) => this.abortKey(key));
-    };
+    }
 
-    /** Mark an entry stale without removing its data. */
-    public invalidate = (args: TArgs): void => {
+    /**
+     * Mark an entry stale without removing its data.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public invalidate(args: TArgs): void {
         const key = this.keyOf(args);
 
         if (!this.data.entries[key]) {
@@ -148,10 +173,10 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
             draft.entries[key].invalidated = true;
             draft.entries[key].failed = false;
         });
-    };
+    }
 
     /** Mark every entry stale. */
-    public invalidateAll = (): void => {
+    public invalidateAll(): void {
         const keys = Object.keys(this.data.entries);
 
         if (keys.length === 0) {
@@ -164,20 +189,28 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
                 draft.entries[key].failed = false;
             });
         });
-    };
+    }
 
-    /** Remove an entry and cancel its request. */
-    public forget = (args: TArgs): void => {
+    /**
+     * Remove an entry and cancel its request.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public forget(args: TArgs): void {
         this.forgetKey(this.keyOf(args));
-    };
+    }
 
     /** Remove all entries and cancel their requests. */
-    public forgetAll = (): void => {
+    public forgetAll(): void {
         Object.keys(this.data.entries).forEach((key: string) => this.forgetKey(key));
-    };
+    }
 
-    /** Remove the entry at a resolved cache key. */
-    protected forgetKey = (key: string): void => {
+    /**
+     * Remove the entry at a resolved cache key.
+     *
+     * @param key - the resolved cache key to drop
+     */
+    protected forgetKey(key: string): void {
         this.abortKey(key);
 
         // An abort listener may have started a newer request for this key.
@@ -196,16 +229,20 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.update((draft: IResourceCacheData<T>) => {
             delete draft.entries[key];
         });
-    };
+    }
 
-    /** Report whether the entry needs a fresh request. */
-    protected isStale = (entry: IResourceEntry<T>): boolean => {
+    /**
+     * Report whether the entry needs a fresh request.
+     *
+     * @param entry - the entry to check
+     */
+    protected isStale(entry: IResourceEntry<T>): boolean {
         if (entry.invalidated || entry.updatedAt === undefined) {
             return true;
         }
 
         return Date.now() - entry.updatedAt > this.ttl;
-    };
+    }
 
     /** Check whether a cached view still reflects its entry.
      *
@@ -213,7 +250,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
      * @param entry - Current stored entry.
      * @param stale - Current freshness verdict.
      */
-    protected isViewCurrent = (view: IResourceView<T>, entry: IResourceEntry<T>, stale: boolean): boolean => {
+    protected isViewCurrent(view: IResourceView<T>, entry: IResourceEntry<T>, stale: boolean): boolean {
         return view.stale === stale
             && view.status === entry.status
             && view.data === entry.data
@@ -222,40 +259,26 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
             && view.refreshing === entry.refreshing
             && view.invalidated === entry.invalidated
             && view.failed === entry.failed;
-    };
+    }
 
-    /** Find entries currently retained by subscribers. */
-    protected retainedKeys = (): Set<string> => {
-        const retained = new Set<string>();
-
-        Object.keys(this.subscribers).forEach((id: string) => {
-            this.subscribers[id].reads.forEach((read: TPath) => {
-                if (!read.startsWith(ENTRIES_PREFIX)) {
-                    return;
-                }
-
-                const segment = read.slice(ENTRIES_PREFIX.length).split(PATH_SEPARATOR)[0];
-
-                if (segment) {
-                    retained.add(segment);
-                }
-            });
-        });
-
-        return retained;
-    };
-
-    /** Evict the least recently used unretained entries. */
-    protected evict = (deferNotification: boolean = false): void => {
+    /**
+     * Evict the least recently used unretained entries.
+     *
+     * @param deferNotification - whether to publish the removal on a microtask instead of now
+     */
+    protected evict(deferNotification: boolean = false): void {
         const keys = Object.keys(this.data.entries);
 
         if (keys.length <= this.maxEntries) {
             return;
         }
 
-        const retained = this.retainedKeys();
+        // subscriberIndex answers "is anyone reading at or below this key's path" in O(1),
+        // in place of the old scan over every subscriber's whole read set.
         const candidates = keys
-            .filter((key: string) => !this.requests.has(key) && !retained.has(joinPath('', key)))
+            .filter((key: string) => {
+                return !this.requests.has(key) && !this.subscriberIndex.hasReaderAt(joinPath('entries', key));
+            })
             .sort((left: string, right: string) => {
                 return (this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0);
             });
@@ -288,10 +311,14 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         }
 
         this.emitUpdate();
-    };
+    }
 
-    /** Abort an entry by its resolved key. */
-    protected abortKey = (key: string): void => {
+    /**
+     * Abort an entry by its resolved key.
+     *
+     * @param key - the resolved cache key to abort
+     */
+    protected abortKey(key: string): void {
         const controller = this.controllers.get(key);
 
         if (!controller) {
@@ -325,10 +352,14 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
                 draft.entries[key].refreshing = false;
             });
         }
-    };
+    }
 
-    /** Return a ready value or throw its pending request or failure. */
-    public suspend = (args: TArgs): T => {
+    /**
+     * Return a ready value or throw its pending request or failure.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public suspend(args: TArgs): T {
         const key = this.keyOf(args);
         const entry = this.data.entries[key];
 
@@ -347,7 +378,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         const known = this.requests.get(key);
 
         throw known || this.fetch(key, args, true);
-    };
+    }
 
     /** Start or reuse a request for an entry.
      *
@@ -355,7 +386,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
      * @param args - Loader arguments.
      * @param deferNotification - Whether to defer the update notification.
      */
-    protected fetch = (key: string, args: TArgs, deferNotification: boolean = false): Promise<void> => {
+    protected fetch(key: string, args: TArgs, deferNotification: boolean = false): Promise<void> {
         const known = this.requests.get(key);
 
         if (known) {
@@ -401,14 +432,14 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.evict(deferNotification);
 
         return request;
-    };
+    }
 
     /** Publish the loading state of an entry.
      *
      * @param key - Resolved cache key.
      * @param deferNotification - Whether to defer the update notification.
      */
-    protected markLoading = (key: string, deferNotification: boolean): void => {
+    protected markLoading(key: string, deferNotification: boolean): void {
         const entry = this.data.entries[key];
         const draft = this.draft;
 
@@ -428,16 +459,16 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         }
 
         this.emitUpdate();
-    };
+    }
 
     /** Check that a request still owns the entry.
      *
      * @param key - Resolved cache key.
      * @param controller - Controller belonging to the request.
      */
-    protected isCurrent = (key: string, controller: AbortController): boolean => {
+    protected isCurrent(key: string, controller: AbortController): boolean {
         return this.controllers.get(key) === controller && !controller.signal.aborted;
-    };
+    }
 
     /** Store the value returned by a current request.
      *
@@ -445,7 +476,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
      * @param controller - Controller belonging to the request.
      * @param data - Loaded resource value.
      */
-    protected settleSuccess = (key: string, controller: AbortController, data: T): void => {
+    protected settleSuccess(key: string, controller: AbortController, data: T): void {
         if (!this.isCurrent(key, controller)) {
             return;
         }
@@ -475,7 +506,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         });
 
         this.evict();
-    };
+    }
 
     /** Store the failure returned by a current request.
      *
@@ -483,7 +514,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
      * @param controller - Controller belonging to the request.
      * @param error - Raw request failure.
      */
-    protected settleFailure = (key: string, controller: AbortController, error: unknown): void => {
+    protected settleFailure(key: string, controller: AbortController, error: unknown): void {
         if (!this.isCurrent(key, controller)) {
             return;
         }
@@ -516,5 +547,5 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         });
 
         this.evict();
-    };
+    }
 }

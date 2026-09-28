@@ -292,7 +292,9 @@ describe('connectDevTools', () => {
 
     const countClones = (store: IInspectable): {count: () => number} => {
         let calls = 0;
-        const original = store.toJSON;
+        // toJSON is a prototype method now, not a bound field: detaching it needs an
+        // explicit bind, the same as any other method taken off its instance.
+        const original = store.toJSON.bind(store);
 
         store.toJSON = (): unknown => {
             calls++;

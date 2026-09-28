@@ -73,19 +73,18 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * The state plus the key its answer settled under: what travels across the serialization
      * boundary has to carry enough for the restored slot to tell which arguments the answer
      * belongs to.
-     *
-     * deepClone is repeated from the base rather than called through super: every base member
-     * is an instance field, so there is no super.snapshot() to reach (TS2855).
      */
-    public snapshot = (): IResourceSnapshot<T> => {
-        return {...deepClone(this.data), key: this.settledKey};
-    };
+    public snapshot(): IResourceSnapshot<T> {
+        return {...super.snapshot(), key: this.settledKey};
+    }
 
     /**
      * Installs a snapshot as the current state, and re-establishes the answer's identity
      * with it: the data alone says nothing about which arguments produced it.
+     *
+     * @param data - the snapshot to restore
      */
-    public restore = (data: IResourceSnapshot<T>): void => {
+    public restore(data: IResourceSnapshot<T>): void {
         const operationVersion = ++this.operationVersion;
 
         // A restored snapshot replaces the answer wholesale, so a request still in flight is
@@ -131,12 +130,12 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             error: data.error,
             updatedAt: data.updatedAt,
         }));
-    };
+    }
 
     /** The raw rejection value, which the serializable state cannot carry. */
-    public getLastError = (): unknown => {
+    public getLastError(): unknown {
         return this.lastError;
-    };
+    }
 
     /**
      * Reads the value, suspending while it loads and rethrowing when it failed.
@@ -144,8 +143,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * The request is started on first read, and its "pending" notification is deferred to a
      * microtask, because a render must not notify subscribers. A failure is rethrown so the
      * nearest error boundary handles it.
+     *
+     * @param args - the loader arguments identifying the answer
      */
-    public suspend = (args: TArgs): T => {
+    public suspend(args: TArgs): T {
         const state = this.data;
         const key = this.keyOf(args);
 
@@ -164,15 +165,19 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         }
 
         throw this.start(args, true);
-    };
+    }
 
-    /** Starts a load, or joins the one already in flight for the same arguments. */
-    public load = (args: TArgs): Promise<void> => {
+    /**
+     * Starts a load, or joins the one already in flight for the same arguments.
+     *
+     * @param args - the loader arguments identifying the answer
+     */
+    public load(args: TArgs): Promise<void> {
         return this.start(args, false);
-    };
+    }
 
     /** Repeats the last load with the same arguments. */
-    public reload = (): Promise<void> => {
+    public reload(): Promise<void> {
         // The replay target is the last requested start, not the in-flight key: abort() clears
         // the key of the request it cancels, while what was requested last stays repeatable.
         if (this.lastKey === undefined) {
@@ -185,10 +190,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.pendingRequest = undefined;
 
         return this.start(args, false);
-    };
+    }
 
     /** Cancels the request in flight; its result is ignored when it arrives, and the slot returns to Idle. */
-    public abort = (): void => {
+    public abort(): void {
         if (!this.controller) {
             return;
         }
@@ -205,7 +210,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         // will ever deliver, so the slot goes back to the state it starts in.
         this.draft.status = EResourceStatus.Idle;
         this.emitUpdate();
-    };
+    }
 
     /**
      * The bookkeeping half of abort(): fires the handle and drops the request, writing nothing.
@@ -213,7 +218,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * Shared with start(), which replaces a request rather than giving up on one — only abort()
      * publishes the slot going idle.
      */
-    protected cancelInFlight = (): void => {
+    protected cancelInFlight(): void {
         const controller = this.controller;
 
         if (!controller) {
@@ -227,7 +232,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         controller.abort();
         // `settledKey` needs no clearing: this only runs with a request in flight, and the
         // `start` that armed it already reset the stored answer's key.
-    };
+    }
 
     /**
      * The one path into a request: deduplicates, aborts the previous one, publishes pending.
@@ -240,7 +245,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param deferNotification - true from suspend(): the pending write goes out on a microtask
      * because the caller is mid-render
      */
-    protected start = (args: TArgs, deferNotification: boolean): Promise<void> => {
+    protected start(args: TArgs, deferNotification: boolean): Promise<void> {
         const key = this.keyOf(args);
 
         if (this.pendingRequest && this.pendingKey === key) {
@@ -317,17 +322,25 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         ).then(resolveRequest, rejectRequest);
 
         return request;
-    };
+    }
 
-    /** The identity of a set of arguments, for telling one request from another. */
-    protected keyOf = (args: TArgs): string => {
+    /**
+     * The identity of a set of arguments, for telling one request from another.
+     *
+     * @param args - the loader arguments to derive the key from
+     */
+    protected keyOf(args: TArgs): string {
         return JSON.stringify(args === undefined ? null : args);
-    };
+    }
 
-    /** Whether a settled request is still the one whose answer this resource wants. */
-    protected isCurrent = (controller: AbortController): boolean => {
+    /**
+     * Whether a settled request is still the one whose answer this resource wants.
+     *
+     * @param controller - the request to check
+     */
+    protected isCurrent(controller: AbortController): boolean {
         return this.controller === controller && !controller.signal.aborted;
-    };
+    }
 
     /**
      * Stores a successful answer, unless a newer request has since taken over.
@@ -339,7 +352,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param data - the answer stored verbatim; landing it also drops any raw error an earlier
      * failure had kept
      */
-    protected settleSuccess = (controller: AbortController, key: string, data: T): void => {
+    protected settleSuccess(controller: AbortController, key: string, data: T): void {
         if (!this.isCurrent(controller)) {
             return;
         }
@@ -355,7 +368,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.draft.error = undefined;
         this.draft.updatedAt = Date.now();
         this.emitUpdate();
-    };
+    }
 
     /**
      * Stores a failure, keeping the raw rejection aside for `suspend` to rethrow.
@@ -367,7 +380,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param error - the rejection as thrown: lastError keeps it whole, while the state carries
      * only the message describeError() extracts
      */
-    protected settleError = (controller: AbortController, key: string, error: unknown): void => {
+    protected settleError(controller: AbortController, key: string, error: unknown): void {
         if (!this.isCurrent(controller)) {
             return;
         }
@@ -382,5 +395,5 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.draft.error = describeError(error);
         this.draft.updatedAt = Date.now();
         this.emitUpdate();
-    };
+    }
 }

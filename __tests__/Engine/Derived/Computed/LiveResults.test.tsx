@@ -236,4 +236,40 @@ describe('computed', () => {
             subscribeSpy.mockRestore();
         });
     });
+
+    describe('subscribe() adopts the read set it is given instead of copying it', () => {
+        interface IBoxLike {
+            value: {n: number};
+        }
+
+        class BoxCarburetor extends Carburetor<IBoxLike> {
+            public setN = (n: number) => {
+                this.draft.value.n = n;
+                this.emitUpdate();
+            };
+        }
+
+        test('a leaf read through the live result, after publication, still wakes the computed', () => {
+            const carburetor = new BoxCarburetor({value: {n: 1}});
+            const boxed = computed((read) => read(carburetor).value);
+            let notified = 0;
+
+            // Observing runs the body once: it reads only `value` itself, not `value.n` — the
+            // subscription this establishes is `subscribe()` adopting the computed's own
+            // dependency.reads Set directly (no copy), which is what makes the read below able
+            // to widen that very same Set through Carburetor.extend rather than a copy of it.
+            boxed.subscribe(() => notified++, {id: 'listener'});
+
+            // A leaf read through the still-live result, after the body already returned —
+            // exactly what a consumer rendering `boxed.get().n` does. It amends the dependency
+            // through extend(), which must still register despite the Set having been adopted,
+            // not copied, and already carrying the path by the time extend() is asked about it.
+            expect(boxed.get().n).toEqual(1);
+
+            carburetor.setN(2);
+
+            expect(notified).toEqual(1);
+            expect(boxed.get().n).toEqual(2);
+        });
+    });
 });

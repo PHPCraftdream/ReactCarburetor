@@ -49,6 +49,9 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** The write proxy behind draft, memoized across accesses and dropped by setData. */
     protected draftProxy: T | undefined = undefined;
 
+    /** Bound once for `createWriteProxy`, called detached from `this`; forwards to the overridable `recordWrite`. */
+    private readonly writeRecorder = (path: TPath): void => this.recordWrite(path);
+
     /**
      * Takes the initial state and the policy that decides when subscribers are woken.
      *
@@ -60,10 +63,15 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     constructor(protected data: T, protected scheduler: IUpdateScheduler = syncUpdateScheduler) {
     }
 
-    /** The store's identity, which subscriptions and dev tooling key on. */
-    public getUID = (): string => {
+    /**
+     * The store's identity, which subscriptions and dev tooling key on.
+     *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     */
+    public getUID(): string {
         return this.uid;
-    };
+    }
 
     /**
      * The write counter, bumped on every emit.
@@ -71,17 +79,17 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * A component compares it between render and commit to notice a write that landed in
      * between, which would otherwise leave it subscribed to stale paths.
      */
-    public getVersion = (): number => {
+    public getVersion(): number {
         return this.version;
-    };
+    }
 
     /** The state as it is, untracked: reads through it subscribe to nothing. */
-    public getData = (): T => {
+    public getData(): T {
         return this.data;
-    };
+    }
 
     /** The state behind a read proxy that reports every path the caller touches. */
-    public read = (record: TPathRecorder): TReadonly<T> => {
+    public read(record: TPathRecorder): TReadonly<T> {
         const data: unknown = this.data;
 
         if (!isTrackable(data)) {
@@ -91,10 +99,10 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
 
         return createReadProxy(data, record, '', this.aliases) as unknown as TReadonly<T>;
-    };
+    }
 
     /** Replaces the whole state and wakes everyone: no path survives a root swap. */
-    public setData = (data: T): T => {
+    public setData(data: T): T {
         this.data = data;
         this.draftProxy = undefined;
         this.writes.add(WILDCARD_PATH);
@@ -102,27 +110,27 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         this.emitUpdate();
 
         return data;
-    };
+    }
 
     /** A deep copy of the state, detached from further writes. */
-    public snapshot = (): T => {
+    public snapshot(): T {
         return deepClone(this.data);
-    };
+    }
 
     /** Installs a snapshot as the current state, copying it so the caller keeps its own. */
-    public restore = (data: T): void => {
+    public restore(data: T): void {
         this.setData(deepClone(data));
-    };
+    }
 
     /** The type-erased half of the snapshot bridge, for callers that do not know `T`. */
-    public toJSON = (): unknown => {
+    public toJSON(): unknown {
         return this.snapshot();
-    };
+    }
 
     /** The type-erased half of `restore`; the cast is the caller's promise about the shape. */
-    public fromJSON = (value: unknown): void => {
+    public fromJSON(value: unknown): void {
         this.restore(value as T);
-    };
+    }
 
     /**
      * Registers a subscriber, returning the id it is cancelled and rescheduled by.
@@ -132,18 +140,20 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * @param options - the id to reuse across re-subscribes and the paths to watch;
      * without `reads` the subscription matches every write.
      */
-    public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
+    public subscribe(callback: TSubscriber, options: ISubscribeOptions = {}): string {
         const id = options.id || getUid();
 
-        // A subscription without a path set is a subscription to everything: coarse,
-        // but no update can be missed.
-        const reads = options.reads ? new Set<TPath>(options.reads) : new Set<TPath>([WILDCARD_PATH]);
+        // Adopted, not copied: callers here (a component's committed read set, a computed's
+        // own dependency.reads) never mutate it after handing it over, and extend() relies on
+        // that — see addPath's own comment. watch() copies at its boundary instead, since that
+        // caller keeps its reference. No reads means everything: coarse, but nothing is missed.
+        const reads = options.reads || new Set<TPath>([WILDCARD_PATH]);
 
         this.subscribers[id] = {callback, reads};
         this.subscriberIndex.add(id, reads);
 
         return id;
-    };
+    }
 
     /**
      * Adds one path to an already-registered subscription, without copying or re-filing
@@ -156,40 +166,43 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * @param id - the subscription to extend; an unknown id is left alone
      * @param path - the path to add to that subscription's read set
      */
-    public extend = (id: string, path: TPath): void => {
+    public extend(id: string, path: TPath): void {
         if (!(id in this.subscribers)) {
             return;
         }
 
         this.subscriberIndex.addPath(id, path);
-    };
+    }
 
     /** Drops a subscriber, its index entries and any update already scheduled for it. */
-    public unsubscribe = (id: string) => {
+    public unsubscribe(id: string): void {
         if (id in this.subscribers) {
             this.scheduler.cancel(id);
             this.subscriberIndex.remove(id);
             delete this.subscribers[id];
         }
-    };
+    }
 
     /**
      * Subscribes outside React — for persistence, logging, analytics.
+     *
+     * Copies `reads` before handing it to `subscribe()`, which otherwise adopts it as-is: a
+     * caller here may keep its reference and mutate it later, unlike the engine's own callers.
      *
      * @param callback - run per matching write with no arguments; the returned disposer
      * unsubscribes it.
      * @param reads - the paths the callback cares about; omitted means every write.
      */
-    public watch = (callback: TSubscriber, reads?: TPathSet): TDisposer => {
-        const id = this.subscribe(callback, {reads});
+    public watch(callback: TSubscriber, reads?: TPathSet): TDisposer {
+        const id = this.subscribe(callback, {reads: reads ? new Set<TPath>(reads) : undefined});
 
         return () => {
             this.unsubscribe(id);
         };
-    };
+    }
 
     /** Called by the batch coordinator when a transaction closes. */
-    public notifyWrites = (writes: TPathSet): void => {
+    public notifyWrites(writes: TPathSet): void {
         // Delivering one write is one wave: whatever its delivery cascades into settles
         // before the wave ends, so outer observers only ever hear settled values.
         updateWave.begin();
@@ -226,7 +239,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         } finally {
             updateWave.end();
         }
-    };
+    }
 
     /**
      * Writes go through draft: changed paths are remembered, and only the subscribers
@@ -254,7 +267,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
 
         if (!this.draftProxy) {
-            this.draftProxy = createWriteProxy(data, this.recordWrite, '', this.aliases) as T;
+            this.draftProxy = createWriteProxy(data, this.writeRecorder, '', this.aliases) as T;
         }
 
         return this.draftProxy;
@@ -270,7 +283,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * Rolling the writes back would take a full snapshot of the state before every update,
      * too high a price on the hot path for a programming error.
      */
-    protected update = (mutate: (draft: T) => void): void => {
+    protected update(mutate: (draft: T) => void): void {
         let result: unknown;
 
         try {
@@ -290,20 +303,20 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
                 );
             }
         }
-    };
+    }
 
     /** Publishes on the next microtask — for writes made where notifying now is unsafe. */
-    protected emitSoon = (): void => {
+    protected emitSoon(): void {
         this.pendingEmit = true;
 
         queueMicrotask(() => {
             this.pendingEmit = false;
             this.emitUpdate();
         });
-    };
+    }
 
     /** Marks draft as used and arms the development check for a write that never published. */
-    protected touchDraft = (): void => {
+    protected touchDraft(): void {
         if (this.draftTouched) {
             return;
         }
@@ -325,25 +338,25 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
                 );
             });
         }
-    };
+    }
 
     /** Remembers one changed path, so the emit wakes only the subscribers that read it. */
-    protected recordWrite = (path: TPath) => {
+    protected recordWrite(path: TPath): void {
         this.writes.add(path);
-    };
+    }
 
     /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
-    protected markAllChanged = (): void => {
+    protected markAllChanged(): void {
         this.recordWrite(WILDCARD_PATH);
-    };
+    }
 
     /** A hook for subclasses to write derived state before an emit goes out. */
-    protected preEmit = () => {
+    protected preEmit(): void {
 
-    };
+    }
 
     /** Publishes the writes recorded so far, alone or as part of an open transaction. */
-    protected emitUpdate = () => {
+    protected emitUpdate(): void {
         this.preEmit();
 
         const touched = this.draftTouched;
@@ -370,5 +383,5 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
 
         this.notifyWrites(writes);
-    };
+    }
 }

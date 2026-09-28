@@ -435,7 +435,7 @@ describe('ResourceCache lifetime', () => {
         expect(cache.getEntry('a').data).toEqual('Ann');
     });
 
-    test('one eviction pass materializes each subscriber once, not once per candidate (R5-06)', async () => {
+    test('eviction checks retention through the index, without walking a subscriber\'s read set', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 3, ttl: 60_000});
 
@@ -461,8 +461,9 @@ describe('ResourceCache lifetime', () => {
             (cache as unknown as {subscribers: Record<string, {reads: Set<TPath>}>}).subscribers;
         const counters: CountingReads[] = [];
 
-        // Three pinned entries, three readers — the report's bounded scenario. subscribe()
-        // copies the set, so the counting set replaces the copy the store actually keeps.
+        // Three pinned entries, three readers. The counting set replaces each subscriber's own
+        // read set after subscribe() has already filed it into subscriberIndex, so what this
+        // isolates is exactly what eviction consults: the index, never a subscriber's own set.
         ['a', 'b', 'c'].forEach((key: string) => {
             const id = cache.subscribe(() => undefined, {id: `reader-${key}`, reads: readsOf(cache.pathOf(key))});
             const counted = new CountingReads(subscribers()[id].reads);
@@ -476,16 +477,16 @@ describe('ResourceCache lifetime', () => {
 
         void cache.load('d');
 
-        // One pass: the pending key is skipped, and each reader's set was walked once to build
-        // the retained set. The old per-candidate check walked the same three sets nine times.
-        expect(materializations()).toEqual(3);
+        // subscriberIndex answers "is anyone reading this key" per candidate in O(1); no
+        // subscriber's read set is ever walked.
+        expect(materializations()).toEqual(0);
 
         loader.settle[3]('value-d');
         await flush();
 
-        // The second pass, at settlement, walked each reader once more — and retention itself
-        // survived the batching: the three read entries stay, the unread fourth one goes.
-        expect(materializations()).toEqual(6);
+        // Retention itself still holds at the second pass: the three read entries stay, the
+        // unread fourth one goes — and still without walking any subscriber's read set.
+        expect(materializations()).toEqual(0);
         expect(Object.keys(cache.getData().entries)).toEqual([
             cache.keyOf('a'),
             cache.keyOf('b'),
