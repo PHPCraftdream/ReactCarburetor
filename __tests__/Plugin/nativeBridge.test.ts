@@ -1,6 +1,6 @@
 import {spawn, spawnSync} from "node:child_process";
 import {
-    existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync,
+    existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, watch, writeFileSync,
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -54,14 +54,21 @@ const resultPathFor = (lock: string): string => {
     return lock.replace(/\.lock$/, `.${stat.dev.toString(36)}${stat.ino.toString(36)}.json`);
 };
 
-/** Samples `dir` for every name that ever appears in it, so a positive ("this filename existed
- * at some point") is provable without racing a fixed delay. `dir` is a throwaway `TEMP` made for
- * one child (see below): this machine's real temp directory holds hundreds of thousands of
- * unrelated entries, and `readdirSync` over it is far too slow to catch a file that lives only a
- * few milliseconds — the isolated directory stays small, so polling it stays fast. */
+/** Records every name that ever appears in `dir`, so a positive ("this filename existed at some
+ * point") is provable without racing a fixed delay. `dir` is a throwaway `TEMP` made for one child
+ * (see below), so it stays small. Filesystem events are the primary source: the OS queues them, so
+ * a file living a few milliseconds is caught even when a loaded event loop starves the sampling
+ * loop, which stays as the fallback for platforms that coalesce events. The watch sits on the
+ * parent, since the child creates `dir` itself. */
 const trackBridgeFiles = (dir: string): {stop: () => Promise<string[]>} => {
     const seen = new Set<string>();
     let polling = true;
+    const prefix = path.basename(dir) + path.sep;
+    const watcher = watch(path.dirname(dir), {recursive: true}, (_event, name) => {
+        if (typeof name === 'string' && name.startsWith(prefix)) {
+            seen.add(name.slice(prefix.length));
+        }
+    });
 
     const sample = (): void => {
         try {
@@ -85,6 +92,7 @@ const trackBridgeFiles = (dir: string): {stop: () => Promise<string[]>} => {
             polling = false;
             await loop;
             sample();
+            watcher.close();
 
             return [...seen];
         },
