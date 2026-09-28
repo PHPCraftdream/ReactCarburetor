@@ -65,11 +65,18 @@ export declare abstract class AntiHookComponentSubscriptions<P = {}, S = {}> ext
      *
      * No description means nothing may be listening: an installed handle is unsubscribed and
      * cleared. Otherwise a handle pointing at another carburetor is dropped first, and an
-     * unchanged read set skips re-registering. Returns the drift check: whether the store's
-     * version moved past the description's baseline, i.e. whether a write landed between the
-     * render's read and this commit — anchored to the baseline captured at the attempt's first
-     * read, not refreshed after every access, which is what keeps an unused connection from
-     * looping forceUpdate forever.
+     * unchanged read set skips re-registering. Returns the drift check: whether a write that
+     * could concern the committed read set landed between the render's read and this commit —
+     * anchored to the baseline captured at the attempt's first read, not refreshed after every
+     * access, which is what keeps an unused connection from looping forceUpdate forever.
+     *
+     * A version equal to the baseline means nothing was written at all since then, so there is
+     * nothing further to check. A version that moved asks the source's own write log (R16-05)
+     * which paths actually changed, and reports a drift only when one of them concerns what was
+     * read — the same three cases `SubscriberIndex.match` uses: the same path, a written
+     * ancestor, a written descendant. A source with no such log (`hasDriftSince` absent, e.g. a
+     * computed, which invalidates at the granularity of its whole value) keeps today's coarser
+     * answer: any version change is a drift.
      *
      * @param uid - the id the slot's registration is keyed under: the component's own for
      * `tracked` records, the connection's own for connections

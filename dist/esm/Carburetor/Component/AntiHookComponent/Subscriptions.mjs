@@ -10,24 +10,25 @@ class AntiHookComponentSubscriptions extends AntiHookComponentEffects {
         this.forceUpdate();
     };
     commitSubscriptions() {
-        var _this_tracked;
         const attempt = this.pendingAttempt;
         const fresh = void 0 !== attempt && !attempt.abandoned && attempt !== this.committedAttempt;
         if (fresh) {
-            var _this_tracked1;
             this.committedAttempt = attempt;
             const trackedEntries = attempt.tracked;
-            const connectionEntries = attempt.connections;
-            null == (_this_tracked1 = this.tracked) || _this_tracked1.forEach((slot, source)=>{
-                var _this_tracked;
-                if (void 0 !== trackedEntries && trackedEntries.has(source)) return;
-                this.releaseSlot(this.uid, slot);
-                null == (_this_tracked = this.tracked) || _this_tracked.delete(source);
-            });
-            this.connections.forEach((connection)=>{
-                if (void 0 === connectionEntries || !connectionEntries.has(connection)) connection.committed = void 0;
-            });
-            if (void 0 !== trackedEntries) trackedEntries.forEach((entry, source)=>{
+            const touchedConnections = attempt.connections;
+            if (void 0 !== this.tracked) {
+                for (const [source, slot] of this.tracked)if (!(void 0 !== trackedEntries && trackedEntries.has(source))) {
+                    this.releaseSlot(this.uid, slot);
+                    this.tracked.delete(source);
+                }
+            }
+            for (const connection of this.connections)if (connection.attemptTag !== attempt || void 0 === connection.attemptEntry) {
+                connection.committed = void 0;
+                connection.attemptTag = void 0;
+                connection.attemptSource = void 0;
+                connection.attemptEntry = void 0;
+            }
+            if (void 0 !== trackedEntries) for (const [source, entry] of trackedEntries){
                 var _this_tracked;
                 const existing = null == (_this_tracked = this.tracked) ? void 0 : _this_tracked.get(source);
                 if (existing) this.applyDescription(existing, entry);
@@ -35,21 +36,19 @@ class AntiHookComponentSubscriptions extends AntiHookComponentEffects {
                     committed: this.buildDescription(entry),
                     installed: void 0
                 });
-            });
-            if (void 0 !== connectionEntries) connectionEntries.forEach((entry, connection)=>{
-                this.applyDescription(connection, entry);
-            });
+            }
+            if (void 0 !== touchedConnections) for (const connection of touchedConnections){
+                const entry = connection.attemptEntry;
+                if (void 0 !== entry) this.applyDescription(connection, entry);
+            }
             attempt.tracked = void 0;
             attempt.connections = void 0;
-            attempt.sources = void 0;
         }
         let changedDuringRender = false;
-        null == (_this_tracked = this.tracked) || _this_tracked.forEach((slot)=>{
-            if (this.alignSubscription(this.uid, slot)) changedDuringRender = true;
-        });
-        this.connections.forEach((connection)=>{
-            if (this.alignSubscription(connection.uid, connection)) changedDuringRender = true;
-        });
+        if (void 0 !== this.tracked) {
+            for (const slot of this.tracked.values())if (this.alignSubscription(this.uid, slot)) changedDuringRender = true;
+        }
+        for (const connection of this.connections)if (this.alignSubscription(connection.uid, connection)) changedDuringRender = true;
         if (changedDuringRender) this.forceUpdate();
     }
     ensureTracked() {
@@ -95,7 +94,11 @@ class AntiHookComponentSubscriptions extends AntiHookComponentEffects {
                 reads: committed.reads
             };
         }
-        return committed.carburetor.getVersion() !== committed.baselineVersion;
+        const { carburetor, baselineVersion, reads } = committed;
+        const version = carburetor.getVersion();
+        if (version === baselineVersion) return false;
+        const hasDriftSince = carburetor.hasDriftSince;
+        return void 0 === hasDriftSince || hasDriftSince.call(carburetor, baselineVersion, reads);
     }
     releaseSlot(uid, slot) {
         if (slot.installed) {

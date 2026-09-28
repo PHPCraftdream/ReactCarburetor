@@ -9,6 +9,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `persist(store, {coalesce: true})`: one `JSON.stringify` per microtask instead of one per write
+  (0.94–1.44 ms per keystroke at 4000 items). Off by default, so a write still lands in storage
+  before the call that caused it returns; the disposer flushes a pending write.
+
 - `computed(body, {equals})`: a comparator that judges a recomputed result by content, so a
   body that builds a new array or object (`filter`, `map`, a literal) re-renders nobody when the
   content is unchanged. It runs only when the reference changed; an exotic result mutated in
@@ -160,6 +164,56 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dual licensing under MIT OR Apache-2.0.
 
 ### Changed
+
+- **Breaking:** `watch(callback, reads?)` is now `watch(select, onChange)`: `select` runs against
+  a tracked read of the data, its reads become the subscription, and `onChange(next, previous)`
+  runs only when the selection changed (compared like `connectSelection`). For every write, use
+  `subscribe(callback)` and `unsubscribe(id)`.
+- **Breaking:** `TPath`, `TPathSet`, `TPathRecorder`, `WILDCARD_PATH` and `TAliasLedger` are no
+  longer exported. `subscribe(callback, {reads})` and `read(record)` stay as the engine's
+  extension contract, typed with `ReadonlySet<string>` and `string`; the path grammar is not a
+  stable user-facing API.
+- **Breaking:** `IResourceSource` is `resolve(args) → {key, path, view}` plus `load(args)` instead
+  of six members. `ResourceCache` keeps `keyOf`, `pathOf`, `pathOfKey`, `getEntry` and
+  `getEntryByKey` as its own methods.
+- **Breaking:** `fromJSON(value)` adopts `value` instead of copying it: hand it freshly parsed
+  JSON. `restore` still copies; resource stores keep hydrating through their `restore`.
+- **Breaking:** `CarburetorHistory` takes `ICarburetor<T> & IPatchSource`: every `Carburetor`
+  qualifies; a hand-written `ICarburetor` must add `attachPatchListener` to be tracked.
+- **Performance:** `CarburetorHistory` records the patches behind each change instead of a deep
+  copy of the state: one title write at 4000 items went from 3.9–5.1 ms to ~0.01 ms, and 50 entries
+  retain 0.5 MB instead of 20.5 MB. A change the write proxy cannot describe still records a full
+  copy either side of it. Undo and redo install through `restore`, so they wake only what they
+  change and a store overriding `restore` (a `ResourceCache` aborting in-flight requests) keeps
+  working.
+- **Performance:** enumerating a branch (`Object.keys`, `values`, `entries`, `for…in`, spread)
+  subscribes to its key set, not to every leaf below it, and at the root no longer to every write
+  in the store. A list parent laying out rows from `Object.keys(items)` is no longer re-rendered by
+  a title edit: 5.0–13.6 ms → 0.36–0.48 ms per edit at 4000 rows.
+- **Performance:** `setData`, `restore`, `fromJSON`, undo and redo announce a structural diff
+  instead of waking every subscriber, and replacing an object or array through `draft` records only
+  the leaves that differ. Undoing one title edit at 4000 rows re-renders 1 row instead of 4000;
+  `setData` with an equal copy re-renders nobody (209 ms → 7 ms); a title keystroke written as an
+  object replacement no longer recomputes a filter reading only `done` (30.7 ms → 0.7 ms).
+  `setData` keeps `getData() === data`; `restore` copies only what it assigns, so untouched
+  branches keep their identity. A presence check (`'k' in items`) is no longer woken by a
+  replacement of the same kind.
+- **Performance:** the commit-time drift check compares the store's recent writes with the paths
+  the render read instead of the store version, so a write elsewhere in the store between a render
+  and its commit costs no second render: mounting 4000 rows next to a sibling that writes on mount
+  renders 4000 rows instead of 8000.
+- **Performance:** `ResourceCache` keeps an entry count and an LRU-ordered ledger instead of
+  counting, filtering and sorting every entry on every fetch and every answer (O(N²) over a list of
+  resource rows): 4000 resource rows settle in 1.6 s instead of 8.1 s at the default `maxEntries`.
+- **Performance:** computed invalidation marks each stale node once: a write through a 26-node
+  ladder of diamonds made ~950,000 marks and now makes 48 (58–77 ms → 0.1 ms). A recompute reads a
+  published flag instead of a lookup per path and decides read-set equality while recording.
+- **Performance:** fewer allocations per operation — `connect()` keeps its per-render source and
+  entry on the connection instead of two Maps per render, facades share one empty target, commit
+  and unmount run plain loops, `SubscriberIndex` files each read set once (no second owned copy)
+  and matches without arrays or closures, `shallowEqual` compares two arrays by length and index
+  (~10× faster on 4000 ids), `sameSelection` allocates its WeakMaps only for containers, and
+  failure lists are allocated on the first failure.
 
 - **Breaking:** `ComponentUpdateThrottle`, `CarburetorScope`, `CarburetorHistory` and
   `Diagnostics` members are prototype methods instead of arrow-function fields, like the stores

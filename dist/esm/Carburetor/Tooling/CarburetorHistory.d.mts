@@ -1,40 +1,74 @@
 import { TDisposer } from "../Models/Base.mjs";
-import { ICarburetor } from "../Models/Store.mjs";
+import { IWritePatch, PATCH_OPAQUE } from "../Models/Paths.mjs";
+import { ICarburetor, IPatchSource } from "../Models/Store.mjs";
 import { IHistoryOptions } from "../Models/Tooling.mjs";
+/** One change recorded as the patches to invert it — the fast path (R16-07). */
+interface IPatchesEntry {
+    kind: 'patches';
+    /** The patches, in the order originally recorded; redo replays them forward. */
+    patches: IWritePatch[];
+}
+/** One change the proxy could not describe, recorded as a full state either side of it. */
+interface ISnapshotEntry<T> {
+    kind: 'snapshot';
+    /** The state right before this change. */
+    before: T;
+    /** The state right after this change. */
+    after: T;
+}
+type THistoryEntry<T> = IPatchesEntry | ISnapshotEntry<T>;
 /**
- * Undo/redo for a carburetor, built on snapshots. Every change is recorded, except the
+ * Undo/redo for a carburetor, built on patches (R16-07). Every change is recorded, except the
  * ones this class applies itself — otherwise undo would keep re-recording its own work.
  *
- * Cost: one deep copy of the state per change, which is the floor for snapshot-based
- * history — the previous state has to be captured while it still exists. For a large store
- * written on every keystroke that is measurable; narrow what history observes, or keep the
- * limit low.
+ * Cost: O(changed values) per change, not O(state) — the write proxy already knows every path
+ * it writes and the value it replaces, so an entry stores just that instead of a deep copy of
+ * the whole state. A change the proxy cannot describe (the wildcard, a whole-root replacement, a
+ * write that bypassed draft) still falls back to a full snapshot either side of it; one deep copy
+ * per change is the floor only for *that* case, not for history in general.
  */
 export declare class CarburetorHistory<T extends object> {
-    protected carburetor: ICarburetor<T>;
-    /** States to step back to; the oldest is dropped once `limit` is exceeded. */
-    protected past: T[];
-    /** Undone states waiting for redo; any fresh write empties it. */
-    protected future: T[];
-    /** The state as of the last recorded change, awaiting promotion into `past`. */
-    protected current: T;
-    /** The most states `past` may hold; set from options at construction. */
+    protected carburetor: ICarburetor<T> & IPatchSource;
+    /** Entries to step back to; the oldest is dropped once `limit` is exceeded. */
+    protected past: THistoryEntry<T>[];
+    /** Undone entries waiting for redo; any fresh write empties it. */
+    protected future: THistoryEntry<T>[];
+    /**
+     * A detached mirror of the live state, advanced by replaying each entry's own patches
+     * instead of a fresh snapshot — so a later opaque change still has an exact "before" to
+     * record without paying for one on every write.
+     */
+    protected baseline: T;
+    /** The most entries `past` may hold; set from options at construction. */
     protected limit: number;
-    /** Set inside apply() so the watcher ignores changes history installs itself. */
+    /** Set inside apply() so the watcher and the patch listener ignore history's own writes. */
     protected applying: boolean;
     /** The watch installed at construction; disconnect() runs it to stop recording. */
     protected dispose: TDisposer;
-    /** Bound once for `carburetor.watch`, called detached from `this`; forwards to the overridable `record`. */
+    /** Patches collected since the last flush; turned into an entry by record(). */
+    protected pendingPatches: IWritePatch[];
+    /** Whether the pending change contains a write the proxy could not describe. */
+    protected pendingOpaque: boolean;
+    /** Bound once for `subscribe`, called detached from `this`; forwards to the overridable `record`. */
     private readonly recordBound;
+    /** Bound once for `attachPatchListener`, called detached from `this`; forwards to `onPatch`. */
+    private readonly onPatchBound;
     /**
-     * Starts watching a carburetor, with the current state as the first entry.
+     * Starts watching a carburetor, with its current state as the baseline for the first
+     * opaque change, should one come before any patch-based one does.
      *
-     * @param carburetor - the store being tracked: snapshots become the entries, restore() applies undo and redo to it
+     * History needs "every write", which `watch(select, onChange)` cannot express cheaply (its
+     * selector would have to read the whole tree, then diff it, on every change) — `subscribe`
+     * with no `reads` is the engine's own way to say that, so history uses it directly instead
+     * of reconstructing the same thing through `watch`.
+     *
+     * @param carburetor - the store being tracked: `attachPatchListener` feeds entries, restore()
+     * applies undo and redo to it.
      * @param options - `limit` caps how far back undo reaches; defaults to 50 entries when omitted
      */
-    constructor(carburetor: ICarburetor<T>, options?: IHistoryOptions);
+    constructor(carburetor: ICarburetor<T> & IPatchSource, options?: IHistoryOptions);
     /**
-     * Whether there is a past state to step back to.
+     * Whether there is a past entry to step back to.
      *
      * A method, not an arrow field: every overridable member below is, so a subclass override
      * lands on the prototype instead of an own property shadowing it. `undo`/`redo` are a
@@ -42,7 +76,7 @@ export declare class CarburetorHistory<T extends object> {
      * `onClick={history.undo}`) now needs an explicit bind at the call site.
      */
     canUndo(): boolean;
-    /** Whether an undone state is waiting to be stepped forward into. */
+    /** Whether an undone entry is waiting to be stepped forward into. */
     canRedo(): boolean;
     /** Steps one change back, or reports that there was nothing to step back to. */
     undo(): boolean;
@@ -52,8 +86,36 @@ export declare class CarburetorHistory<T extends object> {
     clear(): void;
     /** Stops watching the carburetor: nothing is recorded after this. */
     disconnect(): void;
-    /** Records the state before a change, dropping the oldest entry past the limit. */
+    /** Collects one write's patch, or notes the pending change is opaque; ignored while applying. */
+    protected onPatch(patch: IWritePatch | typeof PATCH_OPAQUE): void;
+    /** Flushes the pending change into one entry, dropping the oldest past the limit. */
     protected record(): void;
-    /** Installs a recorded state without recording the installation itself. */
-    protected apply(state: T): void;
+    /**
+     * Turns the writes collected since the last flush into one entry.
+     *
+     * Patches when every one of them was describable; a full snapshot either side of the change
+     * otherwise. The empty-patch case is defensive — every write path this class knows of reports
+     * one or the other — so a gap in that coverage still falls back to a safe, larger entry.
+     */
+    protected buildEntry(): THistoryEntry<T>;
+    /**
+     * Installs `entry` through `restore()` without recording the installation itself, keeping
+     * `baseline` in step so a later opaque entry still gets an exact "before".
+     *
+     * Always `restore()`, never a patch-specific apply: a store that overrides it (a
+     * `ResourceCache` aborting in-flight requests on time travel, for one) must see undo and
+     * redo the same way it always has, patches entry or not.
+     *
+     * @param entry - the entry to install.
+     * @param inverse - true undoes `entry` (patches in reverse, or its `before`); false redoes it.
+     */
+    protected apply(entry: THistoryEntry<T>, inverse: boolean): void;
+    /**
+     * The state `patches` produce when installed onto a fresh copy of `baseline`.
+     *
+     * @param patches - the entry's patches, in the order originally recorded.
+     * @param inverse - true installs `previous` in reverse order; false installs `next` forward.
+     */
+    private reconstruct;
 }
+export {};

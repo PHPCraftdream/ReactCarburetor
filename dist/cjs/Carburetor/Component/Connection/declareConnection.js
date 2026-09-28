@@ -47,26 +47,37 @@ class ConnectionSource {
             uid: (0, getUid_js_namespaceObject.getUid)(),
             getCarburetor: this.getCarburetor,
             committed: void 0,
-            installed: void 0
+            installed: void 0,
+            attemptTag: void 0,
+            attemptSource: void 0,
+            attemptEntry: void 0
         };
         this.recorder = this.recordPath.bind(this);
     }
+    tagAttempt(attempt) {
+        const connection = this.connection;
+        if (connection.attemptTag !== attempt) {
+            connection.attemptTag = attempt;
+            connection.attemptSource = void 0;
+            connection.attemptEntry = void 0;
+        }
+    }
     resolveAttemptSource() {
-        var _attempt_sources;
         const attempt = this.getAttempt();
         if (!attempt) return this.getCarburetor();
-        const resolved = null == (_attempt_sources = attempt.sources) ? void 0 : _attempt_sources.get(this.connection);
-        if (void 0 !== resolved) return resolved;
+        this.tagAttempt(attempt);
+        const connection = this.connection;
+        if (void 0 !== connection.attemptSource) return connection.attemptSource;
         const carburetor = this.getCarburetor();
-        if (void 0 === attempt.sources) attempt.sources = new Map();
-        attempt.sources.set(this.connection, carburetor);
+        connection.attemptSource = carburetor;
         return carburetor;
     }
     recordPath(path) {
         const attempt = this.getAttempt();
         if (!attempt) return;
-        if (void 0 === attempt.connections) attempt.connections = new Map();
-        let entry = attempt.connections.get(this.connection);
+        this.tagAttempt(attempt);
+        const connection = this.connection;
+        let entry = connection.attemptEntry;
         if (!entry) {
             const carburetor = this.resolveAttemptSource();
             entry = {
@@ -74,7 +85,9 @@ class ConnectionSource {
                 baselineVersion: carburetor.getVersion(),
                 reads: new Set()
             };
-            attempt.connections.set(this.connection, entry);
+            connection.attemptEntry = entry;
+            if (void 0 === attempt.connections) attempt.connections = [];
+            attempt.connections.push(connection);
         }
         entry.reads.add(path);
     }

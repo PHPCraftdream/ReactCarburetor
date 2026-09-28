@@ -1,4 +1,4 @@
-import { TPath, TPathRecorder, TAliasLedger } from "../../Models/Paths.js";
+import { TPath, TPathRecorder, TAliasLedger, TPatchPort } from "../../Models/Paths.js";
 import { IProxyCache } from "./Models.js";
 /**
  * Builds a write proxy over `target`: every changed branch is recorded as a path. The root
@@ -18,5 +18,8 @@ import { IProxyCache } from "./Models.js";
  * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
  * this undefined and mints one, and every nested branch receives it back so the tree caches
  * as one unit.
+ * @param patchPort - where this tree finds its currently attached patch listener, if any
+ * (R16-07); threaded to every branch so attaching or detaching one needs no rebuild.
+ * @param basePathSegments - `basePath`'s own keys, unescaped; '' the empty array at the root.
  */
-export declare const createWriteProxy: <T extends object>(target: T, record: TPathRecorder, basePath?: TPath, aliases?: TAliasLedger, cache?: IProxyCache) => T;
+export declare const createWriteProxy: <T extends object>(target: T, record: TPathRecorder, basePath?: TPath, aliases?: TAliasLedger, cache?: IProxyCache, patchPort?: TPatchPort, basePathSegments?: readonly string[]) => T;

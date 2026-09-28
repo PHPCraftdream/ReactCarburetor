@@ -10,7 +10,7 @@ import { IProxyCache } from "./Models.mjs";
  * @param record - where each touched path is reported, supplied by read(); a branch read
  * reports the branch marker, not every path inside it.
  * @param basePath - the dotted path this root answers for; the default '' is the store root,
- * and its emptiness is what makes ownKeys record the wildcard.
+ * where `ownKeys` records the bare key-set marker instead of one qualified by a path.
  * @param aliases - development-only: notes each branch object under its path so a second
  * path to the same object is reported; production hands in undefined.
  * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves

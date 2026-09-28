@@ -5,6 +5,7 @@ import { deepClone } from "../../Store/Utils/deepClone.mjs";
 import { describeError } from "../describeError.mjs";
 import { createAbortHandle } from "../createAbortHandle.mjs";
 import { getInitialCacheEntry } from "./getInitialCacheEntry.mjs";
+import { EvictionLedger } from "./EvictionLedger.mjs";
 const DEFAULT_TTL = 30000;
 const DEFAULT_MAX_ENTRIES = 100;
 class ResourceCacheLifecycle extends Carburetor {
@@ -15,9 +16,8 @@ class ResourceCacheLifecycle extends Carburetor {
     requests = new Map();
     controllers = new Map();
     failures = new Map();
-    lastUsed = new Map();
-    useTick = 0;
     viewCache = new Map();
+    eviction = new EvictionLedger();
     constructor(loader, options = {}){
         super({
             entries: {}
@@ -32,7 +32,7 @@ class ResourceCacheLifecycle extends Carburetor {
         this.requests.clear();
         this.failures.clear();
         this.viewCache.clear();
-        this.lastUsed.clear();
+        this.eviction.reset();
         controllers.forEach(([, controller])=>controller.abort());
         if (generation !== this.restoreGeneration) return;
         const entries = {};
@@ -43,18 +43,27 @@ class ResourceCacheLifecycle extends Carburetor {
                 refreshing: false,
                 status: entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status
             };
+            if (!this.eviction.lastUsed.has(key)) this.touch(key);
         });
         this.controllers.forEach((_controller, key)=>{
             const entry = this.data.entries[key];
             if (entry) entries[key] = entry;
         });
+        this.eviction.setCount(Object.keys(entries).length);
         this.setData(deepClone({
             entries
         }));
     }
     touch(key) {
-        this.useTick += 1;
-        this.lastUsed.set(key, this.useTick);
+        this.eviction.touch(key);
+    }
+    subscribe(callback, options = {}) {
+        if (void 0 !== options.id && this.subscribers[options.id]) this.eviction.release();
+        return super.subscribe(callback, options);
+    }
+    unsubscribe(id) {
+        if (id in this.subscribers) this.eviction.release();
+        super.unsubscribe(id);
     }
     load(args) {
         const key = this.keyOf(args);
@@ -102,9 +111,10 @@ class ResourceCacheLifecycle extends Carburetor {
         this.abortKey(key);
         if (this.controllers.has(key)) return;
         this.failures.delete(key);
-        this.lastUsed.delete(key);
+        this.eviction.lastUsed.delete(key);
         this.viewCache.delete(key);
         if (!this.data.entries[key]) return;
+        this.eviction.forget(key);
         this.update((draft)=>{
             delete draft.entries[key];
         });
@@ -117,15 +127,11 @@ class ResourceCacheLifecycle extends Carburetor {
         return view.stale === stale && view.status === entry.status && view.data === entry.data && view.error === entry.error && view.updatedAt === entry.updatedAt && view.refreshing === entry.refreshing && view.invalidated === entry.invalidated && view.failed === entry.failed;
     }
     evict(deferNotification = false) {
-        const keys = Object.keys(this.data.entries);
-        if (keys.length <= this.maxEntries) return;
-        const candidates = keys.filter((key)=>!this.requests.has(key) && !this.subscriberIndex.hasReaderAt(joinPath('entries', key))).sort((left, right)=>(this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0));
-        const excess = keys.length - this.maxEntries;
-        const doomed = candidates.slice(0, excess);
+        if (this.eviction.shouldSkip(this.maxEntries)) return;
+        const doomed = this.eviction.selectVictims(this.maxEntries, (key)=>this.requests.has(key) || this.subscriberIndex.hasReaderAt(joinPath('entries', key)));
         if (0 === doomed.length) return;
         doomed.forEach((key)=>{
             this.failures.delete(key);
-            this.lastUsed.delete(key);
             this.viewCache.delete(key);
         });
         const draft = this.draft;
@@ -137,6 +143,9 @@ class ResourceCacheLifecycle extends Carburetor {
             return;
         }
         this.emitUpdate();
+    }
+    isRetentionFree(key) {
+        return !this.requests.has(key) && !this.subscriberIndex.hasReaderAt(joinPath('entries', key));
     }
     abortKey(key) {
         const controller = this.controllers.get(key);
@@ -202,10 +211,13 @@ class ResourceCacheLifecycle extends Carburetor {
             draft.entries[key].status = EResourceStatus.Pending;
             draft.entries[key].error = void 0;
         } else draft.entries[key].refreshing = true;
-        else draft.entries[key] = {
-            ...getInitialCacheEntry(),
-            status: EResourceStatus.Pending
-        };
+        else {
+            draft.entries[key] = {
+                ...getInitialCacheEntry(),
+                status: EResourceStatus.Pending
+            };
+            this.eviction.create();
+        }
         if (deferNotification) return void this.emitSoon();
         this.emitUpdate();
     }
@@ -218,13 +230,14 @@ class ResourceCacheLifecycle extends Carburetor {
             this.controllers.delete(key);
             this.requests.delete(key);
             this.failures.delete(key);
-            this.lastUsed.delete(key);
+            this.eviction.lastUsed.delete(key);
             this.viewCache.delete(key);
             return;
         }
         this.controllers.delete(key);
         this.requests.delete(key);
         this.failures.delete(key);
+        if (this.isRetentionFree(key)) this.eviction.release();
         this.update((draft)=>{
             draft.entries[key].status = EResourceStatus.Success;
             draft.entries[key].data = data;
@@ -242,13 +255,14 @@ class ResourceCacheLifecycle extends Carburetor {
             this.controllers.delete(key);
             this.requests.delete(key);
             this.failures.delete(key);
-            this.lastUsed.delete(key);
+            this.eviction.lastUsed.delete(key);
             this.viewCache.delete(key);
             return;
         }
         this.controllers.delete(key);
         this.requests.delete(key);
         this.failures.set(key, error);
+        if (this.isRetentionFree(key)) this.eviction.release();
         const entry = this.data.entries[key];
         const hasData = entry.status === EResourceStatus.Success || void 0 !== entry.data;
         this.update((draft)=>{

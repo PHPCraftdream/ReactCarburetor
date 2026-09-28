@@ -1,5 +1,6 @@
 import { joinPath } from "../Paths/joinPath.mjs";
-import { branchPath } from "../Paths/BranchMarker.mjs";
+import { branchPath } from "../Paths/Markers/BranchMarker.mjs";
+import { keysPath } from "../Paths/Markers/KeysMarker.mjs";
 import { WILDCARD_PATH } from "../Paths/WildcardPath.mjs";
 import { IS_DEVELOPMENT } from "../Utils/DevelopmentFlag.mjs";
 import { createProxyCache } from "./createProxyCache.mjs";
@@ -32,6 +33,7 @@ class ReadProxyHandler {
     firstBranch = void 0;
     firstMarker = '';
     branchMarkers = void 0;
+    keysMarkerPath = void 0;
     childPath(key) {
         if (key === this.firstKey) return this.firstPath;
         if (void 0 === this.firstKey) {
@@ -61,6 +63,9 @@ class ReadProxyHandler {
             memo.set(path, marker);
         }
         return marker;
+    }
+    keysMarker() {
+        return this.keysMarkerPath ?? (this.keysMarkerPath = keysPath(this.basePath));
     }
     wrap(path, source) {
         const cached = this.cache.get(path, source);
@@ -106,7 +111,7 @@ class ReadProxyHandler {
         return present;
     }
     ownKeys(source) {
-        this.record(this.basePath || WILDCARD_PATH);
+        this.record(this.keysMarker());
         return Reflect.ownKeys(source);
     }
     getOwnPropertyDescriptor(source, key) {

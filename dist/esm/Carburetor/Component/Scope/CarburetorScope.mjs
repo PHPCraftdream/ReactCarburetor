@@ -1,5 +1,6 @@
 import { diagnostics } from "../../Store/Diagnostics/DiagnosticsInstance.mjs";
 import { IS_DEVELOPMENT } from "../../Store/Utils/DevelopmentFlag.mjs";
+import { deepClone } from "../../Store/Utils/deepClone.mjs";
 class CarburetorScope {
     instances = new Map();
     get(token) {
@@ -30,7 +31,7 @@ class CarburetorScope {
             if (!Object.prototype.hasOwnProperty.call(state, token.id)) return;
             claimed.add(token.id);
             const instance = this.get(token);
-            if (this.isInspectable(instance)) instance.fromJSON(state[token.id]);
+            if (this.isInspectable(instance)) instance.fromJSON(deepClone(state[token.id]));
         });
         if (IS_DEVELOPMENT) {
             const unclaimed = Object.keys(state).filter((key)=>!claimed.has(key));

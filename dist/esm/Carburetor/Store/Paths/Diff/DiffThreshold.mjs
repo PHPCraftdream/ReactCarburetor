@@ -1,0 +1,2 @@
+const DIFF_PATH_THRESHOLD = 2000;
+export { DIFF_PATH_THRESHOLD };

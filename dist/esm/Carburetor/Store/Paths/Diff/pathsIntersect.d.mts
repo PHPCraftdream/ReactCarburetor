@@ -1,4 +1,4 @@
-import { TPathSet } from "../../Models/Paths.js";
+import { TPathSet } from "../../../Models/Paths.mjs";
 /**
  * Whether any written path touches any read path; a wildcard on either side matches all.
  *

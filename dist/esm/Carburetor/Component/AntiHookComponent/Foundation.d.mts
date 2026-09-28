@@ -186,6 +186,5 @@ export declare abstract class AntiHookComponentFoundation<P = {}, S = {}> extend
     protected abstract commitSubscriptions(): void;
     protected abstract releaseSubscriptions(): void;
     protected abstract reportTeardownFailure(failure: string): void;
-    protected abstract runTeardownStage(what: string, stage: () => void, failures: string[]): void;
 }
 export {};

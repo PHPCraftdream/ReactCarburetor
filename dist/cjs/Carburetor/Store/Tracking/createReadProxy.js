@@ -31,7 +31,8 @@ __webpack_require__.d(__webpack_exports__, {
     createReadProxy: ()=>createReadProxy
 });
 const joinPath_js_namespaceObject = require("../Paths/joinPath.js");
-const BranchMarker_js_namespaceObject = require("../Paths/BranchMarker.js");
+const BranchMarker_js_namespaceObject = require("../Paths/Markers/BranchMarker.js");
+const KeysMarker_js_namespaceObject = require("../Paths/Markers/KeysMarker.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
 const DevelopmentFlag_js_namespaceObject = require("../Utils/DevelopmentFlag.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
@@ -64,6 +65,7 @@ class ReadProxyHandler {
     firstBranch = void 0;
     firstMarker = '';
     branchMarkers = void 0;
+    keysMarkerPath = void 0;
     childPath(key) {
         if (key === this.firstKey) return this.firstPath;
         if (void 0 === this.firstKey) {
@@ -93,6 +95,9 @@ class ReadProxyHandler {
             memo.set(path, marker);
         }
         return marker;
+    }
+    keysMarker() {
+        return this.keysMarkerPath ?? (this.keysMarkerPath = (0, KeysMarker_js_namespaceObject.keysPath)(this.basePath));
     }
     wrap(path, source) {
         const cached = this.cache.get(path, source);
@@ -138,7 +143,7 @@ class ReadProxyHandler {
         return present;
     }
     ownKeys(source) {
-        this.record(this.basePath || WildcardPath_js_namespaceObject.WILDCARD_PATH);
+        this.record(this.keysMarker());
         return Reflect.ownKeys(source);
     }
     getOwnPropertyDescriptor(source, key) {

@@ -37,67 +37,67 @@ class SubscriberIndex {
     branch = new Map();
     wildcard = new Set();
     readsById = new Map();
-    filedById = new Map();
     add(id, reads) {
-        const filed = this.filedById.get(id);
+        const previous = this.readsById.get(id);
+        if (previous === reads) return;
         this.readsById.set(id, reads);
-        if (!filed) return void this.registerFresh(id, reads);
-        const stale = [];
-        filed.forEach((path)=>{
-            if (!reads.has(path)) stale.push(path);
-        });
-        stale.forEach((path)=>{
-            this.unfile(id, path);
-            filed.delete(path);
+        if (void 0 === previous) return void this.registerFresh(id, reads);
+        previous.forEach((path)=>{
+            if (path !== external_WildcardPath_js_namespaceObject.WILDCARD_PATH && !reads.has(path)) this.unfile(id, path);
         });
         reads.forEach((path)=>{
-            if (path === external_WildcardPath_js_namespaceObject.WILDCARD_PATH || filed.has(path)) return;
-            this.file(id, path);
-            filed.add(path);
+            if (path !== external_WildcardPath_js_namespaceObject.WILDCARD_PATH && !previous.has(path)) this.file(id, path);
         });
-        const wantsWildcard = reads.has(external_WildcardPath_js_namespaceObject.WILDCARD_PATH);
-        if (wantsWildcard) this.wildcard.add(id);
+        if (reads.has(external_WildcardPath_js_namespaceObject.WILDCARD_PATH)) this.wildcard.add(id);
         else this.wildcard.delete(id);
     }
     addPath(id, path) {
         const reads = this.readsById.get(id);
         if (!reads) return;
+        if (path === external_WildcardPath_js_namespaceObject.WILDCARD_PATH) {
+            reads.add(path);
+            this.wildcard.add(id);
+            return;
+        }
+        const alreadyFiled = this.isFiledAt(path, id);
         reads.add(path);
-        if (path === external_WildcardPath_js_namespaceObject.WILDCARD_PATH) return void this.wildcard.add(id);
-        const filed = this.filedById.get(id);
-        if (filed.has(path)) return;
-        this.file(id, path);
-        filed.add(path);
+        if (!alreadyFiled) this.file(id, path);
     }
     remove(id) {
-        const filed = this.filedById.get(id);
-        if (!filed) return;
+        const reads = this.readsById.get(id);
+        if (!reads) return;
         this.readsById.delete(id);
-        this.filedById.delete(id);
         this.wildcard.delete(id);
-        filed.forEach((path)=>this.unfile(id, path));
+        reads.forEach((path)=>{
+            if (path !== external_WildcardPath_js_namespaceObject.WILDCARD_PATH) this.unfile(id, path);
+        });
     }
     match(writes) {
         if (writes.has(external_WildcardPath_js_namespaceObject.WILDCARD_PATH)) return new Set(this.readsById.keys());
         const matched = this.wildcard.size > 0 ? new Set(this.wildcard) : new Set();
-        writes.forEach((writePath)=>{
+        for (const writePath of writes){
             this.collect(this.exact.get(writePath), matched);
             this.collect(this.branch.get(writePath), matched);
-            this.ancestorsOf(writePath).forEach((ancestor)=>this.collect(this.exact.get(ancestor), matched));
-        });
+            let cut = writePath.lastIndexOf(external_PathSeparator_js_namespaceObject.PATH_SEPARATOR);
+            while(cut > 0){
+                this.collect(this.exact.get(writePath.slice(0, cut)), matched);
+                cut = writePath.lastIndexOf(external_PathSeparator_js_namespaceObject.PATH_SEPARATOR, cut - 1);
+            }
+        }
         return matched;
     }
     hasReaderAt(path) {
         return this.exact.has(path) || this.branch.has(path);
     }
     registerFresh(id, reads) {
-        const filed = new Set();
-        this.filedById.set(id, filed);
         reads.forEach((path)=>{
             if (path === external_WildcardPath_js_namespaceObject.WILDCARD_PATH) return void this.wildcard.add(id);
             this.file(id, path);
-            filed.add(path);
         });
+    }
+    isFiledAt(path, id) {
+        const bucket = this.exact.get(path);
+        return bucket === id || void 0 !== bucket && 'string' != typeof bucket && bucket.has(id);
     }
     file(id, path) {
         this.register(this.exact, path, id);

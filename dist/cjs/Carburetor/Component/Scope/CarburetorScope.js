@@ -32,6 +32,7 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const DiagnosticsInstance_js_namespaceObject = require("../../Store/Diagnostics/DiagnosticsInstance.js");
 const DevelopmentFlag_js_namespaceObject = require("../../Store/Utils/DevelopmentFlag.js");
+const deepClone_js_namespaceObject = require("../../Store/Utils/deepClone.js");
 class CarburetorScope {
     instances = new Map();
     get(token) {
@@ -62,7 +63,7 @@ class CarburetorScope {
             if (!Object.prototype.hasOwnProperty.call(state, token.id)) return;
             claimed.add(token.id);
             const instance = this.get(token);
-            if (this.isInspectable(instance)) instance.fromJSON(state[token.id]);
+            if (this.isInspectable(instance)) instance.fromJSON((0, deepClone_js_namespaceObject.deepClone)(state[token.id]));
         });
         if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) {
             const unclaimed = Object.keys(state).filter((key)=>!claimed.has(key));

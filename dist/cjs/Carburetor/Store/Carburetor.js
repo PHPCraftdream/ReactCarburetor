@@ -30,8 +30,16 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     Carburetor: ()=>Carburetor
 });
+const Paths_js_namespaceObject = require("../Models/Paths.js");
+const sameSelection_js_namespaceObject = require("../Component/Connection/sameSelection.js");
 const deepClone_js_namespaceObject = require("./Utils/deepClone.js");
+const applyDiff_js_namespaceObject = require("./Paths/Diff/applyDiff.js");
+const diffPaths_js_namespaceObject = require("./Paths/Diff/diffPaths.js");
+const hasSymbolDifference_js_namespaceObject = require("./Paths/Diff/hasSymbolDifference.js");
+const sameKind_js_namespaceObject = require("./Paths/Diff/sameKind.js");
+const detachOpaque_js_namespaceObject = require("./Utils/detachOpaque.js");
 const SubscriberIndex_js_namespaceObject = require("./Paths/SubscriberIndex.js");
+const WriteLog_js_namespaceObject = require("./Paths/WriteLog.js");
 const WildcardPath_js_namespaceObject = require("./Paths/WildcardPath.js");
 const SyncUpdateSchedulerInstance_js_namespaceObject = require("./Scheduling/SyncUpdateSchedulerInstance.js");
 const UpdateWaveInstance_js_namespaceObject = require("./Scheduling/UpdateWaveInstance.js");
@@ -42,15 +50,24 @@ const isTrackable_js_namespaceObject = require("./Tracking/isTrackable.js");
 const UpdateBatchInstance_js_namespaceObject = require("./Transaction/UpdateBatchInstance.js");
 const getUid_js_namespaceObject = require("./Utils/getUid.js");
 const DiagnosticsInstance_js_namespaceObject = require("./Diagnostics/DiagnosticsInstance.js");
+const detachWatchSelection = (value)=>{
+    if (null === value || 'object' != typeof value) return value;
+    return (0, detachOpaque_js_namespaceObject.detachOpaque)(value, (instance)=>{
+        var _Object_getPrototypeOf_constructor, _Object_getPrototypeOf;
+        throw new Error('watch() cannot select a live ' + ((null == (_Object_getPrototypeOf = Object.getPrototypeOf(instance)) ? void 0 : null == (_Object_getPrototypeOf_constructor = _Object_getPrototypeOf.constructor) ? void 0 : _Object_getPrototypeOf_constructor.name) || 'class') + " instance because in-place changes cannot produce a safe comparison. Select the fields the callback needs, or return a plain object of those fields.");
+    });
+};
 class Carburetor {
     data;
     scheduler;
     subscribers = {};
     subscriberIndex = new SubscriberIndex_js_namespaceObject.SubscriberIndex();
     aliases = (0, AliasLedger_js_namespaceObject.createAliasLedger)();
+    patchPort = {};
     uid = (0, getUid_js_namespaceObject.getUid)();
     version = 0;
     writes = new Set();
+    writeLog = new WriteLog_js_namespaceObject.WriteLog();
     draftTouched = false;
     pendingEmit = false;
     draftProxy = void 0;
@@ -65,6 +82,9 @@ class Carburetor {
     getVersion() {
         return this.version;
     }
+    hasDriftSince(baselineVersion, reads) {
+        return this.writeLog.matches(baselineVersion, reads);
+    }
     getData() {
         return this.data;
     }
@@ -77,9 +97,16 @@ class Carburetor {
         return (0, createReadProxy_js_namespaceObject.createReadProxy)(data, record, '', this.aliases);
     }
     setData(data) {
+        const previous = this.data;
         this.data = data;
         this.draftProxy = void 0;
-        this.writes.add(WildcardPath_js_namespaceObject.WILDCARD_PATH);
+        this.touchDraft();
+        const changed = (0, diffPaths_js_namespaceObject.diffPaths)(previous, data);
+        if (changed.size > 0) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, Paths_js_namespaceObject.PATCH_OPAQUE);
+            changed.forEach((path)=>this.recordWrite(path));
+        }
         this.emitUpdate();
         return data;
     }
@@ -87,13 +114,17 @@ class Carburetor {
         return (0, deepClone_js_namespaceObject.deepClone)(this.data);
     }
     restore(data) {
-        this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
+        const current = this.data;
+        if (!(0, isTrackable_js_namespaceObject.isTrackable)(current) || !(0, isTrackable_js_namespaceObject.isTrackable)(data) || !(0, sameKind_js_namespaceObject.sameKind)(current, data) || (0, hasSymbolDifference_js_namespaceObject.hasSymbolDifference)(current, data)) return void this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
+        const applied = (0, applyDiff_js_namespaceObject.applyDiff)(this.draft, current, data);
+        if (!applied) return void this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
+        this.emitUpdate();
     }
     toJSON() {
         return this.snapshot();
     }
     fromJSON(value) {
-        this.restore(value);
+        this.setData(value);
     }
     subscribe(callback, options = {}) {
         const id = options.id || (0, getUid_js_namespaceObject.getUid)();
@@ -101,8 +132,7 @@ class Carburetor {
             WildcardPath_js_namespaceObject.WILDCARD_PATH
         ]);
         this.subscribers[id] = {
-            callback,
-            reads
+            callback
         };
         this.subscriberIndex.add(id, reads);
         return id;
@@ -118,9 +148,41 @@ class Carburetor {
             delete this.subscribers[id];
         }
     }
-    watch(callback, reads) {
-        const id = this.subscribe(callback, {
-            reads: reads ? new Set(reads) : void 0
+    attachPatchListener(listener) {
+        this.patchPort.listener = listener;
+        return ()=>{
+            if (this.patchPort.listener === listener) this.patchPort.listener = void 0;
+        };
+    }
+    runSelector(select) {
+        const reads = new Set();
+        const view = this.read((path)=>reads.add(path));
+        return {
+            value: select(view),
+            reads
+        };
+    }
+    watch(select, onChange) {
+        const id = (0, getUid_js_namespaceObject.getUid)();
+        const initial = this.runSelector(select);
+        let previous = detachWatchSelection(initial.value);
+        const callback = ()=>{
+            const fresh = this.runSelector(select);
+            const changed = !(0, sameSelection_js_namespaceObject.sameSelection)(previous, fresh.value);
+            this.subscribe(callback, {
+                id,
+                reads: fresh.reads
+            });
+            if (changed) {
+                const next = detachWatchSelection(fresh.value);
+                const last = previous;
+                previous = next;
+                onChange(next, last);
+            }
+        };
+        this.subscribe(callback, {
+            id,
+            reads: initial.reads
         });
         return ()=>{
             this.unsubscribe(id);
@@ -149,10 +211,12 @@ class Carburetor {
         const data = this.data;
         this.touchDraft();
         if (!(0, isTrackable_js_namespaceObject.isTrackable)(data)) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, Paths_js_namespaceObject.PATCH_OPAQUE);
             this.recordWrite(WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return this.data;
         }
-        if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.writeRecorder, '', this.aliases);
+        if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.writeRecorder, '', this.aliases, void 0, this.patchPort);
         return this.draftProxy;
     }
     update(mutate) {
@@ -185,6 +249,8 @@ class Carburetor {
         this.writes.add(path);
     }
     markAllChanged() {
+        var _this_patchPort_listener, _this_patchPort;
+        null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, Paths_js_namespaceObject.PATCH_OPAQUE);
         this.recordWrite(WildcardPath_js_namespaceObject.WILDCARD_PATH);
     }
     preEmit() {}
@@ -195,10 +261,15 @@ class Carburetor {
         if (changed) this.writes = new Set();
         this.draftTouched = false;
         if (!changed && touched) return;
+        if (!changed) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, Paths_js_namespaceObject.PATCH_OPAQUE);
+        }
         const writes = changed || new Set([
             WildcardPath_js_namespaceObject.WILDCARD_PATH
         ]);
         this.version++;
+        this.writeLog.record(this.version, writes);
         if (UpdateBatchInstance_js_namespaceObject.updateBatch.isActive()) return void UpdateBatchInstance_js_namespaceObject.updateBatch.add(this, writes);
         this.notifyWrites(writes);
     }

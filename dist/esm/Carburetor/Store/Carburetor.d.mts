@@ -1,12 +1,12 @@
 import { IDict, TDisposer, TReadonly, TSubscriber } from "../Models/Base.mjs";
-import { TPath, TPathRecorder, TPathSet, TAliasLedger } from "../Models/Paths.mjs";
-import { ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler } from "../Models/Store.mjs";
+import { TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort, TPatchRecorder } from "../Models/Paths.mjs";
+import { ICarburetor, INotifiable, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector } from "../Models/Store.mjs";
 import { SubscriberIndex } from "./Paths/SubscriberIndex.mjs";
+import { WriteLog } from "./Paths/WriteLog.mjs";
 interface ISubscriberRecord {
     callback: TSubscriber;
-    reads: TPathSet;
 }
-export declare class Carburetor<T extends object> implements ICarburetor<T>, INotifiable {
+export declare class Carburetor<T extends object> implements ICarburetor<T>, INotifiable, IPatchSource {
     protected data: T;
     protected scheduler: IUpdateScheduler;
     /** The subscriber records the index points at: delivery schedules the callback it finds here. */
@@ -15,12 +15,16 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     protected subscriberIndex: SubscriberIndex;
     /** Development alias ledger handed to both proxies; undefined outside development. */
     protected aliases: TAliasLedger;
+    /** The currently attached patch listener, if any; shared with the write proxy tree (R16-07). */
+    protected patchPort: TPatchPort;
     /** The store's identity, minted once at construction. */
     protected uid: string;
     /** The counter getVersion() returns; bumped by every emitUpdate. */
     protected version: number;
     /** Paths changed since the last emitUpdate. */
     protected writes: TPathSet;
+    /** Which paths recent emits touched, bounded and watermarked; feeds the commit drift check (R16-05). */
+    protected writeLog: WriteLog;
     /** Whether draft was touched: it tells an empty write set from "nothing changed". */
     protected draftTouched: boolean;
     /** An emit already scheduled for a later microtask, so the dev check stays quiet. */
@@ -52,19 +56,62 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
      * between, which would otherwise leave it subscribed to stale paths.
      */
     getVersion(): number;
+    /**
+     * The path-precise form of the drift check above: whether a write since `baselineVersion`
+     * could concern `reads`, per the write log.
+     *
+     * Falls back to `true` once the log cannot answer for that baseline — see
+     * `WriteLog.matches`. Optional on the subscription surface so a source with no such log (a
+     * computed) keeps today's coarse "the version moved" behaviour.
+     *
+     * @param baselineVersion - the version a render's read set was captured at
+     * @param reads - the paths that read set touched
+     */
+    hasDriftSince(baselineVersion: number, reads: ReadonlySet<TPath>): boolean;
     /** The state as it is, untracked: reads through it subscribe to nothing. */
     getData(): T;
     /** The state behind a read proxy that reports every path the caller touches. */
     read(record: TPathRecorder): TReadonly<T>;
-    /** Replaces the whole state and wakes everyone: no path survives a root swap. */
+    /**
+     * Replaces the whole state, keeping `getData() === data` afterwards.
+     *
+     * Wakes exactly the readers of what changed (R16-02): the previous and next roots are
+     * diffed instead of the wildcard, unless the root changed kind or is not trackable, where
+     * nothing survives a root swap and every subscriber wakes, as before.
+     *
+     * A component keyed on data identity (`buildTrackedView`, the `connect()` facade, the
+     * interop root view) rebuilds its view lazily on its next render regardless of whether it
+     * was woken — one that was not woken kept showing correct output, since none of its leaves
+     * changed.
+     */
     setData(data: T): T;
     /** A deep copy of the state, detached from further writes. */
     snapshot(): T;
-    /** Installs a snapshot as the current state, copying it so the caller keeps its own. */
+    /**
+     * Installs a snapshot as the current state, without adopting or mutating the caller's copy.
+     *
+     * Applies the difference into the live tree through draft (R16-02): only the values it
+     * actually assigns are cloned, so an untouched branch keeps its old identity and only the
+     * paths that changed are announced. Falls back to a wholesale, diffed swap — see setData() —
+     * when the root itself changed kind, is not trackable, holds a differing symbol key, or the
+     * walk crosses DIFF_PATH_THRESHOLD; going through draft key by key would cost more than it
+     * saves there.
+     *
+     * @param data - the snapshot to install; read but never mutated or kept by reference.
+     */
     restore(data: T): void;
     /** The type-erased half of the snapshot bridge, for callers that do not know `T`. */
     toJSON(): unknown;
-    /** The type-erased half of `restore`; the cast is the caller's promise about the shape. */
+    /**
+     * The type-erased half of `setData`: adopts `value` directly, diffed the same way (R16-02).
+     *
+     * Unlike `restore`, which copies to protect a snapshot the caller may reuse, `value` here is
+     * expected to be freshly parsed JSON the caller does not keep, so no second copy is made
+     * (R16-09).
+     *
+     * @param value - the parsed state to install; the cast is the caller's promise about the
+     * shape, and the store keeps this exact object as `getData()`'s answer.
+     */
     fromJSON(value: unknown): void;
     /**
      * Registers a subscriber, returning the id it is cancelled and rescheduled by.
@@ -90,16 +137,31 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     /** Drops a subscriber, its index entries and any update already scheduled for it. */
     unsubscribe(id: string): void;
     /**
-     * Subscribes outside React — for persistence, logging, analytics.
+     * IPatchSource (R16-07): replaces any previously attached listener; needs no tree rebuild.
      *
-     * Copies `reads` before handing it to `subscribe()`, which otherwise adopts it as-is: a
-     * caller here may keep its reference and mutate it later, unlike the engine's own callers.
-     *
-     * @param callback - run per matching write with no arguments; the returned disposer
-     * unsubscribes it.
-     * @param reads - the paths the callback cares about; omitted means every write.
+     * @param listener - called per describable write, or PATCH_OPAQUE otherwise.
      */
-    watch(callback: TSubscriber, reads?: TPathSet): TDisposer;
+    attachPatchListener(listener: TPatchRecorder): TDisposer;
+    /**
+     * Runs `select` against a tracked read of the data, returning both the result and the
+     * paths that produced it — the one place `watch()` reads, so its first call and every
+     * later re-run go through the identical mechanism.
+     */
+    private runSelector;
+    /**
+     * Subscribes outside React — for persistence, logging, analytics — to a derived value
+     * rather than to raw paths; see the interface doc for the fuller contract.
+     *
+     * Reads twice per matching write: once (isolated, by `notifyWrites`) to recompute
+     * `select`, and — only when the fresh result differs from the previous one — the detach
+     * that turns it into a value `onChange` and the next comparison can hold onto safely.
+     * Re-registering the read set on every invocation, changed or not, is what keeps a
+     * conditional selector's subscription following whichever branch it read last.
+     *
+     * @param select - reads the part of the data this subscription cares about
+     * @param onChange - called with the fresh and previous selection when they differ
+     */
+    watch<R>(select: TSelector<T, R>, onChange: (next: R, previous: R) => void): TDisposer;
     /** Called by the batch coordinator when a transaction closes. */
     notifyWrites(writes: TPathSet): void;
     /**

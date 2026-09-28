@@ -119,13 +119,18 @@ belong to the carburetor, through `update`:
 
 ```ts
 export class TodoCarburetor extends Carburetor<ITodoList> {
-    public updateTodo = (todo: ITodo) => {
+    public renameTodo = (id: string, title: string) => {
         this.update((draft) => {
-            draft.items[todo.id] = todo;   // records the changed path: items.<id>
+            draft.items[id].title = title;   // records the changed path: items.<id>.title
         });
     };
 }
 ```
+
+Write the fields that change, or `Object.assign(draft.items[id], patch)`: the no-op check skips
+fields that already hold the value, so only real changes are recorded. Replacing a whole object
+(`draft.items[id] = next`) is precise too — it is diffed against the object it replaces and
+records only the fields that differ — but pays a walk over the replaced object to find them.
 
 `update` mutates through `draft` and publishes in one step. You can also write to `this.draft`
 directly and call `this.emitUpdate()` yourself, but forgetting the second half changes the data
@@ -229,19 +234,19 @@ select plain values — primitives, or plain objects and arrays built from them.
 `emitUpdate` compares the written paths against every subscriber's read paths. A write
 touches a read when the paths are equal or one is nested in the other:
 
-| read path            | write `items.a1` | write `items.a2` | write `orderIds` |
-|----------------------|------------------|------------------|------------------|
-| `items.a1.title`     | wakes            | —                | —                |
-| `items` (enumerated) | wakes            | wakes            | —                |
-| `orderIds.0`         | —                | —                | wakes            |
+| read path            | write `items.a1.title` | add or delete `items.a3` | write `orderIds` |
+|----------------------|------------------------|--------------------------|------------------|
+| `items.a1.title`     | wakes                  | —                        | —                |
+| `items` (enumerated) | —                      | wakes                    | —                |
+| `orderIds.0`         | —                      | —                        | wakes            |
 
 Two properties keep this honest:
 
 - **Traversal is not a read.** Reaching into `data.items` on the way to `items.a1.title`
-  subscribes you to the leaf, not to the whole container. Enumerating (`Object.keys`) *does*
-  subscribe to the structure, because that genuinely reads it; probing (`'a1' in items`)
-  subscribes to that key's presence — woken when it is added, replaced or removed, not by edits
-  inside it. That is also what `items.map(...)` does per index, so a parent laying out rows is
+  subscribes you to the leaf, not to the whole container. Enumerating (`Object.keys`,
+  `Object.values`, `for…in`, spread) subscribes to the key set — woken when a key is added or
+  removed, not by an edit under a key it listed; probing (`'a1' in items`) subscribes to that
+  key's presence — woken when it is added or removed, not by edits inside it. That is also what `items.map(...)` does per index, so a parent laying out rows is
   not re-rendered by an edit inside one. Inherited members (`map`, `Symbol.iterator`) are not
   data and record nothing, so `for…of` and spread track only the elements they visit.
 - **Array writes are per index.** `push` wakes readers of `length` and the new index, not the
@@ -249,6 +254,13 @@ Two properties keep this honest:
   it moved.
 - **Writing the same value wakes nobody.** Recomputing a counter that ends up unchanged, or
   re-sorting an already sorted array, invalidates nothing.
+- **Replacements are diffed.** Replacing an object or array with another of the same kind —
+  through `draft`, `setData`, `restore`, `fromJSON`, or an undo — records only the leaves that
+  differ, plus the key set where keys were added or removed. A kind change (array ↔ object, plain
+  ↔ `Map`/class instance) or a difference under a symbol key records the replaced path itself,
+  and so does a replacement that changes more than 2000 leaves. A branch that is the same object
+  on both sides is skipped without a look, so never mutate what `getData()` returns and hand it
+  back: those edits are invisible to the diff.
 
 If a write bypasses `draft` (a direct `this.data.x = y`), the changed paths are unknown, so
 the whole store is treated as changed. Coarse, but never a missed update.
@@ -587,10 +599,14 @@ no token claims is reported in development. A single store can also be seeded di
 // Redux DevTools: state inspection plus time travel back onto the carburetors.
 connectDevTools({todos: todoCarburetor, filter: filterCarburetor});
 
-// Mirror a store in a storage; loads what was stored on connect.
+// Mirror a store in a storage; loads what was stored on connect. Writes are synchronous;
+// `coalesce: true` stringifies once per microtask instead of once per write.
 persist(settingsCarburetor, {key: 'settings', storage: localStorage});
 
-// Undo/redo built on snapshots.
+// React to a selection outside React; onChange runs only when it changes.
+const stop = todoCarburetor.watch((data) => data.activeCount, (next, previous) => log(next, previous));
+
+// Undo/redo built on patches.
 const history = new CarburetorHistory(todoCarburetor, {limit: 50});
 history.undo();
 history.redo();
@@ -724,13 +740,13 @@ describes.
 | `constructor(data, scheduler?)` | Initial data and delivery policy (defaults to immediate delivery).  |
 | `getData(): T`                  | Untracked data, for code outside render.                           |
 | `read(record)`                  | Tracked, read-only plain data; every read path goes to `record`.   |
-| `setData(data)`                 | Replaces the data and invalidates everything.                      |
+| `setData(data)`                 | Replaces the data (`getData() === data` afterwards) and wakes the readers of what changed; the protected `markAllChanged()` wakes everyone. |
 | `snapshot(): T`                 | Detached deep copy, safe to serialize or keep.                     |
-| `restore(data)`                 | Replaces the data with a snapshot.                                 |
-| `toJSON()` / `fromJSON(value)`  | Type-erased bridge for devtools, persistence and hydration.        |
-| `watch(callback, reads?)`       | Subscribes outside React; returns a disposer.                      |
+| `restore(data)`                 | Installs a snapshot: applies the difference, copying only what it assigns; the caller's object is never kept. |
+| `toJSON()` / `fromJSON(value)`  | Type-erased bridge for devtools, persistence and hydration. `fromJSON` adopts `value` without copying — hand it freshly parsed JSON. |
+| `watch(select, onChange)`       | Subscribes outside React to a selection: `onChange(next, previous)` runs only when it changes. Returns a disposer. |
 | `getVersion(): number`          | Write counter.                                                     |
-| `subscribe(cb, options?)`       | Subscribes. `options.reads` narrows it to paths, `options.id` reuses a stable id so re-subscribing replaces the previous registration. |
+| `subscribe(cb, options?)`       | Subscribes to every write, for tooling. `options.id` reuses a stable id so re-subscribing replaces the previous registration; `options.reads` (with `read(record)`) is the engine's extension contract — its path strings are not a stable user-facing API. |
 | `unsubscribe(id)`               | Removes the subscription and cancels a pending update.             |
 | `update(mutate)` *(protected)*  | Mutates through `draft` and publishes — the recommended write form. |
 | `draft: T` *(protected)*        | Write proxy that records changed paths.                            |
@@ -769,7 +785,7 @@ Members are prototype methods — here and on `ComponentUpdateThrottle`, `Carbur
 | `diagnostics`, `Diagnostics`                  | The development-only warning switch.         |
 | `EResourceStatus`, `EDevToolsAction`, `EDevToolsMessageType` | Enums for the resource status and the DevTools protocol. |
 | `getInitialResourceData`, `CarburetorContext` | The initial resource state and the context a scope is provided through. |
-| `deepClone`, `shallowEqual`, `WILDCARD_PATH`  | Building blocks, exported for extensions.    |
+| `deepClone`, `shallowEqual`                   | Building blocks, exported for extensions.    |
 
 Internals — the tracking proxies, the proxy cache, path string plumbing, the update scheduler
 and the batch coordinator — are deliberately not exported: they are implementation details, and
@@ -793,14 +809,19 @@ a test pins the exported surface so one does not slip in by accident.
   `void`-returning signature and publishes at the first `await`, leaving everything written
   afterwards unpublished — development warns about it. Do the async work first, then write.
 - Render stays pure — nothing subscribes during render — but a write that lands between
-  render and commit is only detected afterwards, by comparing the carburetor version, and
-  corrected with an extra render. There is no consistency guarantee *within* a single
+  render and commit is only detected afterwards and corrected with an extra render. The check
+  compares the store's recent writes with the paths the render read, so a write elsewhere in the
+  store costs nothing; once the store has indexed more than 8192 distinct written paths since the render, or a write the store
+  cannot name (`markAllChanged`, a write that bypassed `draft`) landed there, it falls back to
+  re-rendering. There is no consistency guarantee *within* a single
   concurrent render pass; don't write to stores from render.
 - The props gate means a component that relied on its parent re-rendering to pick up data it
   never read will stop updating. Read what you render, through `useCarburetor`.
-- Undo/redo costs one deep copy of the state per change — the floor for snapshot-based history,
-  since the previous state has to be captured while it still exists. On a large store written
-  on every keystroke that is measurable: narrow what history observes, or keep the limit low.
+- Undo/redo records the patches behind each change — O(changed values), not O(state). A change
+  the write proxy cannot describe (`setData`, `markAllChanged`, a symbol key, a write that bypassed
+  `draft`) falls back to a full copy of the state either side of it. Undo and redo install
+  through `restore`, so they wake only the readers of what they change. `CarburetorHistory` needs a
+  `Carburetor` (anything implementing `attachPatchListener`), not just an `ICarburetor`.
 - Overriding a lifecycle method without calling `super` silently disables effects, subscription
   cleanup or the props gate. Override `useEffects` / `unUseEffects` instead.
 

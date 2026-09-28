@@ -30,11 +30,16 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     createWriteProxy: ()=>createWriteProxy
 });
+const Paths_js_namespaceObject = require("../../Models/Paths.js");
+const diffPaths_js_namespaceObject = require("../Paths/Diff/diffPaths.js");
 const joinPath_js_namespaceObject = require("../Paths/joinPath.js");
+const KeysMarker_js_namespaceObject = require("../Paths/Markers/KeysMarker.js");
 const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
+const deepClone_js_namespaceObject = require("../Utils/deepClone.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
 const external_Models_js_namespaceObject = require("./Models.js");
 const external_isTrackable_js_namespaceObject = require("./isTrackable.js");
+const patchValue = (value)=>(0, external_isTrackable_js_namespaceObject.isTrackable)(value) ? (0, deepClone_js_namespaceObject.deepClone)(value) : value;
 const proxyTargets = new WeakMap();
 const unwrapWriteProxy = (value)=>{
     if (null === value || 'object' != typeof value) return value;
@@ -47,14 +52,22 @@ class WriteProxyHandler {
     aliases;
     cache;
     isArray;
-    constructor(basePath, record, aliases, cache, isArray){
+    patchPort;
+    basePathSegments;
+    constructor(basePath, record, aliases, cache, isArray, patchPort, basePathSegments){
         this.basePath = basePath;
         this.record = record;
         this.aliases = aliases;
         this.cache = cache;
         this.isArray = isArray;
+        this.patchPort = patchPort;
+        this.basePathSegments = basePathSegments;
     }
     childPaths;
+    keysMarkerPath;
+    keysMarker() {
+        return this.keysMarkerPath ?? (this.keysMarkerPath = (0, KeysMarker_js_namespaceObject.keysPath)(this.basePath));
+    }
     writtenPath(key) {
         if ('symbol' == typeof key || this.basePath === WildcardPath_js_namespaceObject.WILDCARD_PATH) return WildcardPath_js_namespaceObject.WILDCARD_PATH;
         const memo = this.childPaths ?? (this.childPaths = new Map());
@@ -65,10 +78,24 @@ class WriteProxyHandler {
         }
         return path;
     }
-    wrap(path, source) {
+    reportPatch(listener, key, previous, next) {
+        listener({
+            segments: [
+                ...this.basePathSegments,
+                key
+            ],
+            previous: patchValue(previous),
+            next: patchValue(next)
+        });
+    }
+    wrap(path, key, source) {
         const cached = this.cache.get(path, source);
         if (void 0 !== cached) return cached;
-        const proxy = createWriteProxy(source, this.record, path, this.aliases, this.cache);
+        const segments = 'string' == typeof key ? [
+            ...this.basePathSegments,
+            key
+        ] : this.basePathSegments;
+        const proxy = createWriteProxy(source, this.record, path, this.aliases, this.cache, this.patchPort, segments);
         this.cache.set(path, source, proxy);
         return proxy;
     }
@@ -76,46 +103,87 @@ class WriteProxyHandler {
         if (key === external_Models_js_namespaceObject.PROXY_CACHE) return this.cache;
         const value = Reflect.get(source, key);
         if ('function' == typeof value) return value;
-        if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return this.wrap(this.writtenPath(key), value);
-        if (null !== value && 'object' == typeof value) this.record(this.writtenPath(key));
+        if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return this.wrap(this.writtenPath(key), key, value);
+        if (null !== value && 'object' == typeof value) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort = this.patchPort) || null == (_this_patchPort_listener = _this_patchPort.listener) || _this_patchPort_listener.call(_this_patchPort, Paths_js_namespaceObject.PATCH_OPAQUE);
+            this.record(this.writtenPath(key));
+        }
         return value;
     }
     set(source, key, value) {
-        var _this_aliases, _this_aliases1;
+        var _this_aliases, _this_aliases1, _this_patchPort;
         const previous = Reflect.get(source, key);
         const raw = unwrapWriteProxy(value);
-        if (Object.prototype.hasOwnProperty.call(source, key) && Object.is(previous, raw)) return true;
+        const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
+        if (wasOwn && Object.is(previous, raw)) return true;
         null == (_this_aliases = this.aliases) || _this_aliases.checkWrite(source, this.basePath);
         null == (_this_aliases1 = this.aliases) || _this_aliases1.forget(previous);
-        if (this.isArray && 'length' === key && 'number' == typeof raw && 'number' == typeof previous && raw < previous) for(let removed = raw; removed < previous; removed++)this.record((0, joinPath_js_namespaceObject.joinPath)(this.basePath, String(removed)));
-        const previousLength = this.isArray && 'string' == typeof key && 'length' !== key ? source.length : void 0;
+        const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
         const path = this.writtenPath(key);
-        this.record(path);
+        if (listener && path === WildcardPath_js_namespaceObject.WILDCARD_PATH) listener(Paths_js_namespaceObject.PATCH_OPAQUE);
+        if (!wasOwn && 'string' == typeof key && this.basePath !== WildcardPath_js_namespaceObject.WILDCARD_PATH) this.record(this.keysMarker());
+        if (this.isArray && 'length' === key && 'number' == typeof raw && 'number' == typeof previous && raw < previous) {
+            for(let removed = raw; removed < previous; removed++){
+                const removedKey = String(removed);
+                const removedPath = (0, joinPath_js_namespaceObject.joinPath)(this.basePath, removedKey);
+                if (listener) this.reportPatch(listener, removedKey, Reflect.get(source, removedKey), Paths_js_namespaceObject.PATCH_ABSENT);
+                this.record(removedPath);
+            }
+            if (this.basePath !== WildcardPath_js_namespaceObject.WILDCARD_PATH) this.record(this.keysMarker());
+        }
+        const previousLength = this.isArray && 'string' == typeof key && 'length' !== key ? source.length : void 0;
+        if (wasOwn && (0, external_isTrackable_js_namespaceObject.isTrackable)(previous) && (0, external_isTrackable_js_namespaceObject.isTrackable)(raw) && Array.isArray(previous) === Array.isArray(raw)) {
+            const onPatch = listener && path !== WildcardPath_js_namespaceObject.WILDCARD_PATH ? listener : void 0;
+            const segments = onPatch ? [
+                ...this.basePathSegments,
+                key
+            ] : [];
+            (0, diffPaths_js_namespaceObject.diffPaths)(previous, raw, path, segments, onPatch).forEach((changed)=>this.record(changed));
+        } else {
+            if (listener && path !== WildcardPath_js_namespaceObject.WILDCARD_PATH) this.reportPatch(listener, key, wasOwn ? previous : Paths_js_namespaceObject.PATCH_ABSENT, raw);
+            this.record(path);
+        }
         const wrote = Reflect.set(source, key, raw);
-        if (void 0 !== previousLength && source.length !== previousLength) this.record(this.writtenPath('length'));
+        if (void 0 !== previousLength && source.length !== previousLength) {
+            const newLength = source.length;
+            if (listener) this.reportPatch(listener, 'length', previousLength, newLength);
+            this.record(this.writtenPath('length'));
+        }
         return wrote;
     }
     defineProperty(source, key, descriptor) {
-        var _this_aliases, _this_aliases1;
+        var _this_aliases, _this_aliases1, _this_patchPort;
+        const previous = Reflect.get(source, key);
+        const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
         null == (_this_aliases = this.aliases) || _this_aliases.checkWrite(source, this.basePath);
-        null == (_this_aliases1 = this.aliases) || _this_aliases1.forget(Reflect.get(source, key));
+        null == (_this_aliases1 = this.aliases) || _this_aliases1.forget(previous);
+        if (!wasOwn && 'string' == typeof key && this.basePath !== WildcardPath_js_namespaceObject.WILDCARD_PATH) this.record(this.keysMarker());
         const path = this.writtenPath(key);
+        const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
+        if (listener) if (path === WildcardPath_js_namespaceObject.WILDCARD_PATH) listener(Paths_js_namespaceObject.PATCH_OPAQUE);
+        else this.reportPatch(listener, key, wasOwn ? previous : Paths_js_namespaceObject.PATCH_ABSENT, descriptor.value);
         this.record(path);
         return Reflect.defineProperty(source, key, descriptor);
     }
     deleteProperty(source, key) {
-        var _this_aliases, _this_aliases1;
+        var _this_aliases, _this_aliases1, _this_patchPort;
         if (!Reflect.has(source, key)) return true;
+        const previous = Reflect.get(source, key);
         null == (_this_aliases = this.aliases) || _this_aliases.checkWrite(source, this.basePath);
-        null == (_this_aliases1 = this.aliases) || _this_aliases1.forget(Reflect.get(source, key));
+        null == (_this_aliases1 = this.aliases) || _this_aliases1.forget(previous);
+        if ('string' == typeof key && this.basePath !== WildcardPath_js_namespaceObject.WILDCARD_PATH) this.record(this.keysMarker());
         const path = this.writtenPath(key);
+        const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
+        if (listener) if (path === WildcardPath_js_namespaceObject.WILDCARD_PATH) listener(Paths_js_namespaceObject.PATCH_OPAQUE);
+        else this.reportPatch(listener, key, previous, Paths_js_namespaceObject.PATCH_ABSENT);
         this.record(path);
         return Reflect.deleteProperty(source, key);
     }
 }
-const createWriteProxy = (target, record, basePath = '', aliases, cache)=>{
+const createWriteProxy = (target, record, basePath = '', aliases, cache, patchPort, basePathSegments = [])=>{
     const cached = cache ?? (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
-    const handler = new WriteProxyHandler(basePath, record, aliases, cached, Array.isArray(target));
+    const handler = new WriteProxyHandler(basePath, record, aliases, cached, Array.isArray(target), patchPort, basePathSegments);
     const proxy = new Proxy(target, handler);
     proxyTargets.set(proxy, target);
     return proxy;

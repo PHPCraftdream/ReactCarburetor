@@ -33,13 +33,15 @@ __webpack_require__.d(__webpack_exports__, {
 const external_ConnectionFacadeHandler_js_namespaceObject = require("./ConnectionFacadeHandler.js");
 const DevelopmentFlag_js_namespaceObject = require("../../Store/Utils/DevelopmentFlag.js");
 const liveViews_js_namespaceObject = require("../../Store/Tracking/liveViews.js");
+const SHARED_OBJECT_TARGET = {};
+const SHARED_ARRAY_TARGET = [];
 const buildPersistentView = (source)=>{
     try {
         source.arrayFacade = Array.isArray(source.getCarburetor().getData());
     } catch (error) {
         source.probeError = error;
     }
-    const facade = new Proxy(source.arrayFacade ? [] : {}, new external_ConnectionFacadeHandler_js_namespaceObject.ConnectionFacadeHandler(source));
+    const facade = new Proxy(source.arrayFacade ? SHARED_ARRAY_TARGET : SHARED_OBJECT_TARGET, new external_ConnectionFacadeHandler_js_namespaceObject.ConnectionFacadeHandler(source));
     if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) liveViews_js_namespaceObject.liveViews.note(facade);
     return facade;
 };

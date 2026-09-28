@@ -78,9 +78,8 @@ class AntiHookComponentReads extends external_Foundation_js_namespaceObject.Anti
         return computed.get();
     }
     useResource(source, args) {
-        const key = source.keyOf(args);
-        this.track(source).reads.add(source.pathOfKey(key));
-        const view = source.getEntryByKey(key);
+        const { path, view } = source.resolve(args);
+        this.track(source).reads.add(path);
         const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus_js_namespaceObject.EResourceStatus.Error && !view.failed;
         const attempt = this.renderAttempt;
         if (worthFetching) {
@@ -89,7 +88,7 @@ class AntiHookComponentReads extends external_Foundation_js_namespaceObject.Anti
                 attempt.deferredLoads.push(()=>{
                     source.load(args);
                 });
-            } else if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) DiagnosticsInstance_js_namespaceObject.diagnostics.report('useResource() skipped the deferred load for entry ' + source.pathOfKey(key) + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
+            } else if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) DiagnosticsInstance_js_namespaceObject.diagnostics.report('useResource() skipped the deferred load for entry ' + path + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
         }
         return view;
     }

@@ -1,5 +1,13 @@
+import { PATCH_OPAQUE } from "../Models/Paths.mjs";
+import { sameSelection } from "../Component/Connection/sameSelection.mjs";
 import { deepClone } from "./Utils/deepClone.mjs";
+import { applyDiff } from "./Paths/Diff/applyDiff.mjs";
+import { diffPaths } from "./Paths/Diff/diffPaths.mjs";
+import { hasSymbolDifference } from "./Paths/Diff/hasSymbolDifference.mjs";
+import { sameKind } from "./Paths/Diff/sameKind.mjs";
+import { detachOpaque } from "./Utils/detachOpaque.mjs";
 import { SubscriberIndex } from "./Paths/SubscriberIndex.mjs";
+import { WriteLog } from "./Paths/WriteLog.mjs";
 import { WILDCARD_PATH } from "./Paths/WildcardPath.mjs";
 import { syncUpdateScheduler } from "./Scheduling/SyncUpdateSchedulerInstance.mjs";
 import { updateWave } from "./Scheduling/UpdateWaveInstance.mjs";
@@ -10,15 +18,24 @@ import { isTrackable } from "./Tracking/isTrackable.mjs";
 import { updateBatch } from "./Transaction/UpdateBatchInstance.mjs";
 import { getUid } from "./Utils/getUid.mjs";
 import { diagnostics } from "./Diagnostics/DiagnosticsInstance.mjs";
+const detachWatchSelection = (value)=>{
+    if (null === value || 'object' != typeof value) return value;
+    return detachOpaque(value, (instance)=>{
+        var _Object_getPrototypeOf_constructor, _Object_getPrototypeOf;
+        throw new Error('watch() cannot select a live ' + ((null == (_Object_getPrototypeOf = Object.getPrototypeOf(instance)) ? void 0 : null == (_Object_getPrototypeOf_constructor = _Object_getPrototypeOf.constructor) ? void 0 : _Object_getPrototypeOf_constructor.name) || 'class') + " instance because in-place changes cannot produce a safe comparison. Select the fields the callback needs, or return a plain object of those fields.");
+    });
+};
 class Carburetor {
     data;
     scheduler;
     subscribers = {};
     subscriberIndex = new SubscriberIndex();
     aliases = createAliasLedger();
+    patchPort = {};
     uid = getUid();
     version = 0;
     writes = new Set();
+    writeLog = new WriteLog();
     draftTouched = false;
     pendingEmit = false;
     draftProxy = void 0;
@@ -33,6 +50,9 @@ class Carburetor {
     getVersion() {
         return this.version;
     }
+    hasDriftSince(baselineVersion, reads) {
+        return this.writeLog.matches(baselineVersion, reads);
+    }
     getData() {
         return this.data;
     }
@@ -45,9 +65,16 @@ class Carburetor {
         return createReadProxy(data, record, '', this.aliases);
     }
     setData(data) {
+        const previous = this.data;
         this.data = data;
         this.draftProxy = void 0;
-        this.writes.add(WILDCARD_PATH);
+        this.touchDraft();
+        const changed = diffPaths(previous, data);
+        if (changed.size > 0) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, PATCH_OPAQUE);
+            changed.forEach((path)=>this.recordWrite(path));
+        }
         this.emitUpdate();
         return data;
     }
@@ -55,13 +82,17 @@ class Carburetor {
         return deepClone(this.data);
     }
     restore(data) {
-        this.setData(deepClone(data));
+        const current = this.data;
+        if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data) || hasSymbolDifference(current, data)) return void this.setData(deepClone(data));
+        const applied = applyDiff(this.draft, current, data);
+        if (!applied) return void this.setData(deepClone(data));
+        this.emitUpdate();
     }
     toJSON() {
         return this.snapshot();
     }
     fromJSON(value) {
-        this.restore(value);
+        this.setData(value);
     }
     subscribe(callback, options = {}) {
         const id = options.id || getUid();
@@ -69,8 +100,7 @@ class Carburetor {
             WILDCARD_PATH
         ]);
         this.subscribers[id] = {
-            callback,
-            reads
+            callback
         };
         this.subscriberIndex.add(id, reads);
         return id;
@@ -86,9 +116,41 @@ class Carburetor {
             delete this.subscribers[id];
         }
     }
-    watch(callback, reads) {
-        const id = this.subscribe(callback, {
-            reads: reads ? new Set(reads) : void 0
+    attachPatchListener(listener) {
+        this.patchPort.listener = listener;
+        return ()=>{
+            if (this.patchPort.listener === listener) this.patchPort.listener = void 0;
+        };
+    }
+    runSelector(select) {
+        const reads = new Set();
+        const view = this.read((path)=>reads.add(path));
+        return {
+            value: select(view),
+            reads
+        };
+    }
+    watch(select, onChange) {
+        const id = getUid();
+        const initial = this.runSelector(select);
+        let previous = detachWatchSelection(initial.value);
+        const callback = ()=>{
+            const fresh = this.runSelector(select);
+            const changed = !sameSelection(previous, fresh.value);
+            this.subscribe(callback, {
+                id,
+                reads: fresh.reads
+            });
+            if (changed) {
+                const next = detachWatchSelection(fresh.value);
+                const last = previous;
+                previous = next;
+                onChange(next, last);
+            }
+        };
+        this.subscribe(callback, {
+            id,
+            reads: initial.reads
         });
         return ()=>{
             this.unsubscribe(id);
@@ -117,10 +179,12 @@ class Carburetor {
         const data = this.data;
         this.touchDraft();
         if (!isTrackable(data)) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, PATCH_OPAQUE);
             this.recordWrite(WILDCARD_PATH);
             return this.data;
         }
-        if (!this.draftProxy) this.draftProxy = createWriteProxy(data, this.writeRecorder, '', this.aliases);
+        if (!this.draftProxy) this.draftProxy = createWriteProxy(data, this.writeRecorder, '', this.aliases, void 0, this.patchPort);
         return this.draftProxy;
     }
     update(mutate) {
@@ -153,6 +217,8 @@ class Carburetor {
         this.writes.add(path);
     }
     markAllChanged() {
+        var _this_patchPort_listener, _this_patchPort;
+        null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, PATCH_OPAQUE);
         this.recordWrite(WILDCARD_PATH);
     }
     preEmit() {}
@@ -163,10 +229,15 @@ class Carburetor {
         if (changed) this.writes = new Set();
         this.draftTouched = false;
         if (!changed && touched) return;
+        if (!changed) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, PATCH_OPAQUE);
+        }
         const writes = changed || new Set([
             WILDCARD_PATH
         ]);
         this.version++;
+        this.writeLog.record(this.version, writes);
         if (updateBatch.isActive()) return void updateBatch.add(this, writes);
         this.notifyWrites(writes);
     }

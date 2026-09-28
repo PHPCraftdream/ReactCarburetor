@@ -1,4 +1,4 @@
-import { IResourceCacheOptions, IResourceView, TResourceLoader } from "../../Models/Resource.js";
+import { IResourceCacheOptions, IResourceResolution, IResourceSource, IResourceView, TResourceLoader } from "../../Models/Resource.js";
 import { TPath } from "../../Models/Paths.js";
 import { ResourceCacheLifecycle } from "./ResourceCacheLifecycle.js";
 /**
@@ -13,7 +13,7 @@ import { ResourceCacheLifecycle } from "./ResourceCacheLifecycle.js";
  * precision for free: a component reading one entry is not woken by another entry's answer. See
  * docs/promise-cache.md for the decisions behind the shape, the escaped key and the TTL.
  */
-export declare class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TArgs> {
+export declare class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TArgs> implements IResourceSource<T, TArgs> {
     /** Most recently keyed arguments. */
     protected lastKeyArgs: TArgs | undefined;
     /** Serialized value of the most recently keyed arguments. */
@@ -58,6 +58,24 @@ export declare class ResourceCache<T, TArgs = void> extends ResourceCacheLifecyc
      * @param key - the resolved cache key
      */
     getEntryByKey(key: string): IResourceView<T>;
+    /**
+     * Hydration goes through restore(), not the base fromJSON's adopt-and-diff shortcut: only
+     * restore() clears in-flight requests and normalizes a restored Pending status.
+     *
+     * @param value - the serialized snapshot; the cast is the caller's promise about the shape
+     */
+    fromJSON(value: unknown): void;
+    /**
+     * Resolves one argument set to its key, read path and current view in one call — the
+     * `IResourceSource` contract `useResource` needs (R16-10(4)), replacing the keyOf/pathOfKey/
+     * getEntryByKey trio it used to call separately.
+     *
+     * Serializes `args` exactly once: `keyOf` is called a single time here, instead of once per
+     * member of the old trio.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    resolve(args: TArgs): IResourceResolution<T>;
     /**
      * The raw rejection for one entry, which `error` can only describe.
      *

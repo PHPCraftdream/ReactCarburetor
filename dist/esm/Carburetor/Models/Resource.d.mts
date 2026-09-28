@@ -1,5 +1,4 @@
 import { IDict } from "./Base.mjs";
-import { TPath } from "./Paths.mjs";
 import { ICarburetorSubscription, IUpdateScheduler } from "./Store.mjs";
 import { EResourceStatus } from "./Enums/EResourceStatus.mjs";
 export interface IResourceData<T> {
@@ -72,20 +71,28 @@ export interface IResourceCacheOptions {
     scheduler?: IUpdateScheduler;
 }
 /**
+ * One argument set resolved to everything a reader needs: the cache key, the path to subscribe
+ * to, and the entry's current view. One call, one serialization of `args` (R16-10(4)) — the six
+ * member split this replaced existed only so a caller already holding the key (`pathOfKey`,
+ * `getEntryByKey`) would not re-serialize `args` to get it, which `resolve` no longer requires
+ * anyone to do.
+ */
+export interface IResourceResolution<T> {
+    /** The cache key this argument set resolved to. */
+    key: string;
+    /** The path a reader should subscribe to for this entry and nothing else. */
+    path: string;
+    /** The entry's current view, with the freshness verdict computed at resolve time. */
+    view: IResourceView<T>;
+}
+/**
  * What a component needs from a cache, and nothing more.
  *
  * Declared as an interface so `AntiHookComponent` can read a cache without importing one: the
  * component layer depends on this shape, the cache implements it, and neither imports the other.
  */
 export interface IResourceSource<T, TArgs> extends ICarburetorSubscription {
-    /** The cache key for one argument set; memoized while reference and JSON stay unchanged. */
-    keyOf(args: TArgs): string;
-    /** The read path for one entry, so a component subscribes to that entry and nothing else. */
-    pathOf(args: TArgs): TPath;
-    getEntry(args: TArgs): IResourceView<T>;
-    /** Same as `pathOf`, for a caller already holding the key — args are not re-serialized. */
-    pathOfKey(key: string): TPath;
-    /** Same as `getEntry`, for a caller already holding the key — args are not re-serialized. */
-    getEntryByKey(key: string): IResourceView<T>;
+    /** Resolves one argument set to its key, read path and current view — see `IResourceResolution`. */
+    resolve(args: TArgs): IResourceResolution<T>;
     load(args: TArgs): Promise<void>;
 }

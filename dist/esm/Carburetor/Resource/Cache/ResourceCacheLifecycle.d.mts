@@ -1,5 +1,8 @@
 import { IResourceCacheData, IResourceCacheOptions, IResourceEntry, IResourceView, TResourceLoader } from "../../Models/Resource.mjs";
+import { TSubscriber } from "../../Models/Base.mjs";
+import { ISubscribeOptions } from "../../Models/Store.mjs";
 import { Carburetor } from "../../Store/Carburetor.mjs";
+import { EvictionLedger } from "./EvictionLedger.mjs";
 /** Owns cache entry lifecycles, request state and eviction. */
 export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
     protected loader: TResourceLoader<T, TArgs>;
@@ -15,12 +18,10 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
     protected controllers: Map<string, AbortController>;
     /** Raw request failures by cache key. */
     protected failures: Map<string, unknown>;
-    /** Last access ticks used for eviction order. */
-    protected lastUsed: Map<string, number>;
-    /** Monotonic counter for access order. */
-    protected useTick: number;
     /** Stable views for unchanged entries. */
     protected viewCache: Map<string, IResourceView<T>>;
+    /** Entry count, LRU order and eviction hysteresis — see EvictionLedger. */
+    protected eviction: EvictionLedger;
     /**
      * Resolve arguments to an entry key.
      *
@@ -39,12 +40,23 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
      * @param data - the snapshot to restore
      */
     restore(data: IResourceCacheData<T>): void;
-    /**
-     * Record an entry access for eviction order.
+    /** Record an entry access for eviction order — see `EvictionLedger.touch`.
      *
      * @param key - the entry accessed
      */
     protected touch(key: string): void;
+    /** Registers a subscriber; a reused id with a changed read set may free a candidate
+     * `evict()` could not see, so its "nothing to do" memory is dropped rather than trusted.
+     *
+     * @param callback - see `Carburetor.subscribe`
+     * @param options - see `Carburetor.subscribe`
+     */
+    subscribe(callback: TSubscriber, options?: ISubscribeOptions): string;
+    /** Drops a subscriber — a departing reader may free the one entry `evict()` was waiting on.
+     *
+     * @param id - see `Carburetor.unsubscribe`
+     */
+    unsubscribe(id: string): void;
     /**
      * Load an entry unless its current value is fresh.
      *
@@ -101,11 +113,18 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
      */
     protected isViewCurrent(view: IResourceView<T>, entry: IResourceEntry<T>, stale: boolean): boolean;
     /**
-     * Evict the least recently used unretained entries.
+     * Evict the least recently used unretained entries — see `EvictionLedger` for why this is
+     * safe to call on every fetch and every answer without an `Object.keys` count, a filter or
+     * a sort over the whole live entry set.
      *
      * @param deferNotification - whether to publish the removal on a microtask instead of now
      */
     protected evict(deferNotification?: boolean): void;
+    /** Whether a key has neither an in-flight request nor a reader right now.
+     *
+     * @param key - the entry to check
+     */
+    protected isRetentionFree(key: string): boolean;
     /**
      * Abort an entry by its resolved key.
      *

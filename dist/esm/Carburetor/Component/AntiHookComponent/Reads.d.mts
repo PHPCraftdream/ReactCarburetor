@@ -136,7 +136,7 @@ export declare abstract class AntiHookComponentReads<P = {}, S = {}> extends Ant
      * re-queueing the same failing request from the failure's own notification; only a successful
      * answer, an explicit `refresh`/`load`, or a new `invalidate` re-arms a fetch.
      *
-     * @param source - the cache entry's owner: `pathOf(args)` gives the path this render
+     * @param source - the cache entry's owner: `resolve(args)` gives the path this render
      * subscribes to, and a stale entry queues a `load` for after the commit
      * @param args - the cache key, identifying the entry read now and targeted by the deferred
      * `load`; a different value reads a different entry

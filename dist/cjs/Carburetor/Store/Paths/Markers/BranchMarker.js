@@ -28,19 +28,14 @@ var __webpack_require__ = {};
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
-    pathsIntersect: ()=>pathsIntersect
+    branchPath: ()=>branchPath
 });
-const external_PathSeparator_js_namespaceObject = require("./PathSeparator.js");
-const external_WildcardPath_js_namespaceObject = require("./WildcardPath.js");
-const pathsTouch = (readPath, writePath)=>readPath === writePath || readPath.startsWith(writePath + external_PathSeparator_js_namespaceObject.PATH_SEPARATOR) || writePath.startsWith(readPath + external_PathSeparator_js_namespaceObject.PATH_SEPARATOR);
-const pathsIntersect = (reads, writes)=>{
-    if (reads.has(external_WildcardPath_js_namespaceObject.WILDCARD_PATH) || writes.has(external_WildcardPath_js_namespaceObject.WILDCARD_PATH)) return true;
-    for (const writePath of writes)for (const readPath of reads)if (pathsTouch(readPath, writePath)) return true;
-    return false;
-};
-exports.pathsIntersect = __webpack_exports__.pathsIntersect;
+const external_PathSeparator_js_namespaceObject = require("../PathSeparator.js");
+const BRANCH_MARKER = '~p';
+const branchPath = (path)=>path + external_PathSeparator_js_namespaceObject.PATH_SEPARATOR + BRANCH_MARKER;
+exports.branchPath = __webpack_exports__.branchPath;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
-    "pathsIntersect"
+    "branchPath"
 ].indexOf(__rspack_i)) exports[__rspack_i] = __webpack_exports__[__rspack_i];
 Object.defineProperty(exports, '__esModule', {
     value: true

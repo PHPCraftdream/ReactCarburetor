@@ -549,3 +549,73 @@ Models on the same shape:
   same data shapes, not from a patched engine.
 - R16-09's allocation items without a figure are derived from the code.
 - No engine source was changed in this round.
+
+---
+
+## Resolution (2026-09-29)
+
+Every finding was fixed on `react-compat` except the third piece of R16-08, which still waits for
+R15-10 (1). R16-10 (1) and (4) were decided by the maintainer: hide the path grammar behind a
+selector `watch`, and cut `IResourceSource` to `resolve` plus `load`. Each fix was made by an agent
+in its own worktree, then reviewed and integrated one at a time, with a commit per fix. Every
+behavioural fix comes with regression tests shown to fail against the pre-fix code.
+
+| Finding | Commit | Change |
+|---|---|---|
+| R16-01 | `e52def0` | `ownKeys` records a key-set marker (`<path>.~k`, bare `~k` at the root); the write proxy records it when a key appears (`set` on a non-own key, `defineProperty` of a new key), disappears (`deleteProperty`) or an array `length` write truncates |
+| R16-05, R16-09 (component) | `dc7eb03`, `dd23cba` | The commit checks the store's recent writes against the paths it read (same path, written ancestor, written descendant); `connect()` keeps its per-attempt source and entry on the connection, facades share one empty target, commit and unmount run plain loops. `dd23cba` re-indexed the write log by path (see below) |
+| R16-09 (store) | `ed6263a` | `SubscriberIndex` keeps one copy of each read set and matches without arrays or closures; lazy failure lists; array branch in `shallowEqual`; `sameSelection` allocates its WeakMaps at the first container; `persist(…, {coalesce: true})`; subscriber records drop an unread field; `TAliasLedger` is not exported |
+| R16-06, R16-08 (1, 2), R16-09 (Computed) | `9e4ef94` | `markStale` returns once already stale; marking iterates without a copy; delivery copies its id list only past one subscriber; a `published` flag replaces the per-path lookup; read-set equality is counted while recording |
+| R16-04 | `3394b26` | An `EvictionLedger` keeps the entry count and LRU order; eviction walks from the oldest and stops after the excess; a scan that finds too few victims is not repeated until the count doubles, a request settles or a reader leaves |
+| R16-10 (1, 4) | `1c10029` | `watch(select, onChange)`; path types and `WILDCARD_PATH` are internal, `subscribe`/`read(record)` stay as the extension contract typed with `ReadonlySet<string>`; `IResourceSource` is `resolve(args) → {key, path, view}` plus `load(args)` |
+| R16-02, R16-03, R16-09 (`fromJSON`), R16-10 (2, 3, 5) | `b443f8f` | A structural diff (plain objects and arrays, key-set marker, symbol and kind fallbacks, 2000-path threshold) behind `setData`, `restore` (applied through `draft`, copying only what it assigns), `fromJSON` (adopts its argument) and same-kind replacement in the write proxy; the demo writes fields |
+| R16-07 | `2aa36c7` | The write proxy reports patches while a listener is attached; history entries are patch lists, with a before/after snapshot only for a change the proxy cannot describe; undo and redo install through `restore` |
+
+Integration corrections:
+- **`ProxyCache` stays one entry object per branch.** The R16-09 change to two parallel `WeakMap`s
+  was dropped: in a micro-benchmark, building the cache got about 20× slower, and cache hits got no
+  faster.
+- **`Computed.deliver` keeps a snapshot past one subscriber.** The first version bounded a live
+  iteration by the starting count. A subscriber that removed one peer and added another in the same
+  pass then delivered to the newcomer too early. A regression test pins the snapshot semantics. The
+  read-set overlap count also stops once the new set outgrows the old one.
+- **The write log.** The first version preallocated a 4096-slot ring per store (~64 KB) and scanned it
+  on every commit. After R16-01 each new key logs two paths, so 4000 rows adding their own key on
+  mount overflowed the ring and fell back to 5951 renders. The scan was also O(N²) over those
+  mounts. The log is now a pair of Maps: the last version written at each path, and the last
+  version written below each ancestor. A write costs O(depth), a commit O(read paths × depth).
+  Past 8192 indexed paths the log resets and raises its watermark.
+- **Scope hydration clones** before `fromJSON`, and the resource stores override `fromJSON` to keep
+  hydrating through their `restore`: once `fromJSON` adopts its argument, both would otherwise share
+  or skip state.
+- **`resolve()` returns a fresh record.** Reusing one scratch object would alias the results of two
+  calls, and the method is public.
+
+Before and after, on the built production engine (`dist/esm-prod` rebuilt at `d8ab724` against the rebuilt
+`dist`), with the same probes as the report:
+
+| Probe | Before | After |
+|---|---|---|
+| Title edit, list parent enumerating `Object.keys(items)`, 4000 rows | 1 parent render, 5.0–13.6 ms | 0 parent renders, 0.36–0.48 ms |
+| Renders after adding `items.kNew`, root enumerator | 1 | 0 |
+| Undo of one title edit, 4000 rows | 4000 renders, 68–116 ms | 1 render, 14 ms |
+| `setData` with an identical copy, 4000 rows | 4000 renders, 33–42 ms | 0 renders |
+| Keystroke written as an object replacement, 4000 items, `visibleIds` + `activeCount` over keys | 2 recomputes, 17–28 ms | 0 recomputes, 0.29–0.37 ms |
+| 4000 `useResource` rows settling, default `maxEntries` | 8073 ms | 1622 ms |
+| Mount with a sibling writing on mount, 4000 rows | 8000 row renders | 4000 |
+| Mount where every row writes `sizes[own id]`, 4000 rows | 7999 renders | 4000 renders, 87 ms |
+| One write through a 26-node diamond ladder | 1,149,795 marks, 74–79 ms | 99 marks, 0.2 ms |
+| One title write with history, 4000 items | 2.47–5.40 ms, 50 entries retain 16.3 MB | ~0.01 ms, 0.1 MB |
+| Index bookkeeping per four-path subscriber | 549 B | 360 B |
+| `persist`, per write at 4000 items (default, synchronous) | 0.94–1.44 ms | 0.82–1.24 ms |
+
+Two probes barely moved:
+- **An observed recompute over 4000 items** takes 9.5–15 ms against 10–17 ms. The published flag
+  and the folded comparison remove a pass, but the path hashing they skipped reappears while
+  recording. The large share, a persistent proxy tree per computed, is R16-08's third piece and
+  still waits for R15-10 (1).
+- **`JSON.parse` plus `fromJSON` at 4000 items** takes 4.7–8.1 ms against 5.3–7.6 ms. The second
+  copy is gone, but the diff that makes the call wake only the changed readers walks the same tree.
+
+Not run this round: the consumer matrix (`npm run test:consumers`). Its fixture uses none of the
+changed APIs, and CI runs it on push.

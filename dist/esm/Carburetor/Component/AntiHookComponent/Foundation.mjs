@@ -7,6 +7,7 @@ const RENDER_KEY = "render";
 const RENDER_RAW = Symbol('carburetor.antiHookComponent.renderRaw');
 const RENDER_BOUNDARY = Symbol('carburetor.antiHookComponent.renderBoundary');
 const RENDER_ASSIGNED = Symbol('carburetor.antiHookComponent.renderAssigned');
+const describeUnmountFailure = (error)=>error instanceof Error ? error.message : String(error);
 class AntiHookComponentFoundation extends __rspack_external_react.Component {
     uid = getUid();
     effects = void 0;
@@ -60,10 +61,22 @@ class AntiHookComponentFoundation extends __rspack_external_react.Component {
     }
     componentWillUnmount() {
         const failures = [];
-        this.runTeardownStage("the component-wide unUseEffects callback threw while a component unmounted", ()=>this.unUseEffects(this.props), failures);
-        this.runTeardownStage('an effect cleanup threw while a component unmounted', ()=>this.releaseEffects(), failures);
-        this.runTeardownStage("releasing subscriptions threw while a component unmounted", ()=>this.releaseSubscriptions(), failures);
-        failures.forEach((failure)=>this.reportTeardownFailure(failure));
+        try {
+            this.unUseEffects(this.props);
+        } catch (error) {
+            failures.push("the component-wide unUseEffects callback threw while a component unmounted: " + describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
+        try {
+            this.releaseEffects();
+        } catch (error) {
+            failures.push('an effect cleanup threw while a component unmounted: ' + describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
+        try {
+            this.releaseSubscriptions();
+        } catch (error) {
+            failures.push("releasing subscriptions threw while a component unmounted: " + describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
+        for(let i = 0; i < failures.length; i++)this.reportTeardownFailure(failures[i]);
     }
     buildRenderBoundary(realRender) {
         return ()=>{
@@ -89,7 +102,6 @@ class AntiHookComponentFoundation extends __rspack_external_react.Component {
         const attempt = {
             tracked: void 0,
             connections: void 0,
-            sources: void 0,
             deferredLoads: void 0,
             abandoned: false
         };

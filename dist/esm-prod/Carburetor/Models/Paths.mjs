@@ -1,1 +1,1 @@
-export{};
+let r=Symbol("carburetor-patch-absent"),t=Symbol("carburetor-patch-opaque");export{r as PATCH_ABSENT,t as PATCH_OPAQUE};

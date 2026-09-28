@@ -53,6 +53,17 @@ class ResourceCache extends ResourceCacheLifecycle {
         this.viewCache.set(key, view);
         return view;
     }
+    fromJSON(value) {
+        this.restore(value);
+    }
+    resolve(args) {
+        const key = this.keyOf(args);
+        return {
+            key,
+            path: this.pathOfKey(key),
+            view: this.getEntryByKey(key)
+        };
+    }
     getFailure(args) {
         return this.failures.get(this.keyOf(args));
     }

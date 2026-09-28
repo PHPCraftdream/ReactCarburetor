@@ -9,13 +9,6 @@ class AntiHookComponentEffects extends AntiHookComponentReads {
     reportTeardownFailure(failure) {
         if ("u" > typeof process && 'production' !== process.env.NODE_ENV) diagnostics.report(failure);
     }
-    runTeardownStage(what, stage, failures) {
-        try {
-            stage();
-        } catch (error) {
-            failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
-        }
-    }
     useEffect(name, callBack, deps) {
         var _this_effects;
         const known = null == (_this_effects = this.effects) ? void 0 : _this_effects[name];

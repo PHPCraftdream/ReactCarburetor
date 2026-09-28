@@ -56,6 +56,13 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
      * @param data - the snapshot to restore
      */
     restore(data: IResourceSnapshot<T>): void;
+    /**
+     * Hydration goes through restore(), not the base fromJSON's adopt-and-diff shortcut: only
+     * restore() re-establishes the answer's key and normalizes a restored Pending status.
+     *
+     * @param value - the serialized snapshot; the cast is the caller's promise about the shape
+     */
+    fromJSON(value: unknown): void;
     /** The raw rejection value, which the serializable state cannot carry. */
     getLastError(): unknown;
     /**

@@ -1,0 +1,1 @@
+let r=(r,a)=>Array.isArray(r)===Array.isArray(a);export{r as sameKind};

@@ -28,7 +28,8 @@ Things worth looking at while clicking around:
 |---------|-------|
 | `Carburetor`: `update`, `draft`, `preEmit`, `setData` | `ToDo/Carburetors/TodoCarburetor.ts` |
 | `emitSoon` — publishing from inside another store's notification | `ToDo/Carburetors/UndoCarburetor.ts` |
-| `watch` outside React | `ToDo/Scope/createTodoScope.ts` (emit status), `index.tsx` (tab title) |
+| `watch(select, onChange)` outside React | `index.tsx` (tab title) |
+| `subscribe` for every write (tooling) | `ToDo/Scope/createTodoScope.ts` (emit status), `ToDo/Carburetors/UndoCarburetor.ts` |
 | `AntiHookComponent.connect` | `TodoItem`, `ListStatus`, `FilterBar`, `Toolbar` |
 | `useCarburetor` | `Components/Footer/EmitStatus.tsx` |
 | `connectSelection` + the props gate | `TodoApp.tsx` → `Components/Header/StatsSummary.tsx` |
@@ -45,7 +46,7 @@ Things worth looking at while clicking around:
 | `connectDevTools`, `diagnostics` | `index.tsx`, development only |
 | `useCarburetorValue`, `useComputedValue` (hooks interop) | `Components/Header/ProgressBadge.tsx` |
 | `waitForUpdate` | `__tests__/Demo/ToolingFeatures.test.tsx` |
-| `deepClone`, `EResourceStatus`, `WILDCARD_PATH` | `TodoCarburetor.ts`, `ListStatus.tsx`, `createTodoScope.ts` |
+| `deepClone`, `EResourceStatus` | `TodoCarburetor.ts`, `ListStatus.tsx` |
 
 Not shown on purpose: `suspend()` (the demo keeps explicit loading states instead of Suspense
 boundaries) and `CarburetorScope.dehydrate()`/`hydrate()`, which only make sense with server

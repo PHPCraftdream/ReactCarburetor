@@ -10,9 +10,16 @@ import { ICarburetorSubscription, ISubscribeOptions } from "../Models/Store.js";
 interface IDependencySource extends ICarburetorSubscription {
     extend?: (id: string, path: TPath) => void;
 }
+/** One source's read set for one recompute cycle, plus attachDependencies' own bookkeeping. */
 interface IDependency {
     source: IDependencySource;
     reads: TPathSet;
+    /** Set by attachDependencies once this becomes `this.dependencies[cuid]`. */
+    published: boolean;
+    /** Prior cycle's dependency for the same source, read only to count `overlap`. */
+    previous: IDependency | undefined;
+    /** Paths added to `reads` this cycle that `previous.reads` already held. */
+    overlap: number;
 }
 /** One store a value was computed from, and the version it held at the time. */
 interface IDependencyVersion {
@@ -110,21 +117,26 @@ export declare class Computed<R> implements IComputed<R> {
      * registration — O(path depth), not the O(read-set size) a full re-subscribe would cost
      * for every leaf a render adds.
      *
-     * During the body's own evaluation the dependency being filled is not yet the published
-     * one (attachDependencies swaps it in after the body returns), so nothing is amended
-     * there; once nobody listens there is no registration to amend either. `published` is
-     * also what the development escape diagnostic gates on: a read during the body's own
-     * evaluation is the computed computing itself, never a component rendering through a
-     * result that reached it through props (R15-02).
+     * During the body's own evaluation `dependency.published` is still false — diffDependencies
+     * flips it once the dependency is adopted into `this.dependencies` — so nothing is amended
+     * there; once nobody listens there is no registration to amend either. `published` also
+     * gates the development escape diagnostic (R15-02), and the overlap counted here against
+     * the previous cycle's read set is what lets diffDependencies skip a second pass.
      *
      * @param dependency - the dependency edge the read belongs to
-     * @param path - the path the read proxy reported
+     * @param path - the path the read proxy reported, or the wildcard for an inner computed
      */
     protected recordDependencyRead(dependency: IDependency, path: TPath): void;
     /** Swaps in a fresh dependency set, keeping every edge the body still reads. */
     protected attachDependencies(collected: IDict<IDependency>): void;
     /**
      * Splits a fresh collection into edges already held and edges needing a registration.
+     *
+     * Also flips `published` on each dependency object the instant it stops or starts being
+     * the one `this.dependencies[cuid]` names — what a live `===` check did before — and
+     * decides equality from the overlap recordDependencyRead already counted while filling
+     * `next.reads`: the sets hold exactly the same paths exactly when that count equals both
+     * sizes, so no second walk over either set is needed here.
      *
      * A kept edge survives with its live subscription untouched — same source, same read
      * set, same subscription id — so recomputing while observed never churns the upstream
@@ -137,14 +149,6 @@ export declare class Computed<R> implements IComputed<R> {
      * now read through different paths
      */
     protected diffDependencies(collected: IDict<IDependency>): IDict<boolean>;
-    /**
-     * Whether two read sets name exactly the same paths.
-     *
-     * @param before - the paths an edge is currently registered under
-     * @param after - the paths the fresh collection recorded for the same source
-     * @returns true when both sets hold the same paths, so the registration can stay
-     */
-    protected sameReads(before: TPathSet, after: TPathSet): boolean;
     /**
      * Records the store versions the value was computed from. An inner computed hides the
      * stores behind it, so those are recorded in its place — otherwise a write they saw
@@ -177,6 +181,13 @@ export declare class Computed<R> implements IComputed<R> {
      *
      * A bound field, not a method: it is the value `invalidationEdges` maps this computed's
      * `onDependencyChanged` to, looked up and called detached from `this`.
+     *
+     * Returns early once `valid` is already false. Validity is monotone: `recompute` is the
+     * only place that sets it true, and only after reading every current upstream, which
+     * revalidates that upstream first — so an already-invalid computed's downstream was
+     * already marked by whichever pass invalidated it. Every other site touching `valid`
+     * (`subscribe`, `settle`, `unsubscribe`, a thrown body) only ever recomputes, clears it,
+     * or leaves it alone.
      */
     protected markStale: () => void;
     /**
@@ -202,6 +213,7 @@ export declare class Computed<R> implements IComputed<R> {
      * Each subscriber is isolated, matching notifyWrites(): one that throws costs the
      * subscribers after it neither their notification nor the wave its remaining work, and
      * the failures are reported once delivery finishes rather than re-thrown.
+     * A lone subscriber is called without copying the id list.
      */
     protected deliver(): void;
 }

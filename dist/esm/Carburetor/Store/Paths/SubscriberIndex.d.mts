@@ -33,25 +33,33 @@ export declare class SubscriberIndex {
     protected branch: Map<TPath, TBucket>;
     /** Subscribers that read the wildcard, so every write matches them. */
     protected wildcard: Set<string>;
-    /** Read sets by id, adopted by reference: `addPath` mutates the caller's own Set. */
-    protected readsById: Map<string, TPathSet>;
     /**
-     * The non-wildcard paths this index has actually filed into `exact`/`branch`, by id.
+     * Read sets by id, adopted by reference: `addPath` mutates the caller's own Set.
      *
-     * Authoritative on its own, independent of whatever `readsById` currently points at:
-     * `addPath` mutates that Set in place, so by the time a later `add()` runs for the same
-     * id it may be handed back the very same (already-amended) Set instance, with no way to
-     * tell old members from new by looking at the Set itself. This record is only ever
-     * touched by `file`/`unfile`, so it always reflects what is actually indexed.
+     * Doubles as the record of what is actually filed (minus the wildcard path, tracked
+     * separately above): a re-registration diffs the fresh set against whatever this map
+     * already holds for the id, instead of keeping a second, owned copy of the same paths
+     * next to it (R16-09 — that copy cost 240 of 549 B of bookkeeping per four-path
+     * subscriber). The diff is only sound while this map's entry and the caller's set stay
+     * distinct objects; see `add`'s own comment for the one case where they do not.
      */
-    protected filedById: Map<string, Set<TPath>>;
+    protected readsById: Map<string, TPathSet>;
     /**
      * Registers what one subscriber reads, in both maps.
      *
-     * Re-registering an already-known id diffs against what is actually filed rather than
-     * re-filing everything: paths no longer present are unfiled, paths not yet present are
-     * filed, and the rest is left alone — O(read-set size) membership checks plus
+     * Re-registering an already-known id diffs against the previously adopted set rather
+     * than re-filing everything: paths no longer present are unfiled, paths not yet present
+     * are filed, and the rest is left alone — O(read-set size) membership checks plus
      * O(changed paths × depth) index work, instead of O(read-set size × depth) every time.
+     *
+     * `subscribe` adopts the caller's Set without copying (see its own comment), so a
+     * re-registration can hand back the very Set instance this index already holds for the
+     * id — `addPath` amending a live dependency by one path (R14-01) does exactly that. Diffing
+     * a Set against itself always comes out empty, which is the right answer here: `addPath`
+     * keeps `exact`/`branch` in sync with every path it adds, so by the time such a
+     * re-registration runs there is nothing left to file. A caller that mutates a Set already
+     * handed to the index some other way, then hands that same instance back, is out of
+     * contract — the amend API is the only mutation path this index can see coming.
      *
      * @param id - the subscriber's key; re-registering it replaces the old paths.
      * @param reads - the paths to file; the wildcard path routes the id to the wildcard
@@ -65,9 +73,9 @@ export declare class SubscriberIndex {
      * O(path depth) instead of O(read-set size): the incremental sibling `add` lacks,
      * for a dependency amended one leaf read at a time.
      *
-     * Whether the path is already filed is decided by `filedById`, not by whether `reads`
-     * already contains it: a caller may share `reads` with something that adds to it
-     * directly (a computed's own `dependency.reads`, which `Carburetor.subscribe` adopts
+     * Whether the path is already filed is decided by `exact` itself, not by whether
+     * `reads` already contains it: a caller may share `reads` with something that adds to
+     * it directly (a computed's own `dependency.reads`, which `Carburetor.subscribe` adopts
      * without copying — see its comment) before calling here, and a membership check on
      * `reads` would then read as "already filed" for a path this index has never actually
      * indexed.
@@ -97,6 +105,14 @@ export declare class SubscriberIndex {
      * @param reads - the paths to file
      */
     protected registerFresh(id: string, reads: TPathSet): void;
+    /**
+     * Whether `id` is already filed under this exact path, decided from `exact` itself —
+     * see `addPath`'s own comment for why `reads`'s membership cannot answer this.
+     *
+     * @param path - the exact path to check
+     * @param id - the subscriber to look for in that path's bucket
+     */
+    protected isFiledAt(path: TPath, id: string): boolean;
     /**
      * Registers one read path in both maps.
      *

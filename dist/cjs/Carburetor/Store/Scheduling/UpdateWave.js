@@ -45,7 +45,7 @@ class UpdateWave {
         if (this.depth > 0) return;
         this.depth = 1;
         try {
-            const failures = [];
+            let failures;
             while(this.pending.size > 0){
                 const batch = Array.from(this.pending.entries());
                 this.pending.clear();
@@ -53,11 +53,11 @@ class UpdateWave {
                     try {
                         settle();
                     } catch (error) {
-                        failures.push(error);
+                        (failures ?? (failures = [])).push(error);
                     }
                 });
             }
-            failures.forEach((error)=>{
+            null == failures || failures.forEach((error)=>{
                 if ("u" > typeof process && 'production' !== process.env.NODE_ENV) DiagnosticsInstance_js_namespaceObject.diagnostics.report('a computation threw while a wave was drained: ' + (error instanceof Error ? error.message : String(error)) + '. The remaining deferred computations were settled anyway.');
             });
         } finally{

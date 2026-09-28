@@ -48,6 +48,9 @@ class ResourceCarburetor extends Carburetor {
             updatedAt: data.updatedAt
         }));
     }
+    fromJSON(value) {
+        this.restore(value);
+    }
     getLastError() {
         return this.lastError;
     }

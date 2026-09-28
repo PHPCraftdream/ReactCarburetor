@@ -80,6 +80,9 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
             updatedAt: data.updatedAt
         }));
     }
+    fromJSON(value) {
+        this.restore(value);
+    }
     getLastError() {
         return this.lastError;
     }

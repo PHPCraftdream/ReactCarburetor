@@ -1,4 +1,4 @@
-import { TPath } from "../../Models/Paths.mjs";
+import { TPath } from "../../../Models/Paths.js";
 /**
  * The path a presence or truthiness check on a branch subscribes by: `!!data.user` reads
  * `user` but no leaf, and would otherwise record nothing — replacing the branch then changes

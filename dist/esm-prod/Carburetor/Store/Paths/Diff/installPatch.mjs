@@ -1,0 +1,1 @@
+import{PATCH_ABSENT as e}from"../../../Models/Paths.mjs";import{isTrackable as t}from"../../Tracking/isTrackable.mjs";import{deepClone as s}from"../../Utils/deepClone.mjs";let l=(l,m,o)=>{let r=l;for(let e=0;e<m.segments.length-1;e++)r=r[m.segments[e]];let n=m.segments[m.segments.length-1],i=o?m.previous:m.next;i===e?delete r[n]:r[n]=t(i)?s(i):i};export{l as installPatch};

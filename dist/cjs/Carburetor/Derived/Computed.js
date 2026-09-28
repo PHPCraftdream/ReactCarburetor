@@ -109,15 +109,21 @@ class Computed {
         const collected = {};
         const track = (source)=>{
             const cuid = source.getUID();
-            const dependency = collected[cuid] || {
-                source,
-                reads: new Set()
-            };
-            collected[cuid] = dependency;
+            let dependency = collected[cuid];
+            if (!dependency) {
+                dependency = {
+                    source,
+                    reads: new Set(),
+                    published: false,
+                    previous: this.dependencies[cuid],
+                    overlap: 0
+                };
+                collected[cuid] = dependency;
+            }
             if ('read' in source) return source.read((path)=>{
                 this.recordDependencyRead(dependency, path);
             });
-            dependency.reads.add(WildcardPath_js_namespaceObject.WILDCARD_PATH);
+            this.recordDependencyRead(dependency, WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return source.get();
         };
         this.value = this.body(track);
@@ -125,11 +131,13 @@ class Computed {
         this.attachDependencies(collected);
     }
     recordDependencyRead(dependency, path) {
+        var _dependency_previous;
         if (dependency.reads.has(path)) return;
         dependency.reads.add(path);
-        const published = dependency === this.dependencies[dependency.source.getUID()];
-        if (published && "u" > typeof process && 'production' !== process.env.NODE_ENV) (0, external_reportComputedEscape_js_namespaceObject.reportComputedEscape)(this, (id)=>this.subscribers.has(id));
-        if (published && this.subscribers.size > 0 && dependency.source.extend) dependency.source.extend(this.uid, path);
+        if (void 0 !== dependency.previous && dependency.reads.size > dependency.previous.reads.size) dependency.previous = void 0;
+        else if (null == (_dependency_previous = dependency.previous) ? void 0 : _dependency_previous.reads.has(path)) dependency.overlap++;
+        if (dependency.published && "u" > typeof process && 'production' !== process.env.NODE_ENV) (0, external_reportComputedEscape_js_namespaceObject.reportComputedEscape)(this, (id)=>this.subscribers.has(id));
+        if (dependency.published && this.subscribers.size > 0 && dependency.source.extend) dependency.source.extend(this.uid, path);
     }
     attachDependencies(collected) {
         const fresh = this.diffDependencies(collected);
@@ -148,23 +156,19 @@ class Computed {
     diffDependencies(collected) {
         const fresh = {};
         Object.keys(this.dependencies).forEach((cuid)=>{
+            const previous = this.dependencies[cuid];
             const next = collected[cuid];
-            if (!next) return void this.dependencies[cuid].source.unsubscribe(this.uid);
-            if (!this.sameReads(this.dependencies[cuid].reads, next.reads)) fresh[cuid] = true;
+            previous.published = false;
+            if (!next) return void previous.source.unsubscribe(this.uid);
+            if (next.overlap !== previous.reads.size || next.overlap !== next.reads.size) fresh[cuid] = true;
         });
         Object.keys(collected).forEach((cuid)=>{
+            const dependency = collected[cuid];
+            dependency.published = true;
+            dependency.previous = void 0;
             if (!(cuid in this.dependencies)) fresh[cuid] = true;
         });
         return fresh;
-    }
-    sameReads(before, after) {
-        if (before === after) return true;
-        if (before.size !== after.size) return false;
-        let same = true;
-        before.forEach((path)=>{
-            if (!after.has(path)) same = false;
-        });
-        return same;
     }
     recordVersions(collected) {
         const versions = {};
@@ -208,14 +212,12 @@ class Computed {
         this.settle();
     };
     markStale = ()=>{
+        if (!this.valid) return;
         this.valid = false;
-        const ids = Array.from(this.subscribers.keys());
-        ids.forEach((id)=>{
-            const callback = this.subscribers.get(id);
-            if (!callback) return;
+        for (const callback of this.subscribers.values()){
             const mark = invalidationEdges.get(callback);
             if (mark) mark();
-        });
+        }
     };
     settle = ()=>{
         const previous = this.value;
@@ -233,16 +235,19 @@ class Computed {
         this.deliver();
     };
     deliver() {
-        const failures = [];
-        const ids = Array.from(this.subscribers.keys());
-        ids.forEach((id)=>{
-            const callback = this.subscribers.get(id);
-            if (callback) try {
-                callback();
+        let failures;
+        const single = 1 === this.subscribers.size;
+        const ids = single ? this.subscribers.keys() : Array.from(this.subscribers.keys());
+        for (const id of ids){
+            try {
+                var _this_subscribers_get;
+                null == (_this_subscribers_get = this.subscribers.get(id)) || _this_subscribers_get();
             } catch (error) {
-                failures.push(error);
+                (failures ?? (failures = [])).push(error);
             }
-        });
+            if (single) break;
+        }
+        if (!failures) return;
         failures.forEach((error)=>{
             if ("u" > typeof process && 'production' !== process.env.NODE_ENV) DiagnosticsInstance_js_namespaceObject.diagnostics.report('a subscriber threw while a computed value was delivered: ' + (error instanceof Error ? error.message : String(error)) + '. The remaining subscribers were notified anyway.');
         });
