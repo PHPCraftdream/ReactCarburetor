@@ -461,10 +461,18 @@ describe('computed', () => {
         }
 
         class RowListCarburetor extends Carburetor<IRowListData> {
-            public replaceItem = (index: number, item: IRow) => {
-                this.draft.items[index] = item;
-
-                this.emitUpdate();
+            /**
+             * Touches `done` twice, ending at the value it started with: the field a reader
+             * depends on is recorded as written, while its value nets to no change. Replacing
+             * the whole record with an equal one no longer serves this purpose since R16-03: the
+             * write proxy diffs a same-kind replacement and records nothing when nothing in it
+             * actually differs, which is precisely the case this describe block used to exploit.
+             */
+            public toggleDoneAndBack = (index: number) => {
+                this.update((draft: IRowListData) => {
+                    draft.items[index].done = !draft.items[index].done;
+                    draft.items[index].done = !draft.items[index].done;
+                });
             };
         }
 
@@ -494,14 +502,14 @@ describe('computed', () => {
             return {carburetor, view, getRenders: (): number => renders};
         };
 
-        test('a whole-record replace that leaves the visible titles the same causes 0 re-renders', () => {
+        test('a write that recomputes to the same visible titles causes 0 re-renders', () => {
             const {carburetor, view, getRenders} = buildView(true);
 
             expect(getRenders()).toEqual(1);
 
             // A fresh reference every recompute (`filter`/`map` never return the same array), so
             // only content equality — not identity — can suppress this announce.
-            act(() => carburetor.replaceItem(1, {title: 'b', done: true}));
+            act(() => carburetor.toggleDoneAndBack(1));
 
             expect(getRenders()).toEqual(1);
 
@@ -513,7 +521,7 @@ describe('computed', () => {
 
             expect(getRenders()).toEqual(1);
 
-            act(() => carburetor.replaceItem(1, {title: 'b', done: true}));
+            act(() => carburetor.toggleDoneAndBack(1));
 
             expect(getRenders()).toEqual(2);
 

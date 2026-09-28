@@ -29,6 +29,17 @@ export class ListCarburetor extends Carburetor<ITodoLike> {
         this.emitUpdate();
     };
 
+    /**
+     * Touches `done` twice in one emit, ending at the value it started with: the field a
+     * dependency reads is recorded as written, while its net value does not change.
+     */
+    public toggleDoneAndBack = (id: string) => {
+        this.update((draft: ITodoLike) => {
+            draft.items[id].done = !draft.items[id].done;
+            draft.items[id].done = !draft.items[id].done;
+        });
+    };
+
     /** Replaces the whole item object, the way a real store's "save the record" write does. */
     public replaceItem = (id: string, item: {title: string; done: boolean}) => {
         this.draft.items[id] = item;

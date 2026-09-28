@@ -436,10 +436,13 @@ describe('computed', () => {
 
             const before = doneIds.get();
 
-            // A whole-record replace — the shape a real "save" write takes — recomputes the
-            // body into a brand-new array with the same one id, even though `.done` itself did
-            // not move: exactly the case a hand-written memo like the demo's used to guard.
-            carburetor.replaceItem('b', {title: 'renamed', done: true});
+            // A field write to `done` that nets back to its starting value: the body still
+            // recomputes into a brand-new array with the same one id, exactly the case a
+            // hand-written memo like the demo's used to guard. A whole-record replace no longer
+            // serves this purpose since R16-03: replacing 'b' with an object that only changes
+            // `title` (untouched by this dependency) would record nothing at all, because the
+            // write proxy diffs a same-kind replacement instead of announcing the whole path.
+            carburetor.toggleDoneAndBack('b');
 
             expect(notified).toEqual(0);
             expect(doneIds.getVersion()).toEqual(0);

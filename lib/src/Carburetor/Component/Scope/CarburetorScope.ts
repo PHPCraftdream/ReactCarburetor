@@ -3,6 +3,7 @@ import {IInspectable} from "@/Carburetor/Models/Store";
 import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
+import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 
 /**
  * One set of carburetor instances. Create a scope per server request instead of keeping
@@ -94,7 +95,10 @@ export class CarburetorScope {
             const instance = this.get(token);
 
             if (this.isInspectable(instance)) {
-                instance.fromJSON(state[token.id]);
+                // Cloned, not adopted: fromJSON() now takes ownership of what it is handed
+                // (R16-09), but `state` here is the caller's own payload, possibly hydrated into
+                // more than one scope from — independent scopes must not end up sharing it.
+                instance.fromJSON(deepClone(state[token.id]));
             }
         });
 

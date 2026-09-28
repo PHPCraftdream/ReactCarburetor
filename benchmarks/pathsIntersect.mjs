@@ -4,7 +4,7 @@
 // Kept out of the test suite on purpose — the rstest run must stay fast.
 
 import {Carburetor} from '../dist/esm/Carburetor/Store/Carburetor.mjs';
-import {pathsIntersect} from '../dist/esm/Carburetor/Store/Paths/pathsIntersect.mjs';
+import {pathsIntersect} from '../dist/esm/Carburetor/Store/Paths/Diff/pathsIntersect.mjs';
 
 class BenchCarburetor extends Carburetor {
     /** Records a set of writes and publishes them in one pass, as a transaction would. */

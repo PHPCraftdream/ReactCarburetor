@@ -339,3 +339,129 @@ describe('R16-01: defineProperty and deleteProperty wake an enumerator only on a
         expect(Object.keys(view.leaf)).toEqual(['zero', 'nan', 'count']);
     });
 });
+
+describe('R16-03: replacing a branch with a same-kind object diffs instead of replacing the whole path', () => {
+    test('only the field that actually changed is recorded', () => {
+        const store = new LeafCarburetor(getTree());
+        const original = store.getData().leaf;
+        let countWakes = 0;
+        let keepTitleWakes = 0;
+
+        store.subscribe(() => countWakes++, {id: 'count-reader', reads: new Set<TPath>(['leaf.count'])});
+        store.subscribe(() => keepTitleWakes++, {id: 'keep-title-reader', reads: new Set<TPath>(['leaf.keep.title'])});
+
+        // Same `keep` reference, same `zero`/`nan` — only `count` actually differs.
+        store.rewriteLeaf({...original, count: 5});
+
+        expect(store.getData().leaf.count).toEqual(5);
+        expect(countWakes).toEqual(1);
+        expect(keepTitleWakes).toEqual(0);
+    });
+
+    test('a reference-equal nested branch is skipped, keeping its identity', () => {
+        const store = new LeafCarburetor(getTree());
+        const original = store.getData().leaf;
+
+        store.rewriteLeaf({...original, count: 9});
+
+        expect(store.getData().leaf.keep).toBe(original.keep);
+    });
+
+    test('a presence reader is not woken by a same-kind replacement that changes only a leaf', () => {
+        const store = new LeafCarburetor(getTree());
+        const original = store.getData().leaf;
+        const reads = new Set<TPath>();
+
+        const view = store.read((path: TPath) => reads.add(path));
+
+        // Records the branch marker on `leaf` and, through the presence check, on `leaf.keep`.
+        expect('keep' in view.leaf).toBe(true);
+
+        let presenceWakes = 0;
+        store.subscribe(() => presenceWakes++, {id: 'presence', reads});
+
+        // The README's "woken when it is added, replaced or removed" becomes "added or
+        // removed": `keep` itself was neither, so its presence answer did not change.
+        store.rewriteLeaf({...original, count: 3});
+
+        expect(presenceWakes).toEqual(0);
+    });
+
+    test('a kind change on a nested key records that key\'s own path, waking readers below it too', () => {
+        const store = new LeafCarburetor(getTree());
+        let keepWakes = 0;
+        let keepTitleWakes = 0;
+
+        store.subscribe(() => keepWakes++, {id: 'keep-reader', reads: new Set<TPath>(['leaf.keep'])});
+        store.subscribe(() => keepTitleWakes++, {id: 'keep-title-reader', reads: new Set<TPath>(['leaf.keep.title'])});
+
+        store.edit((draft: ITree) => {
+            (draft.leaf as unknown as {keep: unknown}).keep = ['now', 'an', 'array'];
+        });
+
+        expect(keepWakes).toEqual(1);
+        expect(keepTitleWakes).toEqual(1);
+    });
+
+    test('a symbol-key difference under the replacement falls back to the whole path', () => {
+        const store = new LeafCarburetor(getTree());
+        const tag = Symbol('tag');
+        let countWakes = 0;
+
+        store.edit((draft: ITree) => {
+            (draft.leaf as unknown as Record<symbol, unknown>)[tag] = 'a';
+        });
+        store.subscribe(() => countWakes++, {id: 'count-reader', reads: new Set<TPath>(['leaf.count'])});
+
+        const next = {...store.getData().leaf};
+        (next as unknown as Record<symbol, unknown>)[tag] = 'b';
+
+        // `count` itself is unchanged, but the symbol difference forces the whole `leaf` path,
+        // which is an ancestor of `leaf.count`.
+        store.rewriteLeaf(next);
+
+        expect(countWakes).toEqual(1);
+    });
+
+    test('past the threshold, a large replacement records only the replaced path itself', () => {
+        interface IBigLeaf {
+            [key: string]: number;
+        }
+
+        interface IBigTree {
+            big: IBigLeaf;
+        }
+
+        class BigCarburetor extends Carburetor<IBigTree> {
+            public replace = (next: IBigLeaf): void => {
+                this.update((draft: IBigTree) => {
+                    draft.big = next;
+                });
+            };
+        }
+
+        const makeBig = (offset: number): IBigLeaf => {
+            const result: IBigLeaf = {};
+
+            for (let index = 0; index < 2500; index++) {
+                result['k' + index] = index + offset;
+            }
+
+            return result;
+        };
+
+        const store = new BigCarburetor({big: makeBig(0)});
+        let bigWakes = 0;
+        let oneKeyWakes = 0;
+
+        store.subscribe(() => bigWakes++, {id: 'big-reader', reads: new Set<TPath>(['big'])});
+        store.subscribe(() => oneKeyWakes++, {id: 'k0-reader', reads: new Set<TPath>(['big.k0'])});
+
+        // Every one of 2500 keys differs: past DIFF_PATH_THRESHOLD the walk gives up and
+        // reports `big` itself, waking both a reader of the branch and a reader below it.
+        store.replace(makeBig(1));
+
+        expect(bigWakes).toEqual(1);
+        expect(oneKeyWakes).toEqual(1);
+    });
+});

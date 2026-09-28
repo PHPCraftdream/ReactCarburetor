@@ -58,10 +58,21 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
         this.derivationKeptInline = this.hasStoredCounters();
 
         this.update((draft: ITodoList) => {
-            draft.items[data.id] = data;
-
+            // Both read `previous.done` as it was before the write: with a field write
+            // mutating the same object `previous` still points at (unlike the old whole-object
+            // replacement, which left `previous` referring to the discarded one), they must run
+            // before that object's own fields change underneath them.
             this.shiftCounters(draft, previous ? previous.done : undefined, data.done, !previous);
             this.moveToStablePlace(draft, data.id, previous, data.done);
+
+            if (previous) {
+                // Field writes, not a whole-object replacement (R16-03): the write proxy's
+                // no-op check then records only the fields that actually changed, so a
+                // title-only edit does not wake a reader of this id's `done` field.
+                Object.assign(draft.items[data.id], data);
+            } else {
+                draft.items[data.id] = data;
+            }
         });
     };
 

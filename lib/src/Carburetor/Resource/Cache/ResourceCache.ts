@@ -1,4 +1,5 @@
 import {
+    IResourceCacheData,
     IResourceCacheOptions,
     IResourceResolution,
     IResourceSource,
@@ -138,6 +139,16 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         this.viewCache.set(key, view);
 
         return view;
+    }
+
+    /**
+     * Hydration goes through restore(), not the base fromJSON's adopt-and-diff shortcut: only
+     * restore() clears in-flight requests and normalizes a restored Pending status.
+     *
+     * @param value - the serialized snapshot; the cast is the caller's promise about the shape
+     */
+    public fromJSON(value: unknown): void {
+        this.restore(value as IResourceCacheData<T>);
     }
 
     /**

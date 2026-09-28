@@ -132,6 +132,16 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         }));
     }
 
+    /**
+     * Hydration goes through restore(), not the base fromJSON's adopt-and-diff shortcut: only
+     * restore() re-establishes the answer's key and normalizes a restored Pending status.
+     *
+     * @param value - the serialized snapshot; the cast is the caller's promise about the shape
+     */
+    public fromJSON(value: unknown): void {
+        this.restore(value as IResourceSnapshot<T>);
+    }
+
     /** The raw rejection value, which the serializable state cannot carry. */
     public getLastError(): unknown {
         return this.lastError;

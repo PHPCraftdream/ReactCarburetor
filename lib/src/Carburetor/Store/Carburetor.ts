@@ -3,6 +3,10 @@ import {TPath, TPathRecorder, TPathSet, TAliasLedger} from "@/Carburetor/Models/
 import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler, TSelector} from "@/Carburetor/Models/Store";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {deepClone} from "./Utils/deepClone";
+import {applyDiff} from "./Paths/Diff/applyDiff";
+import {diffPaths} from "./Paths/Diff/diffPaths";
+import {hasSymbolDifference} from "./Paths/Diff/hasSymbolDifference";
+import {sameKind} from "./Paths/Diff/sameKind";
 import {detachOpaque} from "./Utils/detachOpaque";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WriteLog} from "./Paths/WriteLog";
@@ -145,12 +149,30 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return createReadProxy(data, record, '', this.aliases) as unknown as TReadonly<T>;
     }
 
-    /** Replaces the whole state and wakes everyone: no path survives a root swap. */
+    /**
+     * Replaces the whole state, keeping `getData() === data` afterwards.
+     *
+     * Wakes exactly the readers of what changed (R16-02): the previous and next roots are
+     * diffed instead of the wildcard, unless the root changed kind or is not trackable, where
+     * nothing survives a root swap and every subscriber wakes, as before.
+     *
+     * A component keyed on data identity (`buildTrackedView`, the `connect()` facade, the
+     * interop root view) rebuilds its view lazily on its next render regardless of whether it
+     * was woken — one that was not woken kept showing correct output, since none of its leaves
+     * changed.
+     */
     public setData(data: T): T {
+        const previous = this.data;
+
         this.data = data;
         this.draftProxy = undefined;
-        this.writes.add(WILDCARD_PATH);
 
+        // Marks this as a confirmed operation, the same as an access to draft would: an empty
+        // diff then takes emitUpdate()'s real no-op path (nothing recorded, draft touched)
+        // instead of its no-path fallback for a write that bypassed draft, where nothing is
+        // known and everything must wake.
+        this.touchDraft();
+        diffPaths(previous, data).forEach((path: TPath) => this.recordWrite(path));
         this.emitUpdate();
 
         return data;
@@ -161,9 +183,41 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return deepClone(this.data);
     }
 
-    /** Installs a snapshot as the current state, copying it so the caller keeps its own. */
+    /**
+     * Installs a snapshot as the current state, without adopting or mutating the caller's copy.
+     *
+     * Applies the difference into the live tree through draft (R16-02): only the values it
+     * actually assigns are cloned, so an untouched branch keeps its old identity and only the
+     * paths that changed are announced. Falls back to a wholesale, diffed swap — see setData() —
+     * when the root itself changed kind, is not trackable, holds a differing symbol key, or the
+     * walk crosses DIFF_PATH_THRESHOLD; going through draft key by key would cost more than it
+     * saves there.
+     *
+     * @param data - the snapshot to install; read but never mutated or kept by reference.
+     */
     public restore(data: T): void {
-        this.setData(deepClone(data));
+        const current: unknown = this.data;
+
+        if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data)
+            || hasSymbolDifference(current, data)) {
+            this.setData(deepClone(data));
+
+            return;
+        }
+
+        const applied = applyDiff(
+            this.draft as unknown as Record<string, unknown>,
+            current as Record<string, unknown>,
+            data as unknown as Record<string, unknown>
+        );
+
+        if (!applied) {
+            this.setData(deepClone(data));
+
+            return;
+        }
+
+        this.emitUpdate();
     }
 
     /** The type-erased half of the snapshot bridge, for callers that do not know `T`. */
@@ -171,9 +225,18 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return this.snapshot();
     }
 
-    /** The type-erased half of `restore`; the cast is the caller's promise about the shape. */
+    /**
+     * The type-erased half of `setData`: adopts `value` directly, diffed the same way (R16-02).
+     *
+     * Unlike `restore`, which copies to protect a snapshot the caller may reuse, `value` here is
+     * expected to be freshly parsed JSON the caller does not keep, so no second copy is made
+     * (R16-09).
+     *
+     * @param value - the parsed state to install; the cast is the caller's promise about the
+     * shape, and the store keeps this exact object as `getData()`'s answer.
+     */
     public fromJSON(value: unknown): void {
-        this.restore(value as T);
+        this.setData(value as T);
     }
 
     /**

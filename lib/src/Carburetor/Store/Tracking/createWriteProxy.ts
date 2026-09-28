@@ -1,4 +1,5 @@
 import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
+import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
@@ -233,7 +234,18 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
         const path = this.writtenPath(key);
 
-        this.record(path);
+        // Replacing a plain object/array with another of the same kind (R16-03): the data still
+        // gets the new object wholesale below, but only the leaves that actually differ are
+        // announced, instead of every reader under `path` regardless of what changed. A brand
+        // new key, a kind change or a primitive write all fall through to the plain record —
+        // diffPaths degrades to exactly that when one side is not a trackable value of the same
+        // kind, but the guard is checked here too so the common (primitive) write never pays for
+        // building and walking a diff it would immediately answer with just `path`.
+        if (wasOwn && isTrackable(previous) && isTrackable(raw) && Array.isArray(previous) === Array.isArray(raw)) {
+            diffPaths(previous, raw, path).forEach((changed: TPath) => this.record(changed));
+        } else {
+            this.record(path);
+        }
 
         const wrote = Reflect.set(source, key, raw);
 

@@ -1,6 +1,6 @@
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {pathsIntersect} from "@/Carburetor/Store/Paths/pathsIntersect";
+import {pathsIntersect} from "@/Carburetor/Store/Paths/Diff/pathsIntersect";
 import {SubscriberIndex} from "@/Carburetor/Store/Paths/SubscriberIndex";
 
 const setOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);

@@ -74,18 +74,32 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(readerOfB).toEqual(1);
     });
 
-    test('setData replaces data and invalidates everything', () => {
+    test('setData replaces data, waking only the readers of what changed (R16-02)', () => {
         const carburetor = new TestCarburetor(getTestData());
+        let readerOfA = 0;
         let readerOfB = 0;
 
+        carburetor.subscribe(() => readerOfA++, {id: 'a-reader', reads: readsOf('a')});
         carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
 
         const next = getTestData();
         next.a = 5;
         carburetor.setData(next);
 
-        expect(carburetor.getData()).toEqual(next);
-        expect(readerOfB).toEqual(1);
+        // Identity contract unchanged: getData() answers the exact object handed in.
+        expect(carburetor.getData()).toBe(next);
+        expect(readerOfA).toEqual(1);
+        expect(readerOfB).toEqual(0);
+    });
+
+    test('setData with an identical deep copy wakes nobody (R16-02)', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'watcher'});
+        carburetor.setData(getTestData());
+
+        expect(calls).toEqual(0);
     });
 
     test('unsubscribe stops notifications', () => {
