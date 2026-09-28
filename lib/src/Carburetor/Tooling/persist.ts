@@ -30,7 +30,9 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         // A failing write must reach onError like a failed restore does, and must not cut
         // off the subscribers notified after this one; the last good entry stays in place.
         try {
-            storage.setItem(key, JSON.stringify(carburetor.snapshot()));
+            // JSON.stringify never mutates and produces detached text, so a snapshot() clone
+            // beforehand is pure overhead: stringify the live data directly.
+            storage.setItem(key, JSON.stringify(carburetor.getData()));
         } catch (error: unknown) {
             if (options.onError) {
                 options.onError(error);

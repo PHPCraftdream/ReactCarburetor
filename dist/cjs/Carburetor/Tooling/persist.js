@@ -44,7 +44,7 @@ const persist = (carburetor, options)=>{
         WildcardPath_js_namespaceObject.WILDCARD_PATH
     ]), ()=>{
         try {
-            storage.setItem(key, JSON.stringify(carburetor.snapshot()));
+            storage.setItem(key, JSON.stringify(carburetor.getData()));
         } catch (error) {
             if (options.onError) options.onError(error);
         }

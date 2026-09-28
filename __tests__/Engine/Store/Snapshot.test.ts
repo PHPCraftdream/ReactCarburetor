@@ -218,6 +218,39 @@ describe('snapshot / restore', () => {
         expect(data.nested.deep[DEEP_TAG]).not.toBe(taken.nested.deep[DEEP_TAG]);
         expect(Object.getOwnPropertySymbols(data.nested.deep)).toEqual([DEEP_TAG]);
     });
+
+    test('deepClone preserves array holes instead of filling them with undefined', () => {
+        const sparse: unknown[] = [];
+        sparse[0] = 'a';
+        sparse[2] = 'c';
+
+        const clone = deepClone(sparse);
+
+        expect(clone.length).toEqual(3);
+        expect(Object.keys(clone)).toEqual(['0', '2']);
+        expect(1 in clone).toEqual(false);
+        expect(clone[0]).toEqual('a');
+        expect(clone[2]).toEqual('c');
+    });
+
+    test('deepClone skips a non-enumerable own string key', () => {
+        const source: Record<string, unknown> = {visible: 1};
+        Object.defineProperty(source, 'hidden', {value: 'secret', enumerable: false});
+
+        const clone = deepClone(source) as Record<string, unknown>;
+
+        expect(clone.visible).toEqual(1);
+        expect(Object.prototype.hasOwnProperty.call(clone, 'hidden')).toEqual(false);
+    });
+
+    test('deepClone preserves key order across string and symbol keys', () => {
+        const tag = Symbol('tag');
+        const source: Record<string | symbol, unknown> = {b: 1, a: 2, [tag]: 3, c: 4};
+
+        const clone = deepClone(source);
+
+        expect(Reflect.ownKeys(clone)).toEqual(Reflect.ownKeys(source));
+    });
 });
 
 describe('watch', () => {
