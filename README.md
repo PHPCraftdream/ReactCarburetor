@@ -89,6 +89,10 @@ only on a real version mismatch, and a plain-JS project needs nothing. See
 [`docs/react-compatibility.md`](docs/react-compatibility.md) for how the library binds to the
 consumer's own React, what a duplicate-React install looks like, and how compatibility is tested.
 
+With React Server Components (Next.js App Router), components and hooks ship as `"use client"`
+modules while stores, caches and scopes stay importable on the server; your own components that
+extend `AntiHookComponent` still live in a `"use client"` file. Details are in the same document.
+
 Async resources use a global `AbortController`, which Node added in 14.17.0 while the
 `engines.node` floor in `package.json` is older. Where it is missing, a stand-in signal
 supports abort listeners, `onabort` and `throwIfAborted`; late answers are still discarded.

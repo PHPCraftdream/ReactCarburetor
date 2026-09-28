@@ -1,4 +1,5 @@
 "use strict";
+"use client";
 var __webpack_require__ = {};
 (()=>{
     __webpack_require__.d = (exports1, getters, values)=>{

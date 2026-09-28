@@ -1,3 +1,4 @@
+"use client";
 import { getUid } from "../../Store/Utils/getUid.mjs";
 import { shallowEqual } from "../shallowEqual.mjs";
 import * as __rspack_external_react from "react";

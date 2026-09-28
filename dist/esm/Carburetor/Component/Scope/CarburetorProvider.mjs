@@ -1,3 +1,4 @@
+"use client";
 import { CarburetorContext } from "./CarburetorContext.mjs";
 import * as __rspack_external_react from "react";
 class CarburetorProvider extends __rspack_external_react.Component {

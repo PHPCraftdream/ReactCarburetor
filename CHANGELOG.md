@@ -9,6 +9,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `"use client"` on the modules that touch React's client API — the `AntiHookComponent` chain,
+  `ScopedAntiHookComponent`, `CarburetorContext`, `CarburetorProvider` and both interop hooks — in
+  all four builds, so a React Server Component can import the package without evaluating
+  `createContext`/`React.Component` against `react-server`. Stores, caches, scopes and tooling stay
+  directive-free and importable on the server. The production builds keep directives through the
+  minifier, and the CJS builds no longer emit the unused `import.meta.url` shim, which was placed
+  ahead of the directive. The consumer matrix builds a Next.js App Router app with Turbopack and
+  webpack. See `docs/react-compatibility.md`.
 - `@types/react` is now an optional peer dependency (`^18.0.0 || ^19.0.0`): a TypeScript
   consumer sees a warning on a real version mismatch, a plain-JS consumer sees nothing.
 - A consumer matrix (`npm run test:consumers`) packs the library and installs it into fresh npm

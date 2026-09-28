@@ -1,3 +1,5 @@
+"use client";
+
 import {TEffect, TEffectDeps} from "@/Carburetor/Models/Base";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {AntiHookComponentReads} from "./Reads";

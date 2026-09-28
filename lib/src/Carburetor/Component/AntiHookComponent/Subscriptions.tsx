@@ -1,3 +1,5 @@
+"use client";
+
 import {TPathSet} from "@/Carburetor/Models/Paths";
 import {
     IAttemptEntry,

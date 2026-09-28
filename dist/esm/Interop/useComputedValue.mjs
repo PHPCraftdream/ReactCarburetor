@@ -1,3 +1,4 @@
+"use client";
 import { useCallback, useSyncExternalStore } from "react";
 const useComputedValue = (computed)=>{
     const subscribe = useCallback((onStoreChange)=>{

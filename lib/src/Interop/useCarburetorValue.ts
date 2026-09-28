@@ -1,3 +1,5 @@
+"use client";
+
 import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react";
 import {ICarburetor, TPath, TPathSet, TSubscriber} from "@/Carburetor";
 import {detachOpaque} from "@/Carburetor/Store/Utils/detachOpaque";

@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import {IDict, TEffectCleanup, TEffectDeps} from "@/Carburetor/Models/Base";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";

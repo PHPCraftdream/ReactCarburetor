@@ -1,3 +1,4 @@
+"use client";
 import { diagnostics } from "../../Store/Diagnostics/DiagnosticsInstance.mjs";
 import { AntiHookComponentReads } from "./Reads.mjs";
 import { shallowEqual } from "../shallowEqual.mjs";

@@ -1,3 +1,4 @@
+"use client";
 import { EResourceStatus } from "../../Models/Enums/EResourceStatus.mjs";
 import { WILDCARD_PATH } from "../../Store/Paths/WildcardPath.mjs";
 import { diagnostics } from "../../Store/Diagnostics/DiagnosticsInstance.mjs";

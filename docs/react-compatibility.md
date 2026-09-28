@@ -106,15 +106,46 @@ a linked `react-carburetor` can pick up its own `devDependency` react instead of
 Prefer `npm install <path>` or a `file:` dependency over `npm link` for local testing; if you do
 link, link `react` from your app into the library too.
 
-## Known limitations
+## React Server Components
 
-**No `"use client"` directive.** `dist/` ships no `"use client"`/`"use server"` directive today.
-It was tried and reverted: the directive survives in the development ESM/CJS builds, but the
-production builds' minifier drops a bare string-literal expression with no engine meaning (unlike
-`"use strict"`, which the minifier keeps) — and whether a bundler's RSC boundary detection would
-even follow the directive through the published barrel's `export *` re-exports back to the real
-file is unverified against a live Next.js consumer. Until both are solved, a consumer using an
-RSC framework needs their own `"use client"` file that imports `react-carburetor`.
+The modules that touch React's client API carry `"use client"` in every build: the
+`AntiHookComponent` class chain, `ScopedAntiHookComponent`, `CarburetorContext`,
+`CarburetorProvider`, and the two interop hooks. Everything else — `Carburetor`, `Computed`,
+`ResourceCache`, `CarburetorScope`, `carburetorToken`, `transaction`, the tooling — has no
+directive and stays importable from a Server Component. The barrels have none either: an RSC
+bundler follows their re-exports to the marked files, and a client boundary cannot `export *`.
+
+What this gives a Server Component:
+
+- it can import from `react-carburetor` — a store or cache used on the server — without
+  evaluating `createContext` or `React.Component` against the `react-server` build, which does
+  not have them;
+- a client export it references arrives as a client reference, so a mistake surfaces as React's
+  own boundary error instead of `createContext is not a function`.
+
+What stays yours:
+
+- a component extending `AntiHookComponent` or `ScopedAntiHookComponent` lives in your own
+  `"use client"` file — the base class is a client reference on the server and cannot be extended
+  there;
+- `CarburetorProvider` takes a `CarburetorScope`, a class instance, which cannot cross from a
+  Server Component as a prop; create the scope inside a client component:
+
+```tsx
+'use client';
+
+export function Stores({children}: {children: React.ReactNode}) {
+    const [scope] = React.useState(() => new CarburetorScope());
+
+    return <CarburetorProvider scope={scope}>{children}</CarburetorProvider>;
+}
+```
+
+A store created in a Server Component and a store created in a client module are two separate
+instances in two module graphs; server data reaches the client through `scope.dehydrate()` /
+`hydrate()`, not by sharing the object.
+
+## Known limitations
 
 **HMR, in this repository's own dev loop only.** Hot-reloading the library's own source
 re-evaluates the shared-registry module and mints a new per-module identity, so the next reload
@@ -142,3 +173,12 @@ hot-reloading its own components never re-evaluates `react-carburetor`'s modules
   One further check reuses an installed cell to `require()` its CJS build and `import()` its ESM
   build in the same process, and asserts the development diagnostic above fires with the
   expected wording.
+
+  The last cells build a Next.js App Router app (Next pinned, React 19) on the same tarball, once
+  with Turbopack and once with webpack: a server page imports the package barrel next to two
+  `"use client"` subtrees — a connected component, and a provider with a scoped component and both
+  interop hooks — and the prerendered page must contain every subtree's output.
+- A unit test (`__tests__/Engine/ClientDirective.test.ts`) derives the client set from the sources
+  — modules with a value import from `react`, plus everything importing one, barrels excluded —
+  and checks that exactly those modules start with the directive, in the sources and in all four
+  builds; the production minifier drops it unless configured not to.

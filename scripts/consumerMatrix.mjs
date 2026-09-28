@@ -2,12 +2,14 @@ import {mkdirSync, rmSync} from 'node:fs';
 import path from 'node:path';
 import {checkFormat, installConsumer} from './consumer-matrix/cell.mjs';
 import {runDuplicateCheck} from './consumer-matrix/duplicateCheck.mjs';
+import {runNextCheck} from './consumer-matrix/nextCheck.mjs';
 import {MODULE_FORMATS, PACKAGE_MANAGERS, REACT_VERSIONS, REPO_ROOT, WORKDIR, run} from './consumer-matrix/matrix.mjs';
 
 /**
  * Consumer matrix: installs the *packed tarball* — not repo source, not repo `dist/` —
  * into fresh npm/pnpm consumer projects across React majors and module formats, and runs a
- * real typecheck plus a real render against each. `npm pack` and every install/build/run below
+ * real typecheck plus a real render against each, then builds a Next.js App Router app on it with
+ * both bundlers to prove the `"use client"` boundary. `npm pack` and every install/build/run below
  * happen under `.consumer-matrix/` (gitignored); nothing here touches the worktree otherwise.
  *
  * tsc choice: the repo's own pinned TypeScript (not a consumer devDependency, so a per-cell
@@ -88,6 +90,8 @@ if (duplicateCheckDir) {
 } else {
     record('duplicate-copy diagnostic', {ok: false, skip: true, stderr: 'no successful install to run it against'});
 }
+
+runNextCheck(WORKDIR, tarballPath).forEach(({cell, ...outcome}) => record(cell, outcome));
 
 const failed = results.filter((entry) => !entry.ok && !entry.skip);
 const skipped = results.filter((entry) => entry.skip);

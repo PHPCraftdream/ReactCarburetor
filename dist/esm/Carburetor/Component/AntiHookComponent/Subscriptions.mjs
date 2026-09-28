@@ -1,3 +1,4 @@
+"use client";
 import { AntiHookComponentEffects } from "./Effects.mjs";
 const CONNECTION_ATTEMPT_KEY = "c:";
 const TRACKED_ATTEMPT_KEY = "t:";

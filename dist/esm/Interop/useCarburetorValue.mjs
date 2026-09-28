@@ -1,3 +1,4 @@
+"use client";
 import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { detachOpaque } from "../Carburetor/Store/Utils/detachOpaque.mjs";
 import { sameSelection } from "../Carburetor/Component/Connection/sameSelection.mjs";

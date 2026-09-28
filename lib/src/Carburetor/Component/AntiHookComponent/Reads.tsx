@@ -1,3 +1,5 @@
+"use client";
+
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {IComputed} from "@/Carburetor/Models/Derived";

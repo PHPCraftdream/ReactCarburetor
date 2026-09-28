@@ -1,3 +1,5 @@
+"use client";
+
 import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
 import {AntiHookComponent} from "./AntiHookComponent/AntiHookComponent";
 import {CarburetorContext} from "./Scope/CarburetorContext";

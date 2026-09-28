@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {CarburetorScope} from "./CarburetorScope";
