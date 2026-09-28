@@ -1,25 +1,22 @@
 import { TPath, TPathRecorder, TAliasLedger } from "../../Models/Paths.mjs";
 import { IProxyCache } from "./Models.mjs";
 /**
- * Write proxy: every changed branch is recorded as a path, so the carburetor
- * only wakes the subscribers that read it. Reads made elsewhere are consulted through the alias
- * ledger, so writing into an object that another path was read from is reported in development.
- *
- * A replaced or deleted branch's old wrapper needs no release here: the branch cache below
- * keys entries by the raw object they wrap, so a branch no longer reachable from the data
- * takes its cache entry with it once nothing else references it.
+ * Builds a write proxy over `target`: every changed branch is recorded as a path. The root
+ * call mints its own cache; every nested branch call receives the same one back, so one
+ * proxy tree caches as one unit.
  *
  * @param target - the raw object the proxy fronts; it is filed in proxyTargets so a value
- * read back through draft is unwrapped before the write compares it
+ * read back through draft is unwrapped before the write compares it.
  * @param record - the store's write sink, feeding the paths the next emitUpdate announces;
  * the get trap also reports unwrappable objects handed out raw, imprecise but never a lost
- * update
- * @param basePath - the dotted path this root answers for, '' being the store root; array
- * writes collapse onto it (or the wildcard) instead of naming an index
+ * update.
+ * @param basePath - the dotted path this root answers for, '' being the store root; a symbol
+ * key, or a write already inside an opaque symbol-keyed branch, still collapses onto the
+ * wildcard, but an index or `length` write on an array is named like any other key.
  * @param aliases - consulted on every write to complain when it lands in an object another
- * path was read from; undefined outside development
+ * path was read from; undefined outside development.
  * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
  * this undefined and mints one, and every nested branch receives it back so the tree caches
- * as one unit
+ * as one unit.
  */
 export declare const createWriteProxy: <T extends object>(target: T, record: TPathRecorder, basePath?: TPath, aliases?: TAliasLedger, cache?: IProxyCache) => T;

@@ -10,8 +10,6 @@ import { detachSelection } from "../Connection/detachSelection.mjs";
 import { reportLiveViewEscape } from "../Connection/reportLiveViewEscape.mjs";
 import { sameSelection } from "../Connection/sameSelection.mjs";
 import { AntiHookComponentFoundation } from "./Foundation.mjs";
-const CONNECTION_ATTEMPT_KEY = "c:";
-const TRACKED_ATTEMPT_KEY = "t:";
 class AntiHookComponentReads extends AntiHookComponentFoundation {
     trackedViews;
     getRenderAttempt = ()=>this.renderAttempt;
@@ -22,7 +20,7 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
         return buildTrackedView(this.trackedViews, carburetor, this.getRenderAttempt, attempt, entry);
     }
     declareConnection(source) {
-        return declareConnection(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
+        return declareConnection(this.connections, ()=>this.renderAttempt, source);
     }
     connect(source) {
         const declared = this.declareConnection(source);
@@ -54,10 +52,12 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
         const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error && !view.failed;
         const attempt = this.renderAttempt;
         if (worthFetching) {
-            if (attempt) attempt.deferredLoads.push(()=>{
-                source.load(args);
-            });
-            else if (IS_DEVELOPMENT) diagnostics.report('useResource() skipped the deferred load for entry ' + source.pathOfKey(key) + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
+            if (attempt) {
+                if (void 0 === attempt.deferredLoads) attempt.deferredLoads = [];
+                attempt.deferredLoads.push(()=>{
+                    source.load(args);
+                });
+            } else if (IS_DEVELOPMENT) diagnostics.report('useResource() skipped the deferred load for entry ' + source.pathOfKey(key) + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
         }
         return view;
     }
@@ -65,27 +65,30 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
         const attempt = this.pendingAttempt;
         if (void 0 === attempt || attempt.abandoned || attempt !== this.committedAttempt) return;
         const queued = attempt.deferredLoads;
-        attempt.deferredLoads = [];
+        if (void 0 === queued) return;
+        attempt.deferredLoads = void 0;
         queued.forEach((load)=>load());
     }
     track(source) {
         const attempt = this.renderAttempt;
         if (!attempt) return {
-            connection: void 0,
             source,
             baselineVersion: source.getVersion(),
             reads: new Set()
         };
-        const key = TRACKED_ATTEMPT_KEY + source.getUID();
-        let entry = attempt.entries.get(key);
+        let tracked = attempt.tracked;
+        if (void 0 === tracked) {
+            tracked = new Map();
+            attempt.tracked = tracked;
+        }
+        let entry = tracked.get(source);
         if (!entry) {
             entry = {
-                connection: void 0,
                 source,
                 baselineVersion: source.getVersion(),
                 reads: new Set()
             };
-            attempt.entries.set(key, entry);
+            tracked.set(source, entry);
         }
         return entry;
     }

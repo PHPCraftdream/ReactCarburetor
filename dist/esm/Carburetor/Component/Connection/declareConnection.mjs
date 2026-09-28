@@ -1,5 +1,5 @@
 import { getUid } from "../../Store/Utils/getUid.mjs";
-const declareConnection = (connections, attemptKeyPrefix, getAttempt, source)=>{
+const declareConnection = (connections, getAttempt, source)=>{
     const getCarburetor = 'function' == typeof source ? source : ()=>source;
     const connection = {
         uid: getUid(),
@@ -7,30 +7,31 @@ const declareConnection = (connections, attemptKeyPrefix, getAttempt, source)=>{
         committed: void 0,
         installed: void 0
     };
-    const attemptKey = attemptKeyPrefix + connection.uid;
     connections.push(connection);
     const resolveAttemptSource = ()=>{
+        var _attempt_sources;
         const attempt = getAttempt();
         if (!attempt) return getCarburetor();
-        const resolved = attempt.sources.get(attemptKey);
+        const resolved = null == (_attempt_sources = attempt.sources) ? void 0 : _attempt_sources.get(connection);
         if (void 0 !== resolved) return resolved;
         const carburetor = getCarburetor();
-        attempt.sources.set(attemptKey, carburetor);
+        if (void 0 === attempt.sources) attempt.sources = new Map();
+        attempt.sources.set(connection, carburetor);
         return carburetor;
     };
     const recorder = (path)=>{
         const attempt = getAttempt();
         if (!attempt) return;
-        let entry = attempt.entries.get(attemptKey);
+        if (void 0 === attempt.connections) attempt.connections = new Map();
+        let entry = attempt.connections.get(connection);
         if (!entry) {
             const carburetor = resolveAttemptSource();
             entry = {
-                connection,
                 source: carburetor,
                 baselineVersion: carburetor.getVersion(),
                 reads: new Set()
             };
-            attempt.entries.set(attemptKey, entry);
+            attempt.connections.set(connection, entry);
         }
         entry.reads.add(path);
     };

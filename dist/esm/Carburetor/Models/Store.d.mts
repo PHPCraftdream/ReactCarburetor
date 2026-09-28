@@ -1,5 +1,5 @@
 import { TDisposer, TReadonly, TSubscriber, TUpdater } from "./Base.mjs";
-import { TPathRecorder, TPathSet } from "./Paths.mjs";
+import { TPath, TPathRecorder, TPathSet } from "./Paths.mjs";
 /**
  * Delivery policy for updates.
  * A carburetor delivers updates immediately by default; throttling is a deliberate
@@ -30,6 +30,8 @@ export interface ICarburetorSubscription {
     /** Write counter: lets a component detect data changes between render and commit. */
     getVersion: () => number;
     subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
+    /** Adds one path to an already-registered subscription's read set; an unknown id is a no-op. */
+    extend: (id: string, path: TPath) => void;
     unsubscribe: (id: string) => void;
 }
 /**

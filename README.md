@@ -134,9 +134,10 @@ letting it pass silently.
 
 ### A persistent connection: `connect()`
 
-`useCarburetor` builds a fresh read-tracking proxy every render. For a component that always
-reads from the same store, `connect()` builds it once instead — a field initializer is the
-intended call site — and hands back the same object for the component's whole lifetime:
+`connect()` is the default way to read a store: declared once — a field initializer is the
+intended call site — it hands back the same object for the component's whole lifetime.
+`useCarburetor` reads the same way but is called in render, which suits a store chosen per
+render (a prop, a scope lookup) or an array-rooted scoped store:
 
 ```tsx
 class TodoApp extends AntiHookComponent<ITodoProps> {
@@ -172,14 +173,9 @@ through the live view; a non-configurable descriptor is reported configurable, w
 nothing, because every mutation trap — assignment, deletion, `defineProperty`, prototype and
 extension changes — is rejected.
 
-Views stay live across writes: when a write replaces or deletes a branch, the engine releases the
-replaced branch's internal wrapper the next time anything reads through the view — a read of some
-other path is enough, and nothing waits on garbage collection. Every kind of read counts: leaf
-reads, `in` checks and key enumeration reclaim the same way a branch fetch does, so a view left
-reading only primitives still lets deleted branches go. Per written path the engine keeps a path
-string and a revision number only while some live cache still needs that record to evict its
-obsolete entry; applied records are retired, so the ledger tracks the live caches and their
-pending writes rather than the store's lifetime write churn.
+Views stay live across writes. Branch wrappers are cached per proxy tree in a `WeakMap` keyed by
+the raw branch object, so a branch that a write replaces or deletes takes its wrapper with it: once
+nothing references the old object, both are collectable, with no sweep and no bookkeeping.
 
 ### Passing connected data to children
 
@@ -242,8 +238,15 @@ touches a read when the paths are equal or one is nested in the other:
 Two properties keep this honest:
 
 - **Traversal is not a read.** Reaching into `data.items` on the way to `items.a1.title`
-  subscribes you to the leaf, not to the whole container. Enumerating (`Object.keys`) or
-  probing (`'a1' in items`) *does* subscribe to the structure, because that genuinely reads it.
+  subscribes you to the leaf, not to the whole container. Enumerating (`Object.keys`) *does*
+  subscribe to the structure, because that genuinely reads it; probing (`'a1' in items`)
+  subscribes to that key's presence — woken when it is added, replaced or removed, not by edits
+  inside it. That is also what `items.map(...)` does per index, so a parent laying out rows is
+  not re-rendered by an edit inside one. Inherited members (`map`, `Symbol.iterator`) are not
+  data and record nothing, so `for…of` and spread track only the elements they visit.
+- **Array writes are per index.** `push` wakes readers of `length` and the new index, not the
+  existing rows; replacing `items[5]` wakes the readers of `items[5]`; `sort` wakes the indices
+  it moved.
 - **Writing the same value wakes nobody.** Recomputing a counter that ends up unchanged, or
   re-sorting an already sorted array, invalidates nothing.
 
@@ -333,6 +336,12 @@ export const summary = computed<string>((read) => `${read(activeCount)} left`);
 
 Calling `activeCount.get()` inside the body instead would register no dependency and leave
 `summary` stale — the reader is what records it.
+
+A computed's result is live, not a copy: when it returns store data (`read(store).items`), a
+consumer reading deeper fields off it subscribes the computed to those fields too, so an edit
+inside the list wakes the computed and, through it, the consumer. Each newly read field is added
+to the existing subscription in O(path depth). Return plain values when you only need a count or
+a flag — the unchanged-result check then saves the re-render.
 
 ### Transactions
 
@@ -696,6 +705,9 @@ describes.
 | `emitSoon()` *(protected)*      | Publishes on the next microtask, for writes made where notifying now is unsafe. |
 | `preEmit()` *(protected)*       | Runs before notification — derive state here.                      |
 | `emitUpdate()` *(protected)*    | Notifies subscribers whose read paths intersect the writes.        |
+
+Members are prototype methods: override them with method syntax and reach the base through
+`super`. Bind one before handing it out as a callback (`onClick={() => store.load()}`).
 
 ### `AntiHookComponent<P, S>`
 

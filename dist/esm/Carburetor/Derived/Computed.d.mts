@@ -50,11 +50,11 @@ export declare class Computed<R> implements IComputed<R> {
     /** Takes the body whose reads become this value's dependencies. */
     constructor(body: TComputeBody<R>);
     /** The identity a component or another computed subscribes by. */
-    getUID: () => string;
+    getUID(): string;
     /** Bumped once per delivered change, not on every recompute. */
-    getVersion: () => number;
+    getVersion(): number;
     /** The value, recomputing first if it cannot be trusted. */
-    get: () => R;
+    get(): R;
     /**
      * `options.reads` is accepted for interface compatibility and deliberately ignored:
      * a computed notifies at the granularity of its whole value, so there is no finer
@@ -63,37 +63,47 @@ export declare class Computed<R> implements IComputed<R> {
      * @param callback - woken only when a settled value differs from the last announced one
      * @param options - `id` keys the subscription for later unsubscribe; a uid is generated when omitted
      */
-    subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
+    subscribe(callback: TSubscriber, options?: ISubscribeOptions): string;
+    /**
+     * No-op: a computed notifies at the granularity of its whole value, so there is no
+     * finer path an existing subscription could be extended with. Kept only so a computed
+     * satisfies the subscription interface when it is itself used as a dependency source.
+     *
+     * @param _id - the subscription id; ignored, there is nothing to file
+     * @param _path - the path a caller would otherwise extend the subscription with; ignored
+     */
+    extend(_id: string, _path: TPath): void;
     /**
      * Drops a subscriber, and stops observing dependencies once the last one leaves.
      *
      * The value is invalidated at the same time: while unobserved it receives no
      * invalidations, so what it holds cannot be trusted when someone subscribes again.
      */
-    unsubscribe: (id: string) => void;
+    unsubscribe(id: string): void;
     /** Whether the cached value can still be handed out. */
-    protected isStale: () => boolean;
+    protected isStale(): boolean;
     /** Whether any store this value was computed from moved since it was read. */
-    protected hasDrifted: () => boolean;
+    protected hasDrifted(): boolean;
     /**
      * Whether any dependency moved since the given version snapshot was taken.
      *
      * @param record - the versions captured at an earlier moment, e.g. alongside an announcement
      */
-    protected driftedSince: (record: IDict<IDependencyVersion>) => boolean;
+    protected driftedSince(record: IDict<IDependencyVersion>): boolean;
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
-    protected recompute: () => void;
+    protected recompute(): void;
     /**
      * Records one path read through a dependency, amending an established registration
      * when the read arrives after the body's own evaluation.
      *
      * The value a computed hands out stays live: a consumer reading a deeper leaf off it
      * re-enters the read proxy the value was built from, whose recorder reports here long
-     * after attachDependencies published the read set. The store copied that set at
-     * subscription time, so the mutation alone reaches no registration — while the leaf is
-     * exactly what that consumer renders from, and a write to it must wake this computed.
-     * Re-subscribing the dependency under this computed's own id replaces the registration
-     * with the amended set, the same way a fresh edge is published.
+     * after attachDependencies published the read set. Growing `dependency.reads` only grows
+     * that Set; the store's own exact/branch index is separate and a plain mutation never
+     * reaches it — while the leaf is exactly what that consumer renders from, and a write to
+     * it must wake this computed. `extend` files just the new path into the existing
+     * registration — O(path depth), not the O(read-set size) a full re-subscribe would cost
+     * for every leaf a render adds.
      *
      * During the body's own evaluation the dependency being filled is not yet the published
      * one (attachDependencies swaps it in after the body returns), so nothing is amended
@@ -102,9 +112,9 @@ export declare class Computed<R> implements IComputed<R> {
      * @param dependency - the dependency edge the read belongs to
      * @param path - the path the read proxy reported
      */
-    protected recordDependencyRead: (dependency: IDependency, path: TPath) => void;
+    protected recordDependencyRead(dependency: IDependency, path: TPath): void;
     /** Swaps in a fresh dependency set, keeping every edge the body still reads. */
-    protected attachDependencies: (collected: IDict<IDependency>) => void;
+    protected attachDependencies(collected: IDict<IDependency>): void;
     /**
      * Splits a fresh collection into edges already held and edges needing a registration.
      *
@@ -118,7 +128,7 @@ export declare class Computed<R> implements IComputed<R> {
      * @returns the collected ids that still need a subscription: new sources, and sources
      * now read through different paths
      */
-    protected diffDependencies: (collected: IDict<IDependency>) => IDict<boolean>;
+    protected diffDependencies(collected: IDict<IDependency>): IDict<boolean>;
     /**
      * Whether two read sets name exactly the same paths.
      *
@@ -126,7 +136,7 @@ export declare class Computed<R> implements IComputed<R> {
      * @param after - the paths the fresh collection recorded for the same source
      * @returns true when both sets hold the same paths, so the registration can stay
      */
-    protected sameReads: (before: TPathSet, after: TPathSet) => boolean;
+    protected sameReads(before: TPathSet, after: TPathSet): boolean;
     /**
      * Records the store versions the value was computed from. An inner computed hides the
      * stores behind it, so those are recorded in its place — otherwise a write they saw
@@ -134,12 +144,18 @@ export declare class Computed<R> implements IComputed<R> {
      *
      * The body has just read every dependency, so their own records are current.
      */
-    protected recordVersions: (collected: IDict<IDependency>) => void;
+    protected recordVersions(collected: IDict<IDependency>): void;
     /** Subscribes to every dependency under this computed's own id. */
-    protected observeDependencies: () => void;
+    protected observeDependencies(): void;
     /** Unsubscribes from every dependency and forgets them. */
-    protected releaseDependencies: () => void;
-    /** Invalidates on a dependency write, and settles once the wave around it has passed. */
+    protected releaseDependencies(): void;
+    /**
+     * Invalidates on a dependency write, and settles once the wave around it has passed.
+     *
+     * A bound field, not a method: it is the key `invalidationEdges` files `markStale` under
+     * and the callback a dependency's `subscribers` map holds, both called detached from
+     * `this`, so its identity and receiver have to survive past this call.
+     */
     protected onDependencyChanged: () => void;
     /**
      * Marks this cached value untrustworthy and passes the mark downstream.
@@ -150,6 +166,9 @@ export declare class Computed<R> implements IComputed<R> {
      * even when no settlement of theirs follows — when the settlement upstream fails, no
      * announcement ever comes, and an unmarked dependent would keep serving its cached
      * value as if it were still current.
+     *
+     * A bound field, not a method: it is the value `invalidationEdges` maps this computed's
+     * `onDependencyChanged` to, looked up and called detached from `this`.
      */
     protected markStale: () => void;
     /**
@@ -160,6 +179,9 @@ export declare class Computed<R> implements IComputed<R> {
      * The error escapes to the wave, which isolates it and keeps settling the other
      * computations; an explicit get() reruns the body and hands the error to its reader,
      * and the next write to a dependency retries it.
+     *
+     * A bound field, not a method: `updateWave.defer` holds onto it and calls it detached
+     * from `this` once the wave drains.
      */
     protected settle: () => void;
     /**
@@ -169,6 +191,6 @@ export declare class Computed<R> implements IComputed<R> {
      * subscribers after it neither their notification nor the wave its remaining work, and
      * the failures are reported once delivery finishes rather than re-thrown.
      */
-    protected deliver: () => void;
+    protected deliver(): void;
 }
 export {};

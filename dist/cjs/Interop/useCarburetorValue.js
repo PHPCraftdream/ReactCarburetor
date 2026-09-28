@@ -34,10 +34,20 @@ __webpack_require__.d(__webpack_exports__, {
 const external_react_namespaceObject = require("react");
 const detachOpaque_js_namespaceObject = require("../Carburetor/Store/Utils/detachOpaque.js");
 const sameSelection_js_namespaceObject = require("../Carburetor/Component/Connection/sameSelection.js");
+const isTrackable_js_namespaceObject = require("../Carburetor/Store/Tracking/isTrackable.js");
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
     return true;
+};
+const resolveView = (cached, carburetor, record)=>{
+    const data = carburetor.getData();
+    if (null !== cached && cached.carburetor === carburetor && cached.data === data && (0, isTrackable_js_namespaceObject.isTrackable)(data)) return cached;
+    return {
+        carburetor,
+        data,
+        view: carburetor.read(record)
+    };
 };
 const describeInstance = (instance)=>{
     var _Object_getPrototypeOf_constructor, _Object_getPrototypeOf;
@@ -60,6 +70,12 @@ const useCarburetorValue = (carburetor, select, isEqual = sameSelection_js_names
     const pendingReads = (0, external_react_namespaceObject.useRef)(new Set());
     const active = (0, external_react_namespaceObject.useRef)(null);
     const notify = (0, external_react_namespaceObject.useRef)(null);
+    const view = (0, external_react_namespaceObject.useRef)(null);
+    const currentReads = (0, external_react_namespaceObject.useRef)(void 0);
+    const recordRead = (0, external_react_namespaceObject.useCallback)((path)=>{
+        var _currentReads_current;
+        null == (_currentReads_current = currentReads.current) || _currentReads_current.add(path);
+    }, []);
     const install = (0, external_react_namespaceObject.useCallback)(()=>{
         const onStoreChange = notify.current;
         if (!onStoreChange) return;
@@ -98,34 +114,32 @@ const useCarburetorValue = (carburetor, select, isEqual = sameSelection_js_names
         const entry = cache.current;
         const version = carburetor.getVersion();
         if (entry.filled && entry.carburetor === carburetor && entry.select === select && entry.version === version) return entry.value;
+        view.current = resolveView(view.current, carburetor, recordRead);
         const reads = new Set();
-        const fresh = select(carburetor.read((path)=>reads.add(path)));
-        pendingReads.current = reads;
-        const liveCompare = isEqual === sameSelection_js_namespaceObject.sameSelection;
-        const candidate = liveCompare ? fresh : detach(fresh);
-        if (entry.filled && isEqual(entry.value, candidate)) {
-            cache.current = {
-                carburetor,
-                select,
-                version,
-                value: entry.value,
-                filled: true
-            };
-            return entry.value;
+        currentReads.current = reads;
+        let result;
+        try {
+            const fresh = select(view.current.view);
+            pendingReads.current = reads;
+            const liveCompare = isEqual === sameSelection_js_namespaceObject.sameSelection;
+            const candidate = liveCompare ? fresh : detach(fresh);
+            result = entry.filled && isEqual(entry.value, candidate) ? entry.value : liveCompare ? detach(fresh) : candidate;
+        } finally{
+            currentReads.current = void 0;
         }
-        const next = liveCompare ? detach(fresh) : candidate;
         cache.current = {
             carburetor,
             select,
             version,
-            value: next,
+            value: result,
             filled: true
         };
-        return next;
+        return result;
     }, [
         carburetor,
         select,
-        isEqual
+        isEqual,
+        recordRead
     ]);
     (0, external_react_namespaceObject.useLayoutEffect)(()=>{
         install();

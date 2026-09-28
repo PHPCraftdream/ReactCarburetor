@@ -54,39 +54,50 @@ class Carburetor {
     draftTouched = false;
     pendingEmit = false;
     draftProxy = void 0;
+    writeRecorder = (path)=>this.recordWrite(path);
     constructor(data, scheduler = SyncUpdateSchedulerInstance_js_namespaceObject.syncUpdateScheduler){
         this.data = data;
         this.scheduler = scheduler;
     }
-    getUID = ()=>this.uid;
-    getVersion = ()=>this.version;
-    getData = ()=>this.data;
-    read = (record)=>{
+    getUID() {
+        return this.uid;
+    }
+    getVersion() {
+        return this.version;
+    }
+    getData() {
+        return this.data;
+    }
+    read(record) {
         const data = this.data;
         if (!(0, isTrackable_js_namespaceObject.isTrackable)(data)) {
             record(WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return this.data;
         }
         return (0, createReadProxy_js_namespaceObject.createReadProxy)(data, record, '', this.aliases);
-    };
-    setData = (data)=>{
+    }
+    setData(data) {
         this.data = data;
         this.draftProxy = void 0;
         this.writes.add(WildcardPath_js_namespaceObject.WILDCARD_PATH);
         this.emitUpdate();
         return data;
-    };
-    snapshot = ()=>(0, deepClone_js_namespaceObject.deepClone)(this.data);
-    restore = (data)=>{
+    }
+    snapshot() {
+        return (0, deepClone_js_namespaceObject.deepClone)(this.data);
+    }
+    restore(data) {
         this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
-    };
-    toJSON = ()=>this.snapshot();
-    fromJSON = (value)=>{
+    }
+    toJSON() {
+        return this.snapshot();
+    }
+    fromJSON(value) {
         this.restore(value);
-    };
-    subscribe = (callback, options = {})=>{
+    }
+    subscribe(callback, options = {}) {
         const id = options.id || (0, getUid_js_namespaceObject.getUid)();
-        const reads = options.reads ? new Set(options.reads) : new Set([
+        const reads = options.reads || new Set([
             WildcardPath_js_namespaceObject.WILDCARD_PATH
         ]);
         this.subscribers[id] = {
@@ -95,23 +106,27 @@ class Carburetor {
         };
         this.subscriberIndex.add(id, reads);
         return id;
-    };
-    unsubscribe = (id)=>{
+    }
+    extend(id, path) {
+        if (!(id in this.subscribers)) return;
+        this.subscriberIndex.addPath(id, path);
+    }
+    unsubscribe(id) {
         if (id in this.subscribers) {
             this.scheduler.cancel(id);
             this.subscriberIndex.remove(id);
             delete this.subscribers[id];
         }
-    };
-    watch = (callback, reads)=>{
+    }
+    watch(callback, reads) {
         const id = this.subscribe(callback, {
-            reads
+            reads: reads ? new Set(reads) : void 0
         });
         return ()=>{
             this.unsubscribe(id);
         };
-    };
-    notifyWrites = (writes)=>{
+    }
+    notifyWrites(writes) {
         UpdateWaveInstance_js_namespaceObject.updateWave.begin();
         try {
             const failures = [];
@@ -129,7 +144,7 @@ class Carburetor {
         } finally{
             UpdateWaveInstance_js_namespaceObject.updateWave.end();
         }
-    };
+    }
     get draft() {
         const data = this.data;
         this.touchDraft();
@@ -137,10 +152,10 @@ class Carburetor {
             this.recordWrite(WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return this.data;
         }
-        if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.recordWrite, '', this.aliases);
+        if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.writeRecorder, '', this.aliases);
         return this.draftProxy;
     }
-    update = (mutate)=>{
+    update(mutate) {
         let result;
         try {
             result = mutate(this.draft);
@@ -150,30 +165,30 @@ class Carburetor {
         if ("u" > typeof process && 'production' !== process.env.NODE_ENV) {
             if (result instanceof Promise) DiagnosticsInstance_js_namespaceObject.diagnostics.report("update(mutate) published before the mutation finished: the callback returned a promise, so writes made after its first await wake nobody. Keep the callback synchronous and publish after the await instead.");
         }
-    };
-    emitSoon = ()=>{
+    }
+    emitSoon() {
         this.pendingEmit = true;
         queueMicrotask(()=>{
             this.pendingEmit = false;
             this.emitUpdate();
         });
-    };
-    touchDraft = ()=>{
+    }
+    touchDraft() {
         if (this.draftTouched) return;
         this.draftTouched = true;
         if ("u" > typeof process && 'production' !== process.env.NODE_ENV) queueMicrotask(()=>{
             if (!this.draftTouched || this.pendingEmit) return;
             DiagnosticsInstance_js_namespaceObject.diagnostics.report("a write went through draft, but emitUpdate() was never called, so no subscriber was notified. Prefer this.update(draft => ...), which does both.");
         });
-    };
-    recordWrite = (path)=>{
+    }
+    recordWrite(path) {
         this.writes.add(path);
-    };
-    markAllChanged = ()=>{
+    }
+    markAllChanged() {
         this.recordWrite(WildcardPath_js_namespaceObject.WILDCARD_PATH);
-    };
-    preEmit = ()=>{};
-    emitUpdate = ()=>{
+    }
+    preEmit() {}
+    emitUpdate() {
         this.preEmit();
         const touched = this.draftTouched;
         const changed = this.writes.size > 0 ? this.writes : void 0;
@@ -186,7 +201,7 @@ class Carburetor {
         this.version++;
         if (UpdateBatchInstance_js_namespaceObject.updateBatch.isActive()) return void UpdateBatchInstance_js_namespaceObject.updateBatch.add(this, writes);
         this.notifyWrites(writes);
-    };
+    }
 }
 exports.Carburetor = __webpack_exports__.Carburetor;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

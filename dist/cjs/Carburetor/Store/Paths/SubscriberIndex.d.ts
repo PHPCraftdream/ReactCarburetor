@@ -29,6 +29,8 @@ export declare class SubscriberIndex {
     protected wildcard: Set<string>;
     /** Read sets by id, for unregistering and for wildcard writes that match everyone. */
     protected readsById: Map<string, TPathSet>;
+    /** Each read path's ancestor chain, cached per id at add/addPath time and reused by remove. */
+    protected ancestorsById: Map<string, Map<TPath, TPath[]>>;
     /**
      * Registers what one subscriber reads, in both maps.
      *
@@ -36,20 +38,53 @@ export declare class SubscriberIndex {
      * @param reads - the paths to file; the wildcard path routes the id to the wildcard
      * set instead of the maps.
      */
-    add: (id: string, reads: TPathSet) => void;
-    /** Forgets a subscriber, dropping every entry its read paths created. */
-    remove: (id: string) => void;
-    /** The subscribers a set of written paths concerns: three lookups per write, no scan. */
-    match: (writes: TPathSet) => Set<string>;
+    add(id: string, reads: TPathSet): void;
     /**
-     * Visits every ancestor of a path, longest first, stopping before the root segment.
+     * Files one more path into an id's existing registration, leaving the rest of its
+     * read set untouched — same exact/branch/wildcard bookkeeping as `add`, per path.
+     *
+     * O(path depth) instead of O(read-set size): the incremental sibling `add` lacks,
+     * for a dependency amended one leaf read at a time.
+     *
+     * Whether the path is already filed is decided by the index's own state, not by
+     * whether `reads` already contains it: a caller may share `reads` with something that
+     * adds to it directly (a computed's own `dependency.reads`, which `Carburetor.subscribe`
+     * adopts without copying — see its comment) before calling here, and a membership check
+     * would then read as "already filed" for a path this index has never actually indexed.
+     *
+     * @param id - the subscriber to extend; an id with no registration is left alone
+     * @param path - the path to file; already-filed paths are a no-op
+     */
+    addPath(id: string, path: TPath): void;
+    /** Forgets a subscriber, dropping every entry its read paths created. */
+    remove(id: string): void;
+    /** The subscribers a set of written paths concerns: three lookups per write, no scan. */
+    match(writes: TPathSet): Set<string>;
+    /**
+     * Whether any subscriber reads exactly this path or somewhere below it.
+     *
+     * O(1): a cache's eviction check used this to ask, per candidate key, whether anyone is
+     * still reading it instead of scanning every subscriber's read set.
+     *
+     * @param path - the path to check, e.g. one cache entry's own path
+     */
+    hasReaderAt(path: TPath): boolean;
+    /**
+     * Registers one read path in both maps and caches its ancestor chain under the id, so a
+     * later `remove` can drop it from `branch` without slicing the path again.
+     *
+     * @param id - the subscriber the path belongs to
+     * @param path - the read path to file
+     * @param ancestors - that id's path -> ancestor-chain cache, written into in place
+     */
+    protected file(id: string, path: TPath, ancestors: Map<TPath, TPath[]>): void;
+    /**
+     * A path's ancestors, longest first, stopping before the root segment.
      *
      * @param path - the path to slice up; a single-segment path has no ancestors and
-     * invokes nothing.
-     * @param visit - called once per ancestor, `a.b` before `a` for `a.b.c`, never with
-     * the empty root.
+     * returns an empty array.
      */
-    protected eachAncestor: (path: TPath, visit: (ancestor: TPath) => void) => void;
+    protected ancestorsOf(path: TPath): TPath[];
     /**
      * Adds an id to one map's entry for a path, creating the entry when it is the first.
      *
@@ -57,7 +92,7 @@ export declare class SubscriberIndex {
      * @param path - the key whose bucket the id joins.
      * @param id - the subscriber to add; repeats are harmless, buckets are sets.
      */
-    protected register: (target: Map<TPath, Set<string>>, path: TPath, id: string) => void;
+    protected register(target: Map<TPath, Set<string>>, path: TPath, id: string): void;
     /**
      * Removes an id, and the entry itself once it holds nobody: the maps stay bounded.
      *
@@ -65,7 +100,7 @@ export declare class SubscriberIndex {
      * @param path - the bucket to drop the id from; a missing bucket is left alone.
      * @param id - the subscriber leaving; when its bucket empties, the key goes too.
      */
-    protected unregister: (target: Map<TPath, Set<string>>, path: TPath, id: string) => void;
+    protected unregister(target: Map<TPath, Set<string>>, path: TPath, id: string): void;
     /**
      * Merges one bucket into the match set, tolerating a bucket that does not exist.
      *
@@ -74,5 +109,5 @@ export declare class SubscriberIndex {
      * @param target - the match set one notifyWrites call is building; ids enter it,
      * never leave it.
      */
-    protected collect: (source: Set<string> | undefined, target: Set<string>) => void;
+    protected collect(source: Set<string> | undefined, target: Set<string>): void;
 }

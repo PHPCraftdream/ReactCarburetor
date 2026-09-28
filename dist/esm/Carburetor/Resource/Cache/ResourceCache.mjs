@@ -15,7 +15,7 @@ class ResourceCache extends ResourceCacheLifecycle {
     constructor(loader, options = {}){
         super(loader, options);
     }
-    keyOf = (args)=>{
+    keyOf(args) {
         const json = JSON.stringify(void 0 === args ? null : args);
         const memoized = this.lastKeyArgs === args && void 0 !== this.lastKeyValue;
         if (memoized && this.lastKeyJson === json && void 0 !== this.lastKeyValue) return this.lastKeyValue;
@@ -29,11 +29,17 @@ class ResourceCache extends ResourceCacheLifecycle {
         this.lastKeyJson = json;
         this.lastKeyValue = key;
         return key;
-    };
-    pathOf = (args)=>this.pathOfKey(this.keyOf(args));
-    pathOfKey = (key)=>joinPath('entries', key);
-    getEntry = (args)=>this.getEntryByKey(this.keyOf(args));
-    getEntryByKey = (key)=>{
+    }
+    pathOf(args) {
+        return this.pathOfKey(this.keyOf(args));
+    }
+    pathOfKey(key) {
+        return joinPath('entries', key);
+    }
+    getEntry(args) {
+        return this.getEntryByKey(this.keyOf(args));
+    }
+    getEntryByKey(key) {
         const stored = this.data.entries[key];
         if (!stored) return ABSENT_VIEW;
         this.touch(key);
@@ -46,7 +52,9 @@ class ResourceCache extends ResourceCacheLifecycle {
         };
         this.viewCache.set(key, view);
         return view;
-    };
-    getFailure = (args)=>this.failures.get(this.keyOf(args));
+    }
+    getFailure(args) {
+        return this.failures.get(this.keyOf(args));
+    }
 }
 export { ResourceCache };

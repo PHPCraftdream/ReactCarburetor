@@ -19,13 +19,17 @@ class Computed {
         this.body = body;
         invalidationEdges.set(this.onDependencyChanged, this.markStale);
     }
-    getUID = ()=>this.uid;
-    getVersion = ()=>this.version;
-    get = ()=>{
+    getUID() {
+        return this.uid;
+    }
+    getVersion() {
+        return this.version;
+    }
+    get() {
         if (this.isStale()) this.recompute();
         return this.value;
-    };
-    subscribe = (callback, options = {})=>{
+    }
+    subscribe(callback, options = {}) {
         const id = options.id || getUid();
         const wasUnobserved = 0 === this.subscribers.size;
         this.subscribers.set(id, callback);
@@ -38,35 +42,36 @@ class Computed {
             }
         };
         return id;
-    };
-    unsubscribe = (id)=>{
+    }
+    extend(_id, _path) {}
+    unsubscribe(id) {
         if (!this.subscribers.has(id)) return;
         this.subscribers.delete(id);
         if (0 === this.subscribers.size) {
             this.releaseDependencies();
             this.valid = false;
         }
-    };
-    isStale = ()=>{
+    }
+    isStale() {
         if (this.subscribers.size > 0) return !this.valid;
         return !this.valid || this.hasDrifted();
-    };
-    hasDrifted = ()=>{
+    }
+    hasDrifted() {
         for(const cuid in this.versions){
             const recorded = this.versions[cuid];
             if (recorded.source.getVersion() !== recorded.version) return true;
         }
         return false;
-    };
-    driftedSince = (record)=>{
+    }
+    driftedSince(record) {
         for(const cuid in record){
             const recorded = record[cuid];
             if (recorded.source.getVersion() !== recorded.version) return true;
         }
         for(const cuid in this.versions)if (!(cuid in record)) return true;
         return false;
-    };
-    recompute = ()=>{
+    }
+    recompute() {
         const collected = {};
         const track = (source)=>{
             const cuid = source.getUID();
@@ -84,18 +89,15 @@ class Computed {
         this.value = this.body(track);
         this.valid = true;
         this.attachDependencies(collected);
-    };
-    recordDependencyRead = (dependency, path)=>{
+    }
+    recordDependencyRead(dependency, path) {
         if (dependency.reads.has(path)) return;
         dependency.reads.add(path);
         const published = dependency === this.dependencies[dependency.source.getUID()];
         const observed = this.subscribers.size > 0;
-        if (published && observed) dependency.source.subscribe(this.onDependencyChanged, {
-            id: this.uid,
-            reads: dependency.reads
-        });
-    };
-    attachDependencies = (collected)=>{
+        if (published && observed) dependency.source.extend(this.uid, path);
+    }
+    attachDependencies(collected) {
         const fresh = this.diffDependencies(collected);
         this.dependencies = collected;
         this.recordVersions(collected);
@@ -108,8 +110,8 @@ class Computed {
                 reads: dependency.reads
             });
         });
-    };
-    diffDependencies = (collected)=>{
+    }
+    diffDependencies(collected) {
         const fresh = {};
         Object.keys(this.dependencies).forEach((cuid)=>{
             const next = collected[cuid];
@@ -120,8 +122,8 @@ class Computed {
             if (!(cuid in this.dependencies)) fresh[cuid] = true;
         });
         return fresh;
-    };
-    sameReads = (before, after)=>{
+    }
+    sameReads(before, after) {
         if (before === after) return true;
         if (before.size !== after.size) return false;
         let same = true;
@@ -129,8 +131,8 @@ class Computed {
             if (!after.has(path)) same = false;
         });
         return same;
-    };
-    recordVersions = (collected)=>{
+    }
+    recordVersions(collected) {
         const versions = {};
         const record = (dependency)=>{
             if ('read' in dependency.source) {
@@ -149,8 +151,8 @@ class Computed {
             record(collected[cuid]);
         });
         this.versions = versions;
-    };
-    observeDependencies = ()=>{
+    }
+    observeDependencies() {
         Object.keys(this.dependencies).forEach((cuid)=>{
             const dependency = this.dependencies[cuid];
             dependency.source.subscribe(this.onDependencyChanged, {
@@ -158,13 +160,13 @@ class Computed {
                 reads: dependency.reads
             });
         });
-    };
-    releaseDependencies = ()=>{
+    }
+    releaseDependencies() {
         Object.keys(this.dependencies).forEach((cuid)=>{
             this.dependencies[cuid].source.unsubscribe(this.uid);
         });
         this.dependencies = {};
-    };
+    }
     onDependencyChanged = ()=>{
         if (this.valid && !this.hasDrifted()) return;
         this.markStale();
@@ -199,7 +201,7 @@ class Computed {
         this.version++;
         this.deliver();
     };
-    deliver = ()=>{
+    deliver() {
         const failures = [];
         const ids = Array.from(this.subscribers.keys());
         ids.forEach((id)=>{
@@ -213,6 +215,6 @@ class Computed {
         failures.forEach((error)=>{
             if ("u" > typeof process && 'production' !== process.env.NODE_ENV) diagnostics.report('a subscriber threw while a computed value was delivered: ' + (error instanceof Error ? error.message : String(error)) + '. The remaining subscribers were notified anyway.');
         });
-    };
+    }
 }
 export { Computed };

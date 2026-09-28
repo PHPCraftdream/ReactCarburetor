@@ -28,16 +28,40 @@ export declare class ResourceCache<T, TArgs = void> extends ResourceCacheLifecyc
      * @param options - Cache and scheduler settings.
      */
     constructor(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions);
-    /** The key an argument set is stored under, memoized while both reference and JSON are unchanged. */
-    keyOf: (args: TArgs) => string;
-    /** The read path of one entry, built with the same path segment escaping as store writes. */
-    pathOf: (args: TArgs) => TPath;
-    /** The read path for an already-resolved key, so a caller holding one need not re-derive it. */
-    pathOfKey: (key: string) => TPath;
-    /** The entry as it stands, with the freshness verdict computed now. */
-    getEntry: (args: TArgs) => IResourceView<T>;
-    /** The entry for an already-resolved key, so a caller holding one need not re-derive it. */
-    getEntryByKey: (key: string) => IResourceView<T>;
-    /** The raw rejection for one entry, which `error` can only describe. */
-    getFailure: (args: TArgs) => unknown;
+    /**
+     * The key an argument set is stored under, memoized while both reference and JSON are unchanged.
+     *
+     * @param args - the loader arguments to derive the key from
+     */
+    keyOf(args: TArgs): string;
+    /**
+     * The read path of one entry, built with the same path segment escaping as store writes.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    pathOf(args: TArgs): TPath;
+    /**
+     * The read path for an already-resolved key, so a caller holding one need not re-derive it.
+     *
+     * @param key - the resolved cache key
+     */
+    pathOfKey(key: string): TPath;
+    /**
+     * The entry as it stands, with the freshness verdict computed now.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    getEntry(args: TArgs): IResourceView<T>;
+    /**
+     * The entry for an already-resolved key, so a caller holding one need not re-derive it.
+     *
+     * @param key - the resolved cache key
+     */
+    getEntryByKey(key: string): IResourceView<T>;
+    /**
+     * The raw rejection for one entry, which `error` can only describe.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    getFailure(args: TArgs): unknown;
 }

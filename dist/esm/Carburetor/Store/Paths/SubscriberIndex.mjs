@@ -5,59 +5,89 @@ class SubscriberIndex {
     branch = new Map();
     wildcard = new Set();
     readsById = new Map();
-    add = (id, reads)=>{
+    ancestorsById = new Map();
+    add(id, reads) {
         this.remove(id);
         this.readsById.set(id, reads);
+        const ancestors = new Map();
+        this.ancestorsById.set(id, ancestors);
         reads.forEach((readPath)=>{
             if (readPath === WILDCARD_PATH) return void this.wildcard.add(id);
-            this.register(this.exact, readPath, id);
-            this.eachAncestor(readPath, (ancestor)=>this.register(this.branch, ancestor, id));
+            this.file(id, readPath, ancestors);
         });
-    };
-    remove = (id)=>{
+    }
+    addPath(id, path) {
         const reads = this.readsById.get(id);
         if (!reads) return;
+        reads.add(path);
+        if (path === WILDCARD_PATH) return void this.wildcard.add(id);
+        const exactReaders = this.exact.get(path);
+        if (exactReaders && exactReaders.has(id)) return;
+        let ancestors = this.ancestorsById.get(id);
+        if (!ancestors) {
+            ancestors = new Map();
+            this.ancestorsById.set(id, ancestors);
+        }
+        this.file(id, path, ancestors);
+    }
+    remove(id) {
+        const reads = this.readsById.get(id);
+        if (!reads) return;
+        const ancestors = this.ancestorsById.get(id);
         this.readsById.delete(id);
+        this.ancestorsById.delete(id);
         this.wildcard.delete(id);
         reads.forEach((readPath)=>{
             this.unregister(this.exact, readPath, id);
-            this.eachAncestor(readPath, (ancestor)=>this.unregister(this.branch, ancestor, id));
+            const chain = (null == ancestors ? void 0 : ancestors.get(readPath)) || this.ancestorsOf(readPath);
+            chain.forEach((ancestor)=>this.unregister(this.branch, ancestor, id));
         });
-    };
-    match = (writes)=>{
+    }
+    match(writes) {
         if (writes.has(WILDCARD_PATH)) return new Set(this.readsById.keys());
         const matched = new Set(this.wildcard);
         writes.forEach((writePath)=>{
             this.collect(this.exact.get(writePath), matched);
             this.collect(this.branch.get(writePath), matched);
-            this.eachAncestor(writePath, (ancestor)=>this.collect(this.exact.get(ancestor), matched));
+            this.ancestorsOf(writePath).forEach((ancestor)=>this.collect(this.exact.get(ancestor), matched));
         });
         return matched;
-    };
-    eachAncestor = (path, visit)=>{
+    }
+    hasReaderAt(path) {
+        return this.exact.has(path) || this.branch.has(path);
+    }
+    file(id, path, ancestors) {
+        this.register(this.exact, path, id);
+        const chain = this.ancestorsOf(path);
+        ancestors.set(path, chain);
+        chain.forEach((ancestor)=>this.register(this.branch, ancestor, id));
+    }
+    ancestorsOf(path) {
+        const chain = [];
         let cut = path.lastIndexOf(PATH_SEPARATOR);
         while(cut > 0){
             const ancestor = path.slice(0, cut);
-            visit(ancestor);
+            chain.push(ancestor);
             cut = ancestor.lastIndexOf(PATH_SEPARATOR);
         }
-    };
-    register = (target, path, id)=>{
+        return chain;
+    }
+    register(target, path, id) {
         const known = target.get(path);
         if (known) return void known.add(id);
         target.set(path, new Set([
             id
         ]));
-    };
-    unregister = (target, path, id)=>{
+    }
+    unregister(target, path, id) {
         const known = target.get(path);
         if (!known) return;
         known.delete(id);
         if (0 === known.size) target.delete(path);
-    };
-    collect = (source, target)=>{
+    }
+    collect(source, target) {
         if (!source) return;
         source.forEach((id)=>target.add(id));
-    };
+    }
 }
 export { SubscriberIndex };

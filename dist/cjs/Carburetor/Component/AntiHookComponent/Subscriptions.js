@@ -32,8 +32,6 @@ __webpack_require__.d(__webpack_exports__, {
     AntiHookComponentSubscriptions: ()=>AntiHookComponentSubscriptions
 });
 const external_Effects_js_namespaceObject = require("./Effects.js");
-const CONNECTION_ATTEMPT_KEY = "c:";
-const TRACKED_ATTEMPT_KEY = "t:";
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
@@ -48,35 +46,39 @@ class AntiHookComponentSubscriptions extends external_Effects_js_namespaceObject
         const fresh = void 0 !== attempt && !attempt.abandoned && attempt !== this.committedAttempt;
         if (fresh) {
             this.committedAttempt = attempt;
-            Object.keys(this.tracked).forEach((cuid)=>{
-                if (attempt.entries.has(TRACKED_ATTEMPT_KEY + cuid)) return;
-                this.releaseSlot(this.uid, this.tracked[cuid]);
-                delete this.tracked[cuid];
+            const trackedEntries = attempt.tracked;
+            const connectionEntries = attempt.connections;
+            this.tracked.forEach((slot, source)=>{
+                if (void 0 !== trackedEntries && trackedEntries.has(source)) return;
+                this.releaseSlot(this.uid, slot);
+                this.tracked.delete(source);
             });
             this.connections.forEach((connection)=>{
-                if (!attempt.entries.has(CONNECTION_ATTEMPT_KEY + connection.uid)) connection.committed = void 0;
+                if (void 0 === connectionEntries || !connectionEntries.has(connection)) connection.committed = void 0;
             });
-            attempt.entries.forEach((entry, key)=>{
+            if (void 0 !== trackedEntries) trackedEntries.forEach((entry, source)=>{
                 const description = {
                     carburetor: entry.source,
                     baselineVersion: entry.baselineVersion,
                     reads: entry.reads
                 };
-                if (entry.connection) {
-                    entry.connection.committed = description;
-                    return;
-                }
-                const cuid = key.slice(TRACKED_ATTEMPT_KEY.length);
-                const known = this.tracked[cuid];
-                this.tracked[cuid] = {
+                const known = this.tracked.get(source);
+                this.tracked.set(source, {
                     committed: description,
                     installed: known ? known.installed : void 0
+                });
+            });
+            if (void 0 !== connectionEntries) connectionEntries.forEach((entry, connection)=>{
+                connection.committed = {
+                    carburetor: entry.source,
+                    baselineVersion: entry.baselineVersion,
+                    reads: entry.reads
                 };
             });
         }
         let changedDuringRender = false;
-        Object.keys(this.tracked).forEach((cuid)=>{
-            if (this.alignSubscription(this.uid, this.tracked[cuid])) changedDuringRender = true;
+        this.tracked.forEach((slot)=>{
+            if (this.alignSubscription(this.uid, slot)) changedDuringRender = true;
         });
         this.connections.forEach((connection)=>{
             if (this.alignSubscription(connection.uid, connection)) changedDuringRender = true;
@@ -116,8 +118,8 @@ class AntiHookComponentSubscriptions extends external_Effects_js_namespaceObject
         }
     }
     releaseSubscriptions() {
-        Object.keys(this.tracked).forEach((cuid)=>{
-            this.releaseSlot(this.uid, this.tracked[cuid]);
+        this.tracked.forEach((slot)=>{
+            this.releaseSlot(this.uid, slot);
         });
         this.connections.forEach((connection)=>{
             this.releaseSlot(connection.uid, connection);

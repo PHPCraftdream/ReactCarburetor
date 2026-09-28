@@ -47,7 +47,7 @@ class ResourceCache extends external_ResourceCacheLifecycle_js_namespaceObject.R
     constructor(loader, options = {}){
         super(loader, options);
     }
-    keyOf = (args)=>{
+    keyOf(args) {
         const json = JSON.stringify(void 0 === args ? null : args);
         const memoized = this.lastKeyArgs === args && void 0 !== this.lastKeyValue;
         if (memoized && this.lastKeyJson === json && void 0 !== this.lastKeyValue) return this.lastKeyValue;
@@ -61,11 +61,17 @@ class ResourceCache extends external_ResourceCacheLifecycle_js_namespaceObject.R
         this.lastKeyJson = json;
         this.lastKeyValue = key;
         return key;
-    };
-    pathOf = (args)=>this.pathOfKey(this.keyOf(args));
-    pathOfKey = (key)=>(0, joinPath_js_namespaceObject.joinPath)('entries', key);
-    getEntry = (args)=>this.getEntryByKey(this.keyOf(args));
-    getEntryByKey = (key)=>{
+    }
+    pathOf(args) {
+        return this.pathOfKey(this.keyOf(args));
+    }
+    pathOfKey(key) {
+        return (0, joinPath_js_namespaceObject.joinPath)('entries', key);
+    }
+    getEntry(args) {
+        return this.getEntryByKey(this.keyOf(args));
+    }
+    getEntryByKey(key) {
         const stored = this.data.entries[key];
         if (!stored) return ABSENT_VIEW;
         this.touch(key);
@@ -78,8 +84,10 @@ class ResourceCache extends external_ResourceCacheLifecycle_js_namespaceObject.R
         };
         this.viewCache.set(key, view);
         return view;
-    };
-    getFailure = (args)=>this.failures.get(this.keyOf(args));
+    }
+    getFailure(args) {
+        return this.failures.get(this.keyOf(args));
+    }
 }
 exports.ResourceCache = __webpack_exports__.ResourceCache;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

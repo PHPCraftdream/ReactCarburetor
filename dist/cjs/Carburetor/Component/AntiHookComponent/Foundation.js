@@ -35,36 +35,41 @@ const external_react_namespaceObject = require("react");
 const getUid_js_namespaceObject = require("../../Store/Utils/getUid.js");
 const external_shallowEqual_js_namespaceObject = require("../shallowEqual.js");
 const RENDER_KEY = "render";
+const RENDER_RAW = Symbol('carburetor.antiHookComponent.renderRaw');
+const RENDER_BOUNDARY = Symbol('carburetor.antiHookComponent.renderBoundary');
+const RENDER_ASSIGNED = Symbol('carburetor.antiHookComponent.renderAssigned');
 class AntiHookComponentFoundation extends external_react_namespaceObject.Component {
     uid = (0, getUid_js_namespaceObject.getUid)();
     effects = {};
-    tracked = {};
+    tracked = new Map();
     connections = [];
     renderAttempt = void 0;
     pendingAttempt = void 0;
     committedAttempt = void 0;
+    [RENDER_RAW] = void 0;
+    [RENDER_BOUNDARY] = void 0;
+    [RENDER_ASSIGNED] = false;
     installRenderBoundary() {
-        let rawRender;
-        let boundary;
-        let assigned = false;
         Object.defineProperty(this, RENDER_KEY, {
             configurable: false,
             enumerable: false,
-            get: ()=>{
-                const raw = assigned ? rawRender : Reflect.get(Object.getPrototypeOf(this), RENDER_KEY, this);
-                if ('function' != typeof raw) return raw;
-                if (void 0 === boundary || raw !== rawRender) {
-                    rawRender = raw;
-                    boundary = this.buildRenderBoundary(raw);
-                }
-                return boundary;
-            },
-            set: (value)=>{
-                assigned = 'function' == typeof value;
-                rawRender = value;
-                boundary = assigned ? this.buildRenderBoundary(value) : void 0;
-            }
+            get: AntiHookComponentFoundation.renderGetter,
+            set: AntiHookComponentFoundation.renderSetter
         });
+    }
+    static renderGetter() {
+        const raw = this[RENDER_ASSIGNED] ? this[RENDER_RAW] : Reflect.get(Object.getPrototypeOf(this), RENDER_KEY, this);
+        if ('function' != typeof raw) return raw;
+        if (void 0 === this[RENDER_BOUNDARY] || raw !== this[RENDER_RAW]) {
+            this[RENDER_RAW] = raw;
+            this[RENDER_BOUNDARY] = this.buildRenderBoundary(raw);
+        }
+        return this[RENDER_BOUNDARY];
+    }
+    static renderSetter(value) {
+        this[RENDER_ASSIGNED] = 'function' == typeof value;
+        this[RENDER_RAW] = value;
+        this[RENDER_BOUNDARY] = this[RENDER_ASSIGNED] ? this.buildRenderBoundary(value) : void 0;
     }
     constructor(props){
         super(props);
@@ -106,9 +111,10 @@ class AntiHookComponentFoundation extends external_react_namespaceObject.Compone
     }
     openRenderAttempt() {
         const attempt = {
-            entries: new Map(),
-            sources: new Map(),
-            deferredLoads: [],
+            tracked: void 0,
+            connections: void 0,
+            sources: void 0,
+            deferredLoads: void 0,
             abandoned: false
         };
         this.renderAttempt = attempt;

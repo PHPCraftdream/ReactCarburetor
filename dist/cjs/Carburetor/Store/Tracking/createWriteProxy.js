@@ -41,49 +41,69 @@ const unwrapWriteProxy = (value)=>{
     const target = proxyTargets.get(value);
     return target ?? value;
 };
+class WriteProxyHandler {
+    basePath;
+    record;
+    aliases;
+    cache;
+    isArray;
+    constructor(basePath, record, aliases, cache, isArray){
+        this.basePath = basePath;
+        this.record = record;
+        this.aliases = aliases;
+        this.cache = cache;
+        this.isArray = isArray;
+    }
+    writtenPath(key) {
+        if ('symbol' == typeof key || this.basePath === WildcardPath_js_namespaceObject.WILDCARD_PATH) return WildcardPath_js_namespaceObject.WILDCARD_PATH;
+        return (0, joinPath_js_namespaceObject.joinPath)(this.basePath, key);
+    }
+    get(source, key) {
+        if (key === external_Models_js_namespaceObject.PROXY_CACHE) return this.cache;
+        const value = Reflect.get(source, key);
+        if ('function' == typeof value) return value;
+        const path = 'symbol' == typeof key || this.basePath === WildcardPath_js_namespaceObject.WILDCARD_PATH ? WildcardPath_js_namespaceObject.WILDCARD_PATH : (0, joinPath_js_namespaceObject.joinPath)(this.basePath, key);
+        if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return this.cache(path, value, ()=>createWriteProxy(value, this.record, path, this.aliases, this.cache));
+        if (null !== value && 'object' == typeof value) this.record(path);
+        return value;
+    }
+    set(source, key, value) {
+        var _this_aliases, _this_aliases1;
+        const previous = Reflect.get(source, key);
+        const raw = unwrapWriteProxy(value);
+        if (Object.prototype.hasOwnProperty.call(source, key) && Object.is(previous, raw)) return true;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkWrite(source, this.basePath);
+        null == (_this_aliases1 = this.aliases) || _this_aliases1.forget(previous);
+        if (this.isArray && 'length' === key && 'number' == typeof raw && 'number' == typeof previous && raw < previous) for(let removed = raw; removed < previous; removed++)this.record((0, joinPath_js_namespaceObject.joinPath)(this.basePath, String(removed)));
+        const previousLength = this.isArray && 'string' == typeof key && 'length' !== key ? source.length : void 0;
+        const path = this.writtenPath(key);
+        this.record(path);
+        const wrote = Reflect.set(source, key, raw);
+        if (void 0 !== previousLength && source.length !== previousLength) this.record(this.writtenPath('length'));
+        return wrote;
+    }
+    defineProperty(source, key, descriptor) {
+        var _this_aliases, _this_aliases1;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkWrite(source, this.basePath);
+        null == (_this_aliases1 = this.aliases) || _this_aliases1.forget(Reflect.get(source, key));
+        const path = this.writtenPath(key);
+        this.record(path);
+        return Reflect.defineProperty(source, key, descriptor);
+    }
+    deleteProperty(source, key) {
+        var _this_aliases, _this_aliases1;
+        if (!Reflect.has(source, key)) return true;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkWrite(source, this.basePath);
+        null == (_this_aliases1 = this.aliases) || _this_aliases1.forget(Reflect.get(source, key));
+        const path = this.writtenPath(key);
+        this.record(path);
+        return Reflect.deleteProperty(source, key);
+    }
+}
 const createWriteProxy = (target, record, basePath = '', aliases, cache)=>{
     const cached = cache ?? (0, external_createProxyCache_js_namespaceObject.createProxyCache)();
-    const isArray = Array.isArray(target);
-    const writtenPath = (key)=>{
-        if ('symbol' == typeof key || basePath === WildcardPath_js_namespaceObject.WILDCARD_PATH) return WildcardPath_js_namespaceObject.WILDCARD_PATH;
-        return isArray ? basePath || WildcardPath_js_namespaceObject.WILDCARD_PATH : (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
-    };
-    const proxy = new Proxy(target, {
-        get: (source, key)=>{
-            if (key === external_Models_js_namespaceObject.PROXY_CACHE) return cached;
-            const value = Reflect.get(source, key);
-            if ('function' == typeof value) return value;
-            const path = 'symbol' == typeof key || basePath === WildcardPath_js_namespaceObject.WILDCARD_PATH ? WildcardPath_js_namespaceObject.WILDCARD_PATH : (0, joinPath_js_namespaceObject.joinPath)(basePath, key);
-            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return cached(path, value, ()=>createWriteProxy(value, record, path, aliases, cached));
-            if (null !== value && 'object' == typeof value) record(path);
-            return value;
-        },
-        set: (source, key, value)=>{
-            const previous = Reflect.get(source, key);
-            const raw = unwrapWriteProxy(value);
-            if (Object.prototype.hasOwnProperty.call(source, key) && Object.is(previous, raw)) return true;
-            null == aliases || aliases.checkWrite(source, basePath);
-            null == aliases || aliases.forget(previous);
-            const path = writtenPath(key);
-            record(path);
-            return Reflect.set(source, key, raw);
-        },
-        defineProperty: (source, key, descriptor)=>{
-            null == aliases || aliases.checkWrite(source, basePath);
-            null == aliases || aliases.forget(Reflect.get(source, key));
-            const path = writtenPath(key);
-            record(path);
-            return Reflect.defineProperty(source, key, descriptor);
-        },
-        deleteProperty: (source, key)=>{
-            if (!Reflect.has(source, key)) return true;
-            null == aliases || aliases.checkWrite(source, basePath);
-            null == aliases || aliases.forget(Reflect.get(source, key));
-            const path = writtenPath(key);
-            record(path);
-            return Reflect.deleteProperty(source, key);
-        }
-    });
+    const handler = new WriteProxyHandler(basePath, record, aliases, cached, Array.isArray(target));
+    const proxy = new Proxy(target, handler);
     proxyTargets.set(proxy, target);
     return proxy;
 };

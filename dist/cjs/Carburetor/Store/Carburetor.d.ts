@@ -27,6 +27,8 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     protected pendingEmit: boolean;
     /** The write proxy behind draft, memoized across accesses and dropped by setData. */
     protected draftProxy: T | undefined;
+    /** Bound once for `createWriteProxy`, called detached from `this`; forwards to the overridable `recordWrite`. */
+    private readonly writeRecorder;
     /**
      * Takes the initial state and the policy that decides when subscribers are woken.
      *
@@ -36,29 +38,34 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
      * defaults to immediate, synchronous delivery.
      */
     constructor(data: T, scheduler?: IUpdateScheduler);
-    /** The store's identity, which subscriptions and dev tooling key on. */
-    getUID: () => string;
+    /**
+     * The store's identity, which subscriptions and dev tooling key on.
+     *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     */
+    getUID(): string;
     /**
      * The write counter, bumped on every emit.
      *
      * A component compares it between render and commit to notice a write that landed in
      * between, which would otherwise leave it subscribed to stale paths.
      */
-    getVersion: () => number;
+    getVersion(): number;
     /** The state as it is, untracked: reads through it subscribe to nothing. */
-    getData: () => T;
+    getData(): T;
     /** The state behind a read proxy that reports every path the caller touches. */
-    read: (record: TPathRecorder) => TReadonly<T>;
+    read(record: TPathRecorder): TReadonly<T>;
     /** Replaces the whole state and wakes everyone: no path survives a root swap. */
-    setData: (data: T) => T;
+    setData(data: T): T;
     /** A deep copy of the state, detached from further writes. */
-    snapshot: () => T;
+    snapshot(): T;
     /** Installs a snapshot as the current state, copying it so the caller keeps its own. */
-    restore: (data: T) => void;
+    restore(data: T): void;
     /** The type-erased half of the snapshot bridge, for callers that do not know `T`. */
-    toJSON: () => unknown;
+    toJSON(): unknown;
     /** The type-erased half of `restore`; the cast is the caller's promise about the shape. */
-    fromJSON: (value: unknown) => void;
+    fromJSON(value: unknown): void;
     /**
      * Registers a subscriber, returning the id it is cancelled and rescheduled by.
      *
@@ -67,19 +74,34 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
      * @param options - the id to reuse across re-subscribes and the paths to watch;
      * without `reads` the subscription matches every write.
      */
-    subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
+    subscribe(callback: TSubscriber, options?: ISubscribeOptions): string;
+    /**
+     * Adds one path to an already-registered subscription, without copying or re-filing
+     * the rest of its read set — the incremental sibling of `subscribe`, for a caller
+     * that discovers one more path after the subscription already exists.
+     *
+     * `reads` here is the same Set instance `subscriberIndex` files paths into, so filing
+     * the path there is all that is needed to keep the subscriber's own read set current.
+     *
+     * @param id - the subscription to extend; an unknown id is left alone
+     * @param path - the path to add to that subscription's read set
+     */
+    extend(id: string, path: TPath): void;
     /** Drops a subscriber, its index entries and any update already scheduled for it. */
-    unsubscribe: (id: string) => void;
+    unsubscribe(id: string): void;
     /**
      * Subscribes outside React — for persistence, logging, analytics.
+     *
+     * Copies `reads` before handing it to `subscribe()`, which otherwise adopts it as-is: a
+     * caller here may keep its reference and mutate it later, unlike the engine's own callers.
      *
      * @param callback - run per matching write with no arguments; the returned disposer
      * unsubscribes it.
      * @param reads - the paths the callback cares about; omitted means every write.
      */
-    watch: (callback: TSubscriber, reads?: TPathSet) => TDisposer;
+    watch(callback: TSubscriber, reads?: TPathSet): TDisposer;
     /** Called by the batch coordinator when a transaction closes. */
-    notifyWrites: (writes: TPathSet) => void;
+    notifyWrites(writes: TPathSet): void;
     /**
      * Writes go through draft: changed paths are remembered, and only the subscribers
      * that read those paths get woken up.
@@ -102,18 +124,18 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
      * Rolling the writes back would take a full snapshot of the state before every update,
      * too high a price on the hot path for a programming error.
      */
-    protected update: (mutate: (draft: T) => void) => void;
+    protected update(mutate: (draft: T) => void): void;
     /** Publishes on the next microtask — for writes made where notifying now is unsafe. */
-    protected emitSoon: () => void;
+    protected emitSoon(): void;
     /** Marks draft as used and arms the development check for a write that never published. */
-    protected touchDraft: () => void;
+    protected touchDraft(): void;
     /** Remembers one changed path, so the emit wakes only the subscribers that read it. */
-    protected recordWrite: (path: TPath) => void;
+    protected recordWrite(path: TPath): void;
     /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
-    protected markAllChanged: () => void;
+    protected markAllChanged(): void;
     /** A hook for subclasses to write derived state before an emit goes out. */
-    protected preEmit: () => void;
+    protected preEmit(): void;
     /** Publishes the writes recorded so far, alone or as part of an open transaction. */
-    protected emitUpdate: () => void;
+    protected emitUpdate(): void;
 }
 export {};

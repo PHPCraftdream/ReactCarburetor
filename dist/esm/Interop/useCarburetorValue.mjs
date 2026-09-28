@@ -2,10 +2,20 @@
 import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { detachOpaque } from "../Carburetor/Store/Utils/detachOpaque.mjs";
 import { sameSelection } from "../Carburetor/Component/Connection/sameSelection.mjs";
+import { isTrackable } from "../Carburetor/Store/Tracking/isTrackable.mjs";
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
     return true;
+};
+const resolveView = (cached, carburetor, record)=>{
+    const data = carburetor.getData();
+    if (null !== cached && cached.carburetor === carburetor && cached.data === data && isTrackable(data)) return cached;
+    return {
+        carburetor,
+        data,
+        view: carburetor.read(record)
+    };
 };
 const describeInstance = (instance)=>{
     var _Object_getPrototypeOf_constructor, _Object_getPrototypeOf;
@@ -28,6 +38,12 @@ const useCarburetorValue = (carburetor, select, isEqual = sameSelection)=>{
     const pendingReads = useRef(new Set());
     const active = useRef(null);
     const notify = useRef(null);
+    const view = useRef(null);
+    const currentReads = useRef(void 0);
+    const recordRead = useCallback((path)=>{
+        var _currentReads_current;
+        null == (_currentReads_current = currentReads.current) || _currentReads_current.add(path);
+    }, []);
     const install = useCallback(()=>{
         const onStoreChange = notify.current;
         if (!onStoreChange) return;
@@ -66,34 +82,32 @@ const useCarburetorValue = (carburetor, select, isEqual = sameSelection)=>{
         const entry = cache.current;
         const version = carburetor.getVersion();
         if (entry.filled && entry.carburetor === carburetor && entry.select === select && entry.version === version) return entry.value;
+        view.current = resolveView(view.current, carburetor, recordRead);
         const reads = new Set();
-        const fresh = select(carburetor.read((path)=>reads.add(path)));
-        pendingReads.current = reads;
-        const liveCompare = isEqual === sameSelection;
-        const candidate = liveCompare ? fresh : detach(fresh);
-        if (entry.filled && isEqual(entry.value, candidate)) {
-            cache.current = {
-                carburetor,
-                select,
-                version,
-                value: entry.value,
-                filled: true
-            };
-            return entry.value;
+        currentReads.current = reads;
+        let result;
+        try {
+            const fresh = select(view.current.view);
+            pendingReads.current = reads;
+            const liveCompare = isEqual === sameSelection;
+            const candidate = liveCompare ? fresh : detach(fresh);
+            result = entry.filled && isEqual(entry.value, candidate) ? entry.value : liveCompare ? detach(fresh) : candidate;
+        } finally{
+            currentReads.current = void 0;
         }
-        const next = liveCompare ? detach(fresh) : candidate;
         cache.current = {
             carburetor,
             select,
             version,
-            value: next,
+            value: result,
             filled: true
         };
-        return next;
+        return result;
     }, [
         carburetor,
         select,
-        isEqual
+        isEqual,
+        recordRead
     ]);
     useLayoutEffect(()=>{
         install();

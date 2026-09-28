@@ -58,11 +58,13 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
     constructor(loader, scheduler){
         super((0, external_getInitialResourceData_js_namespaceObject.getInitialResourceData)(), scheduler), this.loader = loader;
     }
-    snapshot = ()=>({
-            ...(0, deepClone_js_namespaceObject.deepClone)(this.data),
+    snapshot() {
+        return {
+            ...super.snapshot(),
             key: this.settledKey
-        });
-    restore = (data)=>{
+        };
+    }
+    restore(data) {
         const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
         if (this.operationVersion !== operationVersion) return;
@@ -77,41 +79,45 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
             error: data.error,
             updatedAt: data.updatedAt
         }));
-    };
-    getLastError = ()=>this.lastError;
-    suspend = (args)=>{
+    }
+    getLastError() {
+        return this.lastError;
+    }
+    suspend(args) {
         const state = this.data;
         const key = this.keyOf(args);
         if (state.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success && this.settledKey === key) return state.data;
         if (state.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error && this.settledKey === key) throw this.hasLastError ? this.lastError : new Error(state.error || 'Carburetor: resource failed');
         if (this.pendingRequest && this.pendingKey === key) throw this.pendingRequest;
         throw this.start(args, true);
-    };
-    load = (args)=>this.start(args, false);
-    reload = ()=>{
+    }
+    load(args) {
+        return this.start(args, false);
+    }
+    reload() {
         if (void 0 === this.lastKey) return Promise.resolve();
         const args = this.lastArgs;
         this.pendingKey = void 0;
         this.pendingRequest = void 0;
         return this.start(args, false);
-    };
-    abort = ()=>{
+    }
+    abort() {
         if (!this.controller) return;
         const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
         if (this.operationVersion !== operationVersion) return;
         this.draft.status = EResourceStatus_js_namespaceObject.EResourceStatus.Idle;
         this.emitUpdate();
-    };
-    cancelInFlight = ()=>{
+    }
+    cancelInFlight() {
         const controller = this.controller;
         if (!controller) return;
         this.controller = void 0;
         this.pendingRequest = void 0;
         this.pendingKey = void 0;
         controller.abort();
-    };
-    start = (args, deferNotification)=>{
+    }
+    start(args, deferNotification) {
         const key = this.keyOf(args);
         if (this.pendingRequest && this.pendingKey === key) return this.pendingRequest;
         const operationVersion = ++this.operationVersion;
@@ -154,10 +160,14 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
             this.settleError(controller, key, error);
         }).then(resolveRequest, rejectRequest);
         return request;
-    };
-    keyOf = (args)=>JSON.stringify(void 0 === args ? null : args);
-    isCurrent = (controller)=>this.controller === controller && !controller.signal.aborted;
-    settleSuccess = (controller, key, data)=>{
+    }
+    keyOf(args) {
+        return JSON.stringify(void 0 === args ? null : args);
+    }
+    isCurrent(controller) {
+        return this.controller === controller && !controller.signal.aborted;
+    }
+    settleSuccess(controller, key, data) {
         if (!this.isCurrent(controller)) return;
         this.controller = void 0;
         this.pendingRequest = void 0;
@@ -169,8 +179,8 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
         this.draft.error = void 0;
         this.draft.updatedAt = Date.now();
         this.emitUpdate();
-    };
-    settleError = (controller, key, error)=>{
+    }
+    settleError(controller, key, error) {
         if (!this.isCurrent(controller)) return;
         this.controller = void 0;
         this.pendingRequest = void 0;
@@ -181,7 +191,7 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
         this.draft.error = describeError(error);
         this.draft.updatedAt = Date.now();
         this.emitUpdate();
-    };
+    }
 }
 exports.ResourceCarburetor = __webpack_exports__.ResourceCarburetor;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

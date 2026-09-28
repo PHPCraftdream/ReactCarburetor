@@ -378,3 +378,59 @@ Measure the benchmark before and after; the round 13 number to beat is 61 ms mea
   benchmarked.
 - R14-08 is derived from the code.
 - No engine source was changed in this round.
+
+---
+
+## Resolution (same day)
+
+Every finding was fixed on `react-compat`, each by an agent in its own worktree. Each change was
+reviewed and integrated one at a time, with a commit per finding. Every fix comes with regression
+tests, and each one was shown to fail against the pre-fix code.
+
+| Finding | Commit | Change |
+|---|---|---|
+| R14-01 | `ec98a4b` | `SubscriberIndex.addPath` and `Carburetor.extend` file one path in O(depth); `Computed.recordDependencyRead` extends instead of re-subscribing |
+| R14-02/03/04, R14-08 (inherited reads) | `89a5af7` | Array writes recorded per index and `length`; a shrinking `length` records the removed indices; `has` records the branch marker from the descriptor, so a presence check never runs an accessor; inherited keys record nothing |
+| R14-05 | `c793167` | The `render` accessor is one static getter/setter pair referenced through the base class, with its state in symbol-keyed fields |
+| R14-06, R14-08 (store) | `45c1b7e` | Store, cache, computed and index members are prototype methods; only detached callbacks stay bound. `subscribe` adopts its read set (`watch` copies), and `addPath` decides from index state. Ancestor chains are cached. Eviction asks the index for readers. The native rule is covered for method-syntax `preEmit` |
+| R14-07 | `57277e2` | One handler class per proxy kind, with traps on the prototype and the refusal helpers at module level |
+| R14-08 (attempts) | `9c81aee` | Render-attempt collections are created lazily and keyed by source or connection object |
+| R14-08 (interop) | `90f16f9` | `useCarburetorValue` keeps one root read view per hook; the recorder is open only during a `getSnapshot` walk |
+| — | `98d17b8` | A flaky native-bridge test (a sampling loop that missed a short-lived file under load) now also watches filesystem events |
+
+R14-09 decisions:
+- Store members are methods (item 1).
+- A computed's result stays live, and the README documents that (item 2).
+- The README presents `connect()` as the default read and `useCarburetor` as the dynamic-source
+  form (item 3).
+- `toJSON`/`fromJSON` stay public (item 4).
+
+While editing, a stale README paragraph describing the proxy-cache ledger removed in round 13 was
+replaced.
+
+**After-fix measurements.** Same probes as above, built production engine:
+
+| Probe | Before | After |
+|---|---|---|
+| One title edit through a computed, 1 000 rows | 4 431 ms, 2 002 subscribe calls | 13 ms, 1 call |
+| Same, 4 000 rows | 129 415 ms, 8 002 calls | 73 ms, 1 call |
+| `push` one item, 1 000 rows (row renders) | 1 001 | 1 (the new row) |
+| Replace `items[5]` (row renders) | 1 000 | 1 |
+| Nested title edit: `items.map(...)` parent renders | 1 | 0 |
+| Unrelated write: `for…of` component renders | 1 | 0 |
+| `AntiHookComponent` instances with fast properties | first only | all |
+| SSR 4 000 rows, fastest of 4 alternating runs | 54 ms | 31 ms |
+
+The SSR medians were dominated by GC pauses on a busy machine: 72–109 ms before and 62–158 ms
+after, across 4 alternating runs each. The per-run minimum is the stable signal: 54–99 ms before
+and 31–36 ms after.
+
+**Verification at the integration head:**
+- `npm test`: 805 passed.
+- `cargo test`: 350 + 24 passed.
+- `npm run lint`: 0 errors.
+- Typecheck, demo `tsc` and `check:layout` are clean.
+- `test:consumers`: 16/16, including the Next.js Turbopack and webpack builds.
+
+**Breaking for consumers.** A store method detached without binding (`const {getData} = store`,
+`onClick={store.load}`) must now be bound. The CHANGELOG and the README API section say so.

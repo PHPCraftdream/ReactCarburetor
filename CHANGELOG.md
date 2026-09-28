@@ -155,6 +155,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Breaking:** store, cache and computed members (`getData`, `read`, `subscribe`, `watch`,
+  `setData`, `preEmit`, `emitUpdate`, …) are prototype methods instead of arrow-function fields,
+  so a subclass can override them with method syntax and call `super`. Code that detaches a
+  store method without binding it (`const {getData} = store`, `onClick={store.load}`) must bind
+  it or wrap it in an arrow.
+- **Performance:** writes wake only the components they concern.
+  - An index or `length` write on an array records that key: `push` no longer re-renders every
+    existing row, and replacing `items[5]` re-renders one row.
+  - A presence check (`has`, which `map`/`forEach`/`filter` run per index) records the element's
+    branch marker, so a parent rendering `items.map(...)` is not woken by an edit inside a row.
+  - Inherited keys (`Symbol.iterator`, `map`, `constructor`) record nothing, so `for…of`, spread
+    and destructuring no longer subscribe a component to every write in the store.
+- **Performance:** a consumer reading leaves off a computed's live result amends the dependency
+  one path at a time (`Carburetor.extend`, `SubscriberIndex.addPath`) instead of re-subscribing
+  the whole read set per leaf; a list re-render through a computed was O(N²) (4.4 s for one
+  edit at 1000 rows).
+- **Performance:** `AntiHookComponent` instances keep fast properties: the `render` accessor is
+  one shared getter/setter pair instead of a closure pair per instance, which put every
+  instance after the first into dictionary mode.
+- **Performance:** read and write proxies share their traps on a handler prototype (one small
+  handler per proxy instead of eight closures); render attempts allocate their collections on
+  first use and key them by object; `useCarburetorValue` keeps one root read view per hook;
+  `subscribe()` adopts its read set (`watch()` still copies); `SubscriberIndex` caches ancestor
+  chains; cache eviction asks the index for readers instead of scanning every subscriber.
 - **Breaking:** `SubscriberIndex`, `pathsIntersect`, `getUid`, `isTrackable`, `SyncUpdateScheduler`
   and its `syncUpdateScheduler` instance are no longer exported from the package entry point.
   They were building blocks that never needed a semver contract of their own; they stay inside
@@ -278,6 +302,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A subclass overriding a store member with method syntax (`preEmit() {}`) was silently
+  ignored: the base class's arrow-function field shadowed it.
 - Two copies of the library sharing one process — a duplicated install, or the same install
   loaded through both its CJS and ESM builds — each built their own `CarburetorContext`,
   update batch, update wave and `getUid()` counter, so `contextType` silently read `null` under

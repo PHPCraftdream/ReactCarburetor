@@ -32,7 +32,6 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const EResourceStatus_js_namespaceObject = require("../../Models/Enums/EResourceStatus.js");
 const Carburetor_js_namespaceObject = require("../../Store/Carburetor.js");
-const PathSeparator_js_namespaceObject = require("../../Store/Paths/PathSeparator.js");
 const joinPath_js_namespaceObject = require("../../Store/Paths/joinPath.js");
 const deepClone_js_namespaceObject = require("../../Store/Utils/deepClone.js");
 const external_describeError_js_namespaceObject = require("../describeError.js");
@@ -40,7 +39,6 @@ const external_createAbortHandle_js_namespaceObject = require("../createAbortHan
 const external_getInitialCacheEntry_js_namespaceObject = require("./getInitialCacheEntry.js");
 const DEFAULT_TTL = 30000;
 const DEFAULT_MAX_ENTRIES = 100;
-const ENTRIES_PREFIX = `entries${PathSeparator_js_namespaceObject.PATH_SEPARATOR}`;
 class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
     loader;
     restoreGeneration = 0;
@@ -59,7 +57,7 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.ttl = void 0 === options.ttl ? DEFAULT_TTL : options.ttl;
         this.maxEntries = void 0 === options.maxEntries ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
-    restore = (data)=>{
+    restore(data) {
         const generation = ++this.restoreGeneration;
         const controllers = Array.from(this.controllers.entries());
         this.controllers.clear();
@@ -85,38 +83,38 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.setData((0, deepClone_js_namespaceObject.deepClone)({
             entries
         }));
-    };
-    touch = (key)=>{
+    }
+    touch(key) {
         this.useTick += 1;
         this.lastUsed.set(key, this.useTick);
-    };
-    load = (args)=>{
+    }
+    load(args) {
         const key = this.keyOf(args);
         const entry = this.data.entries[key];
         this.touch(key);
         if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success && !this.isStale(entry)) return Promise.resolve();
         return this.fetch(key, args);
-    };
-    refresh = (args)=>{
+    }
+    refresh(args) {
         const key = this.keyOf(args);
         this.touch(key);
         return this.fetch(key, args);
-    };
-    abort = (args)=>{
+    }
+    abort(args) {
         this.abortKey(this.keyOf(args));
-    };
-    abortAll = ()=>{
+    }
+    abortAll() {
         Array.from(this.controllers.keys()).forEach((key)=>this.abortKey(key));
-    };
-    invalidate = (args)=>{
+    }
+    invalidate(args) {
         const key = this.keyOf(args);
         if (!this.data.entries[key]) return;
         this.update((draft)=>{
             draft.entries[key].invalidated = true;
             draft.entries[key].failed = false;
         });
-    };
-    invalidateAll = ()=>{
+    }
+    invalidateAll() {
         const keys = Object.keys(this.data.entries);
         if (0 === keys.length) return;
         this.update((draft)=>{
@@ -125,14 +123,14 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
                 draft.entries[key].failed = false;
             });
         });
-    };
-    forget = (args)=>{
+    }
+    forget(args) {
         this.forgetKey(this.keyOf(args));
-    };
-    forgetAll = ()=>{
+    }
+    forgetAll() {
         Object.keys(this.data.entries).forEach((key)=>this.forgetKey(key));
-    };
-    forgetKey = (key)=>{
+    }
+    forgetKey(key) {
         this.abortKey(key);
         if (this.controllers.has(key)) return;
         this.failures.delete(key);
@@ -142,28 +140,18 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.update((draft)=>{
             delete draft.entries[key];
         });
-    };
-    isStale = (entry)=>{
+    }
+    isStale(entry) {
         if (entry.invalidated || void 0 === entry.updatedAt) return true;
         return Date.now() - entry.updatedAt > this.ttl;
-    };
-    isViewCurrent = (view, entry, stale)=>view.stale === stale && view.status === entry.status && view.data === entry.data && view.error === entry.error && view.updatedAt === entry.updatedAt && view.refreshing === entry.refreshing && view.invalidated === entry.invalidated && view.failed === entry.failed;
-    retainedKeys = ()=>{
-        const retained = new Set();
-        Object.keys(this.subscribers).forEach((id)=>{
-            this.subscribers[id].reads.forEach((read)=>{
-                if (!read.startsWith(ENTRIES_PREFIX)) return;
-                const segment = read.slice(ENTRIES_PREFIX.length).split(PathSeparator_js_namespaceObject.PATH_SEPARATOR)[0];
-                if (segment) retained.add(segment);
-            });
-        });
-        return retained;
-    };
-    evict = (deferNotification = false)=>{
+    }
+    isViewCurrent(view, entry, stale) {
+        return view.stale === stale && view.status === entry.status && view.data === entry.data && view.error === entry.error && view.updatedAt === entry.updatedAt && view.refreshing === entry.refreshing && view.invalidated === entry.invalidated && view.failed === entry.failed;
+    }
+    evict(deferNotification = false) {
         const keys = Object.keys(this.data.entries);
         if (keys.length <= this.maxEntries) return;
-        const retained = this.retainedKeys();
-        const candidates = keys.filter((key)=>!this.requests.has(key) && !retained.has((0, joinPath_js_namespaceObject.joinPath)('', key))).sort((left, right)=>(this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0));
+        const candidates = keys.filter((key)=>!this.requests.has(key) && !this.subscriberIndex.hasReaderAt((0, joinPath_js_namespaceObject.joinPath)('entries', key))).sort((left, right)=>(this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0));
         const excess = keys.length - this.maxEntries;
         const doomed = candidates.slice(0, excess);
         if (0 === doomed.length) return;
@@ -181,8 +169,8 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
             return;
         }
         this.emitUpdate();
-    };
-    abortKey = (key)=>{
+    }
+    abortKey(key) {
         const controller = this.controllers.get(key);
         if (!controller) return;
         if (this.controllers.get(key) === controller) {
@@ -198,8 +186,8 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         if (entry && entry.refreshing) this.update((draft)=>{
             draft.entries[key].refreshing = false;
         });
-    };
-    suspend = (args)=>{
+    }
+    suspend(args) {
         const key = this.keyOf(args);
         const entry = this.data.entries[key];
         this.touch(key);
@@ -207,8 +195,8 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error) throw this.failures.has(key) ? this.failures.get(key) : new Error(entry.error || 'Carburetor: resource failed');
         const known = this.requests.get(key);
         throw known || this.fetch(key, args, true);
-    };
-    fetch = (key, args, deferNotification = false)=>{
+    }
+    fetch(key, args, deferNotification = false) {
         const known = this.requests.get(key);
         if (known) return known;
         const controller = (0, external_createAbortHandle_js_namespaceObject.createAbortHandle)();
@@ -238,8 +226,8 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         }).then(resolveRequest, rejectRequest);
         this.evict(deferNotification);
         return request;
-    };
-    markLoading = (key, deferNotification)=>{
+    }
+    markLoading(key, deferNotification) {
         const entry = this.data.entries[key];
         const draft = this.draft;
         if (entry) if (entry.status !== EResourceStatus_js_namespaceObject.EResourceStatus.Success) {
@@ -252,9 +240,11 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         };
         if (deferNotification) return void this.emitSoon();
         this.emitUpdate();
-    };
-    isCurrent = (key, controller)=>this.controllers.get(key) === controller && !controller.signal.aborted;
-    settleSuccess = (key, controller, data)=>{
+    }
+    isCurrent(key, controller) {
+        return this.controllers.get(key) === controller && !controller.signal.aborted;
+    }
+    settleSuccess(key, controller, data) {
         if (!this.isCurrent(key, controller)) return;
         if (!this.data.entries[key]) {
             this.controllers.delete(key);
@@ -277,8 +267,8 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
             draft.entries[key].failed = false;
         });
         this.evict();
-    };
-    settleFailure = (key, controller, error)=>{
+    }
+    settleFailure(key, controller, error) {
         if (!this.isCurrent(key, controller)) return;
         if (!this.data.entries[key]) {
             this.controllers.delete(key);
@@ -300,7 +290,7 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
             if (!hasData) draft.entries[key].status = EResourceStatus_js_namespaceObject.EResourceStatus.Error;
         });
         this.evict();
-    };
+    }
 }
 exports.ResourceCacheLifecycle = __webpack_exports__.ResourceCacheLifecycle;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

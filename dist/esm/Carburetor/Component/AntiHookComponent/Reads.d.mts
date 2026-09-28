@@ -153,8 +153,8 @@ export declare abstract class AntiHookComponentReads<P = {}, S = {}> extends Ant
      *
      * A replayed StrictMode mount cannot double-load: its second `componentDidMount` finds the
      * attempt already consumed (it is the committed attempt, so not the fresh one it drained at
-     * the first `componentDidMount`), and the drain above swaps each queue out before invoking
-     * its loads anyway — every queue is consumed exactly once, so the replay finds it empty.
+     * the first `componentDidMount`), and the drain above clears the queue before invoking its
+     * loads anyway — every queue is consumed exactly once, so the replay finds it absent.
      */
     protected loadStaleResources(): void;
     /**
