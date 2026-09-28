@@ -273,6 +273,55 @@ describe('computed', () => {
         });
     });
 
+    describe('a recompute reading the same paths keeps its registration, a moved one replaces it (R16-08)', () => {
+        interface ITodoLike {
+            items: {[id: string]: {title: string; done: boolean}};
+        }
+
+        class TodoCarburetor extends Carburetor<ITodoLike> {
+            public setTitle = (id: string, title: string) => {
+                this.draft.items[id].title = title;
+
+                this.emitUpdate();
+            };
+
+            public setDone = (id: string, done: boolean) => {
+                this.draft.items[id].done = done;
+
+                this.emitUpdate();
+            };
+        }
+
+        test('an unchanged read set does not call subscribe again; a branch flip does, once', () => {
+            const initial = {items: {a: {title: 'a', done: false}, b: {title: 'b', done: false}}};
+            const carburetor = new TodoCarburetor(initial);
+            const label = computed((read) => {
+                const data = read(carburetor);
+
+                return data.items.a.done ? data.items.a.title : data.items.b.title;
+            });
+
+            const subscribeSpy = rstest.spyOn(carburetor, 'subscribe');
+
+            label.subscribe(() => undefined, {id: 'listener'});
+            expect(subscribeSpy.mock.calls.length).toEqual(1);
+
+            // Still reads items.a.done and items.b.title: the set did not move, so the kept
+            // edge stays subscribed as-is — no second registration for this write.
+            carburetor.setTitle('b', 'renamed-b');
+            expect(label.get()).toEqual('renamed-b');
+            expect(subscribeSpy.mock.calls.length).toEqual(1);
+
+            // Flips the branch: now reads items.a.done and items.a.title instead of
+            // items.b.title — a genuinely different set, so the edge re-registers once.
+            carburetor.setDone('a', true);
+            expect(label.get()).toEqual('a');
+            expect(subscribeSpy.mock.calls.length).toEqual(2);
+
+            subscribeSpy.mockRestore();
+        });
+    });
+
     describe('the development diagnostic reports a live result escaping through props (R15-02)', () => {
         interface IRow {
             title: string;

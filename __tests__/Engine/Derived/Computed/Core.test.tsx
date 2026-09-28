@@ -375,4 +375,26 @@ describe('computed', () => {
         expect(joinerCalls).toEqual(1);
     });
 
+    test('a joiner replacing a leaver during delivery still waits for the next delivery', () => {
+        const carburetor = new ListCarburetor(getData());
+        let joinerCalls = 0;
+
+        const doneCount = computed<number>((read) => {
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        doneCount.subscribe(() => {
+            doneCount.unsubscribe('leaver');
+            doneCount.subscribe(() => joinerCalls++, {id: 'joiner'});
+        }, {id: 'first'});
+        doneCount.subscribe(() => undefined, {id: 'leaver'});
+
+        carburetor.setDone('a', true);
+
+        // Same subscriber count as at the start, but the joiner was not part of this pass.
+        expect(joinerCalls).toEqual(0);
+    });
+
 });

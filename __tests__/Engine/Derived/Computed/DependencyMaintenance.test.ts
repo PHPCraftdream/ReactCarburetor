@@ -1,5 +1,6 @@
 import {computed, transaction} from '@/Carburetor';
-import {ListCarburetor, delta, getData} from './fixtures';
+import {sharedSingleton} from '@/Carburetor/Store/Utils/sharedSingleton';
+import {CounterCarburetor, ListCarburetor, delta, getData} from './fixtures';
 
 describe('computed', () => {
     describe('dependency maintenance', () => {
@@ -280,6 +281,67 @@ describe('computed', () => {
             expect(seenMidWave).toEqual(11);
             expect(total.get()).toEqual(11);
             expect(innerNotifications).toEqual(1);
+        });
+
+        test('a 26-node ladder marks each node a bounded number of times per write, and every body runs once', () => {
+            const carburetor = new CounterCarburetor({n: 0});
+            const NODES = 26;
+            const nodes: ReturnType<typeof computed<number>>[] = [];
+            const bodyRuns = Array.from({length: NODES}, () => 0);
+
+            nodes.push(computed<number>((read) => {
+                bodyRuns[0]++;
+
+                return read(carburetor).n;
+            }));
+            nodes.push(computed<number>((read) => {
+                bodyRuns[1]++;
+
+                return read(carburetor).n + 1;
+            }));
+
+            for (let i = 2; i < NODES; i++) {
+                const a = nodes[i - 1];
+                const b = nodes[i - 2];
+
+                nodes.push(computed<number>((read) => {
+                    bodyRuns[i]++;
+
+                    return read(a) + read(b);
+                }));
+            }
+
+            // The same map Computed.ts files every computed's invalidation callback under (see
+            // its docstring): wrapping each node's entry counts every markStale call this write
+            // reaches, recursive ones included — the methodology R16-06's evidence table used.
+            const invalidationEdges = sharedSingleton('invalidationEdges', () => new WeakMap<() => void, () => void>());
+            let markStaleCalls = 0;
+
+            nodes.forEach((node) => {
+                const key = (node as unknown as {onDependencyChanged: () => void}).onDependencyChanged;
+                const original = invalidationEdges.get(key);
+
+                if (original) {
+                    invalidationEdges.set(key, () => {
+                        markStaleCalls++;
+                        original();
+                    });
+                }
+            });
+
+            nodes[NODES - 1].subscribe(() => undefined, {id: 'listener'});
+            bodyRuns.fill(0);
+
+            carburetor.setN(1);
+
+            // Every node past the base two reads exactly two upstream computeds, so observing
+            // the whole chain gives each of them exactly two incoming edges: linear in the node
+            // count. Pre-fix, the same write drives roughly a million calls on this ladder
+            // (Fibonacci growth, confirmed by running this assertion against the pre-fix
+            // Computed.ts) because a call that finds its target already marked re-walks the
+            // whole graph below it again instead of returning.
+            expect(markStaleCalls).toEqual(2 * (NODES - 2));
+            expect(bodyRuns).toEqual(Array.from({length: NODES}, () => 1));
         });
     });
 

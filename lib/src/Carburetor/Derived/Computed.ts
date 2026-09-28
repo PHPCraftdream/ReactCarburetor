@@ -34,9 +34,16 @@ interface IDependencySource extends ICarburetorSubscription {
     extend?: (id: string, path: TPath) => void;
 }
 
+/** One source's read set for one recompute cycle, plus attachDependencies' own bookkeeping. */
 interface IDependency {
     source: IDependencySource;
     reads: TPathSet;
+    /** Set by attachDependencies once this becomes `this.dependencies[cuid]`. */
+    published: boolean;
+    /** Prior cycle's dependency for the same source, read only to count `overlap`. */
+    previous: IDependency | undefined;
+    /** Paths added to `reads` this cycle that `previous.reads` already held. */
+    overlap: number;
 }
 
 /** One store a value was computed from, and the version it held at the time. */
@@ -225,9 +232,14 @@ export class Computed<R> implements IComputed<R> {
 
         const track = (source: ICarburetor<object> | IComputed<unknown>): unknown => {
             const cuid = source.getUID();
-            const dependency = collected[cuid] || {source, reads: new Set<TPath>()};
+            let dependency = collected[cuid];
 
-            collected[cuid] = dependency;
+            if (!dependency) {
+                dependency = {
+                    source, reads: new Set<TPath>(), published: false, previous: this.dependencies[cuid], overlap: 0,
+                };
+                collected[cuid] = dependency;
+            }
 
             if ('read' in source) {
                 return source.read((path: TPath) => {
@@ -235,9 +247,9 @@ export class Computed<R> implements IComputed<R> {
                 });
             }
 
-            // Another computed notifies at the granularity of its whole value,
-            // so there is no finer path to depend on than "it changed".
-            dependency.reads.add(WILDCARD_PATH);
+            // Another computed notifies at the granularity of its whole value — no finer path
+            // to depend on — routed through the recorder so an unchanged wildcard still counts.
+            this.recordDependencyRead(dependency, WILDCARD_PATH);
 
             return source.get();
         };
@@ -261,15 +273,14 @@ export class Computed<R> implements IComputed<R> {
      * registration — O(path depth), not the O(read-set size) a full re-subscribe would cost
      * for every leaf a render adds.
      *
-     * During the body's own evaluation the dependency being filled is not yet the published
-     * one (attachDependencies swaps it in after the body returns), so nothing is amended
-     * there; once nobody listens there is no registration to amend either. `published` is
-     * also what the development escape diagnostic gates on: a read during the body's own
-     * evaluation is the computed computing itself, never a component rendering through a
-     * result that reached it through props (R15-02).
+     * During the body's own evaluation `dependency.published` is still false — diffDependencies
+     * flips it once the dependency is adopted into `this.dependencies` — so nothing is amended
+     * there; once nobody listens there is no registration to amend either. `published` also
+     * gates the development escape diagnostic (R15-02), and the overlap counted here against
+     * the previous cycle's read set is what lets diffDependencies skip a second pass.
      *
      * @param dependency - the dependency edge the read belongs to
-     * @param path - the path the read proxy reported
+     * @param path - the path the read proxy reported, or the wildcard for an inner computed
      */
     protected recordDependencyRead(dependency: IDependency, path: TPath): void {
         if (dependency.reads.has(path)) {
@@ -278,13 +289,18 @@ export class Computed<R> implements IComputed<R> {
 
         dependency.reads.add(path);
 
-        const published = dependency === this.dependencies[dependency.source.getUID()];
+        // Grown past the previous set, it cannot match: stop paying a lookup per path.
+        if (dependency.previous !== undefined && dependency.reads.size > dependency.previous.reads.size) {
+            dependency.previous = undefined;
+        } else if (dependency.previous?.reads.has(path)) {
+            dependency.overlap++;
+        }
 
-        if (published && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        if (dependency.published && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
             reportComputedEscape(this, (id: string) => this.subscribers.has(id));
         }
 
-        if (published && this.subscribers.size > 0 && dependency.source.extend) {
+        if (dependency.published && this.subscribers.size > 0 && dependency.source.extend) {
             dependency.source.extend(this.uid, path);
         }
     }
@@ -321,6 +337,12 @@ export class Computed<R> implements IComputed<R> {
     /**
      * Splits a fresh collection into edges already held and edges needing a registration.
      *
+     * Also flips `published` on each dependency object the instant it stops or starts being
+     * the one `this.dependencies[cuid]` names — what a live `===` check did before — and
+     * decides equality from the overlap recordDependencyRead already counted while filling
+     * `next.reads`: the sets hold exactly the same paths exactly when that count equals both
+     * sizes, so no second walk over either set is needed here.
+     *
      * A kept edge survives with its live subscription untouched — same source, same read
      * set, same subscription id — so recomputing while observed never churns the upstream
      * subscriber list. Sources the body no longer reads are unsubscribed; a source still
@@ -335,53 +357,37 @@ export class Computed<R> implements IComputed<R> {
         const fresh: IDict<boolean> = {};
 
         Object.keys(this.dependencies).forEach((cuid: string) => {
+            const previous = this.dependencies[cuid];
             const next = collected[cuid];
 
+            previous.published = false;
+
             if (!next) {
-                this.dependencies[cuid].source.unsubscribe(this.uid);
+                previous.source.unsubscribe(this.uid);
 
                 return;
             }
 
-            if (!this.sameReads(this.dependencies[cuid].reads, next.reads)) {
+            if (next.overlap !== previous.reads.size || next.overlap !== next.reads.size) {
                 fresh[cuid] = true;
             }
         });
 
         Object.keys(collected).forEach((cuid: string) => {
+            const dependency = collected[cuid];
+
+            dependency.published = true;
+
+            // Only needed above, while `reads` was filled; dropped so cycles don't chain
+            // dependency objects into a growing list nothing reads.
+            dependency.previous = undefined;
+
             if (!(cuid in this.dependencies)) {
                 fresh[cuid] = true;
             }
         });
 
         return fresh;
-    }
-
-    /**
-     * Whether two read sets name exactly the same paths.
-     *
-     * @param before - the paths an edge is currently registered under
-     * @param after - the paths the fresh collection recorded for the same source
-     * @returns true when both sets hold the same paths, so the registration can stay
-     */
-    protected sameReads(before: TPathSet, after: TPathSet): boolean {
-        if (before === after) {
-            return true;
-        }
-
-        if (before.size !== after.size) {
-            return false;
-        }
-
-        let same = true;
-
-        before.forEach((path: TPath) => {
-            if (!after.has(path)) {
-                same = false;
-            }
-        });
-
-        return same;
     }
 
     /**
@@ -484,26 +490,29 @@ export class Computed<R> implements IComputed<R> {
      *
      * A bound field, not a method: it is the value `invalidationEdges` maps this computed's
      * `onDependencyChanged` to, looked up and called detached from `this`.
+     *
+     * Returns early once `valid` is already false. Validity is monotone: `recompute` is the
+     * only place that sets it true, and only after reading every current upstream, which
+     * revalidates that upstream first — so an already-invalid computed's downstream was
+     * already marked by whichever pass invalidated it. Every other site touching `valid`
+     * (`subscribe`, `settle`, `unsubscribe`, a thrown body) only ever recomputes, clears it,
+     * or leaves it alone.
      */
     protected markStale = (): void => {
+        if (!this.valid) {
+            return;
+        }
+
         this.valid = false;
 
-        // Snapshot: a leaver is skipped below, a joiner waits for the next pass.
-        const ids = Array.from(this.subscribers.keys());
-
-        ids.forEach((id: string) => {
-            const callback = this.subscribers.get(id);
-
-            if (!callback) {
-                return;
-            }
-
+        // Live, not a snapshot: marking never subscribes or unsubscribes, so the map is stable.
+        for (const callback of this.subscribers.values()) {
             const mark = invalidationEdges.get(callback);
 
             if (mark) {
                 mark();
             }
-        });
+        }
     };
 
     /**
@@ -552,25 +561,29 @@ export class Computed<R> implements IComputed<R> {
      * Each subscriber is isolated, matching notifyWrites(): one that throws costs the
      * subscribers after it neither their notification nor the wave its remaining work, and
      * the failures are reported once delivery finishes rather than re-thrown.
+     * A lone subscriber is called without copying the id list.
      */
     protected deliver(): void {
-        const failures: unknown[] = [];
+        let failures: unknown[] | undefined = undefined;
+        // Snapshot past one subscriber: a leaver is skipped, a joiner waits for the next pass.
+        const single = this.subscribers.size === 1;
+        const ids = single ? this.subscribers.keys() : Array.from(this.subscribers.keys());
 
-        // Snapshot: a joiner waits for the next pass.
-        const ids = Array.from(this.subscribers.keys());
-
-        ids.forEach((id: string) => {
-            // A subscriber may have left while this very batch was being delivered.
-            const callback = this.subscribers.get(id);
-
-            if (callback) {
-                try {
-                    callback();
-                } catch (error: unknown) {
-                    failures.push(error);
-                }
+        for (const id of ids) {
+            try {
+                this.subscribers.get(id)?.();
+            } catch (error: unknown) {
+                (failures ??= []).push(error);
             }
-        });
+
+            if (single) {
+                break;
+            }
+        }
+
+        if (!failures) {
+            return;
+        }
 
         failures.forEach((error: unknown) => {
             if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
