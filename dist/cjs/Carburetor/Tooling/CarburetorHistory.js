@@ -27,10 +27,6 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
-__webpack_require__.d(__webpack_exports__, {
-    CarburetorHistory: ()=>CarburetorHistory
-});
-const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 class CarburetorHistory {
     carburetor;
     past = [];
@@ -43,9 +39,7 @@ class CarburetorHistory {
         this.carburetor = carburetor;
         this.limit = options.limit || 50;
         this.current = carburetor.snapshot();
-        this.dispose = carburetor.watch(new Set([
-            WildcardPath_js_namespaceObject.WILDCARD_PATH
-        ]), this.record);
+        this.dispose = carburetor.watch(this.record);
     }
     canUndo = ()=>this.past.length > 0;
     canRedo = ()=>this.future.length > 0;
@@ -87,6 +81,9 @@ class CarburetorHistory {
         }
     };
 }
+__webpack_require__.d(__webpack_exports__, {
+    CarburetorHistory: ()=>CarburetorHistory
+});
 exports.CarburetorHistory = __webpack_exports__.CarburetorHistory;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "CarburetorHistory"

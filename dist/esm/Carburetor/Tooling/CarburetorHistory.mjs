@@ -1,4 +1,3 @@
-import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 class CarburetorHistory {
     carburetor;
     past = [];
@@ -11,9 +10,7 @@ class CarburetorHistory {
         this.carburetor = carburetor;
         this.limit = options.limit || 50;
         this.current = carburetor.snapshot();
-        this.dispose = carburetor.watch(new Set([
-            WILDCARD_PATH
-        ]), this.record);
+        this.dispose = carburetor.watch(this.record);
     }
     canUndo = ()=>this.past.length > 0;
     canRedo = ()=>this.future.length > 0;

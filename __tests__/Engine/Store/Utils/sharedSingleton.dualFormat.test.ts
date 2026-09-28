@@ -166,23 +166,17 @@ const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join
 const cjsRoot = process.env.CJS_ROOT;
 const esmRoot = process.env.ESM_ROOT;
 
+const messages = [];
+console.error = (...args) => messages.push(args.join(' '));
+
 (async () => {
     const cjs = require(path.join(cjsRoot, 'Carburetor', 'index.js'));
     const esm = await import(toFileUrl(path.join(esmRoot, 'Carburetor', 'index.mjs')));
 
     cjs.carburetorToken(() => new cjs.Carburetor({value: 0}), 'dual-format/shared-name');
+    const esmToken = esm.carburetorToken(() => new esm.Carburetor({value: 0}), 'dual-format/shared-name');
 
-    let esmRejected = false;
-    let esmMessage = '';
-
-    try {
-        esm.carburetorToken(() => new esm.Carburetor({value: 0}), 'dual-format/shared-name');
-    } catch (error) {
-        esmRejected = true;
-        esmMessage = String((error && error.message) || error);
-    }
-
-    process.stdout.write(JSON.stringify({esmRejected, esmMessage}));
+    process.stdout.write(JSON.stringify({esmTokenId: esmToken.id, messages}));
 })().catch((error) => {
     process.stderr.write(String((error && error.stack) || error));
     process.exit(1);
@@ -263,7 +257,7 @@ describe('sharedSingleton keeps getUid unique across a CJS/ESM split', () => {
 });
 
 describe('sharedSingleton keeps carburetorToken names unique across a CJS/ESM split', () => {
-    const name = 'a name claimed by the CJS copy is rejected when the ESM copy claims it too';
+    const name = 'a name claimed by the CJS copy is reported, not thrown, when the ESM copy claims it too';
 
     test(name, () => {
         const cjsEntry = path.join(CJS_ROOT, 'Carburetor', 'index.js');
@@ -286,7 +280,7 @@ describe('sharedSingleton keeps carburetorToken names unique across a CJS/ESM sp
 
         const parsed = JSON.parse(result.stdout);
 
-        expect(parsed.esmRejected).toBeTruthy();
-        expect(parsed.esmMessage).toContain('already exists');
+        expect(parsed.esmTokenId).toEqual('dual-format/shared-name');
+        expect(parsed.messages.some((message: string) => message.includes('already exists'))).toBeTruthy();
     });
 });

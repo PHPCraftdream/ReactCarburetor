@@ -1,4 +1,5 @@
-import {getUid, IDict} from '@/Carburetor';
+import {IDict} from '@/Carburetor';
+import {getUid} from '@/Carburetor/Store/Utils/getUid';
 import {isString} from "./isString";
 
 // The key sharedSingleton.ts builds for the uid counter; a test can read the shared slot

@@ -151,8 +151,8 @@ describe('ResourceCarburetor', () => {
         let statusReader = 0;
         let dataReader = 0;
 
-        resource.watch(new Set(['status']), () => statusReader++);
-        resource.watch(new Set(['data']), () => dataReader++);
+        resource.watch(() => statusReader++, new Set(['status']));
+        resource.watch(() => dataReader++, new Set(['data']));
 
         const loading = resource.load(undefined);
         expect(statusReader).toEqual(1);

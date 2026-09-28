@@ -1,4 +1,6 @@
-import {pathsIntersect, SubscriberIndex, TPath, TPathSet, WILDCARD_PATH} from "@/Carburetor";
+import {TPath, TPathSet, WILDCARD_PATH} from "@/Carburetor";
+import {pathsIntersect} from "@/Carburetor/Store/Paths/pathsIntersect";
+import {SubscriberIndex} from "@/Carburetor/Store/Paths/SubscriberIndex";
 
 const setOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);
 

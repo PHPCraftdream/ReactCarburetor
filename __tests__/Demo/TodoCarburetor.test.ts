@@ -57,9 +57,9 @@ const watchPaths = (carburetor: TodoCarburetor, ...paths: TPath[]): IWriteWatche
     const reads: TPathSet = new Set<TPath>(paths);
     let notifications = 0;
 
-    const dispose = carburetor.watch(reads, () => {
+    const dispose = carburetor.watch(() => {
         notifications++;
-    });
+    }, reads);
 
     return {writes: () => notifications, dispose};
 };

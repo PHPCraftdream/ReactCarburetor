@@ -13,9 +13,9 @@ const {scope} = createTodoScope(new MockToDoClientAPI(400), window.localStorage)
 const todos = scope.get(todoToken);
 
 // watch() narrowed to one path: the tab title follows the open count and nothing else.
-todos.watch(new Set(['activeCount']), () => {
+todos.watch(() => {
     document.title = (todos.getData().activeCount ?? 0) + ' open — Todo demo';
-});
+}, new Set(['activeCount']));
 
 // Misuse warnings are development-only anyway; the switch is shown here explicitly.
 diagnostics.setEnabled(process.env.NODE_ENV !== 'production');

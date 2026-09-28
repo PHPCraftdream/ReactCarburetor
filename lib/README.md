@@ -45,7 +45,7 @@ Things worth looking at while clicking around:
 | `connectDevTools`, `diagnostics` | `index.tsx`, development only |
 | `useCarburetorValue`, `useComputedValue` (hooks interop) | `Components/Header/ProgressBadge.tsx` |
 | `waitForUpdate` | `__tests__/Demo/ToolingFeatures.test.tsx` |
-| `deepClone`, `getUid`, `EResourceStatus`, `WILDCARD_PATH` | `TodoCarburetor.ts`, `ListStatus.tsx`, `createTodoScope.ts` |
+| `deepClone`, `EResourceStatus`, `WILDCARD_PATH` | `TodoCarburetor.ts`, `ListStatus.tsx`, `createTodoScope.ts` |
 
 Not shown on purpose: `suspend()` (the demo keeps explicit loading states instead of Suspense
 boundaries) and `CarburetorScope.dehydrate()`/`hydrate()`, which only make sense with server

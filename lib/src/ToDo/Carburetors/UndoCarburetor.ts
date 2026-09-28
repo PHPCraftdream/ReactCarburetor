@@ -1,4 +1,4 @@
-import {Carburetor, CarburetorHistory, ICarburetor, TDisposer, WILDCARD_PATH} from "@/Carburetor";
+import {Carburetor, CarburetorHistory, ICarburetor, TDisposer} from "@/Carburetor";
 import {IUndoData} from "./Models";
 
 /**
@@ -21,7 +21,7 @@ export class UndoCarburetor<T extends object> extends Carburetor<IUndoData> {
         super({canUndo: false, canRedo: false});
 
         this.history = new CarburetorHistory<T>(source, {limit: 50});
-        this.stopWatching = source.watch(new Set([WILDCARD_PATH]), this.refresh);
+        this.stopWatching = source.watch(this.refresh);
     }
 
     /** Steps the watched store one change back. */

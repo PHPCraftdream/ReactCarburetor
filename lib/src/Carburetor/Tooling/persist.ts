@@ -1,7 +1,6 @@
 import {TDisposer} from "@/Carburetor/Models/Base";
 import {ICarburetor} from "@/Carburetor/Models/Store";
 import {IPersistOptions} from "@/Carburetor/Models/Tooling";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
 /**
  * Keeps a carburetor mirrored in a storage: loads the stored state once on connect, then
@@ -26,7 +25,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         }
     }
 
-    return carburetor.watch(new Set([WILDCARD_PATH]), () => {
+    return carburetor.watch(() => {
         // A failing write must reach onError like a failed restore does, and must not cut
         // off the subscribers notified after this one; the last good entry stays in place.
         try {

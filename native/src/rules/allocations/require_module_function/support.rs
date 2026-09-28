@@ -27,7 +27,7 @@ pub(super) const UNSAFE_PREFIX: &str = "UNSAFE_";
 /// base class into its own file — the cross-file resolution this crate deliberately stays out of.
 /// A test below pins every name against the base class's own source, so a rename there fails here
 /// instead of going stale.
-pub(super) const BASE_SURFACE_MEMBERS: [&str; 15] = [
+pub(super) const BASE_SURFACE_MEMBERS: [&str; 14] = [
     "useEffects",
     "unUseEffects",
     "useEffect",
@@ -42,7 +42,6 @@ pub(super) const BASE_SURFACE_MEMBERS: [&str; 15] = [
     "onCarburetorUpdate",
     "commitSubscriptions",
     "releaseSubscriptions",
-    "releaseConnectionViews",
 ];
 
 /// The name a class member is declared under, private names included — a `#helper` method is as

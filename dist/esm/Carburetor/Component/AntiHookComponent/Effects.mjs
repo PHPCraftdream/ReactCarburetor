@@ -15,7 +15,7 @@ class AntiHookComponentEffects extends AntiHookComponentReads {
             failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
         }
     }
-    useEffect(callBack, name, deps) {
+    useEffect(name, callBack, deps) {
         const known = this.effects[name];
         if (known && shallowEqual(known.deps, deps)) return;
         const failures = [];

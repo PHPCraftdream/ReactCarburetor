@@ -147,6 +147,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Breaking:** `SubscriberIndex`, `pathsIntersect`, `getUid`, `isTrackable`, `SyncUpdateScheduler`
+  and its `syncUpdateScheduler` instance are no longer exported from the package entry point.
+  They were building blocks that never needed a semver contract of their own; they stay inside
+  the engine, reachable only through internal import paths for code that lives in this repo.
+- **Breaking:** `AntiHookComponent.useEffect` now takes `(name, callBack, deps)`, matching
+  `subscribe(callback, options)`'s callback-first order instead of putting it last.
+- **Breaking:** `Carburetor.watch` now takes `(callback, reads?)`, the same argument order as
+  `subscribe(callback, options)`; `reads` is optional and defaults to every write (the wildcard
+  path), so `watch(callback)` replaces `watch(new Set([WILDCARD_PATH]), callback)`.
+- **Breaking:** `carburetorToken` no longer throws when a name is already claimed — an HMR
+  reload re-declares the same token, and throwing turned every edit into a crash. Development
+  reports the collision once via `diagnostics.report` and still returns a working token, built
+  from the factory just given, so a scope that has not instantiated that id yet picks up the
+  reloaded factory. An empty name is still rejected with a thrown error.
 - **Performance:** several small render/write-path allocations removed: attempt-map keys are
   computed once instead of re-concatenated per read; a commit adopts its render attempt's read
   set as the committed subscription description instead of copying it (the set is provably

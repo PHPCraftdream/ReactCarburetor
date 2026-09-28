@@ -3,8 +3,9 @@
 // way the rule's message claims.
 /* oxlint-disable carburetor/no-untrackable-draft-mutation */
 /* oxlint-disable carburetor/no-untrackable-store-data */
-import {Carburetor, isTrackable, TPath} from "@/Carburetor";
+import {Carburetor, TPath} from "@/Carburetor";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 
 class Profile {
     public name: string = 'anonymous';

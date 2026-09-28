@@ -258,7 +258,7 @@ describe('watch', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        const dispose = carburetor.watch(new Set<TPath>(['a']), () => calls++);
+        const dispose = carburetor.watch(() => calls++, new Set<TPath>(['a']));
 
         carburetor.setA(1);
         expect(calls).toEqual(1);

@@ -1,7 +1,6 @@
 import {TDisposer} from "@/Carburetor/Models/Base";
 import {ICarburetor} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
 /**
  * Undo/redo for a carburetor, built on snapshots. Every change is recorded, except the
@@ -35,7 +34,7 @@ export class CarburetorHistory<T extends object> {
     constructor(protected carburetor: ICarburetor<T>, options: IHistoryOptions = {}) {
         this.limit = options.limit || 50;
         this.current = carburetor.snapshot();
-        this.dispose = carburetor.watch(new Set([WILDCARD_PATH]), this.record);
+        this.dispose = carburetor.watch(this.record);
     }
 
     /** Whether there is a past state to step back to. */

@@ -47,7 +47,7 @@ class AntiHookComponentEffects extends external_Reads_js_namespaceObject.AntiHoo
             failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
         }
     }
-    useEffect(callBack, name, deps) {
+    useEffect(name, callBack, deps) {
         const known = this.effects[name];
         if (known && (0, external_shallowEqual_js_namespaceObject.shallowEqual)(known.deps, deps)) return;
         const failures = [];

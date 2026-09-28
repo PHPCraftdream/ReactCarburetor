@@ -2,7 +2,7 @@
 //!
 //! The carburetor holds the callback, and the callback holds everything it closed over, for the
 //! lifetime of the store. Nothing fails: memory grows and the callback keeps firing after the thing
-//! it served is gone. `watch(paths, callback)` returns a disposer instead, which makes the cleanup
+//! it served is gone. `watch(callback, reads?)` returns a disposer instead, which makes the cleanup
 //! impossible to forget; components need neither, since `useCarburetor` subscribes and
 //! `componentWillUnmount` releases.
 //!
@@ -22,7 +22,7 @@ pub const RULE: &str = "carburetor/require-subscription-disposal";
 
 const MESSAGE: &str = "this subscription's id is discarded, so it can never be released: the store \
     keeps the callback, and everything it closed over, for the lifetime of the process. Use \
-    watch(paths, callback), which returns a disposer, or keep the id and unsubscribe.";
+    watch(callback, reads?), which returns a disposer, or keep the id and unsubscribe.";
 
 /// Whether the subscription was given a stable id, which is a handle to release it by.
 fn has_stable_id(call: &CallExpression<'_>) -> bool {

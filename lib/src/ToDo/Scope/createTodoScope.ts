@@ -1,4 +1,4 @@
-import {CarburetorScope, IStorageLike, persist, TDisposer, WILDCARD_PATH} from "@/Carburetor";
+import {CarburetorScope, IStorageLike, persist, TDisposer} from "@/Carburetor";
 import {IToDoClientAPI} from "@/ToDo/API/Models";
 import {MockToDoClientAPI} from "@/ToDo/API/MockToDoClientAPI";
 import {TodoCarburetor} from "@/ToDo/Carburetors/TodoCarburetor";
@@ -38,8 +38,8 @@ export const createTodoScope = (api: IToDoClientAPI = new MockToDoClientAPI(), s
     // Loads what was stored, then mirrors every change back.
     const stopPersist: TDisposer = storage ? persist(filter, {key: 'todo-demo:filter', storage}) : () => undefined;
 
-    // Outside React, a store is observed with watch(); the wildcard hears every write.
-    const stopStatus = todos.watch(new Set([WILDCARD_PATH]), () => {
+    // Outside React, a store is observed with watch(); no reads means every write.
+    const stopStatus = todos.watch(() => {
         status.setEmittedMessage((new Date()).toISOString());
     });
 

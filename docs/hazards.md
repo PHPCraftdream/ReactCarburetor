@@ -623,9 +623,9 @@ the same.
 
 ```ts
 protected useEffects(): void {
-    this.useEffect(async () => {
+    this.useEffect('load', async () => {
         await todoResource.load();
-    }, 'load', []);
+    }, []);
 }
 ```
 
@@ -637,18 +637,18 @@ warns, because returning nothing is also legal.
 **Right**
 
 ```ts
-this.useEffect(() => {
+this.useEffect('load', () => {
     const controller = new AbortController();
 
     void todoResource.load(controller.signal);
 
     return () => controller.abort();
-}, 'load', []);
+}, []);
 ```
 
 **Rule** `no-async-effect` — **error**.
 
-**Detection.** The first argument of `this.useEffect(...)` is an `async` function, or a function
+**Detection.** The second argument of `this.useEffect(...)` is an `async` function, or a function
 whose body returns a call to an `async` function without a cleanup return.
 
 **False positives.** Low for the `async` keyword case; the "returns a promise" case is limited
@@ -659,8 +659,8 @@ to a directly returned call expression of a function declared `async` in the sam
 **Wrong**
 
 ```ts
-this.useEffect(subscribeToSocket, 'effect', [url]);
-this.useEffect(startTimer, 'effect', [interval]);
+this.useEffect('effect', subscribeToSocket, [url]);
+this.useEffect('effect', startTimer, [interval]);
 ```
 
 **Why it is silent.** The name is the effect's identity: its deps and its cleanup are stored
@@ -683,7 +683,7 @@ reported.
 **Wrong**
 
 ```ts
-this.useEffect(() => connect(this.props.url), 'connect', []);
+this.useEffect('connect', () => connect(this.props.url), []);
 ```
 
 **Why it is silent.** The effect runs once with the first `url` and never again. The component
@@ -693,7 +693,7 @@ re-renders with the new prop and the effect keeps holding the old connection. Ex
 **Right**
 
 ```ts
-this.useEffect(() => connect(this.props.url), 'connect', [this.props.url]);
+this.useEffect('connect', () => connect(this.props.url), [this.props.url]);
 ```
 
 **Rule** `require-effect-deps` — **warn**.
@@ -704,7 +704,7 @@ everything below it: `[this.props.user]` satisfies a read of `this.props.user.na
 not `this.props`/`this.state` (module-level stores, imported constants) are out of scope — a store
 is not a dependency, it is subscribed to.
 
-Only an inline function body is analysed. `this.useEffect(this.props.carburetor.loadData, 'load', [])`
+Only an inline function body is analysed. `this.useEffect('load', this.props.carburetor.loadData, [])`
 passes a reference whose body is in another file, and reporting the reference itself would fire on a
 pattern this library recommends — passing a stable bound method instead of building a closure every
 render. The demo does exactly that, and the rule reported it before this narrowing.
@@ -818,7 +818,7 @@ firing after the thing it served is gone.
 **Right**
 
 ```ts
-const dispose = todoCarburetor.watch(reads, () => log(todoCarburetor.getData()));
+const dispose = todoCarburetor.watch(() => log(todoCarburetor.getData()), reads);
 ```
 
 `watch` returns a disposer, which makes the cleanup impossible to forget. Components do not

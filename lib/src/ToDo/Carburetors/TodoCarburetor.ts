@@ -1,4 +1,5 @@
-import {Carburetor, deepClone, EResourceStatus, getUid, ResourceCarburetor} from "@/Carburetor";
+import {Carburetor, deepClone, EResourceStatus, ResourceCarburetor} from "@/Carburetor";
+import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {ITodo, IToDoClientAPI, ITodoList} from "@/ToDo/API/Models";
 import {getDefaultTodos} from "@/ToDo/API/getDefaultTodos";
 import {TDeleteTodo, TUpdateTodo} from "./Models";

@@ -43,14 +43,14 @@ export declare abstract class AntiHookComponentEffects<P = {}, S = {}> extends A
      * leaves the record consistent — new deps, no cleanup — instead of a stale cleanup a later
      * unmount would run a second time.
      *
-     * @param callBack - the effect body; a function it returns becomes the cleanup, run before
-     * the next run and on unmount
      * @param name - the key in the per-effect record, so two effects sharing one name would
      * overwrite each other's deps and cleanup
+     * @param callBack - the effect body; a function it returns becomes the cleanup, run before
+     * the next run and on unmount
      * @param deps - compared shallowly with the last run's; an equal set skips the run and
      * leaves the existing cleanup standing
      */
-    protected useEffect(callBack: TEffect, name: string, deps: TEffectDeps): void;
+    protected useEffect(name: string, callBack: TEffect, deps: TEffectDeps): void;
     /**
      * Runs every effect's cleanup once, on unmount, and forgets them.
      *

@@ -27,10 +27,6 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
-__webpack_require__.d(__webpack_exports__, {
-    persist: ()=>persist
-});
-const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const persist = (carburetor, options)=>{
     const { key, storage } = options;
     const stored = storage.getItem(key);
@@ -40,9 +36,7 @@ const persist = (carburetor, options)=>{
         storage.removeItem(key);
         if (options.onError) options.onError(error);
     }
-    return carburetor.watch(new Set([
-        WildcardPath_js_namespaceObject.WILDCARD_PATH
-    ]), ()=>{
+    return carburetor.watch(()=>{
         try {
             storage.setItem(key, JSON.stringify(carburetor.getData()));
         } catch (error) {
@@ -50,6 +44,9 @@ const persist = (carburetor, options)=>{
         }
     });
 };
+__webpack_require__.d(__webpack_exports__, {}, {
+    persist: persist
+});
 exports.persist = __webpack_exports__.persist;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "persist"

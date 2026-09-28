@@ -360,22 +360,22 @@ Override `useEffects`, and declare each effect with a name and its dependencies:
 ```tsx
 export class TodoApp extends AntiHookComponent<ITodoProps> {
     protected useEffects(): void {
-        this.useEffect(this.props.carburetor.loadData, 'loadData', []);
+        this.useEffect('loadData', this.props.carburetor.loadData, []);
 
         this.useEffect(
+            'channel',
             () => {
                 const socket = connect(this.props.channel);
 
                 return () => socket.close();
             },
-            'channel',
             [this.props.channel]
         );
     }
 }
 ```
 
-`useEffect(callback, name, deps)` runs `callback` when `deps` changed since the last run,
+`useEffect(name, callback, deps)` runs `callback` when `deps` changed since the last run,
 compared element by element with `Object.is`. Whatever the callback returns is its cleanup: it
 runs before that same effect runs again, and on unmount. Setup and teardown therefore stay
 paired per effect — a changed dependency of one effect does not tear down the others.
@@ -683,7 +683,7 @@ describes.
 | `snapshot(): T`                 | Detached deep copy, safe to serialize or keep.                     |
 | `restore(data)`                 | Replaces the data with a snapshot.                                 |
 | `toJSON()` / `fromJSON(value)`  | Type-erased bridge for devtools, persistence and hydration.        |
-| `watch(paths, callback)`        | Subscribes outside React; returns a disposer.                      |
+| `watch(callback, reads?)`       | Subscribes outside React; returns a disposer.                      |
 | `getVersion(): number`          | Write counter.                                                     |
 | `subscribe(cb, options?)`       | Subscribes. `options.reads` narrows it to paths, `options.id` reuses a stable id so re-subscribing replaces the previous registration. |
 | `unsubscribe(id)`               | Removes the subscription and cancels a pending update.             |
@@ -703,7 +703,7 @@ describes.
 | `useComputed(computed)`           | Reads a derived value and subscribes to it, not to its inputs.  |
 | `useEffects()` *(protected)*      | Declares the component's effects; runs on mount and after every committed update. |
 | `unUseEffects(prevProps)`         | Component-wide teardown, before every `useEffects` pass and on unmount. |
-| `useEffect(cb, name, deps)`       | Runs `cb` when `deps` changed; its return value is that effect's cleanup. |
+| `useEffect(name, cb, deps)`       | Runs `cb` when `deps` changed; its return value is that effect's cleanup. |
 | `shouldComponentUpdate(…)`        | The props/state gate. Override only with a `super` call.        |
 | `@bind` *(decorator)*             | Binds a method once per instance, keeping it on the prototype and its reference stable. |
 
@@ -713,19 +713,18 @@ describes.
 |-----------------------------------------------|---------------------------------------------|
 | `computed(body)`                              | Memoized derived value.                     |
 | `transaction(body)`                           | One notification pass for a group of writes. |
-| `SyncUpdateScheduler` *(default)*             | Immediate delivery; React batches.          |
 | `ComponentUpdateThrottle(ms)`                 | Coalescing for streaming sources.           |
 | `ResourceCarburetor(loader, scheduler?)`      | Async state with status and cancellation.    |
 | `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent` | Per-request stores. |
 | `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
 | `diagnostics`, `Diagnostics`                  | The development-only warning switch.         |
 | `EResourceStatus`, `EDevToolsAction`, `EDevToolsMessageType` | Enums for the resource status and the DevTools protocol. |
-| `syncUpdateScheduler`, `getInitialResourceData`, `CarburetorContext` | The default scheduler instance, the initial resource state, and the context a scope is provided through. |
-| `deepClone`, `pathsIntersect`, `isTrackable`, `shallowEqual`, `SubscriberIndex`, `getUid`, `WILDCARD_PATH` | Building blocks, exported for extensions. |
+| `getInitialResourceData`, `CarburetorContext` | The initial resource state and the context a scope is provided through. |
+| `deepClone`, `shallowEqual`, `WILDCARD_PATH`  | Building blocks, exported for extensions.    |
 
-Internals — the tracking proxies, the proxy cache, path string plumbing and the batch
-coordinator — are deliberately not exported: they are implementation details, and a test pins
-the exported surface so one does not slip in by accident.
+Internals — the tracking proxies, the proxy cache, path string plumbing, the update scheduler
+and the batch coordinator — are deliberately not exported: they are implementation details, and
+a test pins the exported surface so one does not slip in by accident.
 
 ## Caveats
 

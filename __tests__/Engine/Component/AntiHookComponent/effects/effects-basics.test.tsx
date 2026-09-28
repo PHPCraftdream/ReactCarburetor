@@ -144,8 +144,8 @@ describe('<AntiHookComponent />', () => {
             protected useEffects(): void {
                 const {a, b} = this.props;
 
-                this.useEffect(useEffectA, 'useEffectA', [a]);
-                this.useEffect(useEffectB, 'useEffectB', [b]);
+                this.useEffect('useEffectA', useEffectA, [a]);
+                this.useEffect('useEffectB', useEffectB, [b]);
 
                 countUseEffects++;
             }
@@ -208,6 +208,7 @@ describe('<AntiHookComponent />', () => {
         class Subscription extends AntiHookComponent<{channel: string}> {
             protected useEffects(): void {
                 this.useEffect(
+                    'channel',
                     () => {
                         const channel = this.props.channel;
                         log.push('open:' + channel);
@@ -216,7 +217,6 @@ describe('<AntiHookComponent />', () => {
                         // carburetor-disable-next-line carburetor/require-method-for-closure
                         return () => closeChannel(channel);
                     },
-                    'channel',
                     [this.props.channel]
                 );
             }
@@ -245,12 +245,12 @@ describe('<AntiHookComponent />', () => {
         class Watcher extends AntiHookComponent<{channel: string; unrelated: number}> {
             protected useEffects(): void {
                 this.useEffect(
+                    'channel',
                     () => {
                         log.push('run');
 
                         return cleanup;
                     },
-                    'channel',
                     [this.props.channel]
                 );
             }
@@ -277,9 +277,9 @@ describe('<AntiHookComponent />', () => {
 
         class Pair extends AntiHookComponent<{a: number; b: number}> {
             protected useEffects(): void {
-                this.useEffect(() => {
+                this.useEffect('pair', () => {
                     runs++;
-                }, 'pair', [this.props.a, this.props.b]);
+                }, [this.props.a, this.props.b]);
             }
 
             render() {
@@ -304,9 +304,9 @@ describe('<AntiHookComponent />', () => {
 
         class Once extends AntiHookComponent<{tick: number}> {
             protected useEffects(): void {
-                this.useEffect(() => {
+                this.useEffect('once', () => {
                     runs++;
-                }, 'once', []);
+                }, []);
             }
 
             render() {

@@ -55,8 +55,8 @@ export interface ICarburetor<T> extends IInspectable {
     snapshot: () => T;
     /** Replaces the data with a previously taken snapshot. */
     restore: (data: T) => void;
-    /** Subscribes outside React: reacts to writes under the given paths. */
-    watch: (reads: TPathSet, callback: TSubscriber) => TDisposer;
+    /** Subscribes outside React: reacts to writes under `reads`, or every write when omitted. */
+    watch: (callback: TSubscriber, reads?: TPathSet) => TDisposer;
 }
 
 /** A carburetor as seen by the batch coordinator. */

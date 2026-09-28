@@ -86,7 +86,7 @@ impl<'a, 's> Visit<'a> for Check<'s> {
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if member_call_name(&call.callee) == Some("useEffect") {
-            match call.arguments.first() {
+            match call.arguments.get(1) {
                 Some(Argument::ArrowFunctionExpression(body)) if body.r#async => {
                     self.diagnostics.push(report(self.source, body.span.start, RULE, MESSAGE.to_string()));
                 }
@@ -131,28 +131,28 @@ mod tests {
 
     #[test]
     fn an_async_arrow_body_is_reported() {
-        let source = "this.useEffect(async () => {\n    await load();\n}, 'load', []);\n";
+        let source = "this.useEffect('load', async () => {\n    await load();\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [1]);
     }
 
     #[test]
     fn an_async_function_expression_body_is_reported() {
-        let source = "this.useEffect(async function () {\n    await load();\n}, 'load', []);\n";
+        let source = "this.useEffect('load', async function () {\n    await load();\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [1]);
     }
 
     #[test]
     fn a_synchronous_body_with_a_real_cleanup_is_correct() {
-        let source = "useEffect(() => {\n    const c = new AbortController();\n    load(c.signal);\n\n    return () => c.abort();\n}, 'load', []);\n";
+        let source = "useEffect('load', () => {\n    const c = new AbortController();\n    load(c.signal);\n\n    return () => c.abort();\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn a_concise_body_returning_an_async_local_is_reported() {
-        let source = "async function loadEverything() {}\n\nthis.useEffect(() => loadEverything(), 'load', []);\n";
+        let source = "async function loadEverything() {}\n\nthis.useEffect('load', () => loadEverything(), []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [3]);
     }
@@ -160,14 +160,14 @@ mod tests {
     #[test]
     fn a_block_body_returning_an_async_local_is_reported() {
         let source =
-            "const loadEverything = async () => {};\n\nthis.useEffect(() => {\n    return loadEverything();\n}, 'load', []);\n";
+            "const loadEverything = async () => {};\n\nthis.useEffect('load', () => {\n    return loadEverything();\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [3]);
     }
 
     #[test]
     fn a_concise_body_returning_a_synchronous_call_is_correct() {
-        let source = "function subscribe() {\n    return () => {};\n}\n\nuseEffect(() => subscribe(), 'load', []);\n";
+        let source = "function subscribe() {\n    return () => {};\n}\n\nuseEffect('load', () => subscribe(), []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }

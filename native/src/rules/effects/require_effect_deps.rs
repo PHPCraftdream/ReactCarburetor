@@ -61,13 +61,13 @@ impl<'a, 's> Visit<'a> for Check<'s> {
 
         let outer = self.deps.replace(deps);
 
-        // Bodies whose reads a rule can actually see: `this.useEffect(this.props.carburetor.loadData,
-        // 'load', [])` passes a reference instead of an inline function, and what that function reads
-        // is in another file. Reporting the reference itself would fire on a pattern this library
-        // recommends, so a non-inline body is left alone — reached simply by not descending into it.
-        // A concise arrow (`() => connect(this.props.url)`) has no block to walk, so both forms go
-        // through the generic body walker rather than only the block-statement case.
-        match call.arguments.first() {
+        // Bodies whose reads a rule can actually see: `this.useEffect('load',
+        // this.props.carburetor.loadData, [])` passes a reference instead of an inline function, and
+        // what that function reads is in another file. Reporting the reference itself would fire on a
+        // pattern this library recommends, so a non-inline body is left alone — reached simply by not
+        // descending into it. A concise arrow (`() => connect(this.props.url)`) has no block to walk,
+        // so both forms go through the generic body walker rather than only the block-statement case.
+        match call.arguments.get(1) {
             Some(Argument::ArrowFunctionExpression(body)) => {
                 walk::walk_arrow_function_body(self, &body.body);
             }
@@ -145,7 +145,7 @@ mod tests {
 
     #[test]
     fn a_prop_read_and_missing_from_deps_is_reported() {
-        let source = "this.useEffect(() => {\n    load(this.props.id);\n}, 'load', []);\n";
+        let source = "this.useEffect('load', () => {\n    load(this.props.id);\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [2]);
     }
@@ -155,56 +155,56 @@ mod tests {
         // Regression: a concise body (`() => expr`) has no block statement to walk, and the first
         // version of this rule only ever descended into the block-statement form — so a read like
         // this one, straight out of the conformance corpus, was silently never checked.
-        let source = "this.useEffect(() => load(this.props.id), 'load', []);\n";
+        let source = "this.useEffect('load', () => load(this.props.id), []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [1]);
     }
 
     #[test]
     fn a_prop_read_covered_by_deps_is_correct() {
-        let source = "this.useEffect(() => {\n    load(this.props.id);\n}, 'load', [this.props.id]);\n";
+        let source = "this.useEffect('load', () => {\n    load(this.props.id);\n}, [this.props.id]);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn a_dependency_covers_every_read_below_it() {
-        let source = "this.useEffect(() => {\n    load(this.props.user.name);\n}, 'load', [this.props.user]);\n";
+        let source = "this.useEffect('load', () => {\n    load(this.props.user.name);\n}, [this.props.user]);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn a_state_read_is_treated_the_same_as_a_prop() {
-        let source = "this.useEffect(() => {\n    load(this.state.query);\n}, 'search', []);\n";
+        let source = "this.useEffect('search', () => {\n    load(this.state.query);\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [2]);
     }
 
     #[test]
     fn a_store_read_is_not_a_dependency() {
-        let source = "this.useEffect(() => {\n    load(store.getData());\n}, 'load', []);\n";
+        let source = "this.useEffect('load', () => {\n    load(store.getData());\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn a_chain_is_reported_once_from_its_outermost_expression() {
-        let source = "this.useEffect(() => {\n    load(this.props.user.name.first);\n}, 'load', []);\n";
+        let source = "this.useEffect('load', () => {\n    load(this.props.user.name.first);\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [2]);
     }
 
     #[test]
     fn a_non_inline_body_is_not_analysable() {
-        let source = "this.useEffect(this.props.carburetor.loadData, 'load', []);\n";
+        let source = "this.useEffect('load', this.props.carburetor.loadData, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn reads_in_the_dependency_array_itself_are_the_declaration() {
-        let source = "this.useEffect(() => {\n    load();\n}, 'load', [this.props.id]);\n";
+        let source = "this.useEffect('load', () => {\n    load();\n}, [this.props.id]);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }

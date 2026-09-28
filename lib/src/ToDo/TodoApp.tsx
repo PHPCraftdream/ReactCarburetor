@@ -75,8 +75,8 @@ export class TodoApp extends ScopedAntiHookComponent {
 
     /** Loads the list once, and listens for undo keys while mounted. */
     protected useEffects(): void {
-        this.useEffect(this.loadList, "loadData", []);
-        this.useEffect(this.listenForUndoKeys, "undoKeys", []);
+        this.useEffect("loadData", this.loadList, []);
+        this.useEffect("undoKeys", this.listenForUndoKeys, []);
     }
 
     /** Starts the load; a fresh server list is not something to undo back out of. */

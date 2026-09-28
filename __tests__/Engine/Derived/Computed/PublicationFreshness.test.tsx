@@ -33,9 +33,9 @@ describe('computed', () => {
             // computed mid-wave, between invalidation and settlement. That read refreshes
             // the cache, but the observer still has only ever seen 2 — the change to 4 is
             // owed to them.
-            carburetor.watch(new Set<string>(['n']), () => {
+            carburetor.watch(() => {
                 doubled.get();
-            });
+            }, new Set<string>(['n']));
 
             act(() => carburetor.setN(2));
 

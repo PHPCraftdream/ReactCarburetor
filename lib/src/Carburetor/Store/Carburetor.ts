@@ -157,12 +157,11 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /**
      * Subscribes outside React — for persistence, logging, analytics.
      *
-     * @param reads - the paths the callback cares about; a set holding the wildcard path
-     * hears about every write.
      * @param callback - run per matching write with no arguments; the returned disposer
      * unsubscribes it.
+     * @param reads - the paths the callback cares about; omitted means every write.
      */
-    public watch = (reads: TPathSet, callback: TSubscriber): TDisposer => {
+    public watch = (callback: TSubscriber, reads?: TPathSet): TDisposer => {
         const id = this.subscribe(callback, {reads});
 
         return () => {

@@ -15,16 +15,10 @@ export * from './Models/Tooling';
 export * from './Store/Carburetor';
 export * from './Store/Diagnostics/Diagnostics';
 export * from './Store/Diagnostics/DiagnosticsInstance';
-export * from './Store/Paths/pathsIntersect';
-export * from './Store/Paths/SubscriberIndex';
 export * from './Store/Paths/WildcardPath';
 export * from './Store/Scheduling/ComponentUpdateThrottle';
-export * from './Store/Scheduling/SyncUpdateScheduler';
-export * from './Store/Scheduling/SyncUpdateSchedulerInstance';
-export * from './Store/Tracking/isTrackable';
 export * from './Store/Transaction/transaction';
 export * from './Store/Utils/deepClone';
-export * from './Store/Utils/getUid';
 
 export * from './Derived/Computed';
 export * from './Derived/computedFactory';

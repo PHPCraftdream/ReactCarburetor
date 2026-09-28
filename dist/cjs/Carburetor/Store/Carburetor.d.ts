@@ -73,12 +73,11 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     /**
      * Subscribes outside React — for persistence, logging, analytics.
      *
-     * @param reads - the paths the callback cares about; a set holding the wildcard path
-     * hears about every write.
      * @param callback - run per matching write with no arguments; the returned disposer
      * unsubscribes it.
+     * @param reads - the paths the callback cares about; omitted means every write.
      */
-    watch: (reads: TPathSet, callback: TSubscriber) => TDisposer;
+    watch: (callback: TSubscriber, reads?: TPathSet) => TDisposer;
     /** Called by the batch coordinator when a transaction closes. */
     notifyWrites: (writes: TPathSet) => void;
     /**

@@ -71,7 +71,7 @@ class Carburetor {
             delete this.subscribers[id];
         }
     };
-    watch = (reads, callback)=>{
+    watch = (callback, reads)=>{
         const id = this.subscribe(callback, {
             reads
         });
