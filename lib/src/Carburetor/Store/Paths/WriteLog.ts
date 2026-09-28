@@ -2,78 +2,74 @@ import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {PATH_SEPARATOR} from "./PathSeparator";
 import {WILDCARD_PATH} from "./WildcardPath";
 
-/** How many (version, path) entries the log keeps before the oldest ones age out. */
-const DEFAULT_CAPACITY = 4096;
+/**
+ * How many distinct paths (written paths plus their ancestors) the log indexes before it forgets
+ * everything and raises its watermark: 4000 rows each adding their own key index 4002.
+ */
+const DEFAULT_CAPACITY = 8192;
 
 /**
- * A bounded, append-only record of which paths recent emits touched, keyed by the version each
- * write landed at.
+ * The version each recently written path, and each ancestor of one, was last written at.
  *
  * `Subscriptions.alignSubscription` (R16-05) uses this to tell a write that concerns a
  * component's read set from a write that does not, instead of force-updating on any version
  * change. The log itself never decides correctness: past its watermark it simply cannot answer,
- * and the caller is expected to fall back to today's coarse check — `matches` reports that by
- * returning `true` (treat as changed) rather than throwing or guessing.
+ * and the caller falls back to the coarse check — `matches` reports that by returning `true`.
  *
- * Backed by two arrays used as a ring buffer: they grow with the first `capacity` entries (a
- * store that is rarely written never pays for the full ring), then an entry is overwritten in
- * place, and the watermark becomes the version of whatever got overwritten, since nothing
- * before it is completely known any more.
+ * Indexed by path rather than kept as a list of writes, so a commit costs O(read paths × depth)
+ * however many writes landed since its render: a list scanned per commit made N rows that each
+ * write on mount O(N²).
  */
 export class WriteLog {
-    /** How many (version, path) entries the ring holds before the oldest ones age out. */
+    /** How many entries `last` and `under` may hold together before the log resets. */
     private readonly capacity: number;
-    /** The version each slot's path was written at, parallel to `paths`. */
-    private readonly versions: number[];
-    /** The path recorded in each slot, parallel to `versions`. */
-    private readonly paths: TPath[];
-
-    /** How many slots hold a real entry; stops growing once the ring first wraps. */
-    private size = 0;
-    /** The next slot `record` writes into. */
-    private cursor = 0;
-    /** Versions at or below this are no longer fully represented; a baseline below it must fall back. */
+    /** The version each written path was last written at. */
+    private readonly last: Map<TPath, number> = new Map<TPath, number>();
+    /** The version of the latest write strictly below each path. */
+    private readonly under: Map<TPath, number> = new Map<TPath, number>();
+    /** The version of the latest wildcard write. */
+    private wildcardVersion = 0;
+    /** A baseline below this predates what the log still knows and must fall back. */
     private watermark = 0;
 
     /**
-     * Sets the ring's bound; the backing arrays start empty.
+     * Sets the log's bound.
      *
-     * @param capacity - how many (version, path) entries to keep before the oldest age out;
-     * a write touching several paths costs several entries, one per path.
+     * @param capacity - how many distinct paths, ancestors included, to index before resetting.
      */
     constructor(capacity: number = DEFAULT_CAPACITY) {
         this.capacity = capacity;
-        this.versions = [];
-        this.paths = [];
     }
 
     /**
-     * Appends one emit's touched paths, aging out the oldest entries once the ring is full.
+     * Indexes one emit's touched paths and their ancestors under `version`.
      *
      * @param version - the version this emit bumped to, already incremented by the caller
-     * @param writes - the paths this emit published; a wildcard path is recorded like any other
-     * and matched specially by `matches`
+     * @param writes - the paths this emit published
      */
     public record(version: number, writes: TPathSet): void {
         for (const path of writes) {
-            if (this.size < this.capacity) {
-                this.versions.push(version);
-                this.paths.push(path);
-                this.size++;
-                this.cursor = this.size % this.capacity;
+            if (path === WILDCARD_PATH) {
+                this.wildcardVersion = version;
 
                 continue;
             }
 
-            const evicted = this.versions[this.cursor];
+            this.last.set(path, version);
 
-            if (evicted > this.watermark) {
-                this.watermark = evicted;
+            let cut = path.lastIndexOf(PATH_SEPARATOR);
+
+            while (cut > 0) {
+                this.under.set(path.slice(0, cut), version);
+                cut = path.lastIndexOf(PATH_SEPARATOR, cut - 1);
             }
+        }
 
-            this.versions[this.cursor] = version;
-            this.paths[this.cursor] = path;
-            this.cursor = (this.cursor + 1) % this.capacity;
+        if (this.last.size + this.under.size > this.capacity) {
+            // Forgetting drops this emit too: only a baseline at or after it can still be answered.
+            this.last.clear();
+            this.under.clear();
+            this.watermark = version;
         }
     }
 
@@ -83,95 +79,37 @@ export class WriteLog {
      * and a written descendant of a read path.
      *
      * Returns `true` — treat as changed — whenever the log cannot answer precisely: the baseline
-     * predates the watermark, or a wildcard write landed in range. Correctness never depends on
-     * the log being complete; only how many needless re-renders it saves does.
+     * predates the watermark, or a wildcard write landed since it.
      *
      * @param baselineVersion - the version the caller's read set was captured at
-     * @param reads - the paths that read set touched; only ever read, never mutated, so the
-     * public `hasDriftSince` can hand this a `ReadonlySet` straight through
+     * @param reads - the paths that read set touched; only read
      */
     public matches(baselineVersion: number, reads: ReadonlySet<TPath>): boolean {
-        if (baselineVersion < this.watermark) {
+        if (baselineVersion < this.watermark || this.wildcardVersion > baselineVersion) {
             return true;
         }
 
         if (reads.has(WILDCARD_PATH)) {
-            // A wildcard read already subscribes to everything; getting here at all means the
-            // version moved, so there is something for it to react to.
+            // A wildcard read subscribes to everything, and the caller only asks once the version moved.
             return true;
         }
 
-        // Ancestors of the read paths, for "a written ancestor of a read path" — built lazily,
-        // once per call, only if a same-path check does not already settle things.
-        let readAncestors: Set<TPath> | undefined;
-
-        for (let seen = 0; seen < this.size; seen++) {
-            const index = (this.cursor - 1 - seen + this.capacity * 2) % this.capacity;
-            const version = this.versions[index];
-
-            if (version <= baselineVersion) {
-                // Entries are appended in non-decreasing version order; walking newest-first
-                // means every entry after this one is even older, so nothing later can match.
-                break;
-            }
-
-            const path = this.paths[index];
-
-            if (path === WILDCARD_PATH || reads.has(path)) {
+        for (const path of reads) {
+            if ((this.last.get(path) ?? 0) > baselineVersion || (this.under.get(path) ?? 0) > baselineVersion) {
                 return true;
             }
 
-            if (readAncestors === undefined) {
-                readAncestors = ancestorsOfAll(reads);
-            }
+            let cut = path.lastIndexOf(PATH_SEPARATOR);
 
-            if (readAncestors.has(path) || hasAncestorIn(path, reads)) {
-                return true;
+            while (cut > 0) {
+                if ((this.last.get(path.slice(0, cut)) ?? 0) > baselineVersion) {
+                    return true;
+                }
+
+                cut = path.lastIndexOf(PATH_SEPARATOR, cut - 1);
             }
         }
 
         return false;
     }
 }
-
-/**
- * Whether some read in `reads` is an ancestor of `path` — the "written descendant of a read
- * path" case: walks `path`'s own ancestor chain rather than every read's, since only `path`
- * changes per iteration.
- *
- * @param path - the written path being checked
- * @param reads - the read set to check it against
- */
-const hasAncestorIn = (path: TPath, reads: ReadonlySet<TPath>): boolean => {
-    let cut = path.lastIndexOf(PATH_SEPARATOR);
-
-    while (cut > 0) {
-        const ancestor = path.slice(0, cut);
-
-        if (reads.has(ancestor)) {
-            return true;
-        }
-
-        cut = ancestor.lastIndexOf(PATH_SEPARATOR);
-    }
-
-    return false;
-};
-
-/** The union of every ancestor of every path in `reads`, for the "written ancestor" case. */
-const ancestorsOfAll = (reads: ReadonlySet<TPath>): Set<TPath> => {
-    const ancestors = new Set<TPath>();
-
-    reads.forEach((path: TPath) => {
-        let cut = path.lastIndexOf(PATH_SEPARATOR);
-
-        while (cut > 0) {
-            const ancestor = path.slice(0, cut);
-
-            ancestors.add(ancestor);
-            cut = ancestor.lastIndexOf(PATH_SEPARATOR);
-        }
-    });
-
-    return ancestors;
-};

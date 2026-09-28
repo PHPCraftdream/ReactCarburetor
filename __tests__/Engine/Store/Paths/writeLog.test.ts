@@ -87,45 +87,35 @@ describe('WriteLog (R16-05)', () => {
     test('falls back to true once the baseline predates the watermark', () => {
         const log = new WriteLog(4);
 
-        log.record(1, setOf('a'));
-        log.record(2, setOf('b'));
-        log.record(3, setOf('c'));
-        log.record(4, setOf('d'));
-        // Overflows the 4-entry ring: the version-1 entry ("a") is evicted, so the watermark
-        // becomes 1 and a baseline strictly below it can no longer be answered precisely.
-        log.record(5, setOf('e'));
+        log.record(1, setOf('a', 'b'));
+        log.record(2, setOf('c', 'd'));
+        // A fifth distinct path overflows the 4-entry index: it resets, raising the watermark to 3.
+        log.record(3, setOf('e'));
 
-        expect(log.matches(0, setOf('unrelated'))).toBe(true);
-        // A baseline of exactly the watermark already accounts for the evicted write, so the
-        // precise answer still holds for it: nothing written after it concerns "unrelated".
+        expect(log.matches(2, setOf('unrelated'))).toBe(true);
+        // A baseline at the watermark was taken after everything forgotten.
+        expect(log.matches(3, setOf('unrelated'))).toBe(false);
+    });
+
+    test('answers precisely for writes recorded after a reset', () => {
+        const log = new WriteLog(4);
+
+        log.record(1, setOf('a', 'b', 'c', 'd', 'e'));
+        log.record(2, setOf('x.y'));
+
+        expect(log.matches(1, setOf('x.y'))).toBe(true);
+        expect(log.matches(1, setOf('x'))).toBe(true);
         expect(log.matches(1, setOf('unrelated'))).toBe(false);
     });
 
-    test('still answers precisely for a baseline at or above the watermark after overflow', () => {
-        const log = new WriteLog(4);
+    test('rewriting the same path costs no capacity', () => {
+        const log = new WriteLog(2);
 
-        log.record(1, setOf('a'));
-        log.record(2, setOf('b'));
-        log.record(3, setOf('c'));
-        log.record(4, setOf('d'));
-        log.record(5, setOf('e'));
+        for (let version = 1; version <= 100; version++) {
+            log.record(version, setOf('a.b'));
+        }
 
-        // Versions 2-5 are still fully represented in the ring.
-        expect(log.matches(2, setOf('c'))).toBe(true);
-        expect(log.matches(2, setOf('unrelated'))).toBe(false);
-    });
-
-    test('a write touching several paths costs several entries against the capacity', () => {
-        const log = new WriteLog(3);
-
-        log.record(1, setOf('a', 'b', 'c'));
-        log.record(2, setOf('d'));
-
-        // One write of 3 paths already fills a 3-entry ring: "a" is evicted by "d" alone,
-        // so a baseline predating that write can no longer be answered precisely.
-        expect(log.matches(0, setOf('a'))).toBe(true);
-        // A baseline of 1 already accounts for the evicted write, so the precise answer still
-        // holds: only "d" landed after it, and "a" is unrelated to "d".
-        expect(log.matches(1, setOf('a'))).toBe(false);
+        expect(log.matches(99, setOf('a.b'))).toBe(true);
+        expect(log.matches(99, setOf('unrelated'))).toBe(false);
     });
 });

@@ -90,8 +90,8 @@ describe('precise commit drift check (R16-05)', () => {
         unmount();
     });
 
-    test('every row writing its own size on mount, never reading sizes, renders once each', () => {
-        const rowCount = 20;
+    // 2500 rows each writing on mount: a write log scanned per commit made this O(N²).
+    test.each([20, 2500])('every row writing its own size on mount renders once each (%i rows)', (rowCount: number) => {
         const store = new RowsCarburetor(makeRowsData(rowCount));
         const counters: Record<string, number> = {};
 
@@ -257,12 +257,11 @@ describe('precise commit drift check (R16-05)', () => {
 
         class Early extends AntiHookComponent {
             protected useEffects(): void {
-                // Overflows the log's default capacity with writes to an entirely unrelated
-                // path, pushing the watermark past Reader's baseline: past that point the log
-                // cannot answer precisely, so the safety net force-updates regardless of what
-                // was actually written.
-                for (let i = 0; i < 4200; i++) {
-                    store.writeOther();
+                // Overflows the log's default capacity with distinct, unrelated paths, raising
+                // the watermark past Reader's baseline: the log can no longer answer precisely, so
+                // the safety net force-updates regardless of what was written.
+                for (let i = 0; i < 8300; i++) {
+                    store.writeSize(String(i), 1);
                 }
             }
 
