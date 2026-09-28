@@ -37,17 +37,17 @@ const describeFailure = (error)=>error instanceof Error ? error.message : String
 class AntiHookComponentEffects extends external_Reads_js_namespaceObject.AntiHookComponentReads {
     useEffects() {}
     unUseEffects(_prevProps) {}
-    reportTeardownFailure = (failure)=>{
+    reportTeardownFailure(failure) {
         if ("u" > typeof process && 'production' !== process.env.NODE_ENV) DiagnosticsInstance_js_namespaceObject.diagnostics.report(failure);
-    };
-    runTeardownStage = (what, stage, failures)=>{
+    }
+    runTeardownStage(what, stage, failures) {
         try {
             stage();
         } catch (error) {
             failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
         }
-    };
-    useEffect = (callBack, name, deps)=>{
+    }
+    useEffect(callBack, name, deps) {
         const known = this.effects[name];
         if (known && (0, external_shallowEqual_js_namespaceObject.shallowEqual)(known.deps, deps)) return;
         const failures = [];
@@ -67,7 +67,7 @@ class AntiHookComponentEffects extends external_Reads_js_namespaceObject.AntiHoo
         } finally{
             failures.forEach((error)=>this.reportTeardownFailure('an effect cleanup threw while an effect was replaced: ' + describeFailure(error) + '. The new effect ran anyway.'));
         }
-    };
+    }
     releaseEffects() {
         const records = this.effects;
         this.effects = {};

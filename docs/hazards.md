@@ -522,6 +522,12 @@ gone, and in an earlier version of this library that silently disabled every eff
 component — the field initializer ran after the constructor had wired things up. The component
 looks completely normal.
 
+**`render` is not silent.** The base constructor installs `render` as a non-configurable own
+accessor, so a class-field `render` is not merely discouraged: redefining a non-configurable
+property as a field throws a `TypeError` at construction, before the component ever renders. The
+other lifecycle names in this list stay silently shadowed, which is why the rule still matters
+for them.
+
 **Right.** Declare lifecycle methods as methods. Class properties are for handlers.
 
 **Rule** `no-lifecycle-class-property` — **error**.

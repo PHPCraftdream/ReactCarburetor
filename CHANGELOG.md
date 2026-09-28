@@ -147,6 +147,20 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Breaking:** a class-field `render` (`render = () => ...`) is no longer supported.
+  `AntiHookComponentFoundation`'s constructor installs `render` as a non-configurable own
+  accessor, so a subclass's class-field `render` throws a `TypeError` at construction instead of
+  being silently accepted. Declare `render` as a method; `no-lifecycle-class-property` (H13)
+  flags a class-field `render` at lint time with an actionable message. Assigning `this.render =
+  fn` from a constructor body is still supported.
+- **Performance:** `AntiHookComponent` no longer wraps each instance in a `Proxy` to intercept
+  `render`. The render-attempt boundary is installed once, as a non-configurable accessor for
+  `render` alone, so every other property read or write — props, state, user fields — is a plain,
+  untrapped access again. `useCarburetor`, `connect`, `connectSelection`, `declareConnection`,
+  `useComputed`, `useResource`, `useEffect`, `reportTeardownFailure` and `runTeardownStage` moved
+  from per-instance arrow-function fields to prototype methods, so a component no longer allocates
+  nine closures per instance; `onCarburetorUpdate` stays a bound field, since it is passed to
+  `subscribe()` as a callback.
 - `Computed` keeps its subscribers in a `Map`: `get()` no longer allocates the subscriber id list
   on every call, so S components re-rendering from one computed cost O(S) instead of O(S²)
   (4000 subscribers: ~8.6 s to ~3.5 ms per five write-and-read waves).

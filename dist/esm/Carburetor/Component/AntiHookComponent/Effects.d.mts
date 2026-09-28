@@ -17,7 +17,7 @@ export declare abstract class AntiHookComponentEffects<P = {}, S = {}> extends A
      *
      * @param failure - the message to report, already naming what ran and what it cost
      */
-    protected reportTeardownFailure: (failure: string) => void;
+    protected reportTeardownFailure(failure: string): void;
     /**
      * Runs one stage of the unmount teardown, isolated so a failure there costs the stages after
      * it nothing.
@@ -29,7 +29,7 @@ export declare abstract class AntiHookComponentEffects<P = {}, S = {}> extends A
      * @param stage - the stage itself
      * @param failures - the messages collected so far, appended to when the stage throws
      */
-    protected runTeardownStage: (what: string, stage: () => void, failures: string[]) => void;
+    protected runTeardownStage(what: string, stage: () => void, failures: string[]): void;
     /**
      * Runs `callBack` when its dependencies changed since the last run.
      *
@@ -50,7 +50,7 @@ export declare abstract class AntiHookComponentEffects<P = {}, S = {}> extends A
      * @param deps - compared shallowly with the last run's; an equal set skips the run and
      * leaves the existing cleanup standing
      */
-    protected useEffect: (callBack: TEffect, name: string, deps: TEffectDeps) => void;
+    protected useEffect(callBack: TEffect, name: string, deps: TEffectDeps): void;
     /**
      * Runs every effect's cleanup once, on unmount, and forgets them.
      *

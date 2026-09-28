@@ -37,19 +37,37 @@ export declare abstract class AntiHookComponentFoundation<P = {}, S = {}> extend
      */
     protected committedAttempt: IRenderAttempt | undefined;
     /**
-     * Hands React a boundary proxy instead of the instance, so every later read or definition
-     * of `render` goes through its traps and the render-attempt boundary is installed at the
-     * moment the render first exists.
+     * Installs the render-attempt boundary as a non-configurable own accessor, so the moment
+     * `render` first exists — a prototype method looked up through it, or a value later
+     * assigned to it — it is wrapped.
      *
-     * Returning an object from a derived constructor replaces `this` for the rest of
-     * construction, which is what makes definition-time wrapping possible: a subclass's
-     * class-field initializers then run against the proxy, and a class-field `render` is
-     * defined through its `defineProperty` trap. Neither alternative can do that. A prototype
-     * accessor cannot: class fields are installed with `Object.defineProperty` semantics,
-     * which replaces an inherited accessor instead of calling it. And no React lifecycle hook
-     * can: React never calls a mount hook for a component that defines
+     * An own instance accessor, not a prototype one: class fields are installed with
+     * `Object.defineProperty` semantics, which would replace an inherited prototype accessor
+     * instead of calling it, so only an own property installed ahead of the subclass's own
+     * field initializers can intercept anything. It has to be installed here rather than from
+     * a React lifecycle hook, too: React never calls a mount hook for a component that defines
      * `getDerivedStateFromProps` or `getSnapshotBeforeUpdate`, so a fallback installed there
      * silently never runs for exactly those components.
+     *
+     * `configurable: false` is what makes a class-field `render` fail loudly instead of
+     * quietly replacing the accessor: a field initializer defines its property with
+     * `configurable: true`, and redefining a non-configurable property to one that is
+     * configurable is rejected outright, so the engine throws `TypeError: Cannot redefine
+     * property: 'render'` at construction, before the component ever renders. A configurable
+     * accessor would instead let the field initializer silently overwrite it — the mount's
+     * first render would already run unwrapped, with no render-attempt open, before any later
+     * check could catch it. `no-lifecycle-class-property` (H13) is what turns this into a
+     * clear, actionable message: it flags a class-field `render` at lint time, before the
+     * throw ever happens at runtime.
+     *
+     * The setter stays reachable through plain assignment (`this.render = fn`, typically from
+     * a constructor body): assignment goes through `[[Set]]`, which calls an accessor's setter,
+     * not `[[DefineOwnProperty]]` — the two are distinguishable at the engine level, which is
+     * why one can stay supported while the other is rejected.
+     */
+    private installRenderBoundary;
+    /**
+     * Installs the render boundary once `super` has wired up React's own instance state.
      *
      * @param props - forwarded to `React.Component` untouched
      */
@@ -85,39 +103,15 @@ export declare abstract class AntiHookComponentFoundation<P = {}, S = {}> extend
      */
     componentWillUnmount(): void;
     /**
-     * Wraps this instance in the render boundary proxy; the constructor hands the proxy to
-     * React in place of `this`.
-     *
-     * Only `render` is special-cased — every other property forwards to the target untouched,
-     * so the instance keeps its ordinary shape: own keys, property descriptors and the
-     * prototype chain are the target's own. The raw render and the boundary built for it live
-     * in this closure, so a boundary is built exactly once per raw render per instance.
-     *
-     * The ordinary get/set traps forward through `receiver` (this same proxy), not `target`
-     * (R4-01): a subclass getter/setter that touches a native `#private` field runs with
-     * `this` bound to whichever object `Reflect.get`/`Reflect.set` were given as receiver, and
-     * that field was installed on the proxy (a derived constructor's returned object replaces
-     * `this` for the rest of construction). Forwarding through the raw target instead brand-
-     * checked the wrong object and threw. Plain data properties — `props`, `state`, React's own
-     * internal fields — are unaffected either way: a receiver only matters to an accessor.
-     */
-    private withRenderBoundary;
-    /**
      * Builds the boundary around one raw render: opens a render attempt before it runs, marks
      * the attempt abandoned when the render throws (an error, or a Suspense thenable), and
      * closes it right after — a commit never consumes what an abandoned render collected.
      *
-     * The render-attempt bookkeeping stays anchored to the raw base instance (`this`, closed
-     * over here) regardless of receiver: `renderAttempt`/`pendingAttempt` are ordinary fields,
-     * not native `#private` ones, so there is exactly one logical component either way.
+     * `realRender` runs against `this`, the real instance — there is no proxy standing in for
+     * it, so a subclass's native `#private` field or accessor brand-checks the exact object it
+     * was installed on and just works.
      *
      * @param realRender - the subclass's own render
-     * @param receiver - the object `realRender` runs against: the proxy this constructor
-     * returns, not the raw instance — a subclass's native `#private` field is installed on
-     * that returned proxy (whatever a derived constructor returns becomes `this` for the rest
-     * of construction, including field initializers), and native private access brand-checks
-     * its receiver, so calling `realRender` against anything else throws for a subclass that
-     * uses one
      */
     private buildRenderBoundary;
     /**
@@ -143,6 +137,6 @@ export declare abstract class AntiHookComponentFoundation<P = {}, S = {}> extend
     protected abstract releaseEffects(): void;
     protected abstract commitSubscriptions(): void;
     protected abstract releaseSubscriptions(): void;
-    protected abstract reportTeardownFailure: (failure: string) => void;
-    protected abstract runTeardownStage: (what: string, stage: () => void, failures: string[]) => void;
+    protected abstract reportTeardownFailure(failure: string): void;
+    protected abstract runTeardownStage(what: string, stage: () => void, failures: string[]): void;
 }

@@ -10,9 +10,32 @@ class AntiHookComponentFoundation extends __rspack_external_react.Component {
     renderAttempt = void 0;
     pendingAttempt = void 0;
     committedAttempt = void 0;
+    installRenderBoundary() {
+        let rawRender;
+        let boundary;
+        let assigned = false;
+        Object.defineProperty(this, RENDER_KEY, {
+            configurable: false,
+            enumerable: false,
+            get: ()=>{
+                const raw = assigned ? rawRender : Reflect.get(Object.getPrototypeOf(this), RENDER_KEY, this);
+                if ('function' != typeof raw) return raw;
+                if (void 0 === boundary || raw !== rawRender) {
+                    rawRender = raw;
+                    boundary = this.buildRenderBoundary(raw);
+                }
+                return boundary;
+            },
+            set: (value)=>{
+                assigned = 'function' == typeof value;
+                rawRender = value;
+                boundary = assigned ? this.buildRenderBoundary(value) : void 0;
+            }
+        });
+    }
     constructor(props){
         super(props);
-        return this.withRenderBoundary();
+        this.installRenderBoundary();
     }
     shouldComponentUpdate(nextProps, nextState) {
         return !shallowEqual(this.props, nextProps) || !shallowEqual(this.state, nextState);
@@ -35,54 +58,11 @@ class AntiHookComponentFoundation extends __rspack_external_react.Component {
         this.runTeardownStage("releasing subscriptions threw while a component unmounted", ()=>this.releaseSubscriptions(), failures);
         failures.forEach((failure)=>this.reportTeardownFailure(failure));
     }
-    withRenderBoundary() {
-        let rawRender;
-        let boundary;
-        let wrapped = false;
-        let receiver;
-        const proxy = new Proxy(this, {
-            get: (target, key)=>{
-                if (key !== RENDER_KEY) return Reflect.get(target, key, receiver);
-                const raw = wrapped ? rawRender : Reflect.get(target, RENDER_KEY, receiver);
-                if ('function' != typeof raw) return raw;
-                if (void 0 === boundary || rawRender !== raw) {
-                    rawRender = raw;
-                    boundary = this.buildRenderBoundary(raw, receiver);
-                }
-                return boundary;
-            },
-            set: (target, key, value)=>{
-                if (key !== RENDER_KEY) return Reflect.set(target, key, value, receiver);
-                rawRender = value;
-                wrapped = 'function' == typeof value;
-                boundary = wrapped ? this.buildRenderBoundary(value, receiver) : void 0;
-                return true;
-            },
-            defineProperty: (target, key, descriptor)=>{
-                if (key !== RENDER_KEY) return Reflect.defineProperty(target, key, descriptor);
-                rawRender = descriptor.value;
-                wrapped = 'function' == typeof descriptor.value;
-                boundary = wrapped ? this.buildRenderBoundary(descriptor.value, receiver) : void 0;
-                return true;
-            },
-            deleteProperty: (target, key)=>{
-                if (key === RENDER_KEY) {
-                    rawRender = void 0;
-                    boundary = void 0;
-                    wrapped = false;
-                }
-                return Reflect.deleteProperty(target, key);
-            },
-            has: (target, key)=>key === RENDER_KEY ? wrapped || Reflect.has(target, RENDER_KEY) : Reflect.has(target, key)
-        });
-        receiver = proxy;
-        return proxy;
-    }
-    buildRenderBoundary(realRender, receiver) {
+    buildRenderBoundary(realRender) {
         return ()=>{
             const attempt = this.openRenderAttempt();
             try {
-                return realRender.call(receiver);
+                return realRender.call(this);
             } catch (error) {
                 attempt.abandoned = true;
                 throw error;

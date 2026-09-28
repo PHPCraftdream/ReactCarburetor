@@ -15,7 +15,7 @@ export declare abstract class AntiHookComponentReads<P = {}, S = {}> extends Ant
      * by an older render and read later (from a handler, an effect) from adding paths to some
      * other attempt's read set.
      */
-    useCarburetor: <T extends object>(carburetor: ICarburetor<T>) => TReadonly<T>;
+    useCarburetor<T extends object>(carburetor: ICarburetor<T>): TReadonly<T>;
     /**
      * Declares one connect()-family connection into this component's persistent list and builds
      * its per-attempt source resolver and recorder.
@@ -68,7 +68,7 @@ export declare abstract class AntiHookComponentReads<P = {}, S = {}> extends Ant
      * @param source - the carburetor to read, or a function resolving it at each attempt's
      * first read so a prop swap re-points the connection at the new store
      */
-    connect: <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)) => TReadonly<T>;
+    connect<T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T>;
     /**
      * A typed selection of this component's connected data, safe to hand a child gated by
      * shallow props comparison — an external `React.memo` component, or this base class's own
@@ -110,12 +110,12 @@ export declare abstract class AntiHookComponentReads<P = {}, S = {}> extends Ant
      * first read so a prop swap re-points the connection at the new store
      * @param select - picks the part of the data this child consumes; runs on every call
      */
-    connectSelection: <T extends object, R>(source: ICarburetor<T> | (() => ICarburetor<T>), select: (data: TReadonly<T>) => R) => (() => R);
+    connectSelection<T extends object, R>(source: ICarburetor<T> | (() => ICarburetor<T>), select: (data: TReadonly<T>) => R): (() => R);
     /**
      * Reads a memoized derived value. The component subscribes to the computed itself,
      * not to its inputs, so it re-renders only when the derived value changes.
      */
-    useComputed: <R extends unknown>(computed: IComputed<R>) => R;
+    useComputed<R extends unknown>(computed: IComputed<R>): R;
     /**
      * Reads one entry of a resource cache, and subscribes to that entry alone.
      *
@@ -137,7 +137,7 @@ export declare abstract class AntiHookComponentReads<P = {}, S = {}> extends Ant
      * @param args - the cache key, identifying the entry read now and targeted by the deferred
      * `load`; a different value reads a different entry
      */
-    useResource: <T extends unknown, TArgs extends unknown>(source: IResourceSource<T, TArgs>, args: TArgs) => IResourceView<T>;
+    useResource<T extends unknown, TArgs extends unknown>(source: IResourceSource<T, TArgs>, args: TArgs): IResourceView<T>;
     /**
      * Runs the fetches the committed render queued, now that the subscriptions they need exist.
      *

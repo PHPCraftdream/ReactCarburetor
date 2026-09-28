@@ -100,7 +100,7 @@ describe('', () => {
         unmount();
     });
 
-    test('runs effects when subclass declares render as a class property', () => {
+    test('a subclass that declares render as a class property throws at construction', () => {
         let effects = 0;
 
         class ArrowRender extends AntiHookComponent {
@@ -108,18 +108,14 @@ describe('', () => {
                 effects++;
             };
 
-            // The rule that forbids this is right; the test exists to prove the base class
-            // survives it, because this is exactly what used to disable every effect.
+            // The rule that forbids this is right; class-field render is unsupported and the
+            // engine now rejects it at construction instead of silently disabling every effect.
             // oxlint-disable-next-line carburetor/no-lifecycle-class-property
             render = () => <div className="arrow">ok</div>;
         }
 
-        const {container, unmount} = render(<ArrowRender />);
-
-        expect(container.querySelector('.arrow')?.textContent).toEqual('ok');
-        expect(effects).toEqual(1);
-
-        unmount();
+        expect(() => new ArrowRender({} as never)).toThrow(TypeError);
+        expect(effects).toEqual(0);
     });
 
     test('drops subscription to a carburetor no longer read in render', () => {

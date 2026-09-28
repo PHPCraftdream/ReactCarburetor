@@ -34,11 +34,11 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      *
      * @param failure - the message to report, already naming what ran and what it cost
      */
-    protected reportTeardownFailure = (failure: string): void => {
+    protected reportTeardownFailure(failure: string): void {
         if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
             diagnostics.report(failure);
         }
-    };
+    }
 
     /**
      * Runs one stage of the unmount teardown, isolated so a failure there costs the stages after
@@ -51,13 +51,13 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * @param stage - the stage itself
      * @param failures - the messages collected so far, appended to when the stage throws
      */
-    protected runTeardownStage = (what: string, stage: () => void, failures: string[]): void => {
+    protected runTeardownStage(what: string, stage: () => void, failures: string[]): void {
         try {
             stage();
         } catch (error: unknown) {
             failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
         }
-    };
+    }
 
     /**
      * Runs `callBack` when its dependencies changed since the last run.
@@ -79,7 +79,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * @param deps - compared shallowly with the last run's; an equal set skips the run and
      * leaves the existing cleanup standing
      */
-    protected useEffect = (callBack: TEffect, name: string, deps: TEffectDeps): void => {
+    protected useEffect(callBack: TEffect, name: string, deps: TEffectDeps): void {
         const known = this.effects[name];
 
         if (known && shallowEqual(known.deps, deps)) {
@@ -115,7 +115,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
                 describeFailure(error) + '. The new effect ran anyway.'
             ));
         }
-    };
+    }
 
     /**
      * Runs every effect's cleanup once, on unmount, and forgets them.

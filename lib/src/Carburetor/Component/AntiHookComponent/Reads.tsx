@@ -32,7 +32,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * by an older render and read later (from a handler, an effect) from adding paths to some
      * other attempt's read set.
      */
-    public useCarburetor = <T extends object>(carburetor: ICarburetor<T>): TReadonly<T> => {
+    public useCarburetor<T extends object>(carburetor: ICarburetor<T>): TReadonly<T> {
         const attempt = this.renderAttempt;
         const entry = this.track(carburetor);
 
@@ -41,21 +41,22 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 entry.reads.add(path);
             }
         });
-    };
+    }
 
     /**
      * Declares one connect()-family connection into this component's persistent list and builds
      * its per-attempt source resolver and recorder.
      */
-    private declareConnection = <T extends object>(
+    private declareConnection<T extends object>(
         source: ICarburetor<T> | (() => ICarburetor<T>)
-    ): IConnectionSource<T> =>
-        declareConnection(
+    ): IConnectionSource<T> {
+        return declareConnection(
             this.connections,
             CONNECTION_ATTEMPT_KEY,
             (): IRenderAttempt | undefined => this.renderAttempt,
             source
         );
+    }
 
     /**
      * A persistent view of a carburetor's data, declared once and read directly in render.
@@ -104,11 +105,11 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * @param source - the carburetor to read, or a function resolving it at each attempt's
      * first read so a prop swap re-points the connection at the new store
      */
-    public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> => {
+    public connect<T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> {
         const declared = this.declareConnection(source);
 
         return buildPersistentView(declared);
-    };
+    }
 
     /**
      * A typed selection of this component's connected data, safe to hand a child gated by
@@ -151,10 +152,10 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * first read so a prop swap re-points the connection at the new store
      * @param select - picks the part of the data this child consumes; runs on every call
      */
-    public connectSelection = <T extends object, R>(
+    public connectSelection<T extends object, R>(
         source: ICarburetor<T> | (() => ICarburetor<T>),
         select: (data: TReadonly<T>) => R
-    ): (() => R) => {
+    ): (() => R) {
         const declared = this.declareConnection(source);
         const view = buildPersistentView(declared);
 
@@ -176,17 +177,17 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
 
             return snapshot.value;
         };
-    };
+    }
 
     /**
      * Reads a memoized derived value. The component subscribes to the computed itself,
      * not to its inputs, so it re-renders only when the derived value changes.
      */
-    public useComputed = <R extends unknown>(computed: IComputed<R>): R => {
+    public useComputed<R extends unknown>(computed: IComputed<R>): R {
         this.track(computed).reads.add(WILDCARD_PATH);
 
         return computed.get();
-    };
+    }
 
     /**
      * Reads one entry of a resource cache, and subscribes to that entry alone.
@@ -209,10 +210,10 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * @param args - the cache key, identifying the entry read now and targeted by the deferred
      * `load`; a different value reads a different entry
      */
-    public useResource = <T extends unknown, TArgs extends unknown>(
+    public useResource<T extends unknown, TArgs extends unknown>(
         source: IResourceSource<T, TArgs>,
         args: TArgs
-    ): IResourceView<T> => {
+    ): IResourceView<T> {
         this.track(source).reads.add(source.pathOf(args));
 
         const view = source.getEntry(args);
@@ -241,7 +242,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         }
 
         return view;
-    };
+    }
 
     /**
      * Runs the fetches the committed render queued, now that the subscriptions they need exist.

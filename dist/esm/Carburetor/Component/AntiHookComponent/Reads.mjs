@@ -11,19 +11,21 @@ import { AntiHookComponentFoundation } from "./Foundation.mjs";
 const CONNECTION_ATTEMPT_KEY = "c:";
 const TRACKED_ATTEMPT_KEY = "t:";
 class AntiHookComponentReads extends AntiHookComponentFoundation {
-    useCarburetor = (carburetor)=>{
+    useCarburetor(carburetor) {
         const attempt = this.renderAttempt;
         const entry = this.track(carburetor);
         return carburetor.read((path)=>{
             if (void 0 !== attempt && this.renderAttempt === attempt) entry.reads.add(path);
         });
-    };
-    declareConnection = (source)=>declareConnection(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
-    connect = (source)=>{
+    }
+    declareConnection(source) {
+        return declareConnection(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
+    }
+    connect(source) {
         const declared = this.declareConnection(source);
         return buildPersistentView(declared);
-    };
-    connectSelection = (source, select)=>{
+    }
+    connectSelection(source, select) {
         const declared = this.declareConnection(source);
         const view = buildPersistentView(declared);
         let snapshot;
@@ -37,12 +39,12 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
             };
             return snapshot.value;
         };
-    };
-    useComputed = (computed)=>{
+    }
+    useComputed(computed) {
         this.track(computed).reads.add(WILDCARD_PATH);
         return computed.get();
-    };
-    useResource = (source, args)=>{
+    }
+    useResource(source, args) {
         this.track(source).reads.add(source.pathOf(args));
         const view = source.getEntry(args);
         const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error && !view.failed;
@@ -54,7 +56,7 @@ class AntiHookComponentReads extends AntiHookComponentFoundation {
             else if (IS_DEVELOPMENT) diagnostics.report('useResource() skipped the deferred load for entry ' + source.pathOf(args) + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
         }
         return view;
-    };
+    }
     loadStaleResources() {
         const attempt = this.pendingAttempt;
         if (void 0 === attempt || attempt.abandoned || attempt !== this.committedAttempt) return;
