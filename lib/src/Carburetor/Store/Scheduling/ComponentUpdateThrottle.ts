@@ -19,6 +19,9 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
     /** Updates waiting for the next flush, keyed by subscriber; letsUpdate() drains it until empty. */
     protected updaters: Map<string, TUpdater> = new Map<string, TUpdater>();
 
+    /** Bound once for `setTimeout`, called detached from `this`; forwards to the overridable `letsUpdate`. */
+    private readonly letsUpdateBound = (): void => this.letsUpdate();
+
     /** Takes the coalescing window in milliseconds. */
     constructor(protected updateTimeout: number = 40) {
     }
@@ -26,44 +29,47 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
     /**
      * Queues one update per subscriber, so repeated writes collapse into one render.
      *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     *
      * @param uid - the subscriber's id, the queue key whose reuse replaces the still-unrun
      * update instead of queueing a second one
      * @param updater - the callback the flush runs; nothing here invokes it, and cancel()
      * before the window elapses drops it unrun
      */
-    public schedule = (uid: string, updater: TUpdater) => {
+    public schedule(uid: string, updater: TUpdater): void {
         this.updaters.set(uid, updater);
         this.setupTimeout();
-    };
+    }
 
     /** Drops a queued update, for a subscriber that unsubscribed before the flush. */
-    public cancel = (uid: string) => {
+    public cancel(uid: string): void {
         this.updaters.delete(uid);
-    };
+    }
 
     /** Arms the flush, leaving an already armed one alone: the window must not slide. */
-    protected setupTimeout = () => {
+    protected setupTimeout(): void {
         if (!this.timeout) {
-            this.timeout = setTimeout(this.letsUpdate, this.updateTimeout);
+            this.timeout = setTimeout(this.letsUpdateBound, this.updateTimeout);
         }
-    };
+    }
 
     /** Disarms the flush timer. */
-    protected clearTimeout = () => {
+    protected clearTimeout(): void {
         if (this.timeout) {
             clearTimeout(this.timeout);
         }
 
         this.timeout = undefined;
-    };
+    }
 
     /** Runs one queued update; a seam for tests and subclasses. */
-    protected runUpdater = (updater: TUpdater) => {
+    protected runUpdater(updater: TUpdater): void {
         updater();
-    };
+    }
 
     /** Flushes the queue, including what the flush itself queues, and fails on a loop. */
-    protected letsUpdate = () => {
+    protected letsUpdate(): void {
         // Updates queued while flushing (for example from an effect that writes to a
         // carburetor) have to run in this very cycle, otherwise clearing the queue
         // would silently drop them.
@@ -111,5 +117,5 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
             // never arm again — every update after a throwing one would sit queued forever.
             this.clearTimeout();
         }
-    };
+    }
 }

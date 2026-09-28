@@ -7,6 +7,7 @@ import {
     CarburetorProvider,
     CarburetorScope,
     carburetorToken,
+    ICarburetorToken,
     ScopedAntiHookComponent
 } from "@/Carburetor";
 
@@ -225,5 +226,105 @@ describe('CarburetorScope', () => {
         client.hydrate(parsedWire, [protoToken]);
 
         expect(client.get(protoToken).getData().value).toEqual(3);
+    });
+
+    // R15-07: get/set/has/dehydrate/hydrate were arrow fields, so a subclass method override
+    // of any of them was silently ignored, and super.x() could not reach a base arrow field.
+    describe('subclass method overrides', () => {
+        test('get() is called and super.get still works', () => {
+            const calls: string[] = [];
+
+            class CountingScope extends CarburetorScope {
+                public get<T>(token: ICarburetorToken<T>): T {
+                    calls.push(token.id);
+
+                    return super.get(token);
+                }
+            }
+
+            const scope = new CountingScope();
+
+            expect(scope.get(counterToken)).toBe(scope.get(counterToken));
+            expect(calls).toEqual([counterToken.id, counterToken.id]);
+        });
+
+        test('set() is called and super.set still installs the instance', () => {
+            const calls: string[] = [];
+
+            class CountingScope extends CarburetorScope {
+                public set<T>(token: ICarburetorToken<T>, instance: T): void {
+                    calls.push(token.id);
+                    super.set(token, instance);
+                }
+            }
+
+            const scope = new CountingScope();
+            const prepared = new CounterCarburetor({value: 7});
+
+            scope.set(counterToken, prepared);
+
+            expect(calls).toEqual([counterToken.id]);
+            expect(scope.get(counterToken)).toBe(prepared);
+        });
+
+        test('has() is called and super.has still answers correctly', () => {
+            const calls: string[] = [];
+
+            class CountingScope extends CarburetorScope {
+                public has<T>(token: ICarburetorToken<T>): boolean {
+                    calls.push(token.id);
+
+                    return super.has(token);
+                }
+            }
+
+            const scope = new CountingScope();
+
+            expect(scope.has(counterToken)).toBeFalsy();
+            scope.get(counterToken);
+            expect(scope.has(counterToken)).toBeTruthy();
+            expect(calls).toEqual([counterToken.id, counterToken.id]);
+        });
+
+        test('dehydrate() is called and super.dehydrate still serializes the scope', () => {
+            const calls: number[] = [];
+
+            class CountingScope extends CarburetorScope {
+                public dehydrate() {
+                    calls.push(1);
+
+                    return super.dehydrate();
+                }
+            }
+
+            const scope = new CountingScope();
+            scope.get(counterToken).inc();
+
+            const state = scope.dehydrate();
+
+            expect(calls).toEqual([1]);
+            expect(state).toEqual({[counterToken.id]: {value: 1}});
+        });
+
+        test('hydrate() is called and super.hydrate still restores state', () => {
+            const calls: number[] = [];
+
+            class CountingScope extends CarburetorScope {
+                public hydrate(state: Record<string, unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>): void {
+                    calls.push(1);
+                    super.hydrate(state, tokens);
+                }
+            }
+
+            const server = new CarburetorScope();
+            server.get(counterToken).inc();
+            server.get(counterToken).inc();
+
+            const client = new CountingScope();
+            client.hydrate(server.dehydrate(), [counterToken]);
+
+            expect(calls).toEqual([1]);
+            expect(client.get(counterToken).getData().value).toEqual(2);
+        });
     });
 });

@@ -13,23 +13,28 @@ export class Diagnostics {
     /** The switch setEnabled() flips; on by default in development, off in production. */
     protected enabled: boolean = IS_DEVELOPMENT;
 
-    /** Whether complaints are currently reported. */
-    public isEnabled = (): boolean => {
+    /**
+     * Whether complaints are currently reported.
+     *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     */
+    public isEnabled(): boolean {
         return this.enabled;
-    };
+    }
 
     /** Turns complaints on or off, for a test that asserts one or a session tired of them. */
-    public setEnabled = (enabled: boolean): void => {
+    public setEnabled(enabled: boolean): void {
         this.enabled = enabled;
-    };
+    }
 
     /** Reports one complaint, prefixed so its source is obvious in a console. */
-    public report = (message: string): void => {
+    public report(message: string): void {
         if (!this.enabled) {
             return;
         }
 
         // eslint-disable-next-line no-console
         console.error('Carburetor: ' + message);
-    };
+    }
 }

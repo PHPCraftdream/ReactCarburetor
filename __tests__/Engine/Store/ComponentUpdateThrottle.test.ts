@@ -92,4 +92,55 @@ describe('ComponentUpdateThrottle', () => {
         expect(reported.length).toEqual(1);
         expect(reported[0]).toContain('updater failed');
     });
+
+    // R15-07: runUpdater and schedule were arrow fields, so a subclass method override of
+    // either was silently ignored — the override lived on the prototype, but the base
+    // constructor's own arrow field already sat on the instance, shadowing it.
+    test('a subclass runUpdater() method override runs, and super.runUpdater still works', async () => {
+        const ran: string[] = [];
+
+        class LoggingThrottle extends ComponentUpdateThrottle {
+            protected runUpdater(updater: () => void): void {
+                ran.push('logged');
+                super.runUpdater(updater);
+            }
+        }
+
+        const throttle = new LoggingThrottle(10);
+        let updaterRan = false;
+
+        throttle.schedule('1', () => {
+            updaterRan = true;
+        });
+
+        await new Promise(resolve => setTimeout(resolve, 30));
+
+        expect(ran).toEqual(['logged']);
+        expect(updaterRan).toBeTruthy();
+    });
+
+    test('a subclass schedule() method override runs, and super.schedule still flushes on the timer', async () => {
+        const calls: string[] = [];
+
+        class LoggingThrottle extends ComponentUpdateThrottle {
+            public schedule(uid: string, updater: () => void): void {
+                calls.push(uid);
+                super.schedule(uid, updater);
+            }
+        }
+
+        const throttle = new LoggingThrottle(10);
+        let ran = false;
+
+        throttle.schedule('x', () => {
+            ran = true;
+        });
+
+        expect(calls).toEqual(['x']);
+        expect(ran).toBeFalsy();
+
+        await new Promise(resolve => setTimeout(resolve, 30));
+
+        expect(ran).toBeTruthy();
+    });
 });

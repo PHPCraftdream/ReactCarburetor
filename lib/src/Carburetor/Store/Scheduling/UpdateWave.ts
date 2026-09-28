@@ -17,14 +17,14 @@ export class UpdateWave {
     protected pending: Map<string, () => void> = new Map<string, () => void>();
 
     /** Whether a notification pass is open. */
-    public isActive = (): boolean => {
+    public isActive(): boolean {
         return this.depth > 0;
-    };
+    }
 
     /** Opens a pass; invalidations inside it are collected instead of settled. */
-    public begin = (): void => {
+    public begin(): void {
         this.depth++;
-    };
+    }
 
     /**
      * Closes a pass, then drains deferred work until the cascades stop producing more.
@@ -34,8 +34,11 @@ export class UpdateWave {
      * while the drain runs — the loop keeps going until `pending` is empty. Failures are
      * reported once the drain finishes rather than re-thrown into whoever made the write,
      * and the depth is restored no matter how the drain went.
+     *
+     * A method, not an arrow field: every overridable member here is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
      */
-    public end = (): void => {
+    public end(): void {
         this.depth--;
 
         if (this.depth > 0) {
@@ -75,7 +78,7 @@ export class UpdateWave {
         } finally {
             this.depth = 0;
         }
-    };
+    }
 
     /**
      * Remembers one deferred computation; a later invalidation replaces an earlier one.
@@ -85,7 +88,7 @@ export class UpdateWave {
      * @param settle - the callback end()'s drain invokes once the cascades stop; it is not
      * run at defer time
      */
-    public defer = (uid: string, settle: () => void): void => {
+    public defer(uid: string, settle: () => void): void {
         this.pending.set(uid, settle);
-    };
+    }
 }

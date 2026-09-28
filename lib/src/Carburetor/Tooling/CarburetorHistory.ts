@@ -25,6 +25,9 @@ export class CarburetorHistory<T extends object> {
     /** The watch installed at construction; disconnect() runs it to stop recording. */
     protected dispose: TDisposer;
 
+    /** Bound once for `carburetor.watch`, called detached from `this`; forwards to the overridable `record`. */
+    private readonly recordBound = (): void => this.record();
+
     /**
      * Starts watching a carburetor, with the current state as the first entry.
      *
@@ -34,21 +37,28 @@ export class CarburetorHistory<T extends object> {
     constructor(protected carburetor: ICarburetor<T>, options: IHistoryOptions = {}) {
         this.limit = options.limit || 50;
         this.current = carburetor.snapshot();
-        this.dispose = carburetor.watch(this.record);
+        this.dispose = carburetor.watch(this.recordBound);
     }
 
-    /** Whether there is a past state to step back to. */
-    public canUndo = (): boolean => {
+    /**
+     * Whether there is a past state to step back to.
+     *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it. `undo`/`redo` are a
+     * breaking change from the earlier arrow fields — detaching them (for example
+     * `onClick={history.undo}`) now needs an explicit bind at the call site.
+     */
+    public canUndo(): boolean {
         return this.past.length > 0;
-    };
+    }
 
     /** Whether an undone state is waiting to be stepped forward into. */
-    public canRedo = (): boolean => {
+    public canRedo(): boolean {
         return this.future.length > 0;
-    };
+    }
 
     /** Steps one change back, or reports that there was nothing to step back to. */
-    public undo = (): boolean => {
+    public undo(): boolean {
         const previous = this.past.pop();
 
         if (previous === undefined) {
@@ -59,10 +69,10 @@ export class CarburetorHistory<T extends object> {
         this.apply(previous);
 
         return true;
-    };
+    }
 
     /** Steps one undone change forward again. */
-    public redo = (): boolean => {
+    public redo(): boolean {
         const next = this.future.pop();
 
         if (next === undefined) {
@@ -73,21 +83,21 @@ export class CarburetorHistory<T extends object> {
         this.apply(next);
 
         return true;
-    };
+    }
 
     /** Forgets the recorded history, keeping the state as it is. */
-    public clear = (): void => {
+    public clear(): void {
         this.past = [];
         this.future = [];
-    };
+    }
 
     /** Stops watching the carburetor: nothing is recorded after this. */
-    public disconnect = (): void => {
+    public disconnect(): void {
         this.dispose();
-    };
+    }
 
     /** Records the state before a change, dropping the oldest entry past the limit. */
-    protected record = (): void => {
+    protected record(): void {
         if (this.applying) {
             return;
         }
@@ -100,10 +110,10 @@ export class CarburetorHistory<T extends object> {
 
         this.future = [];
         this.current = this.carburetor.snapshot();
-    };
+    }
 
     /** Installs a recorded state without recording the installation itself. */
-    protected apply = (state: T): void => {
+    protected apply(state: T): void {
         this.applying = true;
 
         try {
@@ -115,5 +125,5 @@ export class CarburetorHistory<T extends object> {
         } finally {
             this.applying = false;
         }
-    };
+    }
 }
