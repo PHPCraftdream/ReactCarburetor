@@ -1,4 +1,4 @@
-import {CarburetorHistory, EResourceStatus, TPath, TPathSet} from "@/Carburetor";
+import {TPath, TPathSet} from "@/Carburetor";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 
 const makeLoader = () => {
@@ -31,122 +31,7 @@ const fill = async (cache: ResourceCache<string, string>, loader: ReturnType<typ
 
 const readsOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);
 
-describe('ResourceCache lifetime', () => {
-    test('invalidate marks one entry stale without touching its data', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
-
-        await fill(cache, loader, ['a', 'b']);
-
-        cache.invalidate('a');
-
-        expect(cache.getEntry('a').stale).toBeTruthy();
-        expect(cache.getEntry('a').data).toEqual('value-a');
-        // The data is as old as it was; only the verdict changed.
-        expect(cache.getEntry('a').updatedAt).toBeDefined();
-        expect(cache.getEntry('b').stale).toBeFalsy();
-    });
-
-    test('invalidate does not fetch by itself', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
-
-        await fill(cache, loader, ['a']);
-        cache.invalidate('a');
-
-        expect(loader.calls).toEqual(['a']);
-
-        // Asking for it is what fetches, and now it will, because the entry is stale.
-        void cache.load('a');
-
-        expect(loader.calls).toEqual(['a', 'a']);
-    });
-
-    test('a successful answer clears the invalidation', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
-
-        await fill(cache, loader, ['a']);
-        cache.invalidate('a');
-
-        const request = cache.refresh('a');
-        loader.settle[1]('fresh');
-        await request;
-
-        expect(cache.getEntry('a').stale).toBeFalsy();
-        expect(cache.getEntry('a').data).toEqual('fresh');
-    });
-
-    test('invalidateAll marks every entry, which is the move after a write the server took', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
-
-        await fill(cache, loader, ['a', 'b', 'c']);
-
-        cache.invalidateAll();
-
-        ['a', 'b', 'c'].forEach((key: string) => {
-            expect(cache.getEntry(key).stale).toBeTruthy();
-            expect(cache.getEntry(key).data).toEqual(`value-${key}`);
-        });
-    });
-
-    test('invalidating one entry wakes only its readers', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
-        let readerOfA = 0;
-        let readerOfB = 0;
-
-        await fill(cache, loader, ['a', 'b']);
-
-        cache.subscribe(() => readerOfA++, {id: 'a', reads: readsOf(`entries.${cache.keyOf('a')}`)});
-        cache.subscribe(() => readerOfB++, {id: 'b', reads: readsOf(`entries.${cache.keyOf('b')}`)});
-
-        cache.invalidate('a');
-
-        expect(readerOfA).toEqual(1);
-        expect(readerOfB).toEqual(0);
-    });
-
-    test('forget drops an entry and its failure', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
-
-        await fill(cache, loader, ['a', 'b']);
-
-        cache.forget('a');
-
-        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
-        expect(cache.getEntry('a').data).toBeUndefined();
-        expect(cache.getFailure('a')).toBeUndefined();
-        expect(cache.getEntry('b').data).toEqual('value-b');
-    });
-
-    test('forget cancels the request, so a late answer cannot resurrect the entry', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
-
-        void cache.load('a');
-        cache.forget('a');
-
-        loader.settle[0]('too late');
-        await flush();
-
-        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
-        expect(cache.getEntry('a').data).toBeUndefined();
-    });
-
-    test('forgetAll empties the cache', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
-
-        await fill(cache, loader, ['a', 'b', 'c']);
-
-        cache.forgetAll();
-
-        expect(Object.keys(cache.getData().entries)).toEqual([]);
-    });
-
+describe('ResourceCache eviction', () => {
     test('the cache stays within its bound, dropping the least recently used first', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 2, ttl: 60_000});
@@ -297,7 +182,7 @@ describe('ResourceCache lifetime', () => {
     test('reads of absent keys do not pile up use-order records', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 2});
-        const lastUsed = () => (cache as unknown as {lastUsed: Map<string, number>}).lastUsed;
+        const lastUsed = () => (cache as unknown as {eviction: {lastUsed: Map<string, number>}}).eviction.lastUsed;
 
         await fill(cache, loader, ['a']);
 
@@ -356,23 +241,6 @@ describe('ResourceCache lifetime', () => {
         expect(Object.keys(cache.getData().entries)).toEqual([cache.keyOf('b')]);
     });
 
-    test('forget drops the cached view along with the rest of the entry', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
-        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
-
-        await fill(cache, loader, ['a', 'b']);
-        cache.getEntry('a');
-        cache.getEntry('b');
-
-        expect(viewCache().size).toEqual(2);
-
-        cache.forget('a');
-
-        expect(viewCache().has(cache.keyOf('a'))).toBeFalsy();
-        expect(viewCache().has(cache.keyOf('b'))).toBeTruthy();
-    });
-
     test('eviction drops the evicted entry\'s cached view', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 2, ttl: 60_000});
@@ -394,45 +262,6 @@ describe('ResourceCache lifetime', () => {
         expect(viewCache().has(cache.keyOf('a'))).toBeTruthy();
         // `c` was never read through getEntry, so it holds no view record.
         expect(viewCache().size).toEqual(1);
-    });
-
-    test('forgetAll empties the cached views', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
-        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
-
-        await fill(cache, loader, ['a', 'b']);
-        cache.getEntry('a');
-        cache.getEntry('b');
-
-        cache.forgetAll();
-
-        expect(viewCache().size).toEqual(0);
-    });
-
-    test('CarburetorHistory undo discards a late in-flight answer from before the undo (R3-03)', async () => {
-        const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
-        const history = new CarburetorHistory(cache);
-
-        void cache.load('a');
-        loader.settle[0]('Ann');
-        await flush();
-
-        void cache.refresh('a');
-        expect(cache.getEntry('a').refreshing).toBeTruthy();
-
-        history.undo();
-
-        expect(cache.getEntry('a').data).toEqual('Ann');
-        expect(cache.getEntry('a').refreshing).toBeFalsy();
-
-        // The refresh that was in flight when undo() ran belongs to a generation the undo
-        // replaced.
-        loader.settle[1]('late');
-        await flush();
-
-        expect(cache.getEntry('a').data).toEqual('Ann');
     });
 
     test('eviction checks retention through the index, without walking a subscriber\'s read set', async () => {

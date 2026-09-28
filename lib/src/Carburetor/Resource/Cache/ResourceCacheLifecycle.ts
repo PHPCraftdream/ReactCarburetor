@@ -6,12 +6,15 @@ import {
     IResourceView,
     TResourceLoader,
 } from "@/Carburetor/Models/Resource";
+import {TSubscriber} from "@/Carburetor/Models/Base";
+import {ISubscribeOptions} from "@/Carburetor/Models/Store";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {describeError} from "@/Carburetor/Resource/describeError";
 import {createAbortHandle} from "@/Carburetor/Resource/createAbortHandle";
 import {getInitialCacheEntry} from "./getInitialCacheEntry";
+import {EvictionLedger} from "./EvictionLedger";
 
 const DEFAULT_TTL: number = 30_000;
 const DEFAULT_MAX_ENTRIES: number = 100;
@@ -30,12 +33,10 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     protected controllers: Map<string, AbortController> = new Map<string, AbortController>();
     /** Raw request failures by cache key. */
     protected failures: Map<string, unknown> = new Map<string, unknown>();
-    /** Last access ticks used for eviction order. */
-    protected lastUsed: Map<string, number> = new Map<string, number>();
-    /** Monotonic counter for access order. */
-    protected useTick: number = 0;
     /** Stable views for unchanged entries. */
     protected viewCache: Map<string, IResourceView<T>> = new Map<string, IResourceView<T>>();
+    /** Entry count, LRU order and eviction hysteresis — see EvictionLedger. */
+    protected eviction: EvictionLedger = new EvictionLedger();
 
     /**
      * Resolve arguments to an entry key.
@@ -70,7 +71,9 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.requests.clear();
         this.failures.clear();
         this.viewCache.clear();
-        this.lastUsed.clear();
+        // The entry set is about to be rebuilt wholesale: whatever the last scan found no
+        // longer applies.
+        this.eviction.reset();
 
         controllers.forEach(([, controller]: [string, AbortController]) => controller.abort());
 
@@ -89,6 +92,13 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
                 refreshing: false,
                 status: entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status,
             };
+
+            // LRU order for the restored entries follows the snapshot's own key order; a
+            // re-entrant load()/refresh() below may have already touched this key, in which
+            // case its fresher tick is left alone.
+            if (!this.eviction.lastUsed.has(key)) {
+                this.touch(key);
+            }
         });
 
         // A synchronous abort listener may have started a new request; keep its live state.
@@ -100,17 +110,43 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
             }
         });
 
+        this.eviction.setCount(Object.keys(entries).length);
+
         this.setData(deepClone({entries}));
     }
 
-    /**
-     * Record an entry access for eviction order.
+    /** Record an entry access for eviction order — see `EvictionLedger.touch`.
      *
      * @param key - the entry accessed
      */
     protected touch(key: string): void {
-        this.useTick += 1;
-        this.lastUsed.set(key, this.useTick);
+        this.eviction.touch(key);
+    }
+
+    /** Registers a subscriber; a reused id with a changed read set may free a candidate
+     * `evict()` could not see, so its "nothing to do" memory is dropped rather than trusted.
+     *
+     * @param callback - see `Carburetor.subscribe`
+     * @param options - see `Carburetor.subscribe`
+     */
+    public subscribe(callback: TSubscriber, options: ISubscribeOptions = {}): string {
+        if (options.id !== undefined && this.subscribers[options.id]) {
+            this.eviction.release();
+        }
+
+        return super.subscribe(callback, options);
+    }
+
+    /** Drops a subscriber — a departing reader may free the one entry `evict()` was waiting on.
+     *
+     * @param id - see `Carburetor.unsubscribe`
+     */
+    public unsubscribe(id: string): void {
+        if (id in this.subscribers) {
+            this.eviction.release();
+        }
+
+        super.unsubscribe(id);
     }
 
     /**
@@ -219,12 +255,14 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         }
 
         this.failures.delete(key);
-        this.lastUsed.delete(key);
+        this.eviction.lastUsed.delete(key);
         this.viewCache.delete(key);
 
         if (!this.data.entries[key]) {
             return;
         }
+
+        this.eviction.forget(key);
 
         this.update((draft: IResourceCacheData<T>) => {
             delete draft.entries[key];
@@ -262,29 +300,22 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     }
 
     /**
-     * Evict the least recently used unretained entries.
+     * Evict the least recently used unretained entries — see `EvictionLedger` for why this is
+     * safe to call on every fetch and every answer without an `Object.keys` count, a filter or
+     * a sort over the whole live entry set.
      *
      * @param deferNotification - whether to publish the removal on a microtask instead of now
      */
     protected evict(deferNotification: boolean = false): void {
-        const keys = Object.keys(this.data.entries);
-
-        if (keys.length <= this.maxEntries) {
+        if (this.eviction.shouldSkip(this.maxEntries)) {
             return;
         }
 
-        // subscriberIndex answers "is anyone reading at or below this key's path" in O(1),
-        // in place of the old scan over every subscriber's whole read set.
-        const candidates = keys
-            .filter((key: string) => {
-                return !this.requests.has(key) && !this.subscriberIndex.hasReaderAt(joinPath('entries', key));
-            })
-            .sort((left: string, right: string) => {
-                return (this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0);
-            });
-
-        const excess = keys.length - this.maxEntries;
-        const doomed = candidates.slice(0, excess);
+        // subscriberIndex answers "is anyone reading at or below this key's path" in O(1), in
+        // place of the old scan over every subscriber's whole read set.
+        const doomed = this.eviction.selectVictims(this.maxEntries, (key: string): boolean => {
+            return this.requests.has(key) || this.subscriberIndex.hasReaderAt(joinPath('entries', key));
+        });
 
         if (doomed.length === 0) {
             return;
@@ -292,7 +323,6 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
 
         doomed.forEach((key: string) => {
             this.failures.delete(key);
-            this.lastUsed.delete(key);
             this.viewCache.delete(key);
         });
 
@@ -311,6 +341,14 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         }
 
         this.emitUpdate();
+    }
+
+    /** Whether a key has neither an in-flight request nor a reader right now.
+     *
+     * @param key - the entry to check
+     */
+    protected isRetentionFree(key: string): boolean {
+        return !this.requests.has(key) && !this.subscriberIndex.hasReaderAt(joinPath('entries', key));
     }
 
     /**
@@ -445,6 +483,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
 
         if (!entry) {
             draft.entries[key] = {...getInitialCacheEntry<T>(), status: EResourceStatus.Pending};
+            this.eviction.create();
         } else if (entry.status !== EResourceStatus.Success) {
             draft.entries[key].status = EResourceStatus.Pending;
             draft.entries[key].error = undefined;
@@ -485,7 +524,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
             this.controllers.delete(key);
             this.requests.delete(key);
             this.failures.delete(key);
-            this.lastUsed.delete(key);
+            this.eviction.lastUsed.delete(key);
             this.viewCache.delete(key);
 
             return;
@@ -494,6 +533,11 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.controllers.delete(key);
         this.requests.delete(key);
         this.failures.delete(key);
+
+        // The request that kept this key retained just ended — worth another look.
+        if (this.isRetentionFree(key)) {
+            this.eviction.release();
+        }
 
         this.update((draft: IResourceCacheData<T>) => {
             draft.entries[key].status = EResourceStatus.Success;
@@ -523,7 +567,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
             this.controllers.delete(key);
             this.requests.delete(key);
             this.failures.delete(key);
-            this.lastUsed.delete(key);
+            this.eviction.lastUsed.delete(key);
             this.viewCache.delete(key);
 
             return;
@@ -532,6 +576,11 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.controllers.delete(key);
         this.requests.delete(key);
         this.failures.set(key, error);
+
+        // Same as settleSuccess: the request ending may be exactly what frees this key.
+        if (this.isRetentionFree(key)) {
+            this.eviction.release();
+        }
 
         const entry = this.data.entries[key];
         const hasData = entry.status === EResourceStatus.Success || entry.data !== undefined;
