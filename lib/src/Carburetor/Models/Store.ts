@@ -34,6 +34,13 @@ export interface ICarburetorSubscription {
     getVersion: () => number;
     subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
     unsubscribe: (id: string) => void;
+    /**
+     * The path-precise drift check (R16-05): whether a write since `baselineVersion` could
+     * concern `reads`. Optional — a source with no write log of its own (a computed, which
+     * invalidates at the granularity of its whole value) is left out, and a caller with no
+     * finer answer available falls back to "the version moved at all".
+     */
+    hasDriftSince?: (baselineVersion: number, reads: TPathSet) => boolean;
 }
 
 /**

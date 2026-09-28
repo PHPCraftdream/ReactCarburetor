@@ -1,5 +1,5 @@
 import {TPath} from "@/Carburetor/Models/Paths";
-import {PATH_SEPARATOR} from "./PathSeparator";
+import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
 
 /** The synthetic key standing in for "the key set itself was read", distinct from any leaf. */
 const KEYS_MARKER = '~k';

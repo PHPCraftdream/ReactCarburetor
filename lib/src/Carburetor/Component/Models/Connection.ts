@@ -92,6 +92,21 @@ export interface IConnection extends IDependencySlot {
      * attempt, so a prop swap is noticed by the next render, not re-probed per field.
      */
     getCarburetor: () => ICarburetorSubscription;
+    /**
+     * The attempt this connection's `attemptSource`/`attemptEntry` were captured for; R16-09
+     * moved both off a per-render `Map` and onto the connection itself so a render touching a
+     * connection allocates neither. A mismatch against the attempt currently open means both are
+     * stale and must be rebuilt before use — see `declareConnection`'s `tagAttempt`.
+     */
+    attemptTag: IRenderAttempt | undefined;
+    /** The source `resolveAttemptSource` resolved for `attemptTag`; stale once the tag mismatches. */
+    attemptSource: ICarburetorSubscription | undefined;
+    /**
+     * This connection's read record for `attemptTag`, created on the first path a render
+     * actually reads through it — resolving the source alone does not set this, matching the
+     * old `attempt.connections` map, which only ever gained an entry from a recorded read.
+     */
+    attemptEntry: IAttemptEntry | undefined;
 }
 
 /**
@@ -122,24 +137,21 @@ export interface IAttemptEntry {
  * handlers reading a captured view cannot alter this render's dependency set or version
  * evidence. An abandoned attempt (its render threw) is never consumed by a commit.
  *
- * Every map here starts absent and is allocated by whichever read API first needs it: a
+ * Every collection here starts absent and is allocated by whichever read API first needs it: a
  * render that never calls `connect()`/`connectSelection()` or `useResource()` never allocates
- * `sources` or `deferredLoads`, and one that reads nothing at all allocates none of them.
- * `commitSubscriptions` treats an absent map exactly like an empty one.
+ * `connections` or `deferredLoads`, and one that reads nothing at all allocates none of them.
+ * `commitSubscriptions` treats an absent collection exactly like an empty one.
  */
 export interface IRenderAttempt {
     /** `useCarburetor`/`useComputed`/`useResource` entries, keyed by the source read. */
     tracked: Map<ICarburetorSubscription, IAttemptEntry> | undefined;
-    /** `connect()`-family entries, keyed by the connection read. */
-    connections: Map<IConnection, IAttemptEntry> | undefined;
     /**
-     * Sources `connect()` has already resolved during this attempt, keyed by the connection.
-     * The per-attempt memo behind a connection's resolution: view resolution and the recorder's
-     * baseline capture share it, so reading several fields resolves the source once per attempt
-     * instead of once per field. It dies with the attempt, so no source selection survives into
-     * a later render.
+     * `connect()`-family connections this attempt actually read a path through, in touch order.
+     * R16-09: the entry each one collected lives on the connection itself (`attemptEntry`),
+     * tagged with this attempt, so this array only has to say which connections to look at —
+     * not carry a second copy of what they collected.
      */
-    sources: Map<IConnection, ICarburetorSubscription> | undefined;
+    connections: IConnection[] | undefined;
     /**
      * The fetches this render queued: tentative like everything else the attempt collected,
      * becoming real only if a commit consumes this attempt. An abandoned attempt's queue dies

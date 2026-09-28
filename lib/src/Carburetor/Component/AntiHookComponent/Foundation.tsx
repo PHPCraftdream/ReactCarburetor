@@ -25,6 +25,10 @@ const RENDER_RAW: unique symbol = Symbol('carburetor.antiHookComponent.renderRaw
 const RENDER_BOUNDARY: unique symbol = Symbol('carburetor.antiHookComponent.renderBoundary');
 const RENDER_ASSIGNED: unique symbol = Symbol('carburetor.antiHookComponent.renderAssigned');
 
+/** Formats an unmount-teardown failure the same way Effects.tsx's own describeFailure does. */
+const describeUnmountFailure = (error: unknown): string =>
+    (error instanceof Error ? error.message : String(error));
+
 export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.Component<P, S> {
     /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
     protected uid: string = getUid();
@@ -223,14 +227,34 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     public componentWillUnmount(): void {
         const failures: string[] = [];
 
-        this.runTeardownStage('the component-wide unUseEffects callback threw while a component ' +
-            'unmounted', () => this.unUseEffects(this.props), failures);
-        this.runTeardownStage('an effect cleanup threw while a component unmounted',
-            () => this.releaseEffects(), failures);
-        this.runTeardownStage('releasing subscriptions threw while a component unmounted',
-            () => this.releaseSubscriptions(), failures);
+        // Each stage is inlined rather than run through a shared helper taking a callback: a
+        // fresh arrow per stage per unmount is exactly the kind of per-call allocation R16-09
+        // removes, and the three stages differ only in which method runs and what to say if it
+        // throws, so a loop would need the same three closures to describe them.
+        try {
+            this.unUseEffects(this.props);
+        } catch (error: unknown) {
+            failures.push('the component-wide unUseEffects callback threw while a component ' +
+                'unmounted: ' + describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
 
-        failures.forEach((failure: string) => this.reportTeardownFailure(failure));
+        try {
+            this.releaseEffects();
+        } catch (error: unknown) {
+            failures.push('an effect cleanup threw while a component unmounted: ' +
+                describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
+
+        try {
+            this.releaseSubscriptions();
+        } catch (error: unknown) {
+            failures.push('releasing subscriptions threw while a component unmounted: ' +
+                describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
+
+        for (let i = 0; i < failures.length; i++) {
+            this.reportTeardownFailure(failures[i]);
+        }
     }
 
     /**
@@ -285,7 +309,6 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         const attempt: IRenderAttempt = {
             tracked: undefined,
             connections: undefined,
-            sources: undefined,
             deferredLoads: undefined,
             abandoned: false,
         };
@@ -317,5 +340,4 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     protected abstract commitSubscriptions(): void;
     protected abstract releaseSubscriptions(): void;
     protected abstract reportTeardownFailure(failure: string): void;
-    protected abstract runTeardownStage(what: string, stage: () => void, failures: string[]): void;
 }

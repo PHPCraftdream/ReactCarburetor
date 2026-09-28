@@ -1,5 +1,5 @@
 import {TPath} from "@/Carburetor/Models/Paths";
-import {PATH_SEPARATOR} from "./PathSeparator";
+import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
 
 /** The synthetic key standing in for "the branch itself was read, no leaf under it". */
 const BRANCH_MARKER = '~p';

@@ -3,6 +3,7 @@ import {TPath, TPathRecorder, TPathSet, TAliasLedger} from "@/Carburetor/Models/
 import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {deepClone} from "./Utils/deepClone";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
+import {WriteLog} from "./Paths/WriteLog";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
 import {syncUpdateScheduler} from "./Scheduling/SyncUpdateSchedulerInstance";
 import {updateWave} from "./Scheduling/UpdateWaveInstance";
@@ -40,6 +41,9 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
     /** Paths changed since the last emitUpdate. */
     protected writes: TPathSet = new Set<TPath>();
+
+    /** Which paths recent emits touched, bounded and watermarked; feeds the commit drift check (R16-05). */
+    protected writeLog: WriteLog = new WriteLog();
 
     /** Whether draft was touched: it tells an empty write set from "nothing changed". */
     protected draftTouched: boolean = false;
@@ -81,6 +85,21 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      */
     public getVersion(): number {
         return this.version;
+    }
+
+    /**
+     * The path-precise form of the drift check above: whether a write since `baselineVersion`
+     * could concern `reads`, per the write log.
+     *
+     * Falls back to `true` once the log cannot answer for that baseline — see
+     * `WriteLog.matches`. Optional on the subscription surface so a source with no such log (a
+     * computed) keeps today's coarse "the version moved" behaviour.
+     *
+     * @param baselineVersion - the version a render's read set was captured at
+     * @param reads - the paths that read set touched
+     */
+    public hasDriftSince(baselineVersion: number, reads: TPathSet): boolean {
+        return this.writeLog.matches(baselineVersion, reads);
     }
 
     /** The state as it is, untracked: reads through it subscribe to nothing. */
@@ -381,6 +400,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         // Writes bypassed draft: the changed paths are unknown, so treat everything as changed.
         const writes = changed || new Set<TPath>([WILDCARD_PATH]);
         this.version++;
+        this.writeLog.record(this.version, writes);
 
         if (updateBatch.isActive()) {
             updateBatch.add(this, writes);

@@ -46,6 +46,7 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
         this.getCarburetor = typeof source === 'function' ? source : () => source;
         this.connection = {
             uid: getUid(), getCarburetor: this.getCarburetor, committed: undefined, installed: undefined,
+            attemptTag: undefined, attemptSource: undefined, attemptEntry: undefined,
         };
         // The one detached function this declaration hands off: carburetor.read() calls it
         // later, off this instance's own call stack, so it has to carry `this` along with it.
@@ -53,12 +54,30 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
     }
 
     /**
+     * Drops this connection's per-attempt memo once the attempt currently open stops matching
+     * the one it was captured for.
+     *
+     * R16-09: `attemptSource`/`attemptEntry` live on the connection itself, tagged by the
+     * attempt they belong to, instead of a `Map` the render attempt allocated fresh every time.
+     *
+     * @param attempt - the attempt currently open, or undefined outside one
+     */
+    private tagAttempt(attempt: IRenderAttempt): void {
+        const connection = this.connection;
+
+        if (connection.attemptTag !== attempt) {
+            connection.attemptTag = attempt;
+            connection.attemptSource = undefined;
+            connection.attemptEntry = undefined;
+        }
+    }
+
+    /**
      * The source resolved for the attempt currently open, memoized per attempt.
      *
-     * The attempt's first read resolves it into the attempt's map, keyed by this connection, and
-     * every later read of the same attempt reuses that instance. Outside an attempt nothing is
-     * cached, so a handler read or the declaration-time shape probe always sees the resolver's
-     * current answer.
+     * The attempt's first read resolves it and tags the connection with it, and every later
+     * read of the same attempt reuses that instance. Outside an attempt nothing is cached, so a
+     * handler read or the declaration-time shape probe always sees the resolver's current answer.
      */
     public resolveAttemptSource(): ICarburetor<T> {
         const attempt = this.getAttempt();
@@ -67,29 +86,27 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
             return this.getCarburetor();
         }
 
-        // The key is this connection itself and only this class writes it, so the value it
-        // names is always the ICarburetor<T> this declaration resolved.
-        const resolved = attempt.sources?.get(this.connection) as ICarburetor<T> | undefined;
+        this.tagAttempt(attempt);
 
-        if (resolved !== undefined) {
-            return resolved;
+        const connection = this.connection;
+
+        if (connection.attemptSource !== undefined) {
+            return connection.attemptSource as ICarburetor<T>;
         }
 
         const carburetor = this.getCarburetor();
 
-        if (attempt.sources === undefined) {
-            attempt.sources = new Map();
-        }
-
-        attempt.sources.set(this.connection, carburetor);
+        connection.attemptSource = carburetor;
 
         return carburetor;
     }
 
     /**
      * Records one read path against the attempt currently open, opening this connection's entry
-     * — with its baseline version — on the first read. Outside an attempt nothing is recorded: a
-     * handler, effect or child callback read can never alter a render's dependency set.
+     * on the first read and appending it to the attempt's touched list at that same moment.
+     *
+     * Outside an attempt nothing is recorded: a handler, effect or child callback read can
+     * never alter a render's dependency set.
      *
      * @param path - the path a read through the persistent view touched
      */
@@ -100,11 +117,10 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
             return;
         }
 
-        if (attempt.connections === undefined) {
-            attempt.connections = new Map();
-        }
+        this.tagAttempt(attempt);
 
-        let entry = attempt.connections.get(this.connection);
+        const connection = this.connection;
+        let entry = connection.attemptEntry;
 
         if (!entry) {
             // The source and its baseline version are captured once, at the beginning of this
@@ -115,7 +131,13 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
             const carburetor = this.resolveAttemptSource();
 
             entry = {source: carburetor, baselineVersion: carburetor.getVersion(), reads: new Set<TPath>()};
-            attempt.connections.set(this.connection, entry);
+            connection.attemptEntry = entry;
+
+            if (attempt.connections === undefined) {
+                attempt.connections = [];
+            }
+
+            attempt.connections.push(connection);
         }
 
         entry.reads.add(path);

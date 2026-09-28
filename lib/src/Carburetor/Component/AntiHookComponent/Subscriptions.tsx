@@ -75,27 +75,40 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             this.committedAttempt = attempt;
 
             const trackedEntries = attempt.tracked;
-            const connectionEntries = attempt.connections;
+            const touchedConnections = attempt.connections;
 
             // A record the attempt did not touch is gone from the render: release its
             // subscription and drop the record. A connection the attempt did not touch keeps
             // its declaration but loses its committed description — and with it, below, the
             // subscription: an unused connection must have no active read subscription. An
-            // absent map reads exactly like an empty one: nothing was touched.
-            this.tracked?.forEach((slot: ITrackedCarburetor, source: ICarburetorSubscription) => {
-                if (trackedEntries !== undefined && trackedEntries.has(source)) {
-                    return;
+            // absent collection reads exactly like an empty one: nothing was touched.
+            if (this.tracked !== undefined) {
+                for (const [source, slot] of this.tracked) {
+                    if (trackedEntries !== undefined && trackedEntries.has(source)) {
+                        continue;
+                    }
+
+                    this.releaseSlot(this.uid, slot);
+                    this.tracked.delete(source);
+                }
+            }
+
+            for (const connection of this.connections) {
+                // Touched this attempt only when the tag matches AND an entry was actually
+                // recorded: resolving the source alone (an `ownKeys`/`has` probe with no path
+                // read) tags the connection but never builds an entry, exactly like the old
+                // per-attempt map, which only ever gained one from a recorded read.
+                if (connection.attemptTag === attempt && connection.attemptEntry !== undefined) {
+                    continue;
                 }
 
-                this.releaseSlot(this.uid, slot);
-                this.tracked?.delete(source);
-            });
-
-            this.connections.forEach((connection: IConnection) => {
-                if (connectionEntries === undefined || !connectionEntries.has(connection)) {
-                    connection.committed = undefined;
-                }
-            });
+                connection.committed = undefined;
+                // Dropped rather than left stale: an unread connection must not keep pinning
+                // last attempt's resolved source and read set alive indefinitely.
+                connection.attemptTag = undefined;
+                connection.attemptSource = undefined;
+                connection.attemptEntry = undefined;
+            }
 
             // The attempt's read sets become the committed descriptions as-is: recorders write
             // only while their attempt is open, and it has closed by now. A source still
@@ -103,7 +116,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             // has a description keeps that object too — both are updated in place rather than
             // replaced, since nothing outside this method holds either past a single commit.
             if (trackedEntries !== undefined) {
-                trackedEntries.forEach((entry: IAttemptEntry, source: ICarburetorSubscription) => {
+                for (const [source, entry] of trackedEntries) {
                     const existing = this.tracked?.get(source);
 
                     if (existing) {
@@ -114,13 +127,17 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
                             installed: undefined,
                         });
                     }
-                });
+                }
             }
 
-            if (connectionEntries !== undefined) {
-                connectionEntries.forEach((entry: IAttemptEntry, connection: IConnection) => {
-                    this.applyDescription(connection, entry);
-                });
+            if (touchedConnections !== undefined) {
+                for (const connection of touchedConnections) {
+                    const entry = connection.attemptEntry;
+
+                    if (entry !== undefined) {
+                        this.applyDescription(connection, entry);
+                    }
+                }
             }
 
             // From here on only identity matters — a replayed commit re-aligns from the
@@ -131,22 +148,23 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             // holding this render's dependency maps alive indefinitely.
             attempt.tracked = undefined;
             attempt.connections = undefined;
-            attempt.sources = undefined;
         }
 
         let changedDuringRender = false;
 
-        this.tracked?.forEach((slot: ITrackedCarburetor) => {
-            if (this.alignSubscription(this.uid, slot)) {
-                changedDuringRender = true;
+        if (this.tracked !== undefined) {
+            for (const slot of this.tracked.values()) {
+                if (this.alignSubscription(this.uid, slot)) {
+                    changedDuringRender = true;
+                }
             }
-        });
+        }
 
-        this.connections.forEach((connection: IConnection) => {
+        for (const connection of this.connections) {
             if (this.alignSubscription(connection.uid, connection)) {
                 changedDuringRender = true;
             }
-        });
+        }
 
         if (changedDuringRender) {
             this.forceUpdate();
@@ -205,11 +223,18 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      *
      * No description means nothing may be listening: an installed handle is unsubscribed and
      * cleared. Otherwise a handle pointing at another carburetor is dropped first, and an
-     * unchanged read set skips re-registering. Returns the drift check: whether the store's
-     * version moved past the description's baseline, i.e. whether a write landed between the
-     * render's read and this commit — anchored to the baseline captured at the attempt's first
-     * read, not refreshed after every access, which is what keeps an unused connection from
-     * looping forceUpdate forever.
+     * unchanged read set skips re-registering. Returns the drift check: whether a write that
+     * could concern the committed read set landed between the render's read and this commit —
+     * anchored to the baseline captured at the attempt's first read, not refreshed after every
+     * access, which is what keeps an unused connection from looping forceUpdate forever.
+     *
+     * A version equal to the baseline means nothing was written at all since then, so there is
+     * nothing further to check. A version that moved asks the source's own write log (R16-05)
+     * which paths actually changed, and reports a drift only when one of them concerns what was
+     * read — the same three cases `SubscriberIndex.match` uses: the same path, a written
+     * ancestor, a written descendant. A source with no such log (`hasDriftSince` absent, e.g. a
+     * computed, which invalidates at the granularity of its whole value) keeps today's coarser
+     * answer: any version change is a drift.
      *
      * @param uid - the id the slot's registration is keyed under: the component's own for
      * `tracked` records, the connection's own for connections
@@ -245,7 +270,16 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             slot.installed = {carburetor: committed.carburetor, reads: committed.reads};
         }
 
-        return committed.carburetor.getVersion() !== committed.baselineVersion;
+        const {carburetor, baselineVersion, reads} = committed;
+        const version = carburetor.getVersion();
+
+        if (version === baselineVersion) {
+            return false;
+        }
+
+        const hasDriftSince = carburetor.hasDriftSince;
+
+        return hasDriftSince === undefined || hasDriftSince.call(carburetor, baselineVersion, reads);
     }
 
     /**

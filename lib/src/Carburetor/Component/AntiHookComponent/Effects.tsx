@@ -43,25 +43,6 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
     }
 
     /**
-     * Runs one stage of the unmount teardown, isolated so a failure there costs the stages after
-     * it nothing.
-     *
-     * The failure is filed as the message its report will use and the caller moves on: nothing
-     * here throws, whatever the stage does.
-     *
-     * @param what - the sentence fragment naming the stage, for the failure message
-     * @param stage - the stage itself
-     * @param failures - the messages collected so far, appended to when the stage throws
-     */
-    protected runTeardownStage(what: string, stage: () => void, failures: string[]): void {
-        try {
-            stage();
-        } catch (error: unknown) {
-            failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
-        }
-    }
-
-    /**
      * Runs `callBack` when its dependencies changed since the last run.
      *
      * Whatever the effect returns is treated as its cleanup and is run before the effect runs

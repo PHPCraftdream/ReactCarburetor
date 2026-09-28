@@ -5,6 +5,19 @@ import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
 
 /**
+ * The empty targets every connect()-family facade forwards through, shared by every
+ * declaration of the same kind instead of one fresh `{}`/`[]` per declaration (R16-09).
+ *
+ * Safe because no trap ever reads or writes the target for its own sake: every access forwards
+ * to the resolved view, every mutation trap throws before touching it, and the one place a trap
+ * does consult the target (`getOwnPropertyDescriptor`, for an already-non-configurable key like
+ * an array's `length`) only ever reads a descriptor that is the same for every empty array —
+ * nothing here depends on a target's identity, only its shape.
+ */
+const SHARED_OBJECT_TARGET: object = {};
+const SHARED_ARRAY_TARGET: unknown[] = [];
+
+/**
  * Builds the persistent view one connect()-family declaration reads through: the once-only
  * shape probe, then a facade whose traps (`ConnectionFacadeHandler`) forward every access to
  * the resolved view.
@@ -41,9 +54,10 @@ export const buildPersistentView = <T extends object>(source: IConnectionSource<
     }
 
     // An empty object/array stands in for the real target: every trap forwards to the current
-    // view instead. Which of the two it is fixes the facade's kind.
+    // view instead. Which of the two it is fixes the facade's kind; the target itself is one of
+    // the two shared, never-mutated instances above, not a fresh allocation per declaration.
     const facade = new Proxy(
-        (source.arrayFacade ? [] : {}) as unknown as TReadonly<T>,
+        (source.arrayFacade ? SHARED_ARRAY_TARGET : SHARED_OBJECT_TARGET) as unknown as TReadonly<T>,
         new ConnectionFacadeHandler<T>(source)
     ) as TReadonly<T>;
 

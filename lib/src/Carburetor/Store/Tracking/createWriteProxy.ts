@@ -1,6 +1,6 @@
 import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
-import {keysPath} from "@/Carburetor/Store/Paths/KeysMarker";
+import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {createProxyCache} from "./createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
