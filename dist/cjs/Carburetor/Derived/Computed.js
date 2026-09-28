@@ -41,7 +41,7 @@ class Computed {
     body;
     uid = (0, getUid_js_namespaceObject.getUid)();
     version = 0;
-    subscribers = {};
+    subscribers = new Map();
     dependencies = {};
     versions = {};
     announced = void 0;
@@ -59,8 +59,8 @@ class Computed {
     };
     subscribe = (callback, options = {})=>{
         const id = options.id || (0, getUid_js_namespaceObject.getUid)();
-        const wasUnobserved = 0 === Object.keys(this.subscribers).length;
-        this.subscribers[id] = callback;
+        const wasUnobserved = 0 === this.subscribers.size;
+        this.subscribers.set(id, callback);
         if (!this.valid || wasUnobserved && this.hasDrifted()) this.recompute();
         else if (wasUnobserved) this.observeDependencies();
         if (wasUnobserved && this.valid) this.announced = {
@@ -72,28 +72,31 @@ class Computed {
         return id;
     };
     unsubscribe = (id)=>{
-        if (!(id in this.subscribers)) return;
-        delete this.subscribers[id];
-        if (0 === Object.keys(this.subscribers).length) {
+        if (!this.subscribers.has(id)) return;
+        this.subscribers.delete(id);
+        if (0 === this.subscribers.size) {
             this.releaseDependencies();
             this.valid = false;
         }
     };
     isStale = ()=>{
-        if (Object.keys(this.subscribers).length > 0) return !this.valid;
+        if (this.subscribers.size > 0) return !this.valid;
         return !this.valid || this.hasDrifted();
     };
-    hasDrifted = ()=>Object.keys(this.versions).some((cuid)=>{
+    hasDrifted = ()=>{
+        for(const cuid in this.versions){
             const recorded = this.versions[cuid];
-            return recorded.source.getVersion() !== recorded.version;
-        });
+            if (recorded.source.getVersion() !== recorded.version) return true;
+        }
+        return false;
+    };
     driftedSince = (record)=>{
-        const moved = Object.keys(record).some((cuid)=>{
+        for(const cuid in record){
             const recorded = record[cuid];
-            return recorded.source.getVersion() !== recorded.version;
-        });
-        if (moved) return true;
-        return Object.keys(this.versions).some((cuid)=>!(cuid in record));
+            if (recorded.source.getVersion() !== recorded.version) return true;
+        }
+        for(const cuid in this.versions)if (!(cuid in record)) return true;
+        return false;
     };
     recompute = ()=>{
         const collected = {};
@@ -118,7 +121,7 @@ class Computed {
         if (dependency.reads.has(path)) return;
         dependency.reads.add(path);
         const published = dependency === this.dependencies[dependency.source.getUID()];
-        const observed = Object.keys(this.subscribers).length > 0;
+        const observed = this.subscribers.size > 0;
         if (published && observed) dependency.source.subscribe(this.onDependencyChanged, {
             id: this.uid,
             reads: dependency.reads
@@ -128,7 +131,7 @@ class Computed {
         const fresh = this.diffDependencies(collected);
         this.dependencies = collected;
         this.recordVersions(collected);
-        if (0 === Object.keys(this.subscribers).length) return;
+        if (0 === this.subscribers.size) return;
         Object.keys(collected).forEach((cuid)=>{
             if (!fresh[cuid]) return;
             const dependency = collected[cuid];
@@ -202,8 +205,9 @@ class Computed {
     };
     markStale = ()=>{
         this.valid = false;
-        Object.keys(this.subscribers).forEach((id)=>{
-            const callback = this.subscribers[id];
+        const ids = Array.from(this.subscribers.keys());
+        ids.forEach((id)=>{
+            const callback = this.subscribers.get(id);
             if (!callback) return;
             const mark = invalidationEdges.get(callback);
             if (mark) mark();
@@ -229,8 +233,9 @@ class Computed {
     };
     deliver = ()=>{
         const failures = [];
-        Object.keys(this.subscribers).forEach((id)=>{
-            const callback = this.subscribers[id];
+        const ids = Array.from(this.subscribers.keys());
+        ids.forEach((id)=>{
+            const callback = this.subscribers.get(id);
             if (callback) try {
                 callback();
             } catch (error) {

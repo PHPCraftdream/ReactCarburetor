@@ -147,6 +147,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- `Computed` keeps its subscribers in a `Map`: `get()` no longer allocates the subscriber id list
+  on every call, so S components re-rendering from one computed cost O(S) instead of O(S²)
+  (4000 subscribers: ~8.6 s to ~3.5 ms per five write-and-read waves).
 - `persist()` writes `JSON.stringify(carburetor.getData())` instead of stringifying a
   `snapshot()` deep clone: `JSON.stringify` never mutates its input, so the clone was pure
   overhead. `deepClone` now copies keys by plain assignment instead of `Object.defineProperty`

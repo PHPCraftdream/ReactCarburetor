@@ -53,7 +53,7 @@ export class Computed<R> implements IComputed<R> {
     /** Moves only when a changed value is announced, letting a component spot writes across a render. */
     protected version: number = 0;
     /** Callbacks woken when a changed value settles, keyed by subscription id. */
-    protected subscribers: IDict<TSubscriber> = {};
+    protected subscribers: Map<string, TSubscriber> = new Map<string, TSubscriber>();
     /** What the current value was computed from, observed only while somebody is listening. */
     protected dependencies: IDict<IDependency> = {};
 
@@ -112,9 +112,9 @@ export class Computed<R> implements IComputed<R> {
      */
     public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
         const id = options.id || getUid();
-        const wasUnobserved = Object.keys(this.subscribers).length === 0;
+        const wasUnobserved = this.subscribers.size === 0;
 
-        this.subscribers[id] = callback;
+        this.subscribers.set(id, callback);
 
         // A value nobody reads is not worth keeping fresh, so dependencies are only observed
         // once someone is listening. While unobserved the computed misses every write, so
@@ -145,13 +145,13 @@ export class Computed<R> implements IComputed<R> {
      * invalidations, so what it holds cannot be trusted when someone subscribes again.
      */
     public unsubscribe = (id: string) => {
-        if (!(id in this.subscribers)) {
+        if (!this.subscribers.has(id)) {
             return;
         }
 
-        delete this.subscribers[id];
+        this.subscribers.delete(id);
 
-        if (Object.keys(this.subscribers).length === 0) {
+        if (this.subscribers.size === 0) {
             this.releaseDependencies();
             this.valid = false;
         }
@@ -160,7 +160,7 @@ export class Computed<R> implements IComputed<R> {
     /** Whether the cached value can still be handed out. */
     protected isStale = (): boolean => {
         // Observed, invalidations arrive through the subscription, so `valid` is authoritative.
-        if (Object.keys(this.subscribers).length > 0) {
+        if (this.subscribers.size > 0) {
             return !this.valid;
         }
 
@@ -169,11 +169,15 @@ export class Computed<R> implements IComputed<R> {
 
     /** Whether any store this value was computed from moved since it was read. */
     protected hasDrifted = (): boolean => {
-        return Object.keys(this.versions).some((cuid: string) => {
+        for (const cuid in this.versions) {
             const recorded = this.versions[cuid];
 
-            return recorded.source.getVersion() !== recorded.version;
-        });
+            if (recorded.source.getVersion() !== recorded.version) {
+                return true;
+            }
+        }
+
+        return false;
     };
 
     /**
@@ -182,18 +186,22 @@ export class Computed<R> implements IComputed<R> {
      * @param record - the versions captured at an earlier moment, e.g. alongside an announcement
      */
     protected driftedSince = (record: IDict<IDependencyVersion>): boolean => {
-        const moved = Object.keys(record).some((cuid: string) => {
+        for (const cuid in record) {
             const recorded = record[cuid];
 
-            return recorded.source.getVersion() !== recorded.version;
-        });
-
-        if (moved) {
-            return true;
+            if (recorded.source.getVersion() !== recorded.version) {
+                return true;
+            }
         }
 
         // A body that now reads a store the snapshot never saw has changed inputs too.
-        return Object.keys(this.versions).some((cuid: string) => !(cuid in record));
+        for (const cuid in this.versions) {
+            if (!(cuid in record)) {
+                return true;
+            }
+        }
+
+        return false;
     };
 
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
@@ -252,7 +260,7 @@ export class Computed<R> implements IComputed<R> {
         dependency.reads.add(path);
 
         const published = dependency === this.dependencies[dependency.source.getUID()];
-        const observed = Object.keys(this.subscribers).length > 0;
+        const observed = this.subscribers.size > 0;
 
         if (published && observed) {
             dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
@@ -273,7 +281,7 @@ export class Computed<R> implements IComputed<R> {
         this.recordVersions(collected);
 
         // Dependencies are only observed while somebody is listening to the computed.
-        if (Object.keys(this.subscribers).length === 0) {
+        if (this.subscribers.size === 0) {
             return;
         }
 
@@ -449,8 +457,11 @@ export class Computed<R> implements IComputed<R> {
     protected markStale = (): void => {
         this.valid = false;
 
-        Object.keys(this.subscribers).forEach((id: string) => {
-            const callback = this.subscribers[id];
+        // Snapshot: a leaver is skipped below, a joiner waits for the next pass.
+        const ids = Array.from(this.subscribers.keys());
+
+        ids.forEach((id: string) => {
+            const callback = this.subscribers.get(id);
 
             if (!callback) {
                 return;
@@ -526,9 +537,12 @@ export class Computed<R> implements IComputed<R> {
     protected deliver = (): void => {
         const failures: unknown[] = [];
 
-        Object.keys(this.subscribers).forEach((id: string) => {
+        // Snapshot: a joiner waits for the next pass.
+        const ids = Array.from(this.subscribers.keys());
+
+        ids.forEach((id: string) => {
             // A subscriber may have left while this very batch was being delivered.
-            const callback = this.subscribers[id];
+            const callback = this.subscribers.get(id);
 
             if (callback) {
                 try {

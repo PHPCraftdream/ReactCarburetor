@@ -29,7 +29,7 @@ export declare class Computed<R> implements IComputed<R> {
     /** Moves only when a changed value is announced, letting a component spot writes across a render. */
     protected version: number;
     /** Callbacks woken when a changed value settles, keyed by subscription id. */
-    protected subscribers: IDict<TSubscriber>;
+    protected subscribers: Map<string, TSubscriber>;
     /** What the current value was computed from, observed only while somebody is listening. */
     protected dependencies: IDict<IDependency>;
     /** The stores the current value was computed from, including those behind inner computeds. */

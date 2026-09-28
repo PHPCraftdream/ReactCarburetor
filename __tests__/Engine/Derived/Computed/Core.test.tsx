@@ -329,4 +329,48 @@ describe('computed', () => {
         expect(notified).toEqual(1);
     });
 
+    test('a subscriber that unsubscribes a later one during delivery skips it for this delivery', () => {
+        const carburetor = new ListCarburetor(getData());
+        let secondCalls = 0;
+
+        const doneCount = computed<number>((read) => {
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        doneCount.subscribe(() => doneCount.unsubscribe('second'), {id: 'first'});
+        doneCount.subscribe(() => secondCalls++, {id: 'second'});
+
+        carburetor.setDone('a', true);
+
+        // 'second' was still registered when this delivery started, but 'first' unsubscribed
+        // it before its own turn came, so it is skipped instead of woken.
+        expect(secondCalls).toEqual(0);
+    });
+
+    test('a subscriber that subscribes a new listener during delivery does not wake it until the next delivery', () => {
+        const carburetor = new ListCarburetor(getData());
+        let joinerCalls = 0;
+
+        const doneCount = computed<number>((read) => {
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        doneCount.subscribe(() => {
+            doneCount.subscribe(() => joinerCalls++, {id: 'joiner'});
+        }, {id: 'first'});
+
+        carburetor.setDone('a', true);
+
+        // The joiner subscribed mid-delivery, after this pass's subscriber list was captured.
+        expect(joinerCalls).toEqual(0);
+
+        carburetor.setDone('a', false);
+
+        expect(joinerCalls).toEqual(1);
+    });
+
 });
