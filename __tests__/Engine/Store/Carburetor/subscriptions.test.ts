@@ -280,6 +280,46 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(reads.has('nested')).toBeTruthy();
     });
 
+    test('extend wakes the subscriber on a write to the newly added path', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'subscriber', reads: readsOf('a')});
+        carburetor.extend('subscriber', 'b');
+
+        carburetor.setB(2);
+        expect(calls).toEqual(1);
+
+        carburetor.setA(1);
+        expect(calls).toEqual(2);
+    });
+
+    test('extend on an unknown id is a no-op', () => {
+        const carburetor = new TestCarburetor(getTestData());
+
+        expect(() => carburetor.extend('ghost', 'a')).not.toThrow();
+
+        // A later subscription under that same id starts from nothing: the earlier no-op
+        // extend call left no trace to inherit.
+        let calls = 0;
+        carburetor.subscribe(() => calls++, {id: 'ghost', reads: readsOf('b')});
+        carburetor.setA(1);
+        expect(calls).toEqual(0);
+    });
+
+    test('unsubscribe after extend cleans up both the original and the extended path', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'subscriber', reads: readsOf('a')});
+        carburetor.extend('subscriber', 'b');
+        carburetor.unsubscribe('subscriber');
+
+        carburetor.setA(1);
+        carburetor.setB(2);
+        expect(calls).toEqual(0);
+    });
+
     test('writing the same value wakes nobody', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;

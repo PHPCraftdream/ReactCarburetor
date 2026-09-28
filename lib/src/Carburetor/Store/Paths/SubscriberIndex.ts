@@ -57,6 +57,35 @@ export class SubscriberIndex {
         });
     };
 
+    /**
+     * Files one more path into an id's existing registration, leaving the rest of its
+     * read set untouched — same exact/branch/wildcard bookkeeping as `add`, per path.
+     *
+     * O(path depth) instead of O(read-set size): the incremental sibling `add` lacks,
+     * for a dependency amended one leaf read at a time.
+     *
+     * @param id - the subscriber to extend; an id with no registration is left alone
+     * @param path - the path to file; already-filed paths are a no-op
+     */
+    public addPath = (id: string, path: TPath): void => {
+        const reads = this.readsById.get(id);
+
+        if (!reads || reads.has(path)) {
+            return;
+        }
+
+        reads.add(path);
+
+        if (path === WILDCARD_PATH) {
+            this.wildcard.add(id);
+
+            return;
+        }
+
+        this.register(this.exact, path, id);
+        this.eachAncestor(path, (ancestor: TPath) => this.register(this.branch, ancestor, id));
+    };
+
     /** Forgets a subscriber, dropping every entry its read paths created. */
     public remove = (id: string): void => {
         const reads = this.readsById.get(id);

@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
+import {rstest} from '@rstest/core';
 import {AntiHookComponent, Carburetor, computed} from '@/Carburetor';
 
 describe('computed', () => {
@@ -159,6 +160,80 @@ describe('computed', () => {
             expect(view.container.querySelector('.name')?.textContent).toEqual('Grace');
 
             view.unmount();
+        });
+    });
+
+    describe('a live list of rows amends its dependency without re-subscribing what was already read', () => {
+        interface IRow {
+            title: string;
+        }
+
+        interface IRowListData {
+            items: IRow[];
+        }
+
+        class RowListCarburetor extends Carburetor<IRowListData> {
+            public setTitle = (index: number, title: string) => {
+                this.draft.items[index].title = title;
+
+                this.emitUpdate();
+            };
+        }
+
+        const ROWS = 2000;
+
+        const getRowListData = (): IRowListData => ({
+            items: Array.from({length: ROWS}, (_, index: number): IRow => ({title: 'row-' + index})),
+        });
+
+        test('one edit through a 2000-row computed subscribes a bounded number of times', () => {
+            const carburetor = new RowListCarburetor(getRowListData());
+            const rows = computed((read) => read(carburetor).items);
+            const subscribeSpy = rstest.spyOn(carburetor, 'subscribe');
+
+            let renders = 0;
+
+            class RowsView extends AntiHookComponent {
+                render() {
+                    renders++;
+
+                    const items = this.useComputed(rows);
+                    let text = '';
+
+                    for (let i = 0; i < items.length; i++) {
+                        text += items[i].title + '|';
+                    }
+
+                    return <div>{text}</div>;
+                }
+            }
+
+            const view = render(<RowsView />);
+            expect(renders).toEqual(1);
+            expect(view.container.textContent).toContain('row-5|');
+
+            const callsAtMount = subscribeSpy.mock.calls.length;
+
+            act(() => carburetor.setTitle(5, 'edited-5'));
+
+            // Every leaf a render already read amends the live dependency in place; only the
+            // one recompute that follows re-subscribes the store, however many rows a render
+            // touches. Pre-fix this scales with row count (two subscribe calls per row).
+            const callsForOneEdit = subscribeSpy.mock.calls.length - callsAtMount;
+
+            expect(callsForOneEdit).toBeLessThan(10);
+            expect(renders).toEqual(2);
+            expect(view.container.textContent).toContain('edited-5');
+            expect(view.container.textContent).not.toContain('row-5|');
+
+            act(() => carburetor.setTitle(1500, 'edited-1500'));
+
+            expect(renders).toEqual(3);
+            expect(view.container.textContent).toContain('edited-1500');
+            expect(view.container.textContent).toContain('edited-5');
+
+            view.unmount();
+            subscribeSpy.mockRestore();
         });
     });
 });

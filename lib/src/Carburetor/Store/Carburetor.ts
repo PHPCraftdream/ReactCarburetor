@@ -145,6 +145,25 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return id;
     };
 
+    /**
+     * Adds one path to an already-registered subscription, without copying or re-filing
+     * the rest of its read set — the incremental sibling of `subscribe`, for a caller
+     * that discovers one more path after the subscription already exists.
+     *
+     * `reads` here is the same Set instance `subscriberIndex` files paths into, so filing
+     * the path there is all that is needed to keep the subscriber's own read set current.
+     *
+     * @param id - the subscription to extend; an unknown id is left alone
+     * @param path - the path to add to that subscription's read set
+     */
+    public extend = (id: string, path: TPath): void => {
+        if (!(id in this.subscribers)) {
+            return;
+        }
+
+        this.subscriberIndex.addPath(id, path);
+    };
+
     /** Drops a subscriber, its index entries and any update already scheduled for it. */
     public unsubscribe = (id: string) => {
         if (id in this.subscribers) {

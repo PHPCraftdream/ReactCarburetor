@@ -139,6 +139,17 @@ export class Computed<R> implements IComputed<R> {
     };
 
     /**
+     * No-op: a computed notifies at the granularity of its whole value, so there is no
+     * finer path an existing subscription could be extended with. Kept only so a computed
+     * satisfies the subscription interface when it is itself used as a dependency source.
+     *
+     * @param _id - the subscription id; ignored, there is nothing to file
+     * @param _path - the path a caller would otherwise extend the subscription with; ignored
+     */
+    public extend = (_id: string, _path: TPath): void => {
+    };
+
+    /**
      * Drops a subscriber, and stops observing dependencies once the last one leaves.
      *
      * The value is invalidated at the same time: while unobserved it receives no
@@ -242,8 +253,8 @@ export class Computed<R> implements IComputed<R> {
      * after attachDependencies published the read set. The store copied that set at
      * subscription time, so the mutation alone reaches no registration — while the leaf is
      * exactly what that consumer renders from, and a write to it must wake this computed.
-     * Re-subscribing the dependency under this computed's own id replaces the registration
-     * with the amended set, the same way a fresh edge is published.
+     * `extend` files just the new path into the existing registration — O(path depth),
+     * not the O(read-set size) a full re-subscribe would cost for every leaf a render adds.
      *
      * During the body's own evaluation the dependency being filled is not yet the published
      * one (attachDependencies swaps it in after the body returns), so nothing is amended
@@ -263,7 +274,7 @@ export class Computed<R> implements IComputed<R> {
         const observed = this.subscribers.size > 0;
 
         if (published && observed) {
-            dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
+            dependency.source.extend(this.uid, path);
         }
     };
 

@@ -1,5 +1,5 @@
 import {TDisposer, TReadonly, TSubscriber, TUpdater} from "./Base";
-import {TPathRecorder, TPathSet} from "./Paths";
+import {TPath, TPathRecorder, TPathSet} from "./Paths";
 
 /**
  * Delivery policy for updates.
@@ -33,6 +33,8 @@ export interface ICarburetorSubscription {
     /** Write counter: lets a component detect data changes between render and commit. */
     getVersion: () => number;
     subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
+    /** Adds one path to an already-registered subscription's read set; an unknown id is a no-op. */
+    extend: (id: string, path: TPath) => void;
     unsubscribe: (id: string) => void;
 }
 
