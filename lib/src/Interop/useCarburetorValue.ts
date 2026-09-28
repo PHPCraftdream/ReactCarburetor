@@ -1,7 +1,8 @@
 "use client";
 
 import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react";
-import {ICarburetor, TPath, TPathRecorder, TPathSet, TReadonly, TSubscriber} from "@/Carburetor";
+import {ICarburetor, TReadonly, TSubscriber} from "@/Carburetor";
+import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {detachOpaque} from "@/Carburetor/Store/Utils/detachOpaque";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";

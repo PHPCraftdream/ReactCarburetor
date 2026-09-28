@@ -1,4 +1,5 @@
-import {TPath, TPathSet, WILDCARD_PATH} from "@/Carburetor";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {WriteLog} from "@/Carburetor/Store/Paths/WriteLog";
 
 const setOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);

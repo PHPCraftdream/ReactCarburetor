@@ -25,11 +25,16 @@ export class CarburetorHistory<T extends object> {
     /** The watch installed at construction; disconnect() runs it to stop recording. */
     protected dispose: TDisposer;
 
-    /** Bound once for `carburetor.watch`, called detached from `this`; forwards to the overridable `record`. */
+    /** Bound once for `subscribe`, called detached from `this`; forwards to the overridable `record`. */
     private readonly recordBound = (): void => this.record();
 
     /**
      * Starts watching a carburetor, with the current state as the first entry.
+     *
+     * History needs "every write", which `watch(select, onChange)` cannot express cheaply (its
+     * selector would have to read the whole tree, then diff it, on every change) — `subscribe`
+     * with no `reads` is the engine's own way to say that, so history uses it directly instead
+     * of reconstructing the same thing through `watch`.
      *
      * @param carburetor - the store being tracked: snapshots become the entries, restore() applies undo and redo to it
      * @param options - `limit` caps how far back undo reaches; defaults to 50 entries when omitted
@@ -37,7 +42,10 @@ export class CarburetorHistory<T extends object> {
     constructor(protected carburetor: ICarburetor<T>, options: IHistoryOptions = {}) {
         this.limit = options.limit || 50;
         this.current = carburetor.snapshot();
-        this.dispose = carburetor.watch(this.recordBound);
+
+        const subscriptionId = carburetor.subscribe(this.recordBound);
+
+        this.dispose = () => carburetor.unsubscribe(subscriptionId);
     }
 
     /**

@@ -1,4 +1,5 @@
-import {Carburetor, TPath, TPathSet} from "@/Carburetor";
+import {Carburetor} from "@/Carburetor";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 
 interface IItemsData {
     items: number[];

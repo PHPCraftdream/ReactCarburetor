@@ -44,8 +44,13 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         }
     };
 
+    // persist() needs "every write" — subscribe with no `reads` is the engine's own way to say
+    // that, cheaper than a watch(select, onChange) whose selector would have to read (and diff)
+    // the whole tree to notice anything.
     if (!coalesce) {
-        return carburetor.watch(write);
+        const id = carburetor.subscribe(write);
+
+        return () => carburetor.unsubscribe(id);
     }
 
     // One write per microtask: further changes before it runs just move the value it will
@@ -62,7 +67,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         write();
     };
 
-    const unwatch = carburetor.watch(() => {
+    const id = carburetor.subscribe(() => {
         if (pending) {
             return;
         }
@@ -72,7 +77,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     });
 
     return () => {
-        unwatch();
+        carburetor.unsubscribe(id);
         flush();
     };
 };

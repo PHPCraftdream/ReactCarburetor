@@ -12,10 +12,14 @@ import {todoToken} from "./ToDo/Scope/Tokens/todoToken";
 const {scope} = createTodoScope(new MockToDoClientAPI(400), window.localStorage);
 const todos = scope.get(todoToken);
 
-// watch() narrowed to one path: the tab title follows the open count and nothing else.
-todos.watch(() => {
-    document.title = (todos.getData().activeCount ?? 0) + ' open — Todo demo';
-}, new Set(['activeCount']));
+// watch() subscribes to exactly what the selector reads: the tab title follows the open
+// count and nothing else, with no path string in sight.
+todos.watch(
+    (data) => data.activeCount ?? 0,
+    (next) => {
+        document.title = next + ' open — Todo demo';
+    }
+);
 
 // Misuse warnings are development-only anyway; the switch is shown here explicitly.
 diagnostics.setEnabled(process.env.NODE_ENV !== 'production');

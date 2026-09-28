@@ -1,4 +1,5 @@
-import {TPath, TPathSet, WILDCARD_PATH} from "@/Carburetor";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {pathsIntersect} from "@/Carburetor/Store/Paths/pathsIntersect";
 import {SubscriberIndex} from "@/Carburetor/Store/Paths/SubscriberIndex";
 

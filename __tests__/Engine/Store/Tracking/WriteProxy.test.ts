@@ -1,4 +1,5 @@
-import {Carburetor, TPath} from '@/Carburetor';
+import {Carburetor} from '@/Carburetor';
+import {TPath} from '@/Carburetor/Models/Paths';
 import {IProxyCache, PROXY_CACHE} from '@/Carburetor/Store/Tracking/Models';
 
 interface ILeaf {

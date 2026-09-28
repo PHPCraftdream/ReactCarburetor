@@ -1,4 +1,5 @@
-import {Carburetor, TPath} from "@/Carburetor";
+import {Carburetor} from "@/Carburetor";
+import {TPath} from "@/Carburetor/Models/Paths";
 import {detachSelection} from "@/Carburetor/Component/Connection/detachSelection";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";

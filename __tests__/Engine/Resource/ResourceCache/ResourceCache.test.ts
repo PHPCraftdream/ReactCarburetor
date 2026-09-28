@@ -1,4 +1,5 @@
-import {EResourceStatus, TPath, TPathSet} from "@/Carburetor";
+import {EResourceStatus} from "@/Carburetor";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {encodeCacheKey} from "@/Carburetor/Resource/Cache/encodeCacheKey";
 
@@ -468,6 +469,36 @@ describe('ResourceCache', () => {
             cache.getEntry(args);
 
             expect(stringify).toHaveBeenCalledTimes(2);
+        } finally {
+            stringify.mockRestore();
+        }
+    });
+
+    // R16-10(4): resolve() replaces the pathOf+getEntry pair `useResource` used to call, and
+    // does it with one serialization instead of two — keyOf() runs exactly once inside it,
+    // where the old pair each ran their own.
+    test('resolve() serializes the arguments exactly once per lookup, cold and warm', () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+        const args = {id: 'a'};
+
+        const stringify = rstest.spyOn(JSON, 'stringify');
+
+        try {
+            stringify.mockClear();
+
+            const cold = cache.resolve(args);
+
+            expect(stringify).toHaveBeenCalledTimes(1);
+            expect(cold.key).toEqual(cache.keyOf(args));
+            expect(cold.path).toEqual(cache.pathOf(args));
+            expect(cold.view).toEqual(cache.getEntry(args));
+
+            stringify.mockClear();
+
+            cache.resolve(args);
+
+            expect(stringify).toHaveBeenCalledTimes(1);
         } finally {
             stringify.mockRestore();
         }

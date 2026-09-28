@@ -818,7 +818,10 @@ firing after the thing it served is gone.
 **Right**
 
 ```ts
-const dispose = todoCarburetor.watch(() => log(todoCarburetor.getData()), reads);
+const dispose = todoCarburetor.watch(
+    (data) => data,
+    (next) => log(next)
+);
 ```
 
 `watch` returns a disposer, which makes the cleanup impossible to forget. Components do not

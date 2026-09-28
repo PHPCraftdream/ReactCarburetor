@@ -1,4 +1,4 @@
-import {TPath} from "@/Carburetor";
+import {TPath} from "@/Carburetor/Models/Paths";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 
 const flush = async (): Promise<void> => {

@@ -1,5 +1,7 @@
 import {
     IResourceCacheOptions,
+    IResourceResolution,
+    IResourceSource,
     IResourceView,
     TResourceLoader,
 } from "@/Carburetor/Models/Resource";
@@ -30,7 +32,8 @@ const ABSENT_VIEW: IResourceView<unknown> = Object.freeze({...getInitialCacheEnt
  * precision for free: a component reading one entry is not woken by another entry's answer. See
  * docs/promise-cache.md for the decisions behind the shape, the escaped key and the TTL.
  */
-export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TArgs> {
+export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TArgs>
+    implements IResourceSource<T, TArgs> {
     /** Most recently keyed arguments. */
     protected lastKeyArgs: TArgs | undefined = undefined;
     /** Serialized value of the most recently keyed arguments. */
@@ -135,6 +138,23 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         this.viewCache.set(key, view);
 
         return view;
+    }
+
+    /**
+     * Resolves one argument set to its key, read path and current view in one call — the
+     * `IResourceSource` contract `useResource` needs (R16-10(4)), replacing the keyOf/pathOfKey/
+     * getEntryByKey trio it used to call separately.
+     *
+     * Serializes `args` exactly once: `keyOf` is called a single time here, instead of once per
+     * member of the old trio.
+     *
+     * @param args - the loader arguments identifying the entry
+     */
+    public resolve(args: TArgs): IResourceResolution<T> {
+        const key = this.keyOf(args);
+
+        // A fresh record: resolve() is public, and a shared scratch object would alias results.
+        return {key, path: this.pathOfKey(key), view: this.getEntryByKey(key)};
     }
 
     /**

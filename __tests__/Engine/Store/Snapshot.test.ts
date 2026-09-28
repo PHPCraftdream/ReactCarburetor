@@ -1,4 +1,5 @@
-import {Carburetor, deepClone, TPath, transaction} from "@/Carburetor";
+import {Carburetor, deepClone, transaction} from "@/Carburetor";
+import {TPath} from "@/Carburetor/Models/Paths";
 
 interface ITestData {
     a: number;
@@ -258,7 +259,7 @@ describe('watch', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        const dispose = carburetor.watch(() => calls++, new Set<TPath>(['a']));
+        const dispose = carburetor.watch((data) => data.a, () => calls++);
 
         carburetor.setA(1);
         expect(calls).toEqual(1);

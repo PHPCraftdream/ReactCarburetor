@@ -38,10 +38,11 @@ export const createTodoScope = (api: IToDoClientAPI = new MockToDoClientAPI(), s
     // Loads what was stored, then mirrors every change back.
     const stopPersist: TDisposer = storage ? persist(filter, {key: 'todo-demo:filter', storage}) : () => undefined;
 
-    // Outside React, a store is observed with watch(); no reads means every write.
-    const stopStatus = todos.watch(() => {
+    // Outside React, a store is observed with subscribe(); no reads means every write.
+    const statusSubscriptionId = todos.subscribe(() => {
         status.setEmittedMessage((new Date()).toISOString());
     });
+    const stopStatus = () => todos.unsubscribe(statusSubscriptionId);
 
     return {
         scope,

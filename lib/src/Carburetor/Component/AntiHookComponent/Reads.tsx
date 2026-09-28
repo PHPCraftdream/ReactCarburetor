@@ -208,7 +208,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * re-queueing the same failing request from the failure's own notification; only a successful
      * answer, an explicit `refresh`/`load`, or a new `invalidate` re-arms a fetch.
      *
-     * @param source - the cache entry's owner: `pathOf(args)` gives the path this render
+     * @param source - the cache entry's owner: `resolve(args)` gives the path this render
      * subscribes to, and a stale entry queues a `load` for after the commit
      * @param args - the cache key, identifying the entry read now and targeted by the deferred
      * `load`; a different value reads a different entry
@@ -217,13 +217,12 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         source: IResourceSource<T, TArgs>,
         args: TArgs
     ): IResourceView<T> {
-        // Resolved once: pathOfKey/getEntryByKey both need the key, and keyOf serializes args
-        // to get it, so deriving it twice here would serialize the same args twice per render.
-        const key = source.keyOf(args);
+        // One call: resolve() serializes args once and hands back the key, the read path and
+        // the current view together (R16-10(4)), where this used to be three separate calls.
+        const {path, view} = source.resolve(args);
 
-        this.track(source).reads.add(source.pathOfKey(key));
+        this.track(source).reads.add(path);
 
-        const view = source.getEntryByKey(key);
         const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error && !view.failed;
 
         // The deferred load belongs to the render attempt that queued it, exactly like the reads
@@ -244,7 +243,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 });
             } else if (IS_DEVELOPMENT) {
                 diagnostics.report(
-                    'useResource() skipped the deferred load for entry ' + source.pathOfKey(key) +
+                    'useResource() skipped the deferred load for entry ' + path +
                     ' because it ran outside a render attempt. That is the only place a deferred ' +
                     'load can be attributed to a commit: run useResource() inside render(), the ' +
                     'way every other read API is meant to run, or refresh the entry from an effect.'

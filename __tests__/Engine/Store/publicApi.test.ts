@@ -24,7 +24,6 @@ const EXPECTED_EXPORTS: string[] = [
     'ResourceCache',
     'ResourceCarburetor',
     'ScopedAntiHookComponent',
-    'WILDCARD_PATH',
     'bind',
     'carburetorToken',
     'computed',
@@ -56,6 +55,9 @@ const INTERNALS: string[] = [
     'UpdateBatch',
     'updateBatch',
     'IS_DEVELOPMENT',
+    // R16-10(1): the path grammar is an engine internal, not a stable format — subscribe with
+    // no `reads` reaches the same "every write" effect without naming this constant.
+    'WILDCARD_PATH',
 ];
 
 describe('public API', () => {

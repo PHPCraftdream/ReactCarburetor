@@ -1,4 +1,6 @@
-import {diagnostics, TPath, WILDCARD_PATH} from "@/Carburetor";
+import {diagnostics} from "@/Carburetor";
+import {TPath} from "@/Carburetor/Models/Paths";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {getTestData, readsOf, TestCarburetor} from "./fixtures";
 
 describe('Carburetor', () => {    test('notifies subscribers synchronously by default', () => {

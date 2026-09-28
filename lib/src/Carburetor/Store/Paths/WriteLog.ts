@@ -87,9 +87,10 @@ export class WriteLog {
      * the log being complete; only how many needless re-renders it saves does.
      *
      * @param baselineVersion - the version the caller's read set was captured at
-     * @param reads - the paths that read set touched
+     * @param reads - the paths that read set touched; only ever read, never mutated, so the
+     * public `hasDriftSince` can hand this a `ReadonlySet` straight through
      */
-    public matches(baselineVersion: number, reads: TPathSet): boolean {
+    public matches(baselineVersion: number, reads: ReadonlySet<TPath>): boolean {
         if (baselineVersion < this.watermark) {
             return true;
         }
@@ -141,7 +142,7 @@ export class WriteLog {
  * @param path - the written path being checked
  * @param reads - the read set to check it against
  */
-const hasAncestorIn = (path: TPath, reads: TPathSet): boolean => {
+const hasAncestorIn = (path: TPath, reads: ReadonlySet<TPath>): boolean => {
     let cut = path.lastIndexOf(PATH_SEPARATOR);
 
     while (cut > 0) {
@@ -158,7 +159,7 @@ const hasAncestorIn = (path: TPath, reads: TPathSet): boolean => {
 };
 
 /** The union of every ancestor of every path in `reads`, for the "written ancestor" case. */
-const ancestorsOfAll = (reads: TPathSet): Set<TPath> => {
+const ancestorsOfAll = (reads: ReadonlySet<TPath>): Set<TPath> => {
     const ancestors = new Set<TPath>();
 
     reads.forEach((path: TPath) => {

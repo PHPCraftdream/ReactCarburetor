@@ -21,7 +21,12 @@ export class UndoCarburetor<T extends object> extends Carburetor<IUndoData> {
         super({canUndo: false, canRedo: false});
 
         this.history = new CarburetorHistory<T>(source, {limit: 50});
-        this.stopWatching = source.watch(this.refresh);
+
+        // Needs "every write" — subscribe with no `reads` says that directly, the same choice
+        // CarburetorHistory itself makes for the same reason.
+        const subscriptionId = source.subscribe(this.refresh);
+
+        this.stopWatching = () => source.unsubscribe(subscriptionId);
     }
 
     /** Steps the watched store one change back. */

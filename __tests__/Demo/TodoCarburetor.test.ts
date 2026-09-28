@@ -1,4 +1,4 @@
-import {TPath, TPathSet} from "@/Carburetor";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {MockToDoClientAPI} from "@/ToDo/API/MockToDoClientAPI";
 import {ITodo, ITodoDetails, IToDoClientAPI, ITodoList} from "@/ToDo/API/Models";
 import {TodoCarburetor} from "@/ToDo/Carburetors/TodoCarburetor";
@@ -52,16 +52,23 @@ const countDerivation = (carburetor: TodoCarburetor): IDerivationCounts => {
     return counts;
 };
 
-/** Counts the writes that reach a set of paths, with the disposer to end the watch. */
+/**
+ * Counts the writes that reach a set of paths, with the disposer to end the watch.
+ *
+ * Uses `subscribe(callback, {reads})` directly rather than the public `watch(select, onChange)`
+ * (R16-10(1)): this test tooling wants raw path precision — including nested and multi-path
+ * read sets a selector cannot express as cheaply — which is exactly the engine's documented
+ * extension contract, not the hidden-grammar consumer surface.
+ */
 const watchPaths = (carburetor: TodoCarburetor, ...paths: TPath[]): IWriteWatcher => {
     const reads: TPathSet = new Set<TPath>(paths);
     let notifications = 0;
 
-    const dispose = carburetor.watch(() => {
+    const id = carburetor.subscribe(() => {
         notifications++;
-    }, reads);
+    }, {reads});
 
-    return {writes: () => notifications, dispose};
+    return {writes: () => notifications, dispose: () => carburetor.unsubscribe(id)};
 };
 
 /** Fires loadData and waits out the API promise, as the mount effect would. */

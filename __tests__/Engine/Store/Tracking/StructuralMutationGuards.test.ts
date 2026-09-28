@@ -1,7 +1,8 @@
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
-import {AntiHookComponent, Carburetor, TPath} from '@/Carburetor';
+import {AntiHookComponent, Carburetor} from '@/Carburetor';
+import {TPath} from '@/Carburetor/Models/Paths';
 import {TReadonly} from '@/Carburetor/Models/Base';
 
 interface IBranch {

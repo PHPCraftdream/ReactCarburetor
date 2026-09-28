@@ -1,5 +1,13 @@
 import {TDisposer, TReadonly, TSubscriber, TUpdater} from "./Base";
-import {TPath, TPathRecorder, TPathSet} from "./Paths";
+import {TPathSet} from "./Paths";
+
+/**
+ * Picks the part of a carburetor's data one subscription cares about, run against a tracked
+ * read view — the same mechanism `read()` and the hooks bridge use. `watch()`'s reads and
+ * `sameSelection` comparison both key off what this touches, so a conditional selector still
+ * narrows or widens the subscription the way a direct read would.
+ */
+export type TSelector<T, R> = (data: TReadonly<T>) => R;
 
 /**
  * Delivery policy for updates.
@@ -18,8 +26,17 @@ export interface ISubscribeOptions {
      * one subscription across renders. Omit it to get a generated one.
      */
     id?: string;
-    /** Paths the subscriber depends on. Omitted means every update reaches it. */
-    reads?: TPathSet;
+    /**
+     * Paths the subscriber depends on. Omitted means every update reaches it.
+     *
+     * Read-only by contract: a path string's own grammar (the separator, the escapes, the
+     * markers R16-01 added) is an engine internal, not a stable format callers should build or
+     * parse — `subscribe(callback, {reads})` is documented only as an extension point that reads
+     * a path set already produced by `read()`'s recorder. Mutating this set after subscribing
+     * has no effect (the index files it once, at subscribe time); `extend()` is the supported way
+     * to add one more path to a live subscription.
+     */
+    reads?: ReadonlySet<string>;
 }
 
 /**
@@ -40,7 +57,7 @@ export interface ICarburetorSubscription {
      * invalidates at the granularity of its whole value) is left out, and a caller with no
      * finer answer available falls back to "the version moved at all".
      */
-    hasDriftSince?: (baselineVersion: number, reads: TPathSet) => boolean;
+    hasDriftSince?: (baselineVersion: number, reads: ReadonlySet<string>) => boolean;
 }
 
 /**
@@ -55,15 +72,36 @@ export interface IInspectable extends ICarburetorSubscription {
 export interface ICarburetor<T> extends IInspectable {
     /** Untracked data, for code outside render. */
     getData: () => T;
-    /** Tracked data: every field read is reported to `record`. */
-    read: (record: TPathRecorder) => TReadonly<T>;
+    /**
+     * Tracked data: every field read is reported to `record`. Documented, alongside
+     * `subscribe(callback, {reads})`, as the engine's extension contract — building or parsing
+     * the path strings `record` receives is not: R16-01 changed their shape once already.
+     */
+    read: (record: (path: string) => void) => TReadonly<T>;
     setData: (data: T) => T;
     /** Detached deep copy of the data, safe to serialize or keep around. */
     snapshot: () => T;
     /** Replaces the data with a previously taken snapshot. */
     restore: (data: T) => void;
-    /** Subscribes outside React: reacts to writes under `reads`, or every write when omitted. */
-    watch: (callback: TSubscriber, reads?: TPathSet) => TDisposer;
+    /**
+     * Subscribes outside React to a derived value: `select` runs against a tracked read view,
+     * the same mechanism the hooks bridge uses, and its reads become this subscription's read
+     * set. `onChange(next, previous)` fires only when the selection actually changed — never on
+     * the initial call, and never for a write that moved the selector's reads without moving its
+     * result — and the selector's read set is re-tracked after every fire, since a conditional
+     * selector can read different paths next time. A throwing selector or callback is isolated
+     * the same way any other subscriber's throw is: the write has already landed, the remaining
+     * subscribers still hear it, and the failure is reported rather than re-thrown.
+     *
+     * `select`/`onChange` never see raw path strings, which is the point: prefer this over
+     * `subscribe(callback, {reads})` unless you are writing engine-level tooling that genuinely
+     * needs "every write" (history, persistence, devtools) — for that, use `subscribe` with no
+     * `reads` at all rather than reconstructing it here.
+     *
+     * @param select - reads the part of the data this subscription cares about
+     * @param onChange - called with the fresh and previous selection when they differ
+     */
+    watch: <R>(select: TSelector<T, R>, onChange: (next: R, previous: R) => void) => TDisposer;
     /**
      * Adds one path to an already-registered subscription's read set; an unknown id is a no-op.
      *
@@ -72,7 +110,7 @@ export interface ICarburetor<T> extends IInspectable {
      * lives here rather than on `ICarburetorSubscription` so a third-party subscription source
      * — a computed among them — does not have to carry a no-op just to satisfy the interface.
      */
-    extend: (id: string, path: TPath) => void;
+    extend: (id: string, path: string) => void;
 }
 
 /** A carburetor as seen by the batch coordinator. */

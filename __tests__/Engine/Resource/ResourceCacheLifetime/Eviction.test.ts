@@ -1,4 +1,4 @@
-import {TPath, TPathSet} from "@/Carburetor";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 
 const makeLoader = () => {

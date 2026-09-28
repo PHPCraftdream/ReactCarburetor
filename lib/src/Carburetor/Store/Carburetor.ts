@@ -1,7 +1,9 @@
 import {IDict, TDisposer, TReadonly, TSubscriber} from "@/Carburetor/Models/Base";
 import {TPath, TPathRecorder, TPathSet, TAliasLedger} from "@/Carburetor/Models/Paths";
-import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler} from "@/Carburetor/Models/Store";
+import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler, TSelector} from "@/Carburetor/Models/Store";
+import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {deepClone} from "./Utils/deepClone";
+import {detachOpaque} from "./Utils/detachOpaque";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WriteLog} from "./Paths/WriteLog";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
@@ -14,6 +16,30 @@ import {isTrackable} from "./Tracking/isTrackable";
 import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {getUid} from "./Utils/getUid";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
+
+/**
+ * `watch(select, onChange)`'s detach step: like `useCarburetorValue`'s own `detach`, a `Map`,
+ * `Set` or `Date` is copied structurally (safe — `sameSelection` never trusts their identity
+ * anyway, only their content matters for comparison), while a genuine class instance has no
+ * generic safe copy and is rejected outright rather than handed to `onChange` still live.
+ *
+ * @param value - the selector's result to detach before handing it to `onChange`/storing it
+ * for the next comparison
+ */
+const detachWatchSelection = <R>(value: R): R => {
+    if (value === null || typeof value !== 'object') {
+        return value;
+    }
+
+    return detachOpaque(value, (instance: object): void => {
+        throw new Error(
+            'watch() cannot select a live ' +
+            (Object.getPrototypeOf(instance)?.constructor?.name || 'class') +
+            ' instance because in-place changes cannot produce a safe comparison. Select the ' +
+            'fields the callback needs, or return a plain object of those fields.'
+        );
+    }) as R;
+};
 
 // Declared locally rather than through @types/node: bundlers substitute this exact member
 // expression at build time, which is what lets the guarded blocks below be dropped whole.
@@ -97,7 +123,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * @param baselineVersion - the version a render's read set was captured at
      * @param reads - the paths that read set touched
      */
-    public hasDriftSince(baselineVersion: number, reads: TPathSet): boolean {
+    public hasDriftSince(baselineVersion: number, reads: ReadonlySet<TPath>): boolean {
         return this.writeLog.matches(baselineVersion, reads);
     }
 
@@ -162,10 +188,17 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         const id = options.id || getUid();
 
         // Adopted, not copied: callers here (a component's committed read set, a computed's
-        // own dependency.reads) never mutate it after handing it over, and extend() relies on
-        // that — see addPath's own comment. watch() copies at its boundary instead, since that
-        // caller keeps its reference. No reads means everything: coarse, but nothing is missed.
-        const reads = options.reads || new Set<TPath>([WILDCARD_PATH]);
+        // own dependency.reads, watch()'s freshly built read set) never mutate it after handing
+        // it over, and extend() relies on that — see addPath's own comment. No reads means
+        // everything: coarse, but nothing is missed.
+        //
+        // options.reads is ReadonlySet<string> in the public contract — mutating it after
+        // subscribing already has no effect (the index files it once, here), so the interface
+        // says so — but the engine still needs the concrete Set instance underneath, since
+        // extend() (and a computed's own dependency amend) mutate it in place afterward. Every
+        // caller reaching this line, internal or public, hands over a real Set; the cast just
+        // recovers that.
+        const reads = (options.reads as TPathSet | undefined) || new Set<TPath>([WILDCARD_PATH]);
 
         this.subscribers[id] = {callback};
         this.subscriberIndex.add(id, reads);
@@ -202,17 +235,54 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     }
 
     /**
-     * Subscribes outside React — for persistence, logging, analytics.
-     *
-     * Copies `reads` before handing it to `subscribe()`, which otherwise adopts it as-is: a
-     * caller here may keep its reference and mutate it later, unlike the engine's own callers.
-     *
-     * @param callback - run per matching write with no arguments; the returned disposer
-     * unsubscribes it.
-     * @param reads - the paths the callback cares about; omitted means every write.
+     * Runs `select` against a tracked read of the data, returning both the result and the
+     * paths that produced it — the one place `watch()` reads, so its first call and every
+     * later re-run go through the identical mechanism.
      */
-    public watch(callback: TSubscriber, reads?: TPathSet): TDisposer {
-        const id = this.subscribe(callback, {reads: reads ? new Set<TPath>(reads) : undefined});
+    private runSelector<R>(select: TSelector<T, R>): {value: R; reads: TPathSet} {
+        const reads = new Set<TPath>();
+        const view = this.read((path: TPath) => reads.add(path));
+
+        return {value: select(view), reads};
+    }
+
+    /**
+     * Subscribes outside React — for persistence, logging, analytics — to a derived value
+     * rather than to raw paths; see the interface doc for the fuller contract.
+     *
+     * Reads twice per matching write: once (isolated, by `notifyWrites`) to recompute
+     * `select`, and — only when the fresh result differs from the previous one — the detach
+     * that turns it into a value `onChange` and the next comparison can hold onto safely.
+     * Re-registering the read set on every invocation, changed or not, is what keeps a
+     * conditional selector's subscription following whichever branch it read last.
+     *
+     * @param select - reads the part of the data this subscription cares about
+     * @param onChange - called with the fresh and previous selection when they differ
+     */
+    public watch<R>(select: TSelector<T, R>, onChange: (next: R, previous: R) => void): TDisposer {
+        const id = getUid();
+        const initial = this.runSelector(select);
+
+        let previous: R = detachWatchSelection(initial.value);
+
+        const callback = (): void => {
+            const fresh = this.runSelector(select);
+            const changed = !sameSelection(previous, fresh.value);
+
+            // Re-filed unconditionally: a selector whose branch moved without moving its
+            // result must still hand the subscription its new read set.
+            this.subscribe(callback, {id, reads: fresh.reads});
+
+            if (changed) {
+                const next = detachWatchSelection(fresh.value);
+                const last = previous;
+
+                previous = next;
+                onChange(next, last);
+            }
+        };
+
+        this.subscribe(callback, {id, reads: initial.reads});
 
         return () => {
             this.unsubscribe(id);
