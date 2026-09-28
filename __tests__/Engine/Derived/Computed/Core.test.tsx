@@ -128,7 +128,7 @@ describe('computed', () => {
         expect(notified).toEqual(1);
     });
 
-    test('a chain of computeds stays quiet when the inner value does not move', () => {
+    test('a chain of computeds stays quiet when a title write touches neither computed (R16-01)', () => {
         const carburetor = new ListCarburetor(getData());
         let innerRuns = 0;
         let outerRuns = 0;
@@ -152,16 +152,18 @@ describe('computed', () => {
         expect(innerRuns).toEqual(1);
         expect(outerRuns).toEqual(1);
 
-        // A title change invalidates the inner computed but does not move its value,
-        // so the outer one is never asked to recompute.
+        // Enumerating `items` subscribes to its key-set marker, not its own path (R16-01): a
+        // title write changes no key, so the inner computed is not even asked to recompute,
+        // and the outer one — reading only the inner's value — stays quiet too.
         carburetor.setTitle('a', 'renamed');
 
-        expect(innerRuns).toEqual(2);
+        expect(innerRuns).toEqual(1);
         expect(outerRuns).toEqual(1);
         expect(notified).toEqual(0);
 
         carburetor.setDone('a', true);
 
+        expect(innerRuns).toEqual(2);
         expect(outerRuns).toEqual(2);
         expect(notified).toEqual(1);
     });

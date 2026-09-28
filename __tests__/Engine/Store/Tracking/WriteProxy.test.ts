@@ -109,9 +109,11 @@ describe('the write proxy skips only SameValue no-ops over existing own keys (R2
         const view = store.read((path: TPath) => reads.add(path));
         let wakes = 0;
 
-        // Enumeration records 'leaf', the structure the write below changes.
+        // Enumeration records 'leaf.~k' (R16-01), the key set the write below changes — not
+        // 'leaf', which every value write under an unchanged key set would also match.
         expect(Object.keys(view.leaf)).toEqual(['zero', 'nan', 'count', 'keep']);
-        expect(reads.has('leaf')).toBe(true);
+        expect(reads.has('leaf.~k')).toBe(true);
+        expect(reads.has('leaf')).toBe(false);
 
         store.subscribe(() => wakes++, {id: 'keys-reader', reads});
 
@@ -282,5 +284,57 @@ describe('R15-08: building the write-proxy path only where it is used records ex
 
         expect(indexWakes).toEqual(1);
         expect(unrelatedWakes).toEqual(0);
+    });
+});
+
+describe('R16-01: defineProperty and deleteProperty wake an enumerator only on a real key-set change', () => {
+    test('defineProperty of a new key wakes an enumerator; redefining an existing one does not', () => {
+        const store = new LeafCarburetor(getTree());
+        const reads = new Set<TPath>();
+        const view = store.read((path: TPath) => reads.add(path));
+        let wakes = 0;
+
+        expect(Object.keys(view.leaf)).toEqual(['zero', 'nan', 'count', 'keep']);
+
+        store.subscribe(() => wakes++, {id: 'keys-reader', reads});
+
+        const descriptor = (value: unknown): PropertyDescriptor =>
+            ({value, enumerable: true, configurable: true, writable: true});
+
+        // Redefining `count` with the same key changes no key, only its descriptor.
+        store.edit((draft: ITree) => {
+            Object.defineProperty(draft.leaf, 'count', descriptor(1));
+        });
+        expect(wakes).toEqual(0);
+
+        // Defining a key the leaf never had changes the key set.
+        store.edit((draft: ITree) => {
+            Object.defineProperty(draft.leaf, 'label', descriptor('x'));
+        });
+        expect(wakes).toEqual(1);
+        expect(Object.keys(view.leaf)).toEqual(['zero', 'nan', 'count', 'keep', 'label']);
+    });
+
+    test('deleteProperty of an existing own key wakes an enumerator', () => {
+        const store = new LeafCarburetor(getTree());
+        const reads = new Set<TPath>();
+        const view = store.read((path: TPath) => reads.add(path));
+        let wakes = 0;
+
+        expect(Object.keys(view.leaf)).toEqual(['zero', 'nan', 'count', 'keep']);
+
+        store.subscribe(() => wakes++, {id: 'keys-reader', reads});
+
+        // Deleting a key the leaf never had is a no-op for the key set.
+        store.edit((draft: ITree) => {
+            delete (draft.leaf as unknown as Record<string, unknown>).absent;
+        });
+        expect(wakes).toEqual(0);
+
+        store.edit((draft: ITree) => {
+            delete (draft.leaf as {keep?: {title: string}}).keep;
+        });
+        expect(wakes).toEqual(1);
+        expect(Object.keys(view.leaf)).toEqual(['zero', 'nan', 'count']);
     });
 });

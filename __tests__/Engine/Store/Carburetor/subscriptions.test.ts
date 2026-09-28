@@ -271,7 +271,7 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(reads.has(WILDCARD_PATH)).toBeFalsy();
     });
 
-    test('enumerating a branch subscribes to the branch itself', () => {
+    test('enumerating a branch subscribes to its key-set marker, not the branch itself (R16-01)', () => {
         const carburetor = new TestCarburetor(getTestData());
         const reads = new Set<TPath>();
 
@@ -279,7 +279,8 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         const keys = Object.keys(data.nested);
 
         expect(keys).toEqual(['value']);
-        expect(reads.has('nested')).toBeTruthy();
+        expect(reads.has('nested')).toBeFalsy();
+        expect(reads.has('nested.~k')).toBeTruthy();
     });
 
     test('extend wakes the subscriber on a write to the newly added path', () => {

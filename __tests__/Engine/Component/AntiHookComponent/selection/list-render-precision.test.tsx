@@ -446,3 +446,126 @@ describe('well-known absent symbol reads do not subscribe to the whole store (R1
         unmount();
     });
 });
+
+interface IKeyedRow {
+    title: string;
+}
+
+interface IKeyedListData {
+    items: Record<string, IKeyedRow>;
+}
+
+const buildKeyedList = (ids: string[]): IKeyedListData => ({
+    items: Object.fromEntries(ids.map((id: string): [string, IKeyedRow] => [id, {title: id}])),
+});
+
+class KeyedListCarburetor extends Carburetor<IKeyedListData> {
+    public setTitle = (id: string, title: string): void => {
+        this.update((draft: IKeyedListData): void => {
+            draft.items[id].title = title;
+        });
+    };
+
+    public addItem = (id: string, row: IKeyedRow): void => {
+        this.update((draft: IKeyedListData): void => {
+            draft.items[id] = row;
+        });
+    };
+
+    public deleteItem = (id: string): void => {
+        this.update((draft: IKeyedListData): void => {
+            delete draft.items[id];
+        });
+    };
+}
+
+interface IKeyedRowProps {
+    store: KeyedListCarburetor;
+    id: string;
+    onRender: (id: string) => void;
+}
+
+class KeyedRow extends AntiHookComponent<IKeyedRowProps> {
+    render() {
+        this.props.onRender(this.props.id);
+
+        const data = this.useCarburetor(this.props.store);
+
+        return <li className={`row-${this.props.id}`}>{data.items[this.props.id].title}</li>;
+    }
+}
+
+interface IKeyedParentProps {
+    store: KeyedListCarburetor;
+    onRender: () => void;
+    onRowRender: (id: string) => void;
+}
+
+/** Lays out rows from Object.keys(items), the R16-01 form: an id-connected list. */
+class KeyedLoopParent extends AntiHookComponent<IKeyedParentProps> {
+    @bind
+    private renderRow(id: string): React.ReactElement {
+        return <KeyedRow key={id} store={this.props.store} id={id} onRender={this.props.onRowRender} />;
+    }
+
+    render() {
+        this.props.onRender();
+
+        const data = this.useCarburetor(this.props.store);
+
+        return <ul>{Object.keys(data.items).map(this.renderRow)}</ul>;
+    }
+}
+
+describe('a parent laying out rows from Object.keys(items) re-renders only on a key-set change (R16-01)', () => {
+    test('editing one row title re-renders that row only, not the Object.keys(items) parent', () => {
+        const store = new KeyedListCarburetor(buildKeyedList(['a', 'b', 'c']));
+        let parentRenders = 0;
+        const rowRenders: Record<string, number> = {};
+        const onRowRender = (id: string): void => {
+            rowRenders[id] = (rowRenders[id] ?? 0) + 1;
+        };
+
+        const {container, unmount} = render(
+            <KeyedLoopParent store={store} onRender={() => parentRenders++} onRowRender={onRowRender} />
+        );
+
+        expect(parentRenders).toEqual(1);
+
+        act(() => store.setTitle('b', 'changed'));
+
+        // Before R16-01, the parent's Object.keys(items) read recorded 'items' itself, which a
+        // write to 'items.b.title' matched through the branch index — re-rendering every row's
+        // layout unnecessarily. It now records the key-set marker, untouched by a title write.
+        expect(parentRenders).toEqual(1);
+        expect(rowRenders.b).toEqual(2);
+        expect(rowRenders.a).toEqual(1);
+        expect(rowRenders.c).toEqual(1);
+        expect(container.querySelector('.row-b')?.textContent).toEqual('changed');
+
+        unmount();
+    });
+
+    test('adding a row re-renders the parent once, for the key it added; removing one does too', () => {
+        const store = new KeyedListCarburetor(buildKeyedList(['a', 'b']));
+        let parentRenders = 0;
+
+        const {container, unmount} = render(
+            <KeyedLoopParent store={store} onRender={() => parentRenders++} onRowRender={() => {}} />
+        );
+
+        expect(parentRenders).toEqual(1);
+
+        act(() => store.addItem('c', {title: 'new'}));
+
+        expect(parentRenders).toEqual(2);
+        expect(container.querySelectorAll('li').length).toEqual(3);
+
+        act(() => store.deleteItem('a'));
+
+        expect(parentRenders).toEqual(3);
+        expect(container.querySelectorAll('li').length).toEqual(2);
+
+        unmount();
+    });
+});

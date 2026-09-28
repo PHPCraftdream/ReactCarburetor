@@ -1,5 +1,6 @@
 import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
+import {keysPath} from "@/Carburetor/Store/Paths/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {createProxyCache} from "./createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
@@ -69,6 +70,21 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * caller reads the same key through the same handler repeatedly.
      */
     private childPaths?: Map<string, TPath>;
+
+    /** `keysPath(basePath)`, memoized: this instance's own key-set marker never changes. */
+    private keysMarkerPath?: TPath;
+
+    /**
+     * This instance's own key-set marker (R16-01): a key appearing, disappearing, or an array
+     * truncation removing indices wakes a reader that enumerated this container.
+     *
+     * A reader of some untouched leaf under it is not woken. Never consulted when `basePath` is
+     * already the wildcard — every write there already collapses to it, so a marker under it
+     * would be built and recorded for nothing.
+     */
+    private keysMarker(): TPath {
+        return this.keysMarkerPath ?? (this.keysMarkerPath = keysPath(this.basePath));
+    }
 
     /**
      * The path a write to `key` is attributed to.
@@ -164,12 +180,13 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
     set(source: T, key: string | symbol, value: unknown): boolean {
         const previous: unknown = Reflect.get(source, key);
         const raw: unknown = unwrapWriteProxy(value);
+        const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
 
         // A genuine no-op is an own key already holding the assigned value. The comparison is
         // SameValue (Object.is), not ===: +0 and -0 are distinct values, and NaN matches
         // itself. An absent key is never a no-op either — assigning even `undefined` must
         // create the own property, or `in`, enumeration and hasOwn would never see the write.
-        if (Object.prototype.hasOwnProperty.call(source, key) && Object.is(previous, raw)) {
+        if (wasOwn && Object.is(previous, raw)) {
             return true;
         }
 
@@ -179,16 +196,29 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         this.aliases?.checkWrite(source, this.basePath);
         this.aliases?.forget(previous);
 
+        // A key that did not already exist changes the key set itself (R16-01): an index write
+        // past the array's own end is exactly such a case, alongside an ordinary new object
+        // key. A symbol key's write already collapses onto the wildcard below, which wakes an
+        // enumerator regardless, so building a marker for it here would be wasted work.
+        if (!wasOwn && typeof key === 'string' && this.basePath !== WILDCARD_PATH) {
+            this.record(this.keysMarker());
+        }
+
         // A direct `length` write that shrinks the array truncates every index above the new
         // length without a deleteProperty per index — the one array write `set` alone cannot
         // attribute precisely. Each removed index is recorded on its own, so the row it held
         // wakes and unmounts; pop/shift/splice already delete their removed indices explicitly
         // and only ever shrink `length` to match afterwards, so this fires for them too,
-        // redundantly but harmlessly — the paths are recorded already.
+        // redundantly but harmlessly — the paths are recorded already. The truncation also
+        // removes those indices from the key set, so an enumerator wakes too.
         if (this.isArray && key === 'length' && typeof raw === 'number' && typeof previous === 'number'
             && raw < previous) {
             for (let removed = raw; removed < previous; removed++) {
                 this.record(joinPath(this.basePath, String(removed)));
+            }
+
+            if (this.basePath !== WILDCARD_PATH) {
+                this.record(this.keysMarker());
             }
         }
 
@@ -216,7 +246,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
     /**
      * `Object.defineProperty` never reaches `set`, so without this trap the write would land
-     * in the data and wake nobody.
+     * in the data and wake nobody. A new own key also wakes an enumerator of this container
+     * (R16-01); redefining an existing one does not change the key set.
      *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being defined.
@@ -225,6 +256,11 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
     defineProperty(source: T, key: string | symbol, descriptor: PropertyDescriptor): boolean {
         this.aliases?.checkWrite(source, this.basePath);
         this.aliases?.forget(Reflect.get(source, key));
+
+        if (!Object.prototype.hasOwnProperty.call(source, key) && typeof key === 'string'
+            && this.basePath !== WILDCARD_PATH) {
+            this.record(this.keysMarker());
+        }
 
         const path = this.writtenPath(key);
 
@@ -235,7 +271,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
     /**
      * Deletes the key from the raw object after the aliasing checks, doing nothing when the
-     * key was never there.
+     * key was never there. Removing an own key wakes an enumerator of this container (R16-01),
+     * same as it wakes a direct reader of the deleted path.
      *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being deleted.
@@ -247,6 +284,10 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
         this.aliases?.checkWrite(source, this.basePath);
         this.aliases?.forget(Reflect.get(source, key));
+
+        if (typeof key === 'string' && this.basePath !== WILDCARD_PATH) {
+            this.record(this.keysMarker());
+        }
 
         const path = this.writtenPath(key);
 

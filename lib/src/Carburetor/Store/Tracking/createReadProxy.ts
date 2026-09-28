@@ -1,6 +1,7 @@
 import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {branchPath} from "@/Carburetor/Store/Paths/BranchMarker";
+import {keysPath} from "@/Carburetor/Store/Paths/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {createProxyCache} from "./createProxyCache";
@@ -98,7 +99,8 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * Stores the branch identity this instance's traps answer for.
      *
      * @param basePath - the dotted path this instance's proxy answers for; the default '' is
-     * the store root, and its emptiness is what makes `ownKeys` record the wildcard.
+     * the store root, where `ownKeys` records the bare key-set marker instead of one qualified
+     * by a path.
      * @param record - where each touched path is reported; a branch read reports the branch
      * marker, not every path inside it.
      * @param aliases - development-only: notes each branch object under its path so a second
@@ -127,6 +129,9 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
 
     /** Every later branch marker; created only once a second distinct branch is read. */
     private branchMarkers: Map<TPath, TPath> | undefined = undefined;
+
+    /** `keysPath(basePath)`, memoized: this instance's own key-set marker never changes. */
+    private keysMarkerPath: TPath | undefined = undefined;
 
     /**
      * `joinPath(basePath, key)`, memoized: a persistent view reads the same keys every render,
@@ -186,6 +191,14 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         return marker;
+    }
+
+    /**
+     * `keysPath(basePath)`, memoized like `childPath`/`branchMarker`: `ownKeys` reads no other
+     * path, so one computation per instance covers every call.
+     */
+    private keysMarker(): TPath {
+        return this.keysMarkerPath ?? (this.keysMarkerPath = keysPath(this.basePath));
     }
 
     /**
@@ -312,12 +325,16 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
     }
 
     /**
-     * Records a structural read: enumerating keys reads the shape as a whole, not any value.
+     * Records a structural read: enumerating keys reads the key set, not any value under it.
+     *
+     * Subscribes to the key-set marker (R16-01), not the branch's own path — a value write below
+     * an existing key must not wake an enumerator, only a key appearing, disappearing or the
+     * branch itself being replaced (caught through the marker's ancestor, the branch path).
      *
      * @param source - the raw object this proxy fronts.
      */
     ownKeys(source: T): ArrayLike<string | symbol> {
-        this.record(this.basePath || WILDCARD_PATH);
+        this.record(this.keysMarker());
 
         return Reflect.ownKeys(source);
     }
@@ -417,7 +434,7 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
  * @param record - where each touched path is reported, supplied by read(); a branch read
  * reports the branch marker, not every path inside it.
  * @param basePath - the dotted path this root answers for; the default '' is the store root,
- * and its emptiness is what makes ownKeys record the wildcard.
+ * where `ownKeys` records the bare key-set marker instead of one qualified by a path.
  * @param aliases - development-only: notes each branch object under its path so a second
  * path to the same object is reported; production hands in undefined.
  * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves

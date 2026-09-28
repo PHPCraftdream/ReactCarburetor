@@ -216,3 +216,60 @@ describe('an array write on the array itself is attributed to the index it touch
         expect(index3Wakes).toEqual(1);
     });
 });
+
+describe('R16-01: an enumerator of an array wakes on push and pop, not on a same-length index write', () => {
+    test('Object.keys(arr) wakes on push, and on pop, not on assigning an existing index', () => {
+        const carburetor = new ItemsCarburetor(getItemsData());
+        const reads = new Set<TPath>();
+        const view = carburetor.read((path: TPath) => reads.add(path));
+        let wakes = 0;
+
+        expect(Object.keys(view.items)).toEqual(['0', '1', '2']);
+        expect(reads.has('items.~k')).toBe(true);
+        expect(reads.has('items')).toBe(false);
+
+        carburetor.subscribe(() => wakes++, {id: 'keys-reader', reads});
+
+        // The key set is unchanged: index 0 already exists.
+        carburetor.setIndex(0, 99);
+        expect(wakes).toEqual(0);
+
+        carburetor.push(40);
+        expect(wakes).toEqual(1);
+
+        carburetor.pop();
+        expect(wakes).toEqual(2);
+    });
+
+    test('Object.keys(arr) wakes on a length write that truncates indices out of the key set', () => {
+        const carburetor = new ItemsCarburetor(getItemsData());
+        const reads = new Set<TPath>();
+        const view = carburetor.read((path: TPath) => reads.add(path));
+        let wakes = 0;
+
+        expect(Object.keys(view.items)).toEqual(['0', '1', '2']);
+
+        carburetor.subscribe(() => wakes++, {id: 'keys-reader', reads});
+
+        carburetor.truncate(1);
+
+        expect(carburetor.getData().items).toEqual([10]);
+        expect(wakes).toEqual(1);
+    });
+
+    test('a length write that only grows the array does not wake an enumerator: no index becomes own', () => {
+        const carburetor = new ItemsCarburetor(getItemsData());
+        const reads = new Set<TPath>();
+        const view = carburetor.read((path: TPath) => reads.add(path));
+        let wakes = 0;
+
+        expect(Object.keys(view.items)).toEqual(['0', '1', '2']);
+
+        carburetor.subscribe(() => wakes++, {id: 'keys-reader', reads});
+
+        carburetor.truncate(6);
+
+        expect(carburetor.getData().items.length).toEqual(6);
+        expect(wakes).toEqual(0);
+    });
+});

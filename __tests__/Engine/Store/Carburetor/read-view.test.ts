@@ -77,9 +77,12 @@ describe('Carburetor', () => {    test('draft stays correct after a nested branc
         expect(Object.keys(data.nested)).toEqual(['value']);
 
         // The gOPD call the enumeration performs is a structure check, not a value read:
-        // recording it would wake this reader when only `nested.value` changes.
+        // recording it would wake this reader when only `nested.value` changes. It also
+        // subscribes to the key-set marker (R16-01), not `nested`'s own path — a value write
+        // under an unchanged key set must not wake an enumerator either.
         expect(reads.has('nested.value')).toBeFalsy();
-        expect(reads.has('nested')).toBeTruthy();
+        expect(reads.has('nested')).toBeFalsy();
+        expect(reads.has('nested.~k')).toBeTruthy();
     });
 
     test('reading into a frozen branch refuses with the path instead of the raw TypeError', () => {
