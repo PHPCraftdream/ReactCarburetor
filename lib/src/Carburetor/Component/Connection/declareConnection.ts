@@ -13,32 +13,27 @@ import {IConnection, IConnectionSource, IRenderAttempt} from "@/Carburetor/Compo
  * the commit that consumes the attempt.
  *
  * @param connections - the owner's persistent declaration list, appended to and never pruned
- * @param attemptKeyPrefix - the attempt-map key prefix marking entries that publish to a connection
  * @param getAttempt - reads the render attempt currently open on the owner, if any
  * @param source - the carburetor to read, or a function resolving it at each attempt's first read
  */
 export const declareConnection = <T extends object>(
     connections: IConnection[],
-    attemptKeyPrefix: string,
     getAttempt: () => IRenderAttempt | undefined,
     source: ICarburetor<T> | (() => ICarburetor<T>)
 ): IConnectionSource<T> => {
     const getCarburetor: () => ICarburetor<T> = typeof source === 'function' ? source : () => source;
 
     const connection: IConnection = {uid: getUid(), getCarburetor, committed: undefined, installed: undefined};
-    // Fixed for the declaration's whole lifetime, so every read and resolution reuses it
-    // instead of re-concatenating the same string.
-    const attemptKey = attemptKeyPrefix + connection.uid;
 
     connections.push(connection);
 
     // The connection's source, resolved at most once per render attempt: the attempt's
-    // first read resolves it into the attempt's collection, and every later read of the
-    // same attempt — the recorder's baseline capture included — reuses that instance. The
-    // memo lives and dies with the attempt, so no source selection is carried across
-    // renders, and outside an attempt (an event read, the declaration-time shape probe)
-    // nothing is cached: the resolver runs again, so a handler read still sees current
-    // data. The underlying root is not part of this memo: view resolution re-reads
+    // first read resolves it into the attempt's map, keyed by this connection, and every
+    // later read of the same attempt — the recorder's baseline capture included — reuses
+    // that instance. The memo lives and dies with the attempt, so no source selection is
+    // carried across renders, and outside an attempt (an event read, the declaration-time
+    // shape probe) nothing is cached: the resolver runs again, so a handler read still sees
+    // current data. The underlying root is not part of this memo: view resolution re-reads
     // getData() on every access, so a setData() root replacement stays visible.
     const resolveAttemptSource = (): ICarburetor<T> => {
         const attempt = getAttempt();
@@ -47,9 +42,9 @@ export const declareConnection = <T extends object>(
             return getCarburetor();
         }
 
-        // The key is this connection's alone and only this closure writes it, so the value
+        // The key is this connection itself and only this closure writes it, so the value
         // it names is always the ICarburetor<T> this declaration resolved.
-        const resolved = attempt.sources.get(attemptKey) as ICarburetor<T> | undefined;
+        const resolved = attempt.sources?.get(connection) as ICarburetor<T> | undefined;
 
         if (resolved !== undefined) {
             return resolved;
@@ -57,7 +52,11 @@ export const declareConnection = <T extends object>(
 
         const carburetor = getCarburetor();
 
-        attempt.sources.set(attemptKey, carburetor);
+        if (attempt.sources === undefined) {
+            attempt.sources = new Map();
+        }
+
+        attempt.sources.set(connection, carburetor);
 
         return carburetor;
     };
@@ -71,7 +70,11 @@ export const declareConnection = <T extends object>(
             return;
         }
 
-        let entry = attempt.entries.get(attemptKey);
+        if (attempt.connections === undefined) {
+            attempt.connections = new Map();
+        }
+
+        let entry = attempt.connections.get(connection);
 
         if (!entry) {
             // The source and its baseline version are captured once, at the beginning of
@@ -81,13 +84,8 @@ export const declareConnection = <T extends object>(
             // view, whose resolution already fixed this attempt's source.
             const carburetor = resolveAttemptSource();
 
-            entry = {
-                connection,
-                source: carburetor,
-                baselineVersion: carburetor.getVersion(),
-                reads: new Set<TPath>(),
-            };
-            attempt.entries.set(attemptKey, entry);
+            entry = {source: carburetor, baselineVersion: carburetor.getVersion(), reads: new Set<TPath>()};
+            attempt.connections.set(connection, entry);
         }
 
         entry.reads.add(path);

@@ -9,7 +9,7 @@ import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersis
  * shape probe reads it, without needing a React mount to exercise `buildPersistentView` itself.
  */
 const declare = <T extends object>(source: () => Carburetor<T>) =>
-    declareConnection<T>([] as IConnection[], 'test:', () => undefined, source);
+    declareConnection<T>([] as IConnection[], () => undefined, source);
 
 describe('buildPersistentView shape probe (R3-11: a genuine resolver error must not be lost)', () => {
     test('a resolver whose first call throws a genuine unrelated error keeps it as the later mismatch\'s cause', () => {

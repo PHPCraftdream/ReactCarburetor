@@ -83,9 +83,10 @@ class ObservedMapCarburetor extends Carburetor<Map<string, number>> {
 
             rerender(<Hooked tick={1} />);
 
-            // One attempt: one identity lookup for the tracked record, one baseline capture,
-            // plus the commit's drift check — reading a second field adds none of that again.
-            expect(uidSpy.mock.calls.length - mountUids).toEqual(1);
+            // One attempt: the tracked record is keyed by the source object itself, so no
+            // identity lookup runs at all; one baseline capture plus the commit's drift check
+            // are the only getVersion calls — reading a second field adds none of that again.
+            expect(uidSpy.mock.calls.length - mountUids).toEqual(0);
             expect(versionSpy.mock.calls.length - mountVersions).toEqual(2);
 
             unmount();

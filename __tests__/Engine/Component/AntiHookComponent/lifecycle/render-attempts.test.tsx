@@ -1,4 +1,7 @@
-import {REACT_MAJOR, getCounterData, ObservedCarburetor, React, act, render, AntiHookComponent} from '../support';
+import {
+    REACT_MAJOR, getCounterData, CounterCarburetor, ObservedCarburetor,
+    React, act, rstest, render, AntiHookComponent,
+} from '../support';
 
     describe('render attempt lifecycle', () => {
         test('a failed mount render installs nothing', () => {
@@ -223,5 +226,122 @@ import {REACT_MAJOR, getCounterData, ObservedCarburetor, React, act, render, Ant
             unmount();
 
             expect(store.subscriberCount()).toEqual(0);
+        });
+    });
+
+    describe('render attempt allocation', () => {
+        test('a render that reads nothing allocates no attempt collections', () => {
+            class Empty extends AntiHookComponent {
+                render() {
+                    return <div/>;
+                }
+            }
+
+            const instance = new Empty({} as never);
+
+            void (instance as unknown as {render: () => React.ReactNode}).render();
+
+            const attempt = (instance as unknown as {pendingAttempt: Record<string, unknown>}).pendingAttempt;
+
+            expect(attempt.tracked).toBeUndefined();
+            expect(attempt.connections).toBeUndefined();
+            expect(attempt.sources).toBeUndefined();
+            expect(attempt.deferredLoads).toBeUndefined();
+        });
+
+        test('a render that reads only through useCarburetor allocates no sources map or deferred-load queue', () => {
+            const store = new CounterCarburetor(getCounterData());
+
+            class Reader extends AntiHookComponent {
+                render() {
+                    const {value} = this.useCarburetor(store);
+
+                    return <div>{value}</div>;
+                }
+            }
+
+            const instance = new Reader({} as never);
+
+            void (instance as unknown as {render: () => React.ReactNode}).render();
+
+            const attempt = (instance as unknown as {pendingAttempt: Record<string, unknown>}).pendingAttempt;
+
+            expect(attempt.tracked).toBeInstanceOf(Map);
+            expect((attempt.tracked as Map<unknown, unknown>).size).toEqual(1);
+            // connect() and useResource never ran: neither's collection was allocated.
+            expect(attempt.connections).toBeUndefined();
+            expect(attempt.sources).toBeUndefined();
+            expect(attempt.deferredLoads).toBeUndefined();
+        });
+
+        test('a connect() declaration a render never reads allocates no attempt collections', () => {
+            const store = new CounterCarburetor(getCounterData());
+
+            class Declared extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    // The declaration is in scope but no property of it is read: referencing the
+                    // proxy itself triggers no trap.
+                    void this.view;
+
+                    return <div/>;
+                }
+            }
+
+            const instance = new Declared({} as never);
+
+            void (instance as unknown as {render: () => React.ReactNode}).render();
+
+            const attempt = (instance as unknown as {pendingAttempt: Record<string, unknown>}).pendingAttempt;
+
+            expect(attempt.connections).toBeUndefined();
+            expect(attempt.sources).toBeUndefined();
+        });
+
+        test('reading the same source more than once in a render keys one entry by the source itself', () => {
+            const store = new CounterCarburetor(getCounterData());
+
+            class Reader extends AntiHookComponent {
+                render() {
+                    // Three reads of the same carburetor in one render.
+                    this.useCarburetor(store);
+                    this.useCarburetor(store);
+                    this.useCarburetor(store);
+
+                    return <div/>;
+                }
+            }
+
+            const instance = new Reader({} as never);
+
+            void (instance as unknown as {render: () => React.ReactNode}).render();
+
+            const attempt = (instance as unknown as {pendingAttempt: {tracked: Map<unknown, unknown>}}).pendingAttempt;
+
+            // One entry for three reads of the same source: the map is keyed by the source
+            // object itself, so repeated reads of it never grow the map.
+            expect(attempt.tracked.size).toEqual(1);
+            expect([...attempt.tracked.keys()]).toEqual([store]);
+        });
+
+        test('track() never builds an identity string: getUID is never called for a tracked read', () => {
+            const store = new CounterCarburetor(getCounterData());
+            const uidSpy = rstest.spyOn(store, 'getUID');
+
+            class Reader extends AntiHookComponent {
+                render() {
+                    this.useCarburetor(store);
+                    this.useCarburetor(store);
+
+                    return <div/>;
+                }
+            }
+
+            const instance = new Reader({} as never);
+
+            void (instance as unknown as {render: () => React.ReactNode}).render();
+
+            expect(uidSpy.mock.calls.length).toEqual(0);
         });
     });

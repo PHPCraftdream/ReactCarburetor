@@ -23,8 +23,6 @@ import {reportLiveViewEscape} from "@/Carburetor/Component/Connection/reportLive
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {AntiHookComponentFoundation} from "./Foundation";
 
-const CONNECTION_ATTEMPT_KEY = "c:";
-const TRACKED_ATTEMPT_KEY = "t:";
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
     /** `useCarburetor`'s per-carburetor root views, created on first use; see buildTrackedView. */
     private trackedViews: WeakMap<ICarburetorSubscription, ITrackedView<object>> | undefined;
@@ -61,7 +59,6 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
     ): IConnectionSource<T> {
         return declareConnection(
             this.connections,
-            CONNECTION_ATTEMPT_KEY,
             (): IRenderAttempt | undefined => this.renderAttempt,
             source
         );
@@ -241,6 +238,10 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
 
         if (worthFetching) {
             if (attempt) {
+                if (attempt.deferredLoads === undefined) {
+                    attempt.deferredLoads = [];
+                }
+
                 attempt.deferredLoads.push(() => {
                     void source.load(args);
                 });
@@ -269,8 +270,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      *
      * A replayed StrictMode mount cannot double-load: its second `componentDidMount` finds the
      * attempt already consumed (it is the committed attempt, so not the fresh one it drained at
-     * the first `componentDidMount`), and the drain above swaps each queue out before invoking
-     * its loads anyway — every queue is consumed exactly once, so the replay finds it empty.
+     * the first `componentDidMount`), and the drain above clears the queue before invoking its
+     * loads anyway — every queue is consumed exactly once, so the replay finds it absent.
      */
     protected loadStaleResources(): void {
         const attempt = this.pendingAttempt;
@@ -279,11 +280,15 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             return;
         }
 
-        // Swapped out before the loads run: a load can synchronously notify this component, and
+        // Cleared before the loads run: a load can synchronously notify this component, and
         // the notification path must not find the queue it is draining still in place.
         const queued = attempt.deferredLoads;
 
-        attempt.deferredLoads = [];
+        if (queued === undefined) {
+            return;
+        }
+
+        attempt.deferredLoads = undefined;
 
         queued.forEach((load: () => void) => load());
     }
@@ -301,15 +306,21 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const attempt = this.renderAttempt;
 
         if (!attempt) {
-            return {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
+            return {source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
         }
 
-        const key = TRACKED_ATTEMPT_KEY + source.getUID();
-        let entry = attempt.entries.get(key);
+        let tracked = attempt.tracked;
+
+        if (tracked === undefined) {
+            tracked = new Map<ICarburetorSubscription, IAttemptEntry>();
+            attempt.tracked = tracked;
+        }
+
+        let entry = tracked.get(source);
 
         if (!entry) {
-            entry = {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
-            attempt.entries.set(key, entry);
+            entry = {source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
+            tracked.set(source, entry);
         }
 
         return entry;

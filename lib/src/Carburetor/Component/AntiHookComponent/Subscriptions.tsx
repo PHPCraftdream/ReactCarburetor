@@ -1,16 +1,15 @@
 "use client";
 
 import {TPathSet} from "@/Carburetor/Models/Paths";
+import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {
     IAttemptEntry,
     IConnection,
     IDependencyDescription,
     IDependencySlot,
+    ITrackedCarburetor,
 } from "@/Carburetor/Component/Models/Connection";
 import {AntiHookComponentEffects} from "./Effects";
-
-const CONNECTION_ATTEMPT_KEY = "c:";
-const TRACKED_ATTEMPT_KEY = "t:";
 
 const sameReads = (a: TPathSet, b: TPathSet): boolean => {
     if (a.size !== b.size) {
@@ -66,54 +65,59 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         if (fresh) {
             this.committedAttempt = attempt;
 
+            const trackedEntries = attempt.tracked;
+            const connectionEntries = attempt.connections;
+
             // A record the attempt did not touch is gone from the render: release its
             // subscription and drop the record. A connection the attempt did not touch keeps
             // its declaration but loses its committed description — and with it, below, the
-            // subscription: an unused connection must have no active read subscription.
-            Object.keys(this.tracked).forEach((cuid: string) => {
-                if (attempt.entries.has(TRACKED_ATTEMPT_KEY + cuid)) {
+            // subscription: an unused connection must have no active read subscription. An
+            // absent map reads exactly like an empty one: nothing was touched.
+            this.tracked.forEach((slot: ITrackedCarburetor, source: ICarburetorSubscription) => {
+                if (trackedEntries !== undefined && trackedEntries.has(source)) {
                     return;
                 }
 
-                this.releaseSlot(this.uid, this.tracked[cuid]);
-                delete this.tracked[cuid];
+                this.releaseSlot(this.uid, slot);
+                this.tracked.delete(source);
             });
 
             this.connections.forEach((connection: IConnection) => {
-                if (!attempt.entries.has(CONNECTION_ATTEMPT_KEY + connection.uid)) {
+                if (connectionEntries === undefined || !connectionEntries.has(connection)) {
                     connection.committed = undefined;
                 }
             });
 
-            // The attempt's read set becomes the committed description as-is: recorders write
+            // The attempt's read sets become the committed descriptions as-is: recorders write
             // only while their attempt is open, and it has closed by now.
-            attempt.entries.forEach((entry: IAttemptEntry, key: string) => {
-                const description: IDependencyDescription = {
-                    carburetor: entry.source,
-                    baselineVersion: entry.baselineVersion,
-                    reads: entry.reads,
-                };
+            if (trackedEntries !== undefined) {
+                trackedEntries.forEach((entry: IAttemptEntry, source: ICarburetorSubscription) => {
+                    const description: IDependencyDescription = {
+                        carburetor: entry.source,
+                        baselineVersion: entry.baselineVersion,
+                        reads: entry.reads,
+                    };
+                    const known = this.tracked.get(source);
 
-                if (entry.connection) {
-                    entry.connection.committed = description;
+                    this.tracked.set(source, {committed: description, installed: known ? known.installed : undefined});
+                });
+            }
 
-                    return;
-                }
-
-                const cuid = key.slice(TRACKED_ATTEMPT_KEY.length);
-                const known = this.tracked[cuid];
-
-                this.tracked[cuid] = {
-                    committed: description,
-                    installed: known ? known.installed : undefined,
-                };
-            });
+            if (connectionEntries !== undefined) {
+                connectionEntries.forEach((entry: IAttemptEntry, connection: IConnection) => {
+                    connection.committed = {
+                        carburetor: entry.source,
+                        baselineVersion: entry.baselineVersion,
+                        reads: entry.reads,
+                    };
+                });
+            }
         }
 
         let changedDuringRender = false;
 
-        Object.keys(this.tracked).forEach((cuid: string) => {
-            if (this.alignSubscription(this.uid, this.tracked[cuid])) {
+        this.tracked.forEach((slot: ITrackedCarburetor) => {
+            if (this.alignSubscription(this.uid, slot)) {
                 changedDuringRender = true;
             }
         });
@@ -207,8 +211,8 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * through a fresh attempt, which clears descriptions wholesale, not through this method.
      */
     protected releaseSubscriptions(): void {
-        Object.keys(this.tracked).forEach((cuid: string) => {
-            this.releaseSlot(this.uid, this.tracked[cuid]);
+        this.tracked.forEach((slot: ITrackedCarburetor) => {
+            this.releaseSlot(this.uid, slot);
         });
 
         this.connections.forEach((connection: IConnection) => {

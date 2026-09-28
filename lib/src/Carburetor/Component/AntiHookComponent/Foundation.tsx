@@ -5,7 +5,6 @@ import {IDict, TEffectCleanup, TEffectDeps} from "@/Carburetor/Models/Base";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {
-    IAttemptEntry,
     IConnection,
     IRenderAttempt,
     ITrackedCarburetor,
@@ -31,13 +30,14 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
 
     /**
      * Carburetors read through `useCarburetor`/`useComputed`/`useResource`: one dependency slot
-     * per carburetor, written by commits out of what a fresh render attempt collected.
+     * per carburetor, keyed by the carburetor itself and written by commits out of what a fresh
+     * render attempt collected.
      *
      * The committed descriptions outlive unmount: releaseSubscriptions keeps them, so a
      * replayed mount lifecycle can restore the subscriptions without a render to refill them.
      * The records themselves do not: a commit whose attempt never touched a record drops it.
      */
-    protected tracked: IDict<ITrackedCarburetor> = {};
+    protected tracked: Map<ICarburetorSubscription, ITrackedCarburetor> = new Map();
 
     /**
      * Persistent `connect()` declarations, in declaration order.
@@ -248,16 +248,18 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     }
 
     /**
-     * Opens a fresh render attempt: an empty entry map this render's reads will fill.
+     * Opens a fresh render attempt: every collection starts absent, and is allocated by
+     * whichever read API first needs it during this render.
      *
      * Any previous tentative state is discarded by replacement — it simply stops being
      * reachable — so an abandoned collection can never bleed into a new attempt.
      */
     private openRenderAttempt(): IRenderAttempt {
         const attempt: IRenderAttempt = {
-            entries: new Map<string, IAttemptEntry>(),
-            sources: new Map<string, ICarburetorSubscription>(),
-            deferredLoads: [],
+            tracked: undefined,
+            connections: undefined,
+            sources: undefined,
+            deferredLoads: undefined,
             abandoned: false,
         };
 
