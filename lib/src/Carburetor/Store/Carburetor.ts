@@ -211,8 +211,9 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             // The write has already landed when delivery runs, so one throwing subscriber
             // must not cost the subscribers after it their notification: each delivery is
             // isolated, and the failures are reported once the pass finishes rather than
-            // re-thrown into whoever made the write.
-            const failures: unknown[] = [];
+            // re-thrown into whoever made the write. Allocated only once something actually
+            // throws — the overwhelming majority of deliveries never do.
+            let failures: unknown[] | undefined;
 
             this.subscriberIndex.match(writes).forEach((id: string) => {
                 // A subscriber may have unsubscribed while this batch was being delivered.
@@ -222,12 +223,12 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
                     try {
                         this.scheduler.schedule(id, record.callback);
                     } catch (error: unknown) {
-                        failures.push(error);
+                        (failures ??= []).push(error);
                     }
                 }
             });
 
-            failures.forEach((error: unknown) => {
+            failures?.forEach((error: unknown) => {
                 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
                     diagnostics.report(
                         'a subscriber threw while a write was delivered: ' +
@@ -362,9 +363,14 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         const touched = this.draftTouched;
         // Handed off, not copied: a fresh Set takes over as this.writes, so the caller below
         // (notifyWrites, or the update batch) owns this one exclusively and may keep it as is.
+        // An empty writes Set is never handed off anywhere, so it is reused as-is instead of
+        // being replaced on every emit, including the (common) no-op ones.
         const changed: TPathSet | undefined = this.writes.size > 0 ? this.writes : undefined;
 
-        this.writes = new Set<TPath>();
+        if (changed) {
+            this.writes = new Set<TPath>();
+        }
+
         this.draftTouched = false;
 
         // Draft was used, but no value actually changed — there is nobody to wake.

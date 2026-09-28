@@ -103,6 +103,16 @@ export class TestCarburetor extends Carburetor<ITestData> {
 
         this.emitUpdate();
     };
+
+    /** Touches draft without writing anything, then publishes: the true no-op emit path. */
+    public touchDraftWithoutWrite = () => {
+        void this.draft;
+
+        this.emitUpdate();
+    };
+
+    /** The live `writes` Set, so a test can check whether an emit reallocated it. */
+    public writesRef = (): TPathSet => this.writes;
 }
 
 export interface IItemListData {
