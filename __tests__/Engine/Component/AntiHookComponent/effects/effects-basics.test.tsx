@@ -323,4 +323,20 @@ describe('<AntiHookComponent />', () => {
         unmount();
     });
 
+    test('a component that never calls useEffect never allocates the effects dictionary', () => {
+        class NoEffects extends AntiHookComponent {
+            render() {
+                return <div/>;
+            }
+        }
+
+        let instance: NoEffects | null = null;
+
+        const {unmount} = render(<NoEffects ref={(r: NoEffects | null) => { instance = r; }} />);
+
+        expect((instance as unknown as {effects: unknown}).effects).toBeUndefined();
+
+        unmount();
+    });
+
 });

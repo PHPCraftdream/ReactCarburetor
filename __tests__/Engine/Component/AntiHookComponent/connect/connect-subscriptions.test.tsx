@@ -198,4 +198,26 @@ describe('connect', () => {
             expect(second.subscriberCount()).toEqual(0);
         });
 
+        test('a connect()-only component never allocates the tracked map', () => {
+            const store = new ObservedCarburetor(getCounterData());
+
+            class ConnectOnly extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            let instance: ConnectOnly | null = null;
+
+            const {unmount} = render(<ConnectOnly ref={(r: ConnectOnly | null) => { instance = r; }} />);
+
+            // useCarburetor/useComputed/useResource never ran on this instance: the map they
+            // share (`tracked`, distinct from `connections`) must never be allocated for it.
+            expect((instance as unknown as {tracked: unknown}).tracked).toBeUndefined();
+
+            unmount();
+        });
+
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import {TEffect, TEffectDeps} from "@/Carburetor/Models/Base";
+import {IDict, TEffect, TEffectDeps} from "@/Carburetor/Models/Base";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {AntiHookComponentReads} from "./Reads";
 import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
@@ -82,7 +82,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * leaves the existing cleanup standing
      */
     protected useEffect(name: string, callBack: TEffect, deps: TEffectDeps): void {
-        const known = this.effects[name];
+        const known = this.effects?.[name];
 
         if (known && shallowEqual(known.deps, deps)) {
             return;
@@ -105,7 +105,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
         // still points at the cleanup that already ran.
         const record: IEffectRecord = {deps, cleanup: undefined};
 
-        this.effects[name] = record;
+        this.ensureEffects()[name] = record;
 
         try {
             const cleanup = callBack();
@@ -120,16 +120,36 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
     }
 
     /**
+     * Returns the effects dictionary, allocating it on first use.
+     *
+     * A component that never calls `useEffect` never needs this dictionary; allocating it here,
+     * rather than as a class field default, keeps that component from paying for it.
+     */
+    private ensureEffects(): IDict<IEffectRecord> {
+        if (this.effects === undefined) {
+            this.effects = {};
+        }
+
+        return this.effects;
+    }
+
+    /**
      * Runs every effect's cleanup once, on unmount, and forgets them.
      *
      * Each cleanup is isolated, so one that throws costs the cleanups after it neither their
      * turn nor their record: the whole set is dropped once every cleanup has had its turn, and
      * what they collected is reported instead of thrown into the unmount that called this.
+     *
+     * Absent effects (never allocated) skip straight past: nothing ran, nothing to release.
      */
     protected releaseEffects(): void {
         const records = this.effects;
 
-        this.effects = {};
+        if (records === undefined) {
+            return;
+        }
+
+        this.effects = undefined;
 
         const failures: unknown[] = [];
 

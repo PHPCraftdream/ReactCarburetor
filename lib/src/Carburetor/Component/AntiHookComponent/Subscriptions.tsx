@@ -30,6 +30,15 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      *
      * `forceUpdate` deliberately skips `shouldComponentUpdate`: the props gate must not be able
      * to swallow an update the component is itself subscribed to.
+     *
+     * Stays a per-instance arrow field rather than a shared prototype method: `subscribe` is
+     * handed a detached callback it stores and invokes with no receiver, so whatever reaches
+     * the store must already be bound to this instance. `renderGetter`/`renderSetter` can be one
+     * shared static pair (R14-05) only because React looks `render` up as a property of `this`
+     * and calls it as a method; a callback handed to `subscribe` gets no such lookup, so a bound
+     * function costs the same one-object-per-instance as this closure does. Subscribing keys by
+     * `uid`, not by this function's identity, but the identity still has to exist somewhere to
+     * be callable at all.
      */
     protected onCarburetorUpdate = (): void => {
         this.forceUpdate();
@@ -73,13 +82,13 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             // its declaration but loses its committed description — and with it, below, the
             // subscription: an unused connection must have no active read subscription. An
             // absent map reads exactly like an empty one: nothing was touched.
-            this.tracked.forEach((slot: ITrackedCarburetor, source: ICarburetorSubscription) => {
+            this.tracked?.forEach((slot: ITrackedCarburetor, source: ICarburetorSubscription) => {
                 if (trackedEntries !== undefined && trackedEntries.has(source)) {
                     return;
                 }
 
                 this.releaseSlot(this.uid, slot);
-                this.tracked.delete(source);
+                this.tracked?.delete(source);
             });
 
             this.connections.forEach((connection: IConnection) => {
@@ -89,34 +98,45 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             });
 
             // The attempt's read sets become the committed descriptions as-is: recorders write
-            // only while their attempt is open, and it has closed by now.
+            // only while their attempt is open, and it has closed by now. A source still
+            // tracked from the previous commit keeps its slot object, and a slot that already
+            // has a description keeps that object too — both are updated in place rather than
+            // replaced, since nothing outside this method holds either past a single commit.
             if (trackedEntries !== undefined) {
                 trackedEntries.forEach((entry: IAttemptEntry, source: ICarburetorSubscription) => {
-                    const description: IDependencyDescription = {
-                        carburetor: entry.source,
-                        baselineVersion: entry.baselineVersion,
-                        reads: entry.reads,
-                    };
-                    const known = this.tracked.get(source);
+                    const existing = this.tracked?.get(source);
 
-                    this.tracked.set(source, {committed: description, installed: known ? known.installed : undefined});
+                    if (existing) {
+                        this.applyDescription(existing, entry);
+                    } else {
+                        this.ensureTracked().set(source, {
+                            committed: this.buildDescription(entry),
+                            installed: undefined,
+                        });
+                    }
                 });
             }
 
             if (connectionEntries !== undefined) {
                 connectionEntries.forEach((entry: IAttemptEntry, connection: IConnection) => {
-                    connection.committed = {
-                        carburetor: entry.source,
-                        baselineVersion: entry.baselineVersion,
-                        reads: entry.reads,
-                    };
+                    this.applyDescription(connection, entry);
                 });
             }
+
+            // From here on only identity matters — a replayed commit re-aligns from the
+            // descriptions just published above, never from the attempt itself — and
+            // `deferredLoads`, which `loadStaleResources` drains right after this returns.
+            // Releasing the rest here, rather than waiting for the attempt to be replaced by a
+            // future render, is what keeps a retained `pendingAttempt`/`committedAttempt` from
+            // holding this render's dependency maps alive indefinitely.
+            attempt.tracked = undefined;
+            attempt.connections = undefined;
+            attempt.sources = undefined;
         }
 
         let changedDuringRender = false;
 
-        this.tracked.forEach((slot: ITrackedCarburetor) => {
+        this.tracked?.forEach((slot: ITrackedCarburetor) => {
             if (this.alignSubscription(this.uid, slot)) {
                 changedDuringRender = true;
             }
@@ -130,6 +150,53 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
 
         if (changedDuringRender) {
             this.forceUpdate();
+        }
+    }
+
+    /**
+     * Returns the tracked map, allocating it on first use.
+     *
+     * A `connect()`-only component never calls `useCarburetor`/`useComputed`/`useResource`, so
+     * it never needs this map; allocating it here, rather than as a class field default, keeps
+     * that component from paying for a collection it will never fill.
+     */
+    private ensureTracked(): Map<ICarburetorSubscription, ITrackedCarburetor> {
+        if (this.tracked === undefined) {
+            this.tracked = new Map();
+        }
+
+        return this.tracked;
+    }
+
+    /**
+     * Builds a fresh committed description out of one attempt entry.
+     *
+     * @param entry - the attempt's record for the source being committed
+     */
+    private buildDescription(entry: IAttemptEntry): IDependencyDescription {
+        return {carburetor: entry.source, baselineVersion: entry.baselineVersion, reads: entry.reads};
+    }
+
+    /**
+     * Publishes one attempt entry onto a slot's committed description, reusing the existing
+     * description object when there is one instead of allocating a fresh one every commit.
+     *
+     * Safe to mutate in place: a committed description is read only through `slot.committed`
+     * inside `alignSubscription`, in the same synchronous call that follows this one, and is
+     * never held past it or compared by identity anywhere else.
+     *
+     * @param slot - the tracked slot or connection being committed
+     * @param entry - the attempt's record for the source being committed
+     */
+    private applyDescription(slot: IDependencySlot, entry: IAttemptEntry): void {
+        const description = slot.committed;
+
+        if (description) {
+            description.carburetor = entry.source;
+            description.baselineVersion = entry.baselineVersion;
+            description.reads = entry.reads;
+        } else {
+            slot.committed = this.buildDescription(entry);
         }
     }
 
@@ -211,7 +278,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * through a fresh attempt, which clears descriptions wholesale, not through this method.
      */
     protected releaseSubscriptions(): void {
-        this.tracked.forEach((slot: ITrackedCarburetor) => {
+        this.tracked?.forEach((slot: ITrackedCarburetor) => {
             this.releaseSlot(this.uid, slot);
         });
 

@@ -345,3 +345,41 @@ import {
             expect(uidSpy.mock.calls.length).toEqual(0);
         });
     });
+
+    describe('tracked slot reuse', () => {
+        test('a fresh commit reuses the existing slot object and description for a still-tracked source', () => {
+            const store = new CounterCarburetor(getCounterData());
+
+            class Reader extends AntiHookComponent {
+                render() {
+                    const {value} = this.useCarburetor(store);
+
+                    return <div className="value">{value}</div>;
+                }
+            }
+
+            let instance: Reader | null = null;
+
+            const {unmount} = render(<Reader ref={(r: Reader | null) => { instance = r; }} />);
+
+            const tracked = (instance as unknown as {
+                tracked: Map<unknown, {committed: {baselineVersion: number} | undefined}>;
+            }).tracked;
+
+            const slotBefore = tracked.get(store);
+            const descriptionBefore = slotBefore?.committed;
+            const baselineBefore = descriptionBefore?.baselineVersion;
+
+            // A write re-renders and re-commits with the same source still tracked: the slot
+            // and its description are updated in place, not replaced.
+            act(() => store.incValue());
+
+            const slotAfter = tracked.get(store);
+
+            expect(slotAfter).toBe(slotBefore);
+            expect(slotAfter?.committed).toBe(descriptionBefore);
+            expect(slotAfter?.committed?.baselineVersion).not.toEqual(baselineBefore);
+
+            unmount();
+        });
+    });
