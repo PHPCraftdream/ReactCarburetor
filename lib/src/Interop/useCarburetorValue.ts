@@ -1,9 +1,10 @@
 "use client";
 
 import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react";
-import {ICarburetor, TPath, TPathSet, TSubscriber} from "@/Carburetor";
+import {ICarburetor, TPath, TPathRecorder, TPathSet, TReadonly, TSubscriber} from "@/Carburetor";
 import {detachOpaque} from "@/Carburetor/Store/Utils/detachOpaque";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
+import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<T extends object, R> {
@@ -21,6 +22,13 @@ interface IActiveSubscription<T extends object> {
     reads: TPathSet;
 }
 
+/** getSnapshot's persistent root view for one hook instance, rebuilt only when it goes stale. */
+interface IRootView<T extends object> {
+    carburetor: ICarburetor<T>;
+    data: T;
+    view: TReadonly<T>;
+}
+
 /** Whether two read sets would wake their subscriber on exactly the same writes. */
 const sameReads = (a: TPathSet, b: TPathSet): boolean => {
     if (a.size !== b.size) {
@@ -34,6 +42,31 @@ const sameReads = (a: TPathSet, b: TPathSet): boolean => {
     }
 
     return true;
+};
+
+/**
+ * The tracked root view getSnapshot reads through: one read proxy tree reused across calls while
+ * the carburetor and its data object stay the same, rebuilt when either moves. A non-trackable
+ * root (a Map, Set or class instance at the store's own root) is never cached — carburetor.read()
+ * already hands that back raw and un-proxied, so the only per-call work is re-recording its
+ * wildcard read, which a cached view would skip.
+ *
+ * @param cached - the previous call's view, or null before the first read
+ * @param carburetor - the store to read
+ * @param record - reports every path a read touches while it is the active recorder
+ */
+const resolveView = <T extends object>(
+    cached: IRootView<T> | null,
+    carburetor: ICarburetor<T>,
+    record: TPathRecorder
+): IRootView<T> => {
+    const data: T = carburetor.getData();
+
+    if (cached !== null && cached.carburetor === carburetor && cached.data === data && isTrackable(data)) {
+        return cached;
+    }
+
+    return {carburetor, data, view: carburetor.read(record)};
 };
 
 /** Names a class value in the selector error when its class name is available. */
@@ -100,6 +133,15 @@ export const useCarburetorValue = <T extends object, R>(
     const active = useRef<IActiveSubscription<T> | null>(null);
     const notify = useRef<TSubscriber | null>(null);
 
+    // The persistent root view getSnapshot reads through, and the slot its recorder reports
+    // into. The slot holds a Set only while a getSnapshot call is walking the view — a read
+    // through a snapshot captured earlier and touched outside that window records nothing.
+    const view = useRef<IRootView<T> | null>(null);
+    const currentReads = useRef<TPathSet | undefined>(undefined);
+    const recordRead = useCallback((path: TPath): void => {
+        currentReads.current?.add(path);
+    }, []);
+
     const install = useCallback((): void => {
         const onStoreChange = notify.current;
 
@@ -164,30 +206,40 @@ export const useCarburetorValue = <T extends object, R>(
             return entry.value;
         }
 
+        view.current = resolveView(view.current, carburetor, recordRead);
+
         const reads = new Set<TPath>();
-        const fresh: R = select(carburetor.read((path: TPath) => reads.add(path)));
 
-        // Walking a returned live branch (the comparison or the detach) records its leaves.
-        pendingReads.current = reads;
+        currentReads.current = reads;
 
-        // The default comparison walks the live result like a detach would, so a match skips
-        // the copy. A custom comparator always gets detached values.
-        const liveCompare = isEqual === sameSelection;
-        const candidate: R = liveCompare ? fresh : detach(fresh);
+        let result: R;
 
-        if (entry.filled && isEqual(entry.value, candidate)) {
-            // Same value from a new pairing: keep the old reference, re-key the entry for later hits.
-            cache.current = {carburetor, select, version, value: entry.value, filled: true};
+        // Closed however the walk ends: detach() throws for a class instance by design.
+        try {
+            const fresh: R = select(view.current.view);
 
-            return entry.value;
+            // Walking a returned live branch (the comparison or the detach) records its leaves, so
+            // the slot stays open until both are done.
+            pendingReads.current = reads;
+
+            // The default comparison walks the live result like a detach would, so a match skips
+            // the copy. A custom comparator always gets detached values.
+            const liveCompare = isEqual === sameSelection;
+            const candidate: R = liveCompare ? fresh : detach(fresh);
+
+            // Same value from a new pairing keeps the old reference; otherwise a fresh detach (or
+            // the already-detached candidate) becomes the entry's value.
+            result = entry.filled && isEqual(entry.value, candidate)
+                ? entry.value
+                : (liveCompare ? detach(fresh) : candidate);
+        } finally {
+            currentReads.current = undefined;
         }
 
-        const next: R = liveCompare ? detach(fresh) : candidate;
+        cache.current = {carburetor, select, version, value: result, filled: true};
 
-        cache.current = {carburetor, select, version, value: next, filled: true};
-
-        return next;
-    }, [carburetor, select, isEqual]);
+        return result;
+    }, [carburetor, select, isEqual, recordRead]);
 
     // React only re-runs subscribe when the callback identity changes, but a selector's read
     // paths can move on their own — a conditional selector flips to another branch. Render
