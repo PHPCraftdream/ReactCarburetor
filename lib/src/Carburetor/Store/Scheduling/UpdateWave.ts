@@ -51,7 +51,9 @@ export class UpdateWave {
         this.depth = 1;
 
         try {
-            const failures: unknown[] = [];
+            // Allocated only once something actually throws — the overwhelming majority of
+            // drains never do (mirrors Carburetor.notifyWrites' own failures array).
+            let failures: unknown[] | undefined;
 
             while (this.pending.size > 0) {
                 const batch = Array.from(this.pending.entries());
@@ -61,12 +63,12 @@ export class UpdateWave {
                     try {
                         settle();
                     } catch (error: unknown) {
-                        failures.push(error);
+                        (failures ??= []).push(error);
                     }
                 });
             }
 
-            failures.forEach((error: unknown) => {
+            failures?.forEach((error: unknown) => {
                 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
                     diagnostics.report(
                         'a computation threw while a wave was drained: ' +

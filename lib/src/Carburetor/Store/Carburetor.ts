@@ -21,7 +21,6 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
 
 interface ISubscriberRecord {
     callback: TSubscriber;
-    reads: TPathSet;
 }
 
 export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable {
@@ -168,7 +167,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         // caller keeps its reference. No reads means everything: coarse, but nothing is missed.
         const reads = options.reads || new Set<TPath>([WILDCARD_PATH]);
 
-        this.subscribers[id] = {callback, reads};
+        this.subscribers[id] = {callback};
         this.subscriberIndex.add(id, reads);
 
         return id;

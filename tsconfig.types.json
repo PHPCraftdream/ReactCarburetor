@@ -4,6 +4,9 @@
     "rootDir": ".",
     "types": ["@rstest/core/globals"]
   },
-  "include": ["__tests__/Engine/Component/AntiHookComponent.types.test.ts"],
+  "include": [
+    "__tests__/Engine/Component/AntiHookComponent.types.test.ts",
+    "__tests__/Engine/Store/Paths/TAliasLedger.types.test.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

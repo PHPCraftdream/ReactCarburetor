@@ -108,6 +108,87 @@ describe('persist', () => {
         expect((reported as Error).message).toEqual('quota exceeded');
         expect(notified).toEqual(1);
     });
+
+    describe('coalesce (R16-09)', () => {
+        test('without coalesce, a write lands before setValue returns — the default, documented guarantee', () => {
+            const storage = new MemoryStorage();
+            const carburetor = new CounterCarburetor(getData());
+
+            persist(carburetor, {key: 'counter', storage});
+            carburetor.setValue(1);
+
+            // No microtask flush anywhere above: this is checked synchronously.
+            expect(JSON.parse(storage.getItem('counter') as string).value).toEqual(1);
+        });
+
+        test('with coalesce, several writes in one microtask coalesce into one stringify', async () => {
+            const storage = new MemoryStorage();
+            const carburetor = new CounterCarburetor(getData());
+            let writes = 0;
+            const original = storage.setItem;
+
+            storage.setItem = (key: string, value: string) => {
+                writes++;
+                original(key, value);
+            };
+
+            const dispose = persist(carburetor, {key: 'counter', storage, coalesce: true});
+
+            writes = 0; // discount the initial load's absence of a write
+            carburetor.setValue(1);
+            carburetor.setValue(2);
+            carburetor.setValue(3);
+
+            // Not yet written: coalesced writes wait for the microtask.
+            expect(storage.getItem('counter')).toBeNull();
+
+            await new Promise(resolve => queueMicrotask(() => resolve(undefined)));
+
+            expect(writes).toEqual(1);
+            expect(JSON.parse(storage.getItem('counter') as string).value).toEqual(3);
+
+            dispose();
+        });
+
+        test('with coalesce, dispose() flushes a write still pending', () => {
+            const storage = new MemoryStorage();
+            const carburetor = new CounterCarburetor(getData());
+
+            const dispose = persist(carburetor, {key: 'counter', storage, coalesce: true});
+
+            carburetor.setValue(5);
+            expect(storage.getItem('counter')).toBeNull();
+
+            dispose();
+
+            expect(JSON.parse(storage.getItem('counter') as string).value).toEqual(5);
+        });
+
+        test('with coalesce, dispose() after the microtask already flushed is a no-op', async () => {
+            const storage = new MemoryStorage();
+            const carburetor = new CounterCarburetor(getData());
+            let writes = 0;
+            const original = storage.setItem;
+
+            storage.setItem = (key: string, value: string) => {
+                writes++;
+                original(key, value);
+            };
+
+            const dispose = persist(carburetor, {key: 'counter', storage, coalesce: true});
+
+            writes = 0;
+            carburetor.setValue(7);
+
+            await new Promise(resolve => queueMicrotask(() => resolve(undefined)));
+
+            expect(writes).toEqual(1);
+
+            dispose();
+
+            expect(writes).toEqual(1);
+        });
+    });
 });
 
 describe('CarburetorHistory', () => {

@@ -95,8 +95,8 @@ const sameKeyedContent = (
 const sameValue = (
     a: unknown,
     b: unknown,
-    previousToFresh: WeakMap<object, object>,
-    freshToPrevious: WeakMap<object, object>
+    previousToFresh?: WeakMap<object, object>,
+    freshToPrevious?: WeakMap<object, object>
 ): boolean => {
     // Mutable exotic members are decided before the `Object.is` shortcut (R5-02): the same Map
     // instance on both sides can have been mutated in place between the two reads, so identity
@@ -115,13 +115,20 @@ const sameValue = (
         return false;
     }
 
-    const mapped = previousToFresh.get(a);
+    // Minted here, at the first container pair, not by sameSelection up front (R16-09): a
+    // primitive comparison returns above and never pays for these — 202 ns against 15 ns for
+    // Object.is. Once created, the same pair threads through the whole recursion via
+    // sameKeyedContent's non-optional parameters, so cycle detection still spans the call.
+    const previous = previousToFresh ?? new WeakMap<object, object>();
+    const fresh = freshToPrevious ?? new WeakMap<object, object>();
+
+    const mapped = previous.get(a);
 
     if (mapped !== undefined) {
         return mapped === b;
     }
 
-    if (freshToPrevious.get(b) !== undefined) {
+    if (fresh.get(b) !== undefined) {
         return false;
     }
 
@@ -137,10 +144,10 @@ const sameValue = (
             return false;
         }
 
-        previousToFresh.set(a, b);
-        freshToPrevious.set(b, a);
+        previous.set(a, b);
+        fresh.set(b, a);
 
-        return sameKeyedContent(a, b, previousToFresh, freshToPrevious);
+        return sameKeyedContent(a, b, previous, fresh);
     }
 
     if (!isPlainObject(a) || !isPlainObject(b)) {
@@ -151,10 +158,10 @@ const sameValue = (
         return false;
     }
 
-    previousToFresh.set(a, b);
-    freshToPrevious.set(b, a);
+    previous.set(a, b);
+    fresh.set(b, a);
 
-    return sameKeyedContent(a, b, previousToFresh, freshToPrevious);
+    return sameKeyedContent(a, b, previous, fresh);
 };
 
 /**
@@ -172,4 +179,4 @@ const sameValue = (
  * @param next - the fresh selection to compare it against
  */
 export const sameSelection = (snapshot: unknown, next: unknown): boolean =>
-    sameValue(snapshot, next, new WeakMap<object, object>(), new WeakMap<object, object>());
+    sameValue(snapshot, next);

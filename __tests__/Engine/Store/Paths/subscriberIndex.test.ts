@@ -360,9 +360,14 @@ describe('SubscriberIndex', () => {
             expect(sorted(index.match(setOf('items.a2.title')))).toEqual(['reader']);
         });
 
-        test('a path removed by direct mutation of a shared Set is still unfiled on the next add', () => {
-            // The index's own record of what is filed, not the Set's current membership at
-            // some earlier moment, is what a diff must be computed against.
+        test('re-adding the same Set instance after a direct (non-addPath) mutation is a no-op, by design', () => {
+            // R16-09: the index no longer keeps a second, owned copy of what is filed next to
+            // readsById, so a re-registration diffs against readsById's own previous entry.
+            // That only works while the fresh Set and the held one are distinct objects — see
+            // add()'s own comment. Handing back the very instance the index already holds is
+            // out of contract for anything other than addPath, which keeps exact/branch in
+            // sync as it mutates that Set; a caller that mutates it some other way and hands
+            // the same instance back gets a no-op instead of a silently wrong diff.
             const index = new SubscriberIndex();
             const reads = setOf('a', 'b');
 
@@ -370,11 +375,12 @@ describe('SubscriberIndex', () => {
             reads.delete('a');
             index.add('reader', reads);
 
-            expect(sorted(index.match(setOf('a')))).toEqual([]);
+            // Still filed under 'a': the deletion never went through a diffable re-registration.
+            expect(sorted(index.match(setOf('a')))).toEqual(['reader']);
             expect(sorted(index.match(setOf('b')))).toEqual(['reader']);
         });
 
-        test('agrees with a full scan over randomised re-add sequences, including a mutated shared Set', () => {
+        test('agrees with a full scan over randomised re-add sequences, including a shared Set grown in place', () => {
             const segments = ['items', 'order', 'a1', 'a2', 'title', 'done', 'meta'];
             let seed = 20260929;
 
@@ -404,27 +410,37 @@ describe('SubscriberIndex', () => {
                     let reads = new Set<TPath>();
                     const generations = 1 + next(4);
 
+                    index.add(id, reads);
+
                     for (let generation = 0; generation < generations; generation++) {
-                        // Half the time, mutate and re-add the very same Set object — the
-                        // addPath-then-add pattern add() cannot diff from identity alone.
-                        // Otherwise, hand over a fresh Set carrying the same content forward.
-                        if (next(2) === 0 && generation > 0) {
+                        // Half the time, grow the very Set the index already holds through
+                        // addPath — the amendment pattern a live computed dependency uses,
+                        // and the one mutation of a shared, already-adopted Set the index can
+                        // still diff correctly (see add()'s own comment). The other half, hand
+                        // over a fresh Set — possibly shrunk — which add() diffs normally.
+                        if (next(2) === 0) {
+                            const additions = 1 + next(2);
+
+                            for (let i = 0; i < additions; i++) {
+                                index.addPath(id, next(10) === 0 ? WILDCARD_PATH : randomPath());
+                            }
+                        } else {
                             reads = new Set<TPath>(reads);
+
+                            const additions = 1 + next(2);
+
+                            for (let i = 0; i < additions; i++) {
+                                reads.add(next(10) === 0 ? WILDCARD_PATH : randomPath());
+                            }
+
+                            if (reads.size > 1 && next(2) === 0) {
+                                const asArray = Array.from(reads);
+
+                                reads.delete(asArray[next(asArray.length)]);
+                            }
+
+                            index.add(id, reads);
                         }
-
-                        const additions = 1 + next(2);
-
-                        for (let i = 0; i < additions; i++) {
-                            reads.add(next(10) === 0 ? WILDCARD_PATH : randomPath());
-                        }
-
-                        if (reads.size > 1 && next(2) === 0) {
-                            const asArray = Array.from(reads);
-
-                            reads.delete(asArray[next(asArray.length)]);
-                        }
-
-                        index.add(id, reads);
                     }
 
                     readsById.set(id, reads);

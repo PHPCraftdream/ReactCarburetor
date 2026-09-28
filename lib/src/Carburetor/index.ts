@@ -7,7 +7,9 @@ export * from './Models/Derived';
 export * from './Models/Enums/EDevToolsAction';
 export * from './Models/Enums/EDevToolsMessageType';
 export * from './Models/Enums/EResourceStatus';
-export * from './Models/Paths';
+// TAliasLedger is deliberately not re-exported here (R16-10): it is the shape of a
+// development-only ledger, not part of the package's public contract.
+export type {TPath, TPathSet, TPathRecorder} from './Models/Paths';
 export * from './Models/Resource';
 export * from './Models/Store';
 export * from './Models/Tooling';

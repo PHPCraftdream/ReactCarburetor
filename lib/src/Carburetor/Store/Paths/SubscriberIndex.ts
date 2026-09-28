@@ -37,67 +37,67 @@ export class SubscriberIndex {
     protected branch: Map<TPath, TBucket> = new Map<TPath, TBucket>();
     /** Subscribers that read the wildcard, so every write matches them. */
     protected wildcard: Set<string> = new Set<string>();
-    /** Read sets by id, adopted by reference: `addPath` mutates the caller's own Set. */
-    protected readsById: Map<string, TPathSet> = new Map<string, TPathSet>();
     /**
-     * The non-wildcard paths this index has actually filed into `exact`/`branch`, by id.
+     * Read sets by id, adopted by reference: `addPath` mutates the caller's own Set.
      *
-     * Authoritative on its own, independent of whatever `readsById` currently points at:
-     * `addPath` mutates that Set in place, so by the time a later `add()` runs for the same
-     * id it may be handed back the very same (already-amended) Set instance, with no way to
-     * tell old members from new by looking at the Set itself. This record is only ever
-     * touched by `file`/`unfile`, so it always reflects what is actually indexed.
+     * Doubles as the record of what is actually filed (minus the wildcard path, tracked
+     * separately above): a re-registration diffs the fresh set against whatever this map
+     * already holds for the id, instead of keeping a second, owned copy of the same paths
+     * next to it (R16-09 — that copy cost 240 of 549 B of bookkeeping per four-path
+     * subscriber). The diff is only sound while this map's entry and the caller's set stay
+     * distinct objects; see `add`'s own comment for the one case where they do not.
      */
-    protected filedById: Map<string, Set<TPath>> = new Map<string, Set<TPath>>();
+    protected readsById: Map<string, TPathSet> = new Map<string, TPathSet>();
 
     /**
      * Registers what one subscriber reads, in both maps.
      *
-     * Re-registering an already-known id diffs against what is actually filed rather than
-     * re-filing everything: paths no longer present are unfiled, paths not yet present are
-     * filed, and the rest is left alone — O(read-set size) membership checks plus
+     * Re-registering an already-known id diffs against the previously adopted set rather
+     * than re-filing everything: paths no longer present are unfiled, paths not yet present
+     * are filed, and the rest is left alone — O(read-set size) membership checks plus
      * O(changed paths × depth) index work, instead of O(read-set size × depth) every time.
+     *
+     * `subscribe` adopts the caller's Set without copying (see its own comment), so a
+     * re-registration can hand back the very Set instance this index already holds for the
+     * id — `addPath` amending a live dependency by one path (R14-01) does exactly that. Diffing
+     * a Set against itself always comes out empty, which is the right answer here: `addPath`
+     * keeps `exact`/`branch` in sync with every path it adds, so by the time such a
+     * re-registration runs there is nothing left to file. A caller that mutates a Set already
+     * handed to the index some other way, then hands that same instance back, is out of
+     * contract — the amend API is the only mutation path this index can see coming.
      *
      * @param id - the subscriber's key; re-registering it replaces the old paths.
      * @param reads - the paths to file; the wildcard path routes the id to the wildcard
      * set instead of the maps.
      */
     public add(id: string, reads: TPathSet): void {
-        const filed = this.filedById.get(id);
+        const previous = this.readsById.get(id);
+
+        if (previous === reads) {
+            return;
+        }
 
         this.readsById.set(id, reads);
 
-        if (!filed) {
+        if (previous === undefined) {
             this.registerFresh(id, reads);
 
             return;
         }
 
-        const stale: TPath[] = [];
-
-        filed.forEach((path: TPath) => {
-            if (!reads.has(path)) {
-                stale.push(path);
+        previous.forEach((path: TPath) => {
+            if (path !== WILDCARD_PATH && !reads.has(path)) {
+                this.unfile(id, path);
             }
-        });
-
-        stale.forEach((path: TPath) => {
-            this.unfile(id, path);
-            filed.delete(path);
         });
 
         reads.forEach((path: TPath) => {
-            if (path === WILDCARD_PATH || filed.has(path)) {
-                return;
+            if (path !== WILDCARD_PATH && !previous.has(path)) {
+                this.file(id, path);
             }
-
-            this.file(id, path);
-            filed.add(path);
         });
 
-        const wantsWildcard = reads.has(WILDCARD_PATH);
-
-        if (wantsWildcard) {
+        if (reads.has(WILDCARD_PATH)) {
             this.wildcard.add(id);
         } else {
             this.wildcard.delete(id);
@@ -111,9 +111,9 @@ export class SubscriberIndex {
      * O(path depth) instead of O(read-set size): the incremental sibling `add` lacks,
      * for a dependency amended one leaf read at a time.
      *
-     * Whether the path is already filed is decided by `filedById`, not by whether `reads`
-     * already contains it: a caller may share `reads` with something that adds to it
-     * directly (a computed's own `dependency.reads`, which `Carburetor.subscribe` adopts
+     * Whether the path is already filed is decided by `exact` itself, not by whether
+     * `reads` already contains it: a caller may share `reads` with something that adds to
+     * it directly (a computed's own `dependency.reads`, which `Carburetor.subscribe` adopts
      * without copying — see its comment) before calling here, and a membership check on
      * `reads` would then read as "already filed" for a path this index has never actually
      * indexed.
@@ -128,37 +128,38 @@ export class SubscriberIndex {
             return;
         }
 
-        reads.add(path);
-
         if (path === WILDCARD_PATH) {
+            reads.add(path);
             this.wildcard.add(id);
 
             return;
         }
 
-        const filed = this.filedById.get(id) as Set<TPath>;
+        const alreadyFiled = this.isFiledAt(path, id);
 
-        if (filed.has(path)) {
-            return;
+        reads.add(path);
+
+        if (!alreadyFiled) {
+            this.file(id, path);
         }
-
-        this.file(id, path);
-        filed.add(path);
     }
 
     /** Forgets a subscriber, dropping every entry its read paths created. */
     public remove(id: string): void {
-        const filed = this.filedById.get(id);
+        const reads = this.readsById.get(id);
 
-        if (!filed) {
+        if (!reads) {
             return;
         }
 
         this.readsById.delete(id);
-        this.filedById.delete(id);
         this.wildcard.delete(id);
 
-        filed.forEach((path: TPath) => this.unfile(id, path));
+        reads.forEach((path: TPath) => {
+            if (path !== WILDCARD_PATH) {
+                this.unfile(id, path);
+            }
+        });
     }
 
     /** The subscribers a set of written paths concerns: three lookups per write, no scan. */
@@ -169,11 +170,22 @@ export class SubscriberIndex {
 
         const matched = this.wildcard.size > 0 ? new Set<string>(this.wildcard) : new Set<string>();
 
-        writes.forEach((writePath: TPath) => {
+        for (const writePath of writes) {
             this.collect(this.exact.get(writePath), matched);
             this.collect(this.branch.get(writePath), matched);
-            this.ancestorsOf(writePath).forEach((ancestor: TPath) => this.collect(this.exact.get(ancestor), matched));
-        });
+
+            // Ancestors walked in place, longest first, stopping before the root segment: no
+            // ancestors array and no closure per write, just a backward scan for the literal
+            // `.` separator. Safe to scan for: joinPath escapes a real `~` to `~0` and a real
+            // separator to `~1` before ever embedding a key, so every unescaped `.` in a path
+            // string is a genuine segment boundary.
+            let cut = writePath.lastIndexOf(PATH_SEPARATOR);
+
+            while (cut > 0) {
+                this.collect(this.exact.get(writePath.slice(0, cut)), matched);
+                cut = writePath.lastIndexOf(PATH_SEPARATOR, cut - 1);
+            }
+        }
 
         return matched;
     }
@@ -198,10 +210,6 @@ export class SubscriberIndex {
      * @param reads - the paths to file
      */
     protected registerFresh(id: string, reads: TPathSet): void {
-        const filed = new Set<TPath>();
-
-        this.filedById.set(id, filed);
-
         reads.forEach((path: TPath) => {
             if (path === WILDCARD_PATH) {
                 this.wildcard.add(id);
@@ -210,8 +218,20 @@ export class SubscriberIndex {
             }
 
             this.file(id, path);
-            filed.add(path);
         });
+    }
+
+    /**
+     * Whether `id` is already filed under this exact path, decided from `exact` itself —
+     * see `addPath`'s own comment for why `reads`'s membership cannot answer this.
+     *
+     * @param path - the exact path to check
+     * @param id - the subscriber to look for in that path's bucket
+     */
+    protected isFiledAt(path: TPath, id: string): boolean {
+        const bucket = this.exact.get(path);
+
+        return bucket === id || (bucket !== undefined && typeof bucket !== 'string' && bucket.has(id));
     }
 
     /**
