@@ -358,6 +358,8 @@ describe('ResourceCache reentrant loads', () => {
 
         expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
         expect(cache.getEntry('new').data).toEqual('restored-new');
+        expect((cache as unknown as {eviction: {count: number}}).eviction.count)
+            .toBe(Object.keys(cache.getData().entries).length);
 
         resolve('late');
         await original;
@@ -426,6 +428,7 @@ describe('ResourceCache reentrant loads', () => {
         const first = cache.load('a');
 
         cache.setData({entries: {}});
+        expect((cache as unknown as {eviction: {count: number}}).eviction.count).toBe(0);
         resolvers[0]('discarded');
         await first;
 

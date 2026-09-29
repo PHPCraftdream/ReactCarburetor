@@ -21,6 +21,19 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
 // so sharing it across keys and across ResourceCache instances is safe.
 const ABSENT_VIEW: IResourceView<unknown> = Object.freeze({...getInitialCacheEntry<unknown>(), stale: true});
 
+const validateOptions = (options: IResourceCacheOptions): IResourceCacheOptions => {
+    if (options.ttl !== undefined && (Number.isNaN(options.ttl) || options.ttl < 0)) {
+        throw new RangeError('ResourceCache ttl must be a non-negative number');
+    }
+
+    if (options.maxEntries !== undefined && options.maxEntries !== Infinity
+        && (!Number.isInteger(options.maxEntries) || options.maxEntries < 0)) {
+        throw new RangeError('ResourceCache maxEntries must be a non-negative integer or Infinity');
+    }
+
+    return options;
+};
+
 /**
  * Many async answers, keyed by the arguments that produced them.
  *
@@ -50,7 +63,20 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param options - Cache and scheduler settings.
      */
     constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
-        super(loader, options);
+        super(loader, validateOptions(options));
+    }
+
+    /** Keep replacement bookkeeping current before setData delivers synchronously. */
+    protected didSetData(): void {
+        const keys = Object.keys(this.data.entries);
+
+        this.eviction.replace(keys);
+        this.viewCache.clear();
+        for (const key of this.failures.keys()) {
+            if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) {
+                this.failures.delete(key);
+            }
+        }
     }
 
     /**

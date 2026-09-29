@@ -39,13 +39,24 @@ const ABSENT_VIEW = Object.freeze({
     ...(0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)(),
     stale: true
 });
+const validateOptions = (options)=>{
+    if (void 0 !== options.ttl && (Number.isNaN(options.ttl) || options.ttl < 0)) throw new RangeError('ResourceCache ttl must be a non-negative number');
+    if (void 0 !== options.maxEntries && 1 / 0 !== options.maxEntries && (!Number.isInteger(options.maxEntries) || options.maxEntries < 0)) throw new RangeError('ResourceCache maxEntries must be a non-negative integer or Infinity');
+    return options;
+};
 class ResourceCache extends external_ResourceCacheLifecycle_js_namespaceObject.ResourceCacheLifecycle {
     lastKeyArgs = void 0;
     lastKeyJson = void 0;
     lastKeyValue = void 0;
     keyMutationReported = false;
     constructor(loader, options = {}){
-        super(loader, options);
+        super(loader, validateOptions(options));
+    }
+    didSetData() {
+        const keys = Object.keys(this.data.entries);
+        this.eviction.replace(keys);
+        this.viewCache.clear();
+        for (const key of this.failures.keys())if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) this.failures.delete(key);
     }
     keyOf(args) {
         const json = JSON.stringify(void 0 === args ? null : args);

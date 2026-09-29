@@ -1,4 +1,4 @@
-import {EResourceStatus} from "@/Carburetor";
+import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {encodeCacheKey} from "@/Carburetor/Resource/Cache/encodeCacheKey";
@@ -136,15 +136,38 @@ describe('ResourceCache', () => {
         expect(cache.getEntry('a').stale).toBeFalsy();
     });
 
+    test.each([NaN, -1, -Infinity])('rejects ttl %s', (ttl) => {
+        expect(() => new ResourceCache(() => Promise.resolve('value'), {ttl})).toThrow(RangeError);
+    });
+
+    test.each([NaN, -1, -Infinity, 1.5])('rejects maxEntries %s', (maxEntries) => {
+        expect(() => new ResourceCache(() => Promise.resolve('value'), {maxEntries})).toThrow(RangeError);
+    });
+
+    test('accepts fractional ttl and zero or infinite capacity', async () => {
+        const zero = new ResourceCache<string, string>((key) => Promise.resolve(key), {
+            ttl: 0.5, maxEntries: 0,
+        });
+        const unlimited = new ResourceCache<string, string>((key) => Promise.resolve(key), {
+            maxEntries: Infinity,
+        });
+
+        await zero.load('a');
+        expect(Object.keys(zero.getData().entries)).toHaveLength(0);
+
+        await Promise.all(['a', 'b', 'c'].map((key) => unlimited.load(key)));
+        expect(Object.keys(unlimited.getData().entries)).toHaveLength(3);
+    });
+
     test('refreshing an entry that has data keeps it readable', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: -1});
+        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 0});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
         await flush();
 
-        void cache.load('a');
+        void cache.refresh('a');
 
         const entry = cache.getEntry('a');
 

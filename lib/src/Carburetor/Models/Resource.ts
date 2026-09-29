@@ -73,10 +73,10 @@ export interface IResourceView<T> extends IResourceEntry<T> {
 }
 
 export interface IResourceCacheOptions {
-    /** How long an answer counts as fresh, in milliseconds. `Infinity` never goes stale. */
+    /** Non-negative milliseconds; fractional values and `Infinity` are valid. `Infinity` never goes stale. */
     ttl?: number;
 
-    /** Upper bound on kept entries; the least recently used go first. */
+    /** Non-negative integer or `Infinity`; zero keeps only retained entries, `Infinity` disables eviction. */
     maxEntries?: number;
     scheduler?: IUpdateScheduler;
 }

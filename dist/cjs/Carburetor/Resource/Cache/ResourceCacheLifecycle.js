@@ -42,7 +42,7 @@ const DEFAULT_TTL = 30000;
 const DEFAULT_MAX_ENTRIES = 100;
 class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
     loader;
-    forgetAllDepth = 0;
+    bulkDepth = 0;
     restoreGeneration = 0;
     ttl;
     maxEntries;
@@ -82,7 +82,6 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
             const entry = this.data.entries[key];
             if (entry) entries[key] = entry;
         });
-        this.eviction.setCount(Object.keys(entries).length);
         this.setData((0, deepClone_js_namespaceObject.deepClone)({
             entries
         }));
@@ -114,7 +113,14 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.abortKey(this.keyOf(args));
     }
     abortAll() {
-        Array.from(this.controllers.keys()).forEach((key)=>this.abortKey(key));
+        this.bulkDepth++;
+        try {
+            Array.from(this.controllers.entries()).forEach(([key, controller])=>{
+                if (this.controllers.get(key) === controller) this.abortKey(key);
+            });
+        } finally{
+            this.finishBulk();
+        }
     }
     invalidate(args) {
         const key = this.keyOf(args);
@@ -138,16 +144,19 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.forgetKey(this.keyOf(args));
     }
     forgetAll() {
-        this.forgetAllDepth++;
+        this.bulkDepth++;
         try {
             Object.keys(this.data.entries).forEach((key)=>this.forgetKey(key));
         } finally{
-            this.forgetAllDepth--;
-            if (0 === this.forgetAllDepth && (this.draftTouched || this.writes.size > 0)) super.emitUpdate();
+            this.finishBulk();
         }
     }
+    finishBulk() {
+        this.bulkDepth--;
+        if (0 === this.bulkDepth && (this.draftTouched || this.writes.size > 0)) super.emitUpdate();
+    }
     emitUpdate() {
-        if (this.forgetAllDepth > 0) return;
+        if (this.bulkDepth > 0) return;
         super.emitUpdate();
     }
     forgetKey(key) {

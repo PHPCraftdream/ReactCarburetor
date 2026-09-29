@@ -21,8 +21,8 @@ const DEFAULT_MAX_ENTRIES: number = 100;
 
 /** Owns cache entry lifecycles, request state and eviction. */
 export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
-    /** Defers this cache's publications while a bulk removal is in progress. */
-    private forgetAllDepth: number = 0;
+    /** Defers publications during nested bulk cancellation or removal. */
+    private bulkDepth: number = 0;
     /** Identifies the latest restore when an abort listener restores again. */
     private restoreGeneration: number = 0;
     /** Time before a successful entry becomes stale, in milliseconds. */
@@ -65,8 +65,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.requests.clear();
         this.failures.clear();
         this.viewCache.clear();
-        // The entry set is about to be rebuilt wholesale: whatever the last scan found no
-        // longer applies.
+        // A replacement invalidates the last eviction scan.
         this.eviction.reset();
 
         controllers.forEach(([, controller]: [string, AbortController]) => controller.abort());
@@ -87,9 +86,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
                 status: entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status,
             };
 
-            // LRU order for the restored entries follows the snapshot's own key order; a
-            // re-entrant load()/refresh() below may have already touched this key, in which
-            // case its fresher tick is left alone.
+            // Preserve a re-entrant request's newer touch.
             if (!this.eviction.lastUsed.has(key)) {
                 this.touch(key);
             }
@@ -103,8 +100,6 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
                 entries[key] = entry;
             }
         });
-
-        this.eviction.setCount(Object.keys(entries).length);
 
         this.setData(deepClone({entries}));
     }
@@ -172,7 +167,16 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
 
     /** Abort all in-flight requests. */
     public abortAll(): void {
-        Array.from(this.controllers.keys()).forEach((key: string) => this.abortKey(key));
+        this.bulkDepth++;
+        try {
+            Array.from(this.controllers.entries()).forEach(([key, controller]) => {
+                if (this.controllers.get(key) === controller) {
+                    this.abortKey(key);
+                }
+            });
+        } finally {
+            this.finishBulk();
+        }
     }
 
     /** Mark an entry stale without removing its data. */
@@ -212,23 +216,25 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
 
     /** Remove all entries and cancel their requests. */
     public forgetAll(): void {
-        this.forgetAllDepth++;
-
+        this.bulkDepth++;
         try {
             Object.keys(this.data.entries).forEach((key: string) => this.forgetKey(key));
         } finally {
-            this.forgetAllDepth--;
-
-            // End the scope before delivery: a subscriber may write or call forgetAll again.
-            if (this.forgetAllDepth === 0 && (this.draftTouched || this.writes.size > 0)) {
-                super.emitUpdate();
-            }
+            this.finishBulk();
         }
     }
 
-    /** Keep individual mutations and patch hooks, but publish their union once. */
+    /** End bulk scope before delivery so subscriber re-entry publishes separately. */
+    private finishBulk(): void {
+        this.bulkDepth--;
+        if (this.bulkDepth === 0 && (this.draftTouched || this.writes.size > 0)) {
+            super.emitUpdate();
+        }
+    }
+
+    /** Publish bulk writes once. */
     protected emitUpdate(): void {
-        if (this.forgetAllDepth > 0) {
+        if (this.bulkDepth > 0) {
             return;
         }
 

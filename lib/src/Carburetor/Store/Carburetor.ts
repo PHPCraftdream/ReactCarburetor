@@ -177,6 +177,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
         this.data = data;
         this.draftProxy = undefined;
+        this.didSetData();
 
         // Marks this as a confirmed operation, the same as an access to draft would: an empty
         // diff then takes emitUpdate()'s real no-op path (nothing recorded, draft touched)
@@ -195,6 +196,9 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
         return data;
     }
+
+    /** Lets subclasses synchronize derived state before replacement notifications. */
+    protected didSetData(): void {}
 
     /** A deep copy of the state, detached from further writes. */
     public snapshot(): T {

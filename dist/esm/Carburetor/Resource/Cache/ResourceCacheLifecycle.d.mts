@@ -6,8 +6,8 @@ import { EvictionLedger } from "./EvictionLedger.mjs";
 /** Owns cache entry lifecycles, request state and eviction. */
 export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
     protected loader: TResourceLoader<T, TArgs>;
-    /** Defers this cache's publications while a bulk removal is in progress. */
-    private forgetAllDepth;
+    /** Defers publications during nested bulk cancellation or removal. */
+    private bulkDepth;
     /** Identifies the latest restore when an abort listener restores again. */
     private restoreGeneration;
     /** Time before a successful entry becomes stale, in milliseconds. */
@@ -67,7 +67,9 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
     forget(args: TArgs): void;
     /** Remove all entries and cancel their requests. */
     forgetAll(): void;
-    /** Keep individual mutations and patch hooks, but publish their union once. */
+    /** End bulk scope before delivery so subscriber re-entry publishes separately. */
+    private finishBulk;
+    /** Publish bulk writes once. */
     protected emitUpdate(): void;
     /**
      * Remove the entry at a resolved cache key.

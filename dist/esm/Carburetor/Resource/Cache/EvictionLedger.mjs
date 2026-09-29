@@ -21,8 +21,14 @@ class EvictionLedger {
         this.count = 0;
         this.retainedAtCount = void 0;
     }
-    setCount(count) {
-        this.count = count;
+    replace(keys) {
+        const live = new Set(keys);
+        for (const key of this.lastUsed.keys())if (!live.has(key)) this.lastUsed.delete(key);
+        keys.forEach((key)=>{
+            if (!this.lastUsed.has(key)) this.touch(key);
+        });
+        this.count = keys.length;
+        this.retainedAtCount = void 0;
     }
     release() {
         this.retainedAtCount = void 0;

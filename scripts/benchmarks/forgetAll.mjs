@@ -29,7 +29,6 @@ const run = async (operation, count, configuration) => {
         const entries = Object.fromEntries(keys.map((key) => [cache.keyOf(key), entry(EResourceStatus.Success)]));
 
         cache.setData({entries});
-        cache.eviction.setCount(count);
     } else {
         keys.forEach((key) => { void cache.load(key); });
     }

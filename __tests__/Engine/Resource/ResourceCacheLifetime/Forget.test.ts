@@ -1,4 +1,4 @@
-import {EResourceStatus} from "@/Carburetor";
+import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {persist} from "@/Carburetor/Tooling/persist";
 import {transaction} from "@/Carburetor/Store/Transaction/transaction";

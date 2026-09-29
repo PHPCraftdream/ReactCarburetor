@@ -1,4 +1,11 @@
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {IResourceEntry} from "@/Carburetor/Models/Resource";
+
+const ready = (value: string): IResourceEntry<string> => ({
+    status: EResourceStatus.Success, data: value, error: undefined, updatedAt: Date.now(),
+    refreshing: false, invalidated: false, failed: false,
+});
 
 const flush = async (): Promise<void> => {
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -24,6 +31,101 @@ const makeRng = (seed: number): (() => number) => {
 };
 
 describe('ResourceCache bookkeeping invariants (R16-04)', () => {
+    test('setData reconciles additions, removals, identity and LRU before later eviction', async () => {
+        const cache = new ResourceCache<string, string>((id) => Promise.resolve(id), {
+            maxEntries: 2, ttl: Infinity,
+        });
+        const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((key) => cache.keyOf(key));
+        const ledger = (cache as unknown as {eviction: {count: number; lastUsed: Map<string, number>}}).eviction;
+        const first = {entries: {[a]: ready('a'), [b]: ready('b')}};
+
+        expect(cache.setData(first)).toBe(first);
+        expect(cache.getData()).toBe(first);
+        expect(ledger.count).toBe(2);
+        expect([...ledger.lastUsed.keys()]).toEqual([a, b]);
+
+        cache.getEntry('a');
+        const second = {entries: {[a]: ready('a2'), [b]: ready('b2'), [c]: ready('c')}};
+
+        cache.setData(second);
+        expect([...ledger.lastUsed.keys()]).toEqual([b, a, c]);
+        expect(ledger.count).toBe(3);
+
+        const third = {entries: {[a]: ready('a3'), [b]: ready('b3')}};
+
+        cache.setData(third);
+        expect(ledger.count).toBe(2);
+        expect([...ledger.lastUsed.keys()]).toEqual([b, a]);
+
+        await cache.load('d');
+        expect(Object.keys(cache.getData().entries)).toEqual([a, d]);
+        expect(ledger.count).toBe(2);
+    });
+
+    test('setData in a synchronous subscriber is reconciled before a reentrant load', async () => {
+        const cache = new ResourceCache<string, string>((id) => Promise.resolve(id), {
+            maxEntries: 1, ttl: Infinity,
+        });
+        const [a, b, c] = ['a', 'b', 'c'].map((key) => cache.keyOf(key));
+        let started = false;
+        const id = cache.subscribe(() => {
+            if (!started) {
+                started = true;
+                cache.unsubscribe(id);
+                void cache.load('c');
+            }
+        });
+
+        cache.setData({entries: {[a]: ready('a'), [b]: ready('b')}});
+        await flush();
+
+        const ledger = (cache as unknown as {eviction: {count: number}}).eviction;
+
+        expect(cache.getData().entries[c]?.data).toBe('c');
+        expect(ledger.count).toBe(Object.keys(cache.getData().entries).length);
+        expect(Object.keys(cache.getData().entries)).toEqual([c]);
+    });
+
+    test('setData releases an exhausted eviction scan after changing the entry set', async () => {
+        const cache = new ResourceCache<string, string>((id) => Promise.resolve(id), {
+            maxEntries: 1, ttl: Infinity,
+        });
+        const [a, b, c, d, e] = ['a', 'b', 'c', 'd', 'e'].map((key) => cache.keyOf(key));
+        const readers = [a, b].map((key) => cache.subscribe(() => undefined, {
+            reads: new Set([cache.pathOfKey(key)]),
+        }));
+
+        await Promise.all([cache.load('a'), cache.load('b')]);
+        expect(Object.keys(cache.getData().entries)).toEqual([a, b]);
+
+        cache.setData({entries: {[c]: ready('c'), [d]: ready('d')}});
+        void cache.load('e');
+
+        expect(Object.keys(cache.getData().entries)).toEqual([e]);
+        readers.forEach((id) => cache.unsubscribe(id));
+    });
+
+    test('an in-flight answer settles into a replaced entry set without losing count', async () => {
+        let resolve: (value: string) => void = () => undefined;
+        const cache = new ResourceCache<string, string>(() => new Promise((done) => { resolve = done; }), {
+            maxEntries: 3,
+        });
+        const pending = cache.load('a');
+        const [a, b] = ['a', 'b'].map((key) => cache.keyOf(key));
+        const replacement = {entries: {[a]: ready('provisional'), [b]: ready('b')}};
+
+        cache.setData(replacement);
+        expect(cache.getData()).toBe(replacement);
+        expect((cache as unknown as {eviction: {count: number}}).eviction.count).toBe(2);
+
+        resolve('answer');
+        await pending;
+
+        expect(cache.getEntry('a').data).toBe('answer');
+        expect(cache.getEntry('b').data).toBe('b');
+        expect((cache as unknown as {eviction: {count: number}}).eviction.count).toBe(2);
+    });
+
     test('entryCount matches the live entry set after a random sequence of operations', async () => {
         const rng = makeRng(20260928);
         const cache = new ResourceCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {

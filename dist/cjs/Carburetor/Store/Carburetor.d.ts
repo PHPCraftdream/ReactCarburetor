@@ -85,6 +85,8 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
      * changed.
      */
     setData(data: T): T;
+    /** Lets subclasses synchronize derived state before replacement notifications. */
+    protected didSetData(): void;
     /** A deep copy of the state, detached from further writes. */
     snapshot(): T;
     /**

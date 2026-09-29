@@ -69,14 +69,24 @@ export class EvictionLedger {
         this.retainedAtCount = undefined;
     }
 
-    /**
-     * Sets the count directly, for a caller that just rebuilt the live entry set itself
-     * (`restore()`) and knows its final size without going through `create()` per entry.
-     *
-     * @param count - the number of live entries right now
-     */
-    public setCount(count: number): void {
-        this.count = count;
+    /** Reconcile a replaced entry set, retaining access order for surviving keys. */
+    public replace(keys: string[]): void {
+        const live = new Set(keys);
+
+        for (const key of this.lastUsed.keys()) {
+            if (!live.has(key)) {
+                this.lastUsed.delete(key);
+            }
+        }
+
+        keys.forEach((key: string) => {
+            if (!this.lastUsed.has(key)) {
+                this.touch(key);
+            }
+        });
+
+        this.count = keys.length;
+        this.retainedAtCount = undefined;
     }
 
     /**

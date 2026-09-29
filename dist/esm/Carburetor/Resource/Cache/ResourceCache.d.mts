@@ -28,6 +28,8 @@ export declare class ResourceCache<T, TArgs = void> extends ResourceCacheLifecyc
      * @param options - Cache and scheduler settings.
      */
     constructor(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions);
+    /** Keep replacement bookkeeping current before setData delivers synchronously. */
+    protected didSetData(): void;
     /**
      * The key an argument set is stored under, memoized while both reference and JSON are unchanged.
      *

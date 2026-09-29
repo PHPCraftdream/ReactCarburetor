@@ -105,6 +105,7 @@ class Carburetor {
         null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '', previous);
         this.data = data;
         this.draftProxy = void 0;
+        this.didSetData();
         this.touchDraft();
         const changed = (0, diffPaths_js_namespaceObject.diffPaths)(previous, data);
         if (changed.size > 0) {
@@ -115,6 +116,7 @@ class Carburetor {
         this.emitUpdate();
         return data;
     }
+    didSetData() {}
     snapshot() {
         return (0, deepClone_js_namespaceObject.deepClone)(this.data);
     }

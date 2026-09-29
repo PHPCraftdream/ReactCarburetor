@@ -51,13 +51,8 @@ export declare class EvictionLedger {
     forget(key: string): void;
     /** Clears everything for a wholesale rebuild; the caller re-touches and re-counts after. */
     reset(): void;
-    /**
-     * Sets the count directly, for a caller that just rebuilt the live entry set itself
-     * (`restore()`) and knows its final size without going through `create()` per entry.
-     *
-     * @param count - the number of live entries right now
-     */
-    setCount(count: number): void;
+    /** Reconcile a replaced entry set, retaining access order for surviving keys. */
+    replace(keys: string[]): void;
     /**
      * Drops the "nothing to evict" memory. Call when a request settles or a subscriber
      * leaves and might have freed a candidate the last scan could not touch.
