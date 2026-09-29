@@ -63,7 +63,9 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * leaves the existing cleanup standing
      */
     protected useEffect(name: string, callBack: TEffect, deps: TEffectDeps): void {
-        const known = this.effects?.[name];
+        const records = this.effects;
+        const known = records && Object.prototype.hasOwnProperty.call(records, name)
+            ? records[name] : undefined;
 
         if (known && shallowEqual(known.deps, deps)) {
             return;
@@ -107,11 +109,14 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * rather than as a class field default, keeps that component from paying for it.
      */
     private ensureEffects(): IDict<IEffectRecord> {
-        if (this.effects === undefined) {
-            this.effects = {};
+        if (this.effects !== undefined) {
+            return this.effects;
         }
 
-        return this.effects;
+        const records: IDict<IEffectRecord> = Object.create(null);
+        this.effects = records;
+
+        return records;
     }
 
     /**

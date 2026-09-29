@@ -42,8 +42,8 @@ class AntiHookComponentEffects extends external_Reads_js_namespaceObject.AntiHoo
         if ("u" > typeof process && 'production' !== process.env.NODE_ENV) DiagnosticsInstance_js_namespaceObject.diagnostics.report(failure);
     }
     useEffect(name, callBack, deps) {
-        var _this_effects;
-        const known = null == (_this_effects = this.effects) ? void 0 : _this_effects[name];
+        const records = this.effects;
+        const known = records && Object.prototype.hasOwnProperty.call(records, name) ? records[name] : void 0;
         if (known && (0, external_shallowEqual_js_namespaceObject.shallowEqual)(known.deps, deps)) return;
         const failures = [];
         if (known && known.cleanup) try {
@@ -64,8 +64,10 @@ class AntiHookComponentEffects extends external_Reads_js_namespaceObject.AntiHoo
         }
     }
     ensureEffects() {
-        if (void 0 === this.effects) this.effects = {};
-        return this.effects;
+        if (void 0 !== this.effects) return this.effects;
+        const records = Object.create(null);
+        this.effects = records;
+        return records;
     }
     releaseEffects() {
         const records = this.effects;

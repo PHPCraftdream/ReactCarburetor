@@ -10,8 +10,8 @@ class AntiHookComponentEffects extends AntiHookComponentReads {
         if ("u" > typeof process && 'production' !== process.env.NODE_ENV) diagnostics.report(failure);
     }
     useEffect(name, callBack, deps) {
-        var _this_effects;
-        const known = null == (_this_effects = this.effects) ? void 0 : _this_effects[name];
+        const records = this.effects;
+        const known = records && Object.prototype.hasOwnProperty.call(records, name) ? records[name] : void 0;
         if (known && shallowEqual(known.deps, deps)) return;
         const failures = [];
         if (known && known.cleanup) try {
@@ -32,8 +32,10 @@ class AntiHookComponentEffects extends AntiHookComponentReads {
         }
     }
     ensureEffects() {
-        if (void 0 === this.effects) this.effects = {};
-        return this.effects;
+        if (void 0 !== this.effects) return this.effects;
+        const records = Object.create(null);
+        this.effects = records;
+        return records;
     }
     releaseEffects() {
         const records = this.effects;

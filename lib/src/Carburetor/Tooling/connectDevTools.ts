@@ -32,14 +32,14 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
     const names = Object.keys(carburetors);
     let applyingTimeTravel = false;
 
-    const snapshots: IDict<{state: unknown; version: number}> = {};
+    const snapshots: IDict<{state: unknown; version: number}> = Object.create(null);
 
     // A payload copies each store once and then reuses that copy until the store's version
     // moves. Every version is checked on every composition: the notification is named after
     // one store, but a transaction may already have changed the others by the time it fires,
     // so refreshing only the named store would publish a payload mixing old and new states.
     const composeState = (): IDict<unknown> => {
-        const state: IDict<unknown> = {};
+        const state: IDict<unknown> = Object.create(null);
 
         names.forEach((name: string) => {
             const version = carburetors[name].getVersion();
@@ -80,7 +80,7 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
 
         try {
             names.forEach((name: string) => {
-                if (name in next) {
+                if (Object.prototype.hasOwnProperty.call(next, name)) {
                     carburetors[name].fromJSON(next[name]);
                 }
             });

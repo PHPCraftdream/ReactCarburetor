@@ -339,4 +339,48 @@ describe('<AntiHookComponent />', () => {
         unmount();
     });
 
+    test('prototype-named effects rerun and release their last cleanup on unmount', () => {
+        const log: string[] = [];
+
+        class NamedEffects extends AntiHookComponent<{channel: string}> {
+            public effectKeys = (): string[] => Object.keys(this.effects ?? {});
+            public hasEffects = (): boolean => this.effects !== undefined;
+
+            protected useEffects(): void {
+                for (const name of ['__proto__', 'constructor']) {
+                    this.useEffect(name, () => {
+                        const channel = this.props.channel;
+                        log.push('open:' + name + ':' + channel);
+
+                        return () => log.push('close:' + name + ':' + channel);
+                    }, [this.props.channel]);
+                }
+            }
+
+            render() {
+                return <div/>;
+            }
+        }
+
+        let instance: NamedEffects | null = null;
+        const {rerender, unmount} = render(<NamedEffects channel="a" ref={(value) => { instance = value; }}/>);
+        const mounted = instance as unknown as NamedEffects;
+        expect(mounted.effectKeys()).toEqual(['__proto__', 'constructor']);
+        expect(log).toEqual(['open:__proto__:a', 'open:constructor:a']);
+
+        rerender(<NamedEffects channel="a" ref={(value) => { instance = value; }}/>);
+        expect(log).toEqual(['open:__proto__:a', 'open:constructor:a']);
+
+        rerender(<NamedEffects channel="b" ref={(value) => { instance = value; }}/>);
+        expect(log).toEqual([
+            'open:__proto__:a', 'open:constructor:a',
+            'close:__proto__:a', 'open:__proto__:b',
+            'close:constructor:a', 'open:constructor:b'
+        ]);
+
+        unmount();
+        expect(log.slice(-2)).toEqual(['close:__proto__:b', 'close:constructor:b']);
+        expect(mounted.hasEffects()).toBe(false);
+    });
+
 });
