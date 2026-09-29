@@ -7,6 +7,7 @@ describe('computed', () => {
         test.each(['external', '__proto__', 'constructor', 'toString'])(
             'external interface source %s stays fresh without observation', (uid) => {
                 const source = new ExternalComputed(7, uid);
+                Object.assign(source, {versions: undefined});
                 const inner = computed(read => read(source) * 2);
                 const outer = computed(read => read(inner) + 1);
                 expect(outer.get()).toEqual(15);
@@ -47,6 +48,22 @@ describe('computed', () => {
             expect(runs).toEqual([1, 1, 1]);
             expect(seen).toEqual([12]);
             total.unsubscribe(id);
+            expect(source.listeners.size).toEqual(0);
+        });
+
+        test('one external dependent can detach while the remaining bridge stays live', () => {
+            const source = new ExternalComputed(1);
+            const first = computed(read => read(source) * 2);
+            const second = computed(read => read(source) * 3);
+            const seen: number[] = [];
+            const firstId = first.subscribe(() => { throw new Error('detached observer'); });
+            const secondId = second.subscribe(() => seen.push(second.get()));
+            expect(source.listeners.size).toEqual(1);
+            first.unsubscribe(firstId);
+            source.set(2);
+            expect(seen).toEqual([6]);
+            expect(source.listeners.size).toEqual(1);
+            second.unsubscribe(secondId);
             expect(source.listeners.size).toEqual(0);
         });
 
