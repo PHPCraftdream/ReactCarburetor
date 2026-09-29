@@ -10,6 +10,7 @@ import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
 import {announceIsUnchanged} from "./announceIsUnchanged";
 import {reportComputedEscape} from "./reportComputedEscape";
+import {computedDependencies} from "./computedDependencies";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
@@ -73,10 +74,10 @@ export class Computed<R> implements IComputed<R> {
     /** Callbacks woken when a changed value settles, keyed by subscription id. */
     protected subscribers: Map<string, TSubscriber> = new Map<string, TSubscriber>();
     /** What the current value was computed from, observed only while somebody is listening. */
-    protected dependencies: IDict<IDependency> = {};
+    protected dependencies: IDict<IDependency> = Object.create(null);
 
     /** The stores the current value was computed from, including those behind inner computeds. */
-    protected versions: IDict<IDependencyVersion> = {};
+    protected versions: IDict<IDependencyVersion> = Object.create(null);
 
     /**
      * The value an observer last had delivered: the baseline a settlement is judged
@@ -104,6 +105,7 @@ export class Computed<R> implements IComputed<R> {
         // reach it when they are invalidated — including when their settlement fails and
         // nothing is announced.
         invalidationEdges.set(this.onDependencyChanged, this.markStale);
+        computedDependencies.versions.set(this, () => this.versions);
     }
 
     /** The identity a component or another computed subscribes by. */
@@ -229,7 +231,7 @@ export class Computed<R> implements IComputed<R> {
 
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
     protected recompute(): void {
-        const collected: IDict<IDependency> = {};
+        const collected: IDict<IDependency> = Object.create(null);
 
         const track = (source: ICarburetor<object> | IComputed<unknown>): unknown => {
             const cuid = source.getUID();
@@ -331,31 +333,14 @@ export class Computed<R> implements IComputed<R> {
 
             const dependency = collected[cuid];
 
-            dependency.source.subscribe(this.onDependencyChanged, transferReads(dependency.reads, this.uid));
+            computedDependencies.subscribe(dependency.source, this.onDependencyChanged,
+                transferReads(dependency.reads, this.uid));
         });
     }
 
-    /**
-     * Splits a fresh collection into edges already held and edges needing a registration.
-     *
-     * Also flips `published` on each dependency object the instant it stops or starts being
-     * the one `this.dependencies[cuid]` names — what a live `===` check did before — and
-     * decides equality from the overlap recordDependencyRead already counted while filling
-     * `next.reads`: the sets hold exactly the same paths exactly when that count equals both
-     * sizes, so no second walk over either set is needed here.
-     *
-     * A kept edge survives with its live subscription untouched — same source, same read
-     * set, same subscription id — so recomputing while observed never churns the upstream
-     * subscriber list. Sources the body no longer reads are unsubscribed; a source still
-     * read through different paths is reported as fresh, and the caller's subscribe
-     * replaces that registration in place.
-     *
-     * @param collected - the dependencies the body just collected, compared against the held set
-     * @returns the collected ids that still need a subscription: new sources, and sources
-     * now read through different paths
-     */
+    /** Keeps equal read sets subscribed, and replaces changed or newly collected edges. */
     protected diffDependencies(collected: IDict<IDependency>): IDict<boolean> {
-        const fresh: IDict<boolean> = {};
+        const fresh: IDict<boolean> = Object.create(null);
 
         Object.keys(this.dependencies).forEach((cuid: string) => {
             const previous = this.dependencies[cuid];
@@ -364,7 +349,7 @@ export class Computed<R> implements IComputed<R> {
             previous.published = false;
 
             if (!next) {
-                previous.source.unsubscribe(this.uid);
+                computedDependencies.unsubscribe(previous.source, this.uid);
 
                 return;
             }
@@ -399,10 +384,12 @@ export class Computed<R> implements IComputed<R> {
      * The body has just read every dependency, so their own records are current.
      */
     protected recordVersions(collected: IDict<IDependency>): void {
-        const versions: IDict<IDependencyVersion> = {};
+        const versions: IDict<IDependencyVersion> = Object.create(null);
 
         const record = (dependency: IDependency): void => {
-            if ('read' in dependency.source) {
+            const innerVersions = computedDependencies.versions.get(dependency.source)?.();
+
+            if (!innerVersions) {
                 versions[dependency.source.getUID()] = {
                     source: dependency.source,
                     version: dependency.source.getVersion(),
@@ -411,10 +398,8 @@ export class Computed<R> implements IComputed<R> {
                 return;
             }
 
-            const inner = dependency.source as Computed<unknown>;
-
-            Object.keys(inner.versions).forEach((cuid: string) => {
-                versions[cuid] = inner.versions[cuid];
+            Object.keys(innerVersions).forEach((cuid: string) => {
+                versions[cuid] = innerVersions[cuid];
             });
         };
 
@@ -430,17 +415,18 @@ export class Computed<R> implements IComputed<R> {
         Object.keys(this.dependencies).forEach((cuid: string) => {
             const dependency = this.dependencies[cuid];
 
-            dependency.source.subscribe(this.onDependencyChanged, transferReads(dependency.reads, this.uid));
+            computedDependencies.subscribe(dependency.source, this.onDependencyChanged,
+                transferReads(dependency.reads, this.uid));
         });
     }
 
     /** Unsubscribes from every dependency and forgets them. */
     protected releaseDependencies(): void {
         Object.keys(this.dependencies).forEach((cuid: string) => {
-            this.dependencies[cuid].source.unsubscribe(this.uid);
+            computedDependencies.unsubscribe(this.dependencies[cuid].source, this.uid);
         });
 
-        this.dependencies = {};
+        this.dependencies = Object.create(null);
     }
 
     /**

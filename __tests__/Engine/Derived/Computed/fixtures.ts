@@ -1,4 +1,6 @@
 import {Carburetor} from "@/Carburetor";
+import {IComputed} from '@/Carburetor/Models/Derived';
+import {ISubscribeOptions} from '@/Carburetor/Models/Store';
 
 export interface ITodoLike {
     items: {
@@ -72,3 +74,29 @@ export class IndexedCarburetor extends Carburetor<IIndexedData> {
 
 export const delta = (before: number[], after: number[]): number[] =>
     after.map((count: number, index: number): number => count - before[index]);
+
+export class ExternalComputed implements IComputed<number> {
+    public listeners = new Map<string, () => void>();
+    public version = 0;
+    public failSubscribe = false;
+    public constructor(public value = 7, private uid = 'external') {}
+    public getUID = () => this.uid;
+    public getVersion = () => this.version;
+    public get = () => this.value;
+    public subscribe = (callback: () => void, options: ISubscribeOptions = {}) => {
+        const id = options.id || 'external-listener';
+        this.listeners.set(id, callback);
+        if (this.failSubscribe) {
+            throw new Error('attachment failed');
+        }
+        return id;
+    };
+    public unsubscribe = (id: string) => { this.listeners.delete(id); };
+    public set(value: number): void {
+        this.value = value;
+        this.version++;
+        for (const callback of Array.from(this.listeners.values())) {
+            callback();
+        }
+    }
+}

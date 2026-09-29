@@ -1,9 +1,87 @@
 import {computed, transaction} from '@/Carburetor';
 import {sharedSingleton} from '@/Carburetor/Store/Utils/sharedSingleton';
-import {CounterCarburetor, ListCarburetor, delta, getData} from './fixtures';
+import {CounterCarburetor, ExternalComputed, ListCarburetor, delta, getData} from './fixtures';
 
 describe('computed', () => {
     describe('dependency maintenance', () => {
+        test.each(['external', '__proto__', 'constructor', 'toString'])(
+            'external interface source %s stays fresh without observation', (uid) => {
+                const source = new ExternalComputed(7, uid);
+                const inner = computed(read => read(source) * 2);
+                const outer = computed(read => read(inner) + 1);
+                expect(outer.get()).toEqual(15);
+                expect(source.listeners.size).toEqual(0);
+                source.set(8);
+                expect(outer.get()).toEqual(17);
+                expect(source.listeners.size).toEqual(0);
+            },
+        );
+
+        test('an observed external source publishes and releases its shared upstream edge', () => {
+            const source = new ExternalComputed();
+            const value = computed(read => read(source) * 2);
+            const seen: number[] = [];
+            const id = value.subscribe(() => seen.push(value.get()));
+            expect(source.listeners.size).toEqual(1);
+            source.set(8);
+            expect(seen).toEqual([16]);
+            expect(value.getVersion()).toEqual(1);
+            value.unsubscribe(id);
+            expect(source.listeners.size).toEqual(0);
+            source.set(9);
+            expect(seen).toEqual([16]);
+            expect(value.get()).toEqual(18);
+        });
+
+        test('an external diamond evaluates each node once and publishes one settled total', () => {
+            const source = new ExternalComputed(0);
+            const runs = [0, 0, 0];
+            const left = computed(read => { runs[0]++; return read(source) + 1; });
+            const right = computed(read => { runs[1]++; return read(source) * 10; });
+            const total = computed(read => { runs[2]++; return read(left) + read(right); });
+            const seen: number[] = [];
+            const id = total.subscribe(() => seen.push(total.get()));
+            expect(source.listeners.size).toEqual(1);
+            runs.fill(0);
+            source.set(1);
+            expect(runs).toEqual([1, 1, 1]);
+            expect(seen).toEqual([12]);
+            total.unsubscribe(id);
+            expect(source.listeners.size).toEqual(0);
+        });
+
+        test('conditional external dependencies detach the abandoned source', () => {
+            const selector = new CounterCarburetor({n: 0});
+            const first = new ExternalComputed(1, '__proto__');
+            const second = new ExternalComputed(2, 'constructor');
+            const value = computed(read => read(read(selector).n ? second : first));
+            const seen: number[] = [];
+            const id = value.subscribe(() => seen.push(value.get()));
+            selector.setN(1);
+            expect(first.listeners.size).toEqual(0);
+            expect(second.listeners.size).toEqual(1);
+            first.set(3);
+            second.set(4);
+            expect(seen).toEqual([2, 4]);
+            value.unsubscribe(id);
+            expect(second.listeners.size).toEqual(0);
+        });
+
+        test('a foreign native metadata getter flattens versions without an instanceof check', () => {
+            const store = new CounterCarburetor({n: 1});
+            const source = new ExternalComputed(2);
+            const metadata = sharedSingleton('computedVersions', () =>
+                new WeakMap<object, () => Record<string, {source: CounterCarburetor; version: number}>>());
+            metadata.set(source, () => ({[store.getUID()]: {source: store, version: store.getVersion()}}));
+            source.get = () => store.getData().n * 2;
+            const outer = computed(read => read(source) + 1);
+            expect(outer.get()).toEqual(3);
+            store.setN(2);
+            expect(source.getVersion()).toEqual(0);
+            expect(outer.get()).toEqual(5);
+            metadata.delete(source);
+        });
+
         test('one source change evaluates each node of a four-node chain once', () => {
             const carburetor = new ListCarburetor(getData());
             const calls: number[] = [0, 0, 0, 0];
