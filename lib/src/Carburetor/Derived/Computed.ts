@@ -267,7 +267,11 @@ export class Computed<R> implements IComputed<R> {
         this.valid = true;
     }
 
-    /** Records body reads and extends adopted store edges for later live leaf reads. */
+    /** Records body reads and extends adopted store edges for later live leaf reads.
+     *
+     * @param dependency - The edge receiving the read.
+     * @param path - The recorded path.
+     */
     protected recordDependencyRead(dependency: IDependency, path: TPath): void {
         if (dependency.reads.has(path)) {
             return;

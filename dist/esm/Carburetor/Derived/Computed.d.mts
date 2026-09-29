@@ -16,12 +16,13 @@ interface IDependency {
     reads: TPathSet;
     /** Set by attachDependencies once this becomes `this.dependencies[cuid]`. */
     published: boolean;
+    observed: boolean;
     /** Prior cycle's dependency for the same source, read only to count `overlap`. */
     previous: IDependency | undefined;
     /** Paths added to `reads` this cycle that `previous.reads` already held. */
     overlap: number;
 }
-/** One store a value was computed from, and the version it held at the time. */
+/** One leaf source a value was computed from, and its captured public version. */
 interface IDependencyVersion {
     source: ICarburetorSubscription;
     version: number;
@@ -48,7 +49,7 @@ export declare class Computed<R> implements IComputed<R> {
     protected subscribers: Map<string, TSubscriber>;
     /** What the current value was computed from, observed only while somebody is listening. */
     protected dependencies: IDict<IDependency>;
-    /** The stores the current value was computed from, including those behind inner computeds. */
+    /** Leaf versions, including flattened native computations and public external sources. */
     protected versions: IDict<IDependencyVersion>;
     /**
      * The value an observer last had delivered: the baseline a settlement is judged
@@ -94,7 +95,7 @@ export declare class Computed<R> implements IComputed<R> {
     unsubscribe(id: string): void;
     /** Whether the cached value can still be handed out. */
     protected isStale(): boolean;
-    /** Whether any store this value was computed from moved since it was read. */
+    /** Whether any leaf source moved since this value was read. */
     protected hasDrifted(): boolean;
     /**
      * Whether any dependency moved since the given version snapshot was taken.
@@ -104,61 +105,18 @@ export declare class Computed<R> implements IComputed<R> {
     protected driftedSince(record: IDict<IDependencyVersion>): boolean;
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
     protected recompute(): void;
-    /**
-     * Records one path read through a dependency, amending an established registration
-     * when the read arrives after the body's own evaluation.
+    /** Records body reads and extends adopted store edges for later live leaf reads.
      *
-     * The value a computed hands out stays live: a consumer reading a deeper leaf off it
-     * re-enters the read proxy the value was built from, whose recorder reports here long
-     * after attachDependencies published the read set. Growing `dependency.reads` only grows
-     * that Set; the store's own exact/branch index is separate and a plain mutation never
-     * reaches it — while the leaf is exactly what that consumer renders from, and a write to
-     * it must wake this computed. `extend` files just the new path into the existing
-     * registration — O(path depth), not the O(read-set size) a full re-subscribe would cost
-     * for every leaf a render adds.
-     *
-     * During the body's own evaluation `dependency.published` is still false — diffDependencies
-     * flips it once the dependency is adopted into `this.dependencies` — so nothing is amended
-     * there; once nobody listens there is no registration to amend either. `published` also
-     * gates the development escape diagnostic (R15-02), and the overlap counted here against
-     * the previous cycle's read set is what lets diffDependencies skip a second pass.
-     *
-     * @param dependency - the dependency edge the read belongs to
-     * @param path - the path the read proxy reported, or the wildcard for an inner computed
+     * @param dependency - The edge receiving the read.
+     * @param path - The recorded path.
      */
     protected recordDependencyRead(dependency: IDependency, path: TPath): void;
     /** Swaps in a fresh dependency set, keeping every edge the body still reads. */
     protected attachDependencies(collected: IDict<IDependency>): void;
-    /**
-     * Splits a fresh collection into edges already held and edges needing a registration.
-     *
-     * Also flips `published` on each dependency object the instant it stops or starts being
-     * the one `this.dependencies[cuid]` names — what a live `===` check did before — and
-     * decides equality from the overlap recordDependencyRead already counted while filling
-     * `next.reads`: the sets hold exactly the same paths exactly when that count equals both
-     * sizes, so no second walk over either set is needed here.
-     *
-     * A kept edge survives with its live subscription untouched — same source, same read
-     * set, same subscription id — so recomputing while observed never churns the upstream
-     * subscriber list. Sources the body no longer reads are unsubscribed; a source still
-     * read through different paths is reported as fresh, and the caller's subscribe
-     * replaces that registration in place.
-     *
-     * @param collected - the dependencies the body just collected, compared against the held set
-     * @returns the collected ids that still need a subscription: new sources, and sources
-     * now read through different paths
-     */
+    /** Keeps equal read sets subscribed, and replaces changed or newly collected edges. */
     protected diffDependencies(collected: IDict<IDependency>): IDict<boolean>;
-    /**
-     * Records the store versions the value was computed from. An inner computed hides the
-     * stores behind it, so those are recorded in its place — otherwise a write they saw
-     * while nobody was listening could never be noticed here.
-     *
-     * The body has just read every dependency, so their own records are current.
-     */
+    /** Flattens native dependency metadata; external sources expose their public version. */
     protected recordVersions(collected: IDict<IDependency>): void;
-    /** Subscribes to every dependency under this computed's own id. */
-    protected observeDependencies(): void;
     /** Unsubscribes from every dependency and forgets them. */
     protected releaseDependencies(): void;
     /**
@@ -193,8 +151,8 @@ export declare class Computed<R> implements IComputed<R> {
     /**
      * Recomputes and wakes subscribers if the value moved past what was last announced.
      *
-     * A body that throws changes nothing here: the value, `valid` and `announced` stand
-     * untouched, so no old cached value can be announced as a newly successful computation.
+     * A failed body or attachment preserves the last successful value and announcement.
+     * The stale computation cannot announce an old value as a newly successful result.
      * The error escapes to the wave, which isolates it and keeps settling the other
      * computations; an explicit get() reruns the body and hands the error to its reader,
      * and the next write to a dependency retries it.

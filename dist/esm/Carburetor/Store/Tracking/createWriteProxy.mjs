@@ -197,17 +197,29 @@ class WriteProxyHandler {
         const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
         if (isOpaqueDescriptor(descriptor, wasOwn)) throw new Error('Carburetor: "' + joinPath(this.basePath, key) + '" cannot take a non-plain-data descriptor — state properties are writable, configurable, enumerable data, no accessors. Derive a computed value instead, e.g. with Computed.');
         const previous = Reflect.get(source, key);
+        const raw = 'value' in descriptor ? unwrapWriteProxy(descriptor.value) : wasOwn ? previous : void 0;
         const path = this.writtenPath(key);
         null == (_this_aliases = this.aliases) || _this_aliases.checkKey(source, key, path);
-        null == (_this_aliases1 = this.aliases) || _this_aliases1.checkState(descriptor.value, path, wasOwn ? previous : void 0);
+        null == (_this_aliases1 = this.aliases) || _this_aliases1.checkState(raw, path, wasOwn ? previous : void 0);
         null == (_this_aliases2 = this.aliases) || _this_aliases2.checkWrite(source, this.basePath);
-        const wrote = Reflect.defineProperty(source, key, descriptor);
+        const effective = 'value' in descriptor ? {
+            ...descriptor,
+            value: raw
+        } : descriptor;
+        const previousLength = this.isArray ? source.length : void 0;
+        const wrote = Reflect.defineProperty(source, key, effective);
         if (!wrote) return false;
+        if (wasOwn && Object.is(previous, raw)) return true;
         null == (_this_aliases3 = this.aliases) || _this_aliases3.forget(previous);
         if (!wasOwn) this.record(this.keysMarker());
         const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
-        if (listener) this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, descriptor.value);
+        if (listener) this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, raw);
         this.record(path);
+        if (void 0 !== previousLength && source.length !== previousLength) {
+            const nextLength = source.length;
+            if (listener) this.reportPatch(listener, 'length', previousLength, nextLength);
+            this.record(this.writtenPath('length'));
+        }
         return true;
     }
     deleteProperty(source, key) {

@@ -4,7 +4,7 @@ import {tmpdir} from 'node:os';
 import {join, resolve} from 'node:path';
 import {rspack} from '@rspack/core';
 
-/** Bundle cache benchmark source without changing the tracked distribution.
+/** Bundle cache benchmark sources without changing the tracked distribution.
  *
  * @param root - Repository root.
  * @param entries - Named source entry points.

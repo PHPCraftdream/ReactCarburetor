@@ -6,6 +6,7 @@ import { diagnostics } from "../Store/Diagnostics/DiagnosticsInstance.mjs";
 import { transferReads } from "../Store/Paths/Markers/transferReads.mjs";
 import { announceIsUnchanged } from "./announceIsUnchanged.mjs";
 import { reportComputedEscape } from "./reportComputedEscape.mjs";
+import { computedDependencies } from "./computedDependencies.mjs";
 const invalidationEdges = sharedSingleton('invalidationEdges', ()=>new WeakMap());
 class Computed {
     body;
@@ -13,8 +14,8 @@ class Computed {
     uid = getUid();
     version = 0;
     subscribers = new Map();
-    dependencies = {};
-    versions = {};
+    dependencies = Object.create(null);
+    versions = Object.create(null);
     announced = void 0;
     value = void 0;
     valid = false;
@@ -22,6 +23,7 @@ class Computed {
         this.body = body;
         this.options = options;
         invalidationEdges.set(this.onDependencyChanged, this.markStale);
+        computedDependencies.versions.set(this, ()=>this.versions);
     }
     getUID() {
         return this.uid;
@@ -36,15 +38,23 @@ class Computed {
     subscribe(callback, options = {}) {
         const id = options.id || getUid();
         const wasUnobserved = 0 === this.subscribers.size;
+        const previous = this.subscribers.get(id);
         this.subscribers.set(id, callback);
-        if (!this.valid || wasUnobserved && this.hasDrifted()) this.recompute();
-        else if (wasUnobserved) this.observeDependencies();
-        if (wasUnobserved && this.valid) this.announced = {
-            value: this.value,
-            versions: {
-                ...this.versions
-            }
-        };
+        try {
+            if (!this.valid || wasUnobserved && this.hasDrifted()) this.recompute();
+            else if (wasUnobserved) this.attachDependencies(this.dependencies);
+            if (wasUnobserved && this.valid) this.announced = {
+                value: this.value,
+                versions: {
+                    ...this.versions
+                }
+            };
+        } catch (error) {
+            if (previous) this.subscribers.set(id, previous);
+            else this.subscribers.delete(id);
+            this.valid = false;
+            throw error;
+        }
         return id;
     }
     unsubscribe(id) {
@@ -75,7 +85,7 @@ class Computed {
         return false;
     }
     recompute() {
-        const collected = {};
+        const collected = Object.create(null);
         const track = (source)=>{
             const cuid = source.getUID();
             let dependency = collected[cuid];
@@ -84,6 +94,7 @@ class Computed {
                     source,
                     reads: new Set(),
                     published: false,
+                    observed: false,
                     previous: this.dependencies[cuid],
                     overlap: 0
                 };
@@ -95,9 +106,10 @@ class Computed {
             this.recordDependencyRead(dependency, WILDCARD_PATH);
             return source.get();
         };
-        this.value = this.body(track);
-        this.valid = true;
+        const value = this.body(track);
         this.attachDependencies(collected);
+        this.value = value;
+        this.valid = true;
     }
     recordDependencyRead(dependency, path) {
         var _dependency_previous;
@@ -110,45 +122,83 @@ class Computed {
     }
     attachDependencies(collected) {
         const fresh = this.diffDependencies(collected);
-        this.dependencies = collected;
+        const previousVersions = this.versions;
         this.recordVersions(collected);
-        if (0 === this.subscribers.size) return;
-        Object.keys(collected).forEach((cuid)=>{
-            if (!fresh[cuid]) return;
-            const dependency = collected[cuid];
-            dependency.source.subscribe(this.onDependencyChanged, transferReads(dependency.reads, this.uid));
-        });
-    }
-    diffDependencies(collected) {
-        const fresh = {};
-        Object.keys(this.dependencies).forEach((cuid)=>{
+        let needsAttachment = false;
+        for(const cuid in fresh){
+            needsAttachment = fresh[cuid];
+            break;
+        }
+        if (!needsAttachment) {
+            for(const cuid in this.dependencies){
+                const previous = this.dependencies[cuid];
+                const next = collected[cuid];
+                previous.published = false;
+                if (next) {
+                    next.published = true;
+                    next.observed = previous.observed;
+                    next.previous = void 0;
+                } else if (previous.observed) computedDependencies.unsubscribe(previous.source, this.uid);
+            }
+            this.dependencies = collected;
+            return;
+        }
+        const attempted = [];
+        try {
+            if (this.subscribers.size > 0) for (const cuid of Object.keys(fresh)){
+                const dependency = collected[cuid];
+                attempted.push(cuid);
+                computedDependencies.subscribe(dependency.source, this.onDependencyChanged, transferReads(dependency.reads, this.uid));
+            }
+        } catch (error) {
+            for (const cuid of attempted.reverse()){
+                const previous = this.dependencies[cuid];
+                try {
+                    if ((null == previous ? void 0 : previous.observed) && previous.source === collected[cuid].source) computedDependencies.subscribe(previous.source, this.onDependencyChanged, transferReads(previous.reads, this.uid));
+                    else computedDependencies.unsubscribe(collected[cuid].source, this.uid);
+                } catch  {}
+            }
+            this.versions = previousVersions;
+            this.valid = false;
+            throw error;
+        }
+        for (const cuid of Object.keys(this.dependencies)){
+            var _collected_cuid;
             const previous = this.dependencies[cuid];
-            const next = collected[cuid];
             previous.published = false;
-            if (!next) return void previous.source.unsubscribe(this.uid);
-            if (next.overlap !== previous.reads.size || next.overlap !== next.reads.size) fresh[cuid] = true;
-        });
-        Object.keys(collected).forEach((cuid)=>{
+            if (previous.observed && previous.source !== (null == (_collected_cuid = collected[cuid]) ? void 0 : _collected_cuid.source)) computedDependencies.unsubscribe(previous.source, this.uid);
+        }
+        for (const cuid of Object.keys(collected)){
             const dependency = collected[cuid];
             dependency.published = true;
+            dependency.observed = this.subscribers.size > 0;
             dependency.previous = void 0;
-            if (!(cuid in this.dependencies)) fresh[cuid] = true;
+        }
+        this.dependencies = collected;
+    }
+    diffDependencies(collected) {
+        const fresh = Object.create(null);
+        Object.keys(collected).forEach((cuid)=>{
+            const next = collected[cuid];
+            const previous = this.dependencies[cuid];
+            if (!(null == previous ? void 0 : previous.observed) || next.source !== previous.source || next !== previous && (next.overlap !== previous.reads.size || next.overlap !== next.reads.size)) fresh[cuid] = true;
         });
         return fresh;
     }
     recordVersions(collected) {
-        const versions = {};
+        const versions = Object.create(null);
         const record = (dependency)=>{
-            if ('read' in dependency.source) {
+            var _computedDependencies_versions_get;
+            const innerVersions = 'read' in dependency.source ? void 0 : null == (_computedDependencies_versions_get = computedDependencies.versions.get(dependency.source)) ? void 0 : _computedDependencies_versions_get();
+            if (!innerVersions) {
                 versions[dependency.source.getUID()] = {
                     source: dependency.source,
                     version: dependency.source.getVersion()
                 };
                 return;
             }
-            const inner = dependency.source;
-            Object.keys(inner.versions).forEach((cuid)=>{
-                versions[cuid] = inner.versions[cuid];
+            Object.keys(innerVersions).forEach((cuid)=>{
+                versions[cuid] = innerVersions[cuid];
             });
         };
         Object.keys(collected).forEach((cuid)=>{
@@ -156,17 +206,16 @@ class Computed {
         });
         this.versions = versions;
     }
-    observeDependencies() {
-        Object.keys(this.dependencies).forEach((cuid)=>{
-            const dependency = this.dependencies[cuid];
-            dependency.source.subscribe(this.onDependencyChanged, transferReads(dependency.reads, this.uid));
-        });
-    }
     releaseDependencies() {
         Object.keys(this.dependencies).forEach((cuid)=>{
-            this.dependencies[cuid].source.unsubscribe(this.uid);
+            const dependency = this.dependencies[cuid];
+            dependency.published = false;
+            if (dependency.observed) {
+                computedDependencies.unsubscribe(dependency.source, this.uid);
+                dependency.observed = false;
+            }
         });
-        this.dependencies = {};
+        this.dependencies = Object.create(null);
     }
     onDependencyChanged = ()=>{
         if (this.valid && !this.hasDrifted()) return;

@@ -55,7 +55,9 @@ class ResourceCache extends external_ResourceCacheLifecycle_js_namespaceObject.R
     didSetData() {
         const keys = Object.keys(this.data.entries);
         this.eviction.replace(keys);
-        this.viewCache.clear();
+        this.viewCache.forEach((_view, key)=>{
+            if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) this.viewCache.delete(key);
+        });
         for (const key of this.failures.keys())if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) this.failures.delete(key);
     }
     keyOf(args) {

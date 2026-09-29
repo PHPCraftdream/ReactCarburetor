@@ -1,7 +1,7 @@
 import {performance} from 'node:perf_hooks';
 import {Session} from 'node:inspector';
 import {resolve} from 'node:path';
-import {loadSource} from './cacheViewSource.mjs';
+import {loadSource} from './source.mjs';
 
 const {cache: {ResourceCache}, status: {EResourceStatus}} = await loadSource(resolve(process.cwd()), {
     cache: 'lib/src/Carburetor/Resource/Cache/ResourceCache.ts',

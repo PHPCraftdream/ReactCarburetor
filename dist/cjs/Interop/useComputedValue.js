@@ -32,6 +32,20 @@ __webpack_require__.d(__webpack_exports__, {
     useComputedValue: ()=>useComputedValue
 });
 const external_react_namespaceObject = require("react");
+const snapshots = new WeakMap();
+const readSnapshot = (source)=>{
+    const value = source.get();
+    const version = source.getVersion();
+    const previous = snapshots.get(source);
+    if (previous && previous.version === version && Object.is(previous.value, value)) return previous;
+    const snapshot = {
+        source,
+        version,
+        value
+    };
+    snapshots.set(source, snapshot);
+    return snapshot;
+};
 const useComputedValue = (computed)=>{
     const subscribe = (0, external_react_namespaceObject.useCallback)((onStoreChange)=>{
         const id = computed.subscribe(onStoreChange);
@@ -39,10 +53,10 @@ const useComputedValue = (computed)=>{
     }, [
         computed
     ]);
-    const getSnapshot = (0, external_react_namespaceObject.useCallback)(()=>computed.get(), [
+    const getSnapshot = (0, external_react_namespaceObject.useCallback)(()=>readSnapshot(computed), [
         computed
     ]);
-    return (0, external_react_namespaceObject.useSyncExternalStore)(subscribe, getSnapshot, getSnapshot);
+    return (0, external_react_namespaceObject.useSyncExternalStore)(subscribe, getSnapshot, getSnapshot).value;
 };
 exports.useComputedValue = __webpack_exports__.useComputedValue;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
