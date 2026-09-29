@@ -40,3 +40,12 @@ Scope: JavaScript/TypeScript API and engine at `a1230ee`, after the round 7 fixe
 Separately, `diffPaths` constructs `[...]` segment arrays on every descended key even when no patch listener is attached (`lib/src/Carburetor/Store/Paths/Diff/diffPaths.ts:56-82,148-159`). Earlier review already listed lazy path construction as a possible follow-up, so it is **not a new finding here**. A before/after allocation profile on `setData()` for wide, deep, equal, and one-leaf-changed trees should decide whether it is worth implementing. No allocation reduction is claimed.
 
 No P0 was established. R8-01 through R8-04 remain open P1–P3 findings at this source state. Only the cited control flow and API mismatch are established by inspection; runtime outcomes and performance improvements await the focused tests and benchmarks above.
+
+## Resolution (2026-09-29)
+
+- **R8-01, R8-04 — `33d34f0`:** literal `__proto__` writes and history patches install an own data key without changing the prototype; rejected definitions leave no write record. History limits must be positive safe integers. Regression tests cover writes, undo/redo and invalid limits. An isolated history-write benchmark measured 0.00468 → 0.00797 ms/write; this correctness fix claims no speedup.
+- **R8-02 — `ac52fa5`, declarations `74ab0b8`:** the selector contract now explicitly requires ordinary property access for tracked primitive values. Descriptor-only introspection remains non-reactive so key enumeration stays precise; read-only descriptor values and React/watch behavior have regressions. No runtime hot-path change or speedup is claimed.
+- **R8-03 — `f5d9f6d`:** `forgetAll()` coalesces ordinary bulk removal into one version and one delivery, preserving pending-request cancellation and tested re-entry cases. The integrated benchmark's single 4,000-entry/default-persist run had one storage write and took 10.77 ms, versus 4,000 writes and 5,971 ms in the pre-fix agent run. These are single-machine samples, not a guaranteed ratio.
+- **Integration follow-up — `8931895`:** moved descriptor React regressions under the 600-line test-file limit and fixed benchmark TSDoc.
+
+The integrated build, full test suite, typecheck, lint and layout check passed. `abortAll()` intentionally was not changed: in the same integrated benchmark, 4,000 pending entries still produced 4,000 versions, wildcard callbacks or default-persist writes (depending on configuration). That is a distinct bulk-operation candidate for a later review, not a claimed R8-03 fix.
