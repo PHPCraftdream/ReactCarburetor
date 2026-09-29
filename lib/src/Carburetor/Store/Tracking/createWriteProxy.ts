@@ -149,12 +149,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         });
     }
 
-    /**
-     * The wrapper for (path, source): the cache's own entry on a hit, a fresh one filed on a
-     * miss. Split from a single call taking a `create` thunk so a hit allocates no closure.
-     *
-     * `basePathSegments` for the child is only built on a miss, same as the child proxy and
-     * handler themselves: a cache hit costs nothing beyond the lookup, patch listener or not.
+    /** The cached wrapper for (path, source), allocating child segments only on a miss.
      *
      * @param path - the full path the branch was read at.
      * @param key - the property `path` was reached through, appended to this branch's own
@@ -479,15 +474,21 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         const previous = Reflect.get(source, key);
+        const raw = 'value' in descriptor ? unwrapWriteProxy(descriptor.value) : wasOwn ? previous : undefined;
         const path = this.writtenPath(key);
 
         this.aliases?.checkKey(source, key, path);
-        this.aliases?.checkState(descriptor.value, path, wasOwn ? previous : undefined);
+        this.aliases?.checkState(raw, path, wasOwn ? previous : undefined);
         this.aliases?.checkWrite(source, this.basePath);
 
-        const wrote = Reflect.defineProperty(source, key, descriptor);
+        const effective = 'value' in descriptor ? {...descriptor, value: raw} : descriptor;
+        const wrote = Reflect.defineProperty(source, key, effective);
         if (!wrote) {
             return false;
+        }
+
+        if (wasOwn && Object.is(previous, raw)) {
+            return true;
         }
 
         this.aliases?.forget(previous);
@@ -499,7 +500,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const listener = this.patchPort?.listener;
 
         if (listener) {
-            this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, descriptor.value);
+            this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, raw);
         }
 
         this.record(path);
