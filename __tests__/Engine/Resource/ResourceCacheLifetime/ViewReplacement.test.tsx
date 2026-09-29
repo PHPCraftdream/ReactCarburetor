@@ -62,7 +62,7 @@ describe('ResourceCache replacement views (R10-06)', () => {
     test.each([
         {status: EResourceStatus.Error}, {data: {label: 'changed'}}, {error: 'failure'},
         {updatedAt: 101}, {refreshing: true}, {invalidated: true}, {failed: true},
-    ] as Partial<IResourceEntry<IValue>>[])('invalidates only views with changed fields: %j', (change) => {
+    ] as Partial<IResourceEntry<IValue>>[])('reads rebuild only views with changed fields: %j', (change) => {
         const {cache, entries, a} = prepare();
         const viewA = cache.getEntry('a');
         const viewB = cache.getEntry('b');
@@ -72,7 +72,7 @@ describe('ResourceCache replacement views (R10-06)', () => {
 
         cache.setData({entries: {...entries, [a]: changed}});
 
-        expect(viewCount(cache)).toBe(1);
+        expect(viewCount(cache)).toBe(2);
         expect(cache.getEntry('a')).not.toBe(viewA);
         expect(cache.getEntry('a')).toEqual({...changed, stale: changed.invalidated});
         expect(cache.getEntry('b')).toBe(viewB);
@@ -136,7 +136,7 @@ describe('ResourceCache replacement views (R10-06)', () => {
             now.mockReturnValue(111);
             cache.setData(cache.getData());
 
-            expect(viewCount(cache)).toBe(0);
+            expect(viewCount(cache)).toBe(1);
 
             const stale = cache.getEntry('a');
 
@@ -189,6 +189,67 @@ describe('ResourceCache replacement views (R10-06)', () => {
         expect(delivered[1]).toBe(viewB);
         expect(cache.getEntry('a')).toBe(delivered[0]);
         cache.unsubscribe(id);
+    });
+
+    test('synchronous subscriber reads validate TTL after an unrelated entry changes', () => {
+        const now = rstest.spyOn(Date, 'now').mockReturnValue(110);
+
+        try {
+            const {cache, entries, b} = prepare(10);
+            const fresh = cache.getEntry('a');
+            const delivered: IResourceView<IValue>[] = [];
+            const id = cache.subscribe(() => { delivered.push(cache.getEntry('a')); });
+
+            now.mockReturnValue(111);
+            cache.setData({entries: {...entries, [b]: {...entries[b], data: {label: 'updated'}}}});
+
+            expect(delivered).toHaveLength(1);
+            expect(delivered[0]).not.toBe(fresh);
+            expect(delivered[0].stale).toBe(true);
+            expect(delivered[0].data).toBe(fresh.data);
+            expect(cache.getEntry('a')).toBe(delivered[0]);
+            cache.unsubscribe(id);
+        } finally {
+            now.mockRestore();
+        }
+    });
+
+    test('unread replacement revisions keep one cached view per surviving key and prune removals', () => {
+        const {cache, entries, a, b} = prepare();
+        const viewB = cache.getEntry('b');
+
+        cache.getEntry('a');
+        for (let revision = 0; revision < 100; revision++) {
+            cache.setData({entries: {[a]: ready(`revision-${revision}`), [b]: entries[b]}});
+            expect(viewCount(cache)).toBe(2);
+        }
+
+        expect(cache.getEntry('a').data?.label).toBe('revision-99');
+        expect(cache.getEntry('b')).toBe(viewB);
+        cache.setData({entries: {[b]: entries[b]}});
+        expect(viewCount(cache)).toBe(1);
+        cache.setData({entries: {}});
+        expect(viewCount(cache)).toBe(0);
+    });
+
+    test('same-root replacement still reconciles an adopted dictionary mutated by its owner', () => {
+        const {cache, entries, a, b} = prepare();
+        const root = cache.getData();
+        const c = cache.keyOf('c');
+        const viewB = cache.getEntry('b');
+        const ledger = (cache as unknown as {eviction: {count: number; lastUsed: Map<string, number>}}).eviction;
+
+        cache.getEntry('a');
+        delete entries[a];
+        entries[c] = ready('c');
+        cache.setData(root);
+
+        expect(viewCount(cache)).toBe(1);
+        expect(cache.getEntry('a').data).toBeUndefined();
+        expect(cache.getEntry('b')).toBe(viewB);
+        expect(cache.getEntry('c').data?.label).toBe('c');
+        expect(ledger.count).toBe(2);
+        expect(new Set(ledger.lastUsed.keys())).toEqual(new Set([b, c]));
     });
 
     test('memoized children skip unchanged views during real parent updates', () => {
