@@ -111,7 +111,7 @@ interface IOxlintRun {
 const runOxlint = (config: string, files: readonly string[]): IOxlintRun => {
     const result = spawnSync(
         process.execPath,
-        [path.join('node_modules', 'oxlint', 'bin', 'oxlint'), '-c', config, ...files],
+        [path.join('node_modules', 'oxlint', 'bin', 'oxlint'), '-f', 'unix', '-c', config, ...files],
         {cwd: ROOT, encoding: 'utf8'},
     );
 

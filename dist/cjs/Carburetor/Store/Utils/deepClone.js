@@ -37,7 +37,12 @@ const deepClone = (value)=>{
         const length = value.length;
         const result = [];
         result.length = length;
-        for(let index = 0; index < length; index++)if (Object.prototype.hasOwnProperty.call(value, index)) result[index] = deepClone(value[index]);
+        if (length <= 4096) {
+            for(let index = 0; index < length; index++)if (Object.prototype.hasOwnProperty.call(value, index)) result[index] = deepClone(value[index]);
+        } else for (const key of Object.keys(value)){
+            const index = Number(key);
+            if (Number.isInteger(index) && index >= 0 && index < length && String(index) === key) result[index] = deepClone(value[index]);
+        }
         return result;
     }
     const source = value;

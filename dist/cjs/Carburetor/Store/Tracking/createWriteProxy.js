@@ -101,6 +101,74 @@ class WriteProxyHandler {
         this.cache.set(path, source, proxy);
         return proxy;
     }
+    setArrayLength(source, value, descriptor) {
+        var _Object_getOwnPropertyDescriptor, _this_patchPort;
+        const validNumber = 'number' == typeof value && Number.isInteger(value) && value >= 0 && value <= 0xFFFFFFFF;
+        if (!descriptor && !validNumber && (null == (_Object_getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor(source, 'length')) ? void 0 : _Object_getOwnPropertyDescriptor.writable) === false) return Reflect.set(source, 'length', value);
+        const uint32 = validNumber ? value : value >>> 0;
+        if (!validNumber && uint32 !== +value) throw new RangeError('Invalid array length');
+        const array = source;
+        const previousLength = array.length;
+        const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
+        let removed;
+        let removedValues;
+        let removedAny = false;
+        let denseStart;
+        if (uint32 < previousLength) {
+            const range = previousLength - uint32;
+            if (!listener && range >= 64 && range <= 4096) {
+                const ownKeys = Object.keys(array);
+                if (ownKeys.length === previousLength && ownKeys[previousLength - 1] === String(previousLength - 1)) denseStart = uint32;
+            }
+            if (void 0 === denseStart) {
+                removed = [];
+                if (listener) removedValues = [];
+                if (range <= 4096) {
+                    for(let index = uint32; index < previousLength; index++)if (Object.prototype.hasOwnProperty.call(array, index)) {
+                        removed.push(index);
+                        null == removedValues || removedValues.push(array[index]);
+                    }
+                } else for (const key of Object.keys(array)){
+                    const index = Number(key);
+                    if (Number.isInteger(index) && index >= uint32 && index < previousLength && String(index) === key) {
+                        removed.push(key);
+                        null == removedValues || removedValues.push(array[index]);
+                    }
+                }
+            }
+        }
+        const wrote = descriptor ? Reflect.defineProperty(source, 'length', {
+            ...descriptor,
+            value: uint32
+        }) : Reflect.set(source, 'length', uint32);
+        const nextLength = array.length;
+        if (void 0 !== denseStart) {
+            for(let index = denseStart; index < previousLength; index++)if (wrote || !Object.prototype.hasOwnProperty.call(array, index)) {
+                removedAny = true;
+                this.record((0, joinPath_js_namespaceObject.joinPath)(this.basePath, String(index)));
+            }
+        }
+        if (removed) for(let i = 0; i < removed.length; i++){
+            const entry = removed[i];
+            if (!wrote && Object.prototype.hasOwnProperty.call(array, entry)) continue;
+            removedAny = true;
+            const key = String(entry);
+            this.record((0, joinPath_js_namespaceObject.joinPath)(this.basePath, key));
+            if (listener) this.reportPatch(listener, key, null == removedValues ? void 0 : removedValues[i], Paths_js_namespaceObject.PATCH_ABSENT);
+        }
+        if (removedAny) {
+            var _this_aliases;
+            null == (_this_aliases = this.aliases) || _this_aliases.checkWrite(source, this.basePath);
+            this.record(this.keysMarker());
+        }
+        if (nextLength !== previousLength) {
+            var _this_aliases1;
+            null == (_this_aliases1 = this.aliases) || _this_aliases1.checkWrite(source, this.basePath);
+            this.record(this.writtenPath('length'));
+            if (listener) this.reportPatch(listener, 'length', previousLength, nextLength);
+        }
+        return wrote;
+    }
     get(source, key) {
         if ('symbol' == typeof key) return key === external_Models_js_namespaceObject.PROXY_CACHE ? this.cache : Reflect.get(source, key);
         const value = Reflect.get(source, key);
@@ -119,6 +187,7 @@ class WriteProxyHandler {
         const previous = Reflect.get(source, key);
         const raw = unwrapWriteProxy(value);
         const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
+        if (this.isArray && 'length' === key) return this.setArrayLength(source, raw);
         if (wasOwn && Object.is(previous, raw)) return true;
         const path = this.writtenPath(key);
         null == (_this_aliases = this.aliases) || _this_aliases.checkKey(source, key, path);
@@ -127,15 +196,6 @@ class WriteProxyHandler {
         null == (_this_aliases3 = this.aliases) || _this_aliases3.forget(previous);
         const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
         if (!wasOwn) this.record(this.keysMarker());
-        if (this.isArray && 'length' === key && 'number' == typeof raw && 'number' == typeof previous && raw < previous) {
-            for(let removed = raw; removed < previous; removed++){
-                const removedKey = String(removed);
-                const removedPath = (0, joinPath_js_namespaceObject.joinPath)(this.basePath, removedKey);
-                if (listener) this.reportPatch(listener, removedKey, Reflect.get(source, removedKey), Paths_js_namespaceObject.PATCH_ABSENT);
-                this.record(removedPath);
-            }
-            this.record(this.keysMarker());
-        }
         const previousLength = this.isArray && 'length' !== key ? source.length : void 0;
         if (wasOwn && (0, external_isTrackable_js_namespaceObject.isTrackable)(previous) && (0, external_isTrackable_js_namespaceObject.isTrackable)(raw) && Array.isArray(previous) === Array.isArray(raw)) {
             const segments = listener ? [
@@ -158,6 +218,7 @@ class WriteProxyHandler {
     defineProperty(source, key, descriptor) {
         var _this_aliases, _this_aliases1, _this_aliases2, _this_aliases3, _this_patchPort;
         if ('symbol' == typeof key) return forbidSymbolKey(this.basePath);
+        if (this.isArray && 'length' === key) return 'value' in descriptor ? this.setArrayLength(source, descriptor.value, descriptor) : Reflect.defineProperty(source, key, descriptor);
         const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
         if (isOpaqueDescriptor(descriptor, wasOwn)) throw new Error('Carburetor: "' + (0, joinPath_js_namespaceObject.joinPath)(this.basePath, key) + '" cannot take a non-plain-data descriptor — state properties are writable, configurable, enumerable data, no accessors. Derive a computed value instead, e.g. with Computed.');
         const previous = Reflect.get(source, key);
@@ -174,7 +235,7 @@ class WriteProxyHandler {
     }
     deleteProperty(source, key) {
         var _this_aliases, _this_aliases1, _this_patchPort;
-        if (!Reflect.has(source, key)) return true;
+        if (!Object.prototype.hasOwnProperty.call(source, key)) return true;
         if ('symbol' == typeof key) return forbidSymbolKey(this.basePath);
         const previous = Reflect.get(source, key);
         null == (_this_aliases = this.aliases) || _this_aliases.checkWrite(source, this.basePath);

@@ -58,11 +58,11 @@ class ResourceCacheLifecycle extends Carburetor {
         this.eviction.touch(key);
     }
     subscribe(callback, options = {}) {
-        if (void 0 !== options.id && this.subscribers[options.id]) this.eviction.release();
+        if (void 0 !== options.id && Object.prototype.hasOwnProperty.call(this.subscribers, options.id)) this.eviction.release();
         return super.subscribe(callback, options);
     }
     unsubscribe(id) {
-        if (id in this.subscribers) this.eviction.release();
+        if (Object.prototype.hasOwnProperty.call(this.subscribers, id)) this.eviction.release();
         super.unsubscribe(id);
     }
     load(args) {

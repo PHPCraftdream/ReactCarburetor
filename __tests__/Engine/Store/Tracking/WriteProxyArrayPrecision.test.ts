@@ -1,5 +1,6 @@
 import {Carburetor} from "@/Carburetor";
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
+import {spawnSync} from "node:child_process";
 
 interface IItemsData {
     items: number[];
@@ -22,9 +23,26 @@ class ItemsCarburetor extends Carburetor<IItemsData> {
         });
     };
 
+    public writeDraftIndex = (index: number, value: number): void => {
+        // oxlint-disable-next-line carburetor/require-emit-after-draft-write
+        this.draft.items[index] = value;
+    };
+
     public truncate = (length: number): void => {
         this.update((draft: IItemsData) => {
             draft.items.length = length;
+        });
+    };
+
+    public setLength = (value: unknown): void => {
+        this.update((draft: IItemsData) => {
+            (draft.items as unknown as {length: unknown}).length = value;
+        });
+    };
+
+    public defineLength = (descriptor: PropertyDescriptor): void => {
+        this.update((draft: IItemsData) => {
+            Object.defineProperty(draft.items, 'length', descriptor);
         });
     };
 
@@ -51,9 +69,25 @@ class ItemsCarburetor extends Carburetor<IItemsData> {
             draft.items.sort((a, b) => a - b);
         });
     };
+
+    public deleteInheritedSymbol = (): void => {
+        this.update((draft: IItemsData) => {
+            delete (draft.items as unknown as Record<symbol, unknown>)[Symbol.iterator];
+        });
+    };
 }
 
 describe('an array write on the array itself is attributed to the index it touched, not the whole array', () => {
+    test('deleting an inherited array symbol is a no-op', () => {
+        const carburetor = new ItemsCarburetor(getItemsData());
+        const versionBefore = carburetor.getVersion();
+
+        carburetor.deleteInheritedSymbol();
+
+        expect(carburetor.getVersion()).toEqual(versionBefore);
+        expect(carburetor.getData().items).toEqual([10, 20, 30]);
+    });
+
     test('push wakes a reader of the new index and a reader of length, not a reader of an untouched index', () => {
         const carburetor = new ItemsCarburetor(getItemsData());
         let newIndexWakes = 0;
@@ -215,6 +249,244 @@ describe('an array write on the array itself is attributed to the index it touch
         expect(index0Wakes).toEqual(1);
         expect(index2Wakes).toEqual(1);
         expect(index3Wakes).toEqual(1);
+    });
+});
+
+describe('native array length writes', () => {
+    test.each([-1, 1.5, Infinity, NaN, 0x100000000, undefined, 1n, Symbol('length')])(
+        'rejects %s without publishing a ghost write', (value) => {
+            const store = new ItemsCarburetor(getItemsData());
+            let wakes = 0;
+            let patches = 0;
+            store.subscribe(() => wakes++, {id: 'all'});
+            store.attachPatchListener(() => patches++);
+
+            expect(() => store.setLength(value)).toThrow();
+            expect(store.getData().items).toEqual([10, 20, 30]);
+            expect(store.getVersion()).toBe(0);
+            expect(wakes).toBe(0);
+            expect(patches).toBe(0);
+        }
+    );
+
+    test('guarded invalid length assignment', () => {
+        const program = `
+            const {Carburetor} = require('./dist/cjs/Carburetor/index.js');
+            class Store extends Carburetor {
+                setLength(value) { this.update(draft => { draft.items.length = value; }); }
+            }
+            for (const value of [-Infinity, -1000000000]) {
+                const store = new Store({items: [10, 20, 30]});
+                let wakes = 0;
+                let patches = 0;
+                store.subscribe(() => wakes++);
+                store.attachPatchListener(() => patches++);
+                let rejected = false;
+                try { store.setLength(value); }
+                catch (error) { rejected = error instanceof RangeError; }
+                if (!rejected || store.getData().items.length !== 3
+                    || store.getVersion() !== 0 || wakes !== 0 || patches !== 0) {
+                    throw new Error('Invalid length changed the store or failed to reject');
+                }
+            }
+        `;
+        const child = spawnSync(process.execPath, ['-e', program], {
+            cwd: process.cwd(), encoding: 'utf8', timeout: 10_000,
+        });
+
+        if (child.error || child.status !== 0) {
+            throw new Error(`Guarded length test failed: ${child.error?.message || child.stderr || child.stdout}`);
+        }
+    }, 20_000);
+
+    test('coerces an object twice, accepts strings and -0, and rejects differing conversions', () => {
+        const store = new ItemsCarburetor(getItemsData());
+        let calls = 0;
+
+        store.setLength({valueOf: () => { calls++; return 2; }});
+        expect(calls).toBe(2);
+        expect(store.getData().items).toEqual([10, 20]);
+
+        store.setLength('1');
+        expect(store.getData().items).toEqual([10]);
+        store.setLength(true);
+        expect(store.getData().items).toEqual([10]);
+        store.setLength(null);
+        expect(store.getData().items).toEqual([]);
+        store.setLength(-0);
+        expect(store.getData().items).toEqual([]);
+
+        const version = store.getVersion();
+        calls = 0;
+        expect(() => store.setLength({valueOf: () => ++calls})).toThrow(RangeError);
+        expect(calls).toBe(2);
+        expect(store.getVersion()).toBe(version);
+    });
+
+    test('a rejected conversion still publishes a real write made during coercion', () => {
+        const store = new ItemsCarburetor(getItemsData());
+        let wakes = 0;
+        let calls = 0;
+        store.subscribe(() => wakes++, {id: 'first', reads: readsOf('items.0')});
+
+        expect(() => store.setLength({valueOf: () => {
+            if (++calls === 1) {
+                store.writeDraftIndex(0, 99);
+            }
+
+            return calls;
+        }})).toThrow(RangeError);
+
+        expect(calls).toBe(2);
+        expect(store.getData().items).toEqual([99, 20, 30]);
+        expect(store.getVersion()).toBe(1);
+        expect(wakes).toBe(1);
+    });
+
+    test('non-writable length fails without publication; partial truncation publishes only actual deletions', () => {
+        const fixed = [10, 20, 30];
+        Object.defineProperty(fixed, 'length', {writable: false});
+        const fixedStore = new ItemsCarburetor({items: fixed});
+        let fixedWakes = 0;
+        let fixedPatches = 0;
+        fixedStore.subscribe(() => fixedWakes++, {id: 'fixed'});
+        fixedStore.attachPatchListener(() => fixedPatches++);
+        expect(() => fixedStore.truncate(2)).toThrow(TypeError);
+        expect(fixedStore.getVersion()).toBe(0);
+        expect(fixedWakes).toBe(0);
+        expect(fixedPatches).toBe(0);
+
+        let coercions = 0;
+        expect(() => fixedStore.setLength({valueOf: () => { coercions++; return 2; }})).toThrow(TypeError);
+        expect(() => fixedStore.setLength({valueOf: () => { coercions++; throw new Error('coerced'); }}))
+            .toThrow(TypeError);
+        expect(() => fixedStore.setLength(-1)).toThrow(TypeError);
+        expect(coercions).toBe(0);
+        expect(fixedStore.getVersion()).toBe(0);
+        expect(fixedWakes).toBe(0);
+        expect(fixedPatches).toBe(0);
+
+        const items = [10, 20, 30, 40];
+        Object.defineProperty(items, '1', {value: 20, writable: true, enumerable: true, configurable: false});
+        const store = new ItemsCarburetor({items});
+        let kept = 0;
+        let removed = 0;
+        let absent = 0;
+        let length = 0;
+        store.subscribe(() => kept++, {id: 'kept', reads: readsOf('items.1')});
+        store.subscribe(() => removed++, {id: 'removed', reads: readsOf('items.3')});
+        store.subscribe(() => absent++, {id: 'absent', reads: readsOf('items.8')});
+        store.subscribe(() => length++, {id: 'length', reads: readsOf('items.length')});
+
+        expect(() => store.truncate(0)).toThrow(TypeError);
+        expect(store.getData().items).toEqual([10, 20]);
+        expect(store.getVersion()).toBe(1);
+        expect(kept).toBe(0);
+        expect(removed).toBe(1);
+        expect(absent).toBe(0);
+        expect(length).toBe(1);
+    });
+
+    test('defineProperty length truncates stored indices and wakes key readers', () => {
+        const store = new ItemsCarburetor(getItemsData());
+        const keyReads = new Set<TPath>();
+        Object.keys(store.read((path) => keyReads.add(path)).items);
+        let removed = 0;
+        let kept = 0;
+        let keys = 0;
+        let length = 0;
+        store.subscribe(() => removed++, {id: 'removed', reads: readsOf('items.2')});
+        store.subscribe(() => kept++, {id: 'kept', reads: readsOf('items.0')});
+        store.subscribe(() => keys++, {id: 'keys', reads: keyReads});
+        store.subscribe(() => length++, {id: 'length', reads: readsOf('items.length')});
+
+        store.defineLength({value: 1, writable: false});
+
+        expect(store.getData().items).toEqual([10]);
+        expect(Object.getOwnPropertyDescriptor(store.getData().items, 'length')?.writable).toBe(false);
+        expect(removed).toBe(1);
+        expect(kept).toBe(0);
+        expect(keys).toBe(1);
+        expect(length).toBe(1);
+    });
+
+    test('defineProperty length no-op and rejected value publish nothing', () => {
+        const store = new ItemsCarburetor(getItemsData());
+        let wakes = 0;
+        let patches = 0;
+        store.subscribe(() => wakes++, {id: 'all'});
+        store.attachPatchListener(() => patches++);
+
+        store.defineLength({});
+        expect(() => store.defineLength({value: -1})).toThrow(RangeError);
+        expect(() => store.defineLength({value: -Infinity})).toThrow(RangeError);
+        expect(store.getData().items).toEqual([10, 20, 30]);
+        expect(store.getVersion()).toBe(0);
+        expect(wakes).toBe(0);
+        expect(patches).toBe(0);
+    });
+
+    test('defineProperty coerces before testing non-writable length', () => {
+        const items = [10, 20, 30];
+        Object.defineProperty(items, 'length', {writable: false});
+        const store = new ItemsCarburetor({items});
+        let calls = 0;
+        let patches = 0;
+        store.attachPatchListener(() => patches++);
+
+        expect(() => store.defineLength({value: {valueOf: () => { calls++; return -1; }}}))
+            .toThrow(RangeError);
+        expect(calls).toBe(2);
+        expect(() => store.defineLength({value: 2})).toThrow(TypeError);
+        expect(store.getData().items).toEqual([10, 20, 30]);
+        expect(store.getVersion()).toBe(0);
+        expect(patches).toBe(0);
+    });
+
+    test('defineProperty length partial refusal publishes actual deletions', () => {
+        const items = [10, 20, 30, 40];
+        Object.defineProperty(items, '1', {value: 20, writable: true, enumerable: true, configurable: false});
+        const store = new ItemsCarburetor({items});
+        const keyReads = new Set<TPath>();
+        Object.keys(store.read((path) => keyReads.add(path)).items);
+        let removed = 0;
+        let kept = 0;
+        let keys = 0;
+        let length = 0;
+        store.subscribe(() => removed++, {id: 'removed', reads: readsOf('items.3')});
+        store.subscribe(() => kept++, {id: 'kept', reads: readsOf('items.1')});
+        store.subscribe(() => keys++, {id: 'keys', reads: keyReads});
+        store.subscribe(() => length++, {id: 'length', reads: readsOf('items.length')});
+
+        expect(() => store.defineLength({value: 0})).toThrow(TypeError);
+        expect(store.getData().items).toEqual([10, 20]);
+        expect(store.getVersion()).toBe(1);
+        expect(removed).toBe(1);
+        expect(kept).toBe(0);
+        expect(keys).toBe(1);
+        expect(length).toBe(1);
+    });
+
+    test('sparse truncation wakes only stored removed indices and key readers', () => {
+        const items: number[] = [10];
+        items[50_000] = 50;
+        items.length = 100_000;
+        const store = new ItemsCarburetor({items});
+        const reads = new Set<TPath>();
+        Object.keys(store.read((path) => reads.add(path)).items);
+        let present = 0;
+        let absent = 0;
+        let keys = 0;
+        store.subscribe(() => present++, {id: 'present', reads: readsOf('items.50000')});
+        store.subscribe(() => absent++, {id: 'absent', reads: readsOf('items.80000')});
+        store.subscribe(() => keys++, {id: 'keys', reads});
+
+        store.truncate(1);
+
+        expect(store.getData().items).toEqual([10]);
+        expect(present).toBe(1);
+        expect(absent).toBe(0);
+        expect(keys).toBe(1);
     });
 });
 

@@ -60,7 +60,7 @@ interface ISubscriberRecord {
 
 export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable, IPatchSource {
     /** The subscriber records the index points at: delivery schedules the callback it finds here. */
-    protected subscribers: IDict<ISubscriberRecord> = {};
+    protected subscribers: IDict<ISubscriberRecord> = Object.create(null);
 
     /** Finds the subscribers a write concerns without scanning all of them. */
     protected subscriberIndex: SubscriberIndex = new SubscriberIndex();
@@ -302,7 +302,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * @param path - the path to add to that subscription's read set
      */
     public extend(id: string, path: TPath): void {
-        if (!(id in this.subscribers)) {
+        if (!Object.prototype.hasOwnProperty.call(this.subscribers, id)) {
             return;
         }
 
@@ -311,7 +311,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
     /** Drops a subscriber, its index entries and any update already scheduled for it. */
     public unsubscribe(id: string): void {
-        if (id in this.subscribers) {
+        if (Object.prototype.hasOwnProperty.call(this.subscribers, id)) {
             this.scheduler.cancel(id);
             this.subscriberIndex.remove(id);
             delete this.subscribers[id];

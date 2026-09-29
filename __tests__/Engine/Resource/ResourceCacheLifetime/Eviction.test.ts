@@ -143,6 +143,33 @@ describe('ResourceCache eviction', () => {
         expect(Object.keys(cache.getData().entries)).toContain(cache.keyOf('a~b'));
     });
 
+    test('a remaining sibling read still pins an entry after re-subscription', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 1, ttl: 60_000});
+
+        await fill(cache, loader, ['a']);
+
+        const entryPath = cache.pathOf('a');
+
+        cache.subscribe(() => undefined, {
+            id: 'reader', reads: readsOf(`${entryPath}.data`, `${entryPath}.status`),
+        });
+        cache.subscribe(() => undefined, {id: 'reader', reads: readsOf(`${entryPath}.data`)});
+
+        void cache.load('b');
+        loader.settle[1]('value-b');
+        await flush();
+
+        expect(Object.keys(cache.getData().entries)).toContain(cache.keyOf('a'));
+
+        cache.unsubscribe('reader');
+        void cache.load('c');
+        loader.settle[2]('value-c');
+        await flush();
+
+        expect(Object.keys(cache.getData().entries)).not.toContain(cache.keyOf('a'));
+    });
+
     test('a subscriber without read paths does not pin the cache', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 1, ttl: 60_000});

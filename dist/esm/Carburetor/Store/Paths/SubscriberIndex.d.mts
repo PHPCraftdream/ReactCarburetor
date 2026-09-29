@@ -5,6 +5,10 @@ import { TPath, TPathSet } from "../../Models/Paths.mjs";
  * `Set`; losing one back down to one id demotes it again.
  */
 type TBucket = string | Set<string>;
+type TBranchBucket = string | {
+    id: string;
+    count: number;
+} | Map<string, number>;
 /**
  * Finds the subscribers a set of written paths concerns, without walking every subscriber.
  *
@@ -29,8 +33,8 @@ type TBucket = string | Set<string>;
 export declare class SubscriberIndex {
     /** Read path -> subscribers whose read set contains exactly it. */
     protected exact: Map<TPath, TBucket>;
-    /** Ancestor of a read path -> subscribers reading somewhere below it. */
-    protected branch: Map<TPath, TBucket>;
+    /** Ancestor -> number of distinct read paths below it, per subscriber. */
+    protected branch: Map<TPath, TBranchBucket>;
     /** Subscribers that read the wildcard, so every write matches them. */
     protected wildcard: Set<string>;
     /**
@@ -156,6 +160,18 @@ export declare class SubscriberIndex {
      * @param id - the subscriber leaving; when its bucket empties, the key goes too.
      */
     protected unregister(target: Map<TPath, TBucket>, path: TPath, id: string): void;
+    /** Counts one more distinct read path below an ancestor for this id.
+     *
+     * @param path - ancestor path
+     * @param id - subscriber id
+     */
+    protected registerBranch(path: TPath, id: string): void;
+    /** Removes one read path's contribution, keeping the id until its count reaches zero.
+     *
+     * @param path - ancestor path
+     * @param id - subscriber id
+     */
+    protected unregisterBranch(path: TPath, id: string): void;
     /**
      * Merges one bucket into the match set, tolerating a bucket that does not exist.
      *
@@ -164,6 +180,6 @@ export declare class SubscriberIndex {
      * @param target - the match set one notifyWrites call is building; ids enter it,
      * never leave it.
      */
-    protected collect(source: TBucket | undefined, target: Set<string>): void;
+    protected collect(source: TBucket | TBranchBucket | undefined, target: Set<string>): void;
 }
 export {};

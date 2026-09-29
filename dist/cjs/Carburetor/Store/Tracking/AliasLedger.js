@@ -44,18 +44,28 @@ const checkDescriptor = (descriptor, childPath)=>{
 };
 const checkArray = (value, path, previous, stack)=>{
     const priorArray = Array.isArray(previous) ? previous : void 0;
-    const length = value.length;
-    let ownIndexCount = 0;
-    for(let index = 0; index < length; index++){
-        if (!Object.prototype.hasOwnProperty.call(value, index)) continue;
-        ownIndexCount++;
-        const name = String(index);
+    if (value.length <= 4096) {
+        let ownIndexCount = 0;
+        for(let index = 0; index < value.length; index++){
+            if (!Object.prototype.hasOwnProperty.call(value, index)) continue;
+            ownIndexCount++;
+            const name = String(index);
+            const descriptor = Reflect.getOwnPropertyDescriptor(value, name);
+            checkDescriptor(descriptor, ()=>(0, joinPath_js_namespaceObject.joinPath)(path, name));
+            const previousElement = priorArray ? priorArray[index] : void 0;
+            if (!Object.is(descriptor.value, previousElement) && (0, external_isTrackable_js_namespaceObject.isTrackable)(descriptor.value)) checkContainer(descriptor.value, (0, joinPath_js_namespaceObject.joinPath)(path, name), previousElement, stack);
+        }
+        if (Object.getOwnPropertyNames(value).length !== ownIndexCount + 1) throwNonIndexKey(value, path);
+        return;
+    }
+    for (const name of Object.getOwnPropertyNames(value)){
+        if ('length' === name) continue;
+        if (!isArrayIndexKey(name)) throwNonIndexKey(value, path);
         const descriptor = Reflect.getOwnPropertyDescriptor(value, name);
         checkDescriptor(descriptor, ()=>(0, joinPath_js_namespaceObject.joinPath)(path, name));
-        const previousElement = priorArray ? priorArray[index] : void 0;
+        const previousElement = priorArray ? priorArray[Number(name)] : void 0;
         if (!Object.is(descriptor.value, previousElement) && (0, external_isTrackable_js_namespaceObject.isTrackable)(descriptor.value)) checkContainer(descriptor.value, (0, joinPath_js_namespaceObject.joinPath)(path, name), previousElement, stack);
     }
-    if (Object.getOwnPropertyNames(value).length !== ownIndexCount + 1) throwNonIndexKey(value, path);
 };
 const checkObject = (value, path, previous, stack)=>{
     const priorObject = (0, external_isTrackable_js_namespaceObject.isTrackable)(previous) && !Array.isArray(previous) ? previous : void 0;

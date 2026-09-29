@@ -53,12 +53,9 @@ const checkDescriptor = (descriptor: PropertyDescriptor, childPath: () => TPath)
 /**
  * `checkContainer`'s array branch: every own key but `length` must be an index, in state form.
  *
- * Walks indices `0..length-1` by number (skipping holes via `hasOwnProperty`) instead of
- * `Object.getOwnPropertyNames` plus a regex per key: an index built this way is an index by
- * construction, so the common (valid) case never runs `isArrayIndexKey` at all. A trailing own
- * count check — `Object.getOwnPropertyNames`'s length against the indices actually found, one
- * comparison, not a walk — still catches a stray key like `rows.meta`, named precisely by the
- * (rare) fallback `throwNonIndexKey` once it is known one exists.
+ * Short arrays keep the numeric loop; long arrays walk own names so sparse tails cost only
+ * their stored elements. The `length` descriptor is intrinsic; every other name must be an
+ * index, including non-enumerable keys rejected below.
  *
  * Reads each descriptor with its own `Reflect.getOwnPropertyDescriptor` call — measured faster
  * than `Object.getOwnPropertyDescriptor` (no `ToObject` coercion on the receiver) — rather than
@@ -74,33 +71,51 @@ const checkDescriptor = (descriptor: PropertyDescriptor, childPath: () => TPath)
  */
 const checkArray = (value: unknown[], path: TPath, previous: unknown, stack: Set<object>): void => {
     const priorArray = Array.isArray(previous) ? previous : undefined;
-    const length = value.length;
-    let ownIndexCount = 0;
 
-    for (let index = 0; index < length; index++) {
-        if (!Object.prototype.hasOwnProperty.call(value, index)) {
-            continue; // a hole: not this array's state, same as `map` skipping it
+    if (value.length <= 4096) {
+        let ownIndexCount = 0;
+
+        for (let index = 0; index < value.length; index++) {
+            if (!Object.prototype.hasOwnProperty.call(value, index)) {
+                continue;
+            }
+
+            ownIndexCount++;
+            const name = String(index);
+            const descriptor = Reflect.getOwnPropertyDescriptor(value, name) as PropertyDescriptor;
+            checkDescriptor(descriptor, () => joinPath(path, name));
+            const previousElement = priorArray ? priorArray[index] : undefined;
+
+            if (!Object.is(descriptor.value, previousElement) && isTrackable(descriptor.value)) {
+                checkContainer(descriptor.value, joinPath(path, name), previousElement, stack);
+            }
         }
 
-        ownIndexCount++;
+        if (Object.getOwnPropertyNames(value).length !== ownIndexCount + 1) {
+            throwNonIndexKey(value, path);
+        }
 
-        const name = String(index);
+        return;
+    }
+
+    for (const name of Object.getOwnPropertyNames(value)) {
+        if (name === 'length') {
+            continue;
+        }
+
+        if (!isArrayIndexKey(name)) {
+            throwNonIndexKey(value, path);
+        }
+
         const descriptor = Reflect.getOwnPropertyDescriptor(value, name) as PropertyDescriptor;
 
         checkDescriptor(descriptor, () => joinPath(path, name));
 
-        const previousElement = priorArray ? priorArray[index] : undefined;
+        const previousElement = priorArray ? priorArray[Number(name)] : undefined;
 
         if (!Object.is(descriptor.value, previousElement) && isTrackable(descriptor.value)) {
             checkContainer(descriptor.value, joinPath(path, name), previousElement, stack);
         }
-    }
-
-    // Every own key is `length` plus the indices just walked, unless one more survives here:
-    // a non-index key (`rows.meta`) or an index at or past `length` (impossible for a real
-    // array — setting one grows `length` to cover it, so it would have been walked above).
-    if (Object.getOwnPropertyNames(value).length !== ownIndexCount + 1) {
-        throwNonIndexKey(value, path);
     }
 };
 

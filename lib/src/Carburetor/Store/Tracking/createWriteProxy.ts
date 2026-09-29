@@ -176,6 +176,124 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         return proxy;
     }
 
+    /** Applies native array-length semantics, then attributes only the changes that landed.
+     *
+     * @param source - raw array
+     * @param value - requested length
+     * @param descriptor - defineProperty descriptor, when present
+     */
+    private setArrayLength(source: T, value: unknown, descriptor?: PropertyDescriptor): boolean {
+        const validNumber = typeof value === 'number' && Number.isInteger(value)
+            && value >= 0 && value <= 0xFFFFFFFF;
+
+        // [[Set]] rejects a non-writable own property before ArraySetLength sees the value.
+        if (!descriptor && !validNumber && Object.getOwnPropertyDescriptor(source, 'length')?.writable === false) {
+            return Reflect.set(source, 'length', value);
+        }
+
+        // ArraySetLength performs both conversions, in this order. The second can run user
+        // code again; the normalized number avoids a third conversion in the raw write.
+        const uint32 = validNumber ? value as number : (value as number) >>> 0;
+
+        if (!validNumber && uint32 !== +(value as number)) {
+            throw new RangeError('Invalid array length');
+        }
+
+        const array = source as unknown as unknown[];
+        const previousLength = array.length;
+        const listener = this.patchPort?.listener;
+        let removed: Array<number | string> | undefined;
+        let removedValues: unknown[] | undefined;
+        let removedAny = false;
+        let denseStart: number | undefined;
+
+        if (uint32 < previousLength) {
+            const range = previousLength - uint32;
+
+            if (!listener && range >= 64 && range <= 4096) {
+                const ownKeys = Object.keys(array);
+
+                if (ownKeys.length === previousLength && ownKeys[previousLength - 1] === String(previousLength - 1)) {
+                    denseStart = uint32;
+                }
+            }
+
+            if (denseStart === undefined) {
+                removed = [];
+                if (listener) {
+                    removedValues = [];
+                }
+
+                if (range <= 4096) {
+                    for (let index = uint32; index < previousLength; index++) {
+                        if (Object.prototype.hasOwnProperty.call(array, index)) {
+                            removed.push(index);
+                            removedValues?.push(array[index]);
+                        }
+                    }
+                } else {
+                    for (const key of Object.keys(array)) {
+                        const index = Number(key);
+
+                        if (Number.isInteger(index) && index >= uint32 && index < previousLength
+                            && String(index) === key) {
+                            removed.push(key);
+                            removedValues?.push(array[index]);
+                        }
+                    }
+                }
+            }
+        }
+
+        const wrote = descriptor
+            ? Reflect.defineProperty(source, 'length', {...descriptor, value: uint32})
+            : Reflect.set(source, 'length', uint32);
+        const nextLength = array.length;
+
+        if (denseStart !== undefined) {
+            for (let index = denseStart; index < previousLength; index++) {
+                if (wrote || !Object.prototype.hasOwnProperty.call(array, index)) {
+                    removedAny = true;
+                    this.record(joinPath(this.basePath, String(index)));
+                }
+            }
+        }
+
+        if (removed) {
+            for (let i = 0; i < removed.length; i++) {
+                const entry = removed[i];
+
+                if (!wrote && Object.prototype.hasOwnProperty.call(array, entry)) {
+                    continue;
+                }
+
+                removedAny = true;
+                const key = String(entry);
+                this.record(joinPath(this.basePath, key));
+
+                if (listener) {
+                    this.reportPatch(listener, key, removedValues?.[i], PATCH_ABSENT);
+                }
+            }
+        }
+
+        if (removedAny) {
+            this.aliases?.checkWrite(source, this.basePath);
+            this.record(this.keysMarker());
+        }
+
+        if (nextLength !== previousLength) {
+            this.aliases?.checkWrite(source, this.basePath);
+            this.record(this.writtenPath('length'));
+
+            if (listener) {
+                this.reportPatch(listener, 'length', previousLength, nextLength);
+            }
+        }
+
+        return wrote;
+    }
+
     /**
      * Answers the introspection hatch, hands back a function unwrapped, wraps a trackable
      * value writable, or — for an unwrappable object like a Map — records the path it came
@@ -242,6 +360,10 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const raw: unknown = unwrapWriteProxy(value);
         const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
 
+        if (this.isArray && key === 'length') {
+            return this.setArrayLength(source, raw);
+        }
+
         // A genuine no-op is an own key already holding the assigned value. The comparison is
         // SameValue (Object.is), not ===: +0 and -0 are distinct values, and NaN matches
         // itself. An absent key is never a no-op either — assigning even `undefined` must
@@ -266,29 +388,6 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         // A key that did not already exist changes the key set itself (R16-01): an index write
         // past the array's own end is exactly such a case, alongside an ordinary new object key.
         if (!wasOwn) {
-            this.record(this.keysMarker());
-        }
-
-        // A direct `length` write that shrinks the array truncates every index above the new
-        // length without a deleteProperty per index — the one array write `set` alone cannot
-        // attribute precisely. Each removed index is recorded on its own, so the row it held
-        // wakes and unmounts; pop/shift/splice already delete their removed indices explicitly
-        // and only ever shrink `length` to match afterwards, so this fires for them too,
-        // redundantly but harmlessly — the paths are recorded already. The truncation also
-        // removes those indices from the key set, so an enumerator wakes too.
-        if (this.isArray && key === 'length' && typeof raw === 'number' && typeof previous === 'number'
-            && raw < previous) {
-            for (let removed = raw; removed < previous; removed++) {
-                const removedKey = String(removed);
-                const removedPath = joinPath(this.basePath, removedKey);
-
-                if (listener) {
-                    this.reportPatch(listener, removedKey, Reflect.get(source, removedKey), PATCH_ABSENT);
-                }
-
-                this.record(removedPath);
-            }
-
             this.record(this.keysMarker());
         }
 
@@ -354,6 +453,12 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return forbidSymbolKey(this.basePath);
         }
 
+        if (this.isArray && key === 'length') {
+            return 'value' in descriptor
+                ? this.setArrayLength(source, descriptor.value, descriptor)
+                : Reflect.defineProperty(source, key, descriptor);
+        }
+
         const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
 
         if (isOpaqueDescriptor(descriptor, wasOwn)) {
@@ -400,7 +505,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * @param key - the property being deleted.
      */
     deleteProperty(source: T, key: string | symbol): boolean {
-        if (!Reflect.has(source, key)) {
+        if (!Object.prototype.hasOwnProperty.call(source, key)) {
             return true;
         }
 

@@ -101,11 +101,11 @@ class SubscriberIndex {
     }
     file(id, path) {
         this.register(this.exact, path, id);
-        this.ancestorsOf(path).forEach((ancestor)=>this.register(this.branch, ancestor, id));
+        this.ancestorsOf(path).forEach((ancestor)=>this.registerBranch(ancestor, id));
     }
     unfile(id, path) {
         this.unregister(this.exact, path, id);
-        this.ancestorsOf(path).forEach((ancestor)=>this.unregister(this.branch, ancestor, id));
+        this.ancestorsOf(path).forEach((ancestor)=>this.unregisterBranch(ancestor, id));
     }
     ancestorsOf(path) {
         const chain = [];
@@ -143,10 +143,67 @@ class SubscriberIndex {
             target.set(path, remaining);
         }
     }
+    registerBranch(path, id) {
+        const known = this.branch.get(path);
+        if (void 0 === known) this.branch.set(path, id);
+        else if ('string' == typeof known) this.branch.set(path, known === id ? {
+            id,
+            count: 2
+        } : new Map([
+            [
+                known,
+                1
+            ],
+            [
+                id,
+                1
+            ]
+        ]));
+        else if (known instanceof Map) known.set(id, (known.get(id) ?? 0) + 1);
+        else if (known.id === id) known.count++;
+        else this.branch.set(path, new Map([
+            [
+                known.id,
+                known.count
+            ],
+            [
+                id,
+                1
+            ]
+        ]));
+    }
+    unregisterBranch(path, id) {
+        const known = this.branch.get(path);
+        if (void 0 === known) return;
+        if ('string' == typeof known) {
+            if (known === id) this.branch.delete(path);
+            return;
+        }
+        if (known instanceof Map) {
+            const count = known.get(id);
+            if (void 0 === count) return;
+            if (count > 1) known.set(id, count - 1);
+            else {
+                known.delete(id);
+                if (1 === known.size) {
+                    const [remainingId, remainingCount] = known.entries().next().value;
+                    this.branch.set(path, 1 === remainingCount ? remainingId : {
+                        id: remainingId,
+                        count: remainingCount
+                    });
+                }
+            }
+            return;
+        }
+        if (known.id === id) if (2 === known.count) this.branch.set(path, id);
+        else known.count--;
+    }
     collect(source, target) {
         if (void 0 === source) return;
         if ('string' == typeof source) return void target.add(source);
-        source.forEach((id)=>target.add(id));
+        if (source instanceof Set) source.forEach((id)=>target.add(id));
+        else if (source instanceof Map) source.forEach((_count, id)=>target.add(id));
+        else target.add(source.id);
     }
 }
 exports.SubscriberIndex = __webpack_exports__.SubscriberIndex;

@@ -2,6 +2,7 @@ import {diagnostics} from "@/Carburetor";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
+import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {
     FakeReadonlySet, getTestData, InspectableCarburetor, readsOf, SwappingCarburetor, TestCarburetor,
 } from "./fixtures";
@@ -117,6 +118,98 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         carburetor.setA(2);
 
         expect(calls).toEqual(1);
+    });
+
+    test('special ids register, extend, notify, and release their callbacks', () => {
+        class InspectableCarburetor extends TestCarburetor {
+            public callbackFor(id: string) {
+                return this.subscribers[id]?.callback;
+            }
+
+            public hasRecord(id: string): boolean {
+                return Object.prototype.hasOwnProperty.call(this.subscribers, id);
+            }
+        }
+
+        const canceled: string[] = [];
+        const store = new InspectableCarburetor(getTestData(), {
+            schedule: (_id, callback) => callback(),
+            cancel: id => { canceled.push(id); },
+        });
+        const calls: string[] = [];
+        const protoCallback = () => { calls.push('__proto__'); };
+        const constructorCallback = () => { calls.push('constructor'); };
+
+        for (const id of ['__proto__', 'constructor', 'toString']) {
+            expect(store.hasRecord(id)).toBe(false);
+            store.extend(id, 'a');
+            store.unsubscribe(id);
+        }
+        expect(canceled).toEqual([]);
+
+        expect(store.subscribe(protoCallback, {id: '__proto__', reads: readsOf('a')})).toBe('__proto__');
+        expect(store.subscribe(constructorCallback, {id: 'constructor', reads: readsOf('b')})).toBe('constructor');
+        expect(store.callbackFor('__proto__')).toBe(protoCallback);
+        expect(store.callbackFor('constructor')).toBe(constructorCallback);
+
+        store.notifyWrites(readsOf('a'));
+        expect(calls).toEqual(['__proto__']);
+
+        store.extend('__proto__', 'b');
+        store.notifyWrites(readsOf('b'));
+        expect(calls).toEqual(['__proto__', 'constructor', '__proto__']);
+
+        store.unsubscribe('__proto__');
+        store.unsubscribe('constructor');
+        expect(canceled).toEqual(['__proto__', 'constructor']);
+        expect(store.hasRecord('__proto__')).toBe(false);
+        expect(store.hasRecord('constructor')).toBe(false);
+        expect(store.callbackFor('__proto__')).toBeUndefined();
+        expect(store.callbackFor('constructor')).toBeUndefined();
+
+        store.notifyWrites(readsOf('a', 'b'));
+        expect(calls).toEqual(['__proto__', 'constructor', '__proto__']);
+
+        store.subscribe(() => { calls.push('new'); }, {id: '__proto__', reads: readsOf('a')});
+        store.notifyWrites(readsOf('a'));
+        expect(calls[calls.length - 1]).toBe('new');
+    });
+
+    test('resource cache releases eviction state only for registered special ids', () => {
+        class TrackingCache extends ResourceCache<string, string> {
+            public releases = 0;
+
+            constructor() {
+                super(() => Promise.resolve('value'));
+
+                const release = this.eviction.release.bind(this.eviction);
+                this.eviction.release = () => {
+                    this.releases++;
+                    release();
+                };
+            }
+        }
+
+        const cache = new TrackingCache();
+        cache.unsubscribe('__proto__');
+        cache.unsubscribe('constructor');
+        expect(cache.releases).toEqual(0);
+
+        cache.subscribe(() => undefined, {id: '__proto__'});
+        cache.subscribe(() => undefined, {id: 'constructor'});
+        expect(cache.releases).toEqual(0);
+
+        cache.subscribe(() => undefined, {id: '__proto__'});
+        cache.subscribe(() => undefined, {id: 'constructor'});
+        expect(cache.releases).toEqual(2);
+
+        cache.unsubscribe('__proto__');
+        cache.unsubscribe('constructor');
+        expect(cache.releases).toEqual(4);
+
+        cache.unsubscribe('__proto__');
+        cache.unsubscribe('constructor');
+        expect(cache.releases).toEqual(4);
     });
 
     test('update mutates and publishes once, keeping path precision', () => {

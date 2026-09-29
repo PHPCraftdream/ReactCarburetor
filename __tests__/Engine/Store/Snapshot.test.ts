@@ -161,6 +161,28 @@ describe('snapshot / restore', () => {
         expect(clone[2]).toEqual('c');
     });
 
+    test('long sparse snapshots preserve length, holes and own undefined through restore', () => {
+        const rows: Array<{n: number} | undefined> = [];
+        rows[0] = {n: 1};
+        rows[50_000] = undefined;
+        rows[99_999] = {n: 2};
+        rows.length = 100_000;
+        const store = new Carburetor({rows});
+        const taken = store.snapshot();
+
+        expect(taken.rows.length).toBe(100_000);
+        expect(Object.keys(taken.rows)).toEqual(['0', '50000', '99999']);
+        expect(Object.prototype.hasOwnProperty.call(taken.rows, 50_000)).toBe(true);
+        expect(Object.prototype.hasOwnProperty.call(taken.rows, 50_001)).toBe(false);
+        expect(taken.rows[0]).not.toBe(rows[0]);
+
+        const restored = new Carburetor({rows: [] as typeof rows});
+        restored.restore(taken);
+        expect(restored.getData().rows.length).toBe(100_000);
+        expect(Object.keys(restored.getData().rows)).toEqual(['0', '50000', '99999']);
+        expect(restored.getData().rows[99_999]).toEqual({n: 2});
+    });
+
     test('deepClone skips a non-enumerable own string key', () => {
         const source: Record<string, unknown> = {visible: 1};
         Object.defineProperty(source, 'hidden', {value: 'secret', enumerable: false});

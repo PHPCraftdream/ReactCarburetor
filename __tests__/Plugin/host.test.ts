@@ -17,7 +17,7 @@ const RULE_ID: string = 'carburetor(no-lifecycle-class-property)';
 
 const runOxlint = (args: string[]): string => {
     try {
-        return execFileSync(process.execPath, [OXLINT, ...args], {encoding: 'utf8', cwd: ROOT});
+        return execFileSync(process.execPath, [OXLINT, '-f', 'unix', ...args], {encoding: 'utf8', cwd: ROOT});
     } catch (error) {
         // oxlint exits non-zero when it reports anything, which is the interesting case here.
         const failure = error as {stdout?: string; stderr?: string};

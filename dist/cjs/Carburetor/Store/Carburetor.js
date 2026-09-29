@@ -61,7 +61,7 @@ const detachWatchSelection = (value)=>{
 class Carburetor {
     data;
     scheduler;
-    subscribers = {};
+    subscribers = Object.create(null);
     subscriberIndex = new SubscriberIndex_js_namespaceObject.SubscriberIndex();
     aliases = (0, AliasLedger_js_namespaceObject.createAliasLedger)();
     patchPort = {};
@@ -147,11 +147,11 @@ class Carburetor {
         return id;
     }
     extend(id, path) {
-        if (!(id in this.subscribers)) return;
+        if (!Object.prototype.hasOwnProperty.call(this.subscribers, id)) return;
         this.subscriberIndex.addPath(id, path);
     }
     unsubscribe(id) {
-        if (id in this.subscribers) {
+        if (Object.prototype.hasOwnProperty.call(this.subscribers, id)) {
             this.scheduler.cancel(id);
             this.subscriberIndex.remove(id);
             delete this.subscribers[id];

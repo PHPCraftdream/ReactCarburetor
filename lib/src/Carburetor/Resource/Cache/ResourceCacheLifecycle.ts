@@ -130,7 +130,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
      * @param options - see `Carburetor.subscribe`
      */
     public subscribe(callback: TSubscriber, options: ISubscribeOptions = {}): string {
-        if (options.id !== undefined && this.subscribers[options.id]) {
+        if (options.id !== undefined && Object.prototype.hasOwnProperty.call(this.subscribers, options.id)) {
             this.eviction.release();
         }
 
@@ -142,7 +142,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
      * @param id - see `Carburetor.unsubscribe`
      */
     public unsubscribe(id: string): void {
-        if (id in this.subscribers) {
+        if (Object.prototype.hasOwnProperty.call(this.subscribers, id)) {
             this.eviction.release();
         }
 

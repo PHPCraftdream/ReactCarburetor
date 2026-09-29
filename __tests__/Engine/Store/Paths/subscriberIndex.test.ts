@@ -35,19 +35,29 @@ class SpyIndex extends SubscriberIndex {
         super.unregister(target, path, id);
     }
 
+    protected override registerBranch(path: TPath, id: string): void {
+        this.registerCalls++;
+        super.registerBranch(path, id);
+    }
+
+    protected override unregisterBranch(path: TPath, id: string): void {
+        this.unregisterCalls++;
+        super.unregisterBranch(path, id);
+    }
+
     public resetCounts(): void {
         this.registerCalls = 0;
         this.unregisterCalls = 0;
     }
 }
 
-/** Exposes the raw bucket maps, so a bucket's representation (bare id vs. Set) is checkable. */
+/** Exposes the raw buckets for representation checks. */
 class InspectableIndex extends SubscriberIndex {
     public exactBucket(path: TPath): string | Set<string> | undefined {
         return this.exact.get(path);
     }
 
-    public branchBucket(path: TPath): string | Set<string> | undefined {
+    public branchBucket(path: TPath): string | {id: string; count: number} | Map<string, number> | undefined {
         return this.branch.get(path);
     }
 }

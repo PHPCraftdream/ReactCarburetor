@@ -8,6 +8,7 @@ import {WILDCARD_PATH} from "./WildcardPath";
  * `Set`; losing one back down to one id demotes it again.
  */
 type TBucket = string | Set<string>;
+type TBranchBucket = string | {id: string; count: number} | Map<string, number>;
 
 /**
  * Finds the subscribers a set of written paths concerns, without walking every subscriber.
@@ -33,8 +34,8 @@ type TBucket = string | Set<string>;
 export class SubscriberIndex {
     /** Read path -> subscribers whose read set contains exactly it. */
     protected exact: Map<TPath, TBucket> = new Map<TPath, TBucket>();
-    /** Ancestor of a read path -> subscribers reading somewhere below it. */
-    protected branch: Map<TPath, TBucket> = new Map<TPath, TBucket>();
+    /** Ancestor -> number of distinct read paths below it, per subscriber. */
+    protected branch: Map<TPath, TBranchBucket> = new Map<TPath, TBranchBucket>();
     /** Subscribers that read the wildcard, so every write matches them. */
     protected wildcard: Set<string> = new Set<string>();
     /**
@@ -244,7 +245,7 @@ export class SubscriberIndex {
      */
     protected file(id: string, path: TPath): void {
         this.register(this.exact, path, id);
-        this.ancestorsOf(path).forEach((ancestor: TPath) => this.register(this.branch, ancestor, id));
+        this.ancestorsOf(path).forEach((ancestor: TPath) => this.registerBranch(ancestor, id));
     }
 
     /**
@@ -257,7 +258,7 @@ export class SubscriberIndex {
      */
     protected unfile(id: string, path: TPath): void {
         this.unregister(this.exact, path, id);
-        this.ancestorsOf(path).forEach((ancestor: TPath) => this.unregister(this.branch, ancestor, id));
+        this.ancestorsOf(path).forEach((ancestor: TPath) => this.unregisterBranch(ancestor, id));
     }
 
     /**
@@ -342,6 +343,82 @@ export class SubscriberIndex {
         }
     }
 
+    /** Counts one more distinct read path below an ancestor for this id.
+     *
+     * @param path - ancestor path
+     * @param id - subscriber id
+     */
+    protected registerBranch(path: TPath, id: string): void {
+        const known = this.branch.get(path);
+
+        if (known === undefined) {
+            this.branch.set(path, id);
+        } else if (typeof known === 'string') {
+            this.branch.set(path, known === id
+                ? {id, count: 2}
+                : new Map<string, number>([[known, 1], [id, 1]]));
+        } else if (known instanceof Map) {
+            known.set(id, (known.get(id) ?? 0) + 1);
+        } else if (known.id === id) {
+            known.count++;
+        } else {
+            this.branch.set(path, new Map<string, number>([[known.id, known.count], [id, 1]]));
+        }
+    }
+
+    /** Removes one read path's contribution, keeping the id until its count reaches zero.
+     *
+     * @param path - ancestor path
+     * @param id - subscriber id
+     */
+    protected unregisterBranch(path: TPath, id: string): void {
+        const known = this.branch.get(path);
+
+        if (known === undefined) {
+            return;
+        }
+
+        if (typeof known === 'string') {
+            if (known === id) {
+                this.branch.delete(path);
+            }
+
+            return;
+        }
+
+        if (known instanceof Map) {
+            const count = known.get(id);
+
+            if (count === undefined) {
+                return;
+            }
+
+            if (count > 1) {
+                known.set(id, count - 1);
+            } else {
+                known.delete(id);
+
+                if (known.size === 1) {
+                    const [remainingId, remainingCount] = known.entries().next().value as [string, number];
+
+                    this.branch.set(path, remainingCount === 1
+                        ? remainingId
+                        : {id: remainingId, count: remainingCount});
+                }
+            }
+
+            return;
+        }
+
+        if (known.id === id) {
+            if (known.count === 2) {
+                this.branch.set(path, id);
+            } else {
+                known.count--;
+            }
+        }
+    }
+
     /**
      * Merges one bucket into the match set, tolerating a bucket that does not exist.
      *
@@ -350,7 +427,7 @@ export class SubscriberIndex {
      * @param target - the match set one notifyWrites call is building; ids enter it,
      * never leave it.
      */
-    protected collect(source: TBucket | undefined, target: Set<string>): void {
+    protected collect(source: TBucket | TBranchBucket | undefined, target: Set<string>): void {
         if (source === undefined) {
             return;
         }
@@ -361,6 +438,12 @@ export class SubscriberIndex {
             return;
         }
 
-        source.forEach((id: string) => target.add(id));
+        if (source instanceof Set) {
+            source.forEach((id: string) => target.add(id));
+        } else if (source instanceof Map) {
+            source.forEach((_count: number, id: string) => target.add(id));
+        } else {
+            target.add(source.id);
+        }
     }
 }

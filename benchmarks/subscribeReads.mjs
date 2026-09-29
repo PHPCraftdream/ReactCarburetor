@@ -116,6 +116,93 @@ const report = (label, value) => {
     console.log(`   ${label.padEnd(52)} ${value}  (report only)`);
 };
 
+if (process.argv.includes('--r7-ids')) {
+    const count = 1000;
+    const deliveries = 64;
+    const rounds = 15;
+    const reads = new Set(['shared']);
+    const writes = new Set(['shared']);
+    const fresh = (CarburetorClass) => new CarburetorClass(freshData());
+    const subscribed = (CarburetorClass) => {
+        const store = fresh(CarburetorClass);
+
+        for (let i = 0; i < count; i++) {
+            store.subscribe(() => undefined, {id: `s${i}`, reads});
+        }
+
+        return store;
+    };
+    const measure = (label, setupAfter, runAfter, setupBefore, runBefore) => {
+        const {after, before, ratio} = compareAB(rounds, {setupAfter, runAfter, setupBefore, runBefore});
+
+        console.log(`${label}: after=${after.toFixed(3)}ms before=${before.toFixed(3)}ms ratio=${ratio.toFixed(3)}x`);
+    };
+
+    console.log(`subscriber ids (R7-04): ${rounds} interleaved rounds, ${count} subscribers`);
+
+    measure(
+        'subscribe',
+        () => fresh(AfterCarburetor),
+        store => {
+            for (let i = 0; i < count; i++) {
+                store.subscribe(() => undefined, {id: `s${i}`, reads});
+            }
+        },
+        () => fresh(BeforeCarburetor),
+        store => {
+            for (let i = 0; i < count; i++) {
+                store.subscribe(() => undefined, {id: `s${i}`, reads});
+            }
+        },
+    );
+
+    measure(
+        'unsubscribe',
+        () => subscribed(AfterCarburetor),
+        store => {
+            for (let i = 0; i < count; i++) {
+                store.unsubscribe(`s${i}`);
+            }
+        },
+        () => subscribed(BeforeCarburetor),
+        store => {
+            for (let i = 0; i < count; i++) {
+                store.unsubscribe(`s${i}`);
+            }
+        },
+    );
+
+    const deliveryContext = (CarburetorClass) => {
+        const store = fresh(CarburetorClass);
+        const ctx = {store, calls: 0};
+
+        for (let i = 0; i < count; i++) {
+            store.subscribe(() => { ctx.calls++; }, {id: `s${i}`, reads});
+        }
+
+        return ctx;
+    };
+    const deliver = (ctx) => {
+        for (let i = 0; i < deliveries; i++) {
+            ctx.store.notifyWrites(writes);
+        }
+
+        if (ctx.calls !== count * deliveries) {
+            throw new Error(`delivery mismatch: ${ctx.calls}`);
+        }
+    };
+
+    measure(
+        `hot delivery (${deliveries} writes)`,
+        () => deliveryContext(AfterCarburetor),
+        deliver,
+        () => deliveryContext(BeforeCarburetor),
+        deliver,
+    );
+
+    process.exit(0);
+}
+
 console.log(`subscribeReads (R6-04): ${ROUNDS} interleaved rounds per scenario, medians reported\n`);
 
 // --- 1. 4000 internal subscriptions, 3-path read sets -----------------------------------------
