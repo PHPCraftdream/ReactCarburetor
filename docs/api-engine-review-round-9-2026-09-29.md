@@ -46,3 +46,11 @@ The only relevant **previously measured** bulk result is round 8's integrated si
 4. Fix and test R9-05's constructor contract. Benchmark no new option-validation path unless profiling identifies construction as material.
 
 No P0 was established. R9-01 through R9-05 remain open P1–P3 candidates at this source state. This review has no newly measured performance result and makes no speedup claim.
+
+## Resolution (2026-09-29)
+
+- **R9-01 and R9-05 — `687c7aa`:** A wholesale cache state replacement now rebuilds eviction bookkeeping before subscribers observe the new state. Constructor validation rejects invalid TTL and capacity values while preserving the documented infinite TTL. Regressions cover replacement, capacity/LRU, in-flight requests and the option boundary.
+- **R9-02 and R9-03 — `3549fee`:** DevTools state/snapshot dictionaries and named-effect records now handle prototype-shaped names as own keys. Time travel requires an own payload key. Regressions cover `__proto__`, `constructor`, omitted stores and effect cleanup. A nine-round publication microbenchmark measured a median of 0.00129 ms/write in the integrated build, versus 0.00096 ms/write in the pre-fix agent sample; these single-machine results do not support a speedup claim.
+- **R9-04 — `687c7aa`:** `abortAll()` now batches ordinary cancellation-state writes into one publication, with tests for listeners and same-key replacement. At 4,000 pending entries, the integrated benchmark measured one version, one wildcard callback or one synchronous persistence write (depending on configuration), versus 4,000 of each in the pre-fix benchmark. The default-persistence wall time was 62.35 ms in the integrated run versus 8,558.79 ms in the pre-fix agent run. At 100 and 1,000 entries, the integrated default-persistence samples were 1.34 and 14.40 ms. These are single-machine samples with separate runs, not a guaranteed speedup or evidence of lower allocation. The benchmark's `heapDeltaBytes` is retained heap change, not allocated bytes.
+
+The integrated build, full test suite, typecheck, lint and layout check passed. `forgetAll()` remained at one publication in the integrated benchmark. All R9 findings are closed; the next review must assess the updated code rather than repeat these resolved mechanisms.
