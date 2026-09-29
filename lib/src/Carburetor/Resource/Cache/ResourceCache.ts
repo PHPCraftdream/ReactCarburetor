@@ -71,7 +71,14 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         const keys = Object.keys(this.data.entries);
 
         this.eviction.replace(keys);
-        this.viewCache.clear();
+        this.viewCache.forEach((view: IResourceView<T>, key: string) => {
+            const entry = this.data.entries[key];
+
+            if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)
+                || !this.isViewCurrent(view, entry, this.isStale(entry))) {
+                this.viewCache.delete(key);
+            }
+        });
         for (const key of this.failures.keys()) {
             if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) {
                 this.failures.delete(key);
