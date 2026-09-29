@@ -88,8 +88,12 @@ describe('child props boundary', () => {
             unmount();
         });
 
+        // R6-02/R6-03: state is string-keyed data only, so the symbol member now comes from the
+        // selector, not the store — detachSelection/sameSelection still copy and compare a
+        // symbol member of the SELECTION the same way as before (that model is unchanged), only
+        // the store's own payload may no longer hold one.
         test('an enumerable symbol member whose value changes updates the child (R2-07)', () => {
-            const store = new TodoCarburetor({payload: {[SYM]: 0}});
+            const store = new TodoCarburetor({payload: {n: 0}});
             let memoRenders = 0;
 
             const MemoTodo = React.memo(({todo}: {todo: ITodoPayload}) => {
@@ -99,7 +103,7 @@ describe('child props boundary', () => {
             });
 
             class Parent extends AntiHookComponent {
-                private readonly todo = this.connectSelection(() => store, (data) => ({...data.payload}));
+                private readonly todo = this.connectSelection(() => store, (data) => ({[SYM]: data.payload.n}));
 
                 render() {
                     return <MemoTodo todo={this.todo()} />;
@@ -111,9 +115,9 @@ describe('child props boundary', () => {
             expect(memoRenders).toEqual(1);
             expect(container.querySelector('.memo-sym')?.textContent).toEqual('0');
 
-            // The spread copies the symbol member, so the child-visible content did change even
+            // The selection copies the symbol member, so the child-visible content did change even
             // though the string key count stayed at zero on both sides.
-            act(() => store.replacePayload({[SYM]: 1}));
+            act(() => store.replacePayload({n: 1}));
 
             expect(memoRenders).toEqual(2);
             expect(container.querySelector('.memo-sym')?.textContent).toEqual('1');
@@ -153,7 +157,7 @@ describe('child props boundary', () => {
         });
 
         test('an unchanged selection holding an undefined value and a symbol member keeps its identity (R2-07)', () => {
-            const store = new TodoCarburetor({payload: {a: undefined, [SYM]: 0}});
+            const store = new TodoCarburetor({payload: {a: undefined, n: 0}});
             let memoRenders = 0;
             const seen: ITodoPayload[] = [];
 
@@ -165,7 +169,9 @@ describe('child props boundary', () => {
             });
 
             class Parent extends AntiHookComponent<{flag?: string}> {
-                private readonly todo = this.connectSelection(() => store, (data) => ({...data.payload}));
+                private readonly todo = this.connectSelection(
+                    () => store, (data) => ({a: data.payload.a, [SYM]: data.payload.n})
+                );
 
                 render() {
                     return <MemoTodo todo={this.todo()} />;

@@ -257,8 +257,8 @@ Two properties keep this honest:
 - **Replacements are diffed.** Replacing an object or array with another of the same kind —
   through `draft`, `setData`, `restore`, `fromJSON`, or an undo — records only the leaves that
   differ, plus the key set where keys were added or removed. A kind change (array ↔ object, plain
-  ↔ `Map`/class instance) or a difference under a symbol key records the replaced path itself,
-  and so does a replacement that changes more than 2000 leaves. A branch that is the same object
+  ↔ `Map`/class instance) records the replaced path itself, and so does a replacement that
+  changes more than 2000 leaves. A branch that is the same object
   on both sides is skipped without a look, so never mutate what `getData()` returns and hand it
   back: those edits are invisible to the diff.
 
@@ -746,7 +746,7 @@ describes.
 | `toJSON()` / `fromJSON(value)`  | Type-erased bridge for devtools, persistence and hydration. `fromJSON` adopts `value` without copying — hand it freshly parsed JSON. |
 | `watch(select, onChange)`       | Subscribes outside React to a selection: `onChange(next, previous)` runs only when it changes. Returns a disposer. |
 | `getVersion(): number`          | Write counter.                                                     |
-| `subscribe(cb, options?)`       | Subscribes to every write, for tooling. `options.id` reuses a stable id so re-subscribing replaces the previous registration; `options.reads` (with `read(record)`) is the engine's extension contract — its path strings are not a stable user-facing API. |
+| `subscribe(cb, options?)`       | Subscribes to every write, for tooling. `options.id` reuses a stable id so re-subscribing replaces the previous registration; `options.reads` (with `read(record)`) is the engine's extension contract — its path strings are not a stable user-facing API; the set is copied, so changing it afterwards has no effect. |
 | `unsubscribe(id)`               | Removes the subscription and cancels a pending update.             |
 | `update(mutate)` *(protected)*  | Mutates through `draft` and publishes — the recommended write form. |
 | `draft: T` *(protected)*        | Write proxy that records changed paths.                            |
@@ -804,7 +804,14 @@ a test pins the exported surface so one does not slip in by accident.
   invalidates the whole store. Replace the value instead of mutating it, and keep plain data in
   stores you want precision on. A store whose root is untrackable has no path to be precise
   about at all: every write to it invalidates everything.
-- A write under a symbol key cannot be expressed as a path, so it invalidates the whole store.
+- **What counts as state.** A container's state is its own enumerable string-keyed data — what
+  `Object.keys` lists — and an array's is its elements and `length`. Symbol keys, getters and
+  setters, non-enumerable properties and non-index keys on an array are not state: they have no
+  path, so diffing, `snapshot()` and `restore()` could not carry them. Development throws on them
+  at the constructor, `setData`, `restore` and every `draft` write; a symbol key or a
+  non-data `defineProperty` through `draft` throws in every build; production does not check the
+  rest and leaves their behaviour unspecified. Keep a derived value in a `computed`, and a value
+  with its own identity in a `Map` or a class instance, which are leaves.
 - `update(mutate)` publishes when `mutate` returns. An `async` callback is accepted by its
   `void`-returning signature and publishes at the first `await`, leaving everything written
   afterwards unpublished — development warns about it. Do the async work first, then write.
@@ -818,7 +825,7 @@ a test pins the exported surface so one does not slip in by accident.
 - The props gate means a component that relied on its parent re-rendering to pick up data it
   never read will stop updating. Read what you render, through `useCarburetor`.
 - Undo/redo records the patches behind each change — O(changed values), not O(state). A change
-  the write proxy cannot describe (`setData`, `markAllChanged`, a symbol key, a write that bypassed
+  the write proxy cannot describe (`setData`, `markAllChanged`, a write that bypassed
   `draft`) falls back to a full copy of the state either side of it. Undo and redo install
   through `restore`, so they wake only the readers of what they change. `CarburetorHistory` needs a
   `Carburetor` (anything implementing `attachPatchListener`), not just an `ICarburetor`.

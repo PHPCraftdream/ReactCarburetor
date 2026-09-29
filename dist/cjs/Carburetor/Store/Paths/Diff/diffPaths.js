@@ -37,7 +37,6 @@ const external_WildcardPath_js_namespaceObject = require("../WildcardPath.js");
 const isTrackable_js_namespaceObject = require("../../Tracking/isTrackable.js");
 const deepClone_js_namespaceObject = require("../../Utils/deepClone.js");
 const external_DiffThreshold_js_namespaceObject = require("./DiffThreshold.js");
-const external_hasSymbolDifference_js_namespaceObject = require("./hasSymbolDifference.js");
 const external_sameKind_js_namespaceObject = require("./sameKind.js");
 class DiffOverflow extends Error {
 }
@@ -54,11 +53,6 @@ const addPatch = (onPatch, segments, previous, next)=>{
     });
 };
 const walkContainer = (oldValue, newValue, path, segments, into, onPatch)=>{
-    if ((0, external_hasSymbolDifference_js_namespaceObject.hasSymbolDifference)(oldValue, newValue)) {
-        add(into, path || external_WildcardPath_js_namespaceObject.WILDCARD_PATH);
-        addPatch(onPatch, segments, oldValue, newValue);
-        return;
-    }
     if (Array.isArray(oldValue) && oldValue.length !== newValue.length) {
         add(into, (0, external_joinPath_js_namespaceObject.joinPath)(path, 'length'));
         addPatch(onPatch, [

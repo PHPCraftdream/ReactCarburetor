@@ -33,7 +33,6 @@ __webpack_require__.d(__webpack_exports__, {
 const isTrackable_js_namespaceObject = require("../../Tracking/isTrackable.js");
 const deepClone_js_namespaceObject = require("../../Utils/deepClone.js");
 const external_DiffThreshold_js_namespaceObject = require("./DiffThreshold.js");
-const external_hasSymbolDifference_js_namespaceObject = require("./hasSymbolDifference.js");
 const external_sameKind_js_namespaceObject = require("./sameKind.js");
 class ApplyDiffOverflow extends Error {
 }
@@ -52,14 +51,14 @@ const applyDiff_assign = (target, key, value)=>{
 };
 const applyKey = (target, key, previous, next, budget)=>{
     if (Object.is(previous, next)) return;
-    if ((0, isTrackable_js_namespaceObject.isTrackable)(previous) && (0, isTrackable_js_namespaceObject.isTrackable)(next) && (0, external_sameKind_js_namespaceObject.sameKind)(previous, next) && !(0, external_hasSymbolDifference_js_namespaceObject.hasSymbolDifference)(previous, next)) return void applyBranch(target[key], previous, next, budget);
+    if ((0, isTrackable_js_namespaceObject.isTrackable)(previous) && (0, isTrackable_js_namespaceObject.isTrackable)(next) && (0, external_sameKind_js_namespaceObject.sameKind)(previous, next)) return void applyBranch(target[key], previous, next, budget);
     spend(budget);
     applyDiff_assign(target, key, (0, deepClone_js_namespaceObject.deepClone)(next));
 };
 const applyBranch = (target, previous, next, budget)=>{
     const previousLength = previous.length;
     const nextLength = next.length;
-    if (Array.isArray(previous) && nextLength < previousLength) {
+    if (Array.isArray(previous) && nextLength !== previousLength) {
         spend(budget);
         target.length = nextLength;
     }

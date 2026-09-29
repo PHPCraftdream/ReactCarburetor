@@ -1,3 +1,5 @@
+import {rstest} from "@rstest/core";
+import {READS_TRANSFER} from "@/Carburetor/Store/Paths/Markers/ReadsTransferBrand";
 import {getTestData, TestCarburetor} from "./fixtures";
 
 /**
@@ -151,5 +153,19 @@ describe('watch(select, onChange)', () => {
         expect(reported[0]).toContain('boom');
 
         throwing();
+    });
+
+    test('transfers its read set into subscribe() instead of copying it (R6-04)', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const subscribeSpy = rstest.spyOn(carburetor, 'subscribe');
+
+        const dispose = carburetor.watch((data) => data.a, () => undefined);
+
+        const options = subscribeSpy.mock.calls[0][1] as {reads?: unknown; [READS_TRANSFER]?: unknown};
+
+        expect(options[READS_TRANSFER]).toBe(options.reads);
+
+        dispose();
+        subscribeSpy.mockRestore();
     });
 });

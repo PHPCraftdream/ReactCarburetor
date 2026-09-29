@@ -2,7 +2,6 @@ import {TPath, TPathRecorder, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {branchPath} from "@/Carburetor/Store/Paths/Markers/BranchMarker";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {createProxyCache} from "./createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
@@ -54,7 +53,7 @@ const lockedError = (path: TPath): Error =>
  */
 const lockedAgainstWrapping = (
     source: object,
-    key: string | symbol,
+    key: string,
     own?: PropertyDescriptor
 ): boolean => {
     const descriptor: PropertyDescriptor | undefined =
@@ -87,12 +86,8 @@ const lockedAgainstWrapping = (
  * named; production hands out the raw branch, still recorded as a branch read — the same
  * degrade-and-mark policy the write proxy applies to Maps.
  *
- * Two contracts the recording relies on. Accessors run against the receiving proxy: `get`
- * forwards the trap's own `receiver` argument to `Reflect.get`, so a getter sees the proxy as
- * `this` and its internal reads (`get doubled() { return this.n * 2 }`) land in the recording
- * instead of silently reading the raw target. And the data is a tree, one object at one path:
- * a second path to a live object is reported in development through the alias ledger, which
- * production compiles out.
+ * The data is a tree, one object at one path: a second path to a live object is reported in
+ * development through the alias ledger, which production compiles out.
  */
 class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
     /**
@@ -228,14 +223,21 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * hatch before any of that runs. Reaching into a branch subscribes to the branch marker
      * and, in development, notes it in the alias ledger; a leaf read subscribes to its own path.
      *
+     * A symbol key has no place in state (R6-02/R6-03): nothing is recorded for reading one, own
+     * or inherited, and its value passes through raw, unwrapped — the same treatment a Map or a
+     * class instance gets, since a symbol-keyed value is opaque to this tree the same way.
+     *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being read.
      * @param receiver - the actual proxy the caller touched, forwarded to `Reflect.get` so an
      * accessor's own reads run against it and land in the recording too.
      */
     get(source: T, key: string | symbol, receiver: unknown): unknown {
-        if (key === PROXY_CACHE) {
-            return this.cache;
+        // One branch, not two: PROXY_CACHE is itself a symbol, so folding its check inside the
+        // `typeof` branch costs the overwhelmingly common string-keyed read only one comparison
+        // instead of two.
+        if (typeof key === 'symbol') {
+            return key === PROXY_CACHE ? this.cache : Reflect.get(source, key, receiver);
         }
 
         const value: unknown = Reflect.get(source, key, receiver);
@@ -245,30 +247,6 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
             // recorded, and nothing is wrapped either — wrapping an inherited iterator would
             // break the very protocol it exists to answer.
             return value;
-        }
-
-        if (typeof key === 'symbol') {
-            // A symbol has no place in a dotted path, and nothing is recorded for reading one:
-            // a write through a symbol key already collapses to the wildcard on the write side
-            // (WriteProxyHandler.writtenPath), and SubscriberIndex.match answers a wildcard
-            // write with every registered subscriber, not just the ones whose reads intersect
-            // it. Recording the wildcard here bought nothing but extra wake-ups for writes that
-            // cannot change the answer — Symbol.isConcatSpreadable (read by concat),
-            // Symbol.toStringTag (read by Object.prototype.toString) and Symbol.toPrimitive
-            // (read by String(obj)/`${obj}`) are the well-known absent ones that matter.
-            if (!isTrackable(value)) {
-                return value;
-            }
-
-            if (lockedAgainstWrapping(source, key)) {
-                if (IS_DEVELOPMENT) {
-                    throw lockedError(String(key));
-                }
-
-                return value;
-            }
-
-            return this.wrap(WILDCARD_PATH, value);
         }
 
         const path = this.childPath(key);
@@ -304,6 +282,9 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * `Array.prototype.map`/`forEach`/`filter`/`some`/`every`/`reduce` call this once per index
      * before reading it, so a coarse record here would subscribe every row to the whole list.
      *
+     * Reads the value directly rather than through a descriptor: state has no accessors
+     * (R6-02/R6-03) left to protect this from running.
+     *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being probed.
      */
@@ -311,12 +292,10 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
         const present = Reflect.has(source, key);
 
         // An inherited key ('map' in items) names no data of this object's own and records
-        // nothing; an absent key still records, so a later own-key add wakes the reader. The
-        // descriptor, not a get: a presence check must not run an accessor.
+        // nothing; an absent key still records, so a later own-key add wakes the reader.
         if (typeof key === 'string' && isRecordable(source, key)) {
             const path = this.childPath(key);
-            const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
-            const value: unknown = descriptor !== undefined && 'value' in descriptor ? descriptor.value : undefined;
+            const value: unknown = Reflect.get(source, key);
 
             this.record(isTrackable(value) ? this.branchMarker(path) : path);
         }
@@ -346,34 +325,15 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * Records nothing: `Object.keys`/`for...in` pass through here for the enumeration check
      * alone, and a structure-only read must not subscribe to the values it merely looked at.
      *
+     * A symbol key answers with its raw descriptor, untouched — same as `get` (R6-02/R6-03).
+     *
      * @param source - the raw object this proxy fronts.
      * @param key - the property whose descriptor is being read.
      */
     getOwnPropertyDescriptor(source: T, key: string | symbol): PropertyDescriptor | undefined {
         const descriptor: PropertyDescriptor | undefined = Reflect.getOwnPropertyDescriptor(source, key);
 
-        if (descriptor === undefined) {
-            return descriptor;
-        }
-
-        if (typeof key === 'symbol') {
-            // Same treatment as `get`: nothing is recorded for the symbol key itself, but the
-            // descriptor route is a second way to reach a symbol-keyed branch and must not
-            // hand out a raw, untracked value.
-            const symbolValue: unknown = descriptor.value;
-
-            if (isTrackable(symbolValue)) {
-                if (lockedAgainstWrapping(source, key, descriptor)) {
-                    if (IS_DEVELOPMENT) {
-                        throw lockedError(String(key));
-                    }
-
-                    return descriptor;
-                }
-
-                descriptor.value = this.wrap(WILDCARD_PATH, symbolValue);
-            }
-
+        if (descriptor === undefined || typeof key === 'symbol') {
             return descriptor;
         }
 

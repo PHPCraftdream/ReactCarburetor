@@ -21,9 +21,6 @@ const getTreeData = (): ITreeData => ({
     list: [{n: 1}, {n: 2}],
 });
 
-// A symbol has no place in a dotted path, so a write through one is the wildcard case.
-const TAG: unique symbol = Symbol('proxy-cache-tag');
-
 class TreeCarburetor extends Carburetor<ITreeData> {
     /** Deletes the items.a branch through draft and publishes the write. */
     public deleteA = (): void => {
@@ -63,13 +60,6 @@ class TreeCarburetor extends Carburetor<ITreeData> {
     /** Runs an arbitrary mutation through draft, for tests that capture values mid-write. */
     public edit = (mutate: (draft: ITreeData) => void): void => {
         this.update(mutate);
-    };
-
-    /** Writes through a symbol key, which no path can name. */
-    public writeTag = (value: number): void => {
-        this.update((draft: ITreeData) => {
-            (draft as unknown as {[TAG]?: number})[TAG] = value;
-        });
     };
 }
 
@@ -278,20 +268,8 @@ describe('proxy cache ownership', () => {
         expect(draftSibling2).toBe(draftSibling);
     });
 
-    test("a symbol-keyed write does not disturb branches its own write never touched", () => {
-        const carburetor = new TreeCarburetor(getTreeData());
-        const view = carburetor.read(() => {});
-
-        const wrapper = view.items.a;
-
-        carburetor.writeTag(1);
-
-        // The symbol write lands on the root object alone; `items` and `items.a` are still
-        // the same raw objects they were, so their cached wrappers are still valid — no bulk
-        // eviction is needed for correctness, only an object-identity match.
-        expect(view.items.a).toBe(wrapper);
-        expect(view.items.a.title).toEqual('first');
-    });
+    // R6-02/R6-03: a symbol-keyed write through draft is now rejected outright, so there is no
+    // longer a symbol write left to keep the cache valid across. See StateModel.test.ts.
 });
 
 describe('createProxyCache', () => {

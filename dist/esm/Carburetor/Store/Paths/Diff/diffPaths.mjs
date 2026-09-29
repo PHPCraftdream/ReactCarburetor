@@ -5,7 +5,6 @@ import { WILDCARD_PATH } from "../WildcardPath.mjs";
 import { isTrackable } from "../../Tracking/isTrackable.mjs";
 import { deepClone } from "../../Utils/deepClone.mjs";
 import { DIFF_PATH_THRESHOLD } from "./DiffThreshold.mjs";
-import { hasSymbolDifference } from "./hasSymbolDifference.mjs";
 import { sameKind } from "./sameKind.mjs";
 class DiffOverflow extends Error {
 }
@@ -22,11 +21,6 @@ const addPatch = (onPatch, segments, previous, next)=>{
     });
 };
 const walkContainer = (oldValue, newValue, path, segments, into, onPatch)=>{
-    if (hasSymbolDifference(oldValue, newValue)) {
-        add(into, path || WILDCARD_PATH);
-        addPatch(onPatch, segments, oldValue, newValue);
-        return;
-    }
     if (Array.isArray(oldValue) && oldValue.length !== newValue.length) {
         add(into, joinPath(path, 'length'));
         addPatch(onPatch, [

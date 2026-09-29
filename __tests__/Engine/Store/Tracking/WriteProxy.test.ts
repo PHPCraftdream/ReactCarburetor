@@ -403,24 +403,18 @@ describe('R16-03: replacing a branch with a same-kind object diffs instead of re
         expect(keepTitleWakes).toEqual(1);
     });
 
-    test('a symbol-key difference under the replacement falls back to the whole path', () => {
+    // R6-02/R6-03: a symbol-keyed write is now rejected outright (state is string-keyed data
+    // only), so the fallback this used to exercise — a symbol-key difference forcing the whole
+    // path — no longer exists. See StateModel.test.ts for the rejection.
+    test('a symbol-keyed write through draft is rejected, not silently folded into the wildcard', () => {
         const store = new LeafCarburetor(getTree());
         const tag = Symbol('tag');
-        let countWakes = 0;
 
-        store.edit((draft: ITree) => {
-            (draft.leaf as unknown as Record<symbol, unknown>)[tag] = 'a';
-        });
-        store.subscribe(() => countWakes++, {id: 'count-reader', reads: new Set<TPath>(['leaf.count'])});
-
-        const next = {...store.getData().leaf};
-        (next as unknown as Record<symbol, unknown>)[tag] = 'b';
-
-        // `count` itself is unchanged, but the symbol difference forces the whole `leaf` path,
-        // which is an ancestor of `leaf.count`.
-        store.rewriteLeaf(next);
-
-        expect(countWakes).toEqual(1);
+        expect(() => {
+            store.edit((draft: ITree) => {
+                (draft.leaf as unknown as Record<symbol, unknown>)[tag] = 'a';
+            });
+        }).toThrow('symbol-keyed');
     });
 
     test('past the threshold, a large replacement records only the replaced path itself', () => {
@@ -463,5 +457,136 @@ describe('R16-03: replacing a branch with a same-kind object diffs instead of re
 
         expect(bigWakes).toEqual(1);
         expect(oneKeyWakes).toEqual(1);
+    });
+});
+
+/**
+ * R6-02/R6-03: the state model (own enumerable string-keyed data; an array's state is its
+ * elements and length) is enforced at the write boundary too, not only at construction/setData/
+ * restore — a rejected write leaves no partial trace: nothing is recorded, nothing installed.
+ */
+describe('R6-02/R6-03: the write boundary rejects anything the state model does not allow', () => {
+    test('defineProperty with a non-enumerable descriptor throws, records nothing and installs nothing', () => {
+        const store = new LeafCarburetor(getTree());
+        let wakes = 0;
+
+        // 'leaf.~k' is the key-set marker a `Object.keys(leaf)` enumerator would subscribe to
+        // (see the R16-01 tests above); a rejected defineProperty must never reach the point
+        // where it would record it.
+        store.subscribe(() => wakes++, {id: 'keys-reader', reads: new Set<TPath>(['leaf.~k'])});
+        const versionBefore = store.getVersion();
+
+        expect(() => {
+            store.edit((draft: ITree) => {
+                Object.defineProperty(draft.leaf, 'hidden', {
+                    value: 1, enumerable: false, configurable: true, writable: true,
+                });
+            });
+        }).toThrow('non-plain-data');
+
+        expect(store.getVersion()).toEqual(versionBefore);
+        expect(wakes).toEqual(0);
+        expect(hasOwn(store.getData().leaf, 'hidden')).toBe(false);
+    });
+
+    test('defineProperty with an accessor throws instead of installing a getter', () => {
+        const store = new LeafCarburetor(getTree());
+
+        expect(() => {
+            store.edit((draft: ITree) => {
+                Object.defineProperty(draft.leaf, 'doubled', {get: () => 1, enumerable: true, configurable: true});
+            });
+        }).toThrow('non-plain-data');
+
+        expect(hasOwn(store.getData().leaf, 'doubled')).toBe(false);
+    });
+
+    test('set, defineProperty and deleteProperty through a symbol key all throw', () => {
+        const store = new LeafCarburetor(getTree());
+        const tag = Symbol('tag');
+
+        expect(() => {
+            store.edit((draft: ITree) => {
+                (draft.leaf as unknown as Record<symbol, unknown>)[tag] = 1;
+            });
+        }).toThrow('symbol-keyed');
+
+        expect(() => {
+            store.edit((draft: ITree) => {
+                Object.defineProperty(
+                    draft.leaf, tag, {value: 1, enumerable: true, configurable: true, writable: true}
+                );
+            });
+        }).toThrow('symbol-keyed');
+
+        // A present symbol key (seeded outside draft, since draft itself can never write one)
+        // still throws on delete; an absent one is already a no-op regardless of its type. The
+        // rule is right; this seeds a fixture, not a write this test recommends.
+        // oxlint-disable-next-line carburetor/no-external-data-mutation
+        (store.getData().leaf as unknown as Record<symbol, unknown>)[tag] = 1;
+
+        expect(() => {
+            store.edit((draft: ITree) => {
+                delete (draft.leaf as unknown as Record<symbol, unknown>)[tag];
+            });
+        }).toThrow('symbol-keyed');
+    });
+
+    test('assigning a value whose subtree is not valid state throws, and nothing is installed', () => {
+        const tag = Symbol('tag');
+        const nonEnumerable: Record<string, unknown> = {};
+
+        Object.defineProperty(
+            nonEnumerable, 'title', {value: 'x', enumerable: false, configurable: true, writable: true}
+        );
+
+        const cases: Array<[string, unknown, string]> = [
+            ['an own symbol key', {title: 'x', [tag]: 1}, 'symbol'],
+            ['a non-enumerable own property', nonEnumerable, 'non-enumerable'],
+            ['an accessor', {get title(): string { return 'x'; }}, 'accessor'],
+        ];
+
+        for (const [, bad, expected] of cases) {
+            const store = new LeafCarburetor(getTree());
+
+            expect(() => {
+                store.edit((draft: ITree) => {
+                    draft.leaf.keep = bad as unknown as {title: string};
+                });
+            }).toThrow(expected);
+            expect(store.getData().leaf.keep.title).toEqual('kept');
+        }
+    });
+
+    test('a non-index array key is rejected, whether written directly or as part of an assigned value', () => {
+        interface IRowsData {
+            rows: number[];
+        }
+
+        class RowsCarburetor extends Carburetor<IRowsData> {
+            public edit = (mutate: (draft: IRowsData) => void): void => {
+                this.update(mutate);
+            };
+        }
+
+        const direct = new RowsCarburetor({rows: [1, 2, 3]});
+
+        expect(() => {
+            direct.edit((draft: IRowsData) => {
+                (draft.rows as unknown as Record<string, unknown>).meta = 'x';
+            });
+        }).toThrow('index');
+
+        const assigned = new RowsCarburetor({rows: [1, 2, 3]});
+        const bad: number[] = [4, 5, 6];
+
+        (bad as unknown as Record<string, unknown>).meta = 'x';
+
+        expect(() => {
+            assigned.edit((draft: IRowsData) => {
+                draft.rows = bad;
+            });
+        }).toThrow('non-index');
+        expect(assigned.getData().rows).toEqual([1, 2, 3]);
     });
 });

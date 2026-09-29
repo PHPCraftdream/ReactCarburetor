@@ -93,9 +93,8 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
      * Applies the difference into the live tree through draft (R16-02): only the values it
      * actually assigns are cloned, so an untouched branch keeps its old identity and only the
      * paths that changed are announced. Falls back to a wholesale, diffed swap — see setData() —
-     * when the root itself changed kind, is not trackable, holds a differing symbol key, or the
-     * walk crosses DIFF_PATH_THRESHOLD; going through draft key by key would cost more than it
-     * saves there.
+     * when the root itself changed kind, is not trackable, or the walk crosses
+     * DIFF_PATH_THRESHOLD; going through draft key by key would cost more than it saves there.
      *
      * @param data - the snapshot to install; read but never mutated or kept by reference.
      */
@@ -115,6 +114,12 @@ export declare class Carburetor<T extends object> implements ICarburetor<T>, INo
     fromJSON(value: unknown): void;
     /**
      * Registers a subscriber, returning the id it is cancelled and rescheduled by.
+     *
+     * `options.reads` is copied: the public contract is `ReadonlySet<string>`, and a copy is
+     * what makes "changes after subscribing do not affect the subscription" actually true,
+     * instead of true only by convention. An internal caller that already holds the only
+     * reference to a fresh Set — `transferReads()` — is exempted from the copy and handed
+     * over by reference instead, since `extend()` needs the concrete Set to grow in place.
      *
      * @param callback - called with no arguments per matching write; it must re-read to
      * see fresh values, and a throw costs it only a development-mode complaint.

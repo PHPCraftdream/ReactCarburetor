@@ -1,7 +1,6 @@
 import { isTrackable } from "../../Tracking/isTrackable.mjs";
 import { deepClone } from "../../Utils/deepClone.mjs";
 import { DIFF_PATH_THRESHOLD } from "./DiffThreshold.mjs";
-import { hasSymbolDifference } from "./hasSymbolDifference.mjs";
 import { sameKind } from "./sameKind.mjs";
 class ApplyDiffOverflow extends Error {
 }
@@ -20,14 +19,14 @@ const applyDiff_assign = (target, key, value)=>{
 };
 const applyKey = (target, key, previous, next, budget)=>{
     if (Object.is(previous, next)) return;
-    if (isTrackable(previous) && isTrackable(next) && sameKind(previous, next) && !hasSymbolDifference(previous, next)) return void applyBranch(target[key], previous, next, budget);
+    if (isTrackable(previous) && isTrackable(next) && sameKind(previous, next)) return void applyBranch(target[key], previous, next, budget);
     spend(budget);
     applyDiff_assign(target, key, deepClone(next));
 };
 const applyBranch = (target, previous, next, budget)=>{
     const previousLength = previous.length;
     const nextLength = next.length;
-    if (Array.isArray(previous) && nextLength < previousLength) {
+    if (Array.isArray(previous) && nextLength !== previousLength) {
         spend(budget);
         target.length = nextLength;
     }

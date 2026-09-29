@@ -1,7 +1,6 @@
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {DIFF_PATH_THRESHOLD} from "./DiffThreshold";
-import {hasSymbolDifference} from "./hasSymbolDifference";
 import {sameKind} from "./sameKind";
 
 /** Unwinds the walk once the threshold trips; caught inside applyDiff, never escapes it. */
@@ -48,8 +47,7 @@ const applyKey = (
         return;
     }
 
-    if (isTrackable(previous) && isTrackable(next) && sameKind(previous, next)
-        && !hasSymbolDifference(previous, next)) {
+    if (isTrackable(previous) && isTrackable(next) && sameKind(previous, next)) {
         applyBranch(
             target[key] as unknown as Record<string, unknown>,
             previous as unknown as Record<string, unknown>,
@@ -73,10 +71,9 @@ const applyBranch = (
     const previousLength = (previous as unknown as unknown[]).length;
     const nextLength = (next as unknown as unknown[]).length;
 
-    if (Array.isArray(previous) && nextLength < previousLength) {
-        // Truncates properly instead of leaving holes a per-index `delete` would: the write
-        // proxy's own array-length shrink handling then records the removed indices and the
-        // keys marker, same as an ordinary draft write would.
+    if (Array.isArray(previous) && nextLength !== previousLength) {
+        // A sparse-tail growth adds no own index for the key loops below; a shrink must truncate,
+        // not `delete` per index. The write proxy's `length` handling records either.
         spend(budget);
         (target as unknown as {length: number}).length = nextLength;
     }
@@ -119,8 +116,8 @@ const applyBranch = (
  * back to a wholesale swap instead of paying for thousands of individual ones.
  *
  * Caller's responsibility: `previous` and `next` must already be the same kind (both arrays or
- * both plain objects) with no symbol-key difference at the root — `restore` checks once before
- * calling here; every nested mismatch is resolved per key as the walk reaches it.
+ * both plain objects) at the root — `restore` checks once before calling here; every nested
+ * mismatch is resolved per key as the walk reaches it.
  *
  * @param target - the draft branch to mutate.
  * @param previous - the branch's current raw value.

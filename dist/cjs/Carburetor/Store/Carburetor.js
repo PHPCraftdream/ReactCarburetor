@@ -35,7 +35,6 @@ const sameSelection_js_namespaceObject = require("../Component/Connection/sameSe
 const deepClone_js_namespaceObject = require("./Utils/deepClone.js");
 const applyDiff_js_namespaceObject = require("./Paths/Diff/applyDiff.js");
 const diffPaths_js_namespaceObject = require("./Paths/Diff/diffPaths.js");
-const hasSymbolDifference_js_namespaceObject = require("./Paths/Diff/hasSymbolDifference.js");
 const sameKind_js_namespaceObject = require("./Paths/Diff/sameKind.js");
 const detachOpaque_js_namespaceObject = require("./Utils/detachOpaque.js");
 const SubscriberIndex_js_namespaceObject = require("./Paths/SubscriberIndex.js");
@@ -50,6 +49,8 @@ const isTrackable_js_namespaceObject = require("./Tracking/isTrackable.js");
 const UpdateBatchInstance_js_namespaceObject = require("./Transaction/UpdateBatchInstance.js");
 const getUid_js_namespaceObject = require("./Utils/getUid.js");
 const DiagnosticsInstance_js_namespaceObject = require("./Diagnostics/DiagnosticsInstance.js");
+const ReadsTransferBrand_js_namespaceObject = require("./Paths/Markers/ReadsTransferBrand.js");
+const transferReads_js_namespaceObject = require("./Paths/Markers/transferReads.js");
 const detachWatchSelection = (value)=>{
     if (null === value || 'object' != typeof value) return value;
     return (0, detachOpaque_js_namespaceObject.detachOpaque)(value, (instance)=>{
@@ -73,8 +74,10 @@ class Carburetor {
     draftProxy = void 0;
     writeRecorder = (path)=>this.recordWrite(path);
     constructor(data, scheduler = SyncUpdateSchedulerInstance_js_namespaceObject.syncUpdateScheduler){
+        var _this_aliases;
         this.data = data;
         this.scheduler = scheduler;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '');
     }
     getUID() {
         return this.uid;
@@ -97,7 +100,9 @@ class Carburetor {
         return (0, createReadProxy_js_namespaceObject.createReadProxy)(data, record, '', this.aliases);
     }
     setData(data) {
+        var _this_aliases;
         const previous = this.data;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '', previous);
         this.data = data;
         this.draftProxy = void 0;
         this.touchDraft();
@@ -114,8 +119,10 @@ class Carburetor {
         return (0, deepClone_js_namespaceObject.deepClone)(this.data);
     }
     restore(data) {
+        var _this_aliases;
         const current = this.data;
-        if (!(0, isTrackable_js_namespaceObject.isTrackable)(current) || !(0, isTrackable_js_namespaceObject.isTrackable)(data) || !(0, sameKind_js_namespaceObject.sameKind)(current, data) || (0, hasSymbolDifference_js_namespaceObject.hasSymbolDifference)(current, data)) return void this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
+        null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '');
+        if (!(0, isTrackable_js_namespaceObject.isTrackable)(current) || !(0, isTrackable_js_namespaceObject.isTrackable)(data) || !(0, sameKind_js_namespaceObject.sameKind)(current, data)) return void this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
         const applied = (0, applyDiff_js_namespaceObject.applyDiff)(this.draft, current, data);
         if (!applied) return void this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
         this.emitUpdate();
@@ -128,9 +135,11 @@ class Carburetor {
     }
     subscribe(callback, options = {}) {
         const id = options.id || (0, getUid_js_namespaceObject.getUid)();
-        const reads = options.reads || new Set([
+        const given = options.reads;
+        let reads;
+        reads = void 0 === given ? new Set([
             WildcardPath_js_namespaceObject.WILDCARD_PATH
-        ]);
+        ]) : options[ReadsTransferBrand_js_namespaceObject.READS_TRANSFER] === given ? given : new Set(given);
         this.subscribers[id] = {
             callback
         };
@@ -169,10 +178,7 @@ class Carburetor {
         const callback = ()=>{
             const fresh = this.runSelector(select);
             const changed = !(0, sameSelection_js_namespaceObject.sameSelection)(previous, fresh.value);
-            this.subscribe(callback, {
-                id,
-                reads: fresh.reads
-            });
+            this.subscribe(callback, (0, transferReads_js_namespaceObject.transferReads)(fresh.reads, id));
             if (changed) {
                 const next = detachWatchSelection(fresh.value);
                 const last = previous;
@@ -180,10 +186,7 @@ class Carburetor {
                 onChange(next, last);
             }
         };
-        this.subscribe(callback, {
-            id,
-            reads: initial.reads
-        });
+        this.subscribe(callback, (0, transferReads_js_namespaceObject.transferReads)(initial.reads, id));
         return ()=>{
             this.unsubscribe(id);
         };

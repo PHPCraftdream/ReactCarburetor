@@ -362,16 +362,6 @@ class ToPrimitiveReader extends AntiHookComponent<ITaggedProps> {
     }
 }
 
-class OwnTagReader extends AntiHookComponent<ITaggedProps> {
-    render() {
-        this.props.onRender();
-
-        const data = this.useCarburetor(this.props.store);
-
-        return <span className="own-tag">{data[OWN_TAG] ?? 'none'}</span>;
-    }
-}
-
 // R15-01: concat, Object.prototype.toString and String() each read a well-known symbol that
 // plain data never owns (Symbol.isConcatSpreadable, Symbol.toStringTag, Symbol.toPrimitive).
 // Before the fix, an absent symbol read recorded the wildcard, so any of these three in a
@@ -426,24 +416,12 @@ describe('well-known absent symbol reads do not subscribe to the whole store (R1
         unmount();
     });
 
-    test('an own symbol-keyed field still re-renders its reader when written through draft', () => {
+    // R6-02/R6-03: a symbol-keyed write through draft is now rejected outright (state is
+    // string-keyed data only). See StateModel.test.ts for the rejection.
+    test('a symbol-keyed field cannot be written through draft', () => {
         const store = new TaggedRootCarburetor(getTaggedRoot());
-        let renders = 0;
 
-        const {container, unmount} = render(<OwnTagReader store={store} onRender={() => renders++} />);
-
-        expect(container.querySelector('.own-tag')?.textContent).toEqual('none');
-        expect(renders).toEqual(1);
-
-        // Nothing is recorded for the symbol key read itself (R15-01), but a write through a
-        // symbol key still collapses to the wildcard on the write side, which wakes every
-        // subscriber — the guarantee the fix must not break.
-        act(() => store.tag(7));
-
-        expect(container.querySelector('.own-tag')?.textContent).toEqual('7');
-        expect(renders).toEqual(2);
-
-        unmount();
+        expect(() => store.tag(7)).toThrow('symbol-keyed');
     });
 });
 

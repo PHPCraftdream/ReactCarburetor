@@ -4,7 +4,6 @@ import {
 import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {createProxyCache} from "./createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
@@ -32,6 +31,20 @@ const unwrapWriteProxy = (value: unknown): unknown => {
     return target ?? value;
 };
 
+/** Refuses a symbol-keyed write: state is string-keyed data only (R6-02/R6-03). */
+const forbidSymbolKey = (path: TPath): never => {
+    throw new Error(
+        'Carburetor: "' + (path || 'the root') + '" cannot take a symbol-keyed write — state is ' +
+        'string-keyed data only. Use a string key.'
+    );
+};
+
+/** Whether `descriptor` is anything but a plain, fully-open data descriptor. */
+const isOpaqueDescriptor = (descriptor: PropertyDescriptor, wasOwn: boolean): boolean =>
+    'get' in descriptor || 'set' in descriptor
+    || descriptor.configurable === false || descriptor.writable === false || descriptor.enumerable === false
+    || (!wasOwn && descriptor.enumerable !== true);
+
 /**
  * Write-proxy trap handler: one instance per proxy, but one set of trap functions for all of
  * them. Every branch gets a fresh `WriteProxyHandler` carrying its own `basePath`/`record`/
@@ -52,13 +65,12 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * Stores the branch identity this instance's traps answer for.
      *
      * @param basePath - the dotted path this instance's proxy answers for, '' being the store
-     * root. A symbol key, or a write already inside an opaque symbol-keyed branch, still
-     * collapses onto the wildcard, but an index or `length` write on an array is named like any
-     * other key.
+     * root; an index or `length` write on an array is named like any other key.
      * @param record - the store's write sink, feeding the paths the next emitUpdate announces;
      * `get` also reports unwrappable objects handed out raw, imprecise but never a lost update.
      * @param aliases - consulted on every write to complain when it lands in an object another
-     * path was read from; undefined outside development.
+     * path was read from, and to validate the state model (R6-02/R6-03); undefined outside
+     * development, so both are no-ops in production.
      * @param cache - the branch-wrapper cache this proxy's whole tree shares.
      * @param isArray - whether the target is an array, so index and `length` writes get their
      * array-specific attribution.
@@ -91,29 +103,19 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * This instance's own key-set marker (R16-01): a key appearing, disappearing, or an array
      * truncation removing indices wakes a reader that enumerated this container.
      *
-     * A reader of some untouched leaf under it is not woken. Never consulted when `basePath` is
-     * already the wildcard — every write there already collapses to it, so a marker under it
-     * would be built and recorded for nothing.
+     * A reader of some untouched leaf under it is not woken.
      */
     private keysMarker(): TPath {
         return this.keysMarkerPath ?? (this.keysMarkerPath = keysPath(this.basePath));
     }
 
     /**
-     * The path a write to `key` is attributed to.
-     *
-     * A symbol has no place in a dotted path, so a write through one — or one already inside an
-     * opaque symbol-keyed branch — collapses onto the wildcard; everything else is named like
-     * an object's own key, index and `length` included, and memoized per key so a repeat write
-     * to the same key does not concatenate the path again.
+     * `joinPath(basePath, key)`, memoized: every key is named exactly like any other, index and
+     * `length` included; a repeat write to the same key does not concatenate the path again.
      *
      * @param key - the property being written.
      */
-    private writtenPath(key: string | symbol): TPath {
-        if (typeof key === 'symbol' || this.basePath === WILDCARD_PATH) {
-            return WILDCARD_PATH;
-        }
-
+    private writtenPath(key: string): TPath {
         const memo = this.childPaths ?? (this.childPaths = new Map<string, TPath>());
         let path = memo.get(key);
 
@@ -127,8 +129,6 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
     /**
      * Builds and delivers one patch for `key`, deep-cloning `previous`/`next` first (R16-07).
-     * Never called once `path` has already collapsed to the wildcard — that write is reported
-     * through `listener(PATCH_OPAQUE)` instead, at the call site that already knows it did.
      *
      * @param listener - the patch listener to deliver to; only read from `patchPort` once by
      * each caller, so this takes it directly instead of re-reading the port.
@@ -158,18 +158,17 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      *
      * @param path - the full path the branch was read at.
      * @param key - the property `path` was reached through, appended to this branch's own
-     * segments to build the child's; a symbol key's child reuses this branch's segments
-     * unchanged, since every write under it already collapses onto the wildcard.
+     * segments to build the child's.
      * @param source - the raw branch object to wrap.
      */
-    private wrap(path: TPath, key: string | symbol, source: object): object {
+    private wrap(path: TPath, key: string, source: object): object {
         const cached = this.cache.get(path, source);
 
         if (cached !== undefined) {
             return cached;
         }
 
-        const segments = typeof key === 'string' ? [...this.basePathSegments, key] : this.basePathSegments;
+        const segments = [...this.basePathSegments, key];
         const proxy = createWriteProxy(source, this.record, path, this.aliases, this.cache, this.patchPort, segments);
 
         this.cache.set(path, source, proxy);
@@ -182,12 +181,18 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * value writable, or — for an unwrappable object like a Map — records the path it came
      * from, since a mutation reached through it would otherwise land invisibly.
      *
+     * A symbol key has no place in state (R6-02/R6-03): its value passes through raw, wrapped
+     * or recorded by nothing, the same way a function does.
+     *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being read.
      */
     get(source: T, key: string | symbol): unknown {
-        if (key === PROXY_CACHE) {
-            return this.cache;
+        // One branch, not two: PROXY_CACHE is itself a symbol, so folding its check inside the
+        // `typeof` branch costs the overwhelmingly common string-keyed read only one comparison
+        // instead of two.
+        if (typeof key === 'symbol') {
+            return key === PROXY_CACHE ? this.cache : Reflect.get(source, key);
         }
 
         const value: unknown = Reflect.get(source, key);
@@ -219,12 +224,20 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * Writes through to the raw object after the no-op and aliasing checks, attributing array
      * `length` shrinks and grows precisely.
      *
+     * A symbol key is refused outright (R6-02/R6-03): state is string-keyed data only. In
+     * development, the key and the assigned subtree are also checked against the state model
+     * before anything is recorded or forgotten, so a rejected write leaves no partial trace.
+     *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being written.
      * @param value - the value being assigned, possibly a write proxy that needs unwrapping
      * first.
      */
     set(source: T, key: string | symbol, value: unknown): boolean {
+        if (typeof key === 'symbol') {
+            return forbidSymbolKey(this.basePath);
+        }
+
         const previous: unknown = Reflect.get(source, key);
         const raw: unknown = unwrapWriteProxy(value);
         const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
@@ -237,6 +250,11 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return true;
         }
 
+        const path = this.writtenPath(key);
+
+        this.aliases?.checkKey(source, key, path);
+        this.aliases?.checkState(raw, path, wasOwn ? previous : undefined);
+
         // A branch replaced or deleted takes its old object's recorded path with it, and a
         // write into an object last read under a different path is the aliasing the ledger
         // exists to report.
@@ -244,19 +262,10 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         this.aliases?.forget(previous);
 
         const listener = this.patchPort?.listener;
-        const path = this.writtenPath(key);
-
-        // A symbol key, or a write already inside an opaque branch, has no path to invert by —
-        // reported once here rather than at every place below that would otherwise build one.
-        if (listener && path === WILDCARD_PATH) {
-            listener(PATCH_OPAQUE);
-        }
 
         // A key that did not already exist changes the key set itself (R16-01): an index write
-        // past the array's own end is exactly such a case, alongside an ordinary new object
-        // key. A symbol key's write already collapses onto the wildcard below, which wakes an
-        // enumerator regardless, so building a marker for it here would be wasted work.
-        if (!wasOwn && typeof key === 'string' && this.basePath !== WILDCARD_PATH) {
+        // past the array's own end is exactly such a case, alongside an ordinary new object key.
+        if (!wasOwn) {
             this.record(this.keysMarker());
         }
 
@@ -280,9 +289,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
                 this.record(removedPath);
             }
 
-            if (this.basePath !== WILDCARD_PATH) {
-                this.record(this.keysMarker());
-            }
+            this.record(this.keysMarker());
         }
 
         // An index write past the current end grows `length` as an intrinsic side effect of
@@ -290,7 +297,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         // makes afterwards — which then finds the value already there and is skipped above as
         // a no-op, recording nothing. Reading the length now, before this write lands, and
         // comparing it after is what still wakes a reader of `length`.
-        const previousLength = this.isArray && typeof key === 'string' && key !== 'length'
+        const previousLength = this.isArray && key !== 'length'
             ? (source as unknown as {length: number}).length
             : undefined;
 
@@ -302,13 +309,12 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         // kind, but the guard is checked here too so the common (primitive) write never pays for
         // building and walking a diff it would immediately answer with just `path`.
         if (wasOwn && isTrackable(previous) && isTrackable(raw) && Array.isArray(previous) === Array.isArray(raw)) {
-            const onPatch = listener && path !== WILDCARD_PATH ? listener : undefined;
-            const segments = onPatch ? [...this.basePathSegments, key as string] : [];
+            const segments = listener ? [...this.basePathSegments, key] : [];
 
-            diffPaths(previous, raw, path, segments, onPatch).forEach((changed: TPath) => this.record(changed));
+            diffPaths(previous, raw, path, segments, listener).forEach((changed: TPath) => this.record(changed));
         } else {
-            if (listener && path !== WILDCARD_PATH) {
-                this.reportPatch(listener, key as string, wasOwn ? previous : PATCH_ABSENT, raw);
+            if (listener) {
+                this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, raw);
             }
 
             this.record(path);
@@ -334,30 +340,47 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * in the data and wake nobody. A new own key also wakes an enumerator of this container
      * (R16-01); redefining an existing one does not change the key set.
      *
+     * Refuses a symbol key, and refuses any descriptor that is not a plain, fully-open data
+     * property (R6-02/R6-03) — an accessor, a non-configurable/non-writable/non-enumerable flag,
+     * or a new key left non-enumerable — so `defineProperty` cannot install what `set` would
+     * never have written in the first place.
+     *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being defined.
      * @param descriptor - the descriptor to install.
      */
     defineProperty(source: T, key: string | symbol, descriptor: PropertyDescriptor): boolean {
-        const previous = Reflect.get(source, key);
+        if (typeof key === 'symbol') {
+            return forbidSymbolKey(this.basePath);
+        }
+
         const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
+
+        if (isOpaqueDescriptor(descriptor, wasOwn)) {
+            throw new Error(
+                'Carburetor: "' + joinPath(this.basePath, key) + '" cannot take a non-plain-data ' +
+                'descriptor — state properties are writable, configurable, enumerable data, no ' +
+                'accessors. Derive a computed value instead, e.g. with Computed.'
+            );
+        }
+
+        const previous = Reflect.get(source, key);
+        const path = this.writtenPath(key);
+
+        this.aliases?.checkKey(source, key, path);
+        this.aliases?.checkState(descriptor.value, path, wasOwn ? previous : undefined);
 
         this.aliases?.checkWrite(source, this.basePath);
         this.aliases?.forget(previous);
 
-        if (!wasOwn && typeof key === 'string' && this.basePath !== WILDCARD_PATH) {
+        if (!wasOwn) {
             this.record(this.keysMarker());
         }
 
-        const path = this.writtenPath(key);
         const listener = this.patchPort?.listener;
 
         if (listener) {
-            if (path === WILDCARD_PATH) {
-                listener(PATCH_OPAQUE);
-            } else {
-                this.reportPatch(listener, key as string, wasOwn ? previous : PATCH_ABSENT, descriptor.value);
-            }
+            this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, descriptor.value);
         }
 
         this.record(path);
@@ -370,6 +393,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * key was never there. Removing an own key wakes an enumerator of this container (R16-01),
      * same as it wakes a direct reader of the deleted path.
      *
+     * A symbol key that is present is refused, same as `set`/`defineProperty` — an absent one is
+     * already a no-op above, whatever its type.
+     *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being deleted.
      */
@@ -378,24 +404,22 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return true;
         }
 
+        if (typeof key === 'symbol') {
+            return forbidSymbolKey(this.basePath);
+        }
+
         const previous = Reflect.get(source, key);
 
         this.aliases?.checkWrite(source, this.basePath);
         this.aliases?.forget(previous);
 
-        if (typeof key === 'string' && this.basePath !== WILDCARD_PATH) {
-            this.record(this.keysMarker());
-        }
+        this.record(this.keysMarker());
 
         const path = this.writtenPath(key);
         const listener = this.patchPort?.listener;
 
         if (listener) {
-            if (path === WILDCARD_PATH) {
-                listener(PATCH_OPAQUE);
-            } else {
-                this.reportPatch(listener, key as string, previous, PATCH_ABSENT);
-            }
+            this.reportPatch(listener, key, previous, PATCH_ABSENT);
         }
 
         this.record(path);
@@ -414,11 +438,11 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
  * @param record - the store's write sink, feeding the paths the next emitUpdate announces;
  * the get trap also reports unwrappable objects handed out raw, imprecise but never a lost
  * update.
- * @param basePath - the dotted path this root answers for, '' being the store root; a symbol
- * key, or a write already inside an opaque symbol-keyed branch, still collapses onto the
- * wildcard, but an index or `length` write on an array is named like any other key.
+ * @param basePath - the dotted path this root answers for, '' being the store root; an index
+ * or `length` write on an array is named like any other key.
  * @param aliases - consulted on every write to complain when it lands in an object another
- * path was read from; undefined outside development.
+ * path was read from, and to validate the state model (R6-02/R6-03); undefined outside
+ * development.
  * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
  * this undefined and mints one, and every nested branch receives it back so the tree caches
  * as one unit.

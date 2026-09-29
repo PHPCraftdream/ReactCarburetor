@@ -33,7 +33,6 @@ __webpack_require__.d(__webpack_exports__, {
 const joinPath_js_namespaceObject = require("../Paths/joinPath.js");
 const BranchMarker_js_namespaceObject = require("../Paths/Markers/BranchMarker.js");
 const KeysMarker_js_namespaceObject = require("../Paths/Markers/KeysMarker.js");
-const WildcardPath_js_namespaceObject = require("../Paths/WildcardPath.js");
 const DevelopmentFlag_js_namespaceObject = require("../Utils/DevelopmentFlag.js");
 const external_createProxyCache_js_namespaceObject = require("./createProxyCache.js");
 const external_Models_js_namespaceObject = require("./Models.js");
@@ -107,17 +106,9 @@ class ReadProxyHandler {
         return proxy;
     }
     get(source, key, receiver) {
-        if (key === external_Models_js_namespaceObject.PROXY_CACHE) return this.cache;
+        if ('symbol' == typeof key) return key === external_Models_js_namespaceObject.PROXY_CACHE ? this.cache : Reflect.get(source, key, receiver);
         const value = Reflect.get(source, key, receiver);
         if (!isRecordable(source, key)) return value;
-        if ('symbol' == typeof key) {
-            if (!(0, external_isTrackable_js_namespaceObject.isTrackable)(value)) return value;
-            if (lockedAgainstWrapping(source, key)) {
-                if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(String(key));
-                return value;
-            }
-            return this.wrap(WildcardPath_js_namespaceObject.WILDCARD_PATH, value);
-        }
         const path = this.childPath(key);
         if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) {
             var _this_aliases;
@@ -136,8 +127,7 @@ class ReadProxyHandler {
         const present = Reflect.has(source, key);
         if ('string' == typeof key && isRecordable(source, key)) {
             const path = this.childPath(key);
-            const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
-            const value = void 0 !== descriptor && 'value' in descriptor ? descriptor.value : void 0;
+            const value = Reflect.get(source, key);
             this.record((0, external_isTrackable_js_namespaceObject.isTrackable)(value) ? this.branchMarker(path) : path);
         }
         return present;
@@ -148,18 +138,7 @@ class ReadProxyHandler {
     }
     getOwnPropertyDescriptor(source, key) {
         const descriptor = Reflect.getOwnPropertyDescriptor(source, key);
-        if (void 0 === descriptor) return descriptor;
-        if ('symbol' == typeof key) {
-            const symbolValue = descriptor.value;
-            if ((0, external_isTrackable_js_namespaceObject.isTrackable)(symbolValue)) {
-                if (lockedAgainstWrapping(source, key, descriptor)) {
-                    if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) throw lockedError(String(key));
-                    return descriptor;
-                }
-                descriptor.value = this.wrap(WildcardPath_js_namespaceObject.WILDCARD_PATH, symbolValue);
-            }
-            return descriptor;
-        }
+        if (void 0 === descriptor || 'symbol' == typeof key) return descriptor;
         const path = this.childPath(key);
         const value = descriptor.value;
         if ((0, external_isTrackable_js_namespaceObject.isTrackable)(value)) {

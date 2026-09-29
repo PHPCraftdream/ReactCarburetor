@@ -15,6 +15,14 @@ export type TAliasLedger = {
     checkWrite: (source: object, path: TPath) => void;
     /** Drops the recorded path of a value draft replaced or deleted. */
     forget: (value: unknown) => void;
+    /**
+     * Throws if `value`'s subtree is not valid state (own symbol key, accessor, non-enumerable
+     * property, or a non-index/`length` array key); a sub-branch `Object.is`-equal to the same
+     * position in `previous` is skipped, unchecked.
+     */
+    checkState: (value: unknown, path: TPath, previous?: unknown) => void;
+    /** Throws if `key` is not a valid array key (an index, or `length`) when `container` is an array. */
+    checkKey: (container: object, key: string, path: TPath) => void;
 } | undefined;
 /**
  * Stands in for a patch endpoint that does not exist: an added key's `previous`, or a deleted
@@ -24,9 +32,9 @@ export type TAliasLedger = {
 export declare const PATCH_ABSENT: unique symbol;
 /**
  * Reported to a patch listener instead of a patch when a write cannot be described precisely:
- * the wildcard, an untrackable root, a symbol key, a whole-root replacement, or a write that
- * bypassed draft (R16-07). A listener that sees this for any write in a change has no patches
- * to invert for it and falls back to a full snapshot.
+ * the wildcard, an untrackable root, a whole-root replacement, or a write that bypassed draft
+ * (R16-07). A listener that sees this for any write in a change has no patches to invert for it
+ * and falls back to a full snapshot.
  */
 export declare const PATCH_OPAQUE: unique symbol;
 /**

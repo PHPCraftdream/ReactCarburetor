@@ -7,6 +7,7 @@ import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
 import {announceIsUnchanged} from "./announceIsUnchanged";
 import {reportComputedEscape} from "./reportComputedEscape";
 
@@ -330,7 +331,7 @@ export class Computed<R> implements IComputed<R> {
 
             const dependency = collected[cuid];
 
-            dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
+            dependency.source.subscribe(this.onDependencyChanged, transferReads(dependency.reads, this.uid));
         });
     }
 
@@ -429,7 +430,7 @@ export class Computed<R> implements IComputed<R> {
         Object.keys(this.dependencies).forEach((cuid: string) => {
             const dependency = this.dependencies[cuid];
 
-            dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
+            dependency.source.subscribe(this.onDependencyChanged, transferReads(dependency.reads, this.uid));
         });
     }
 

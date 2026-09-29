@@ -3,6 +3,7 @@ import {act} from 'react';
 import {render} from '@testing-library/react';
 import {rstest} from '@rstest/core';
 import {AntiHookComponent, Carburetor, computed, shallowEqual} from '@/Carburetor';
+import {READS_TRANSFER} from '@/Carburetor/Store/Paths/Markers/ReadsTransferBrand';
 
 describe('computed', () => {
     describe('live results shared across consumers (R5-03)', () => {
@@ -237,7 +238,7 @@ describe('computed', () => {
         });
     });
 
-    describe('subscribe() adopts the read set it is given instead of copying it', () => {
+    describe('a dependency subscription transfers its read set instead of copying it', () => {
         interface IBoxLike {
             value: {n: number};
         }
@@ -255,9 +256,10 @@ describe('computed', () => {
             let notified = 0;
 
             // Observing runs the body once: it reads only `value` itself, not `value.n` — the
-            // subscription this establishes is `subscribe()` adopting the computed's own
-            // dependency.reads Set directly (no copy), which is what makes the read below able
-            // to widen that very same Set through Carburetor.extend rather than a copy of it.
+            // subscription this establishes is `transferReads()` handing the computed's own
+            // dependency.reads Set to `subscribe()` directly (no copy), which is what makes the
+            // read below able to widen that very same Set through Carburetor.extend rather than
+            // a copy of it.
             boxed.subscribe(() => notified++, {id: 'listener'});
 
             // A leaf read through the still-live result, after the body already returned —
@@ -270,6 +272,20 @@ describe('computed', () => {
 
             expect(notified).toEqual(1);
             expect(boxed.get().n).toEqual(2);
+        });
+
+        test('subscribes to its dependency through transferReads(), not a copied read set (R6-04)', () => {
+            const carburetor = new BoxCarburetor({value: {n: 1}});
+            const boxed = computed((read) => read(carburetor).value);
+            const subscribeSpy = rstest.spyOn(carburetor, 'subscribe');
+
+            boxed.subscribe(() => undefined, {id: 'listener'});
+
+            const options = subscribeSpy.mock.calls[0][1] as {reads?: unknown; [READS_TRANSFER]?: unknown};
+
+            expect(options[READS_TRANSFER]).toBe(options.reads);
+
+            subscribeSpy.mockRestore();
         });
     });
 

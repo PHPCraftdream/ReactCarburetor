@@ -2,6 +2,7 @@
 
 import {TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
 import {
     IAttemptEntry,
     IConnection,
@@ -263,10 +264,9 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         // cost. The version check below still runs either way.
         if (slot.installed === undefined || !sameReads(slot.installed.reads, committed.reads)) {
             // Subscribing with the slot's own id replaces the previous registration instead of
-            // adding a second one. The carburetor copies the read set, so reads happening later
-            // outside render cannot extend an established subscription.
-            committed.carburetor.subscribe(this.onCarburetorUpdate, {id: uid, reads: committed.reads});
-            // Shared: committed.reads is immutable, and subscribe() keeps its own copy.
+            // adding a second one. transferReads(): committed.reads is this attempt's own Set,
+            // never touched again outside render, so the carburetor adopts it instead of copying.
+            committed.carburetor.subscribe(this.onCarburetorUpdate, transferReads(committed.reads, uid));
             slot.installed = {carburetor: committed.carburetor, reads: committed.reads};
         }
 

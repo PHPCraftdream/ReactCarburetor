@@ -32,9 +32,14 @@ export interface ISubscribeOptions {
      * Read-only by contract: a path string's own grammar (the separator, the escapes, the
      * markers R16-01 added) is an engine internal, not a stable format callers should build or
      * parse — `subscribe(callback, {reads})` is documented only as an extension point that reads
-     * a path set already produced by `read()`'s recorder. Mutating this set after subscribing
-     * has no effect (the index files it once, at subscribe time); `extend()` is the supported way
-     * to add one more path to a live subscription.
+     * a path set already produced by `read()`'s recorder. Copied into the store's own Set at
+     * subscribe time: the Set passed in is never mutated or kept by reference, so changing it
+     * afterward has no effect. `extend()` is the supported way to add one more path to a live
+     * subscription — it grows the store's copy, not yours.
+     *
+     * A custom `ICarburetorSubscription` implementation should copy `reads` too if it keeps it
+     * past the call: the engine only ever grows its own copy immediately before calling your
+     * `extend(id, path)`, never the Set it was handed.
      */
     reads?: ReadonlySet<string>;
 }

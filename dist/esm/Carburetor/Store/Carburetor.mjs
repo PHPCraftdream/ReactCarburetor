@@ -3,7 +3,6 @@ import { sameSelection } from "../Component/Connection/sameSelection.mjs";
 import { deepClone } from "./Utils/deepClone.mjs";
 import { applyDiff } from "./Paths/Diff/applyDiff.mjs";
 import { diffPaths } from "./Paths/Diff/diffPaths.mjs";
-import { hasSymbolDifference } from "./Paths/Diff/hasSymbolDifference.mjs";
 import { sameKind } from "./Paths/Diff/sameKind.mjs";
 import { detachOpaque } from "./Utils/detachOpaque.mjs";
 import { SubscriberIndex } from "./Paths/SubscriberIndex.mjs";
@@ -18,6 +17,8 @@ import { isTrackable } from "./Tracking/isTrackable.mjs";
 import { updateBatch } from "./Transaction/UpdateBatchInstance.mjs";
 import { getUid } from "./Utils/getUid.mjs";
 import { diagnostics } from "./Diagnostics/DiagnosticsInstance.mjs";
+import { READS_TRANSFER } from "./Paths/Markers/ReadsTransferBrand.mjs";
+import { transferReads } from "./Paths/Markers/transferReads.mjs";
 const detachWatchSelection = (value)=>{
     if (null === value || 'object' != typeof value) return value;
     return detachOpaque(value, (instance)=>{
@@ -41,8 +42,10 @@ class Carburetor {
     draftProxy = void 0;
     writeRecorder = (path)=>this.recordWrite(path);
     constructor(data, scheduler = syncUpdateScheduler){
+        var _this_aliases;
         this.data = data;
         this.scheduler = scheduler;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '');
     }
     getUID() {
         return this.uid;
@@ -65,7 +68,9 @@ class Carburetor {
         return createReadProxy(data, record, '', this.aliases);
     }
     setData(data) {
+        var _this_aliases;
         const previous = this.data;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '', previous);
         this.data = data;
         this.draftProxy = void 0;
         this.touchDraft();
@@ -82,8 +87,10 @@ class Carburetor {
         return deepClone(this.data);
     }
     restore(data) {
+        var _this_aliases;
         const current = this.data;
-        if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data) || hasSymbolDifference(current, data)) return void this.setData(deepClone(data));
+        null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '');
+        if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data)) return void this.setData(deepClone(data));
         const applied = applyDiff(this.draft, current, data);
         if (!applied) return void this.setData(deepClone(data));
         this.emitUpdate();
@@ -96,9 +103,11 @@ class Carburetor {
     }
     subscribe(callback, options = {}) {
         const id = options.id || getUid();
-        const reads = options.reads || new Set([
+        const given = options.reads;
+        let reads;
+        reads = void 0 === given ? new Set([
             WILDCARD_PATH
-        ]);
+        ]) : options[READS_TRANSFER] === given ? given : new Set(given);
         this.subscribers[id] = {
             callback
         };
@@ -137,10 +146,7 @@ class Carburetor {
         const callback = ()=>{
             const fresh = this.runSelector(select);
             const changed = !sameSelection(previous, fresh.value);
-            this.subscribe(callback, {
-                id,
-                reads: fresh.reads
-            });
+            this.subscribe(callback, transferReads(fresh.reads, id));
             if (changed) {
                 const next = detachWatchSelection(fresh.value);
                 const last = previous;
@@ -148,10 +154,7 @@ class Carburetor {
                 onChange(next, last);
             }
         };
-        this.subscribe(callback, {
-            id,
-            reads: initial.reads
-        });
+        this.subscribe(callback, transferReads(initial.reads, id));
         return ()=>{
             this.unsubscribe(id);
         };

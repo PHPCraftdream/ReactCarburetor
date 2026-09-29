@@ -9,7 +9,6 @@ import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
 import {diffPaths} from "./Paths/Diff/diffPaths";
-import {hasSymbolDifference} from "./Paths/Diff/hasSymbolDifference";
 import {sameKind} from "./Paths/Diff/sameKind";
 import {detachOpaque} from "./Utils/detachOpaque";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
@@ -24,6 +23,8 @@ import {isTrackable} from "./Tracking/isTrackable";
 import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {getUid} from "./Utils/getUid";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
+import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
+import {transferReads} from "./Paths/Markers/transferReads";
 
 /**
  * `watch(select, onChange)`'s detach step: like `useCarburetorValue`'s own `detach`, a `Map`,
@@ -101,6 +102,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * defaults to immediate, synchronous delivery.
      */
     constructor(protected data: T, protected scheduler: IUpdateScheduler = syncUpdateScheduler) {
+        this.aliases?.checkState(data, '');
     }
 
     /**
@@ -171,6 +173,8 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     public setData(data: T): T {
         const previous = this.data;
 
+        this.aliases?.checkState(data, '', previous);
+
         this.data = data;
         this.draftProxy = undefined;
 
@@ -203,17 +207,17 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * Applies the difference into the live tree through draft (R16-02): only the values it
      * actually assigns are cloned, so an untouched branch keeps its old identity and only the
      * paths that changed are announced. Falls back to a wholesale, diffed swap — see setData() —
-     * when the root itself changed kind, is not trackable, holds a differing symbol key, or the
-     * walk crosses DIFF_PATH_THRESHOLD; going through draft key by key would cost more than it
-     * saves there.
+     * when the root itself changed kind, is not trackable, or the walk crosses
+     * DIFF_PATH_THRESHOLD; going through draft key by key would cost more than it saves there.
      *
      * @param data - the snapshot to install; read but never mutated or kept by reference.
      */
     public restore(data: T): void {
         const current: unknown = this.data;
 
-        if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data)
-            || hasSymbolDifference(current, data)) {
+        this.aliases?.checkState(data, '');
+
+        if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data)) {
             this.setData(deepClone(data));
 
             return;
@@ -256,6 +260,12 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /**
      * Registers a subscriber, returning the id it is cancelled and rescheduled by.
      *
+     * `options.reads` is copied: the public contract is `ReadonlySet<string>`, and a copy is
+     * what makes "changes after subscribing do not affect the subscription" actually true,
+     * instead of true only by convention. An internal caller that already holds the only
+     * reference to a fresh Set — `transferReads()` — is exempted from the copy and handed
+     * over by reference instead, since `extend()` needs the concrete Set to grow in place.
+     *
      * @param callback - called with no arguments per matching write; it must re-read to
      * see fresh values, and a throw costs it only a development-mode complaint.
      * @param options - the id to reuse across re-subscribes and the paths to watch;
@@ -263,19 +273,16 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      */
     public subscribe(callback: TSubscriber, options: ISubscribeOptions = {}): string {
         const id = options.id || getUid();
+        const given = options.reads;
+        let reads: TPathSet;
 
-        // Adopted, not copied: callers here (a component's committed read set, a computed's
-        // own dependency.reads, watch()'s freshly built read set) never mutate it after handing
-        // it over, and extend() relies on that — see addPath's own comment. No reads means
-        // everything: coarse, but nothing is missed.
-        //
-        // options.reads is ReadonlySet<string> in the public contract — mutating it after
-        // subscribing already has no effect (the index files it once, here), so the interface
-        // says so — but the engine still needs the concrete Set instance underneath, since
-        // extend() (and a computed's own dependency amend) mutate it in place afterward. Every
-        // caller reaching this line, internal or public, hands over a real Set; the cast just
-        // recovers that.
-        const reads = (options.reads as TPathSet | undefined) || new Set<TPath>([WILDCARD_PATH]);
+        if (given === undefined) {
+            reads = new Set<TPath>([WILDCARD_PATH]);
+        } else if ((options as {[READS_TRANSFER]?: unknown})[READS_TRANSFER] === given) {
+            reads = given as TPathSet;
+        } else {
+            reads = new Set<TPath>(given);
+        }
 
         this.subscribers[id] = {callback};
         this.subscriberIndex.add(id, reads);
@@ -362,8 +369,9 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             const changed = !sameSelection(previous, fresh.value);
 
             // Re-filed unconditionally: a selector whose branch moved without moving its
-            // result must still hand the subscription its new read set.
-            this.subscribe(callback, {id, reads: fresh.reads});
+            // result must still hand the subscription its new read set. transferReads(): this
+            // read set is freshly built by runSelector and never touched again.
+            this.subscribe(callback, transferReads(fresh.reads, id));
 
             if (changed) {
                 const next = detachWatchSelection(fresh.value);
@@ -374,7 +382,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             }
         };
 
-        this.subscribe(callback, {id, reads: initial.reads});
+        this.subscribe(callback, transferReads(initial.reads, id));
 
         return () => {
             this.unsubscribe(id);

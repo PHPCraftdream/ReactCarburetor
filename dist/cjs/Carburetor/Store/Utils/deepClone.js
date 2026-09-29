@@ -37,15 +37,14 @@ const deepClone = (value)=>{
         const length = value.length;
         const result = [];
         result.length = length;
-        for(let index = 0; index < length; index++)if (index in value) result[index] = deepClone(value[index]);
+        for(let index = 0; index < length; index++)if (Object.prototype.hasOwnProperty.call(value, index)) result[index] = deepClone(value[index]);
         return result;
     }
     const source = value;
     const result = Object.create(Object.getPrototypeOf(source));
-    const keys = Reflect.ownKeys(source);
+    const keys = Object.keys(source);
     for(let i = 0; i < keys.length; i++){
         const key = keys[i];
-        if (!Object.prototype.propertyIsEnumerable.call(source, key)) continue;
         const cloned = deepClone(source[key]);
         if ('__proto__' === key) Object.defineProperty(result, key, {
             value: cloned,

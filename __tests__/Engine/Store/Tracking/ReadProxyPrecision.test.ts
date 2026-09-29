@@ -31,21 +31,6 @@ class ListCarburetor extends Carburetor<IListData> {
     };
 }
 
-const TAG: unique symbol = Symbol('read-proxy-precision-tag');
-
-interface ITaggedData {
-    items: IRow[];
-    [TAG]?: number;
-}
-
-class TaggedCarburetor extends Carburetor<ITaggedData> {
-    public tag = (value: number): void => {
-        this.update((draft: ITaggedData) => {
-            draft[TAG] = value;
-        });
-    };
-}
-
 describe('the has trap over a trackable element records a branch marker, not the whole element', () => {
     test('.map records a branch marker per index, the leaf the callback reads, and skips inherited members', () => {
         const carburetor = new ListCarburetor(getListData());
@@ -94,28 +79,9 @@ describe('the has trap over a trackable element records a branch marker, not the
         expect(reads.has('items.map')).toBe(false);
     });
 
-    test('probing an accessor with `in` does not run it', () => {
-        let calls = 0;
-        const data = {items: [] as IRow[]};
-
-        Object.defineProperty(data, 'computedTitle', {
-            enumerable: true,
-            get: (): string => {
-                calls++;
-
-                return 'x';
-            },
-        });
-
-        const carburetor = new ListCarburetor(data);
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-
-        expect('computedTitle' in view).toBe(true);
-        expect(calls).toEqual(0);
-        expect(reads.has('computedTitle')).toBe(true);
-    });
-
+    // R6-02/R6-03: an accessor is no longer valid state — the constructor now rejects it before
+    // `in` (or anything else) ever gets to probe it. See StateModel.test.ts for the rejection
+    // and the getter-not-invoked assertion this test used to make here.
     test('an absent key probed with `in` still records, so a later add wakes the reader', () => {
         const carburetor = new ListCarburetor(getListData());
         const reads = new Set<TPath>();
@@ -213,35 +179,9 @@ describe('iterating a tracked array reads the elements it visits, not the wildca
     });
 });
 
-describe('a symbol key records nothing, whether it is the object\'s own or absent (R15-01)', () => {
-    test('an own symbol-keyed read records nothing', () => {
-        const carburetor = new TaggedCarburetor({items: [{title: 'a'}], [TAG]: 1});
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-
-        expect(view[TAG]).toEqual(1);
-        expect(reads.size).toEqual(0);
-        expect(reads.has(WILDCARD_PATH)).toBe(false);
-    });
-
-    test('an absent symbol-keyed read records nothing, but a later own-symbol write still wakes the reader', () => {
-        const carburetor = new TaggedCarburetor({items: [{title: 'a'}]});
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-        let wakes = 0;
-
-        expect(view[TAG]).toBeUndefined();
-        expect(reads.size).toEqual(0);
-
-        // Nothing was recorded, yet the guarantee still holds: a write through a symbol key
-        // collapses to the wildcard on the write side (WriteProxyHandler.writtenPath), and a
-        // wildcard write wakes every subscriber regardless of what it read.
-        carburetor.subscribe(() => wakes++, {id: 'tag-reader', reads});
-        carburetor.tag(5);
-
-        expect(wakes).toEqual(1);
-    });
-
+// R6-02/R6-03: an own symbol key is no longer valid state (superseded R15-01's own-key half —
+// see StateModel.test.ts for the rejection); an absent, inherited symbol still records nothing.
+describe('an absent (inherited) symbol key records nothing (R15-01)', () => {
     test('reading Object.prototype.toString.call, concat and String() on live data records no wildcard', () => {
         const carburetor = new ListCarburetor(getListData());
         const reads = new Set<TPath>();

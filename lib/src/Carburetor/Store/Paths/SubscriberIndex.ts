@@ -38,7 +38,8 @@ export class SubscriberIndex {
     /** Subscribers that read the wildcard, so every write matches them. */
     protected wildcard: Set<string> = new Set<string>();
     /**
-     * Read sets by id, adopted by reference: `addPath` mutates the caller's own Set.
+     * Read sets by id: either the store's own copy (the public path) or a Set transferred by
+     * reference (`transferReads`, the internal path) — `addPath` mutates whichever it is.
      *
      * Doubles as the record of what is actually filed (minus the wildcard path, tracked
      * separately above): a re-registration diffs the fresh set against whatever this map
@@ -57,14 +58,15 @@ export class SubscriberIndex {
      * are filed, and the rest is left alone — O(read-set size) membership checks plus
      * O(changed paths × depth) index work, instead of O(read-set size × depth) every time.
      *
-     * `subscribe` adopts the caller's Set without copying (see its own comment), so a
-     * re-registration can hand back the very Set instance this index already holds for the
-     * id — `addPath` amending a live dependency by one path (R14-01) does exactly that. Diffing
-     * a Set against itself always comes out empty, which is the right answer here: `addPath`
-     * keeps `exact`/`branch` in sync with every path it adds, so by the time such a
-     * re-registration runs there is nothing left to file. A caller that mutates a Set already
-     * handed to the index some other way, then hands that same instance back, is out of
-     * contract — the amend API is the only mutation path this index can see coming.
+     * `Carburetor.subscribe` hands this whatever it decided to file — its own copy, or a
+     * transferred Set adopted by reference — so a re-registration can hand back the very Set
+     * instance this index already holds for the id — `addPath` amending a live dependency by
+     * one path (R14-01) does exactly that. Diffing a Set against itself always comes out empty,
+     * which is the right answer here: `addPath` keeps `exact`/`branch` in sync with every path
+     * it adds, so by the time such a re-registration runs there is nothing left to file. A
+     * caller that mutates a Set already handed to the index some other way, then hands that
+     * same instance back, is out of contract — the amend API is the only mutation path this
+     * index can see coming.
      *
      * @param id - the subscriber's key; re-registering it replaces the old paths.
      * @param reads - the paths to file; the wildcard path routes the id to the wildcard
@@ -113,10 +115,10 @@ export class SubscriberIndex {
      *
      * Whether the path is already filed is decided by `exact` itself, not by whether
      * `reads` already contains it: a caller may share `reads` with something that adds to
-     * it directly (a computed's own `dependency.reads`, which `Carburetor.subscribe` adopts
-     * without copying — see its comment) before calling here, and a membership check on
-     * `reads` would then read as "already filed" for a path this index has never actually
-     * indexed.
+     * it directly (a computed's own `dependency.reads`, transferred into `Carburetor.subscribe`
+     * by reference rather than copied — see `transferReads`) before calling here, and a
+     * membership check on `reads` would then read as "already filed" for a path this index has
+     * never actually indexed.
      *
      * @param id - the subscriber to extend; an id with no registration is left alone
      * @param path - the path to file; already-filed paths are a no-op

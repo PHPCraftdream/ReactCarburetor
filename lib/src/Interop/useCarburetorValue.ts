@@ -6,6 +6,7 @@ import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {detachOpaque} from "@/Carburetor/Store/Utils/detachOpaque";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
+import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<T extends object, R> {
@@ -162,7 +163,9 @@ export const useCarburetorValue = <T extends object, R>(
             current.carburetor.unsubscribe(current.id);
         }
 
-        const id = carburetor.subscribe(onStoreChange, {reads});
+        // transferReads(): `reads` is this hook's own fresh Set, never touched again outside
+        // this module, so the carburetor adopts it instead of copying.
+        const id = carburetor.subscribe(onStoreChange, transferReads(reads));
 
         active.current = {carburetor, id, reads};
     }, [carburetor]);

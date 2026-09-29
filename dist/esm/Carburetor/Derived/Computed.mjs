@@ -3,6 +3,7 @@ import { sharedSingleton } from "../Store/Utils/sharedSingleton.mjs";
 import { updateWave } from "../Store/Scheduling/UpdateWaveInstance.mjs";
 import { WILDCARD_PATH } from "../Store/Paths/WildcardPath.mjs";
 import { diagnostics } from "../Store/Diagnostics/DiagnosticsInstance.mjs";
+import { transferReads } from "../Store/Paths/Markers/transferReads.mjs";
 import { announceIsUnchanged } from "./announceIsUnchanged.mjs";
 import { reportComputedEscape } from "./reportComputedEscape.mjs";
 const invalidationEdges = sharedSingleton('invalidationEdges', ()=>new WeakMap());
@@ -115,10 +116,7 @@ class Computed {
         Object.keys(collected).forEach((cuid)=>{
             if (!fresh[cuid]) return;
             const dependency = collected[cuid];
-            dependency.source.subscribe(this.onDependencyChanged, {
-                id: this.uid,
-                reads: dependency.reads
-            });
+            dependency.source.subscribe(this.onDependencyChanged, transferReads(dependency.reads, this.uid));
         });
     }
     diffDependencies(collected) {
@@ -161,10 +159,7 @@ class Computed {
     observeDependencies() {
         Object.keys(this.dependencies).forEach((cuid)=>{
             const dependency = this.dependencies[cuid];
-            dependency.source.subscribe(this.onDependencyChanged, {
-                id: this.uid,
-                reads: dependency.reads
-            });
+            dependency.source.subscribe(this.onDependencyChanged, transferReads(dependency.reads, this.uid));
         });
     }
     releaseDependencies() {

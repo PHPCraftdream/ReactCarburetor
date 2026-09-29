@@ -1,1 +1,0 @@
-let e=(e,t)=>{for(let r of new Set([...Object.getOwnPropertySymbols(e),...Object.getOwnPropertySymbols(t)]))if(!Object.is(e[r],t[r]))return!0;return!1};export{e as hasSymbolDifference};

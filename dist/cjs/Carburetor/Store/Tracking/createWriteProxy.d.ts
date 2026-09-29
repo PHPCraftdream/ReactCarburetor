@@ -10,11 +10,11 @@ import { IProxyCache } from "./Models.js";
  * @param record - the store's write sink, feeding the paths the next emitUpdate announces;
  * the get trap also reports unwrappable objects handed out raw, imprecise but never a lost
  * update.
- * @param basePath - the dotted path this root answers for, '' being the store root; a symbol
- * key, or a write already inside an opaque symbol-keyed branch, still collapses onto the
- * wildcard, but an index or `length` write on an array is named like any other key.
+ * @param basePath - the dotted path this root answers for, '' being the store root; an index
+ * or `length` write on an array is named like any other key.
  * @param aliases - consulted on every write to complain when it lands in an object another
- * path was read from; undefined outside development.
+ * path was read from, and to validate the state model (R6-02/R6-03); undefined outside
+ * development.
  * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
  * this undefined and mints one, and every nested branch receives it back so the tree caches
  * as one unit.

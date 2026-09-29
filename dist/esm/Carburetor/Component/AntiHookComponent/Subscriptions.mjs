@@ -1,4 +1,5 @@
 "use client";
+import { transferReads } from "../../Store/Paths/Markers/transferReads.mjs";
 import { AntiHookComponentEffects } from "./Effects.mjs";
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
@@ -85,10 +86,7 @@ class AntiHookComponentSubscriptions extends AntiHookComponentEffects {
             slot.installed = void 0;
         }
         if (void 0 === slot.installed || !sameReads(slot.installed.reads, committed.reads)) {
-            committed.carburetor.subscribe(this.onCarburetorUpdate, {
-                id: uid,
-                reads: committed.reads
-            });
+            committed.carburetor.subscribe(this.onCarburetorUpdate, transferReads(committed.reads, uid));
             slot.installed = {
                 carburetor: committed.carburetor,
                 reads: committed.reads

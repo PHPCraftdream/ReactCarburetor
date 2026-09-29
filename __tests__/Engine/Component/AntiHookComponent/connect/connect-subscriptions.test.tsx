@@ -1,3 +1,5 @@
+import {rstest} from '@rstest/core';
+import {READS_TRANSFER} from '@/Carburetor/Store/Paths/Markers/ReadsTransferBrand';
 import {getCounterData, ObservedCarburetor, act, fireEvent, render, AntiHookComponent} from '../support';
 
 describe('connect', () => {
@@ -218,6 +220,28 @@ describe('connect', () => {
             expect((instance as unknown as {tracked: unknown}).tracked).toBeUndefined();
 
             unmount();
+        });
+
+        test('the committed read set is transferred into subscribe(), not copied (R6-04)', () => {
+            const store = new ObservedCarburetor(getCounterData());
+            const subscribeSpy = rstest.spyOn(store, 'subscribe');
+
+            class Reader extends AntiHookComponent {
+                private readonly view = this.connect(() => store);
+
+                render() {
+                    return <div className="value">{this.view.value}</div>;
+                }
+            }
+
+            const {unmount} = render(<Reader />);
+
+            const options = subscribeSpy.mock.calls[0][1] as {reads?: unknown; [READS_TRANSFER]?: unknown};
+
+            expect(options[READS_TRANSFER]).toBe(options.reads);
+
+            unmount();
+            subscribeSpy.mockRestore();
         });
 
 });

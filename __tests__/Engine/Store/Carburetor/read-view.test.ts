@@ -165,44 +165,29 @@ describe('Carburetor', () => {    test('draft stays correct after a nested branc
         expect(renders).toEqual(1);
     });
 
-    test('a getter reads through the proxy, so the reads inside it are tracked', () => {
+    // R6-02/R6-03: a getter is no longer valid state — accessors are incompatible with paths,
+    // diffing and cloning; the constructor now rejects one before it is ever read, and never
+    // invokes it while checking. See StateModel.test.ts for the fuller coverage of this
+    // rejection (root, nested, and through draft).
+    test('a getter in the initial state is rejected at construction, without ever being invoked', () => {
         interface IDoublerData {
             n: number;
             readonly doubled: number;
         }
 
+        let calls = 0;
+
         const getDoublerData = (): IDoublerData => ({
             n: 1,
             get doubled(): number {
+                calls++;
+
                 return this.n * 2;
             },
         });
 
-        class DoublerCarburetor extends Carburetor<IDoublerData> {
-            public setN = (n: number) => {
-                this.update((draft: IDoublerData) => {
-                    draft.n = n;
-                });
-            };
-        }
-
-        const carburetor = new DoublerCarburetor(getDoublerData());
-        const reads = new Set<TPath>();
-        let renders = 0;
-
-        const data = carburetor.read((path: TPath) => reads.add(path));
-        const doubled = data.doubled;
-
-        carburetor.subscribe(() => renders++, {id: 'doubled-reader', reads});
-
-        expect(doubled).toEqual(2);
-        expect(reads.has('doubled')).toBeTruthy();
-        // `this.n` inside the getter went through the proxy: the reader depends on `n` too.
-        expect(reads.has('n')).toBeTruthy();
-
-        carburetor.setN(5);
-        expect(renders).toEqual(1);
-        expect(carburetor.read(() => undefined).doubled).toEqual(10);
+        expect(() => new Carburetor<IDoublerData>(getDoublerData())).toThrow('doubled');
+        expect(calls).toEqual(0);
     });
 
     test('an object reachable under two paths is reported when read and when written', () => {

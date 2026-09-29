@@ -11,7 +11,6 @@ import { TPath, TPathSet, TPatchRecorder } from "../../../Models/Paths.mjs";
  *   one side is trackable at all.
  * - A changed key set — an added or removed key, or an array's length — also records the
  *   R16-01 keys marker for that container, on top of each added/removed key's own path.
- * - A difference under a symbol key is not chased: the whole container is recorded instead.
  * - Reference-equal branches (`Object.is`) are skipped without being walked, in O(1).
  * - Past `DIFF_PATH_THRESHOLD` recorded paths, the walk gives up and reports `basePath` itself
  *   as replaced, rather than thousands of individual leaves.

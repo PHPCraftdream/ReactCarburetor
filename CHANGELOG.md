@@ -165,6 +165,18 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Breaking:** store state is now defined as own enumerable string-keyed data (an array's is its
+  elements and `length`). Symbol keys, getters and setters, non-enumerable properties and non-index
+  keys on an array are rejected: development throws at the constructor, `setData`, `restore` and
+  `draft` writes; a symbol key or a non-data `defineProperty` through `draft` throws in every
+  build. Symbol keys no longer widen a write to the whole store, `deepClone` no longer copies
+  them, and `snapshot()`/`restore()` no longer lose or wake on what diffing could not see.
+  Migrate to a string key, a `Map` or class instance, or a `computed`. `deepClone` of a row is
+  about 2× faster and `snapshot()` of 4000 rows about 1.9× faster.
+- `subscribe(callback, {reads})` copies `reads`, as its documentation always promised: changing the
+  set afterwards no longer desynchronizes the index, and a `ReadonlySet` that is not a `Set` works
+  with `extend`. The engine's own callers hand their sets over without a copy, so mounting is
+  unchanged.
 - **Breaking:** `watch(callback, reads?)` is now `watch(select, onChange)`: `select` runs against
   a tracked read of the data, its reads become the subscription, and `onChange(next, previous)`
   runs only when the selection changed (compared like `connectSelection`). For every write, use
@@ -380,6 +392,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `restore()` lost a sparse array's growth by `length` alone: the live array kept its length and no
+  update was published.
+- `setData` and `restore` announced nothing when only a non-enumerable property changed, and
+  `restore(snapshot())` woke every subscriber of a store holding a symbol key.
 - A subclass overriding `ComponentUpdateThrottle.runUpdater`, `CarburetorScope.get` or another
   scheduler, scope, history or diagnostics member with method syntax was silently ignored.
 - A subclass overriding a store member with method syntax (`preEmit() {}`) was silently

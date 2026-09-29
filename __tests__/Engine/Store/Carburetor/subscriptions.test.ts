@@ -1,7 +1,10 @@
 import {diagnostics} from "@/Carburetor";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {getTestData, readsOf, TestCarburetor} from "./fixtures";
+import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
+import {
+    FakeReadonlySet, getTestData, InspectableCarburetor, readsOf, SwappingCarburetor, TestCarburetor,
+} from "./fixtures";
 
 describe('Carburetor', () => {    test('notifies subscribers synchronously by default', () => {
         const carburetor = new TestCarburetor(getTestData());
@@ -249,9 +252,10 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
 
         carburetor.subscribe(() => calls++, {id: 'subscriber', reads});
 
-        // subscribe() adopts this set rather than copying it, but matching goes through the
-        // index (exact/branch), filed once at subscribe time: adding to the set directly,
-        // bypassing extend(), leaves the index untouched, so the subscription does not widen.
+        // The public path copies `reads` into the store's own Set; either way matching goes
+        // through the index (exact/branch), filed once at subscribe time: adding to the caller's
+        // set directly, bypassing extend(), leaves the index untouched, so the subscription
+        // does not widen.
         reads.add('b');
         carburetor.setB(1);
 
@@ -355,4 +359,103 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(calls).toEqual(2);
     });
 
+});
+
+describe('subscribe() copies the public reads Set, transfers only the branded internal one (R6-04)', () => {
+    test('clearing the caller\'s own Set after subscribing does not desync a later re-subscribe', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const mine = readsOf('a');
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'x', reads: mine});
+
+        // The store's copy of `mine` is unaffected: without the fix this clear would reach the
+        // very Set the index diffs re-registrations against, and the re-subscribe below would
+        // never see 'a' to unfile it.
+        mine.clear();
+        carburetor.subscribe(() => calls++, {id: 'x', reads: readsOf('b')});
+
+        carburetor.setA(1);
+        expect(calls).toEqual(0);
+
+        carburetor.setB(1);
+        expect(calls).toEqual(1);
+    });
+
+    test('re-subscribing with the same, mutated-in-place Set instance still reconciles by content', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const mine = readsOf('a');
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'x', reads: mine});
+
+        // Same object, different content: the public path always copies afresh, so the second
+        // subscribe cannot mistake this for an unchanged re-registration by identity.
+        mine.clear();
+        mine.add('b');
+        carburetor.subscribe(() => calls++, {id: 'x', reads: mine});
+
+        carburetor.setA(1);
+        expect(calls).toEqual(0);
+
+        carburetor.setB(1);
+        expect(calls).toEqual(1);
+    });
+
+    test('a non-Set ReadonlySet implementation does not throw, and extend() still works', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let calls = 0;
+
+        const id = carburetor.subscribe(() => calls++, {id: 'x', reads: new FakeReadonlySet(['a'])});
+
+        expect(() => carburetor.extend(id, 'b')).not.toThrow();
+
+        carburetor.setB(1);
+        expect(calls).toEqual(1);
+    });
+
+    test('extend() grows the store\'s own copy, never the caller\'s Set', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const mine = readsOf('a');
+
+        const id = carburetor.subscribe(() => undefined, {id: 'x', reads: mine});
+
+        carburetor.extend(id, 'b');
+
+        expect(mine.size).toEqual(1);
+        expect(mine.has('b')).toBe(false);
+    });
+
+    test('an override that swaps out options.reads on the public path still gets a copy', () => {
+        const carburetor = new SwappingCarburetor(getTestData());
+
+        const id = carburetor.subscribe(() => undefined, {id: 'x', reads: readsOf('a')});
+
+        // The Set actually reaching Carburetor.subscribe is carburetor.swappedReads, not the
+        // caller's original — the public path copies it regardless.
+        expect(carburetor.readsFor(id)).not.toBe(carburetor.swappedReads);
+        expect(carburetor.readsFor(id)).toEqual(carburetor.swappedReads);
+    });
+
+    test('transferReads() adopts the exact Set instance for an internal caller', () => {
+        const carburetor = new InspectableCarburetor(getTestData());
+        const mine = readsOf('a');
+
+        const id = carburetor.subscribe(() => undefined, transferReads(mine, 'x'));
+
+        expect(carburetor.readsFor(id)).toBe(mine);
+    });
+
+    test('an override that swaps out options.reads breaks the brand, so transferReads() copies', () => {
+        const carburetor = new SwappingCarburetor(getTestData());
+        const mine = readsOf('a');
+
+        const id = carburetor.subscribe(() => undefined, transferReads(mine, 'x'));
+
+        // The brand still points at `mine`, but options.reads is now carburetor.swappedReads —
+        // the mismatch must fall back to a safe copy of whatever was actually given.
+        expect(carburetor.readsFor(id)).not.toBe(mine);
+        expect(carburetor.readsFor(id)).not.toBe(carburetor.swappedReads);
+        expect(carburetor.readsFor(id)).toEqual(carburetor.swappedReads);
+    });
 });

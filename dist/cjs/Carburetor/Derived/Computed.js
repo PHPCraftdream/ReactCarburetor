@@ -35,6 +35,7 @@ const sharedSingleton_js_namespaceObject = require("../Store/Utils/sharedSinglet
 const UpdateWaveInstance_js_namespaceObject = require("../Store/Scheduling/UpdateWaveInstance.js");
 const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../Store/Diagnostics/DiagnosticsInstance.js");
+const transferReads_js_namespaceObject = require("../Store/Paths/Markers/transferReads.js");
 const external_announceIsUnchanged_js_namespaceObject = require("./announceIsUnchanged.js");
 const external_reportComputedEscape_js_namespaceObject = require("./reportComputedEscape.js");
 const invalidationEdges = (0, sharedSingleton_js_namespaceObject.sharedSingleton)('invalidationEdges', ()=>new WeakMap());
@@ -147,10 +148,7 @@ class Computed {
         Object.keys(collected).forEach((cuid)=>{
             if (!fresh[cuid]) return;
             const dependency = collected[cuid];
-            dependency.source.subscribe(this.onDependencyChanged, {
-                id: this.uid,
-                reads: dependency.reads
-            });
+            dependency.source.subscribe(this.onDependencyChanged, (0, transferReads_js_namespaceObject.transferReads)(dependency.reads, this.uid));
         });
     }
     diffDependencies(collected) {
@@ -193,10 +191,7 @@ class Computed {
     observeDependencies() {
         Object.keys(this.dependencies).forEach((cuid)=>{
             const dependency = this.dependencies[cuid];
-            dependency.source.subscribe(this.onDependencyChanged, {
-                id: this.uid,
-                reads: dependency.reads
-            });
+            dependency.source.subscribe(this.onDependencyChanged, (0, transferReads_js_namespaceObject.transferReads)(dependency.reads, this.uid));
         });
     }
     releaseDependencies() {

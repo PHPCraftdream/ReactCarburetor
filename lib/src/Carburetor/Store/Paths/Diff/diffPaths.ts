@@ -5,7 +5,6 @@ import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {DIFF_PATH_THRESHOLD} from "./DiffThreshold";
-import {hasSymbolDifference} from "./hasSymbolDifference";
 import {sameKind} from "./sameKind";
 
 /** Unwinds the recursive walk once the threshold trips; caught inside diffPaths, never escapes it. */
@@ -41,13 +40,6 @@ const walkContainer = (
     into: TPathSet,
     onPatch: TPatchRecorder | undefined
 ): void => {
-    if (hasSymbolDifference(oldValue, newValue)) {
-        add(into, path || WILDCARD_PATH);
-        addPatch(onPatch, segments, oldValue, newValue);
-
-        return;
-    }
-
     if (Array.isArray(oldValue)
         && (oldValue as unknown as unknown[]).length !== (newValue as unknown as unknown[]).length) {
         // Catches a length-only change a hole leaves invisible to the key-set comparison below
@@ -138,7 +130,6 @@ const walk = (
  *   one side is trackable at all.
  * - A changed key set — an added or removed key, or an array's length — also records the
  *   R16-01 keys marker for that container, on top of each added/removed key's own path.
- * - A difference under a symbol key is not chased: the whole container is recorded instead.
  * - Reference-equal branches (`Object.is`) are skipped without being walked, in O(1).
  * - Past `DIFF_PATH_THRESHOLD` recorded paths, the walk gives up and reports `basePath` itself
  *   as replaced, rather than thousands of individual leaves.

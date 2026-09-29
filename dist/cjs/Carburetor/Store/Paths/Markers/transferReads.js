@@ -27,20 +27,18 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
-const hasSymbolDifference = (a, b)=>{
-    const keys = new Set([
-        ...Object.getOwnPropertySymbols(a),
-        ...Object.getOwnPropertySymbols(b)
-    ]);
-    for (const key of keys)if (!Object.is(a[key], b[key])) return true;
-    return false;
-};
-__webpack_require__.d(__webpack_exports__, {}, {
-    hasSymbolDifference: hasSymbolDifference
+__webpack_require__.d(__webpack_exports__, {
+    transferReads: ()=>transferReads
 });
-exports.hasSymbolDifference = __webpack_exports__.hasSymbolDifference;
+const external_ReadsTransferBrand_js_namespaceObject = require("./ReadsTransferBrand.js");
+const transferReads = (reads, id)=>({
+        id,
+        reads,
+        [external_ReadsTransferBrand_js_namespaceObject.READS_TRANSFER]: reads
+    });
+exports.transferReads = __webpack_exports__.transferReads;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
-    "hasSymbolDifference"
+    "transferReads"
 ].indexOf(__rspack_i)) exports[__rspack_i] = __webpack_exports__[__rspack_i];
 Object.defineProperty(exports, '__esModule', {
     value: true

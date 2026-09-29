@@ -35,6 +35,7 @@ const external_react_namespaceObject = require("react");
 const detachOpaque_js_namespaceObject = require("../Carburetor/Store/Utils/detachOpaque.js");
 const sameSelection_js_namespaceObject = require("../Carburetor/Component/Connection/sameSelection.js");
 const isTrackable_js_namespaceObject = require("../Carburetor/Store/Tracking/isTrackable.js");
+const transferReads_js_namespaceObject = require("../Carburetor/Store/Paths/Markers/transferReads.js");
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
@@ -83,9 +84,7 @@ const useCarburetorValue = (carburetor, select, isEqual = sameSelection_js_names
         const current = active.current;
         if (current && current.carburetor === carburetor && sameReads(current.reads, reads)) return;
         if (current) current.carburetor.unsubscribe(current.id);
-        const id = carburetor.subscribe(onStoreChange, {
-            reads
-        });
+        const id = carburetor.subscribe(onStoreChange, (0, transferReads_js_namespaceObject.transferReads)(reads));
         active.current = {
             carburetor,
             id,

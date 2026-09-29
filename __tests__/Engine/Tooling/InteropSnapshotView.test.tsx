@@ -4,6 +4,7 @@ import {render} from '@testing-library/react';
 import {rstest} from '@rstest/core';
 import {Carburetor} from "@/Carburetor";
 import {useCarburetorValue} from "@/Interop";
+import {READS_TRANSFER} from "@/Carburetor/Store/Paths/Markers/ReadsTransferBrand";
 
 interface ICounterData {
     count: number;
@@ -202,5 +203,25 @@ describe('useCarburetorValue persistent root view', () => {
         expect(container.querySelector('.value')?.textContent).toEqual('2');
 
         unmount();
+    });
+
+    test('transfers its read set into subscribe(), not a copy (R6-04)', () => {
+        const carburetor = new CounterCarburetor({count: 1});
+        const subscribeSpy = rstest.spyOn(carburetor, 'subscribe');
+
+        const View = () => {
+            const value = useCarburetorValue(carburetor, (data) => data.count);
+
+            return <div className="value">{value}</div>;
+        };
+
+        const {unmount} = render(<View/>);
+
+        const options = subscribeSpy.mock.calls[0][1] as {reads?: unknown; [READS_TRANSFER]?: unknown};
+
+        expect(options[READS_TRANSFER]).toBe(options.reads);
+
+        unmount();
+        subscribeSpy.mockRestore();
     });
 });

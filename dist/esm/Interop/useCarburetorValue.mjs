@@ -3,6 +3,7 @@ import { useCallback, useLayoutEffect, useRef, useSyncExternalStore } from "reac
 import { detachOpaque } from "../Carburetor/Store/Utils/detachOpaque.mjs";
 import { sameSelection } from "../Carburetor/Component/Connection/sameSelection.mjs";
 import { isTrackable } from "../Carburetor/Store/Tracking/isTrackable.mjs";
+import { transferReads } from "../Carburetor/Store/Paths/Markers/transferReads.mjs";
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
@@ -51,9 +52,7 @@ const useCarburetorValue = (carburetor, select, isEqual = sameSelection)=>{
         const current = active.current;
         if (current && current.carburetor === carburetor && sameReads(current.reads, reads)) return;
         if (current) current.carburetor.unsubscribe(current.id);
-        const id = carburetor.subscribe(onStoreChange, {
-            reads
-        });
+        const id = carburetor.subscribe(onStoreChange, transferReads(reads));
         active.current = {
             carburetor,
             id,
