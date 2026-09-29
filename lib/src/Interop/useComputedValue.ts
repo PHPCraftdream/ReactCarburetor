@@ -3,7 +3,37 @@
 import {useCallback, useSyncExternalStore} from "react";
 import {IComputed} from "@/Carburetor";
 
-/** Reads a memoized derived value from a hooks-based component. */
+interface IComputedSnapshot<R> {
+    readonly source: IComputed<R>;
+    readonly version: number;
+    readonly value: R;
+}
+
+const snapshots = new WeakMap<IComputed<unknown>, IComputedSnapshot<unknown>>();
+
+const readSnapshot = <R>(source: IComputed<R>): IComputedSnapshot<R> => {
+    // A lazy read may settle a publication, so read its version afterwards.
+    const value = source.get();
+    const version = source.getVersion();
+    const previous = snapshots.get(source) as IComputedSnapshot<R> | undefined;
+
+    if (previous && previous.version === version && Object.is(previous.value, value)) {
+        return previous;
+    }
+
+    const snapshot = {source, version, value};
+
+    snapshots.set(source, snapshot);
+
+    return snapshot;
+};
+
+/**
+ * Reads a computed publication. The returned value stays live; the cached snapshot
+ * record detects publications without cloning the value.
+ *
+ * @param computed - the source read and subscribed to
+ */
 export const useComputedValue = <R>(computed: IComputed<R>): R => {
     const subscribe = useCallback(
         (onStoreChange: () => void) => {
@@ -14,7 +44,7 @@ export const useComputedValue = <R>(computed: IComputed<R>): R => {
         [computed]
     );
 
-    const getSnapshot = useCallback(() => computed.get(), [computed]);
+    const getSnapshot = useCallback(() => readSnapshot(computed), [computed]);
 
-    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot).value;
 };
