@@ -312,6 +312,46 @@ class RowsCarburetor extends Carburetor<IRowsData> {
     };
 }
 
+describe('descriptor introspection and tracked value reads (R8-02)', () => {
+    test('a root primitive descriptor and hasOwnProperty do not record a leaf', () => {
+        const carburetor = new RowsCarburetor({...getRowsData(), extra: 1});
+        const reads = new Set<TPath>();
+        const view = carburetor.read((path: TPath) => reads.add(path));
+
+        expect(Object.getOwnPropertyDescriptor(view, 'extra')?.value).toBe(1);
+        expect(Object.prototype.hasOwnProperty.call(view, 'extra')).toBe(true);
+        expect(reads.size).toBe(0);
+
+        expect(Reflect.get(view, 'extra')).toBe(1);
+        expect(reads).toEqual(new Set(['extra']));
+    });
+
+    test('a nested descriptor keeps its value wrapped; ordinary reads through it track the leaf', () => {
+        const carburetor = new RowsCarburetor(getRowsData());
+        const reads = new Set<TPath>();
+        const view = carburetor.read((path: TPath) => reads.add(path));
+        const descriptor = Object.getOwnPropertyDescriptor(view.items, 'k1');
+        const row = descriptor?.value as IRowItem;
+
+        expect(reads).toEqual(new Set(['items.~p']));
+        expect(() => { row.title = 'forbidden'; }).toThrow();
+        expect(carburetor.getData().items.k1.title).toBe('a');
+
+        expect(row.title).toBe('a');
+        expect(reads).toEqual(new Set(['items.~p', 'items.k1.title']));
+    });
+
+    test('Object.keys at root and nested level records key sets only', () => {
+        const carburetor = new RowsCarburetor(getRowsData());
+        const reads = new Set<TPath>();
+        const view = carburetor.read((path: TPath) => reads.add(path));
+
+        expect(Object.keys(view)).toEqual(['items']);
+        expect(Object.keys(view.items)).toEqual(['k1', 'k2', 'k3']);
+        expect(reads).toEqual(new Set(['~k', 'items.~p', 'items.~k']));
+    });
+});
+
 /**
  * Regression coverage for R16-01: enumerating a branch must subscribe to its key set, not to
  * every leaf under it. Each of these fails on pre-fix code — `ownKeys` recording the branch's

@@ -239,6 +239,67 @@ describe('hooks interop', () => {
         unmount();
     });
 
+    test('a root descriptor-only selector does not follow primitive changes (R8-02)', () => {
+        const carburetor = new ProfileCarburetor(getData());
+        let ordinaryRenders = 0;
+        let descriptorRenders = 0;
+
+        const Ordinary = () => {
+            ordinaryRenders++;
+            const name = useCarburetorValue(carburetor, (view) => view.name);
+
+            return <span className="ordinary">{name}</span>;
+        };
+        const Descriptor = () => {
+            descriptorRenders++;
+            const name = useCarburetorValue(
+                carburetor,
+                (view) => Object.getOwnPropertyDescriptor(view, 'name')?.value as string
+            );
+
+            return <span className="descriptor">{name}</span>;
+        };
+        const {container, unmount} = render(<><Ordinary/><Descriptor/></>);
+        const initialDescriptorRenders = descriptorRenders;
+
+        act(() => carburetor.setName('bob'));
+
+        expect(container.querySelector('.ordinary')?.textContent).toBe('bob');
+        expect(ordinaryRenders).toBeGreaterThan(1);
+        expect(container.querySelector('.descriptor')?.textContent).toBe('ann');
+        expect(descriptorRenders).toBe(initialDescriptorRenders);
+        unmount();
+    });
+
+    test('a nested descriptor-only selector does not follow leaf changes (R8-02)', () => {
+        const carburetor = new NestedCarburetor({user: {name: 'ann', age: 30}, other: 0});
+        let descriptorRenders = 0;
+
+        const Ordinary = () => {
+            const name = useCarburetorValue(carburetor, (view) => view.user.name);
+
+            return <span className="ordinary">{name}</span>;
+        };
+        const Descriptor = () => {
+            descriptorRenders++;
+            const name = useCarburetorValue(
+                carburetor,
+                (view) => Object.getOwnPropertyDescriptor(view.user, 'name')?.value as string
+            );
+
+            return <span className="descriptor">{name}</span>;
+        };
+        const {container, unmount} = render(<><Ordinary/><Descriptor/></>);
+        const initialDescriptorRenders = descriptorRenders;
+
+        act(() => carburetor.renameUser('bob'));
+
+        expect(container.querySelector('.ordinary')?.textContent).toBe('bob');
+        expect(container.querySelector('.descriptor')?.textContent).toBe('ann');
+        expect(descriptorRenders).toBe(initialDescriptorRenders);
+        unmount();
+    });
+
     test('a selector building a new object stays stable while data does not change', () => {
         const carburetor = new ProfileCarburetor(getData());
         const seen: Array<{name: string}> = [];

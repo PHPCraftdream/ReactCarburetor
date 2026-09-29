@@ -9,6 +9,46 @@ import {getTestData, TestCarburetor} from "./fixtures";
  * changed, never on the initial call and never for a write that only moved the selector's reads.
  */
 describe('watch(select, onChange)', () => {
+    test('root primitive selection needs an ordinary read to follow value changes (R8-02)', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const ordinary: Array<[number, number]> = [];
+        const descriptor: Array<[number, number]> = [];
+        const stopOrdinary = carburetor.watch((view) => view.a, (next, previous) => {
+            ordinary.push([next, previous]);
+        });
+        const stopDescriptor = carburetor.watch(
+            (view) => Object.getOwnPropertyDescriptor(view, 'a')?.value as number,
+            (next, previous) => { descriptor.push([next, previous]); }
+        );
+
+        carburetor.setA(1);
+
+        expect(ordinary).toEqual([[1, 0]]);
+        expect(descriptor).toEqual([]);
+        stopOrdinary();
+        stopDescriptor();
+    });
+
+    test('nested primitive descriptor selection tracks traversal but not the leaf (R8-02)', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const ordinary: Array<[number, number]> = [];
+        const descriptor: Array<[number, number]> = [];
+        const stopOrdinary = carburetor.watch((view) => view.nested.value, (next, previous) => {
+            ordinary.push([next, previous]);
+        });
+        const stopDescriptor = carburetor.watch(
+            (view) => Object.getOwnPropertyDescriptor(view.nested, 'value')?.value as number,
+            (next, previous) => { descriptor.push([next, previous]); }
+        );
+
+        carburetor.setNestedValue(1);
+
+        expect(ordinary).toEqual([[1, 0]]);
+        expect(descriptor).toEqual([]);
+        stopOrdinary();
+        stopDescriptor();
+    });
+
     test('does not call onChange on subscribe', () => {
         const carburetor = new TestCarburetor(getTestData());
         const calls: Array<[number, number]> = [];

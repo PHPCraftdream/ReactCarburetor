@@ -621,6 +621,16 @@ The engine needs no hooks, but the ecosystem around it is hooks-first. An opt-in
 bridges the boundary, with the same path precision: the selector is run through the tracking
 proxy to learn what it depends on.
 
+For reactive selectors, read a primitive with `data.key` or `Reflect.get(data, 'key')`.
+`Object.getOwnPropertyDescriptor(data, 'key')?.value` and
+`Object.prototype.hasOwnProperty.call(data, 'key')` inspect structure, but do not register a
+dependency on that primitive value. Descriptor lookup is also part of `Object.keys` and
+`for…in`; those operations track the key set without subscribing to every listed value.
+Descriptor values that are plain objects or arrays remain read-only wrapped views, so later
+ordinary property reads through them are tracked. A frozen or otherwise locked property whose
+object value cannot legally be wrapped is refused in development; production may return the raw
+value at that boundary. Keep store data unfrozen if those read guarantees matter.
+
 ```tsx
 import {useCarburetorValue, useComputedValue} from 'react-carburetor/interop';
 
