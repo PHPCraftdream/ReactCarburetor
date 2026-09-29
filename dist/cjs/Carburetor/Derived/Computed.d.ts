@@ -114,7 +114,7 @@ export declare class Computed<R> implements IComputed<R> {
     /** Swaps in a fresh dependency set, keeping every edge the body still reads. */
     protected attachDependencies(collected: IDict<IDependency>): void;
     /** Keeps equal read sets subscribed, and replaces changed or newly collected edges. */
-    protected diffDependencies(collected: IDict<IDependency>): IDict<boolean>;
+    protected diffDependencies(collected: IDict<IDependency>): string[] | undefined;
     /** Flattens native dependency metadata; external sources expose their public version. */
     protected recordVersions(collected: IDict<IDependency>): void;
     /** Unsubscribes from every dependency and forgets them. */

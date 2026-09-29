@@ -8,14 +8,15 @@ import { announceIsUnchanged } from "./announceIsUnchanged.mjs";
 import { reportComputedEscape } from "./reportComputedEscape.mjs";
 import { computedDependencies } from "./computedDependencies.mjs";
 const invalidationEdges = sharedSingleton('invalidationEdges', ()=>new WeakMap());
+const ownDependency = (record, id)=>Object.prototype.hasOwnProperty.call(record, id) ? record[id] : void 0;
 class Computed {
     body;
     options;
     uid = getUid();
     version = 0;
     subscribers = new Map();
-    dependencies = Object.create(null);
-    versions = Object.create(null);
+    dependencies = {};
+    versions = {};
     announced = void 0;
     value = void 0;
     valid = false;
@@ -45,9 +46,7 @@ class Computed {
             else if (wasUnobserved) this.attachDependencies(this.dependencies);
             if (wasUnobserved && this.valid) this.announced = {
                 value: this.value,
-                versions: {
-                    ...this.versions
-                }
+                versions: this.versions
             };
         } catch (error) {
             if (previous) this.subscribers.set(id, previous);
@@ -70,32 +69,32 @@ class Computed {
         return !this.valid || this.hasDrifted();
     }
     hasDrifted() {
-        for(const cuid in this.versions){
+        for (const cuid of Object.keys(this.versions)){
             const recorded = this.versions[cuid];
             if (recorded.source.getVersion() !== recorded.version) return true;
         }
         return false;
     }
     driftedSince(record) {
-        for(const cuid in record){
+        for (const cuid of Object.keys(record)){
             const recorded = record[cuid];
             if (recorded.source.getVersion() !== recorded.version) return true;
         }
-        for(const cuid in this.versions)if (!(cuid in record)) return true;
+        for (const cuid of Object.keys(this.versions))if (!Object.prototype.hasOwnProperty.call(record, cuid)) return true;
         return false;
     }
     recompute() {
-        const collected = Object.create(null);
+        const collected = {};
         const track = (source)=>{
-            const cuid = source.getUID();
-            let dependency = collected[cuid];
+            const cuid = ':' + source.getUID();
+            let dependency = ownDependency(collected, cuid);
             if (!dependency) {
                 dependency = {
                     source,
                     reads: new Set(),
                     published: false,
                     observed: false,
-                    previous: this.dependencies[cuid],
+                    previous: ownDependency(this.dependencies, cuid),
                     overlap: 0
                 };
                 collected[cuid] = dependency;
@@ -124,15 +123,10 @@ class Computed {
         const fresh = this.diffDependencies(collected);
         const previousVersions = this.versions;
         this.recordVersions(collected);
-        let needsAttachment = false;
-        for(const cuid in fresh){
-            needsAttachment = fresh[cuid];
-            break;
-        }
-        if (!needsAttachment) {
-            for(const cuid in this.dependencies){
+        if (!fresh) {
+            for (const cuid of Object.keys(this.dependencies)){
                 const previous = this.dependencies[cuid];
-                const next = collected[cuid];
+                const next = ownDependency(collected, cuid);
                 previous.published = false;
                 if (next) {
                     next.published = true;
@@ -145,14 +139,14 @@ class Computed {
         }
         const attempted = [];
         try {
-            if (this.subscribers.size > 0) for (const cuid of Object.keys(fresh)){
+            if (this.subscribers.size > 0) for (const cuid of fresh){
                 const dependency = collected[cuid];
                 attempted.push(cuid);
                 computedDependencies.subscribe(dependency.source, this.onDependencyChanged, transferReads(dependency.reads, this.uid));
             }
         } catch (error) {
             for (const cuid of attempted.reverse()){
-                const previous = this.dependencies[cuid];
+                const previous = ownDependency(this.dependencies, cuid);
                 try {
                     if ((null == previous ? void 0 : previous.observed) && previous.source === collected[cuid].source) computedDependencies.subscribe(previous.source, this.onDependencyChanged, transferReads(previous.reads, this.uid));
                     else computedDependencies.unsubscribe(collected[cuid].source, this.uid);
@@ -163,10 +157,10 @@ class Computed {
             throw error;
         }
         for (const cuid of Object.keys(this.dependencies)){
-            var _collected_cuid;
+            var _ownDependency;
             const previous = this.dependencies[cuid];
             previous.published = false;
-            if (previous.observed && previous.source !== (null == (_collected_cuid = collected[cuid]) ? void 0 : _collected_cuid.source)) computedDependencies.unsubscribe(previous.source, this.uid);
+            if (previous.observed && previous.source !== (null == (_ownDependency = ownDependency(collected, cuid)) ? void 0 : _ownDependency.source)) computedDependencies.unsubscribe(previous.source, this.uid);
         }
         for (const cuid of Object.keys(collected)){
             const dependency = collected[cuid];
@@ -177,33 +171,32 @@ class Computed {
         this.dependencies = collected;
     }
     diffDependencies(collected) {
-        const fresh = Object.create(null);
-        Object.keys(collected).forEach((cuid)=>{
+        let fresh;
+        for (const cuid of Object.keys(collected)){
             const next = collected[cuid];
-            const previous = this.dependencies[cuid];
-            if (!(null == previous ? void 0 : previous.observed) || next.source !== previous.source || next !== previous && (next.overlap !== previous.reads.size || next.overlap !== next.reads.size)) fresh[cuid] = true;
-        });
+            const previous = ownDependency(this.dependencies, cuid);
+            if (!(null == previous ? void 0 : previous.observed) || next.source !== previous.source || next !== previous && (next.overlap !== previous.reads.size || next.overlap !== next.reads.size)) (fresh ?? (fresh = [])).push(cuid);
+        }
         return fresh;
     }
     recordVersions(collected) {
-        const versions = Object.create(null);
-        const record = (dependency)=>{
+        const versions = {};
+        for (const cuid of Object.keys(collected)){
             var _computedDependencies_versions_get;
+            const dependency = collected[cuid];
             const innerVersions = 'read' in dependency.source ? void 0 : null == (_computedDependencies_versions_get = computedDependencies.versions.get(dependency.source)) ? void 0 : _computedDependencies_versions_get();
             if (!innerVersions) {
-                versions[dependency.source.getUID()] = {
+                versions[cuid] = {
                     source: dependency.source,
                     version: dependency.source.getVersion()
                 };
-                return;
+                continue;
             }
-            Object.keys(innerVersions).forEach((cuid)=>{
-                versions[cuid] = innerVersions[cuid];
-            });
-        };
-        Object.keys(collected).forEach((cuid)=>{
-            record(collected[cuid]);
-        });
+            for (const innerCuid of Object.keys(innerVersions)){
+                const recorded = innerVersions[innerCuid];
+                versions[':' + recorded.source.getUID()] = recorded;
+            }
+        }
         this.versions = versions;
     }
     releaseDependencies() {
@@ -215,7 +208,7 @@ class Computed {
                 dependency.observed = false;
             }
         });
-        this.dependencies = Object.create(null);
+        this.dependencies = {};
     }
     onDependencyChanged = ()=>{
         if (this.valid && !this.hasDrifted()) return;
@@ -239,9 +232,7 @@ class Computed {
         if (unchanged) return;
         this.announced = {
             value: this.value,
-            versions: {
-                ...this.versions
-            }
+            versions: this.versions
         };
         this.version++;
         this.deliver();
