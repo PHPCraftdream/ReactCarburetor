@@ -49,6 +49,9 @@ interface IDependency {
     overlap: number;
 }
 
+const ownDependency = (record: IDict<IDependency>, id: string): IDependency | undefined =>
+    Object.prototype.hasOwnProperty.call(record, id) ? record[id] : undefined;
+
 /** One leaf source a value was computed from, and its captured public version. */
 interface IDependencyVersion {
     source: ICarburetorSubscription;
@@ -75,10 +78,10 @@ export class Computed<R> implements IComputed<R> {
     /** Callbacks woken when a changed value settles, keyed by subscription id. */
     protected subscribers: Map<string, TSubscriber> = new Map<string, TSubscriber>();
     /** What the current value was computed from, observed only while somebody is listening. */
-    protected dependencies: IDict<IDependency> = Object.create(null);
+    protected dependencies: IDict<IDependency> = {};
 
     /** Leaf versions, including flattened native computations and public external sources. */
-    protected versions: IDict<IDependencyVersion> = Object.create(null);
+    protected versions: IDict<IDependencyVersion> = {};
 
     /**
      * The value an observer last had delivered: the baseline a settlement is judged
@@ -151,7 +154,7 @@ export class Computed<R> implements IComputed<R> {
             }
 
             if (wasUnobserved && this.valid) {
-                this.announced = {value: this.value as R, versions: {...this.versions}};
+                this.announced = {value: this.value as R, versions: this.versions};
             }
         } catch (error: unknown) {
             if (previous) {
@@ -197,7 +200,7 @@ export class Computed<R> implements IComputed<R> {
 
     /** Whether any leaf source moved since this value was read. */
     protected hasDrifted(): boolean {
-        for (const cuid in this.versions) {
+        for (const cuid of Object.keys(this.versions)) {
             const recorded = this.versions[cuid];
 
             if (recorded.source.getVersion() !== recorded.version) {
@@ -214,7 +217,7 @@ export class Computed<R> implements IComputed<R> {
      * @param record - the versions captured at an earlier moment, e.g. alongside an announcement
      */
     protected driftedSince(record: IDict<IDependencyVersion>): boolean {
-        for (const cuid in record) {
+        for (const cuid of Object.keys(record)) {
             const recorded = record[cuid];
 
             if (recorded.source.getVersion() !== recorded.version) {
@@ -223,8 +226,8 @@ export class Computed<R> implements IComputed<R> {
         }
 
         // A body that now reads a store the snapshot never saw has changed inputs too.
-        for (const cuid in this.versions) {
-            if (!(cuid in record)) {
+        for (const cuid of Object.keys(this.versions)) {
+            if (!Object.prototype.hasOwnProperty.call(record, cuid)) {
                 return true;
             }
         }
@@ -234,16 +237,17 @@ export class Computed<R> implements IComputed<R> {
 
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
     protected recompute(): void {
-        const collected: IDict<IDependency> = Object.create(null);
+        const collected: IDict<IDependency> = {};
 
         const track = (source: ICarburetor<object> | IComputed<unknown>): unknown => {
-            const cuid = source.getUID();
-            let dependency = collected[cuid];
+            // Encode arbitrary public ids so __proto__ is an ordinary data key.
+            const cuid = ':' + source.getUID();
+            let dependency = ownDependency(collected, cuid);
 
             if (!dependency) {
                 dependency = {
                     source, reads: new Set<TPath>(), published: false, observed: false,
-                    previous: this.dependencies[cuid], overlap: 0,
+                    previous: ownDependency(this.dependencies, cuid), overlap: 0,
                 };
                 collected[cuid] = dependency;
             }
@@ -300,16 +304,11 @@ export class Computed<R> implements IComputed<R> {
         const fresh = this.diffDependencies(collected);
         const previousVersions = this.versions;
         this.recordVersions(collected);
-        let needsAttachment = false;
-        for (const cuid in fresh) {
-            needsAttachment = fresh[cuid];
-            break;
-        }
         // Retained edges need no setup transaction or subscription churn.
-        if (!needsAttachment) {
-            for (const cuid in this.dependencies) {
+        if (!fresh) {
+            for (const cuid of Object.keys(this.dependencies)) {
                 const previous = this.dependencies[cuid];
-                const next = collected[cuid];
+                const next = ownDependency(collected, cuid);
                 previous.published = false;
                 if (next) {
                     next.published = true;
@@ -325,7 +324,7 @@ export class Computed<R> implements IComputed<R> {
         const attempted: string[] = [];
         try {
             if (this.subscribers.size > 0) {
-                for (const cuid of Object.keys(fresh)) {
+                for (const cuid of fresh) {
                     const dependency = collected[cuid];
                     attempted.push(cuid);
                     computedDependencies.subscribe(dependency.source, this.onDependencyChanged,
@@ -335,7 +334,7 @@ export class Computed<R> implements IComputed<R> {
         } catch (error: unknown) {
             // Restore replaced edges; release new edges, including a partially attached failure.
             for (const cuid of attempted.reverse()) {
-                const previous = this.dependencies[cuid];
+                const previous = ownDependency(this.dependencies, cuid);
                 try {
                     if (previous?.observed && previous.source === collected[cuid].source) {
                         computedDependencies.subscribe(previous.source, this.onDependencyChanged,
@@ -353,7 +352,7 @@ export class Computed<R> implements IComputed<R> {
         for (const cuid of Object.keys(this.dependencies)) {
             const previous = this.dependencies[cuid];
             previous.published = false;
-            if (previous.observed && previous.source !== collected[cuid]?.source) {
+            if (previous.observed && previous.source !== ownDependency(collected, cuid)?.source) {
                 computedDependencies.unsubscribe(previous.source, this.uid);
             }
         }
@@ -367,48 +366,47 @@ export class Computed<R> implements IComputed<R> {
     }
 
     /** Keeps equal read sets subscribed, and replaces changed or newly collected edges. */
-    protected diffDependencies(collected: IDict<IDependency>): IDict<boolean> {
-        const fresh: IDict<boolean> = Object.create(null);
+    protected diffDependencies(collected: IDict<IDependency>): string[] | undefined {
+        let fresh: string[] | undefined;
 
-        Object.keys(collected).forEach((cuid: string) => {
+        for (const cuid of Object.keys(collected)) {
             const next = collected[cuid];
-            const previous = this.dependencies[cuid];
+            const previous = ownDependency(this.dependencies, cuid);
             if (!previous?.observed || next.source !== previous.source
                 || (next !== previous && (next.overlap !== previous.reads.size
                     || next.overlap !== next.reads.size))) {
-                fresh[cuid] = true;
+                (fresh ??= []).push(cuid);
             }
-        });
+        }
 
         return fresh;
     }
 
     /** Flattens native dependency metadata; external sources expose their public version. */
     protected recordVersions(collected: IDict<IDependency>): void {
-        const versions: IDict<IDependencyVersion> = Object.create(null);
+        const versions: IDict<IDependencyVersion> = {};
 
-        const record = (dependency: IDependency): void => {
+        for (const cuid of Object.keys(collected)) {
+            const dependency = collected[cuid];
             const innerVersions = 'read' in dependency.source
                 ? undefined : computedDependencies.versions.get(dependency.source)?.();
 
             if (!innerVersions) {
-                versions[dependency.source.getUID()] = {
+                versions[cuid] = {
                     source: dependency.source,
                     version: dependency.source.getVersion(),
                 };
 
-                return;
+                continue;
             }
 
-            Object.keys(innerVersions).forEach((cuid: string) => {
-                versions[cuid] = innerVersions[cuid];
-            });
-        };
+            for (const innerCuid of Object.keys(innerVersions)) {
+                const recorded = innerVersions[innerCuid];
+                versions[':' + recorded.source.getUID()] = recorded;
+            }
+        }
 
-        Object.keys(collected).forEach((cuid: string) => {
-            record(collected[cuid]);
-        });
-
+        // Published snapshots stay immutable; announcements can retain them directly.
         this.versions = versions;
     }
 
@@ -423,7 +421,7 @@ export class Computed<R> implements IComputed<R> {
             }
         });
 
-        this.dependencies = Object.create(null);
+        this.dependencies = {};
     }
 
     /**
@@ -534,7 +532,7 @@ export class Computed<R> implements IComputed<R> {
             return;
         }
 
-        this.announced = {value: this.value as R, versions: {...this.versions}};
+        this.announced = {value: this.value as R, versions: this.versions};
         this.version++;
         this.deliver();
     };

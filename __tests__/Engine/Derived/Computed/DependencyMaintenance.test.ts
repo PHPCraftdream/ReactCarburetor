@@ -4,7 +4,7 @@ import {CounterCarburetor, ExternalComputed, ListCarburetor, delta, getData} fro
 
 describe('computed', () => {
     describe('dependency maintenance', () => {
-        test.each(['external', '__proto__', 'constructor', 'toString'])(
+        test.each(['external', '__proto__', 'constructor', 'toString', ':__proto__', ':constructor'])(
             'external interface source %s stays fresh without observation', (uid) => {
                 const source = new ExternalComputed(7, uid);
                 Object.assign(source, {versions: undefined});
@@ -17,6 +17,58 @@ describe('computed', () => {
                 expect(source.listeners.size).toEqual(0);
             },
         );
+
+        test.each(['__proto__', 'constructor', 'toString', ':__proto__'])(
+            'observed external id %s retains its edge and releases it', (uid) => {
+                const source = new ExternalComputed(1, uid);
+                const value = computed(read => read(source) * 2);
+                const seen: number[] = [];
+                const id = value.subscribe(() => seen.push(value.get()));
+                source.set(2);
+                source.set(3);
+                expect(seen).toEqual([4, 6]);
+                expect(source.listeners.size).toEqual(1);
+                value.unsubscribe(id);
+                expect(source.listeners.size).toEqual(0);
+            },
+        );
+
+        test('unchanged native read sets keep their upstream registrations', () => {
+            const store = new CounterCarburetor({n: 0});
+            const storeSubscribe = rstest.spyOn(store, 'subscribe');
+            const storeUnsubscribe = rstest.spyOn(store, 'unsubscribe');
+            const inner = computed(read => read(store).n);
+            const innerSubscribe = rstest.spyOn(inner, 'subscribe');
+            const innerUnsubscribe = rstest.spyOn(inner, 'unsubscribe');
+            const outer = computed(read => read(inner) * 2);
+            const id = outer.subscribe(() => undefined);
+            store.setN(1);
+            store.setN(2);
+            expect(outer.get()).toEqual(4);
+            expect(storeSubscribe).toHaveBeenCalledTimes(1);
+            expect(innerSubscribe).toHaveBeenCalledTimes(1);
+            expect(storeUnsubscribe).not.toHaveBeenCalled();
+            expect(innerUnsubscribe).not.toHaveBeenCalled();
+            outer.unsubscribe(id);
+            expect(storeUnsubscribe).toHaveBeenCalledTimes(1);
+            expect(innerUnsubscribe).toHaveBeenCalledTimes(1);
+        });
+
+        test('an observed body that stops reading sources releases its last edge', () => {
+            const source = new ExternalComputed(1, '__proto__');
+            let detached = false;
+            const value = computed(read => detached ? 7 : read(source));
+            const seen: number[] = [];
+            const id = value.subscribe(() => seen.push(value.get()));
+            detached = true;
+            source.set(2);
+            expect(seen).toEqual([7]);
+            expect(source.listeners.size).toEqual(0);
+            source.set(3);
+            expect(value.get()).toEqual(7);
+            expect(seen).toEqual([7]);
+            value.unsubscribe(id);
+        });
 
         test('an observed external source publishes and releases its shared upstream edge', () => {
             const source = new ExternalComputed();
