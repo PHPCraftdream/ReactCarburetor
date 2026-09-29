@@ -1,5 +1,7 @@
 import {EResourceStatus} from "@/Carburetor";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {persist} from "@/Carburetor/Tooling/persist";
+import {transaction} from "@/Carburetor/Store/Transaction/transaction";
 
 const makeLoader = () => {
     const calls: string[] = [];
@@ -113,5 +115,133 @@ describe('ResourceCache forget', () => {
 
         cache.forgetAll();
         expect(entryCount()).toEqual(0);
+    });
+
+    test('empty forgetAll is a true no-op', () => {
+        const cache = new ResourceCache<string, string>(() => Promise.resolve('unused'));
+        let callbacks = 0;
+
+        const id = cache.subscribe(() => { callbacks++; });
+        cache.forgetAll();
+
+        expect(cache.getVersion()).toEqual(0);
+        expect(callbacks).toEqual(0);
+        cache.unsubscribe(id);
+    });
+
+    test('many ready entries publish once with precise per-key paths and patch hooks', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 200});
+        const keys = Array.from({length: 100}, (_, index) => `key-${index}`);
+
+        await fill(cache, loader, keys);
+
+        let wildcard = 0;
+        let first = 0;
+        let last = 0;
+        let missing = 0;
+        let patches = 0;
+
+        const ids = [
+            cache.subscribe(() => { wildcard++; }),
+            cache.subscribe(() => { first++; }, {reads: new Set([cache.pathOf(keys[0])])}),
+            cache.subscribe(() => { last++; }, {reads: new Set([cache.pathOf(keys[99])])}),
+            cache.subscribe(() => { missing++; }, {reads: new Set([cache.pathOf('missing')])}),
+        ];
+        const detach = cache.attachPatchListener(() => { patches++; });
+        const baseline = cache.getVersion();
+
+        cache.forgetAll();
+
+        expect(cache.getVersion() - baseline).toEqual(1);
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+        expect([wildcard, first, last, missing]).toEqual([1, 1, 1, 0]);
+        expect(patches).toBeGreaterThanOrEqual(keys.length);
+        detach();
+        ids.forEach((id) => cache.unsubscribe(id));
+    });
+
+    test.each([false, true])('forgetAll persists once with coalesce=%s', async (coalesce) => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load);
+
+        await fill(cache, loader, ['a', 'b', 'c']);
+
+        const values: string[] = [];
+        const storage = {
+            getItem: (_key: string): string | null => null,
+            setItem: (_key: string, value: string): void => { values.push(value); },
+            removeItem: (_key: string): void => undefined,
+        };
+        const dispose = persist(cache, {key: 'entries', storage, coalesce});
+
+        cache.forgetAll();
+
+        if (coalesce) {
+            expect(values).toHaveLength(0);
+            await Promise.resolve();
+        }
+
+        expect(values).toHaveLength(1);
+        expect(JSON.parse(values[0])).toEqual({entries: {}});
+        dispose();
+    });
+
+    test('nested forgetAll and an outer transaction deliver one final state', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, string>(loader.load);
+
+        await fill(cache, loader, ['a', 'b']);
+
+        const seen: number[] = [];
+        const id = cache.subscribe(() => { seen.push(Object.keys(cache.getData().entries).length); });
+        const baseline = cache.getVersion();
+
+        transaction(() => {
+            cache.forgetAll();
+            cache.forgetAll();
+            expect(seen).toEqual([]);
+            expect(cache.getVersion() - baseline).toEqual(1);
+        });
+
+        expect(seen).toEqual([0]);
+        cache.unsubscribe(id);
+    });
+
+    test('exception after a partial clear publishes the partial state and releases the scope', async () => {
+        class ThrowingCache extends ResourceCache<string, string> {
+            public fail = true;
+
+            protected forgetKey(key: string): void {
+                if (this.fail && key === this.keyOf('b')) {
+                    throw new Error('stop');
+                }
+
+                super.forgetKey(key);
+            }
+        }
+
+        const loader = makeLoader();
+        const cache = new ThrowingCache(loader.load);
+
+        await fill(cache, loader, ['a', 'b']);
+
+        let callbacks = 0;
+        const id = cache.subscribe(() => { callbacks++; });
+        const baseline = cache.getVersion();
+
+        expect(() => cache.forgetAll()).toThrow('stop');
+        expect(cache.getVersion() - baseline).toEqual(1);
+        expect(callbacks).toEqual(1);
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
+        expect(cache.getEntry('b').data).toEqual('value-b');
+
+        cache.fail = false;
+        cache.forgetAll();
+
+        expect(cache.getVersion() - baseline).toEqual(2);
+        expect(callbacks).toEqual(2);
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+        cache.unsubscribe(id);
     });
 });

@@ -42,6 +42,7 @@ const DEFAULT_TTL = 30000;
 const DEFAULT_MAX_ENTRIES = 100;
 class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
     loader;
+    forgetAllDepth = 0;
     restoreGeneration = 0;
     ttl;
     maxEntries;
@@ -137,7 +138,17 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.forgetKey(this.keyOf(args));
     }
     forgetAll() {
-        Object.keys(this.data.entries).forEach((key)=>this.forgetKey(key));
+        this.forgetAllDepth++;
+        try {
+            Object.keys(this.data.entries).forEach((key)=>this.forgetKey(key));
+        } finally{
+            this.forgetAllDepth--;
+            if (0 === this.forgetAllDepth && (this.draftTouched || this.writes.size > 0)) super.emitUpdate();
+        }
+    }
+    emitUpdate() {
+        if (this.forgetAllDepth > 0) return;
+        super.emitUpdate();
     }
     forgetKey(key) {
         this.abortKey(key);

@@ -21,6 +21,8 @@ const DEFAULT_MAX_ENTRIES: number = 100;
 
 /** Owns cache entry lifecycles, request state and eviction. */
 export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
+    /** Defers this cache's publications while a bulk removal is in progress. */
+    private forgetAllDepth: number = 0;
     /** Identifies the latest restore when an abort listener restores again. */
     private restoreGeneration: number = 0;
     /** Time before a successful entry becomes stale, in milliseconds. */
@@ -38,11 +40,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     /** Entry count, LRU order and eviction hysteresis — see EvictionLedger. */
     protected eviction: EvictionLedger = new EvictionLedger();
 
-    /**
-     * Resolve arguments to an entry key.
-     *
-     * @param args - the loader arguments to derive the key from
-     */
+    /** Resolve arguments to an entry key. */
     protected abstract keyOf(args: TArgs): string;
 
     /** Configure request lifecycle and cache capacity.
@@ -57,11 +55,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         this.maxEntries = options.maxEntries === undefined ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
 
-    /**
-     * Restore entries without reviving in-flight requests.
-     *
-     * @param data - the snapshot to restore
-     */
+    /** Restore entries without reviving in-flight requests. */
     public restore(data: IResourceCacheData<T>): void {
         const generation = ++this.restoreGeneration;
         const controllers = Array.from(this.controllers.entries());
@@ -149,11 +143,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         super.unsubscribe(id);
     }
 
-    /**
-     * Load an entry unless its current value is fresh.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Load an entry unless its current value is fresh. */
     public load(args: TArgs): Promise<void> {
         const key = this.keyOf(args);
         const entry = this.data.entries[key];
@@ -167,11 +157,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         return this.fetch(key, args);
     }
 
-    /**
-     * Request an entry even when its current value is fresh.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Request an entry even when its current value is fresh. */
     public refresh(args: TArgs): Promise<void> {
         const key = this.keyOf(args);
 
@@ -179,11 +165,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         return this.fetch(key, args);
     }
 
-    /**
-     * Abort the request for one argument set.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Abort the request for one argument set. */
     public abort(args: TArgs): void {
         this.abortKey(this.keyOf(args));
     }
@@ -193,11 +175,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         Array.from(this.controllers.keys()).forEach((key: string) => this.abortKey(key));
     }
 
-    /**
-     * Mark an entry stale without removing its data.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Mark an entry stale without removing its data. */
     public invalidate(args: TArgs): void {
         const key = this.keyOf(args);
 
@@ -227,18 +205,34 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         });
     }
 
-    /**
-     * Remove an entry and cancel its request.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Remove an entry and cancel its request. */
     public forget(args: TArgs): void {
         this.forgetKey(this.keyOf(args));
     }
 
     /** Remove all entries and cancel their requests. */
     public forgetAll(): void {
-        Object.keys(this.data.entries).forEach((key: string) => this.forgetKey(key));
+        this.forgetAllDepth++;
+
+        try {
+            Object.keys(this.data.entries).forEach((key: string) => this.forgetKey(key));
+        } finally {
+            this.forgetAllDepth--;
+
+            // End the scope before delivery: a subscriber may write or call forgetAll again.
+            if (this.forgetAllDepth === 0 && (this.draftTouched || this.writes.size > 0)) {
+                super.emitUpdate();
+            }
+        }
+    }
+
+    /** Keep individual mutations and patch hooks, but publish their union once. */
+    protected emitUpdate(): void {
+        if (this.forgetAllDepth > 0) {
+            return;
+        }
+
+        super.emitUpdate();
     }
 
     /**

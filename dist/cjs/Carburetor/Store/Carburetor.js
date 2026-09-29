@@ -235,9 +235,10 @@ class Carburetor {
     }
     emitSoon() {
         this.pendingEmit = true;
+        const scheduledAt = this.version;
         queueMicrotask(()=>{
             this.pendingEmit = false;
-            this.emitUpdate();
+            if (this.version === scheduledAt || this.draftTouched || this.writes.size > 0) this.emitUpdate();
         });
     }
     touchDraft() {

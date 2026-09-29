@@ -218,6 +218,201 @@ describe('ResourceCache reentrant loads', () => {
         expect(cache.getEntry('a').data).toEqual('replacement');
     });
 
+    test('forgetAll aborts pending and refreshing requests and filters their late answers', async () => {
+        const resolvers: Record<string, Array<(value: string) => void>> = {};
+        const signals: Record<string, AbortSignal[]> = {};
+        const cache = new ResourceCache<string, string>((key, signal) => {
+            (signals[key] ??= []).push(signal);
+
+            return new Promise<string>((resolve) => {
+                (resolvers[key] ??= []).push(resolve);
+            });
+        });
+        const firstReady = cache.load('ready');
+
+        resolvers.ready[0]('stored');
+        await firstReady;
+
+        const refreshing = cache.refresh('ready');
+        const pending = cache.load('pending');
+        let callbacks = 0;
+        const id = cache.subscribe(() => { callbacks++; });
+        const baseline = cache.getVersion();
+
+        cache.forgetAll();
+
+        expect(signals.ready[1].aborted).toBeTruthy();
+        expect(signals.pending[0].aborted).toBeTruthy();
+        expect(cache.getVersion() - baseline).toEqual(1);
+        expect(callbacks).toEqual(1);
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+
+        resolvers.ready[1]('late-ready');
+        resolvers.pending[0]('late-pending');
+        await Promise.all([refreshing, pending]);
+
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+        cache.unsubscribe(id);
+    });
+
+    test('forgetAll retains a new cross-key request if its key was absent initially', async () => {
+        const resolvers: Record<string, (value: string) => void> = {};
+        const signals: Record<string, AbortSignal> = {};
+        const cache = new ResourceCache<string, string>((key, signal) => {
+            signals[key] = signal;
+
+            return new Promise<string>((resolve) => { resolvers[key] = resolve; });
+        });
+        const original = cache.load('a');
+        let other: Promise<void> | undefined;
+
+        signals.a.addEventListener('abort', () => { other = cache.load('b'); });
+        cache.forgetAll();
+
+        expect(signals.a.aborted).toBeTruthy();
+        expect(signals.b.aborted).toBeFalsy();
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
+        expect(cache.getEntry('b').status).toEqual(EResourceStatus.Pending);
+
+        resolvers.a('late');
+        resolvers.b('new');
+        await Promise.all([original, other]);
+        expect(cache.getEntry('b').data).toEqual('new');
+    });
+
+    test('forgetAll still visits a cross-key replacement if that key was in the initial list', async () => {
+        const resolvers: Record<string, Array<(value: string) => void>> = {};
+        const signals: Record<string, AbortSignal[]> = {};
+        const cache = new ResourceCache<string, string>((key, signal) => {
+            (signals[key] ??= []).push(signal);
+
+            return new Promise<string>((resolve) => { (resolvers[key] ??= []).push(resolve); });
+        });
+        const original = cache.load('a');
+        const ready = cache.load('b');
+
+        resolvers.b[0]('stored');
+        await ready;
+
+        let replacement: Promise<void> | undefined;
+
+        signals.a[0].addEventListener('abort', () => { replacement = cache.refresh('b'); });
+        cache.forgetAll();
+
+        expect(signals.b[1].aborted).toBeTruthy();
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+
+        resolvers.a[0]('late-a');
+        resolvers.b[1]('late-b');
+        await Promise.all([original, replacement]);
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+    });
+
+    test('forgetAll consumes a deferred loading emit without a later wildcard', async () => {
+        let resolve: (value: string) => void = () => undefined;
+        const cache = new ResourceCache<string, string>(() => new Promise<string>((done) => { resolve = done; }));
+        let pending: Promise<void> | undefined;
+
+        try {
+            cache.suspend('a');
+        } catch (value: unknown) {
+            pending = value as Promise<void>;
+        }
+
+        let callbacks = 0;
+        const id = cache.subscribe(() => { callbacks++; });
+        cache.forgetAll();
+
+        expect(callbacks).toEqual(1);
+        expect(cache.getVersion()).toEqual(1);
+        await Promise.resolve();
+        expect(callbacks).toEqual(1);
+        expect(cache.getVersion()).toEqual(1);
+
+        resolve('late');
+        await pending;
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+        cache.unsubscribe(id);
+    });
+
+    test('forgetAll uses fresh draft state after an abort listener replaces the root', async () => {
+        const signals: Record<string, AbortSignal> = {};
+        let resolve: (value: string) => void = () => undefined;
+        const cache = new ResourceCache<string, string>((key, signal) => {
+            signals[key] = signal;
+
+            return new Promise<string>((done) => { resolve = done; });
+        });
+        const original = cache.load('a');
+
+        signals.a.addEventListener('abort', () => {
+            cache.setData({entries: {
+                [cache.keyOf('a')]: {status: EResourceStatus.Success, data: 'restored-a',
+                    error: undefined, updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false},
+                [cache.keyOf('new')]: {status: EResourceStatus.Success, data: 'restored-new',
+                    error: undefined, updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false},
+            }});
+        });
+
+        cache.forgetAll();
+
+        expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
+        expect(cache.getEntry('new').data).toEqual('restored-new');
+
+        resolve('late');
+        await original;
+    });
+
+    test('forgetAll called from an abort listener shares the outer publication', async () => {
+        let resolve: (value: string) => void = () => undefined;
+        let signal: AbortSignal | undefined;
+        const cache = new ResourceCache<string, string>((_key, currentSignal) => {
+            signal = currentSignal;
+
+            return new Promise<string>((done) => { resolve = done; });
+        });
+        const request = cache.load('a');
+        let callbacks = 0;
+
+        const id = cache.subscribe(() => { callbacks++; });
+        signal?.addEventListener('abort', () => { cache.forgetAll(); });
+        const baseline = cache.getVersion();
+
+        cache.forgetAll();
+
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+        expect(cache.getVersion() - baseline).toEqual(1);
+        expect(callbacks).toEqual(1);
+
+        resolve('late');
+        await request;
+        cache.unsubscribe(id);
+    });
+
+    test('a subscriber reentering after forgetAll gets a separate publication', async () => {
+        const cache = new ResourceCache<string, string>((key) => key === 'a'
+            ? Promise.resolve('ready') : new Promise<string>(() => undefined));
+
+        await cache.load('a');
+
+        let callbacks = 0;
+        const id = cache.subscribe(() => {
+            callbacks++;
+
+            if (callbacks === 1) {
+                void cache.load('b');
+            }
+        });
+        const baseline = cache.getVersion();
+
+        cache.forgetAll();
+
+        expect(cache.getVersion() - baseline).toEqual(2);
+        expect(callbacks).toEqual(2);
+        expect(cache.getEntry('b').status).toEqual(EResourceStatus.Pending);
+        cache.unsubscribe(id);
+    });
+
     test('settling without a stored entry clears request bookkeeping', async () => {
         const resolvers: Array<(value: string) => void> = [];
         let calls = 0;

@@ -500,10 +500,15 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** Publishes on the next microtask — for writes made where notifying now is unsafe. */
     protected emitSoon(): void {
         this.pendingEmit = true;
+        const scheduledAt = this.version;
 
         queueMicrotask(() => {
             this.pendingEmit = false;
-            this.emitUpdate();
+
+            // Keep the opaque fallback, unless a synchronous emit already published it.
+            if (this.version === scheduledAt || this.draftTouched || this.writes.size > 0) {
+                this.emitUpdate();
+            }
         });
     }
 

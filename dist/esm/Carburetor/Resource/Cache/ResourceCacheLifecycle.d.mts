@@ -6,6 +6,8 @@ import { EvictionLedger } from "./EvictionLedger.mjs";
 /** Owns cache entry lifecycles, request state and eviction. */
 export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
     protected loader: TResourceLoader<T, TArgs>;
+    /** Defers this cache's publications while a bulk removal is in progress. */
+    private forgetAllDepth;
     /** Identifies the latest restore when an abort listener restores again. */
     private restoreGeneration;
     /** Time before a successful entry becomes stale, in milliseconds. */
@@ -22,11 +24,7 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
     protected viewCache: Map<string, IResourceView<T>>;
     /** Entry count, LRU order and eviction hysteresis — see EvictionLedger. */
     protected eviction: EvictionLedger;
-    /**
-     * Resolve arguments to an entry key.
-     *
-     * @param args - the loader arguments to derive the key from
-     */
+    /** Resolve arguments to an entry key. */
     protected abstract keyOf(args: TArgs): string;
     /** Configure request lifecycle and cache capacity.
      *
@@ -34,11 +32,7 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
      * @param options - Cache and scheduler settings.
      */
     protected constructor(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions);
-    /**
-     * Restore entries without reviving in-flight requests.
-     *
-     * @param data - the snapshot to restore
-     */
+    /** Restore entries without reviving in-flight requests. */
     restore(data: IResourceCacheData<T>): void;
     /** Record an entry access for eviction order — see `EvictionLedger.touch`.
      *
@@ -57,42 +51,24 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
      * @param id - see `Carburetor.unsubscribe`
      */
     unsubscribe(id: string): void;
-    /**
-     * Load an entry unless its current value is fresh.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Load an entry unless its current value is fresh. */
     load(args: TArgs): Promise<void>;
-    /**
-     * Request an entry even when its current value is fresh.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Request an entry even when its current value is fresh. */
     refresh(args: TArgs): Promise<void>;
-    /**
-     * Abort the request for one argument set.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Abort the request for one argument set. */
     abort(args: TArgs): void;
     /** Abort all in-flight requests. */
     abortAll(): void;
-    /**
-     * Mark an entry stale without removing its data.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Mark an entry stale without removing its data. */
     invalidate(args: TArgs): void;
     /** Mark every entry stale. */
     invalidateAll(): void;
-    /**
-     * Remove an entry and cancel its request.
-     *
-     * @param args - the loader arguments identifying the entry
-     */
+    /** Remove an entry and cancel its request. */
     forget(args: TArgs): void;
     /** Remove all entries and cancel their requests. */
     forgetAll(): void;
+    /** Keep individual mutations and patch hooks, but publish their union once. */
+    protected emitUpdate(): void;
     /**
      * Remove the entry at a resolved cache key.
      *
