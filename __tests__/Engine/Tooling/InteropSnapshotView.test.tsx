@@ -60,6 +60,64 @@ class MapRootCarburetor extends Carburetor<Map<string, number>> {
 }
 
 describe('useCarburetorValue persistent root view', () => {
+    test('a root descriptor-only selector does not follow primitive changes (R8-02)', () => {
+        const carburetor = new CounterCarburetor({count: 0});
+        let descriptorRenders = 0;
+
+        const Ordinary = () => {
+            const count = useCarburetorValue(carburetor, (view) => view.count);
+
+            return <span className="ordinary">{count}</span>;
+        };
+        const Descriptor = () => {
+            descriptorRenders++;
+            const count = useCarburetorValue(
+                carburetor,
+                (view) => Object.getOwnPropertyDescriptor(view, 'count')?.value as number
+            );
+
+            return <span className="descriptor">{count}</span>;
+        };
+        const {container, unmount} = render(<><Ordinary/><Descriptor/></>);
+        const initialDescriptorRenders = descriptorRenders;
+
+        act(() => carburetor.bump());
+
+        expect(container.querySelector('.ordinary')?.textContent).toBe('1');
+        expect(container.querySelector('.descriptor')?.textContent).toBe('0');
+        expect(descriptorRenders).toBe(initialDescriptorRenders);
+        unmount();
+    });
+
+    test('a nested descriptor-only selector does not follow leaf changes (R8-02)', () => {
+        const carburetor = new BoxCarburetor({box: {count: 0}});
+        let descriptorRenders = 0;
+
+        const Ordinary = () => {
+            const count = useCarburetorValue(carburetor, (view) => view.box.count);
+
+            return <span className="ordinary">{count}</span>;
+        };
+        const Descriptor = () => {
+            descriptorRenders++;
+            const count = useCarburetorValue(
+                carburetor,
+                (view) => Object.getOwnPropertyDescriptor(view.box, 'count')?.value as number
+            );
+
+            return <span className="descriptor">{count}</span>;
+        };
+        const {container, unmount} = render(<><Ordinary/><Descriptor/></>);
+        const initialDescriptorRenders = descriptorRenders;
+
+        act(() => carburetor.bump());
+
+        expect(container.querySelector('.ordinary')?.textContent).toBe('1');
+        expect(container.querySelector('.descriptor')?.textContent).toBe('0');
+        expect(descriptorRenders).toBe(initialDescriptorRenders);
+        unmount();
+    });
+
     test('an inline selector recreated every render reads the store at most once while data is unchanged', () => {
         const carburetor = new CounterCarburetor({count: 0});
         const readSpy = rstest.spyOn(carburetor, 'read');

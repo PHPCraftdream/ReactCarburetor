@@ -14,8 +14,13 @@ const WRITES = 250;
 const LIMIT = 50;
 const ROUNDS = 9;
 
-class Board extends Carburetor {
-    setTitle(index, title) {
+    class Board extends Carburetor {
+        /** Updates a row title.
+         *
+         * @param index - row index
+         * @param title - new title
+         */
+        setTitle(index, title) {
         this.update(draft => {
             draft.rows['row' + index].title = title;
         });
