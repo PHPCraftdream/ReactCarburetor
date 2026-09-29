@@ -7,6 +7,9 @@ import { TSelector, TValueComparator } from "./Models.js";
  *
  * A selected class instance cannot be detached safely and throws; select its rendered
  * fields as plain values instead.
+ * Read primitive values with ordinary property access or `Reflect.get` inside `select`.
+ * `Object.getOwnPropertyDescriptor(view, key)?.value` and `hasOwnProperty` inspect structure
+ * without registering that value as a leaf dependency.
  *
  * @param carburetor - the store read and subscribed to; swapping it unsubscribes the previous
  * one and reconciles against the new read set

@@ -5,6 +5,9 @@ import { TPathSet, TPatchRecorder } from "./Paths.js";
  * read view — the same mechanism `read()` and the hooks bridge use. `watch()`'s reads and
  * `sameSelection` comparison both key off what this touches, so a conditional selector still
  * narrows or widens the subscription the way a direct read would.
+ * Read selected values through ordinary property access (`data.key` or `Reflect.get`).
+ * Descriptor and `hasOwnProperty` introspection do not register a value dependency; descriptor
+ * lookups also occur inside key enumeration, which tracks the key set instead.
  */
 export type TSelector<T, R> = (data: TReadonly<T>) => R;
 /**
@@ -91,6 +94,8 @@ export interface ICarburetor<T> extends IInspectable {
      * selector can read different paths next time. A throwing selector or callback is isolated
      * the same way any other subscriber's throw is: the write has already landed, the remaining
      * subscribers still hear it, and the failure is reported rather than re-thrown.
+     * Select a value with `data.key` or `Reflect.get(data, 'key')`; a primitive obtained only
+     * through `Object.getOwnPropertyDescriptor(data, 'key')?.value` is not tracked as a leaf.
      *
      * `select`/`onChange` never see raw path strings, which is the point: prefer this over
      * `subscribe(callback, {reads})` unless you are writing engine-level tooling that genuinely
