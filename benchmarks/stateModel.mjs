@@ -303,19 +303,18 @@ runAB(
 
 const mapIdsReused = (Carburetor) => {
     const store = new Carburetor(buildRoot());
-    const ids = store.getData().ids;
 
-    return () => ({store, ids});
+    return () => ({store});
 };
 
 runAB(
     'read: view.ids.map(id => view.items[id].title) (4000)', 300,
-    mapIdsReused(before.prod.Carburetor), ({store, ids}) => {
+    mapIdsReused(before.prod.Carburetor), ({store}) => {
         const view = store.read(() => undefined);
 
         view.ids.map((id) => view.items[id].title);
     },
-    mapIdsReused(after.prod.Carburetor), ({store, ids}) => {
+    mapIdsReused(after.prod.Carburetor), ({store}) => {
         const view = store.read(() => undefined);
 
         view.ids.map((id) => view.items[id].title);
