@@ -438,15 +438,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         return wrote;
     }
 
-    /**
-     * `Object.defineProperty` never reaches `set`, so without this trap the write would land
-     * in the data and wake nobody. A new own key also wakes an enumerator of this container
-     * (R16-01); redefining an existing one does not change the key set.
-     *
-     * Refuses a symbol key, and refuses any descriptor that is not a plain, fully-open data
-     * property (R6-02/R6-03) — an accessor, a non-configurable/non-writable/non-enumerable flag,
-     * or a new key left non-enumerable — so `defineProperty` cannot install what `set` would
-     * never have written in the first place.
+    /** Attributes effective data definitions, including implicit array growth.
+     * Symbols and non-plain descriptors are refused before the native definition.
      *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being defined.
@@ -482,6 +475,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         this.aliases?.checkWrite(source, this.basePath);
 
         const effective = 'value' in descriptor ? {...descriptor, value: raw} : descriptor;
+        const previousLength = this.isArray ? (source as unknown as unknown[]).length : undefined;
         const wrote = Reflect.defineProperty(source, key, effective);
         if (!wrote) {
             return false;
@@ -504,6 +498,14 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         this.record(path);
+
+        if (previousLength !== undefined && (source as unknown as unknown[]).length !== previousLength) {
+            const nextLength = (source as unknown as unknown[]).length;
+            if (listener) {
+                this.reportPatch(listener, 'length', previousLength, nextLength);
+            }
+            this.record(this.writtenPath('length'));
+        }
 
         return true;
     }
