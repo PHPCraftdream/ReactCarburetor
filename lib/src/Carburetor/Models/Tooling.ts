@@ -35,7 +35,7 @@ export interface IPersistOptions {
 }
 
 export interface IHistoryOptions {
-    /** How many past states to keep; older ones are dropped. */
+    /** Maximum past states to retain. A positive safe integer; defaults to 50. Invalid values throw. */
     limit?: number;
 }
 

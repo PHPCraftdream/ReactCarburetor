@@ -74,7 +74,10 @@ export class CarburetorHistory<T extends object> {
      * @param options - `limit` caps how far back undo reaches; defaults to 50 entries when omitted
      */
     constructor(protected carburetor: ICarburetor<T> & IPatchSource, options: IHistoryOptions = {}) {
-        this.limit = options.limit || 50;
+        if (options.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit <= 0)) {
+            throw new RangeError('CarburetorHistory: limit must be a positive safe integer');
+        }
+        this.limit = options.limit ?? 50;
         this.baseline = carburetor.snapshot();
 
         const detachPatches = carburetor.attachPatchListener(this.onPatchBound);

@@ -376,11 +376,20 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
         this.aliases?.checkKey(source, key, path);
         this.aliases?.checkState(raw, path, wasOwn ? previous : undefined);
+        this.aliases?.checkWrite(source, this.basePath);
+
+        // Define the literal data key before recording: the inherited setter must never run,
+        // and a refused definition must leave no path or patch behind.
+        const protoWrite = key === '__proto__';
+        if (protoWrite && !Reflect.defineProperty(source, key, {
+            value: raw, writable: true, enumerable: true, configurable: true,
+        })) {
+            return false;
+        }
 
         // A branch replaced or deleted takes its old object's recorded path with it, and a
         // write into an object last read under a different path is the aliasing the ledger
         // exists to report.
-        this.aliases?.checkWrite(source, this.basePath);
         this.aliases?.forget(previous);
 
         const listener = this.patchPort?.listener;
@@ -419,7 +428,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             this.record(path);
         }
 
-        const wrote = Reflect.set(source, key, raw);
+        const wrote = protoWrite || Reflect.set(source, key, raw);
 
         if (previousLength !== undefined && (source as unknown as {length: number}).length !== previousLength) {
             const newLength = (source as unknown as {length: number}).length;
@@ -474,8 +483,13 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
         this.aliases?.checkKey(source, key, path);
         this.aliases?.checkState(descriptor.value, path, wasOwn ? previous : undefined);
-
         this.aliases?.checkWrite(source, this.basePath);
+
+        const wrote = Reflect.defineProperty(source, key, descriptor);
+        if (!wrote) {
+            return false;
+        }
+
         this.aliases?.forget(previous);
 
         if (!wasOwn) {
@@ -490,7 +504,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
         this.record(path);
 
-        return Reflect.defineProperty(source, key, descriptor);
+        return true;
     }
 
     /**

@@ -31,7 +31,7 @@ export interface IPersistOptions {
     coalesce?: boolean;
 }
 export interface IHistoryOptions {
-    /** How many past states to keep; older ones are dropped. */
+    /** Maximum past states to retain. A positive safe integer; defaults to 50. Invalid values throw. */
     limit?: number;
 }
 /** The slice of the Redux DevTools protocol this integration needs. */

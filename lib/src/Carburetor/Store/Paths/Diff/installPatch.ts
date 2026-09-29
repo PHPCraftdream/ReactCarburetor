@@ -19,7 +19,11 @@ export const installPatch = (root: Record<string, unknown>, patch: IWritePatch, 
     let node: Record<string, unknown> = root;
 
     for (let i = 0; i < patch.segments.length - 1; i++) {
-        node = node[patch.segments[i]] as Record<string, unknown>;
+        const segment = patch.segments[i];
+        if (!Object.prototype.hasOwnProperty.call(node, segment)) {
+            throw new Error('Carburetor: patch path is missing an own segment');
+        }
+        node = node[segment] as Record<string, unknown>;
     }
 
     const key = patch.segments[patch.segments.length - 1];
@@ -27,6 +31,11 @@ export const installPatch = (root: Record<string, unknown>, patch: IWritePatch, 
 
     if (value === PATCH_ABSENT) {
         delete node[key];
+    } else if (key === '__proto__') {
+        Object.defineProperty(node, key, {
+            value: isTrackable(value) ? deepClone(value) : value,
+            writable: true, enumerable: true, configurable: true,
+        });
     } else {
         node[key] = isTrackable(value) ? deepClone(value) : value;
     }

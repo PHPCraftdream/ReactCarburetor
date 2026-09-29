@@ -332,3 +332,84 @@ describe('CarburetorHistory undo/redo correctness (R16-07)', () => {
         expect(history.undo()).toBeFalsy();
     });
 });
+
+describe('CarburetorHistory literal __proto__ and limit', () => {
+    interface IData { branch: Record<string, unknown> }
+    class Store extends Carburetor<IData> {
+        public write = (value: unknown, define = false): void => this.update(draft => {
+            if (define) {
+                Object.defineProperty(draft.branch, '__proto__', {
+                    value, writable: true, enumerable: true, configurable: true,
+                });
+            } else {
+                draft.branch['__proto__'] = value;
+            }
+        });
+        public changeChild = (value: number): void => this.update(draft => {
+            (draft.branch['__proto__'] as {x: number}).x = value;
+        });
+        public remove = (): void => this.update(draft => {
+            delete draft.branch['__proto__'];
+        });
+    }
+
+    test.each([false, true])('literal key via defineProperty=%s survives replay', (define) => {
+        const store = new Store({branch: {}});
+        const history = new CarburetorHistory(store);
+        const seen: string[] = [];
+        const values: Array<number | undefined> = [];
+        const stop = store.watch(state => Object.keys(state.branch).join(','), value => seen.push(value));
+        const stopValue = store.watch(state => Object.keys(state.branch).includes('__proto__')
+            ? (state.branch['__proto__'] as {x: number}).x : undefined, value => values.push(value));
+        const branch = (): Record<string, unknown> => store.getData().branch;
+        const check = (own: boolean, x?: number): void => {
+            expect(Object.getPrototypeOf(branch())).toBe(Object.prototype);
+            expect(Object.prototype.hasOwnProperty.call(branch(), '__proto__')).toBe(own);
+            expect(Object.keys(branch())).toEqual(own ? ['__proto__'] : []);
+            if (own) expect((branch()['__proto__'] as {x: number}).x).toBe(x);
+        };
+
+        store.write({x: 1}, define);
+        check(true, 1);
+        store.changeChild(2);
+        check(true, 2);
+        store.remove();
+        check(false);
+        expect(history.undo()).toBe(true);
+        check(true, 2);
+        expect(history.undo()).toBe(true);
+        check(true, 1);
+        expect(history.undo()).toBe(true);
+        check(false);
+        expect(history.redo()).toBe(true);
+        check(true, 1);
+        expect(history.redo()).toBe(true);
+        check(true, 2);
+        expect(history.redo()).toBe(true);
+        check(false);
+        expect(seen).toEqual(['__proto__', '', '__proto__', '', '__proto__', '']);
+        expect(values).toEqual([1, 2, undefined, 2, 1, undefined, 1, 2, undefined]);
+        stop();
+        stopValue();
+        history.disconnect();
+    });
+
+    test('limit rejects invalid values before attaching and keeps only its cap', () => {
+        const store = new BoardCarburetor(buildBoard());
+        for (const limit of [0, -1, 1.5, NaN, Infinity, -Infinity, Number.MAX_SAFE_INTEGER + 1]) {
+            expect(() => new CarburetorHistory(store, {limit})).toThrow(RangeError);
+        }
+        class InspectedHistory extends CarburetorHistory<IBoardData> {
+            public retained(): number { return this.past.length; }
+        }
+        const history = new InspectedHistory(store, {limit: 1});
+        store.setTitle('a', 'A2');
+        store.setTitle('a', 'A3');
+        store.setTitle('a', 'A4');
+        expect(history.retained()).toBe(1);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().items.a.title).toBe('A3');
+        expect(history.undo()).toBe(false);
+        history.disconnect();
+    });
+});

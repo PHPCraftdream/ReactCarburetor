@@ -15,7 +15,8 @@ class CarburetorHistory {
     onPatchBound = (patch)=>this.onPatch(patch);
     constructor(carburetor, options = {}){
         this.carburetor = carburetor;
-        this.limit = options.limit || 50;
+        if (void 0 !== options.limit && (!Number.isSafeInteger(options.limit) || options.limit <= 0)) throw new RangeError('CarburetorHistory: limit must be a positive safe integer');
+        this.limit = options.limit ?? 50;
         this.baseline = carburetor.snapshot();
         const detachPatches = carburetor.attachPatchListener(this.onPatchBound);
         const subscriptionId = carburetor.subscribe(this.recordBound);

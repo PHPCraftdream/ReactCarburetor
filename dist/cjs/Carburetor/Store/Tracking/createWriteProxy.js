@@ -193,6 +193,13 @@ class WriteProxyHandler {
         null == (_this_aliases = this.aliases) || _this_aliases.checkKey(source, key, path);
         null == (_this_aliases1 = this.aliases) || _this_aliases1.checkState(raw, path, wasOwn ? previous : void 0);
         null == (_this_aliases2 = this.aliases) || _this_aliases2.checkWrite(source, this.basePath);
+        const protoWrite = '__proto__' === key;
+        if (protoWrite && !Reflect.defineProperty(source, key, {
+            value: raw,
+            writable: true,
+            enumerable: true,
+            configurable: true
+        })) return false;
         null == (_this_aliases3 = this.aliases) || _this_aliases3.forget(previous);
         const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
         if (!wasOwn) this.record(this.keysMarker());
@@ -207,7 +214,7 @@ class WriteProxyHandler {
             if (listener) this.reportPatch(listener, key, wasOwn ? previous : Paths_js_namespaceObject.PATCH_ABSENT, raw);
             this.record(path);
         }
-        const wrote = Reflect.set(source, key, raw);
+        const wrote = protoWrite || Reflect.set(source, key, raw);
         if (void 0 !== previousLength && source.length !== previousLength) {
             const newLength = source.length;
             if (listener) this.reportPatch(listener, 'length', previousLength, newLength);
@@ -226,12 +233,14 @@ class WriteProxyHandler {
         null == (_this_aliases = this.aliases) || _this_aliases.checkKey(source, key, path);
         null == (_this_aliases1 = this.aliases) || _this_aliases1.checkState(descriptor.value, path, wasOwn ? previous : void 0);
         null == (_this_aliases2 = this.aliases) || _this_aliases2.checkWrite(source, this.basePath);
+        const wrote = Reflect.defineProperty(source, key, descriptor);
+        if (!wrote) return false;
         null == (_this_aliases3 = this.aliases) || _this_aliases3.forget(previous);
         if (!wasOwn) this.record(this.keysMarker());
         const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
         if (listener) this.reportPatch(listener, key, wasOwn ? previous : Paths_js_namespaceObject.PATCH_ABSENT, descriptor.value);
         this.record(path);
-        return Reflect.defineProperty(source, key, descriptor);
+        return true;
     }
     deleteProperty(source, key) {
         var _this_aliases, _this_aliases1, _this_patchPort;
