@@ -5,7 +5,7 @@
  * @param recorder - the history/computed build
  * @param label - the mixed-module direction
  */
-export const checkEngineBoundaries = (assert, producer, recorder, label) => {
+export const checkEngineBoundaries = async (assert, producer, recorder, label) => {
     const completed = [];
     const selectors = [
         ['map-value', view => view.map.get('row').n],
@@ -72,6 +72,52 @@ export const checkEngineBoundaries = (assert, producer, recorder, label) => {
             completed.push(label + ':length-' + (nested ? 'nested-' : 'root-') +
                 (truncate ? 'truncate' : 'flag-only'));
         }
+    }
+    {
+        const store = new producer.Carburetor([1, 2]);
+        const history = new recorder.CarburetorHistory(store);
+        class Reader extends recorder.AntiHookComponent {
+            /** Keeps the array facade stable across descriptor transitions. */
+            view = this.connect(store);
+            /** This descriptor probe needs no rendered markup. */
+            render() { return null; }
+        }
+        const reader = new Reader({});
+        const check = length => {
+            assert.equal(reader.view.length, length);
+            assert.equal(Object.getOwnPropertyDescriptor(reader.view, 'length').value, length);
+        };
+        check(2);
+        store.update(draft => {
+            Object.defineProperty(draft, 'length', {value: 1, writable: false});
+        });
+        check(1);
+        assert.equal(history.undo(), true);
+        check(2);
+        assert.equal(history.redo(), true);
+        check(1);
+        store.setData([4, 5, 6]);
+        check(3);
+        history.disconnect();
+        completed.push(label + ':connected-length-descriptor');
+    }
+    {
+        let calls = 0;
+        const cache = new producer.ResourceCache(async () => { calls++; return 'ready'; });
+        const id = cache.subscribe(() => {
+            if (cache.getEntry('k').status === 'pending') cache.abort('k');
+        });
+        try {
+            await assert.rejects(cache.load('k'), error => error.name === 'AbortError');
+            assert.equal(calls, 0);
+            assert.equal(cache.getEntry('k').status, 'idle');
+        } finally {
+            cache.unsubscribe(id);
+        }
+        await cache.load('k');
+        assert.equal(calls, 1);
+        assert.equal(cache.getEntry('k').data, 'ready');
+        completed.push(label + ':cache-preloader-cancel');
     }
     return completed;
 };

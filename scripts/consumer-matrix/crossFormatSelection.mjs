@@ -464,7 +464,7 @@ const engineCases = [];
         assert.equal(replacementFailure.code, undefined);
         assert.equal(cache.getFailure('a'), undefined);
         histories.push(label + ':entry-owned-failure');
-        engineCases.push(...checkEngineBoundaries(assert, storeModule, historyModule, label));
+        engineCases.push(...await checkEngineBoundaries(assert, storeModule, historyModule, label));
     }
 
     process.stdout.write(JSON.stringify({
@@ -544,7 +544,8 @@ export const runCrossFormatSelection = (installDir) => {
 
     const boundaryKinds = ['alias-map-value', 'alias-set-member', 'alias-map-key', 'alias-native-own',
         'alias-root-link', 'length-root-flag-only', 'length-root-truncate',
-        'length-nested-flag-only', 'length-nested-truncate'];
+        'length-nested-flag-only', 'length-nested-truncate',
+        'connected-length-descriptor', 'cache-preloader-cancel'];
     const expectedBoundaries = ['cjs-store/esm-history', 'esm-store/cjs-history']
         .flatMap(label => boundaryKinds.map(kind => label + ':' + kind));
     if (JSON.stringify(parsed.engineCases) !== JSON.stringify(expectedBoundaries)) {
