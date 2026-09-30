@@ -82,11 +82,99 @@ describe('ResourceCache reentrant loads', () => {
             }
         }, {id: 'abort', reads: readsOf(cache.pathOf('a'))});
 
-        await cache.load('a');
+        await expect(cache.load('a')).rejects.toMatchObject({name: 'AbortError'});
 
         expect(calls).toEqual(0);
         expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
         expect(cache.getEntry('a').data).toBeUndefined();
+    });
+
+    test.each(['abort', 'forget', 'forgetAll', 'restore'] as const)(
+        'a %s during Pending publication rejects the old request without stealing its replacement',
+        async (method) => {
+            const calls: string[] = [];
+            const pending = Promise.withResolvers<string>();
+            const cache = new ResourceCache<string, string>((key) => {
+                calls.push(key);
+
+                return pending.promise;
+            }, {ttl: Infinity});
+            let replacement: Promise<void> | undefined;
+            let superseded = false;
+
+            cache.subscribe(() => {
+                if (superseded || cache.getEntry('a').status !== EResourceStatus.Pending) {
+                    return;
+                }
+                superseded = true;
+                if (method === 'restore') {
+                    cache.restore({entries: {}});
+                } else if (method === 'forgetAll') {
+                    cache.forgetAll();
+                } else {
+                    cache[method]('a');
+                }
+                replacement = cache.load('a');
+            }, {id: 'replace', reads: readsOf(cache.pathOf('a'))});
+
+            const original = cache.load('a');
+
+            await expect(original).rejects.toMatchObject({name: 'AbortError'});
+            expect(replacement).toBeDefined();
+            expect(replacement).not.toBe(original);
+            expect(cache.load('a')).toBe(replacement);
+            expect(calls).toEqual(['a']);
+            expect(cache.getEntry('a').status).toBe(EResourceStatus.Pending);
+
+            pending.resolve('replacement');
+            await replacement;
+            expect(cache.getEntry('a').data).toBe('replacement');
+            expect(cache.getEntry('a').status).toBe(EResourceStatus.Success);
+        }
+    );
+
+    test('a pre-loader aborted refresh keeps the previous successful answer', async () => {
+        let calls = 0;
+        const cache = new ResourceCache<string, string>(() => Promise.resolve(`answer-${++calls}`), {ttl: Infinity});
+
+        await cache.load('a');
+        let aborted = false;
+        cache.subscribe(() => {
+            if (!aborted && cache.getEntry('a').refreshing) {
+                aborted = true;
+                cache.abort('a');
+            }
+        }, {id: 'refresh-abort', reads: readsOf(cache.pathOf('a'))});
+
+        await expect(cache.refresh('a')).rejects.toMatchObject({name: 'AbortError'});
+        expect(calls).toBe(1);
+        expect(cache.getEntry('a')).toMatchObject({
+            status: EResourceStatus.Success, data: 'answer-1', refreshing: false,
+        });
+    });
+
+    test('a pre-loader aborted retry retains its prior raw failure', async () => {
+        const failure = new Error('offline');
+        let calls = 0;
+        const cache = new ResourceCache<string, string>(() => {
+            calls++;
+
+            return Promise.reject(failure);
+        });
+
+        await cache.load('a');
+        let aborted = false;
+        cache.subscribe(() => {
+            if (!aborted && cache.getEntry('a').status === EResourceStatus.Pending) {
+                aborted = true;
+                cache.abort('a');
+            }
+        }, {id: 'retry-abort', reads: readsOf(cache.pathOf('a'))});
+
+        await expect(cache.refresh('a')).rejects.toMatchObject({name: 'AbortError'});
+        expect(calls).toBe(1);
+        expect(cache.getEntry('a')).toMatchObject({status: EResourceStatus.Idle, failed: true});
+        expect(cache.getFailure('a')).toBe(failure);
     });
 
     test('an abort listener can retry the same key without joining the cancelled request', async () => {

@@ -109,6 +109,9 @@ explicit re-arm; aborting a retry does not cause an automatic failure loop.
 | `abort(args)` | Cancels one entry's in-flight request, leaving whatever data the entry already holds. |
 | `abortAll()` | Cancels every request in flight. |
 
+A request cancelled or superseded synchronously during its Pending publication, before its
+loader can run, rejects with `AbortError`. A replacement request keeps its own ownership.
+
 The one-entry and all-entries variants are separate methods rather than one optional argument:
 arguments can be `void` — `load()` takes none then — so an argument-less `abort()` would be
 genuinely ambiguous between "this one entry" and "all of them".

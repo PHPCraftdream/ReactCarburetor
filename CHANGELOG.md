@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A cache load cancelled or superseded by a Pending subscriber before its loader runs rejects
+  with `AbortError` instead of reporting success without an answer; replacement requests stay owned.
+
 - Native Map/Set reads subscribe to ordinary writable aliases of exposed plain members, keys
   and own data fields. Watch, computed and connected renders observe plain-path writes;
   root backlinks remain coarse, and raw entry identities are unchanged.

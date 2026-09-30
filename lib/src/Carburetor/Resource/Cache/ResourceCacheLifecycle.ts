@@ -13,6 +13,7 @@ import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {describeError} from "@/Carburetor/Resource/describeError";
 import {createAbortHandle} from "@/Carburetor/Resource/createAbortHandle";
+import {createCacheSupersededError} from "@/Carburetor/Resource/createCacheSupersededError";
 import {getInitialCacheEntry} from "./getInitialCacheEntry";
 import {EvictionLedger} from "./EvictionLedger";
 
@@ -446,9 +447,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         }
         this.markLoading(key, deferNotification, entry);
 
-        // Publication can synchronously abort or replace this key's request.
         if (!this.isCurrent(key, controller)) {
-            resolveRequest();
+            rejectRequest(createCacheSupersededError());
 
             return request;
         }
