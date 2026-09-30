@@ -36,7 +36,8 @@ if (!build.ok) {
     process.exit(1);
 }
 
-const pack = run('npm', ['pack', '--pack-destination', WORKDIR, '--json'], {cwd: REPO_ROOT});
+// Already built above; avoid another prepack build polluting the JSON output.
+const pack = run('npm', ['pack', '--ignore-scripts', '--pack-destination', WORKDIR, '--json'], {cwd: REPO_ROOT});
 
 if (!pack.ok) {
     console.error('npm pack failed:\n' + pack.stdout + pack.stderr);

@@ -34,7 +34,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     /** Abort controllers for in-flight requests. */
     protected controllers: Map<string, AbortController> = new Map<string, AbortController>();
     /** Raw request failures, owned by the current entry at each key. */
-    protected failures: Map<string, {value: unknown; error: string; status: EResourceStatus; entry: IResourceEntry<T>}> = new Map();
+    protected failures: Map<string, {value: unknown; error: string; status: EResourceStatus; entry: IResourceEntry<T>}>
+        = new Map();
     /** Requests begun against a failed entry, even when its raw rejection is no longer retained. */
     private failedRetries: WeakSet<AbortController> | undefined;
     /** Requests made obsolete by an explicit invalidation while still in flight. */
@@ -577,7 +578,6 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
 
         this.controllers.delete(key);
         this.requests.delete(key);
-
         // Same as settleSuccess: the request ending may be exactly what frees this key.
         if (this.isRetentionFree(key)) {
             this.eviction.release();
@@ -585,12 +585,12 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         const entry = this.data.entries[key];
         const hasData = entry.status === EResourceStatus.Success || entry.data !== undefined;
         const message = describeError(error);
-        this.failures.set(key, {value: error, error: message, status: hasData ? entry.status : EResourceStatus.Error, entry});
+        this.failures.set(key,
+            {value: error, error: message, status: hasData ? entry.status : EResourceStatus.Error, entry});
         this.update((draft: IResourceCacheData<T>) => {
             draft.entries[key].error = message;
             draft.entries[key].refreshing = false;
             draft.entries[key].failed = !this.invalidatedRequests?.has(controller);
-
             if (!hasData) {
                 draft.entries[key].status = EResourceStatus.Error;
             }

@@ -332,7 +332,7 @@ describe('single-slot public replacement', () => {
         expect(resource.suspend('a')).toBe('fresh');
     });
 
-    test('a keyless Error replacement reconciles its raw cause before observers and refetches the old key', async () => {
+    test('keyless Error replacement reconciles raw cause before publication and refetches old key', async () => {
         const original = new Error('transport-down');
         const next = deferred<string>();
         let calls = 0;

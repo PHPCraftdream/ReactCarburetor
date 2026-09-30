@@ -159,7 +159,7 @@ test.each(['a', 'a.b~c'])('Error rewrite for %s detaches raw rejection before ob
     cache.unsubscribe(id);
 });
 
-test.each(['a', 'a.b~c'])('whole-entry draft replacement detaches the old raw error before delivery for %s', async (key) => {
+test.each(['a', 'a.b~c'])('entry draft replacement clears raw error before delivery for %s', async (key) => {
     const old = new Error('same message');
     const other = new Error('other key');
     const cache = new EditableCache((args) => Promise.reject(args === key ? old : other));
