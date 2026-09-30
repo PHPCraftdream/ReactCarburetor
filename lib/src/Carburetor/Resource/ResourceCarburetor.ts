@@ -185,7 +185,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             // History handed over a fresh graph. Keep its native backlinks to this live root;
             // the public restore path still copies an ordinary caller's snapshot.
             delete data.key;
-            data.status = status;
+            if (data.status !== status) data.status = status;
             super.setData(data);
         } else {
             super.setData(deepClone({

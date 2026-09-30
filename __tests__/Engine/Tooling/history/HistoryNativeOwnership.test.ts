@@ -1,4 +1,6 @@
-import {Carburetor, CarburetorHistory, ComponentUpdateThrottle, ResourceCache, ResourceCarburetor} from '@/Carburetor';
+import {
+    Carburetor, CarburetorHistory, ComponentUpdateThrottle, EResourceStatus, ResourceCache, ResourceCarburetor,
+} from '@/Carburetor';
 
 type Native = Map<string, number> | Set<number> | Date;
 
@@ -155,6 +157,32 @@ describe('native history endpoint ownership', () => {
         first.disconnect();
         second.disconnect();
     });
+
+    test.each([EResourceStatus.Idle, EResourceStatus.Success, EResourceStatus.Error])(
+        'owned resource replay retains readonly unchanged %s status', status => {
+            const resource = new ResourceCarburetor(async () => 'answer');
+            const history = new CarburetorHistory(resource);
+            const next = {...resource.getData(), status, updatedAt: 7,
+                data: status === EResourceStatus.Success ? 'saved' : undefined,
+                error: status === EResourceStatus.Error ? 'failed' : undefined};
+            Object.defineProperty(next, 'status', {
+                value: status, writable: false, configurable: false, enumerable: true,
+            });
+            resource.setData(next);
+            for (let replay = 0; replay < 2; replay++) {
+                expect(history.undo()).toBe(true);
+                expect(resource.getData().status).toBe(EResourceStatus.Idle);
+                expect(history.redo()).toBe(true);
+                expect(resource.getData()).toMatchObject({status, updatedAt: 7});
+                expect(Object.getOwnPropertyDescriptor(resource.getData(), 'status')).toMatchObject({
+                    value: status, writable: false, configurable: false,
+                });
+                expect(history.canUndo()).toBe(true);
+                expect(history.canRedo()).toBe(false);
+            }
+            history.disconnect();
+        }
+    );
 
     test.each(['map', 'set', 'date'])('%s root in-place edits publish exact undo/redo without changing snapshot contract', kind => {
         const original = makeNative(kind, 1);

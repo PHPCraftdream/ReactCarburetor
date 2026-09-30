@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Resource owned replay does not assign an unchanged normalized status into a readonly endpoint,
+  preserving Idle/Success/Error descriptor flags and usable undo/redo cursors.
+
 - Newly restrictive value-changing branch replacements and additions retain readonly/configurable
   flags through history redo. Producer payload copies preserve restrictions before classification;
   descriptor-only metadata remains outside ordinary state notifications.
