@@ -299,3 +299,47 @@ describe('plain-object inherited key becoming own data', () => {
         dispose();
     });
 });
+
+describe('tracked native collection keys resolve to their raw graph aliases', () => {
+    interface IState {
+        key: {id: number};
+        map: Map<object, number>;
+        set: Set<object>;
+    }
+
+    class NativeStore extends Carburetor<IState> {
+        public put(value: number): void {
+            this.update(draft => { draft.map.set(draft.key, value); });
+        }
+    }
+
+    test('Map/Set reads, selected watch and computed follow the same tracked key', () => {
+        const key = {id: 1};
+        const store = new NativeStore({key, map: new Map([[key, 7]]), set: new Set([key])});
+        const reads = new Set<string>();
+        const view = store.read(path => reads.add(path));
+        const changes: Array<[number | undefined, number | undefined]> = [];
+        const stop = store.watch(data => data.map.get(data.key), (next, before) => {
+            changes.push([next, before]);
+        });
+        const derived = computed(read => {
+            const data = read(store);
+            return data.map.get(data.key);
+        });
+
+        expect(view.map.get(view.key)).toBe(7);
+        expect(view.map.has(view.key)).toBe(true);
+        expect(view.set.has(view.key)).toBe(true);
+        expect(view.map.get([...view.map.keys()][0])).toBe(7);
+        expect(reads.has('map')).toBe(true);
+        expect(reads.has('key.~p')).toBe(true);
+        expect(derived.get()).toBe(7);
+
+        store.put(8);
+        expect(store.getData().map.size).toBe(1);
+        expect(view.map.get(view.key)).toBe(8);
+        expect(changes).toEqual([[8, 7]]);
+        expect(derived.get()).toBe(8);
+        stop();
+    });
+});

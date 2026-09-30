@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Map/Set intrinsic arguments canonicalize tracked read/draft keys, members and roots instead
+  of inserting proxy identities. Watch/computed lookup, receiver/chaining and `forEach`
+  collection callbacks retain their real graph aliases across CJS/ESM copies.
 - History owns Map/Set/Date graph endpoints without changing the opaque-by-reference snapshot
   contract. Producer-owned capture and exact owned replay preserve native/plain aliases,
   descriptors and wire keys. Clear resets the current baseline and removes pre-clear deferred

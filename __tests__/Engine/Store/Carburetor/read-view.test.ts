@@ -1,4 +1,4 @@
-import {Carburetor} from "@/Carburetor";
+import {Carburetor, CarburetorHistory} from "@/Carburetor";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {getTestData, readsOf, TestCarburetor} from "./fixtures";
 
@@ -284,4 +284,118 @@ describe('Carburetor', () => {    test('draft stays correct after a nested branc
         expect(nested).toEqual(1);
     });
 
+});
+
+describe('native collection draft arguments keep raw aliases', () => {
+    interface INativeState {
+        key: {id: number};
+        map: Map<object | string, object | number>;
+        set: Set<object>;
+    }
+
+    class NativeStore extends Carburetor<INativeState> {
+        public edit(mutate: (draft: INativeState) => void): void {
+            this.update(mutate);
+        }
+    }
+
+    test('Map keys, Map root/key values and Set values stay canonical through undo/redo', () => {
+        const key = {id: 1};
+        const store = new NativeStore({
+            key, map: new Map([[key, 1]]), set: new Set(),
+        });
+        const history = new CarburetorHistory(store);
+
+        store.edit(draft => {
+            const map = draft.map;
+            expect(map).toBe(draft.map);
+            expect(map.set(draft.key, 2)).toBe(map);
+            expect(map.set('root', draft).set('key', draft.key)).toBe(map);
+            expect(draft.set.add(draft.key)).toBe(draft.set);
+        });
+
+        const after = store.getData();
+        expect(after.map.size).toBe(3);
+        expect(after.map.get(after.key)).toBe(2);
+        expect(after.map.get('root')).toBe(after);
+        expect(after.map.get('key')).toBe(after.key);
+        expect(after.set.has(after.key)).toBe(true);
+
+        expect(history.undo()).toBe(true);
+        const undone = store.getData();
+        expect(undone.map.size).toBe(1);
+        expect(undone.map.get(undone.key)).toBe(1);
+        expect(undone.set.has(undone.key)).toBe(false);
+
+        expect(history.redo()).toBe(true);
+        const redone = store.getData();
+        expect(redone.map.size).toBe(3);
+        expect(redone.map.get(redone.key)).toBe(2);
+        expect(redone.map.get('root')).toBe(redone);
+        expect(redone.map.get('key')).toBe(redone.key);
+        expect(redone.set.has(redone.key)).toBe(true);
+        history.disconnect();
+    });
+
+    test('delete and membership normalize tracked aliases without changing native method receivers', () => {
+        const key = {id: 1};
+        const store = new NativeStore({key, map: new Map([[key, 1]]), set: new Set([key])});
+        store.edit(draft => {
+            expect(draft.map.has(draft.key)).toBe(true);
+            expect(draft.set.has(draft.key)).toBe(true);
+            expect(draft.map.delete(draft.key)).toBe(true);
+            expect(draft.set.delete(draft.key)).toBe(true);
+            expect(draft.map.size).toBe(0);
+            expect(draft.set.size).toBe(0);
+        });
+        expect(store.getData().map.has(key)).toBe(false);
+        expect(store.getData().set.has(key)).toBe(false);
+    });
+
+    test('native intrinsic receivers and read-view arguments preserve the original collection', () => {
+        const key = {id: 1};
+        const map = new Map<object | string, object | number>([[key, 1]]);
+        const set = new Set<object>();
+        const store = new NativeStore({key, map, set});
+        const view = store.read(() => undefined);
+
+        store.edit(draft => {
+            const borrowed = draft.map.set;
+            expect(draft.map instanceof Map).toBe(true);
+            expect(draft.map.entries().next().value).toEqual([key, 1]);
+            expect(borrowed.call(draft.map, view.key, 2)).toBe(draft.map);
+            expect(borrowed.call(map, 'read', view)).toBe(map);
+            expect(draft.set.add(view.key)).toBe(draft.set);
+        });
+
+        expect(map.size).toBe(2);
+        expect(map.get(key)).toBe(2);
+        expect(map.get('read')).toBe(store.getData());
+        expect(set.has(key)).toBe(true);
+    });
+
+    test('forEach exposes its current facade for nested key lookups and keeps native callback semantics', () => {
+        const key = {id: 1};
+        const store = new NativeStore({key, map: new Map([[key, 1]]), set: new Set([key])});
+        const view = store.read(() => undefined);
+        const context: {value: object | number | undefined} = {value: undefined};
+        view.map.forEach(function (this: typeof context, value, entry, collection) {
+            expect(collection).toBe(view.map);
+            expect(entry).toBe(key);
+            expect(value).toBe(1);
+            this.value = collection.get(view.key);
+        }, context);
+        expect(context.value).toBe(1);
+        let member: object | undefined;
+        view.set.forEach((value, entry, collection) => {
+            expect(collection).toBe(view.set);
+            expect(value).toBe(entry);
+            expect(collection.has(view.key)).toBe(true);
+            member = value;
+        });
+        expect(member).toBe(key);
+        const empty = new NativeStore({key, map: new Map(), set: new Set()}).read(() => undefined);
+        expect(() => Reflect.apply(empty.map.forEach, empty.map, [null])).toThrow(TypeError);
+        expect(() => Reflect.apply(empty.set.forEach, empty.set, [null])).toThrow(TypeError);
+    });
 });

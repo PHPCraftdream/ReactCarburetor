@@ -866,14 +866,14 @@ a test pins the exported surface so one does not slip in by accident.
 - Don't stash tracked data outside render. A read there records nothing — outside a render attempt
   it can never alter what any render established — so it buys no subscription coverage, and a
   proxy kept across renders may point at replaced data.
-- Tracking covers plain objects and arrays. `Map`, `Set`, `Date` and class instances are handed
-  over as they are: reading one is a leaf read, and mutating it in place is invisible to the
-  proxy. No update is lost over it — reaching for such a value through `draft` counts as writing
-  the path it came from, so `this.draft.index.set(k, v)` wakes the subscribers of `index` —
-  but the granularity stops there, and a mutation of `this.data` bypassing `draft` still
-  invalidates the whole store. Replace the value instead of mutating it, and keep plain data in
-  stores you want precision on. A store whose root is untrackable has no path to be precise
-  about at all: every write to it invalidates everything.
+- Tracking covers plain objects and arrays. Ordinary unlocked `Map`/`Set` leaves expose cached
+  native facades: intrinsic arguments from tracked read/draft views resolve to their original
+  raw keys, members and roots, so `draft.map.set(draft.key, value)` updates the existing key.
+  Method chaining and `forEach` callback collections retain that facade's receiver semantics.
+  `Date`, custom instances and unsupported native subclasses remain raw. Native reads are coarse
+  leaf reads; reaching one through `draft` conservatively marks its path, not fields inside it.
+  A publication after bypassing `draft` invalidates the whole store. Replace values or use plain
+  data for finer precision; an untrackable root has no narrower path to invalidate.
 - **What counts as state.** A container's state is its own enumerable string-keyed data — what
   `Object.keys` lists — and an array's is its elements and `length`. Symbol keys, getters and
   setters, non-enumerable properties and non-index keys on an array are not state: they have no

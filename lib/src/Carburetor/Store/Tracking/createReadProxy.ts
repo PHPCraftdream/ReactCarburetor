@@ -225,8 +225,8 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * and, in development, notes it in the alias ledger; a leaf read subscribes to its own path.
      *
      * A symbol key has no place in state (R6-02/R6-03): nothing is recorded for reading one, own
-     * or inherited, and its value passes through raw, unwrapped — the same treatment a Map or a
-     * class instance gets, since a symbol-keyed value is opaque to this tree the same way.
+     * or inherited, and its value passes through raw, unwrapped. A Map/Set reached through a
+     * string key is adapted only for native arguments; Date/classes still pass through raw.
      *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being read.
@@ -276,7 +276,8 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
 
         this.record(path);
 
-        return value;
+        return value !== null && typeof value === 'object'
+            ? liveViews.adaptNativeCollection(value, this.cache, source, key) : value;
     }
 
     /**
@@ -424,7 +425,7 @@ export const createReadProxy = <T extends object>(
     const cached: IProxyCache = cache ?? createProxyCache();
     const proxy = new Proxy(target, new ReadProxyHandler<T>(basePath, record, aliases, cached)) as T;
 
-    liveViews.noteReadTarget(proxy, target);
+    liveViews.noteTarget(proxy, target);
 
     return proxy;
 };

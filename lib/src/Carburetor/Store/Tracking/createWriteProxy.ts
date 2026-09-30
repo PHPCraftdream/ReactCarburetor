@@ -8,28 +8,10 @@ import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {createProxyCache} from "./createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
 import {isTrackable} from "./isTrackable";
+import {liveViews} from "./liveViews";
 
 /** A plain value safe to hand a patch listener: cloned so a later in-place write cannot alias it. */
 const patchValue = (value: unknown): unknown => (isTrackable(value) ? deepClone(value) : value);
-
-/**
- * Write proxies by the raw object each wraps. A value read back through draft arrives
- * wrapped — array.sort writes the elements it read, and those read as proxies — so the
- * set trap unwraps it first: otherwise the wrap itself would count as a change, and a
- * proxy would end up living inside the plain data.
- */
-const proxyTargets: WeakMap<object, object> = new WeakMap();
-
-/** Unwraps a value written back through draft to the raw object a write proxy fronts. */
-const unwrapWriteProxy = (value: unknown): unknown => {
-    if (value === null || typeof value !== 'object') {
-        return value;
-    }
-
-    const target: object | undefined = proxyTargets.get(value);
-
-    return target ?? value;
-};
 
 /** Refuses a symbol-keyed write: state is string-keyed data only (R6-02/R6-03). */
 const forbidSymbolKey = (path: TPath): never => {
@@ -332,16 +314,16 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return this.wrap(this.writtenPath(key), key, value);
         }
 
-        // A Map, Set, Date or class instance cannot be wrapped, so `draft.index.set(...)`
-        // mutates the real object behind the engine's back: no path is recorded here and
-        // emitUpdate would conclude nothing changed unless this does it. Primitives are left
-        // alone: they are copied, not mutated, and the path is never built for them at all —
-        // a primitive read through draft records nothing, so building one would be pure waste.
+        // Map/Set can adapt their native methods but cannot be tracked as plain branches;
+        // Date and class instances still pass through raw. Access to any of them must
+        // conservatively publish the owner path, since subsequent in-place mutation would
+        // otherwise be invisible. Primitive reads build no path.
         if (value !== null && typeof value === 'object') {
             // Whatever changes inside it, if anything, cannot be described as a patch: a
             // history attached to this store falls back to a full snapshot for this change.
             this.patchPort?.listener?.(PATCH_OPAQUE);
             this.record(this.writtenPath(key));
+            return liveViews.adaptNativeCollection(value, this.cache, source, key);
         }
 
         return value;
@@ -366,7 +348,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         const previous: unknown = Reflect.get(source, key);
-        const raw: unknown = unwrapWriteProxy(value);
+        const raw: unknown = value !== null && typeof value === 'object'
+            ? (liveViews.readTarget(value) ?? value) : value;
         const wasOwn = Object.prototype.hasOwnProperty.call(source, key);
 
         if (this.isArray && key === 'length') {
@@ -481,7 +464,10 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         const previous = Reflect.get(source, key);
-        const raw = 'value' in descriptor ? unwrapWriteProxy(descriptor.value) : wasOwn ? previous : undefined;
+        const raw = 'value' in descriptor && descriptor.value !== null
+            && typeof descriptor.value === 'object'
+            ? (liveViews.readTarget(descriptor.value) ?? descriptor.value)
+            : 'value' in descriptor ? descriptor.value : wasOwn ? previous : undefined;
         const path = this.writtenPath(key);
 
         this.aliases?.checkKey(source, key, path);
@@ -593,7 +579,7 @@ export const createWriteProxy = <T extends object>(
     );
     const proxy = new Proxy(target, handler);
 
-    proxyTargets.set(proxy, target);
+    liveViews.noteTarget(proxy, target);
 
     return proxy as T;
 };
