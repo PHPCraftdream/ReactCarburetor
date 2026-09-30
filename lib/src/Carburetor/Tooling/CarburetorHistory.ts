@@ -276,9 +276,9 @@ export class CarburetorHistory<T extends object> {
             return;
         }
 
-        let lockedArray = false;
+        let requiresOwnedEndpoint = false;
         const classify = (trait: 'exotic' | 'lockedArray' | 'restricted'): void => {
-            if (trait === 'lockedArray') lockedArray = true;
+            if (trait === 'lockedArray' || trait === 'restricted') requiresOwnedEndpoint = true;
         };
         const ownedPatch: IWritePatch = {
             segments: patch.segments,
@@ -287,9 +287,8 @@ export class CarburetorHistory<T extends object> {
             previousExists: patch.previousExists,
             nextExists: patch.nextExists,
         };
-        if (lockedArray) {
-            // Removing or installing a locked subtree requires a complete endpoint. An
-            // unrelated patch cannot change the baseline's existing lock classification.
+        if (requiresOwnedEndpoint) {
+            // Patches normalize payload flags; restrictive subtrees require exact owned endpoints.
             this.pendingOpaque = true;
             return;
         }

@@ -5,7 +5,7 @@ import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
 import {keyDeletionRequiresReplay} from "@/Carburetor/Store/Paths/Diff/Order/keyDeletionRequiresReplay";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
-import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
+import {clonePatchValue} from "./Proxy/clonePatchValue";
 import {createProxyCache} from "./Proxy/createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
 import {isTrackable} from "./isTrackable";
@@ -15,9 +15,6 @@ import {nativeAliasIndex} from "./Aliases/NativeAliasIndex";
 import {liveViews} from "./Proxy/liveViews";
 import {deliverPatches} from "./Proxy/deliverPatches";
 import {writeArrayLength} from "./Proxy/writeArrayLength";
-
-/** A plain value safe to hand a patch listener: cloned so a later in-place write cannot alias it. */
-const patchValue = (value: unknown): unknown => (isTrackable(value) ? deepClone(value) : value);
 
 /**
  * Write-proxy trap handler: one instance per proxy, but one set of trap functions for all of
@@ -127,8 +124,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
         listener({
             segments: [...this.basePathSegments, key],
-            previousExists, previous: patchValue(previous),
-            nextExists, next: patchValue(next),
+            previousExists, previous: clonePatchValue(previous),
+            nextExists, next: clonePatchValue(next),
         });
     }
 

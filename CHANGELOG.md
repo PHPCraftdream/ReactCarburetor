@@ -398,6 +398,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Newly restrictive value-changing branch replacements and additions retain readonly/configurable
+  flags through history redo. Producer payload copies preserve restrictions before classification;
+  descriptor-only metadata remains outside ordinary state notifications.
+
 - History preflights owned-baseline patch capabilities, falling back to exact owned endpoints
   for readonly/non-configurable targets without mutating held snapshots.
 - Snapshot restore detects changed locked object references before any sibling mutation.

@@ -4,8 +4,7 @@ import {
 } from '@/Carburetor/Models/Paths';
 import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
 import {keysPath} from '@/Carburetor/Store/Paths/Markers/KeysMarker';
-import {deepClone} from '@/Carburetor/Store/Utils/deepClone';
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
+import {clonePatchValue} from './clonePatchValue';
 import {deliverPatches} from './deliverPatches';
 
 /** Native ArraySetLength can delete a suffix even when it ultimately refuses the request.
@@ -100,7 +99,7 @@ export const writeArrayLength = (
             if (queue) {
                 const previous = removedValues?.[i];
                 queue({segments: [...basePathSegments, key], previousExists: true,
-                    previous: isTrackable(previous) ? deepClone(previous) : previous,
+                    previous: clonePatchValue(previous),
                     nextExists: false, next: undefined});
             }
         }

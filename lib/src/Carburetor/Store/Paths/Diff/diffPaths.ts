@@ -1,18 +1,15 @@
-import {PATCH_ARRAY_LENGTH_LOCK, PATCH_KEY_ORDER_CHANGE, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
+import {PATCH_ARRAY_LENGTH_LOCK, PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
-import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
+import {clonePatchValue} from "@/Carburetor/Store/Tracking/Proxy/clonePatchValue";
 import {DIFF_PATH_THRESHOLD} from "./DiffThreshold";
 import {keyOrderRequiresReplay} from "./Order/keyOrderRequiresReplay";
 import {sameKind} from "./sameKind";
 
 /** Unwinds the recursive walk once the threshold trips; caught inside diffPaths, never escapes it. */
 class DiffOverflow extends Error {}
-
-/** A plain value safe to hand a patch listener: cloned so a later in-place write cannot alias it. */
-const patchValue = (value: unknown): unknown => (isTrackable(value) ? deepClone(value) : value);
 
 /** Adds a path, aborting the whole walk once DIFF_PATH_THRESHOLD is exceeded. */
 const add = (into: TPathSet, path: TPath): void => {
@@ -33,8 +30,8 @@ const addPatch = (
     nextExists = true
 ): void => {
     onPatch?.({
-        segments, previousExists, previous: patchValue(previous),
-        nextExists, next: patchValue(next),
+        segments, previousExists, previous: clonePatchValue(previous),
+        nextExists, next: clonePatchValue(next),
     });
 };
 
@@ -46,6 +43,8 @@ const walkContainer = (
     into: TPathSet,
     onPatch: TPatchRecorder | undefined
 ): void => {
+    const changedBefore = into.size;
+    let restrictedEndpoint = false;
     if (Array.isArray(oldValue)) {
         const oldLength = Object.getOwnPropertyDescriptor(oldValue, 'length')!;
         const newLength = Object.getOwnPropertyDescriptor(newValue, 'length')!;
@@ -97,6 +96,10 @@ const walkContainer = (
     }
 
     for (const key of newKeys) {
+        if (onPatch && !restrictedEndpoint) {
+            const descriptor = Object.getOwnPropertyDescriptor(newValue, key);
+            restrictedEndpoint = descriptor?.writable === false || descriptor?.configurable === false;
+        }
         if (seen.has(key)) {
             continue;
         }
@@ -109,6 +112,8 @@ const walkContainer = (
     if (keysChanged) {
         add(into, keysPath(path));
     }
+    // Flags alone are not state changes; a changed restrictive endpoint needs exact replay.
+    if (restrictedEndpoint && into.size > changedBefore) onPatch?.(PATCH_OPAQUE);
 };
 
 const walk = (

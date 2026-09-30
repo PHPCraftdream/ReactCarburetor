@@ -683,6 +683,9 @@ sibling write, replacing the root when the draft cannot install valid snapshot v
 snapshots remain writable plain copies; owned history replay retains captured restricted descriptors.
 History admits patches only when they can advance its owned baseline; restrictive targets use
 complete owned endpoints before any held snapshot can be mutated.
+Producer patch copies retain restrictions for history classification. A value-changing branch
+that introduces readonly or non-configurable fields uses an owned endpoint, including additions;
+ordinary snapshot normalization and metadata-only no-op publication semantics are unchanged.
 Effective draft paths are attributed before fallible patch delivery. An observer error still
 reaches the caller, but cannot hide an already-applied change from readers or other histories.
 

@@ -28,6 +28,66 @@ describe('owned baseline patch admission', () => {
         expect(store.getData().row.x).toBe(2);
         history.disconnect();
     });
+    test.each([true, false])('new readonly replacement stays restrictive after redo, configurable=%s', configurable => {
+        const store = new Editable({row: {x: 1}, other: 0});
+        const history = new CarburetorHistory(store);
+        const next = {x: 2};
+        Object.defineProperty(next, 'x', {value: 2, enumerable: true, writable: false, configurable});
+        store.edit(draft => { draft.row = next; });
+        expect(history.undo()).toBe(true);
+        expect(store.getData().row.x).toBe(1);
+        expect(history.redo()).toBe(true);
+        expect(Object.getOwnPropertyDescriptor(store.getData().row, 'x')).toMatchObject({
+            value: 2, writable: false, configurable,
+        });
+        const version = store.getVersion();
+        expect(() => store.edit(draft => { draft.row.x = 3; })).toThrow(TypeError);
+        expect(store.getData().row.x).toBe(2);
+        expect(store.getVersion()).toBe(version);
+        store.edit(draft => { draft.other = 7; });
+        expect(history.undo()).toBe(true);
+        expect(store.getData().other).toBe(0);
+        expect(Object.getOwnPropertyDescriptor(store.getData().row, 'x')?.writable).toBe(false);
+        history.disconnect();
+    });
+
+    test('new object payload retains restrictions through independent histories', () => {
+        const store = new Editable<{row?: {x: number}}>({});
+        const first = new CarburetorHistory(store);
+        const second = new CarburetorHistory(store);
+        const row = {x: 2};
+        Object.defineProperty(row, 'x', {value: 2, enumerable: true, writable: false, configurable: false});
+        store.edit(draft => { draft.row = row; });
+        expect(first.undo()).toBe(true);
+        expect(Object.hasOwn(store.getData(), 'row')).toBe(false);
+        expect(first.redo()).toBe(true);
+        expect(Object.getOwnPropertyDescriptor(store.getData().row!, 'x')).toMatchObject({
+            value: 2, writable: false, configurable: false,
+        });
+        expect(second.undo()).toBe(true);
+        expect(Object.hasOwn(store.getData(), 'row')).toBe(false);
+        first.disconnect();
+        second.disconnect();
+    });
+
+    test('a changed sibling captures new restrictions, but flags alone remain a state no-op', () => {
+        const store = new Editable({row: {x: 1, keep: 1}});
+        const history = new CarburetorHistory(store);
+        const metadata = {x: 1, keep: 1};
+        Object.defineProperty(metadata, 'keep', {value: 1, enumerable: true, writable: false, configurable: true});
+        store.edit(draft => { draft.row = metadata; });
+        expect(store.getVersion()).toBe(0);
+        expect(history.canUndo()).toBe(false);
+        const next = {x: 2, keep: 1};
+        Object.defineProperty(next, 'keep', {value: 1, enumerable: true, writable: false, configurable: true});
+        store.edit(draft => { draft.row = next; });
+        expect(history.undo()).toBe(true);
+        expect(store.getData().row.x).toBe(1);
+        expect(history.redo()).toBe(true);
+        expect(Object.getOwnPropertyDescriptor(store.getData().row, 'keep')?.writable).toBe(false);
+        history.disconnect();
+    });
+
 
     test('non-configurable leaf removal from a replaced branch never damages the owned before endpoint', () => {
         const row = {keep: 1, remove: 2};
