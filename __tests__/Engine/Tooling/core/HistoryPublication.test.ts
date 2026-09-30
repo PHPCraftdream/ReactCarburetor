@@ -142,6 +142,120 @@ describe('history publication boundaries under reentrant writes (R15-ENGINE-01/0
         history.disconnect();
     });
 
+    test.each(['patch', 'opaque'])('clear during a throttled %s publication keeps only later writes', kind => {
+        class ManualThrottle extends ComponentUpdateThrottle {
+            protected setupTimeout(): void {}
+            public flush(): void { this.letsUpdate(); }
+        }
+        const throttle = new ManualThrottle();
+        const store = new Store({x: 0, y: 0}, throttle);
+        const cleared = new CarburetorHistory(store);
+        const independent = new CarburetorHistory(store);
+        const write = (value: number): void => {
+            if (kind === 'patch') {
+                store.write('x', value);
+            } else {
+                store.setData({x: value, y: 0});
+            }
+        };
+        write(1);
+        cleared.clear();
+        expect(cleared.canUndo()).toBe(false);
+        throttle.flush();
+        expect(cleared.undo()).toBe(false);
+        expect(independent.undo()).toBe(true);
+        expect(store.getData().x).toBe(0);
+        throttle.flush();
+        cleared.disconnect();
+        independent.disconnect();
+
+        const coalesced = new Store({x: 0, y: 0}, throttle);
+        const first = new CarburetorHistory(coalesced);
+        const second = new CarburetorHistory(coalesced);
+        if (kind === 'patch') {
+            coalesced.write('x', 1);
+        } else {
+            coalesced.setData({x: 1, y: 0});
+        }
+        first.clear();
+        if (kind === 'patch') {
+            coalesced.write('x', 2);
+        } else {
+            coalesced.setData({x: 2, y: 0});
+        }
+        throttle.flush();
+        expect(first.undo()).toBe(true);
+        expect(coalesced.getData().x).toBe(1);
+        throttle.flush();
+        expect(first.undo()).toBe(false);
+        expect(second.undo()).toBe(true);
+        expect(coalesced.getData().x).toBe(2);
+        throttle.flush();
+        expect(second.undo()).toBe(true);
+        expect(coalesced.getData().x).toBe(0);
+        throttle.flush();
+        first.disconnect();
+        second.disconnect();
+    });
+
+    test.each(['patch', 'opaque'])('transaction clear slices %s coalescing at the clear boundary', kind => {
+        const store = new Store({x: 0, y: 0});
+        const first = new CarburetorHistory(store);
+        const other = new CarburetorHistory(store);
+        const write = (x: number): void => {
+            if (kind === 'patch') {
+                store.write('x', x);
+            } else {
+                store.setData({x, y: 0});
+            }
+        };
+        transaction(() => {
+            write(1);
+            first.clear();
+            write(2);
+        });
+        expect(first.undo()).toBe(true);
+        expect(store.getData().x).toBe(1);
+        expect(first.undo()).toBe(false);
+        expect(other.undo()).toBe(true);
+        expect(store.getData().x).toBe(2);
+        expect(other.undo()).toBe(true);
+        expect(store.getData().x).toBe(0);
+        first.disconnect();
+        other.disconnect();
+    });
+
+    test.each(['patch', 'opaque'])('transaction clear with no subsequent %s write stays empty', kind => {
+        const store = new Store({x: 0, y: 0});
+        const history = new CarburetorHistory(store);
+        transaction(() => {
+            if (kind === 'patch') {
+                store.write('x', 1);
+            } else {
+                store.setData({x: 1, y: 0});
+            }
+            history.clear();
+        });
+        expect(history.canUndo()).toBe(false);
+        expect(history.undo()).toBe(false);
+        expect(store.getData().x).toBe(1);
+        history.disconnect();
+    });
+
+    test('clear discards redo as well as pending work without blocking a new branch', () => {
+        const store = new Store({x: 0, y: 0});
+        const history = new CarburetorHistory(store);
+        store.write('x', 1);
+        history.undo();
+        expect(history.canRedo()).toBe(true);
+        history.clear();
+        expect(history.canRedo()).toBe(false);
+        store.write('x', 2);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().x).toBe(0);
+        history.disconnect();
+    });
+
     test('disconnect cancels a deferred publication without creating a history entry', () => {
         class ManualThrottle extends ComponentUpdateThrottle {
             protected setupTimeout(): void {}

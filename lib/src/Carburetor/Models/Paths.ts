@@ -64,11 +64,12 @@ export interface IPatchObserver {
     /** If present, scheduled before ordinary subscribers at each publication (after coalescing). */
     publication?: () => void;
     /**
-     * If present, called with the exact restore argument immediately before its own installation,
-     * after abort listeners have had the chance to supersede it. Nested restores pass their own
-     * argument; consumers distinguish those calls by reference, not wire-state equality.
+     * Called with the exact restore argument after cancellation guards and before installation.
+     * Return true only for a replay-owned, freshly detached graph: the source may adopt that
+     * graph whole instead of splitting native/plain aliases through its ordinary restore copy.
+     * Other observers still see the call and return false.
      */
-    ownRestore?: (state: unknown) => void;
+    ownRestore?: (state: unknown) => boolean;
 }
 
 /**

@@ -4,7 +4,7 @@
 //! value is one leaf — an in-place change through `draft` invalidates that whole value, and the same
 //! change through `this.data` invalidates the entire store. Everything keeps working, at a
 //! granularity that quietly defeats the point of the library. `snapshot()` also shares these values
-//! by reference instead of copying them, so undo does not restore them.
+//! by reference instead of copying them.
 //!
 //! Detection follows the declared shape: the interface a store is parameterised with
 //! (`class X extends Carburetor<IData>`) and the initial-data object handed to its constructor.
@@ -221,7 +221,7 @@ fn message(name: &str) -> String {
     format!(
         "{name} is not tracked field by field: reading it is one coarse leaf, and changing it in \
          place is invisible to the proxies, so the whole value — or the whole store — is invalidated \
-         instead of what changed. snapshot() shares it by reference too, so undo will not restore it. \
+         instead of what changed. snapshot() shares it by reference too. \
          Keep plain objects and arrays in the store and convert at the edges."
     )
 }

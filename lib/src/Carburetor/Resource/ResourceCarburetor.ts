@@ -110,6 +110,21 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         return {...super.snapshot(), key: this.settledKey};
     }
 
+    /** Own the raw state graph before adding wire metadata, retaining native links to its root.
+     *
+     * @param own - detaches the complete live state before its settled key is included
+     */
+    public captureHistory(own: <V>(value: V) => V): IResourceSnapshot<T> {
+        if (this.snapshot !== ResourceCarburetor.prototype.snapshot) {
+            throw new Error('CarburetorHistory: a custom snapshot() must provide captureHistory()');
+        }
+        const state = own(this.getData());
+        Object.defineProperty(state, 'key', {
+            value: this.settledKey, configurable: true, enumerable: true, writable: true,
+        });
+        return state;
+    }
+
     /** The settled key belongs to the wire answer, not the live slot's data. */
     public serialize(): string {
         return JSON.stringify({...this.getData(), key: this.settledKey});
@@ -139,7 +154,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
 
         // Only this installation belongs to the caller's restore. An abort listener above
         // can publish its own replacement before reaching this point.
-        this.patchObservers?.ownRestore(data);
+        const ownedReplay = this.patchObservers?.ownRestore(data) === true;
 
         // Identity is re-established BEFORE the state lands: super.setData() notifies
         // subscribers synchronously, and a suspend() from such a callback must see key
@@ -166,12 +181,20 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         // The base replacement publishes while retaining the explicit key installed above;
         // its pre-publication hook reconstructs an Error from the wire message, even
         // when the previous failure had the same serialized description.
-        super.setData(deepClone({
-            status,
-            data: data.data,
-            error: data.error,
-            updatedAt: data.updatedAt,
-        }));
+        if (ownedReplay) {
+            // History handed over a fresh graph. Keep its native backlinks to this live root;
+            // the public restore path still copies an ordinary caller's snapshot.
+            delete data.key;
+            data.status = status;
+            super.setData(data);
+        } else {
+            super.setData(deepClone({
+                status,
+                data: data.data,
+                error: data.error,
+                updatedAt: data.updatedAt,
+            }));
+        }
     }
 
     /**

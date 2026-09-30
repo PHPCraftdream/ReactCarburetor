@@ -398,6 +398,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- History owns Map/Set/Date graph endpoints without changing the opaque-by-reference snapshot
+  contract. Producer-owned capture and exact owned replay preserve native/plain aliases,
+  descriptors and wire keys. Clear resets the current baseline and removes pre-clear deferred
+  work without discarding later coalesced writes or another history's entries.
 - Keyed-cache raw failures belong to their entry object. Whole-entry draft/update replacement
   clears the prior raw cause before subscribers run, including same-message Errors; identical
   replacements cannot inherit it, and unrelated same-entry writes preserve it.

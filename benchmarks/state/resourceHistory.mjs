@@ -1,8 +1,8 @@
-// Bounded, paired benchmark of built history implementations and actual resource snapshots.
+// Bounded, paired benchmark of built history implementations and real complete-state captures.
 // BASELINE_DIST=/path/to/baseline/dist AFTER_DIST=/path/to/fixed/dist \
 //   node benchmarks/state/resourceHistory.mjs
-// Compare resource snapshot counts as well as times: the corrected resource deliberately
-// captures its private key in each historical answer; ordinary-store patches stay cheap.
+// Snapshot counts include the legacy snapshot API and the owned producer capture hook;
+// they count capture calls, not internal clones. Pure-tree history should remain patch-based.
 
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -37,10 +37,15 @@ const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.l
  */
 function ordinary(implementation) {
     class Store extends implementation.store {
-        /** Counts detached history snapshots. */
+        /** Counts complete history capture calls. */
         snapshots = 0;
-        /** Records the actual snapshot work. */
+        /** Counts legacy captures in the baseline implementation. */
         snapshot() { this.snapshots++; return super.snapshot(); }
+        /** Counts owned captures in the repaired implementation.
+         *
+         * @param own - history's graph copier
+         */
+        captureHistory(own) { this.snapshots++; return super.captureHistory(own); }
         /** Publishes one counter write.
          *
          * @param value - next counter
@@ -63,10 +68,15 @@ function ordinary(implementation) {
  */
 async function resource(implementation) {
     class Resource extends implementation.resource {
-        /** Counts detached wire snapshots. */
+        /** Counts complete wire history capture calls. */
         snapshots = 0;
-        /** Records the actual snapshot work. */
+        /** Counts legacy captures in the baseline implementation. */
         snapshot() { this.snapshots++; return super.snapshot(); }
+        /** Counts owned captures in the repaired implementation.
+         *
+         * @param own - history's graph copier
+         */
+        captureHistory(own) { this.snapshots++; return super.captureHistory(own); }
     }
     const store = new Resource(async key => ({key, rows}));
     const history = new implementation.history(store);

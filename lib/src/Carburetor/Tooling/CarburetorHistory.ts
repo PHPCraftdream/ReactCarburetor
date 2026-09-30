@@ -3,7 +3,8 @@ import {IPatchObserver, IWritePatch, PATCH_OPAQUE} from "@/Carburetor/Models/Pat
 import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
-import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
+import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
+import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
 
 /** One change recorded as the patches to invert it — the fast path (R16-07). */
 interface IPatchesEntry {
@@ -23,15 +24,38 @@ interface ISnapshotEntry<T> {
 
 type THistoryEntry<T> = IPatchesEntry | ISnapshotEntry<T>;
 
+/** History must not retain a live class instance whose mutable internals it cannot copy. */
+const refuseLiveEndpoint = (): never => {
+    throw new Error('CarburetorHistory: cannot own a mutable class instance in a history endpoint');
+};
+
+const own = <V>(value: V): V => detachOpaque(value, refuseLiveEndpoint, refuseLiveEndpoint);
+
+/** Primitive endpoints already have value ownership; only object graphs need detachment. */
+const ownPatch = (patch: IWritePatch): IWritePatch => {
+    const previous = patch.previous;
+    const next = patch.next;
+    if ((previous === null || typeof previous !== 'object') &&
+        (next === null || typeof next !== 'object')) {
+        return patch;
+    }
+
+    return {
+        segments: patch.segments,
+        previous: patch.previousExists ? own(previous) : undefined,
+        next: patch.nextExists ? own(next) : undefined,
+        previousExists: patch.previousExists,
+        nextExists: patch.nextExists,
+    };
+};
+
 /**
  * Undo/redo for a carburetor, built on patches (R16-07). Every change is recorded, except the
  * ones this class applies itself — otherwise undo would keep re-recording its own work.
  *
- * Cost: O(changed values) per change, not O(state) — the write proxy already knows every path
- * it writes and the value it replaces, so an entry stores just that instead of a deep copy of
- * the whole state. A change the proxy cannot describe (the wildcard, a whole-root replacement, a
- * write that bypassed draft) still falls back to a full snapshot either side of it; one deep copy
- * per change is the floor only for *that* case, not for history in general.
+ * Cost: O(changed values) per describable change, not O(state) — the write proxy already knows
+ * each written path and endpoint. Opaque changes require privately owned full before/after
+ * states so native in-place mutations cannot rewrite an older history endpoint.
  */
 export class CarburetorHistory<T extends object> {
     /** Entries to step back to; the oldest is dropped once `limit` is exceeded. */
@@ -39,17 +63,20 @@ export class CarburetorHistory<T extends object> {
     /** Undone entries waiting for redo; any fresh write empties it. */
     protected future: THistoryEntry<T>[] = [];
     /**
-     * A detached mirror of the live state, advanced by replaying each entry's own patches
-     * instead of a fresh snapshot — so a later opaque change still has an exact "before" to
-     * record without paying for one on every write.
+     * A privately owned mirror of the live state, advanced by replaying patches instead of
+     * taking a fresh snapshot on every describable write. Native values are detached too.
      */
     protected baseline: T;
+    /** Plain-only histories retain their patch fast path; native graphs require whole-state ownership. */
+    private baselineContainsExotic: boolean;
     /** The most entries `past` may hold; set from options at construction. */
     protected limit: number;
     /** True only until the replay's own publication reaches history, not through its subscribers. */
     protected applying: boolean = false;
     /** A delayed replay notification must not produce an empty history entry. */
     private skipReplay: boolean = false;
+    /** A queued pre-clear publication with no later writes must not revive the old operation. */
+    private skipClearedPublication: boolean = false;
     /** The exact restore argument identifies history's installation, not nested user restores. */
     private replayTarget: T | undefined;
     /** Set by the source immediately before it begins installing replay's own state. */
@@ -65,10 +92,12 @@ export class CarburetorHistory<T extends object> {
     private readonly observer: IPatchObserver = {
         patch: (patch: IWritePatch | typeof PATCH_OPAQUE): void => this.onPatch(patch),
         publication: (): void => this.record(),
-        ownRestore: (state: unknown): void => {
+        ownRestore: (state: unknown): boolean => {
             if (this.applying && state === this.replayTarget) {
                 this.ownedReplay = true;
+                return containsExoticValue(state);
             }
+            return false;
         },
     };
 
@@ -89,9 +118,15 @@ export class CarburetorHistory<T extends object> {
             throw new RangeError('CarburetorHistory: limit must be a positive safe integer');
         }
         this.limit = options.limit ?? 50;
-        this.baseline = carburetor.snapshot();
+        this.baseline = this.capture();
+        this.baselineContainsExotic = containsExoticValue(this.baseline);
 
         this.dispose = carburetor.attachPatchListener(this.observer);
+    }
+
+    /** The producer captures its authoritative raw/wire graph before plain snapshot copying. */
+    private capture(): T {
+        return this.carburetor.captureHistory(own) as T;
     }
 
     /**
@@ -139,10 +174,16 @@ export class CarburetorHistory<T extends object> {
         return true;
     }
 
-    /** Forgets the recorded history, keeping the state as it is. */
+    /** Forgets history and pending writes through this instant, without canceling other observers. */
     public clear(): void {
+        const baseline = this.capture();
         this.past = [];
         this.future = [];
+        this.baseline = baseline;
+        this.baselineContainsExotic = containsExoticValue(baseline);
+        this.pendingPatches = [];
+        this.pendingOpaque = false;
+        this.skipClearedPublication = true;
     }
 
     /** Stops watching the carburetor: nothing is recorded after this. */
@@ -162,7 +203,20 @@ export class CarburetorHistory<T extends object> {
             return;
         }
 
-        this.pendingPatches.push(patch);
+        if (this.baselineContainsExotic) {
+            this.pendingOpaque = true;
+            return;
+        }
+
+        // A native payload can point to an otherwise plain sibling (or the root itself).
+        // Installing only the leaf would split that graph, so own the complete endpoints.
+        if ((patch.previousExists && containsExoticValue(patch.previous)) ||
+            (patch.nextExists && containsExoticValue(patch.next))) {
+            this.pendingOpaque = true;
+            return;
+        }
+
+        this.pendingPatches.push(ownPatch(patch));
     }
 
     /** Flushes the pending publication into one entry, dropping the oldest past the limit. */
@@ -171,7 +225,8 @@ export class CarburetorHistory<T extends object> {
             this.applying = false;
             if (this.ownedReplay) {
                 // Replay has landed. Its subscribers may now publish their own changes.
-                this.baseline = this.carburetor.snapshot();
+                this.baseline = this.capture();
+                this.baselineContainsExotic = containsExoticValue(this.baseline);
                 this.ownedReplay = false;
                 this.skipReplay = false;
                 return;
@@ -181,6 +236,11 @@ export class CarburetorHistory<T extends object> {
             this.skipReplay = false;
         }
 
+        if (this.skipClearedPublication && !this.pendingOpaque && this.pendingPatches.length === 0) {
+            this.skipClearedPublication = false;
+            return;
+        }
+        this.skipClearedPublication = false;
         if (this.skipReplay && !this.pendingOpaque && this.pendingPatches.length === 0) {
             this.skipReplay = false;
             return;
@@ -207,9 +267,9 @@ export class CarburetorHistory<T extends object> {
     protected buildEntry(): THistoryEntry<T> {
         if (this.pendingOpaque || this.pendingPatches.length === 0) {
             const before = this.baseline;
-            const after = this.carburetor.snapshot();
-
-            this.baseline = deepClone(after);
+            const after = this.capture();
+            this.baseline = own(after);
+            this.baselineContainsExotic = containsExoticValue(after);
 
             return {kind: 'snapshot', before, after};
         }
@@ -242,7 +302,7 @@ export class CarburetorHistory<T extends object> {
 
         try {
             const state = entry.kind === 'snapshot'
-                ? (inverse ? entry.before : entry.after)
+                ? own(inverse ? entry.before : entry.after)
                 : this.reconstruct(entry.patches, inverse);
             this.replayTarget = state;
 
@@ -252,7 +312,8 @@ export class CarburetorHistory<T extends object> {
             if (this.applying && this.ownedReplay) {
                 // The source deferred replay's publication. Reconcile its actual wire state
                 // now, before any later subscriber can publish on top of it.
-                this.baseline = this.carburetor.snapshot();
+                this.baseline = this.capture();
+                this.baselineContainsExotic = containsExoticValue(this.baseline);
                 this.skipReplay = this.carburetor.getVersion() !== beforeVersion;
             } else if (this.applying) {
                 // A superseding callback published before the restore could install anything.
@@ -273,7 +334,7 @@ export class CarburetorHistory<T extends object> {
      * @param inverse - true installs `previous` in reverse order; false installs `next` forward.
      */
     private reconstruct(patches: readonly IWritePatch[], inverse: boolean): T {
-        const target = deepClone(this.baseline) as unknown as Record<string, unknown>;
+        const target = own(this.baseline) as unknown as Record<string, unknown>;
         const ordered = inverse ? [...patches].reverse() : patches;
 
         for (const patch of ordered) {

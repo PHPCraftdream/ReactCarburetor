@@ -77,17 +77,22 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         if (generation !== this.restoreGeneration) {
             return;
         }
-
-        const entries: IResourceCacheData<T>['entries'] = {};
+        const ownedReplay = this.patchObservers?.ownRestore(data) === true;
+        const entries: IResourceCacheData<T>['entries'] = ownedReplay ? data.entries : {};
         Object.keys(data.entries).forEach((key: string) => {
             const entry = data.entries[key];
-
-            entries[key] = {
-                ...entry,
-                refreshing: false,
-                status: entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status,
-            };
-
+            const status = entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status;
+            if (ownedReplay) {
+                // Mutate only history's fresh graph: copying entries would split native backlinks.
+                if (entry.refreshing) {
+                    entry.refreshing = false;
+                }
+                if (entry.status !== status) {
+                    entry.status = status;
+                }
+            } else {
+                entries[key] = {...entry, refreshing: false, status};
+            }
             // Preserve a re-entrant request's newer touch.
             if (!this.eviction.lastUsed.has(key)) {
                 this.touch(key);
@@ -96,16 +101,11 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         // A synchronous abort listener may have started a new request; keep its live state.
         this.controllers.forEach((_controller: AbortController, key: string) => {
             const entry = this.data.entries[key];
-
             if (entry) {
                 entries[key] = entry;
             }
         });
-
-        // Mark only this restore; abort listeners above own their writes.
-        this.patchObservers?.ownRestore(data);
-
-        this.setData(deepClone({entries}));
+        this.setData(ownedReplay ? data : deepClone({entries}));
     }
 
     /** Record an entry access for eviction order — see `EvictionLedger.touch`.

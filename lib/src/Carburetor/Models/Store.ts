@@ -88,7 +88,7 @@ export interface ICarburetor<T> extends IInspectable {
      */
     read: (record: (path: string) => void) => TReadonly<T>;
     setData: (data: T) => T;
-    /** Detached deep copy of the data, safe to serialize or keep around. */
+    /** Copies plain state; native Map/Set/Date and class instances remain shared by reference. */
     snapshot: () => T;
     /**
      * JSON text for persistence. Unlike snapshot()/toJSON(), ordinary stores can stringify
@@ -147,4 +147,13 @@ export interface IPatchSource {
      * disposer detaches just its own registration and cancels its deferred publication.
      */
     attachPatchListener: (observer: IPatchObserver) => TDisposer;
+    /**
+     * Captures the authoritative complete state/wire graph for history. The producer invokes
+     * `own` on its raw state before an ordinary snapshot can split plain/native aliases;
+     * subclasses with additional wire metadata include it in the returned graph.
+     * This is mandatory: history cannot infer native graph identity from snapshot().
+     *
+     * @param own - detaches one authoritative raw graph, rejecting unsupported mutable values
+     */
+    captureHistory: (own: <V>(value: V) => V) => unknown;
 }

@@ -649,16 +649,22 @@ Ordinary stores stringify live data without first cloning a snapshot. A subclass
 different persisted representation overrides `serialize(): string` to produce JSON that its
 `restore()` accepts. `ResourceCarburetor` includes its settled argument key, so a restored
 successful or failed answer is reused only for matching arguments; Pending restores as Idle.
-`snapshot()` and `toJSON()` retain their detached snapshot contracts for scope and DevTools.
+`snapshot()` and `toJSON()` copy plain containers; opaque values remain shared by reference.
 Changing only a resource's settled key is still a published change, even when its visible
-status/data/error/timestamp are equal. Resource history records complete wire snapshots so
-undo/redo restores the answer's key too; ordinary store history stays patch-based.
+status/data/error/timestamp are equal. Resource history records complete wire graphs so
+undo/redo restores the answer's key too; pure plain-tree store history stays patch-based.
 History records each published operation before ordinary subscribers run, so a subscriber's
 nested write remains a separate undo step regardless of registration order. Writes caused by
 undo/redo subscribers or superseding abort listeners are fresh branches and invalidate redo;
 only history's own restore installation is suppressed. Transactions and throttles still coalesce
 their writes into one published step. Multiple histories keep independent limits and disposers;
 attaching or replacing a patch-only observer does not disconnect those histories.
+History owns ordinary `Map`, `Set` and `Date` endpoints independently of `snapshot()`.
+Native-containing state uses complete detached graphs, preserving Map-key aliases, native
+descriptors and backlinks through repeated undo/redo and branching. Unsupported mutable
+instances and accessor-bearing native values are rejected instead of promising a false undo.
+`history.clear()` captures the current baseline and discards pre-clear deferred writes;
+later coalesced writes remain undoable from that baseline, and other histories stay independent.
 
 Failed storage reads reach `onError` without deleting unread data; when the handler returns,
 later writes remain subscribed. Without a handler, a read failure throws. Malformed stored
@@ -804,9 +810,9 @@ describes.
 | `getData(): T`                  | Untracked data, for code outside render.                           |
 | `read(record)`                  | Tracked, read-only plain data; every read path goes to `record`.   |
 | `setData(data)`                 | Replaces the data (`getData() === data` afterwards) and wakes the readers of what changed; the protected `markAllChanged()` wakes everyone. |
-| `snapshot(): T`                 | Detached deep copy, safe to serialize or keep.                     |
+| `snapshot(): T`                 | Copies plain objects/arrays; opaque values stay by reference.      |
 | `serialize(): string`            | JSON for persistence; the base stringifies live data without a snapshot clone. Override together with `restore` for a custom persisted representation. |
-| `restore(data)`                 | Installs a snapshot: applies the difference, copying only what it assigns; the caller's object is never kept. |
+| `restore(data)`                 | Installs a snapshot by diffing/copying plain fields; opaque values stay by reference. Owned native history replay preserves its complete graph. |
 | `toJSON()` / `fromJSON(value)`  | Type-erased bridge for DevTools and hydration. `fromJSON` adopts `value` without copying — hand it freshly parsed JSON. |
 | `watch(select, onChange)`       | Subscribes outside React to a selection: `onChange(next, previous)` runs only when it changes. Returns a disposer. |
 | `getVersion(): number`          | Write counter.                                                     |
@@ -889,14 +895,17 @@ a test pins the exported surface so one does not slip in by accident.
   concurrent render pass; don't write to stores from render.
 - The props gate means a component that relied on its parent re-rendering to pick up data it
   never read will stop updating. Read what you render, through `useCarburetor`.
-- Ordinary undo/redo records patches — O(changed values), not O(state). Opaque writes and
-  resource wire identity use full snapshots instead. Undo and redo install through `restore`,
-  waking readers of the changed paths; a key-only resource restore invalidates the slot.
-  `CarburetorHistory` needs an `attachPatchListener` source, not just an `ICarburetor`. This method
-  accepts `{patch, publication?, ownRestore?}`, not a bare function. Custom sources must deliver
-  requested publication callbacks before ordinary subscribers, after transaction/throttle
-  coalescing, and call `ownRestore` with the exact snapshot argument just before their own
-  installation, after cancellation listeners can supersede it. Patch-only observers use `{patch}`.
+- Pure plain-tree undo/redo records patches — O(changed values), not O(state). Native-containing
+  state, opaque writes and resource wire identity use complete owned graphs instead. Undo and
+  redo install through `restore`, waking readers of changed paths; key-only resource restores
+  invalidate the slot. `CarburetorHistory` requires the full `IPatchSource` contract:
+  `attachPatchListener({patch, publication?, ownRestore?})` and mandatory `captureHistory(own)`.
+  Producers pass their authoritative raw graph to `own` before an ordinary snapshot can split
+  plain/native aliases, then include private wire metadata without splitting that graph again.
+  A subclass with a custom snapshot projection must implement its own capture hook.
+  Publication runs before ordinary subscribers after transaction/throttle coalescing.
+  `ownRestore` runs with the exact argument after cancellation listeners can supersede it;
+  it returns true only for a fresh replay-owned graph. Patch-only observers use `{patch}`.
 - Overriding a lifecycle method without calling `super` silently disables effects, subscription
   cleanup or the props gate. Override `useEffects` / `unUseEffects` instead.
 

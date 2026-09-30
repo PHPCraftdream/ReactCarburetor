@@ -183,9 +183,20 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** Lets subclasses synchronize derived state before replacement notifications. */
     protected didSetData(): void {}
 
-    /** A deep copy of the state, detached from further writes. */
+    /** Copies plain state while retaining native and class-instance references as documented. */
     public snapshot(): T {
         return deepClone(this.data);
+    }
+
+    /** Owns the raw graph for history; custom snapshot wire projections must override this too.
+     *
+     * @param own - detaches the complete raw graph while preserving native/plain aliases
+     */
+    public captureHistory(own: <V>(value: V) => V): T {
+        if (this.snapshot !== Carburetor.prototype.snapshot) {
+            throw new Error('CarburetorHistory: a custom snapshot() must provide captureHistory()');
+        }
+        return own(this.data);
     }
 
     /** Installs a detached snapshot with precise draft changes. A root kind change or an
@@ -198,8 +209,12 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
         this.aliases?.checkState(data, '');
 
-        // Nested user restores carry different arguments from the replay's own installation.
-        this.patchObservers?.ownRestore(data);
+        // Only history passes a newly detached graph. Adopting it whole preserves aliases
+        // between plain fields and native Map keys/descriptors; applyDiff/deepClone split them.
+        if (this.patchObservers?.ownRestore(data) === true) {
+            this.setData(data);
+            return;
+        }
 
         if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data)) {
             this.setData(deepClone(data));
@@ -227,7 +242,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return this.snapshot();
     }
 
-    /** Persistence stringifies live data directly; snapshot()/toJSON() remain detached. */
+    /** Persistence stringifies live data directly; snapshot()/toJSON() copy only plain state. */
     public serialize(): string {
         return JSON.stringify(this.data);
     }

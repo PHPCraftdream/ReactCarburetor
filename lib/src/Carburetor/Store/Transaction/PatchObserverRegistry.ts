@@ -104,23 +104,26 @@ export class PatchObserverRegistry {
             : this.single?.observer.patch ?? this.fanout;
     }
 
-    /** Reports the exact restore argument to all attached histories before its own installation. */
-    public ownRestore(state: unknown): void {
+    /** All observers see the argument; any exact replay owner marks this freshly detached graph. */
+    public ownRestore(state: unknown): boolean {
         const sole = this.single;
         if (sole) {
-            sole.observer.ownRestore?.(state);
-            return;
+            return sole.observer.ownRestore?.(state) === true;
         }
         if (this.registrations.size === 0) {
-            return;
+            return false;
         }
         const generation = this.generation;
+        let owned = false;
         for (const registration of this.registrations.values()) {
             const observer = registration.observer;
             if (registration.generation <= generation && this.registrations.get(observer) === registration) {
-                observer.ownRestore?.(state);
+                if (observer.ownRestore?.(state) === true) {
+                    owned = true;
+                }
             }
         }
+        return owned;
     }
 
     /** Queues history before ordinary subscribers; failures do not starve another history. */
