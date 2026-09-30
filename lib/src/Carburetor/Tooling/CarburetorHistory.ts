@@ -51,10 +51,12 @@ const own = <V>(value: V): V => {
             return previous;
         }
         const array = Array.isArray(source);
-        // Null during construction prevents inherited setters from running on copied data.
-        const result: Record<string | symbol, unknown> = array
-            ? Object.setPrototypeOf([], null) as unknown as Record<string | symbol, unknown>
-            : Object.create(null);
+        // Keep ordinary objects/arrays on their native fast shape; only unusual supported
+        // prototypes need adjustment. Inherited names below use defineProperty, never setters.
+        const container = array
+            ? (prototype === Array.prototype ? [] : Object.setPrototypeOf([], prototype))
+            : (prototype === Object.prototype ? {} : Object.create(prototype));
+        const result = container as Record<string | symbol, unknown>;
         seen.set(source, result);
         const keys = Reflect.ownKeys(source);
         let length: PropertyDescriptor | undefined;
@@ -72,17 +74,18 @@ const own = <V>(value: V): V => {
             if (opaque) {
                 return result;
             }
-            if (descriptor.writable && descriptor.enumerable && descriptor.configurable) {
+            if (descriptor.writable && descriptor.enumerable && descriptor.configurable && !(key in result)) {
                 result[key] = descriptor.value;
             } else {
                 Object.defineProperty(result, key, descriptor);
             }
         }
         if (array && length) {
-            Object.defineProperty(result, 'length', length);
-        }
-        if (prototype !== null) {
-            Object.setPrototypeOf(result, prototype);
+            if (length.writable) {
+                result.length = length.value;
+            } else {
+                Object.defineProperty(result, 'length', length);
+            }
         }
         return result;
     };
