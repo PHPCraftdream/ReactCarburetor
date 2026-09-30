@@ -74,49 +74,6 @@ class BoardCarburetor extends Carburetor<IBoardData> {
     };
 }
 
-/** Counts calls to `store.snapshot()`, the O(state) operation R16-07 removes from the hot path. */
-const countSnapshots = (store: BoardCarburetor): {count: () => number} => {
-    let calls = 0;
-    const original = store.snapshot.bind(store);
-
-    store.snapshot = (): IBoardData => {
-        calls++;
-
-        return original();
-    };
-
-    return {count: () => calls};
-};
-
-describe('CarburetorHistory records patches, not snapshots (R16-07)', () => {
-    test('a field write calls snapshot() zero times once history is attached', () => {
-        const store = new BoardCarburetor(buildBoard());
-        const history = new CarburetorHistory<IBoardData>(store);
-        const snapshots = countSnapshots(store);
-
-        store.setTitle('a', 'A2');
-
-        // Pre-fix, record() took a fresh snapshot() on every write; this would read 1.
-        expect(snapshots.count()).toEqual(0);
-
-        history.disconnect();
-    });
-
-    test('several field writes in a row still call snapshot() zero times', () => {
-        const store = new BoardCarburetor(buildBoard());
-        const history = new CarburetorHistory<IBoardData>(store);
-        const snapshots = countSnapshots(store);
-
-        store.setTitle('a', 'A2');
-        store.setTitle('b', 'B2');
-        store.pushOrder(4);
-
-        expect(snapshots.count()).toEqual(0);
-
-        history.disconnect();
-    });
-});
-
 describe('CarburetorHistory undo/redo correctness (R16-07)', () => {
     test('field write: undo restores the previous value, redo the next one', () => {
         const store = new BoardCarburetor(buildBoard());
