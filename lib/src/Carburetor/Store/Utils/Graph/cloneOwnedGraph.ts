@@ -10,9 +10,11 @@ type TDescriptorTransform = (
  * @param value - authoritative graph to detach.
  * @param classify - records replay capability traits during ownership.
  * @param transform - normalizes or omits data descriptors before they are locked onto the copy.
+ * @param opaqueByReference - keeps unrelated opaque operational payloads live; history remains strict.
  */
 export const cloneOwnedGraph = <V>(
-    value: V, classify?: (trait: TOwnedTrait) => void, transform?: TDescriptorTransform
+    value: V, classify?: (trait: TOwnedTrait) => void, transform?: TDescriptorTransform,
+    opaqueByReference = false
 ): V => {
     const seen = new WeakMap<object, object>();
     const copy = (source: unknown): unknown => {
@@ -52,6 +54,7 @@ export const cloneOwnedGraph = <V>(
                 : (prototype === Object.prototype ? {} : Object.create(prototype));
             seen.set(raw, result);
         } else {
+            if (opaqueByReference) return raw;
             throw new Error('CarburetorHistory: cannot own a mutable class instance in a history endpoint');
         }
         let length: PropertyDescriptor | undefined;
