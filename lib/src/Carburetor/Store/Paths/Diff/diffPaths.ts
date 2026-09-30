@@ -1,4 +1,4 @@
-import {TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
+import {PATCH_ARRAY_LENGTH_LOCK, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
@@ -45,17 +45,20 @@ const walkContainer = (
     into: TPathSet,
     onPatch: TPatchRecorder | undefined
 ): void => {
-    if (Array.isArray(oldValue)
-        && (oldValue as unknown as unknown[]).length !== (newValue as unknown as unknown[]).length) {
-        // Catches a length-only change a hole leaves invisible to the key-set comparison below
-        // (growing via `arr.length = n` creates no own, enumerable index).
-        add(into, joinPath(path, 'length'));
-        addPatch(
-            onPatch,
-            [...segments, 'length'],
-            (oldValue as unknown as unknown[]).length,
-            (newValue as unknown as unknown[]).length
-        );
+    if (Array.isArray(oldValue)) {
+        const oldLength = Object.getOwnPropertyDescriptor(oldValue, 'length')!;
+        const newLength = Object.getOwnPropertyDescriptor(newValue, 'length')!;
+        if (oldLength.value !== newLength.value || oldLength.writable !== newLength.writable) {
+            // Descriptor-only locking changes the ability to write, even without changing the
+            // length value. The same tracked length path announces that transition.
+            add(into, joinPath(path, 'length'));
+            if (oldLength.value !== newLength.value) {
+                addPatch(onPatch, [...segments, 'length'], oldLength.value, newLength.value);
+            }
+            if (oldLength.writable !== newLength.writable) {
+                onPatch?.(PATCH_ARRAY_LENGTH_LOCK);
+            }
+        }
     }
 
     const oldKeys = Object.keys(oldValue);

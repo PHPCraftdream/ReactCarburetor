@@ -1,5 +1,6 @@
 import {
-    IWritePatch, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger, TPatchPort,
+    PATCH_ARRAY_LENGTH_LOCK, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger, TPatchPort,
+    TPatchRecorder,
 } from "@/Carburetor/Models/Paths";
 import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
@@ -122,7 +123,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * @param nextExists - whether the key is own after the write.
      */
     private reportPatch(
-        listener: (patch: IWritePatch | typeof PATCH_OPAQUE) => void,
+        listener: TPatchRecorder,
         key: string,
         previous: unknown,
         next: unknown,
@@ -188,6 +189,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
         const array = source as unknown as unknown[];
         const previousLength = array.length;
+        const previousWritable = Object.getOwnPropertyDescriptor(source, 'length')!.writable!;
         const listener = this.patchPort?.listener;
         const concrete = listener && !this.patchPort?.opaque ? listener : undefined;
         let removed: Array<number | string> | undefined;
@@ -234,9 +236,11 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         const wrote = descriptor
-            ? Reflect.defineProperty(source, 'length', {...descriptor, value: uint32})
+            ? Reflect.defineProperty(source, 'length', 'value' in descriptor
+                ? {...descriptor, value: uint32} : descriptor)
             : Reflect.set(source, 'length', uint32);
         const nextLength = array.length;
+        const writableChanged = Object.getOwnPropertyDescriptor(source, 'length')!.writable !== previousWritable;
 
         if (denseStart !== undefined) {
             for (let index = denseStart; index < previousLength; index++) {
@@ -270,18 +274,19 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             this.record(this.keysMarker());
         }
 
-        if (nextLength !== previousLength) {
+        if (nextLength !== previousLength || writableChanged) {
             this.aliases?.checkWrite(source, this.basePath);
             this.record(this.writtenPath('length'));
 
-            if (concrete) {
+            if (concrete && nextLength !== previousLength) {
                 this.reportPatch(concrete, 'length', previousLength, nextLength, true, true);
             }
         }
-        if (listener && !concrete && (removedAny || nextLength !== previousLength)) {
+        if (writableChanged) {
+            listener?.(PATCH_ARRAY_LENGTH_LOCK);
+        } else if (listener && !concrete && (removedAny || nextLength !== previousLength)) {
             listener(PATCH_OPAQUE);
         }
-
         return wrote;
     }
 
@@ -445,7 +450,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (this.isArray && key === 'length') {
             return 'value' in descriptor
                 ? this.setArrayLength(source, descriptor.value, descriptor)
-                : Reflect.defineProperty(source, key, descriptor);
+                : this.setArrayLength(
+                    source, (source as unknown as unknown[]).length, descriptor
+                );
         }
 
         // A fully-open definition needs no descriptor lookup; omitted flags inherit from the

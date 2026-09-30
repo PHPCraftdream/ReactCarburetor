@@ -1,5 +1,5 @@
 import {TDisposer} from "@/Carburetor/Models/Base";
-import {IPatchObserver, IWritePatch, PATCH_OPAQUE} from "@/Carburetor/Models/Paths";
+import {IPatchObserver, IWritePatch, PATCH_ARRAY_LENGTH_LOCK, PATCH_OPAQUE} from "@/Carburetor/Models/Paths";
 import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
@@ -24,6 +24,8 @@ interface ISnapshotEntry<T> {
     /** Whether each stored endpoint contains native state requiring whole-graph replay. */
     beforeExotic: boolean;
     afterExotic: boolean;
+    /** Array length descriptor transitions cannot be installed through a locked live draft. */
+    replaceOnReplay: boolean;
 }
 
 type THistoryEntry<T> = IPatchesEntry | ISnapshotEntry<T>;
@@ -133,6 +135,26 @@ const ownPatch = (patch: IWritePatch): IWritePatch => {
     };
 };
 
+/** An opaque plain-state replacement must not copy or grow any locked array through a draft. */
+const containsLockedArray = (value: unknown): boolean => {
+    const seen = new WeakSet<object>();
+    const visit = (node: unknown): boolean => {
+        if (node === null || typeof node !== 'object' || seen.has(node)) return false;
+        seen.add(node);
+        if (Array.isArray(node)) {
+            if (Object.getOwnPropertyDescriptor(node, 'length')!.writable === false) return true;
+        } else {
+            const prototype = Object.getPrototypeOf(node);
+            if (prototype !== Object.prototype && prototype !== null) return false;
+        }
+        for (const key of Object.keys(node)) {
+            if (visit((node as Record<string, unknown>)[key])) return true;
+        }
+        return false;
+    };
+    return visit(value);
+};
+
 /**
  * Undo/redo for a carburetor, built on patches (R16-07). Every change is recorded, except the
  * ones this class applies itself — otherwise undo would keep re-recording its own work.
@@ -167,6 +189,8 @@ export class CarburetorHistory<T extends object> {
     private replayTarget: T | undefined;
     /** The selected replay endpoint's graph classification, valid only while applying. */
     private replayContainsExotic: boolean = false;
+    /** Only a replay containing a length descriptor transition adopts its owned plain graph. */
+    private replayReplaceLockedArray: boolean = false;
     /** Set by the source immediately before it begins installing replay's own state. */
     private ownedReplay: boolean = false;
     /** Detaches both streams; disconnect() runs it to stop recording. */
@@ -175,15 +199,18 @@ export class CarburetorHistory<T extends object> {
     protected pendingPatches: IWritePatch[] = [];
     /** Whether the pending change contains a write the proxy could not describe. */
     protected pendingOpaque: boolean = false;
+    /** The pending publication changed an array length writable flag. */
+    private pendingLengthLock: boolean = false;
 
     /** One observer for mutation patches, the pre-subscriber boundary and replay ownership. */
     private readonly observer: IPatchObserver = {
-        patch: (patch: IWritePatch | typeof PATCH_OPAQUE): void => this.onPatch(patch),
+        patch: (patch: IWritePatch | typeof PATCH_OPAQUE | typeof PATCH_ARRAY_LENGTH_LOCK): void =>
+            this.onPatch(patch),
         publication: (): void => this.record(),
         ownRestore: (state: unknown): boolean => {
             if (this.applying && state === this.replayTarget) {
                 this.ownedReplay = true;
-                return this.replayContainsExotic;
+                return this.replayContainsExotic || this.replayReplaceLockedArray;
             }
             return false;
         },
@@ -250,8 +277,24 @@ export class CarburetorHistory<T extends object> {
             return false;
         }
 
+        const beforeVersion = this.carburetor.getVersion();
+        const beforeState = this.carburetor.getData();
         this.future.push(entry);
-        this.apply(entry, true);
+        try {
+            this.apply(entry, true);
+        } catch (error) {
+            // Restore may fail before installation (e.g. a custom restore guard). A subscriber
+            // that published a fresh branch during replay already owns the cursor instead.
+            if (this.carburetor.getVersion() === beforeVersion
+                && this.carburetor.getData() === beforeState
+                && !this.pendingOpaque && this.pendingPatches.length === 0
+                && this.future[this.future.length - 1] === entry
+                && sameHistoryGraph(this.baseline, this.capture().state)) {
+                this.future.pop();
+                this.past.push(entry);
+            }
+            throw error;
+        }
 
         return true;
     }
@@ -268,8 +311,22 @@ export class CarburetorHistory<T extends object> {
             return false;
         }
 
+        const beforeVersion = this.carburetor.getVersion();
+        const beforeState = this.carburetor.getData();
         this.past.push(entry);
-        this.apply(entry, false);
+        try {
+            this.apply(entry, false);
+        } catch (error) {
+            if (this.carburetor.getVersion() === beforeVersion
+                && this.carburetor.getData() === beforeState
+                && !this.pendingOpaque && this.pendingPatches.length === 0
+                && this.past[this.past.length - 1] === entry
+                && sameHistoryGraph(this.baseline, this.capture().state)) {
+                this.past.pop();
+                this.future.push(entry);
+            }
+            throw error;
+        }
 
         return true;
     }
@@ -284,6 +341,7 @@ export class CarburetorHistory<T extends object> {
         this.baselineShared = false;
         this.pendingPatches = [];
         this.pendingOpaque = false;
+        this.pendingLengthLock = false;
         this.skipClearedPublication = true;
     }
 
@@ -293,11 +351,16 @@ export class CarburetorHistory<T extends object> {
     }
 
     /** Collects a patch or opaque fallback, ignoring only the exact replay-owned installation. */
-    protected onPatch(patch: IWritePatch | typeof PATCH_OPAQUE): void {
+    protected onPatch(patch: IWritePatch | typeof PATCH_OPAQUE | typeof PATCH_ARRAY_LENGTH_LOCK): void {
         if (this.applying && this.ownedReplay) {
             return;
         }
 
+        if (patch === PATCH_ARRAY_LENGTH_LOCK) {
+            this.pendingOpaque = true;
+            this.pendingLengthLock = true;
+            return;
+        }
         if (patch === PATCH_OPAQUE) {
             this.pendingOpaque = true;
 
@@ -352,6 +415,7 @@ export class CarburetorHistory<T extends object> {
         const entry = this.buildEntry();
         this.pendingPatches = [];
         this.pendingOpaque = false;
+        this.pendingLengthLock = false;
         if (entry === undefined) return;
         this.past.push(entry);
         if (this.past.length > this.limit) {
@@ -414,6 +478,9 @@ export class CarburetorHistory<T extends object> {
             return {
                 kind: 'snapshot', before, after: capture.state,
                 beforeExotic, afterExotic: capture.exotic,
+                replaceOnReplay: this.pendingLengthLock ||
+                    (!beforeExotic && !capture.exotic &&
+                        (containsLockedArray(before) || containsLockedArray(capture.state))),
             };
         }
 
@@ -455,6 +522,7 @@ export class CarburetorHistory<T extends object> {
             this.replayContainsExotic = entry.kind === 'snapshot'
                 ? (inverse ? entry.beforeExotic : entry.afterExotic)
                 : false;
+            this.replayReplaceLockedArray = entry.kind === 'snapshot' && entry.replaceOnReplay;
             this.replayTarget = state;
 
             // Only a publication from this exact restore argument suppresses its own entry;
@@ -477,6 +545,7 @@ export class CarburetorHistory<T extends object> {
             this.replayTarget = undefined;
             this.ownedReplay = false;
             this.replayContainsExotic = false;
+            this.replayReplaceLockedArray = false;
             this.applying = false;
         }
     }

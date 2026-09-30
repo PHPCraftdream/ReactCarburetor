@@ -36,6 +36,9 @@ export type TAliasLedger = {
  */
 export const PATCH_OPAQUE: unique symbol = Symbol.for('react-carburetor/v1/patch-opaque');
 
+/** Array length's writable flag changed: history must replay an owned graph, not grow a locked draft. */
+export const PATCH_ARRAY_LENGTH_LOCK: unique symbol = Symbol.for('react-carburetor/v1/patch-array-length-lock');
+
 /**
  * One write the proxy could describe precisely, enough to invert it without a diff:
  * `segments` are the raw, unescaped keys from the store root to the written field — cheap to
@@ -54,12 +57,14 @@ export interface IWritePatch {
     next: unknown;
 }
 
-/** Delivers one patch per describable write, or PATCH_OPAQUE for one the proxy cannot describe. */
-export type TPatchRecorder = (patch: IWritePatch | typeof PATCH_OPAQUE) => void;
+/** Delivers a field patch, an opaque change, or an array length descriptor transition. */
+export type TPatchRecorder = (
+    patch: IWritePatch | typeof PATCH_OPAQUE | typeof PATCH_ARRAY_LENGTH_LOCK
+) => void;
 
 /** Mutation and publication stream from one patch source; fields are stable for the attachment. */
 export interface IPatchObserver {
-    /** Called at mutation time for each patch, or PATCH_OPAQUE when no patch describes the write. */
+    /** Called at mutation time for each patch, opaque write, or array length descriptor transition. */
     patch: TPatchRecorder;
     /** If present, scheduled before ordinary subscribers at each publication (after coalescing). */
     publication?: () => void;
