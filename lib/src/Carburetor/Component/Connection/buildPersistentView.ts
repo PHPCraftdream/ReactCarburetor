@@ -8,11 +8,11 @@ import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
  * The empty targets every connect()-family facade forwards through, shared by every
  * declaration of the same kind instead of one fresh `{}`/`[]` per declaration (R16-09).
  *
- * Safe because no trap ever reads or writes the target for its own sake: every access forwards
- * to the resolved view, every mutation trap throws before touching it, and the one place a trap
- * does consult the target (`getOwnPropertyDescriptor`, for an already-non-configurable key like
- * an array's `length`) only ever reads a descriptor that is the same for every empty array —
- * nothing here depends on a target's identity, only its shape.
+ * Safe because no trap writes the target: every access forwards to the resolved view, every
+ * mutation trap throws, and descriptor reflection normalizes a locked array `length` against
+ * the writable `length` of the shared empty array. In particular, no connection may lock the
+ * target itself: undo or a new root can make the source writable again, independently for
+ * each facade.
  */
 const SHARED_OBJECT_TARGET: object = {};
 const SHARED_ARRAY_TARGET: unknown[] = [];

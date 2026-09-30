@@ -673,6 +673,8 @@ Mixed plain/native history graphs share one copy ledger, without discarding a co
 Supported array length definitions also record descriptor-only locks. Undo/redo restores the
 length's writable flag and sparse elements; a refused restore before installation preserves
 the cursor for retry.
+Persistent array connections report a writable length descriptor to satisfy their proxy target
+invariants across locks and root replacement. Detached selections retain the raw writable flag.
 
 Failed storage reads reach `onError` without deleting unread data; when the handler returns,
 later writes remain subscribed. Without a handler, a read failure throws. Malformed stored

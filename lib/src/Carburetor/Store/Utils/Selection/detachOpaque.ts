@@ -190,7 +190,9 @@ const detach = (
             }
         });
 
-        const length = Object.getOwnPropertyDescriptor(value, 'length');
+        // A persistent array facade reports writable length even when the current raw
+        // array is locked, as required by its shared Proxy target. Copy the real flags.
+        const length = Object.getOwnPropertyDescriptor(native, 'length');
 
         if (length) {
             Object.defineProperty(copy, 'length', length);

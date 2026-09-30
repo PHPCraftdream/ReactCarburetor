@@ -146,14 +146,14 @@ export class ConnectionFacadeHandler<T extends object> implements ProxyHandler<T
     }
 
     /**
-     * Forwards a descriptor lookup to the current view, relaxing a non-configurable result.
+     * Forwards a descriptor lookup, relaxing non-configurable keys absent from the target.
      *
-     * Relaxed to configurable — the one lawful representation over the empty facade target,
-     * which grants nothing because every mutation trap rejects it — unless the target itself
-     * already holds that key non-configurable (an array target's `length`), where forwarding
-     * unchanged stays compatible instead.
+     * An array target already owns a non-configurable `length`, but its writable bit must
+     * remain true: reporting false would violate Proxy invariants and permanently locking the
+     * shared target would break undo, root replacement and other facades. Raw descriptor flags
+     * needed by detachment are read through liveViews instead of this facade's reflection.
      *
-     * @param _target - the facade's own empty target, consulted only for its own descriptors
+     * @param _target - the facade's own empty target, consulted for its own descriptors
      * @param key - the property whose descriptor is being read
      */
     getOwnPropertyDescriptor(_target: TReadonly<T>, key: string | symbol): PropertyDescriptor | undefined {
@@ -168,7 +168,9 @@ export class ConnectionFacadeHandler<T extends object> implements ProxyHandler<T
             Reflect.getOwnPropertyDescriptor(_target as object, key);
 
         if (targetDescriptor !== undefined && !targetDescriptor.configurable) {
-            return descriptor;
+            return targetDescriptor.writable === true && descriptor.writable === false
+                ? {...descriptor, writable: true}
+                : descriptor;
         }
 
         return {...descriptor, configurable: true};

@@ -1,8 +1,9 @@
-import {Carburetor} from "@/Carburetor";
+import {AntiHookComponent, Carburetor, CarburetorHistory} from "@/Carburetor";
 import {IConnection, IConnectionSource, IRenderAttempt} from "@/Carburetor/Component/Models/Connection";
 import {declareConnection} from "@/Carburetor/Component/Connection/declareConnection";
 import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersistentView";
 import {ConnectionFacadeHandler} from "@/Carburetor/Component/Connection/ConnectionFacadeHandler";
+import {detachSelection} from "@/Carburetor/Component/Connection/detachSelection";
 import {PROXY_CACHE} from "@/Carburetor/Store/Tracking/Models";
 
 /**
@@ -247,5 +248,126 @@ describe('buildPersistentView descriptor relaxation (array length stays non-conf
 
         expect(element?.configurable).toBe(true);
         expect(element?.value).toEqual(1);
+    });
+});
+
+describe('persistent array facade length locks', () => {
+    test('descriptor queries remain lawful across a root lock, undo, redo and independent facades', () => {
+        const store = new Carburetor<number[]>([1, 2, 3]);
+        const other = new Carburetor<number[]>([9, 8]);
+        const history = new CarburetorHistory(store);
+        const view = buildPersistentView(declare(() => store)) as number[];
+        const sibling = buildPersistentView(declare(() => other)) as number[];
+        const descriptor = (value: number[]): PropertyDescriptor =>
+            Object.getOwnPropertyDescriptor(value, 'length')!;
+
+        expect(descriptor(view)).toMatchObject({value: 3, writable: true, configurable: false});
+        store.update(draft => { Object.defineProperty(draft, 'length', {value: 1, writable: false}); });
+        expect(descriptor(store.getData()).writable).toBe(false);
+        // The facade must report writable:true over its shared, still-writable array target.
+        expect(descriptor(view)).toMatchObject({value: 1, writable: true, configurable: false});
+        expect(view.length).toBe(1);
+        expect('length' in view).toBe(true);
+        expect(Reflect.ownKeys(view)).toEqual(['0', 'length']);
+        expect(descriptor(sibling)).toMatchObject({value: 2, writable: true});
+
+        expect(history.undo()).toBe(true);
+        expect(descriptor(view)).toMatchObject({value: 3, writable: true});
+        expect(view.length).toBe(3);
+        expect(history.redo()).toBe(true);
+        expect(descriptor(view)).toMatchObject({value: 1, writable: true});
+        expect(view.length).toBe(1);
+
+        other.update(draft => { Object.defineProperty(draft, 'length', {writable: false}); });
+        expect(descriptor(sibling)).toMatchObject({value: 2, writable: true});
+        expect(descriptor(view)).toMatchObject({value: 1, writable: true});
+        other.setData([7, 6, 5, 4]);
+        expect(descriptor(sibling)).toMatchObject({value: 4, writable: true});
+        expect(sibling.length).toBe(4);
+        expect(descriptor(other.getData()).writable).toBe(true);
+        history.disconnect();
+    });
+
+    test('a source swap and root replacement keep length and special array prototypes current', () => {
+        const first = new Carburetor<number[]>([1]);
+        const second = new Carburetor<number[]>([4, 5]);
+        let current = first;
+        const view = buildPersistentView(declare(() => current)) as number[];
+        const length = (): PropertyDescriptor => Object.getOwnPropertyDescriptor(view, 'length')!;
+
+        first.update(draft => { Object.defineProperty(draft, 'length', {writable: false}); });
+        expect(length()).toMatchObject({value: 1, writable: true});
+        current = second;
+        expect(length()).toMatchObject({value: 2, writable: true});
+        expect(view.length).toBe(2);
+
+        const unusual = Object.setPrototypeOf([3, 4, 5], null) as number[];
+        Object.defineProperty(unusual, 'length', {writable: false});
+        second.setData(unusual);
+        expect(Object.getPrototypeOf(view)).toBe(null);
+        expect(length()).toMatchObject({value: 3, writable: true, configurable: false});
+        expect(view.length).toBe(3);
+        expect(Reflect.ownKeys(view)).toEqual(['0', '1', '2', 'length']);
+        second.setData([10, 11, 12, 13]);
+        expect(Object.getPrototypeOf(view)).toBe(Array.prototype);
+        expect(length()).toMatchObject({value: 4, writable: true});
+        expect(view.length).toBe(4);
+    });
+
+    test('detaching selected root and nested arrays retains raw locked length flags', () => {
+        const store = new Carburetor<number[]>([1, 2]);
+        const view = buildPersistentView(declare(() => store)) as number[];
+        store.update(draft => { Object.defineProperty(draft, 'length', {writable: false}); });
+
+        const selected = detachSelection(view) as number[];
+        expect(selected).not.toBe(store.getData());
+        expect(Object.getOwnPropertyDescriptor(selected, 'length')).toMatchObject({
+            value: 2, writable: false, configurable: false,
+        });
+        expect(Object.getOwnPropertyDescriptor(view, 'length')?.writable).toBe(true);
+
+        const nested = new Carburetor({items: [3, 4]});
+        const parent = buildPersistentView(declare(() => nested));
+        nested.update(draft => { Object.defineProperty(draft.items, 'length', {value: 1, writable: false}); });
+        const detached = detachSelection(parent) as {items: number[]};
+        expect(Object.getOwnPropertyDescriptor(detached.items, 'length')).toMatchObject({
+            value: 1, writable: false, configurable: false,
+        });
+        expect(detached.items).toEqual([3]);
+    });
+
+    test('public connectSelection preserves locked flags and reuses an unchanged detached array', () => {
+        const store = new Carburetor<number[]>([1, 2]);
+        const history = new CarburetorHistory(store);
+
+        class List extends AntiHookComponent {
+            public readonly view = this.connect(() => store);
+            public readonly selected = this.connectSelection(() => store, () => this.view);
+
+            render(): null {
+                return null;
+            }
+        }
+
+        const component = new List({});
+        const before = component.selected();
+        expect(component.selected()).toBe(before);
+        store.update(draft => { Object.defineProperty(draft, 'length', {writable: false}); });
+        const locked = component.selected();
+        expect(locked).not.toBe(before);
+        expect(Object.getOwnPropertyDescriptor(component.view, 'length')?.writable).toBe(true);
+        expect(Object.getOwnPropertyDescriptor(locked, 'length')?.writable).toBe(false);
+        expect(component.selected()).toBe(locked);
+        expect(history.undo()).toBe(true);
+        const restored = component.selected();
+        expect(restored).not.toBe(locked);
+        expect(Object.getOwnPropertyDescriptor(restored, 'length')?.writable).toBe(true);
+        expect(component.selected()).toBe(restored);
+        expect(history.redo()).toBe(true);
+        const redone = component.selected();
+        expect(redone).not.toBe(restored);
+        expect(Object.getOwnPropertyDescriptor(redone, 'length')?.writable).toBe(false);
+        expect(component.selected()).toBe(redone);
+        history.disconnect();
     });
 });

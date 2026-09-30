@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Persistent array connection descriptor queries remain lawful after length locks, undo/redo
+  and source replacement. Detached selections keep raw descriptor flags and stable equal identity.
+
 - A cache load cancelled or superseded by a Pending subscriber before its loader runs rejects
   with `AbortError` instead of reporting success without an answer; replacement requests stay owned.
 

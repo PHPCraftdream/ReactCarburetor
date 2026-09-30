@@ -1,3 +1,4 @@
+import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
 import {isPlainObject} from "./isPlainObject";
 
 /**
@@ -20,6 +21,10 @@ const sameKeyedContent = (
 ): boolean => {
     const previousKeys = Reflect.ownKeys(snapshot);
     const freshKeys = Reflect.ownKeys(next);
+    // Facades relax some non-configurable flags, and an array facade must report its
+    // shared target's writable length even for a locked source. Compare the canonical
+    // source descriptors against the detached snapshot, as detachment does.
+    const freshDescriptorSource = liveViews.readTarget(next) ?? next;
 
     if (previousKeys.length !== freshKeys.length) {
         return false;
@@ -27,7 +32,7 @@ const sameKeyedContent = (
 
     return previousKeys.every((key: string | symbol): boolean => {
         const previousDescriptor = Object.getOwnPropertyDescriptor(snapshot, key);
-        const freshDescriptor = Object.getOwnPropertyDescriptor(next, key);
+        const freshDescriptor = Object.getOwnPropertyDescriptor(freshDescriptorSource, key);
 
         if (previousDescriptor === undefined || freshDescriptor === undefined) {
             return false;
