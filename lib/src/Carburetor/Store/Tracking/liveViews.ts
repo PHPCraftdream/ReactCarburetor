@@ -1,5 +1,7 @@
+import {TPathRecorder} from "@/Carburetor/Models/Paths";
 import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {IProxyCache} from "./Models";
+import {recordNativeAliasReads} from "./Aliases/NativeAliasReads";
 
 /**
  * Engine-owned read views, draft views and persistent connection facades share one weak
@@ -31,7 +33,8 @@ const facades = new WeakMap<IProxyCache, WeakMap<object, object>>();
  * Unsupported subclasses, own method overrides and other native/class objects remain raw.
  */
 const adaptNativeCollection = (
-    value: object, cache: IProxyCache, source: object, key: string
+    value: object, cache: IProxyCache, source: object, key: string,
+    root: object | undefined, record: TPathRecorder | undefined
 ): object => {
     const prototype = Object.getPrototypeOf(value);
     const map = prototype === Map.prototype;
@@ -44,6 +47,7 @@ const adaptNativeCollection = (
     // Native own descriptors can be intentionally locked even when the parent is extensible.
     const own = Object.getOwnPropertyDescriptor(source, key);
     if (own !== undefined && !own.configurable && own.writable === false) {
+        if (root !== undefined && record !== undefined) recordNativeAliasReads(root, value, record);
         return value;
     }
 
@@ -65,6 +69,10 @@ const adaptNativeCollection = (
         get(target, key): unknown {
             // Native getters (notably size) require a receiver with the collection's slots.
             const member: unknown = Reflect.get(target, key, target);
+            if (root !== undefined && record !== undefined
+                && member !== null && typeof member === 'object') {
+                recordNativeAliasReads(root, member, record);
+            }
 
             if (typeof member !== 'function' || key === 'constructor'
                 || Object.prototype.hasOwnProperty.call(target, key)) {
@@ -85,7 +93,16 @@ const adaptNativeCollection = (
                         .call(receiver, canonical(entryKey), canonical(entryValue));
                     return result === receiver && receiver !== this ? this : result;
                 };
-            } else if (key === 'get' || key === 'has' || key === 'delete'
+            } else if (map && key === 'get') {
+                method = function (this: unknown, entry: unknown): unknown {
+                    const result = (member as (this: unknown, entry: unknown) => unknown)
+                        .call(canonical(this), canonical(entry));
+                    if (root !== undefined && record !== undefined) {
+                        recordNativeAliasReads(root, result, record);
+                    }
+                    return result;
+                };
+            } else if (key === 'has' || key === 'delete'
                 || (!map && key === 'add')) {
                 method = function (this: unknown, entry: unknown): unknown {
                     const receiver = canonical(this);
@@ -96,6 +113,9 @@ const adaptNativeCollection = (
             } else if (key === 'forEach') {
                 method = function (this: unknown, callback: unknown, thisArg?: unknown): unknown {
                     const receiver = canonical(this);
+                    if (root !== undefined && record !== undefined) {
+                        recordNativeAliasReads(root, receiver, record);
+                    }
                     const forEach = member as (this: unknown, callback: unknown, thisArg?: unknown) => unknown;
                     if (typeof callback !== 'function') {
                         return forEach.call(receiver, callback, thisArg);
@@ -104,6 +124,16 @@ const adaptNativeCollection = (
                         Function.prototype.call.call(callback, thisArg, value, entry,
                             raw === receiver && receiver !== this ? this : raw);
                     }, thisArg);
+                };
+            } else if (key === 'keys' || key === 'values' || key === 'entries'
+                || key === Symbol.iterator) {
+                method = function (this: unknown, ...args: unknown[]): unknown {
+                    const receiver = canonical(this);
+                    const result = Reflect.apply(member, receiver, args);
+                    if (root !== undefined && record !== undefined) {
+                        recordNativeAliasReads(root, receiver, record);
+                    }
+                    return result;
                 };
             } else {
                 method = function (this: unknown, ...args: unknown[]): unknown {
@@ -124,8 +154,14 @@ const adaptNativeCollection = (
 };
 
 export const liveViews = {
-    /** Adapts native Map/Set methods using the same canonical target registry as detachment. */
-    adaptNativeCollection,
+    /** Adapts a draft Map/Set without recording read dependencies. */
+    adaptNativeCollection: (value: object, cache: IProxyCache, source: object, key: string): object =>
+        adaptNativeCollection(value, cache, source, key, undefined, undefined),
+    /** Adapts a read Map/Set, recording only the raw members its caller exposes. */
+    adaptReadNativeCollection: (
+        value: object, cache: IProxyCache, source: object, key: string,
+        root: object, record: TPathRecorder
+    ): object => adaptNativeCollection(value, cache, source, key, root, record),
     /** Notes a diagnostic-only facade without erasing an existing target or resolver. */
     note: (view: object): void => {
         if (!knownViews.has(view)) {

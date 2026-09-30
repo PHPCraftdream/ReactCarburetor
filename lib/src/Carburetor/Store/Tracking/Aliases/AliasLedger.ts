@@ -1,7 +1,7 @@
 import {TPath, TAliasLedger} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
-import {isTrackable} from "./isTrackable";
+import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 
 // Declared locally rather than through @types/node, as in Carburetor.ts: bundlers substitute
 // this exact member expression at build time, which is what lets the strings below be dropped

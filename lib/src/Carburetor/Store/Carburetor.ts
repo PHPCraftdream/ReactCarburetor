@@ -19,7 +19,7 @@ import {updateWave} from "./Scheduling/UpdateWaveInstance";
 import {nativeStoreWriteEpoch} from "./Scheduling/nativeStoreWriteEpoch";
 import {createReadProxy} from "./Tracking/createReadProxy";
 import {createWriteProxy} from "./Tracking/createWriteProxy";
-import {createAliasLedger} from "./Tracking/AliasLedger";
+import {createAliasLedger} from "./Tracking/Aliases/AliasLedger";
 import {isTrackable} from "./Tracking/isTrackable";
 import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {PatchObserverRegistry} from "./Transaction/PatchObserverRegistry";

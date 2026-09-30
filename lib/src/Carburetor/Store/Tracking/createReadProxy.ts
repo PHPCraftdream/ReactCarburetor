@@ -7,6 +7,7 @@ import {createProxyCache} from "./createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
 import {liveViews} from "./liveViews";
 import {isTrackable} from "./isTrackable";
+import {recordNativeAliasReads} from "./Aliases/NativeAliasReads";
 
 /**
  * Inherited values are never state branches: in particular `__proto__` must not wrap or
@@ -79,16 +80,17 @@ const lockedAgainstWrapping = (
  * is no getPrototypeOf or isExtensible trap to answer them, so a view keeps reporting exactly
  * what the raw data is.
  *
- * Plain objects and arrays only: a Map, Date, Set or class instance passes through unwrapped,
- * so a mutating method called on one of those sits outside this guard.
+ * Plain objects and arrays are wrapped read-only. Ordinary Map/Set instances use native
+ * receiver facades; their raw members remain raw, while any member also reachable through a
+ * plain own path subscribes to that path. Other native/class instances pass through raw.
  *
  * Frozen data is refused, not wrapped, because the engine accepts no proxy answer but the raw
  * value from a non-configurable, non-writable property. Development throws with the path
  * named; production hands out the raw branch, still recorded as a branch read — the same
  * degrade-and-mark policy the write proxy applies to Maps.
  *
- * The data is a tree, one object at one path: a second path to a live object is reported in
- * development through the alias ledger, which production compiles out.
+ * The development ledger reports plain aliases; native-member alias dependencies are
+ * independently recorded here in both development and production.
  */
 class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
     /**
@@ -102,12 +104,14 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * @param aliases - development-only: notes each branch object under its path so a second
      * path to the same object is reported; production hands in undefined.
      * @param cache - the branch-wrapper cache this proxy's whole tree shares.
+     * @param root - current plain store root, used to find ordinary paths to native raw members.
      */
     constructor(
         private readonly basePath: TPath,
         private readonly record: TPathRecorder,
         private readonly aliases: TAliasLedger | undefined,
         private readonly cache: IProxyCache,
+        private readonly root: object,
     ) {}
 
     /** The first string key this instance resolved: the whole memo of most branches. */
@@ -212,7 +216,7 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
             return cached;
         }
 
-        const proxy = createReadProxy(source, this.record, path, this.aliases, this.cache);
+        const proxy = createReadProxy(source, this.record, path, this.aliases, this.cache, this.root);
 
         this.cache.set(path, source, proxy);
 
@@ -224,9 +228,9 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * hatch before any of that runs. Reaching into a branch subscribes to the branch marker
      * and, in development, notes it in the alias ledger; a leaf read subscribes to its own path.
      *
-     * A symbol key has no place in state (R6-02/R6-03): nothing is recorded for reading one, own
-     * or inherited, and its value passes through raw, unwrapped. A Map/Set reached through a
-     * string key is adapted only for native arguments; Date/classes still pass through raw.
+     * A symbol key has no place in plain state (R6-02/R6-03): nothing is recorded for reading
+     * one there. Native Map/Set fields and methods keep their original raw members and receiver
+     * semantics, but exposed plain aliases also subscribe to their ordinary writable paths.
      *
      * @param source - the raw object this proxy fronts.
      * @param key - the property being read.
@@ -275,9 +279,17 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         this.record(path);
+        if (value === null || typeof value !== 'object') return value;
 
-        return value !== null && typeof value === 'object'
-            ? liveViews.adaptNativeCollection(value, this.cache, source, key) : value;
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype === Map.prototype || prototype === Set.prototype) {
+            return liveViews.adaptReadNativeCollection(
+                value, this.cache, source, key, this.root, this.record
+            );
+        }
+
+        recordNativeAliasReads(this.root, value, this.record);
+        return value;
     }
 
     /**
@@ -414,16 +426,18 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
  * @param cache - the branch-wrapper cache this whole proxy tree shares; the root call leaves
  * this undefined and mints one, and every nested branch receives it back so the tree caches
  * as one unit.
+ * @param root - the original read tree root, passed unchanged to nested branches
  */
 export const createReadProxy = <T extends object>(
     target: T,
     record: TPathRecorder,
     basePath: TPath = '',
     aliases?: TAliasLedger,
-    cache?: IProxyCache
+    cache?: IProxyCache,
+    root: object = target
 ): T => {
     const cached: IProxyCache = cache ?? createProxyCache();
-    const proxy = new Proxy(target, new ReadProxyHandler<T>(basePath, record, aliases, cached)) as T;
+    const proxy = new Proxy(target, new ReadProxyHandler<T>(basePath, record, aliases, cached, root)) as T;
 
     liveViews.noteTarget(proxy, target);
 
