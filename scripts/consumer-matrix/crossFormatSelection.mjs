@@ -557,7 +557,9 @@ export const runCrossFormatSelection = (installDir) => {
         'length-nested-flag-only', 'length-nested-truncate',
         'connected-length-descriptor', 'cache-preloader-cancel',
         'key-order-replacement', 'key-order-deletion-selection', 'watch-complete-leaf-reads',
-        'native-equal-content-retarget', 'readonly-snapshot-restore', 'readonly-history-replay'];
+        'native-equal-content-retarget', 'readonly-snapshot-restore', 'readonly-history-replay',
+        'readonly-branch-admission', 'locked-object-restore',
+        'throwing-observer-scalar', 'throwing-observer-branch'];
     const expectedBoundaries = ['cjs-store/esm-history', 'esm-store/cjs-history']
         .flatMap(label => boundaryKinds.map(kind => label + ':' + kind));
     if (JSON.stringify(parsed.engineCases) !== JSON.stringify(expectedBoundaries)) {

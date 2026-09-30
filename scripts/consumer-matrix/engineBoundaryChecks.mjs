@@ -230,5 +230,65 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         history.disconnect();
         completed.push(label + ':readonly-history-replay');
     }
+    {
+        const row = {};
+        Object.defineProperty(row, 'x', {value: 1, writable: false, enumerable: true, configurable: true});
+        const store = new producer.Carburetor({row});
+        const history = new recorder.CarburetorHistory(store);
+        store.update(draft => { draft.row = {x: 2}; });
+        assert.equal(history.canUndo(), true);
+        assert.equal(history.undo(), true);
+        assert.equal(store.getData().row.x, 1);
+        assert.equal(Object.getOwnPropertyDescriptor(store.getData().row, 'x').writable, false);
+        assert.equal(history.redo(), true);
+        assert.equal(store.getData().row.x, 2);
+        history.disconnect();
+        completed.push(label + ':readonly-branch-admission');
+    }
+    {
+        const initial = {other: 0};
+        Object.defineProperty(initial, 'row', {
+            value: {n: 1}, writable: false, configurable: false, enumerable: true,
+        });
+        const store = new producer.Carburetor(initial);
+        const saved = store.snapshot();
+        saved.other = 4;
+        saved.row.n = 2;
+        const changes = [];
+        const stop = store.watch(view => view.other, value => changes.push(value));
+        store.restore(saved);
+        assert.equal(store.getData().other, 4);
+        assert.equal(store.getData().row.n, 2);
+        assert.equal(store.getVersion(), 1);
+        assert.deepStrictEqual(changes, [4]);
+        saved.row.n = -1;
+        assert.equal(store.getData().row.n, 2);
+        stop();
+        completed.push(label + ':locked-object-restore');
+    }
+    for (const branch of [false, true]) {
+        const store = new producer.Carburetor(branch ? {item: {a: 1, b: 1}} : {x: 1});
+        const history = new recorder.CarburetorHistory(store);
+        const changes = [];
+        const stop = store.watch(view => branch ? [view.item.a, view.item.b] : view.x,
+            value => changes.push(value));
+        const failure = new Error('observer failed');
+        const detach = store.attachPatchListener({
+            /** Delivers the exact consumer error after an effective mutation. */
+            patch() { throw failure; },
+        });
+        assert.throws(() => store.update(draft => {
+            if (branch) draft.item = {a: 2, b: 2};
+            else draft.x = 2;
+        }), error => error === failure);
+        assert.equal(store.getVersion(), 1);
+        assert.deepStrictEqual(changes, branch ? [[2, 2]] : [2]);
+        detach();
+        assert.equal(history.undo(), true);
+        assert.deepStrictEqual(store.getData(), branch ? {item: {a: 1, b: 1}} : {x: 1});
+        stop();
+        history.disconnect();
+        completed.push(label + ':throwing-observer-' + (branch ? 'branch' : 'scalar'));
+    }
     return completed;
 };
