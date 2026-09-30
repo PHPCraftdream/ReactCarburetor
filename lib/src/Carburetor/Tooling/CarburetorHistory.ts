@@ -7,7 +7,7 @@ import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
 import {containsExoticValue} from "@/Carburetor/Store/Utils/Graph/containsExoticValue";
 import {preflightOwnedPatches} from "./Graph/canInstallOwnedPatch";
-import {cloneOwnedGraph as own} from "../Store/Utils/Graph/cloneOwnedGraph";
+import {cloneOwnedGraph as own} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
 import {sameHistoryGraph} from "./Graph/sameHistoryGraph";
 
 /** One change recorded as the patches to invert it — the fast path (R16-07). */
@@ -89,8 +89,9 @@ export class CarburetorHistory<T extends object> {
         patch: (patch: Parameters<TPatchRecorder>[0]): void => this.onPatch(patch),
         publication: (): void => this.record(),
         ownRestore: (state: unknown): boolean => {
-            if (this.applying && state === this.replayTarget) {
-                this.ownedReplay = true;
+            if (state === this.replayTarget) {
+                // Reentrant publication may end suppression, but cannot revoke graph ownership.
+                if (this.applying) this.ownedReplay = true;
                 return this.replayContainsExotic || this.replayReplaceOnReplay;
             }
             return false;

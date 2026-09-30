@@ -1,6 +1,6 @@
 import {IWritePatch} from '@/Carburetor/Models/Paths';
 import {installPatch} from '@/Carburetor/Store/Paths/Diff/installPatch';
-import {cloneOwnedGraph} from '../../Store/Utils/Graph/cloneOwnedGraph';
+import {cloneOwnedGraph} from '@/Carburetor/Store/Utils/Graph/cloneOwnedGraph';
 
 const arrayIndex = (key: string): number | undefined => {
     if (!/^(0|[1-9]\d*)$/.test(key)) return undefined;

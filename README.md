@@ -688,6 +688,10 @@ that introduces readonly or non-configurable fields uses an owned endpoint, incl
 ordinary snapshot normalization and metadata-only no-op publication semantics are unchanged.
 Effective draft paths are attributed before fallible patch delivery. An observer error still
 reaches the caller, but cannot hide an already-applied change from readers or other histories.
+Resource replay normalizes Pending/refreshing fields on its fresh owned graph. Writable and
+configurable fields stay in place; locked changes use one descriptor-aware graph copy before
+restrictions are installed, retaining native aliases and readonly flags. Reentrant request
+entries retain their newer dictionary capabilities and are not overwritten by captured work.
 
 Failed storage reads reach `onError` without deleting unread data; when the handler returns,
 later writes remain subscribed. Without a handler, a read failure throws. Malformed stored

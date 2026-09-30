@@ -14,8 +14,9 @@ import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {describeError} from "@/Carburetor/Resource/describeError";
 import {createAbortHandle} from "@/Carburetor/Resource/createAbortHandle";
 import {createCacheSupersededError} from "@/Carburetor/Resource/createCacheSupersededError";
-import {getInitialCacheEntry} from "./getInitialCacheEntry";
+import {getInitialCacheEntry} from "./State/getInitialCacheEntry";
 import {EvictionLedger} from "./EvictionLedger";
+import {normalizeOwnedCacheReplay} from "./State/normalizeOwnedCacheReplay";
 
 const DEFAULT_TTL: number = 30_000;
 const DEFAULT_MAX_ENTRIES: number = 100;
@@ -81,18 +82,11 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         }
         const ownedReplay = this.patchObservers?.ownRestore(data) === true;
         const entries: IResourceCacheData<T>['entries'] = ownedReplay ? data.entries : {};
+        let liveEntries: Map<string, IResourceEntry<T>> | undefined;
         Object.keys(data.entries).forEach((key: string) => {
             const entry = data.entries[key];
-            const status = entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status;
-            if (ownedReplay) {
-                // Mutate only history's fresh graph: copying entries would split native backlinks.
-                if (entry.refreshing) {
-                    entry.refreshing = false;
-                }
-                if (entry.status !== status) {
-                    entry.status = status;
-                }
-            } else {
+            if (!ownedReplay) {
+                const status = entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status;
                 entries[key] = {...entry, refreshing: false, status};
             }
             // Preserve a re-entrant request's newer touch.
@@ -100,14 +94,17 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
                 this.touch(key);
             }
         });
-        // A synchronous abort listener may have started a new request; keep its live state.
+        // A synchronous abort listener may have started a new request; keep its live entry.
         this.controllers.forEach((_controller: AbortController, key: string) => {
             const entry = this.data.entries[key];
             if (entry) {
-                entries[key] = entry;
+                if (ownedReplay) (liveEntries ||= new Map()).set(key, entry);
+                else entries[key] = entry;
             }
         });
-        this.setData(ownedReplay ? data : deepClone({entries}));
+        this.setData(ownedReplay
+            ? normalizeOwnedCacheReplay(data, this.data.entries, liveEntries)
+            : deepClone({entries}));
     }
 
     /** Record an entry access for eviction order — see `EvictionLedger.touch`.

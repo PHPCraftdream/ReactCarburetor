@@ -14,9 +14,9 @@ import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {escapeCacheKey} from "./escapeCacheKey";
-import {getInitialCacheEntry} from "./getInitialCacheEntry";
+import {getInitialCacheEntry} from "./State/getInitialCacheEntry";
 import {ResourceCacheLifecycle} from "./ResourceCacheLifecycle";
-import {isViewCurrent} from "./isViewCurrent";
+import {isViewCurrent} from "./State/isViewCurrent";
 
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 

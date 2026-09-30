@@ -398,6 +398,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Readonly transient resource/cache replay normalizes Pending to Idle and refreshing to false
+  without assigning through locked descriptors. Lazy owned graph copies preserve aliases/flags;
+  reentrant publications retain graph ownership without suppressing their independent branches.
+
 - Resource owned replay does not assign an unchanged normalized status into a readonly endpoint,
   preserving Idle/Success/Error descriptor flags and usable undo/redo cursors.
 
