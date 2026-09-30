@@ -31,21 +31,26 @@ const samples = 7;
 const rows = Array.from({length: 128}, (_, index) => ({id: index, title: `row-${index}`}));
 const median = (values) => [...values].sort((a, b) => a - b)[Math.floor(values.length / 2)];
 
+/** Counts the implementation's native capture API without overriding its wire projection.
+ *
+ * @param store - the actual producer being measured
+ */
+function observeCaptures(store) {
+    const method = typeof store.captureHistory === 'function' ? 'captureHistory' : 'snapshot';
+    const capture = store[method];
+    store.snapshots = 0;
+    store[method] = function (own) {
+        this.snapshots++;
+        return capture.call(this, own);
+    };
+}
+
 /** Measures real ordinary draft writes whose history should remain patch-based.
  *
  * @param implementation - one built variant
  */
 function ordinary(implementation) {
     class Store extends implementation.store {
-        /** Counts complete history capture calls. */
-        snapshots = 0;
-        /** Counts legacy captures in the baseline implementation. */
-        snapshot() { this.snapshots++; return super.snapshot(); }
-        /** Counts owned captures in the repaired implementation.
-         *
-         * @param own - history's graph copier
-         */
-        captureHistory(own) { this.snapshots++; return super.captureHistory(own); }
         /** Publishes one counter write.
          *
          * @param value - next counter
@@ -53,6 +58,7 @@ function ordinary(implementation) {
         change(value) { this.draft.count = value; this.emitUpdate(); }
     }
     const store = new Store({count: 0, rows});
+    observeCaptures(store);
     const history = new implementation.history(store);
     const start = process.hrtime.bigint();
     for (let n = 1; n <= 128; n++) store.change(n);
@@ -67,18 +73,8 @@ function ordinary(implementation) {
  * @param implementation - one built variant
  */
 async function resource(implementation) {
-    class Resource extends implementation.resource {
-        /** Counts complete wire history capture calls. */
-        snapshots = 0;
-        /** Counts legacy captures in the baseline implementation. */
-        snapshot() { this.snapshots++; return super.snapshot(); }
-        /** Counts owned captures in the repaired implementation.
-         *
-         * @param own - history's graph copier
-         */
-        captureHistory(own) { this.snapshots++; return super.captureHistory(own); }
-    }
-    const store = new Resource(async key => ({key, rows}));
+    const store = new implementation.resource(async key => ({key, rows}));
+    observeCaptures(store);
     const history = new implementation.history(store);
     const start = process.hrtime.bigint();
     for (let n = 0; n < 64; n++) await store.load(String(n));
