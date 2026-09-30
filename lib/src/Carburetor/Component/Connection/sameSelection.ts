@@ -1,4 +1,4 @@
-import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
+import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 import {isPlainObject} from "./isPlainObject";
 
 /**

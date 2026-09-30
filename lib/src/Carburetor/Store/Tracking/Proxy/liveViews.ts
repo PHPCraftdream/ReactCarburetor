@@ -1,8 +1,8 @@
 import {TPathRecorder} from "@/Carburetor/Models/Paths";
 import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
-import {IProxyCache} from "./Models";
-import {recordNativeAliasReads} from "./Aliases/NativeAliasReads";
-import {nativeAliasIndex} from "./Aliases/NativeAliasIndex";
+import {IProxyCache} from "@/Carburetor/Store/Tracking/Models";
+import {recordNativeAliasReads} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasReads";
+import {nativeAliasIndex} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex";
 
 /**
  * Engine-owned read views, draft views and persistent connection facades share one weak

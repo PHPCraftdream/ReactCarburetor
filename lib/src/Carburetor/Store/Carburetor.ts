@@ -5,12 +5,10 @@ import {
 import {
     ICarburetor, INotifiable, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector,
 } from "@/Carburetor/Models/Store";
-import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
 import {diffPaths} from "./Paths/Diff/diffPaths";
 import {sameKind} from "./Paths/Diff/sameKind";
-import {detachWatchSelection} from "./Utils/Selection/detachWatchSelection";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WriteLog} from "./Paths/WriteLog";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
@@ -19,6 +17,7 @@ import {updateWave} from "./Scheduling/UpdateWaveInstance";
 import {nativeStoreWriteEpoch} from "./Scheduling/nativeStoreWriteEpoch";
 import {createReadProxy} from "./Tracking/createReadProxy";
 import {createWriteProxy} from "./Tracking/createWriteProxy";
+import {watchSelection} from "./Tracking/watchSelection";
 import {createAliasLedger} from "./Tracking/Aliases/AliasLedger";
 import {nativeAliasIndex} from "./Tracking/Aliases/NativeAliasIndex";
 import {isTrackable} from "./Tracking/isTrackable";
@@ -28,7 +27,6 @@ import {getUid} from "./Utils/getUid";
 import {IS_DEVELOPMENT} from "./Utils/DevelopmentFlag";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
-import {transferReads} from "./Paths/Markers/transferReads";
 
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
@@ -173,13 +171,13 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         this.touchDraft();
 
         const changed = diffPaths(previous, data);
-        // Opaque to a patch listener (R16-07), only when something actually changed.
-        if (changed.size > 0) {
-            this.patchPort.listener?.(PATCH_OPAQUE);
-            changed.forEach((path: TPath) => this.recordWrite(path));
+        changed.forEach((path: TPath) => this.recordWrite(path));
+        // The replacement has landed: publish all paths even if its snapshot signal fails.
+        try {
+            if (changed.size > 0) this.patchPort.listener?.(PATCH_OPAQUE);
+        } finally {
+            this.emitUpdate();
         }
-
-        this.emitUpdate();
 
         return data;
     }
@@ -226,11 +224,18 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             return;
         }
 
-        const applied = applyDiff(
-            this.draft as unknown as Record<string, unknown>,
-            current as Record<string, unknown>,
-            data as unknown as Record<string, unknown>
-        );
+        let applied: boolean;
+        try {
+            applied = applyDiff(
+                this.draft as unknown as Record<string, unknown>,
+                current as Record<string, unknown>,
+                data as unknown as Record<string, unknown>
+            );
+        } catch (error) {
+            // A throwing observer cannot strand writes already applied through the draft.
+            this.emitUpdate();
+            throw error;
+        }
 
         if (!applied) {
             this.setData(deepClone(data));
@@ -336,60 +341,13 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return registry.attach(observer);
     }
 
-    /**
-     * Runs `select` against a tracked read of the data, returning both the result and the
-     * paths that produced it — the one place `watch()` reads, so its first call and every
-     * later re-run go through the identical mechanism.
-     */
-    private runSelector<R>(select: TSelector<T, R>): {value: R; reads: TPathSet} {
-        const reads = new Set<TPath>();
-        const view = this.read((path: TPath) => reads.add(path));
-
-        return {value: select(view), reads};
-    }
-
-    /**
-     * Subscribes outside React — for persistence, logging, analytics — to a derived value
-     * rather than to raw paths; see the interface doc for the fuller contract.
+    /** Subscribes to a selected value with a read set that follows conditional branches.
      *
-     * Reads twice per matching write: once (isolated, by `notifyWrites`) to recompute
-     * `select`, and — only when the fresh result differs from the previous one — the detach
-     * that turns it into a value `onChange` and the next comparison can hold onto safely.
-     * Re-registering the read set on every invocation, changed or not, is what keeps a
-     * conditional selector's subscription following whichever branch it read last.
-     *
-     * @param select - reads the part of the data this subscription cares about
-     * @param onChange - called with the fresh and previous selection when they differ
+     * @param select - computes the tracked selection.
+     * @param onChange - receives changed detached selections.
      */
     public watch<R>(select: TSelector<T, R>, onChange: (next: R, previous: R) => void): TDisposer {
-        const id = getUid();
-        const initial = this.runSelector(select);
-
-        let previous: R = detachWatchSelection(initial.value);
-
-        const callback = (): void => {
-            const fresh = this.runSelector(select);
-            const changed = !sameSelection(previous, fresh.value);
-            const last = previous;
-
-            // Finish comparison and changed-result detachment before filing their live-view reads.
-            if (changed) {
-                previous = detachWatchSelection(fresh.value);
-            }
-
-            // Re-file even when equal: a conditional selector may have changed branches.
-            this.subscribe(callback, transferReads(fresh.reads, id));
-
-            if (changed) {
-                onChange(previous, last);
-            }
-        };
-
-        this.subscribe(callback, transferReads(initial.reads, id));
-
-        return () => {
-            this.unsubscribe(id);
-        };
+        return watchSelection(this, select, onChange);
     }
 
     /** Called by the batch coordinator when a transaction closes. */
@@ -446,8 +404,8 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             // The store itself cannot be wrapped (a Map or a class instance as the root),
             // so a mutation through this reference is invisible. There is no path to be
             // precise about either, which makes the whole store the honest answer.
-            this.patchPort.listener?.(PATCH_OPAQUE);
             this.recordWrite(WILDCARD_PATH);
+            this.patchPort.listener?.(PATCH_OPAQUE);
 
             return this.data;
         }
@@ -544,8 +502,8 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
     protected markAllChanged(): void {
         // Always a real change, unlike emitUpdate()'s own bypass fallback below (R16-07).
-        this.patchPort.listener?.(PATCH_OPAQUE);
         this.recordWrite(WILDCARD_PATH);
+        this.patchPort.listener?.(PATCH_OPAQUE);
     }
 
     /** A hook for subclasses to write derived state before an emit goes out. */
@@ -580,21 +538,32 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
 
         // Writes bypassed draft: unknown and opaque, same as the wildcard itself (R16-07).
-        if (!changed) {
-            this.patchPort.listener?.(PATCH_OPAQUE);
-        }
-
         const writes = changed || new Set<TPath>([WILDCARD_PATH]);
         this.version++;
         nativeStoreWriteEpoch.value++;
         this.writeLog.record(this.version, writes);
+        let failed = false;
+        let firstError: unknown;
+        if (!changed) {
+            try {
+                this.patchPort.listener?.(PATCH_OPAQUE);
+            } catch (error: unknown) {
+                failed = true;
+                firstError = error;
+            }
+        }
 
         if (updateBatch.isActive()) {
             updateBatch.add(this, writes);
-
-            return;
+        } else if (failed) {
+            try {
+                this.notifyWrites(writes);
+            } catch {
+                throw firstError;
+            }
+        } else {
+            this.notifyWrites(writes);
         }
-
-        this.notifyWrites(writes);
+        if (failed) throw firstError;
     }
 }

@@ -1,7 +1,7 @@
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {IConnectionSource} from "@/Carburetor/Component/Models/Connection";
 import {ConnectionFacadeHandler} from "@/Carburetor/Component/Connection/ConnectionFacadeHandler";
-import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
+import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
 /**

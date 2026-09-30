@@ -1,5 +1,5 @@
 import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
-import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
+import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 
 /** Only engine-created facades can contribute a canonical underlying result identity. */
 const canonicalResult = (value: unknown): unknown =>

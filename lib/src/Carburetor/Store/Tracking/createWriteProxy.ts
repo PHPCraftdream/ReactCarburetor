@@ -1,6 +1,5 @@
 import {
-    PATCH_ARRAY_LENGTH_LOCK, PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger,
-    TPatchPort, TPatchRecorder,
+    PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger, TPatchPort, TPatchRecorder,
 } from "@/Carburetor/Models/Paths";
 import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
 import {keyDeletionRequiresReplay} from "@/Carburetor/Store/Paths/Diff/Order/keyDeletionRequiresReplay";
@@ -13,7 +12,9 @@ import {isTrackable} from "./isTrackable";
 import {isOpaqueDescriptor} from "./Proxy/isOpaqueDescriptor";
 import {forbidSymbolKey} from "./Proxy/forbidSymbolKey";
 import {nativeAliasIndex} from "./Aliases/NativeAliasIndex";
-import {liveViews} from "./liveViews";
+import {liveViews} from "./Proxy/liveViews";
+import {deliverPatches} from "./Proxy/deliverPatches";
+import {writeArrayLength} from "./Proxy/writeArrayLength";
 
 /** A plain value safe to hand a patch listener: cloned so a later in-place write cannot alias it. */
 const patchValue = (value: unknown): unknown => (isTrackable(value) ? deepClone(value) : value);
@@ -153,130 +154,17 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         return proxy;
     }
 
-    /** Applies native array-length semantics, then attributes only the changes that landed.
+    /** Performs a native array-length write, recording any effective partial truncation.
      *
-     * @param source - raw array
-     * @param value - requested length
-     * @param descriptor - defineProperty descriptor, when present
+     * @param source - the raw array.
+     * @param value - requested length.
+     * @param descriptor - optional native definition.
      */
     private setArrayLength(source: T, value: unknown, descriptor?: PropertyDescriptor): boolean {
-        const validNumber = typeof value === 'number' && Number.isInteger(value)
-            && value >= 0 && value <= 0xFFFFFFFF;
-
-        // [[Set]] rejects a non-writable own property before ArraySetLength sees the value.
-        if (!descriptor && !validNumber && Object.getOwnPropertyDescriptor(source, 'length')?.writable === false) {
-            return Reflect.set(source, 'length', value);
-        }
-
-        // ArraySetLength performs both conversions, in this order. The second can run user
-        // code again; the normalized number avoids a third conversion in the raw write.
-        const uint32 = validNumber ? value as number : (value as number) >>> 0;
-
-        if (!validNumber && uint32 !== +(value as number)) {
-            throw new RangeError('Invalid array length');
-        }
-
-        const array = source as unknown as unknown[];
-        const previousLength = array.length;
-        const previousWritable = Object.getOwnPropertyDescriptor(source, 'length')!.writable!;
-        const listener = this.patchPort?.listener;
-        const concrete = listener && !this.patchPort?.opaque ? listener : undefined;
-        let removed: Array<number | string> | undefined;
-        let removedValues: unknown[] | undefined;
-        let removedAny = false;
-        let denseStart: number | undefined;
-
-        if (uint32 < previousLength) {
-            const range = previousLength - uint32;
-
-            if (!concrete && range >= 64 && range <= 4096) {
-                const ownKeys = Object.keys(array);
-
-                if (ownKeys.length === previousLength && ownKeys[previousLength - 1] === String(previousLength - 1)) {
-                    denseStart = uint32;
-                }
-            }
-
-            if (denseStart === undefined) {
-                removed = [];
-                if (concrete) {
-                    removedValues = [];
-                }
-
-                if (range <= 4096) {
-                    for (let index = uint32; index < previousLength; index++) {
-                        if (Object.prototype.hasOwnProperty.call(array, index)) {
-                            removed.push(index);
-                            removedValues?.push(array[index]);
-                        }
-                    }
-                } else {
-                    for (const key of Object.keys(array)) {
-                        const index = Number(key);
-
-                        if (Number.isInteger(index) && index >= uint32 && index < previousLength
-                            && String(index) === key) {
-                            removed.push(key);
-                            removedValues?.push(array[index]);
-                        }
-                    }
-                }
-            }
-        }
-
-        const wrote = descriptor
-            ? Reflect.defineProperty(source, 'length', 'value' in descriptor
-                ? {...descriptor, value: uint32} : descriptor)
-            : Reflect.set(source, 'length', uint32);
-        const nextLength = array.length;
-        const writableChanged = Object.getOwnPropertyDescriptor(source, 'length')!.writable !== previousWritable;
-
-        if (denseStart !== undefined) {
-            for (let index = denseStart; index < previousLength; index++) {
-                if (wrote || !Object.prototype.hasOwnProperty.call(array, index)) {
-                    removedAny = true;
-                    this.record(joinPath(this.basePath, String(index)));
-                }
-            }
-        }
-
-        if (removed) {
-            for (let i = 0; i < removed.length; i++) {
-                const entry = removed[i];
-
-                if (!wrote && Object.prototype.hasOwnProperty.call(array, entry)) {
-                    continue;
-                }
-
-                removedAny = true;
-                const key = String(entry);
-                this.record(joinPath(this.basePath, key));
-
-                if (concrete) {
-                    this.reportPatch(concrete, key, removedValues?.[i], undefined, true, false);
-                }
-            }
-        }
-
-        if (removedAny) {
-            this.aliases?.checkWrite(source, this.basePath);
-            this.record(this.keysMarker());
-        }
-
-        if (nextLength !== previousLength || writableChanged) {
-            this.aliases?.checkWrite(source, this.basePath);
-            this.record(this.writtenPath('length'));
-
-            if (concrete && nextLength !== previousLength) {
-                this.reportPatch(concrete, 'length', previousLength, nextLength, true, true);
-            }
-        }
-        if (writableChanged) {
-            listener?.(PATCH_ARRAY_LENGTH_LOCK);
-        } else if (listener && !concrete && (removedAny || nextLength !== previousLength)) {
-            listener(PATCH_OPAQUE);
-        }
-        return wrote;
+        return writeArrayLength(
+            source as unknown as unknown[], value, descriptor, this.basePath,
+            this.basePathSegments, this.record, this.aliases, this.patchPort
+        );
     }
 
     /**
@@ -399,33 +287,45 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             this.record(this.keysMarker());
         }
 
-        // Replacing a plain object/array with another of the same kind (R16-03): announce
-        // only changed leaves. New keys, kind changes and primitives report the whole path.
+        // A replaced branch's diff is walked once. Its bounded patches are collected during
+        // that walk, while every affected path (including implicit array growth) is recorded
+        // before the first fallible observer call.
+        const nextLength = previousLength !== undefined
+            ? (source as unknown as {length: number}).length : undefined;
+        const grew = nextLength !== undefined && nextLength !== previousLength;
         if (wasOwn && isTrackable(previous) && isTrackable(raw) && Array.isArray(previous) === Array.isArray(raw)) {
             const concrete = listener && !this.patchPort?.opaque ? listener : undefined;
+            const patches: Parameters<TPatchRecorder>[0][] | undefined = concrete ? [] : undefined;
             const segments = concrete ? [...this.basePathSegments, key] : [];
-            const changed = diffPaths(previous, raw, path, segments, concrete);
-
-            if (listener && !concrete && changed.size > 0) {
-                listener(PATCH_OPAQUE);
-            }
+            const changed = diffPaths(previous, raw, path, segments, patches);
             changed.forEach((written: TPath) => this.record(written));
+            if (grew) this.record(this.writtenPath('length'));
+            if (concrete && patches) {
+                if (grew) this.reportPatch(patch => { patches.push(patch); },
+                    'length', previousLength, nextLength, true, true);
+                deliverPatches(concrete, patches);
+            } else if (listener && changed.size > 0 && grew) {
+                const patches: Parameters<TPatchRecorder>[0][] = [PATCH_OPAQUE];
+                this.reportPatch(patch => { patches.push(patch); },
+                    'length', previousLength, nextLength, true, true);
+                deliverPatches(listener, patches);
+            } else if (listener && changed.size > 0) {
+                listener(PATCH_OPAQUE);
+            } else if (listener && grew) {
+                this.reportPatch(listener, 'length', previousLength, nextLength, true, true);
+            }
         } else {
-            if (listener) {
+            this.record(path);
+            if (grew) this.record(this.writtenPath('length'));
+            if (listener && grew) {
+                const patches: Parameters<TPatchRecorder>[0][] = [];
+                const queue: TPatchRecorder = patch => { patches.push(patch); };
+                this.reportPatch(queue, key, wasOwn ? previous : undefined, raw, wasOwn, true);
+                this.reportPatch(queue, 'length', previousLength, nextLength, true, true);
+                deliverPatches(listener, patches);
+            } else if (listener) {
                 this.reportPatch(listener, key, wasOwn ? previous : undefined, raw, wasOwn, true);
             }
-
-            this.record(path);
-        }
-
-        if (previousLength !== undefined && (source as unknown as {length: number}).length !== previousLength) {
-            const newLength = (source as unknown as {length: number}).length;
-
-            if (listener) {
-                this.reportPatch(listener, 'length', previousLength, newLength, true, true);
-            }
-
-            this.record(this.writtenPath('length'));
         }
 
         return true;
@@ -500,23 +400,23 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         const listener = this.patchPort?.listener;
-
+        const nextLength = previousLength !== undefined
+            ? (source as unknown as unknown[]).length : undefined;
+        const grew = nextLength !== undefined && nextLength !== previousLength;
+        this.record(path);
+        if (grew) this.record(this.writtenPath('length'));
         if (listener) {
-            // A scalar patch cannot install a new value into the readonly owned baseline.
-            if (existing?.writable === false) listener(PATCH_OPAQUE);
+            if (grew) {
+                const patches: Parameters<TPatchRecorder>[0][] = [];
+                const queue: TPatchRecorder = patch => { patches.push(patch); };
+                // A scalar patch cannot install a new value into the readonly owned baseline.
+                if (existing?.writable === false) queue(PATCH_OPAQUE);
+                else this.reportPatch(queue, key, wasOwn ? previous : undefined, raw, wasOwn, true);
+                this.reportPatch(queue, 'length', previousLength, nextLength, true, true);
+                deliverPatches(listener, patches);
+            } else if (existing?.writable === false) listener(PATCH_OPAQUE);
             else this.reportPatch(listener, key, wasOwn ? previous : undefined, raw, wasOwn, true);
         }
-
-        this.record(path);
-
-        if (previousLength !== undefined && (source as unknown as unknown[]).length !== previousLength) {
-            const nextLength = (source as unknown as unknown[]).length;
-            if (listener) {
-                this.reportPatch(listener, 'length', previousLength, nextLength, true, true);
-            }
-            this.record(this.writtenPath('length'));
-        }
-
         return true;
     }
 
@@ -551,15 +451,20 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         this.aliases?.forget(previous);
-        if (changesOrderOnInverse) listener?.(PATCH_KEY_ORDER_CHANGE);
         this.record(this.keysMarker());
-
         const path = this.writtenPath(key);
-        if (listener) {
-            this.reportPatch(listener, key, previous, undefined, true, false);
-        }
-
         this.record(path);
+        if (listener) {
+            if (changesOrderOnInverse) {
+                const patches: Parameters<TPatchRecorder>[0][] = [];
+                patches.push(PATCH_KEY_ORDER_CHANGE);
+                this.reportPatch(patch => { patches.push(patch); },
+                    key, previous, undefined, true, false);
+                deliverPatches(listener, patches);
+            } else {
+                this.reportPatch(listener, key, previous, undefined, true, false);
+            }
+        }
 
         return true;
     }

@@ -10,6 +10,7 @@ class ApplyDiffOverflow extends Error {}
 /** How many draft writes this call has made so far; threaded through, not module state. */
 interface IBudget {
     spent: number;
+    unchangedLocked?: WeakMap<object, object>;
 }
 
 const spend = (budget: IBudget): void => {
@@ -49,6 +50,7 @@ const applyKey = (
     }
 
     if (isTrackable(previous) && isTrackable(next) && sameKind(previous, next)) {
+        if (budget.unchangedLocked?.get(previous) === next) return;
         applyBranch(
             target[key] as unknown as Record<string, unknown>,
             previous as unknown as Record<string, unknown>,
@@ -63,13 +65,36 @@ const applyKey = (
     assign(target, key, deepClone(next));
 };
 
+/** Only checked for a locked child with a changed reference: avoid reading its draft proxy. */
+const sameRestorableValues = (left: object, right: object): boolean => {
+    const seen = new WeakMap<object, object>();
+    const equal = (a: unknown, b: unknown): boolean => {
+        if (Object.is(a, b)) return true;
+        if (!isTrackable(a) || !isTrackable(b) || !sameKind(a, b)) return false;
+        if (seen.has(a)) return seen.get(a) === b;
+        seen.set(a, b);
+        if (Array.isArray(a) && a.length !== (b as unknown[]).length) return false;
+        const keys = Object.keys(a);
+        const otherKeys = Object.keys(b);
+        if (keys.length !== otherKeys.length) return false;
+        for (let i = 0; i < keys.length; i++) {
+            if (keys[i] !== otherKeys[i] || !equal(
+                (a as Record<string, unknown>)[keys[i]], (b as Record<string, unknown>)[keys[i]]
+            )) return false;
+        }
+        return true;
+    };
+    return equal(left, right);
+};
+
 /** Check every affected branch before the first draft write: native assignment can reject
  * accepted read-only fields, locked lengths, non-configurable deletions, and key reordering.
  * A failed check sends restore through its detached root replacement instead.
  */
 const canApplyOrder = (
     previous: Record<string, unknown>,
-    next: Record<string, unknown>
+    next: Record<string, unknown>,
+    budget: IBudget
 ): boolean => {
     const previousKeys = Object.keys(previous);
     const nextKeys = Object.keys(next);
@@ -102,11 +127,20 @@ const canApplyOrder = (
         const oldValue = previous[key];
         const newValue = next[key];
         if (Object.is(oldValue, newValue)) continue;
+        const descriptor = Object.getOwnPropertyDescriptor(previous, key);
+        // A proxy cannot wrap a non-configurable, non-writable own data value. Even a
+        // same-kind nested edit would throw on target[key], after earlier sibling writes.
+        if (descriptor?.writable === false && descriptor.configurable === false) {
+            if (!isTrackable(oldValue) || !isTrackable(newValue) ||
+                !sameRestorableValues(oldValue, newValue)) return false;
+            (budget.unchangedLocked ??= new WeakMap<object, object>()).set(oldValue, newValue);
+            continue;
+        }
         if (isTrackable(oldValue) && isTrackable(newValue) && sameKind(oldValue, newValue)) {
             if (!canApplyOrder(
-                oldValue as Record<string, unknown>, newValue as Record<string, unknown>
+                oldValue as Record<string, unknown>, newValue as Record<string, unknown>, budget
             )) return false;
-        } else if (Object.getOwnPropertyDescriptor(previous, key)?.writable === false) return false;
+        } else if (descriptor?.writable === false) return false;
     }
     for (const key of nextKeys) {
         if (Object.prototype.hasOwnProperty.call(previous, key)) continue;
@@ -182,10 +216,11 @@ export const applyDiff = (
     previous: Record<string, unknown>,
     next: Record<string, unknown>
 ): boolean => {
-    if (!canApplyOrder(previous, next)) return false;
+    const budget: IBudget = {spent: 0};
+    if (!canApplyOrder(previous, next, budget)) return false;
 
     try {
-        applyBranch(target, previous, next, {spent: 0});
+        applyBranch(target, previous, next, budget);
     } catch (error) {
         if (error instanceof ApplyDiffOverflow) {
             return false;

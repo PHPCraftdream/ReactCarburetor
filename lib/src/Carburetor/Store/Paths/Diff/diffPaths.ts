@@ -167,27 +167,35 @@ const walk = (
  * @param basePath - the path `oldValue`/`newValue` were found at; '' is the store root, where a
  * whole-value difference is reported as the wildcard instead of an empty path.
  * @param baseSegments - `basePath`'s own keys, unescaped; only used to build patches for `onPatch`.
- * @param onPatch - receives one patch per leaf this walk records, when a patch listener is attached.
+ * @param onPatch - either a receiver for immediate delivery, or a bounded collection whose
+ *   delivery the caller defers until all effective paths have been recorded.
  */
 export const diffPaths = (
     oldValue: unknown,
     newValue: unknown,
     basePath: TPath = '',
     baseSegments: readonly string[] = [],
-    onPatch?: TPatchRecorder
+    onPatch?: TPatchRecorder | Array<Parameters<TPatchRecorder>[0]>
 ): TPathSet => {
     const changed: TPathSet = new Set<TPath>();
+    const pending = Array.isArray(onPatch) ? onPatch : undefined;
+    const deliver: TPatchRecorder | undefined = pending
+        ? patch => { pending.push(patch); }
+        : onPatch as TPatchRecorder | undefined;
 
     try {
-        walk(oldValue, newValue, basePath, baseSegments, changed, onPatch);
+        walk(oldValue, newValue, basePath, baseSegments, changed, deliver);
     } catch (error) {
         if (!(error instanceof DiffOverflow)) {
             throw error;
         }
+        // A threshold fallback replaces the entire partial diff: none of its earlier patches
+        // may leak to a history (nor interrupt the complete path attribution).
+        if (pending) pending.length = 0;
 
         changed.clear();
         changed.add(basePath || WILDCARD_PATH);
-        addPatch(onPatch, baseSegments, oldValue, newValue);
+        addPatch(deliver, baseSegments, oldValue, newValue);
     }
 
     return changed;

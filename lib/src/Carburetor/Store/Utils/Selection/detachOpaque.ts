@@ -1,5 +1,5 @@
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
-import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
+import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 
 /**
  * Copies an own data descriptor without invoking an accessor. Accessors cannot make

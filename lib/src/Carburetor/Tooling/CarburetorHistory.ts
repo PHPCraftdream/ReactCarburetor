@@ -6,8 +6,9 @@ import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
 import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
-import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
-import {sameHistoryGraph} from "./sameHistoryGraph";
+import {preflightOwnedPatches} from "./Graph/canInstallOwnedPatch";
+import {ownHistoryGraph as own} from "./Graph/ownHistoryGraph";
+import {sameHistoryGraph} from "./Graph/sameHistoryGraph";
 
 /** One change recorded as the patches to invert it — the fast path (R16-07). */
 interface IPatchesEntry {
@@ -32,111 +33,6 @@ interface ISnapshotEntry<T> {
 
 type THistoryEntry<T> = IPatchesEntry | ISnapshotEntry<T>;
 
-/** History must not retain a live class instance whose mutable internals it cannot copy. */
-const refuseLiveEndpoint = (): never => {
-    throw new Error('CarburetorHistory: cannot own a mutable class instance in a history endpoint');
-};
-
-type TOwnedTrait = 'exotic' | 'lockedArray' | 'readonly';
-
-/**
- * Owns a supported history graph in one pass. Ordinary containers retain the fast assignment
- * shape where descriptors permit it; native members share the same cycle ledger and keep their
- * intrinsic contents and own data descriptors. A read view and its raw target share one copy.
- */
-const own = <V>(value: V, classify?: (trait: TOwnedTrait) => void): V => {
-    const seen = new WeakMap<object, object>();
-    const copy = (source: unknown): unknown => {
-        if (source === null || typeof source !== 'object') {
-            return source;
-        }
-        const raw = liveViews.readTarget(source) ?? source;
-        const previous = seen.get(raw);
-        if (previous !== undefined) {
-            return previous;
-        }
-        const prototype = Object.getPrototypeOf(raw);
-        const array = Array.isArray(raw);
-        let result: object;
-        let native = false;
-        if (prototype === Map.prototype && raw instanceof Map) {
-            classify?.('exotic');
-            const map = new Map<unknown, unknown>();
-            result = map;
-            native = true;
-            seen.set(raw, result);
-            Map.prototype.forEach.call(raw, (member: unknown, key: unknown): void => {
-                map.set(copy(key), copy(member));
-            });
-        } else if (prototype === Set.prototype && raw instanceof Set) {
-            classify?.('exotic');
-            const set = new Set<unknown>();
-            result = set;
-            native = true;
-            seen.set(raw, result);
-            Set.prototype.forEach.call(raw, (member: unknown): void => { set.add(copy(member)); });
-        } else if (prototype === Date.prototype && raw instanceof Date) {
-            classify?.('exotic');
-            result = new Date(Date.prototype.getTime.call(raw));
-            native = true;
-            seen.set(raw, result);
-        } else if (prototype === Object.prototype || prototype === null ||
-            prototype === Array.prototype) {
-            if (!array && prototype === Array.prototype) {
-                classify?.('exotic');
-            }
-            result = array
-                ? (prototype === Array.prototype ? [] : Object.setPrototypeOf([], prototype))
-                : (prototype === Object.prototype ? {} : Object.create(prototype));
-            seen.set(raw, result);
-        } else {
-            return refuseLiveEndpoint();
-        }
-        let length: PropertyDescriptor | undefined;
-        for (const key of Reflect.ownKeys(raw)) {
-            const descriptor = Object.getOwnPropertyDescriptor(raw, key);
-            if (!descriptor) continue;
-            if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-                throw new Error('CarburetorHistory: cannot snapshot accessor property ' + String(key));
-            }
-            if (array && key === 'length') {
-                // Other indices must be installed before a non-writable length.
-                if (descriptor.writable === false) classify?.('lockedArray');
-                length = descriptor;
-                continue;
-            }
-            if (!native && descriptor.writable === false) classify?.('readonly');
-            descriptor.value = copy(descriptor.value);
-            const target = result as Record<string | symbol, unknown>;
-            if (!native && descriptor.writable && descriptor.enumerable &&
-                descriptor.configurable && !(key in target)) {
-                target[key] = descriptor.value;
-            } else {
-                Object.defineProperty(result, key, descriptor);
-            }
-        }
-        if (length) {
-            Object.defineProperty(result, 'length', length);
-        }
-        return result;
-    };
-    return copy(value) as V;
-};
-
-/** Owns the object endpoints of a patch; primitive-only patches bypass this copier. */
-const ownPatch = (patch: IWritePatch, classify: (trait: TOwnedTrait) => void): IWritePatch => {
-    const previous = patch.previous;
-    const next = patch.next;
-
-    return {
-        segments: patch.segments,
-        previous: patch.previousExists ? own(previous, classify) : undefined,
-        next: patch.nextExists ? own(next, classify) : undefined,
-        previousExists: patch.previousExists,
-        nextExists: patch.nextExists,
-    };
-};
-
 /**
  * Undo/redo for a carburetor, built on patches (R16-07). Every change is recorded, except the
  * ones this class applies itself — otherwise undo would keep re-recording its own work.
@@ -159,8 +55,8 @@ export class CarburetorHistory<T extends object> {
     private baselineContainsExotic: boolean;
     /** Locks in the owned baseline persist unless a patch actually replaces a locked subtree. */
     private baselineContainsLockedArray: boolean;
-    /** Plain readonly fields must retain their owned descriptors on replay. */
-    private baselineContainsReadonly: boolean;
+    /** Readonly and non-configurable own fields need owned descriptor endpoints on replay. */
+    private baselineContainsRestricted: boolean;
     /** The last snapshot endpoint may also be baseline until a patch needs to mutate it. */
     private baselineShared: boolean = false;
     /** The most entries `past` may hold; set from options at construction. */
@@ -222,23 +118,23 @@ export class CarburetorHistory<T extends object> {
         this.baseline = capture.state;
         this.baselineContainsExotic = capture.exotic;
         this.baselineContainsLockedArray = capture.lockedArray;
-        this.baselineContainsReadonly = capture.readonly;
+        this.baselineContainsRestricted = capture.restricted;
         this.dispose = carburetor.attachPatchListener(this.observer);
     }
 
-    /** The producer captures its authoritative graph and its native/length-lock classification. */
-    private capture(): {state: T; exotic: boolean; lockedArray: boolean; readonly: boolean} {
+    /** Capture authoritative state and its native, array-lock, and restricted-field traits. */
+    private capture(): {state: T; exotic: boolean; lockedArray: boolean; restricted: boolean} {
         let exotic = false;
         let lockedArray = false;
-        let readonly = false;
-        const classify = (trait: TOwnedTrait): void => {
+        let restricted = false;
+        const classify = (trait: 'exotic' | 'lockedArray' | 'restricted'): void => {
             if (trait === 'exotic') exotic = true;
             else if (trait === 'lockedArray') lockedArray = true;
-            else readonly = true;
+            else restricted = true;
         };
         const state = this.carburetor.captureHistory(
             <V>(value: V): V => own(value, classify)) as T;
-        return {state, exotic, lockedArray, readonly};
+        return {state, exotic, lockedArray, restricted};
     }
 
     /**
@@ -332,7 +228,7 @@ export class CarburetorHistory<T extends object> {
         this.baseline = capture.state;
         this.baselineContainsExotic = capture.exotic;
         this.baselineContainsLockedArray = capture.lockedArray;
-        this.baselineContainsReadonly = capture.readonly;
+        this.baselineContainsRestricted = capture.restricted;
         this.baselineShared = false;
         this.pendingPatches = [];
         this.pendingOpaque = false;
@@ -381,9 +277,16 @@ export class CarburetorHistory<T extends object> {
         }
 
         let lockedArray = false;
-        const ownedPatch = ownPatch(patch, trait => {
+        const classify = (trait: 'exotic' | 'lockedArray' | 'restricted'): void => {
             if (trait === 'lockedArray') lockedArray = true;
-        });
+        };
+        const ownedPatch: IWritePatch = {
+            segments: patch.segments,
+            previous: patch.previousExists ? own(patch.previous, classify) : undefined,
+            next: patch.nextExists ? own(patch.next, classify) : undefined,
+            previousExists: patch.previousExists,
+            nextExists: patch.nextExists,
+        };
         if (lockedArray) {
             // Removing or installing a locked subtree requires a complete endpoint. An
             // unrelated patch cannot change the baseline's existing lock classification.
@@ -403,7 +306,7 @@ export class CarburetorHistory<T extends object> {
                 this.baseline = capture.state;
                 this.baselineContainsExotic = capture.exotic;
                 this.baselineContainsLockedArray = capture.lockedArray;
-                this.baselineContainsReadonly = capture.readonly;
+                this.baselineContainsRestricted = capture.restricted;
                 this.baselineShared = false;
                 this.ownedReplay = false;
                 this.skipReplay = false;
@@ -476,42 +379,62 @@ export class CarburetorHistory<T extends object> {
      */
     protected buildEntry(): THistoryEntry<T> | undefined {
         if (this.pendingOpaque || this.pendingPatches.length === 0) {
-            const before = this.baseline;
-            const beforeExotic = this.baselineContainsExotic;
-            const beforeLockedArray = this.baselineContainsLockedArray;
-            const capture = this.capture();
-            this.baseline = capture.state;
-            this.baselineContainsExotic = capture.exotic;
-            this.baselineContainsLockedArray = capture.lockedArray;
-            const beforeReadonly = this.baselineContainsReadonly;
-            this.baselineContainsReadonly = capture.readonly;
-            if (sameHistoryGraph(before, capture.state)) {
-                // A conservative opaque publication need not insert an undoable step.
-                this.baselineShared = false;
-                return undefined;
-            }
-            this.baselineShared = true;
-            return {
-                kind: 'snapshot', before, after: capture.state,
-                beforeExotic, afterExotic: capture.exotic,
-                replaceOnReplay: this.pendingOwnedReplay || beforeReadonly || capture.readonly ||
-                    (!beforeExotic && !capture.exotic &&
-                        (beforeLockedArray || capture.lockedArray)),
-            };
+            return this.buildSnapshotEntry();
         }
 
         if (this.pendingPatchesUnchanged()) return undefined;
         const patches = this.pendingPatches;
-        if (this.baselineShared) {
-            this.baseline = own(this.baseline);
-            this.baselineShared = false;
+        let plainScalars = !this.baselineContainsRestricted && !this.baselineContainsLockedArray;
+        if (plainScalars) {
+            for (const patch of patches) {
+                if ((patch.previous !== null && typeof patch.previous === 'object') ||
+                    (patch.next !== null && typeof patch.next === 'object')) {
+                    plainScalars = false;
+                    break;
+                }
+            }
         }
-
-        for (const patch of patches) {
-            installPatch(this.baseline as unknown as Record<string, unknown>, patch, false);
+        const preview = plainScalars ? undefined : preflightOwnedPatches(this.baseline, patches);
+        if (preview === false) {
+            this.pendingOwnedReplay = true;
+            return this.buildSnapshotEntry();
         }
-
+        if (preview) {
+            this.baseline = preview as T;
+        } else {
+            if (this.baselineShared) this.baseline = own(this.baseline);
+            for (const patch of patches) {
+                installPatch(this.baseline as unknown as Record<string, unknown>, patch, false);
+            }
+        }
+        this.baselineShared = false;
         return {kind: 'patches', patches};
+    }
+
+    /** Own both ends before any unsafe patch can modify a retained baseline endpoint. */
+    private buildSnapshotEntry(): THistoryEntry<T> | undefined {
+        const before = this.baseline;
+        const beforeExotic = this.baselineContainsExotic;
+        const beforeLockedArray = this.baselineContainsLockedArray;
+        const capture = this.capture();
+        this.baseline = capture.state;
+        this.baselineContainsExotic = capture.exotic;
+        this.baselineContainsLockedArray = capture.lockedArray;
+        const beforeRestricted = this.baselineContainsRestricted;
+        this.baselineContainsRestricted = capture.restricted;
+        if (sameHistoryGraph(before, capture.state)) {
+            // A conservative opaque publication need not insert an undoable step.
+            this.baselineShared = false;
+            return undefined;
+        }
+        this.baselineShared = true;
+        return {
+            kind: 'snapshot', before, after: capture.state,
+            beforeExotic, afterExotic: capture.exotic,
+            replaceOnReplay: this.pendingOwnedReplay || beforeRestricted || capture.restricted ||
+                (!beforeExotic && !capture.exotic &&
+                    (beforeLockedArray || capture.lockedArray)),
+        };
     }
 
     /**
@@ -539,7 +462,7 @@ export class CarburetorHistory<T extends object> {
                 ? (inverse ? entry.beforeExotic : entry.afterExotic)
                 : false;
             this.replayReplaceOnReplay = entry.kind === 'snapshot'
-                ? entry.replaceOnReplay : this.baselineContainsReadonly;
+                ? entry.replaceOnReplay : this.baselineContainsRestricted;
             this.replayTarget = state;
 
             // Only a publication from this exact restore argument suppresses its own entry;
@@ -552,7 +475,7 @@ export class CarburetorHistory<T extends object> {
                 this.baseline = capture.state;
                 this.baselineContainsExotic = capture.exotic;
                 this.baselineContainsLockedArray = capture.lockedArray;
-                this.baselineContainsReadonly = capture.readonly;
+                this.baselineContainsRestricted = capture.restricted;
                 this.baselineShared = false;
                 this.skipReplay = this.carburetor.getVersion() !== beforeVersion;
             } else if (this.applying) {

@@ -5,7 +5,7 @@ import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {createProxyCache} from "./Proxy/createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
-import {liveViews} from "./liveViews";
+import {liveViews} from "./Proxy/liveViews";
 import {isTrackable} from "./isTrackable";
 import {recordNativeAliasReads} from "./Aliases/NativeAliasReads";
 

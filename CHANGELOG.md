@@ -398,6 +398,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- History preflights owned-baseline patch capabilities, falling back to exact owned endpoints
+  for readonly/non-configurable targets without mutating held snapshots.
+- Snapshot restore detects changed locked object references before any sibling mutation.
+- Throwing patch observers cannot interrupt attribution of applied writes or later patch delivery;
+  effective changes still publish and the original first observer error is retained.
+
 - Cross-format consumer verification runs a temporary CJS probe instead of a large `node -e`
   argument, avoiding Windows command-line limits while retaining every runtime scenario.
 
