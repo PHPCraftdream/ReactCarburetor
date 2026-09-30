@@ -7,29 +7,16 @@ import {keyDeletionRequiresReplay} from "@/Carburetor/Store/Paths/Diff/Order/key
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
-import {createProxyCache} from "./createProxyCache";
+import {createProxyCache} from "./Proxy/createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
 import {isTrackable} from "./isTrackable";
+import {isOpaqueDescriptor} from "./Proxy/isOpaqueDescriptor";
+import {forbidSymbolKey} from "./Proxy/forbidSymbolKey";
 import {nativeAliasIndex} from "./Aliases/NativeAliasIndex";
 import {liveViews} from "./liveViews";
 
 /** A plain value safe to hand a patch listener: cloned so a later in-place write cannot alias it. */
 const patchValue = (value: unknown): unknown => (isTrackable(value) ? deepClone(value) : value);
-
-/** Refuses a symbol-keyed write: state is string-keyed data only (R6-02/R6-03). */
-const forbidSymbolKey = (path: TPath): never => {
-    throw new Error(
-        'Carburetor: "' + (path || 'the root') + '" cannot take a symbol-keyed write — state is ' +
-        'string-keyed data only. Use a string key.'
-    );
-};
-
-/** Check the flags the native definition would leave behind, including new-key defaults. */
-const isOpaqueDescriptor = (descriptor: PropertyDescriptor, existing?: PropertyDescriptor): boolean =>
-    'get' in descriptor || 'set' in descriptor
-    || (descriptor.configurable ?? existing?.configurable) !== true
-    || (descriptor.writable ?? existing?.writable) !== true
-    || (descriptor.enumerable ?? existing?.enumerable) !== true;
 
 /**
  * Write-proxy trap handler: one instance per proxy, but one set of trap functions for all of
@@ -394,6 +381,10 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (!wrote) {
             return false;
         }
+        // Raw identity may change without a changed value path; refresh root native ownership.
+        if (isTrackable(previous) && previous !== raw && this.cache.nativeAliasRoot !== undefined) {
+            nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
+        }
 
         // A branch replaced or deleted takes its old object's recorded path with it, and a
         // write into an object last read under a different path is the aliasing the ledger
@@ -460,12 +451,14 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
                 );
         }
 
-        // A fully-open definition needs no descriptor lookup; omitted flags inherit from the
-        // existing property, or default to false when the key is new.
+        // A fully-open definition needs no descriptor lookup unless history must also
+        // distinguish an accepted readonly property's transition from a writable patch.
         const fullyOpen = descriptor.configurable === true
             && descriptor.writable === true && descriptor.enumerable === true;
-        const existing = fullyOpen ? undefined : Object.getOwnPropertyDescriptor(source, key);
-        const wasOwn = fullyOpen ? Object.prototype.hasOwnProperty.call(source, key) : existing !== undefined;
+        const existing = fullyOpen && !this.patchPort?.listener
+            ? undefined : Object.getOwnPropertyDescriptor(source, key);
+        const wasOwn = fullyOpen && !this.patchPort?.listener
+            ? Object.prototype.hasOwnProperty.call(source, key) : existing !== undefined;
 
         if (isOpaqueDescriptor(descriptor, existing)) {
             throw new Error(
@@ -492,6 +485,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (!wrote) {
             return false;
         }
+        if (isTrackable(previous) && previous !== raw && this.cache.nativeAliasRoot !== undefined) {
+            nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
+        }
 
         if (wasOwn && Object.is(previous, raw)) {
             return true;
@@ -506,7 +502,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const listener = this.patchPort?.listener;
 
         if (listener) {
-            this.reportPatch(listener, key, wasOwn ? previous : undefined, raw, wasOwn, true);
+            // A scalar patch cannot install a new value into the readonly owned baseline.
+            if (existing?.writable === false) listener(PATCH_OPAQUE);
+            else this.reportPatch(listener, key, wasOwn ? previous : undefined, raw, wasOwn, true);
         }
 
         this.record(path);

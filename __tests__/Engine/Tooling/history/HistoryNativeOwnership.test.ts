@@ -105,6 +105,57 @@ class NativeCache extends ResourceCache<Map<object, string>, string> {
 
 
 describe('native history endpoint ownership', () => {
+    test('readonly plain endpoints replay their values and exact owned flags on repeated undo/redo', () => {
+        const store = new Carburetor({first: 0, row: {n: 1}});
+        const history = new CarburetorHistory(store);
+        const replacement = {first: 2, row: {n: 3}};
+        Object.defineProperty(replacement.row, 'n', {
+            value: 3, writable: false, enumerable: true, configurable: true,
+        });
+        store.setData(replacement);
+        const seen: number[] = [];
+        const stop = store.watch(data => data.row.n, n => { seen.push(n); });
+        for (let i = 0; i < 3; i++) {
+            expect(history.undo()).toBe(true);
+            expect(store.getData().row.n).toBe(1);
+            expect(Object.getOwnPropertyDescriptor(store.getData().row, 'n')?.writable).toBe(true);
+            expect(history.redo()).toBe(true);
+            expect(store.getData().row.n).toBe(3);
+            expect(Object.getOwnPropertyDescriptor(store.getData().row, 'n')?.writable).toBe(false);
+        }
+        expect(seen).toEqual([1, 3, 1, 3, 1, 3]);
+        stop();
+        history.disconnect();
+    });
+
+    test('readonly owned endpoints keep native aliases and flags across independent history cursors', () => {
+        const old = {n: 1};
+        const initial = {row: old, map: new Map([['row', old]])};
+        const store = new Carburetor(initial);
+        const first = new CarburetorHistory(store);
+        const second = new CarburetorHistory(store);
+        const newer = {n: 2};
+        Object.defineProperty(newer, 'n', {
+            value: 2, writable: false, enumerable: true, configurable: true,
+        });
+        store.setData({row: newer, map: new Map([['row', newer]])});
+        for (let i = 0; i < 2; i++) {
+            expect(first.undo()).toBe(true);
+            expect(store.getData().row.n).toBe(1);
+            expect(store.getData().map.get('row')).toBe(store.getData().row);
+            expect(first.redo()).toBe(true);
+            expect(store.getData().map.get('row')).toBe(store.getData().row);
+            expect(Object.getOwnPropertyDescriptor(store.getData().row, 'n')?.writable).toBe(false);
+        }
+        expect(second.canUndo()).toBe(true);
+        second.clear();
+        expect(second.canUndo()).toBe(false);
+        expect(first.undo()).toBe(true);
+        expect(store.getData().map.get('row')).toBe(store.getData().row);
+        first.disconnect();
+        second.disconnect();
+    });
+
     test.each(['map', 'set', 'date'])('%s root in-place edits publish exact undo/redo without changing snapshot contract', kind => {
         const original = makeNative(kind, 1);
         const store = new Root(original);

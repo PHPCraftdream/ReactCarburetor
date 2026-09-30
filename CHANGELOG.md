@@ -398,6 +398,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Accepted readonly values restore without partial sibling writes or native assignment errors.
+  History classifies readonly ownership during capture and replays its exact owned descriptors.
+- Successful same-content branch identity replacement invalidates native alias ownership even
+  when no value path changes; failed replacements leave ownership intact.
+
 - Watch files dependency reads only after comparison and changed-result detachment complete.
   Later selected leaves remain subscribed after an early difference or reordered branch.
 

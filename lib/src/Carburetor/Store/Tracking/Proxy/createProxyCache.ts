@@ -1,5 +1,5 @@
 import {TPath} from "@/Carburetor/Models/Paths";
-import {IProxyCache} from "./Models";
+import {IProxyCache} from "@/Carburetor/Store/Tracking/Models";
 
 /** One cached branch: the path it was minted for, and the wrapper built for it. */
 interface IProxyCacheEntry {

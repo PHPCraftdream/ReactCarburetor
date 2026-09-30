@@ -219,6 +219,52 @@ describe('raw native members with ordinary writable aliases', () => {
 });
 
 describe('native ownership after live topology changes', () => {
+    test.each(['set', 'define'])('equal-content %s replacement refreshes native ownership', kind => {
+        const old = {n: 1};
+        const newer = {n: 1};
+        const store = new NativeAliasStore({
+            row: old, other: {n: 0},
+            map: new Map([['old', old], ['new', newer]]), set: new Set(),
+        });
+        const seed = store.watch(data => (data.map.get('old') as typeof old).n, () => {});
+        if (kind === 'set') store.replaceRow(newer);
+        else store.change(draft => {
+            Object.defineProperty(draft, 'row', {
+                value: newer, writable: true, enumerable: true, configurable: true,
+            });
+        });
+        expect(store.getVersion()).toBe(kind === 'set' ? 0 : 1);
+        const seen: number[] = [];
+        const stop = store.watch(data => (data.map.get('new') as typeof newer).n,
+            n => { seen.push(n); });
+        store.put(2);
+        expect(store.getData().map.get('new')).toBe(store.getData().row);
+        expect(seen).toEqual([2]);
+        stop();
+        seed();
+    });
+
+    test('refused identity replacement leaves the seeded native ownership usable', () => {
+        const old = {n: 1};
+        const newer = {n: 1};
+        const state = {
+            row: old, other: {n: 0},
+            map: new Map([['old', old], ['new', newer]]), set: new Set<typeof old>(),
+        };
+        Object.defineProperty(state, 'row', {
+            value: old, writable: false, enumerable: true, configurable: true,
+        });
+        const store = new NativeAliasStore(state);
+        const seen: number[] = [];
+        const stop = store.watch(data => (data.map.get('old') as typeof old).n,
+            n => { seen.push(n); });
+        expect(() => store.replaceRow(newer)).toThrow(TypeError);
+        expect(store.getData().row).toBe(old);
+        store.put(2);
+        expect(seen).toEqual([2]);
+        stop();
+    });
+
     test('cached Map.get finds a replaced, added, moved and deleted ordinary alias', () => {
         const original = {n: 1};
         const next = {n: 2};

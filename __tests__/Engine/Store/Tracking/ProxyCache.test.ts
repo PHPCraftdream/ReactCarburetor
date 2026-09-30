@@ -3,7 +3,7 @@ import {act} from 'react';
 import {render} from '@testing-library/react';
 import {AntiHookComponent, Carburetor} from '@/Carburetor';
 import {TPath} from '@/Carburetor/Models/Paths';
-import {createProxyCache} from '@/Carburetor/Store/Tracking/createProxyCache';
+import {createProxyCache} from '@/Carburetor/Store/Tracking/Proxy/createProxyCache';
 import {IProxyCache, PROXY_CACHE} from '@/Carburetor/Store/Tracking/Models';
 import {TReadonly} from '@/Carburetor/Models/Base';
 

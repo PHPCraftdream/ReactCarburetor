@@ -63,28 +63,55 @@ const applyKey = (
     assign(target, key, deepClone(next));
 };
 
-/** Refuse an impossible in-place ordering before making even the first draft mutation. */
+/** Check every affected branch before the first draft write: native assignment can reject
+ * accepted read-only fields, locked lengths, non-configurable deletions, and key reordering.
+ * A failed check sends restore through its detached root replacement instead.
+ */
 const canApplyOrder = (
     previous: Record<string, unknown>,
     next: Record<string, unknown>
 ): boolean => {
     const previousKeys = Object.keys(previous);
-    if (!Array.isArray(previous)) {
-        const nextKeys = Object.keys(next);
+    const nextKeys = Object.keys(next);
+    const array = Array.isArray(previous);
+    if (!array) {
         const sameOrder = previousKeys.length === nextKeys.length
             && previousKeys.every((key, index) => key === nextKeys[index]);
         if (!sameOrder && keyOrderRequiresReplay(previousKeys, nextKeys)) return false;
     }
 
+    const previousLength = array ? (previous as unknown as unknown[]).length : 0;
+    const nextLength = array ? (next as unknown as unknown[]).length : 0;
+    const lengthLocked = array && Object.getOwnPropertyDescriptor(previous, 'length')?.writable === false;
+    if (array && previousLength !== nextLength) {
+        if (lengthLocked) return false;
+        if (nextLength < previousLength) {
+            for (const key of Reflect.ownKeys(previous)) {
+                if (typeof key === 'string' && /^(0|[1-9]\d*)$/.test(key)
+                    && Number(key) >= nextLength && Number(key) < previousLength
+                    && Object.getOwnPropertyDescriptor(previous, key)?.configurable === false) return false;
+            }
+        }
+    }
+
     for (const key of previousKeys) {
-        if (!Object.prototype.hasOwnProperty.call(next, key)) continue;
+        if (!Object.prototype.hasOwnProperty.call(next, key)) {
+            if (Object.getOwnPropertyDescriptor(previous, key)?.configurable === false) return false;
+            continue;
+        }
         const oldValue = previous[key];
         const newValue = next[key];
         if (Object.is(oldValue, newValue)) continue;
-        if (isTrackable(oldValue) && isTrackable(newValue) && sameKind(oldValue, newValue)
-            && !canApplyOrder(
+        if (isTrackable(oldValue) && isTrackable(newValue) && sameKind(oldValue, newValue)) {
+            if (!canApplyOrder(
                 oldValue as Record<string, unknown>, newValue as Record<string, unknown>
             )) return false;
+        } else if (Object.getOwnPropertyDescriptor(previous, key)?.writable === false) return false;
+    }
+    for (const key of nextKeys) {
+        if (Object.prototype.hasOwnProperty.call(previous, key)) continue;
+        if (!Object.isExtensible(previous) || (array && lengthLocked
+            && /^(0|[1-9]\d*)$/.test(key) && Number(key) >= previousLength)) return false;
     }
     return true;
 };

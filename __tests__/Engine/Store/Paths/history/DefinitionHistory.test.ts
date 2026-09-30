@@ -11,6 +11,27 @@ class DefinitionStore<T extends object> extends Carburetor<T> {
 const open = {enumerable: true, writable: true, configurable: true};
 
 describe('R10-01: data definitions attribute their effective value', () => {
+    test('accepted definition changing a readonly value replays both owned descriptor endpoints', () => {
+        const row = {n: 1};
+        Object.defineProperty(row, 'n', {
+            value: 1, writable: false, enumerable: true, configurable: true,
+        });
+        const store = new DefinitionStore({row});
+        const history = new CarburetorHistory(store);
+        store.edit(draft => Object.defineProperty(draft.row, 'n', {
+            value: 2, writable: true, enumerable: true, configurable: true,
+        }));
+        for (let i = 0; i < 2; i++) {
+            expect(history.undo()).toBe(true);
+            expect(store.getData().row.n).toBe(1);
+            expect(Object.getOwnPropertyDescriptor(store.getData().row, 'n')?.writable).toBe(false);
+            expect(history.redo()).toBe(true);
+            expect(store.getData().row.n).toBe(2);
+            expect(Object.getOwnPropertyDescriptor(store.getData().row, 'n')?.writable).toBe(true);
+        }
+        history.disconnect();
+    });
+
     test('omitted values and full same-value descriptors publish no state change', () => {
         const store = new DefinitionStore({count: 1, branch: {value: 2}});
         const branch = store.getData().branch;

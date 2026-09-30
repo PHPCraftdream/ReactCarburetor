@@ -678,6 +678,9 @@ invariants across locks and root replacement. Detached selections retain the raw
 Own string-key order is observable: replacement/reinsertion updates enumeration and detached
 selections, and history restores the original order. Positional string-key changes use owned
 graph endpoints; scalar writes, numeric keys and ordinary array operations retain patches.
+Restore checks affected readonly assignments and deletions before writing any sibling, replacing
+the root when the current draft cannot install valid snapshot values. Ordinary snapshots remain
+writable plain copies; owned history replay retains its captured readonly descriptors.
 
 Failed storage reads reach `onError` without deleting unread data; when the handler returns,
 later writes remain subscribed. Without a handler, a read failure throws. Malformed stored
