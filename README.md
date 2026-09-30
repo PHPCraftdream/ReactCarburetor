@@ -665,6 +665,11 @@ descriptors and backlinks through repeated undo/redo and branching. Unsupported 
 instances and accessor-bearing native values are rejected instead of promising a false undo.
 `history.clear()` captures the current baseline and discards pre-clear deferred writes;
 later coalesced writes remain undoable from that baseline, and other histories stay independent.
+Undo and redo first reconcile collected writes awaiting a coalesced publication, so time travel
+reverses the latest coherent step and a later flush cannot manufacture a new branch.
+A conservative native read or equal-content operation creates no history step when its owned
+intrinsics, descriptors and alias topology are unchanged; it does not erase valid redo.
+Mixed plain/native history graphs share one copy ledger, without discarding a copied plain prefix.
 
 Failed storage reads reach `onError` without deleting unread data; when the handler returns,
 later writes remain subscribed. Without a handler, a read failure throws. Malformed stored

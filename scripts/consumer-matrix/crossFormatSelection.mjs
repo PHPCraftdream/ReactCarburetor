@@ -26,8 +26,7 @@ const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join
             this.update((draft) => { draft.key.id = 2; });
         }
         changeIndex() {
-            const key = this.getData().key;
-            this.update((draft) => { draft.index.set(key, 'updated'); });
+            this.update((draft) => { draft.index.set(draft.key, 'updated'); });
         }
     }
     for (const order of ['key-first', 'map-first']) {
@@ -291,6 +290,40 @@ const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join
             histories.push(label + (replaceKey ? ':native-key-replacement' : ':native-key-alias'));
         }
 
+        const viewKey = {id: 1};
+        const keyed = new storeModule.Carburetor({key: viewKey,
+            map: new Map([[viewKey, 1]]), set: new Set()});
+        const keyedHistory = new historyModule.CarburetorHistory(keyed);
+        const values = [];
+        const stopKeyed = keyed.watch((view) => view.map.get(view.key), (value) => values.push(value));
+        const derived = new historyModule.Computed((get) => {
+            const view = get(keyed);
+            return view.map.get(view.key);
+        });
+        assert.equal(derived.get(), 1);
+        keyed.update((draft) => {
+            draft.map.set(draft.key, 2);
+            draft.map.set('root', draft);
+            draft.set.add(draft.key);
+        });
+        const checkKeys = () => {
+            const state = keyed.getData();
+            assert.equal(state.map.get(state.key), 2);
+            assert.equal(state.map.size, 2);
+            assert.equal(state.map.get('root'), state);
+            assert.equal(state.set.has(state.key), true);
+            assert.equal(derived.get(), 2);
+        };
+        checkKeys();
+        assert.deepStrictEqual(values, [2]);
+        assert.equal(keyedHistory.undo(), true);
+        assert.equal(derived.get(), 1);
+        assert.equal(keyedHistory.redo(), true);
+        checkKeys();
+        stopKeyed();
+        keyedHistory.disconnect();
+        histories.push(label + ':native-view-keys');
+
         for (const postClear of [false, true]) {
             const jobs = new Map();
             const scheduler = {
@@ -320,6 +353,61 @@ const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join
             independent?.disconnect();
             histories.push(label + (postClear ? ':clear-post-write' : ':clear-deferred'));
         }
+        for (const opaque of [false, true]) {
+            const jobs = new Map();
+            const scheduler = {schedule: (id, callback) => jobs.set(id, callback),
+                cancel: (id) => jobs.delete(id)};
+            const store = new storeModule.Carburetor(opaque ? new Map([['count', 0]]) : {count: 0}, scheduler);
+            const history = new historyModule.CarburetorHistory(store);
+            const put = (next) => store.update((draft) => {
+                if (opaque) draft.set('count', next); else draft.count = next;
+            });
+            const count = () => opaque ? store.getData().get('count') : store.getData().count;
+            const flush = () => {
+                while (jobs.size) {
+                    const callbacks = [...jobs.values()]; jobs.clear();
+                    callbacks.forEach((callback) => callback());
+                }
+            };
+            put(1); flush(); put(2);
+            assert.equal(history.undo(), true);
+            assert.equal(count(), 1, label + ': undo must reverse the pending latest write');
+            flush();
+            assert.equal(count(), 1);
+            assert.equal(history.canRedo(), true);
+            assert.equal(history.redo(), true);
+            flush();
+            assert.equal(count(), 2);
+            assert.equal(history.undo(), true);
+            put(3);
+            assert.equal(history.redo(), false, label + ': a fresh pending branch discards future');
+            flush();
+            assert.equal(count(), 3);
+            history.disconnect();
+            histories.push(label + (opaque ? ':pending-opaque-replay' : ':pending-patch-replay'));
+        }
+
+        for (const kind of ['Map', 'Set', 'Date']) {
+            for (const nested of [false, true]) {
+                const native = kind === 'Map' ? new Map([['value', 1]])
+                    : kind === 'Set' ? new Set([1]) : new Date(1);
+                const store = new storeModule.Carburetor(nested ? {native} : native);
+                const history = new historyModule.CarburetorHistory(store);
+                store.update((draft) => {
+                    const current = nested ? draft.native : draft;
+                    if (kind === 'Map') current.get('value');
+                    else if (kind === 'Set') current.has(1);
+                    else current.getTime();
+                });
+                const version = store.getVersion();
+                assert.equal(history.canUndo(), false, label + ': a native read is not a history edit');
+                assert.equal(history.undo(), false);
+                assert.equal(store.getVersion(), version);
+                history.disconnect();
+                histories.push(label + ':readOnly-' + kind + (nested ? '-nested' : '-root'));
+            }
+        }
+
 
         const resource = new storeModule.ResourceCarburetor(async (key) => 'answer-' + key);
         const resourceHistory = new historyModule.CarburetorHistory(resource);
@@ -436,7 +524,10 @@ export const runCrossFormatSelection = (installDir) => {
         'define-marker', 'sparse-symbols', 'null-prototype-symbols', 'symbol-setData',
         'native-Map-root', 'native-Map-nested', 'native-Set-root', 'native-Set-nested',
         'native-Date-root', 'native-Date-nested', 'native-key-alias', 'native-key-replacement',
-        'clear-deferred', 'clear-post-write', 'resource', 'keyless-slot', 'entry-owned-failure',
+        'native-view-keys', 'clear-deferred', 'clear-post-write',
+        'pending-patch-replay', 'pending-opaque-replay',
+        'readOnly-Map-root', 'readOnly-Map-nested', 'readOnly-Set-root', 'readOnly-Set-nested',
+        'readOnly-Date-root', 'readOnly-Date-nested', 'resource', 'keyless-slot', 'entry-owned-failure',
     ];
     const expectedHistories = ['cjs-store/esm-history', 'esm-store/cjs-history']
         .flatMap((label) => historyKinds.map((kind) => label + ':' + kind));

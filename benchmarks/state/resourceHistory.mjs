@@ -84,7 +84,50 @@ async function resource(implementation) {
     return {ms, loads: 64, transitions: 128, snapshots: store.snapshots};
 }
 
-for (const [name, scenario] of [['ordinary patch history', ordinary], ['resource snapshot history', resource]]) {
+/** Measures one actual mixed graph capture and original-node reflection work.
+ *
+ * @param implementation - one built variant
+ */
+function mixedCapture(implementation) {
+    const key = {id: 'key'};
+    const state = {key, rows: rows.map(row => ({...row})), last: new Map()};
+    state.last.set(key, 1);
+    state.last.set('root', state);
+    const store = new implementation.store(state);
+    const originals = new Set([state, state.rows, key, state.last, ...state.rows]);
+    const visits = new WeakMap();
+    const ownKeys = Reflect.ownKeys;
+    let history;
+    let ms;
+    Reflect.ownKeys = function (value) {
+        if (originals.has(value)) visits.set(value, (visits.get(value) ?? 0) + 1);
+        return ownKeys(value);
+    };
+    try {
+        const start = process.hrtime.bigint();
+        history = new implementation.history(store);
+        ms = Number(process.hrtime.bigint() - start) / 1e6;
+    } finally {
+        Reflect.ownKeys = ownKeys;
+    }
+    const work = {rootVisits: visits.get(state) ?? 0, rowVisits: visits.get(state.rows[0]) ?? 0};
+    store.update(draft => { draft.last.set(key, 2); });
+    if (!history.undo() || store.getData().last.get(store.getData().key) !== 1) {
+        throw new Error('Mixed capture lost its old native key/value alias');
+    }
+    if (!history.redo() || store.getData().last.get(store.getData().key) !== 2 ||
+        store.getData().last.get('root') !== store.getData()) {
+        throw new Error('Mixed capture lost its new native root backlink');
+    }
+    history.disconnect();
+    return {ms, snapshots: 1, ...work};
+}
+
+
+for (const [name, scenario] of [
+    ['ordinary patch history', ordinary], ['resource snapshot history', resource],
+    ['mixed graph capture', mixedCapture],
+]) {
     const results = {baseline: [], fixed: []};
     for (let round = -2; round < samples; round++) {
         const order = round % 2 === 0 ? ['baseline', 'fixed'] : ['fixed', 'baseline'];
@@ -101,6 +144,7 @@ for (const [name, scenario] of [['ordinary patch history', ordinary], ['resource
             + ` range=${Math.min(...measurements.map(result => result.ms)).toFixed(3)}`
             + `-${Math.max(...measurements.map(result => result.ms)).toFixed(3)}ms`
             + ` writes=${work.writes ?? '-'} loads=${work.loads ?? '-'}`
-            + ` transitions=${work.transitions ?? '-'} snapshots=${work.snapshots}`);
+            + ` transitions=${work.transitions ?? '-'} snapshots=${work.snapshots}`
+            + ` rootVisits=${work.rootVisits ?? '-'} rowVisits=${work.rowVisits ?? '-'}`);
     }
 }

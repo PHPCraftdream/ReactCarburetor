@@ -4,7 +4,8 @@ import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
 import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
-import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
+import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
+import {sameHistoryGraph} from "./sameHistoryGraph";
 
 /** One change recorded as the patches to invert it — the fast path (R16-07). */
 interface IPatchesEntry {
@@ -33,75 +34,85 @@ const refuseLiveEndpoint = (): never => {
 };
 
 /**
- * Plain state needs one quick graph copy, not per-property defineProperty/live-view handling.
- * An opaque member or accessor switches the entire graph to the established native copier,
- * so its keys, backlinks, descriptors and shared references are still copied as one graph.
+ * Owns a supported history graph in one pass. Ordinary containers retain the fast assignment
+ * shape where descriptors permit it; native members share the same cycle ledger and keep their
+ * intrinsic contents and own data descriptors. A read view and its raw target share one copy.
  */
 const own = <V>(value: V, onOpaque?: () => void): V => {
-    let opaque = false;
     const seen = new WeakMap<object, object>();
-    const plain = (source: unknown): unknown => {
+    const copy = (source: unknown): unknown => {
         if (source === null || typeof source !== 'object') {
             return source;
         }
-        const prototype = Object.getPrototypeOf(source);
-        if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null) {
-            opaque = true;
-            return source;
-        }
-        const previous = seen.get(source);
+        const raw = liveViews.readTarget(source) ?? source;
+        const previous = seen.get(raw);
         if (previous !== undefined) {
             return previous;
         }
-        const array = Array.isArray(source);
-        if (!array && prototype === Array.prototype) {
+        const prototype = Object.getPrototypeOf(raw);
+        const array = Array.isArray(raw);
+        let result: object;
+        let native = false;
+        if (prototype === Map.prototype && raw instanceof Map) {
             onOpaque?.();
+            const map = new Map<unknown, unknown>();
+            result = map;
+            native = true;
+            seen.set(raw, result);
+            Map.prototype.forEach.call(raw, (member: unknown, key: unknown): void => {
+                map.set(copy(key), copy(member));
+            });
+        } else if (prototype === Set.prototype && raw instanceof Set) {
+            onOpaque?.();
+            const set = new Set<unknown>();
+            result = set;
+            native = true;
+            seen.set(raw, result);
+            Set.prototype.forEach.call(raw, (member: unknown): void => { set.add(copy(member)); });
+        } else if (prototype === Date.prototype && raw instanceof Date) {
+            onOpaque?.();
+            result = new Date(Date.prototype.getTime.call(raw));
+            native = true;
+            seen.set(raw, result);
+        } else if (prototype === Object.prototype || prototype === null ||
+            prototype === Array.prototype) {
+            if (!array && prototype === Array.prototype) {
+                onOpaque?.();
+            }
+            result = array
+                ? (prototype === Array.prototype ? [] : Object.setPrototypeOf([], prototype))
+                : (prototype === Object.prototype ? {} : Object.create(prototype));
+            seen.set(raw, result);
+        } else {
+            return refuseLiveEndpoint();
         }
-        // Keep ordinary objects/arrays on their native fast shape; only unusual supported
-        // prototypes need adjustment. Inherited names below use defineProperty, never setters.
-        const container = array
-            ? (prototype === Array.prototype ? [] : Object.setPrototypeOf([], prototype))
-            : (prototype === Object.prototype ? {} : Object.create(prototype));
-        const result = container as Record<string | symbol, unknown>;
-        seen.set(source, result);
-        const keys = Reflect.ownKeys(source);
         let length: PropertyDescriptor | undefined;
-        for (const key of keys) {
-            const descriptor = Object.getOwnPropertyDescriptor(source, key);
-            if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-                opaque = true;
-                return result;
+        for (const key of Reflect.ownKeys(raw)) {
+            const descriptor = Object.getOwnPropertyDescriptor(raw, key);
+            if (!descriptor) continue;
+            if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+                throw new Error('CarburetorHistory: cannot snapshot accessor property ' + String(key));
             }
             if (array && key === 'length') {
+                // Other indices must be installed before a non-writable length.
                 length = descriptor;
                 continue;
             }
-            descriptor.value = plain(descriptor.value);
-            if (opaque) {
-                return result;
-            }
-            if (descriptor.writable && descriptor.enumerable && descriptor.configurable && !(key in result)) {
-                result[key] = descriptor.value;
+            descriptor.value = copy(descriptor.value);
+            const target = result as Record<string | symbol, unknown>;
+            if (!native && descriptor.writable && descriptor.enumerable &&
+                descriptor.configurable && !(key in target)) {
+                target[key] = descriptor.value;
             } else {
                 Object.defineProperty(result, key, descriptor);
             }
         }
-        if (array && length) {
-            if (length.writable) {
-                result.length = length.value;
-            } else {
-                Object.defineProperty(result, 'length', length);
-            }
+        if (length) {
+            Object.defineProperty(result, 'length', length);
         }
         return result;
     };
-    const copied = plain(value);
-    if (opaque) {
-        const detached = detachOpaque(value, refuseLiveEndpoint, refuseLiveEndpoint);
-        onOpaque?.();
-        return detached;
-    }
-    return copied as V;
+    return copy(value) as V;
 };
 
 /** Primitive endpoints already have value ownership; only object graphs need detachment. */
@@ -229,6 +240,10 @@ export class CarburetorHistory<T extends object> {
 
     /** Steps one change back, or reports that there was nothing to step back to. */
     public undo(): boolean {
+        // Commit already-collected newer writes before selecting the step to undo.
+        if (this.pendingOpaque || this.pendingPatches.length > 0) {
+            this.record();
+        }
         const entry = this.past.pop();
 
         if (entry === undefined) {
@@ -243,6 +258,10 @@ export class CarburetorHistory<T extends object> {
 
     /** Steps one undone change forward again. */
     public redo(): boolean {
+        // A queued new branch invalidates redo; an equal-content opaque read does not.
+        if (this.pendingOpaque || this.pendingPatches.length > 0) {
+            this.record();
+        }
         const entry = this.future.pop();
 
         if (entry === undefined) {
@@ -330,15 +349,46 @@ export class CarburetorHistory<T extends object> {
             return;
         }
         this.skipReplay = false;
-        this.past.push(this.buildEntry());
-
+        const entry = this.buildEntry();
+        this.pendingPatches = [];
+        this.pendingOpaque = false;
+        if (entry === undefined) return;
+        this.past.push(entry);
         if (this.past.length > this.limit) {
             this.past.shift();
         }
-
         this.future = [];
-        this.pendingPatches = [];
-        this.pendingOpaque = false;
+    }
+
+    /**
+     * Probes changed paths before comparing a canceled deferred batch's complete graph.
+     *
+     * Ordinary changes need no full copy; equal candidates still verify aliases and descriptors.
+     */
+    private pendingPatchesUnchanged(): boolean {
+        if (this.pendingPatches.length < 2) return false;
+        const current = this.carburetor.getData();
+        for (const patch of this.pendingPatches) {
+            let before: unknown = this.baseline;
+            let after: unknown = current;
+            for (const key of patch.segments) {
+                const oldField = before !== null && typeof before === 'object'
+                    ? Object.getOwnPropertyDescriptor(before, key) : undefined;
+                const newField = after !== null && typeof after === 'object'
+                    ? Object.getOwnPropertyDescriptor(after, key) : undefined;
+                if ((oldField === undefined) !== (newField === undefined)) return false;
+                if (oldField === undefined || newField === undefined) {
+                    before = undefined;
+                    after = undefined;
+                    break;
+                }
+                if (!('value' in oldField) || !('value' in newField)) return false;
+                before = oldField.value;
+                after = newField.value;
+            }
+            if (!sameHistoryGraph(before, after)) return false;
+        }
+        return sameHistoryGraph(this.baseline, this.capture().state);
     }
 
     /**
@@ -348,13 +398,18 @@ export class CarburetorHistory<T extends object> {
      * otherwise. The empty-patch case is defensive — every write path this class knows of reports
      * one or the other — so a gap in that coverage still falls back to a safe, larger entry.
      */
-    protected buildEntry(): THistoryEntry<T> {
+    protected buildEntry(): THistoryEntry<T> | undefined {
         if (this.pendingOpaque || this.pendingPatches.length === 0) {
             const before = this.baseline;
             const beforeExotic = this.baselineContainsExotic;
             const capture = this.capture();
             this.baseline = capture.state;
             this.baselineContainsExotic = capture.exotic;
+            if (sameHistoryGraph(before, capture.state)) {
+                // A conservative opaque publication need not insert an undoable step.
+                this.baselineShared = false;
+                return undefined;
+            }
             this.baselineShared = true;
             return {
                 kind: 'snapshot', before, after: capture.state,
@@ -362,6 +417,7 @@ export class CarburetorHistory<T extends object> {
             };
         }
 
+        if (this.pendingPatchesUnchanged()) return undefined;
         const patches = this.pendingPatches;
         if (this.baselineShared) {
             this.baseline = own(this.baseline);

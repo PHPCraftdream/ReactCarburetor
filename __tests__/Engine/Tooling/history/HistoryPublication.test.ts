@@ -373,4 +373,131 @@ describe('history publication boundaries under reentrant writes (R15-ENGINE-01/0
             healthy.disconnect();
         }
     });
+    test.each(['patch', 'opaque'])('queued newer %s change is the first undo, not a phantom step', kind => {
+        class ManualThrottle extends ComponentUpdateThrottle {
+            protected setupTimeout(): void {}
+            public flush(): void { this.letsUpdate(); }
+        }
+        const throttle = new ManualThrottle();
+        const store = new Store({x: 0, y: 0}, throttle);
+        const history = new CarburetorHistory(store);
+        const write = (x: number): void => {
+            if (kind === 'patch') store.write('x', x);
+            else store.setData({x, y: 0});
+        };
+        write(1);
+        throttle.flush();
+        write(2);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().x).toBe(1);
+        throttle.flush();
+        expect(history.canRedo()).toBe(true);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().x).toBe(0);
+        expect(history.redo()).toBe(true);
+        throttle.flush();
+        expect(store.getData().x).toBe(1);
+        expect(history.redo()).toBe(true);
+        throttle.flush();
+        expect(store.getData().x).toBe(2);
+        expect(history.undo()).toBe(true);
+        throttle.flush();
+        write(3);
+        expect(history.redo()).toBe(false);
+        throttle.flush();
+        expect(history.undo()).toBe(true);
+        expect(store.getData().x).toBe(1);
+        history.disconnect();
+    });
+
+    test.each(['patch', 'opaque'])('transaction settles %s before time travel and later writes branch', kind => {
+        const store = new Store({x: 0, y: 0});
+        const history = new CarburetorHistory(store);
+        const write = (x: number): void => {
+            if (kind === 'patch') store.write('x', x);
+            else store.setData({x, y: 0});
+        };
+        write(1);
+        transaction(() => {
+            write(2);
+            expect(history.undo()).toBe(true);
+            expect(store.getData().x).toBe(1);
+        });
+        expect(history.canRedo()).toBe(true);
+        expect(history.redo()).toBe(true);
+        expect(store.getData().x).toBe(2);
+        transaction(() => {
+            write(3);
+            expect(history.undo()).toBe(true);
+            write(4);
+        });
+        expect(store.getData().x).toBe(4);
+        expect(history.canRedo()).toBe(false);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().x).toBe(2);
+        history.disconnect();
+    });
+    test('an independent history never records a queued write cancelled by another replay', () => {
+        class ManualThrottle extends ComponentUpdateThrottle {
+            protected setupTimeout(): void {}
+            public flush(): void { this.letsUpdate(); }
+        }
+        const throttle = new ManualThrottle();
+        const store = new Store({x: 0, y: 0}, throttle);
+        const first = new CarburetorHistory(store);
+        const second = new CarburetorHistory(store);
+        store.write('x', 1);
+        throttle.flush();
+        store.write('x', 2);
+        expect(first.undo()).toBe(true);
+        expect(store.getData().x).toBe(1);
+        throttle.flush();
+        expect(second.undo()).toBe(true);
+        expect(store.getData().x).toBe(0);
+        throttle.flush();
+        expect(second.undo()).toBe(false);
+        first.disconnect();
+        second.disconnect();
+    });
+
+    test('transaction cancellation across histories retains only the first real change', () => {
+        const store = new Store({x: 0, y: 0});
+        const first = new CarburetorHistory(store);
+        const second = new CarburetorHistory(store);
+        store.write('x', 1);
+        transaction(() => {
+            store.write('x', 2);
+            expect(first.undo()).toBe(true);
+        });
+        expect(second.undo()).toBe(true);
+        expect(store.getData().x).toBe(0);
+        expect(second.undo()).toBe(false);
+        first.disconnect();
+        second.disconnect();
+    });
+    test('a cancelled sparse-array transaction does not bury the last real undo', () => {
+        class ArrayStore extends Carburetor<{items: number[]; marker: number}> {
+            public append(value: number): void {
+                this.update(draft => { draft.items.push(value); });
+            }
+            public remove(): void {
+                this.update(draft => { draft.items.pop(); });
+            }
+        }
+        const initial: number[] = [];
+        initial[1] = 7;
+        const store = new ArrayStore({items: initial.slice(), marker: 0});
+        const history = new CarburetorHistory(store);
+        store.update(draft => { draft.marker = 1; });
+        transaction(() => {
+            store.append(9);
+            store.remove();
+        });
+        expect(history.undo()).toBe(true);
+        expect(store.getData().marker).toBe(0);
+        expect(0 in store.getData().items).toBe(false);
+        expect(store.getData().items).toEqual(initial);
+        expect(history.undo()).toBe(false);
+        history.disconnect();
+    });
 });

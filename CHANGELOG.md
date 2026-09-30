@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- History reconciles pending coalesced writes before undo/redo and drops canceled patch batches,
+  including an independent recorder's inverse. Unchanged owned native graphs preserve redo
+  without creating successful empty undo steps; mixed native graphs copy once with one alias ledger.
 - Map/Set intrinsic arguments canonicalize tracked read/draft keys, members and roots instead
   of inserting proxy identities. Watch/computed lookup, receiver/chaining and `forEach`
   collection callbacks retain their real graph aliases across CJS/ESM copies.

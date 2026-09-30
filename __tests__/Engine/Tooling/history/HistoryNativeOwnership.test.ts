@@ -1,4 +1,4 @@
-import {Carburetor, CarburetorHistory, ResourceCache, ResourceCarburetor} from '@/Carburetor';
+import {Carburetor, CarburetorHistory, ComponentUpdateThrottle, ResourceCache, ResourceCarburetor} from '@/Carburetor';
 
 type Native = Map<string, number> | Set<number> | Date;
 
@@ -348,5 +348,118 @@ describe('native history endpoint ownership', () => {
         Object.defineProperty(map, 'hidden', {get: () => { getterCalls++; return 1; }});
         expect(() => new CarburetorHistory(new Root(map))).toThrow(/cannot snapshot accessor property/);
         expect(getterCalls).toBe(0);
+    });
+    test.each(['map', 'set', 'date'])('%s native read and equal-content operation do not claim undo', kind => {
+        const store = new Root(makeNative(kind, 1));
+        const history = new CarburetorHistory(store);
+        store.update(draft => {
+            if (draft instanceof Map) {
+                void draft.get('k');
+                draft.set('k', 1);
+            } else if (draft instanceof Set) {
+                void draft.has(1);
+                draft.add(1);
+            } else {
+                void draft.getTime();
+                draft.setTime(1);
+            }
+        });
+        expect(history.canUndo()).toBe(false);
+        expect(history.undo()).toBe(false);
+        store.change(2);
+        expect(history.undo()).toBe(true);
+        expect(readNative(store.getData())).toBe(1);
+        history.disconnect();
+    });
+
+    test('nested native reads do not erase redo, but a native mutation does', () => {
+        class Reading extends Nested {
+            public inspect(): void {
+                this.update(draft => { void (draft.native as Map<string, number>).get('k'); });
+            }
+        }
+        const store = new Reading({native: new Map([['k', 1]]), other: 0});
+        const history = new CarburetorHistory(store);
+        store.change(2);
+        expect(history.undo()).toBe(true);
+        store.inspect();
+        expect(history.canRedo()).toBe(true);
+        expect(history.redo()).toBe(true);
+        expect(readNative(store.getData().native)).toBe(2);
+        history.disconnect();
+    });
+
+    test('native topology, descriptor flags and sparse symbol fields distinguish endpoints', () => {
+        const alias = {id: 1};
+        const key = Symbol('field');
+        const map = new Map<unknown, unknown>([['one', alias], ['two', alias]]);
+        const list: unknown[] = [];
+        list.length = 2;
+        list[1] = undefined;
+        const root = {alias, map, list};
+        Object.defineProperty(map, 'owner', {value: root, configurable: true});
+        const store = new Carburetor(root);
+        const history = new CarburetorHistory(store);
+        store.update(draft => { draft.map.set('two', {id: 1}); });
+        expect(history.undo()).toBe(true);
+        expect(store.getData().map.get('one')).toBe(store.getData().map.get('two'));
+        expect(history.redo()).toBe(true);
+        expect(store.getData().map.get('one')).not.toBe(store.getData().map.get('two'));
+        store.update(draft => {
+            Object.defineProperty(draft.map, 'owner', {value: root, configurable: false});
+        });
+        expect(history.undo()).toBe(true);
+        expect(Object.getOwnPropertyDescriptor(store.getData().map, 'owner')?.configurable).toBe(true);
+        store.update(draft => { draft.map.set(key, undefined); });
+        expect(history.undo()).toBe(true);
+        expect(store.getData().map.has(key)).toBe(false);
+        store.update(draft => { draft.list[0] = undefined; });
+        expect(history.undo()).toBe(true);
+        expect(0 in store.getData().list).toBe(false);
+        history.disconnect();
+    });
+    test('Set order is observable, while invalid Date time equals itself', () => {
+        const set = new Carburetor(new Set([1, 2]));
+        const setHistory = new CarburetorHistory(set);
+        set.update(draft => {
+            draft.delete(1);
+            draft.add(1);
+        });
+        expect([...set.getData()]).toEqual([2, 1]);
+        expect(setHistory.undo()).toBe(true);
+        expect([...set.getData()]).toEqual([1, 2]);
+        setHistory.disconnect();
+
+        const date = new Carburetor(new Date(NaN));
+        const dateHistory = new CarburetorHistory(date);
+        date.update(draft => { void draft.getTime(); });
+        expect(dateHistory.undo()).toBe(false);
+        date.update(draft => { draft.setTime(9); });
+        expect(dateHistory.undo()).toBe(true);
+        expect(Number.isNaN(date.getData().getTime())).toBe(true);
+        dateHistory.disconnect();
+    });
+    test('queued native mutation settles before undo across independent histories', () => {
+        class ManualThrottle extends ComponentUpdateThrottle {
+            protected setupTimeout(): void {}
+            public flush(): void { this.letsUpdate(); }
+        }
+        const throttle = new ManualThrottle();
+        const store = new Root(new Map([['k', 0]]), throttle);
+        const first = new CarburetorHistory(store);
+        const other = new CarburetorHistory(store);
+        store.change(1);
+        throttle.flush();
+        store.change(2);
+        expect(first.undo()).toBe(true);
+        expect(readNative(store.getData())).toBe(1);
+        throttle.flush();
+        expect(first.canRedo()).toBe(true);
+        expect(other.undo()).toBe(true);
+        expect(readNative(store.getData())).toBe(0);
+        throttle.flush();
+        expect(first.canRedo()).toBe(false);
+        first.disconnect();
+        other.disconnect();
     });
 });
