@@ -398,6 +398,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Equal-valued plain key reorders publish enumeration changes and refresh detached selections.
+  History restores original key positions after deletion/reinsertion; ordinary scalar, numeric-key
+  and array-index changes retain patch recording. Restore preflights append-impossible ordering
+  before any in-place writes.
+
 - Native alias selections reuse a root-owned path index until mutation invalidates it, replacing
   repeated full-root searches with one ownership walk while preserving precise live aliases.
 

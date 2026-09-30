@@ -39,6 +39,9 @@ export const PATCH_OPAQUE: unique symbol = Symbol.for('react-carburetor/v1/patch
 /** Array length's writable flag changed: history must replay an owned graph, not grow a locked draft. */
 export const PATCH_ARRAY_LENGTH_LOCK: unique symbol = Symbol.for('react-carburetor/v1/patch-array-length-lock');
 
+/** Own-key positions changed: history needs an owned endpoint to restore their order. */
+export const PATCH_KEY_ORDER_CHANGE: unique symbol = Symbol.for('react-carburetor/v1/patch-key-order-change');
+
 /**
  * One write the proxy could describe precisely, enough to invert it without a diff:
  * `segments` are the raw, unescaped keys from the store root to the written field — cheap to
@@ -57,14 +60,14 @@ export interface IWritePatch {
     next: unknown;
 }
 
-/** Delivers a field patch, an opaque change, or an array length descriptor transition. */
+/** Delivers a field patch, opaque write, or structural transition requiring owned replay. */
 export type TPatchRecorder = (
-    patch: IWritePatch | typeof PATCH_OPAQUE | typeof PATCH_ARRAY_LENGTH_LOCK
+    patch: IWritePatch | typeof PATCH_OPAQUE | typeof PATCH_ARRAY_LENGTH_LOCK | typeof PATCH_KEY_ORDER_CHANGE
 ) => void;
 
 /** Mutation and publication stream from one patch source; fields are stable for the attachment. */
 export interface IPatchObserver {
-    /** Called at mutation time for each patch, opaque write, or array length descriptor transition. */
+    /** Called at mutation time for each field patch, opaque write, or owned-replay transition. */
     patch: TPatchRecorder;
     /** If present, scheduled before ordinary subscribers at each publication (after coalescing). */
     publication?: () => void;

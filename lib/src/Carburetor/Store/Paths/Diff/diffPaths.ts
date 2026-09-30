@@ -1,10 +1,11 @@
-import {PATCH_ARRAY_LENGTH_LOCK, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
+import {PATCH_ARRAY_LENGTH_LOCK, PATCH_KEY_ORDER_CHANGE, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {DIFF_PATH_THRESHOLD} from "./DiffThreshold";
+import {keyOrderRequiresReplay} from "./Order/keyOrderRequiresReplay";
 import {sameKind} from "./sameKind";
 
 /** Unwinds the recursive walk once the threshold trips; caught inside diffPaths, never escapes it. */
@@ -64,7 +65,22 @@ const walkContainer = (
     const oldKeys = Object.keys(oldValue);
     const newKeys = Object.keys(newValue);
     const seen = new Set<string>();
-    let keysChanged = false;
+    let keysChanged = oldKeys.length !== newKeys.length;
+    if (!keysChanged) {
+        for (let index = 0; index < oldKeys.length; index++) {
+            if (oldKeys[index] !== newKeys[index]) {
+                keysChanged = true;
+                break;
+            }
+        }
+    }
+    // Equal entries in a different order still change enumeration. Patches lack insertion
+    // positions, so inverse middle deletions and forward reorders need an owned endpoint.
+    // Supported arrays only have numeric own keys; their index writes do not require replay.
+    if (onPatch && keysChanged && !Array.isArray(oldValue)
+        && keyOrderRequiresReplay(oldKeys, newKeys)) {
+        onPatch(PATCH_KEY_ORDER_CHANGE);
+    }
 
     for (const key of oldKeys) {
         seen.add(key);
@@ -136,8 +152,8 @@ const walk = (
  * - A value compared by reference (`Object.is`) that differs records its own path; the same
  *   holds when trackable sides differ in kind (array vs object, or ordinary vs null-prototype
  *   containers), or only one side is trackable at all.
- * - A changed key set — an added or removed key, or an array's length — also records the
- *   R16-01 keys marker for that container, on top of each added/removed key's own path.
+ * - A changed ordered own-key sequence also records the keys marker, even when every entry
+ *   has the same value; leaf readers stay asleep.
  * - Reference-equal branches (`Object.is`) are skipped without being walked, in O(1).
  * - Past `DIFF_PATH_THRESHOLD` recorded paths, the walk gives up and reports `basePath` itself
  *   as replaced, rather than thousands of individual leaves.

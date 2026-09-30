@@ -1,7 +1,5 @@
 import {TDisposer} from '@/Carburetor/Models/Base';
-import {
-    IPatchObserver, IWritePatch, PATCH_ARRAY_LENGTH_LOCK, PATCH_OPAQUE, TPatchPort, TPatchRecorder,
-} from '@/Carburetor/Models/Paths';
+import {IPatchObserver, TPatchPort, TPatchRecorder} from '@/Carburetor/Models/Paths';
 import {IUpdateScheduler} from '@/Carburetor/Models/Store';
 import {getUid} from '@/Carburetor/Store/Utils/getUid';
 
@@ -30,7 +28,7 @@ export class PatchObserverRegistry {
     private fanout: TPatchRecorder | undefined;
 
     /** Delivers one mutation to the active attachment set. */
-    private reportPatch(patch: IWritePatch | typeof PATCH_OPAQUE | typeof PATCH_ARRAY_LENGTH_LOCK): void {
+    private reportPatch(patch: Parameters<TPatchRecorder>[0]): void {
         const generation = this.generation;
         let failed = false;
         let firstError: unknown;
@@ -80,7 +78,7 @@ export class PatchObserverRegistry {
         }
         this.single = this.registrations.size === 1 ? registration : undefined;
         if (!this.single) {
-            this.fanout ??= (patch: IWritePatch | typeof PATCH_OPAQUE | typeof PATCH_ARRAY_LENGTH_LOCK): void =>
+            this.fanout ??= (patch: Parameters<TPatchRecorder>[0]): void =>
                 this.reportPatch(patch);
         }
         this.port.listener = this.single?.observer.patch ?? this.fanout;

@@ -1,8 +1,9 @@
 import {
-    PATCH_ARRAY_LENGTH_LOCK, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger, TPatchPort,
-    TPatchRecorder,
+    PATCH_ARRAY_LENGTH_LOCK, PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger,
+    TPatchPort, TPatchRecorder,
 } from "@/Carburetor/Models/Paths";
 import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
+import {keyDeletionRequiresReplay} from "@/Carburetor/Store/Paths/Diff/Order/keyDeletionRequiresReplay";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
@@ -542,6 +543,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         const previous = Reflect.get(source, key);
+        const listener = this.patchPort?.listener;
+        const changesOrderOnInverse = listener && !this.isArray
+            && keyDeletionRequiresReplay(source, key);
 
         this.aliases?.checkWrite(source, this.basePath);
         if (!Reflect.deleteProperty(source, key)) {
@@ -549,11 +553,10 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         this.aliases?.forget(previous);
+        if (changesOrderOnInverse) listener?.(PATCH_KEY_ORDER_CHANGE);
         this.record(this.keysMarker());
 
         const path = this.writtenPath(key);
-        const listener = this.patchPort?.listener;
-
         if (listener) {
             this.reportPatch(listener, key, previous, undefined, true, false);
         }

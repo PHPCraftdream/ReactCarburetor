@@ -675,6 +675,9 @@ length's writable flag and sparse elements; a refused restore before installatio
 the cursor for retry.
 Persistent array connections report a writable length descriptor to satisfy their proxy target
 invariants across locks and root replacement. Detached selections retain the raw writable flag.
+Own string-key order is observable: replacement/reinsertion updates enumeration and detached
+selections, and history restores the original order. Positional string-key changes use owned
+graph endpoints; scalar writes, numeric keys and ordinary array operations retain patches.
 
 Failed storage reads reach `onError` without deleting unread data; when the handler returns,
 later writes remain subscribed. Without a handler, a read failure throws. Malformed stored
@@ -908,9 +911,9 @@ a test pins the exported surface so one does not slip in by accident.
   concurrent render pass; don't write to stores from render.
 - The props gate means a component that relied on its parent re-rendering to pick up data it
   never read will stop updating. Read what you render, through `useCarburetor`.
-- Pure plain-tree undo/redo records patches — O(changed values), not O(state). Native-containing
-  state, opaque writes and resource wire identity use complete owned graphs instead. Undo and
-  redo install through `restore`, waking readers of changed paths; key-only resource restores
+- Ordinary plain-tree undo/redo records patches — O(changed values), not O(state). Native-containing
+  state, opaque writes, positional string-key changes and resource wire identity use owned graphs.
+  Undo and redo install through `restore`, waking changed-path readers; key-only resource restores
   invalidate the slot. `CarburetorHistory` requires the full `IPatchSource` contract:
   `attachPatchListener({patch, publication?, ownRestore?})` and mandatory `captureHistory(own)`.
   Producers pass their authoritative raw graph to `own` before an ordinary snapshot can split

@@ -1,7 +1,7 @@
 import {Carburetor, computed} from "@/Carburetor";
 import {rstest} from "@rstest/core";
 import {READS_TRANSFER} from "@/Carburetor/Store/Paths/Markers/ReadsTransferBrand";
-import {getTestData, TestCarburetor} from "./fixtures";
+import {getTestData, TestCarburetor} from "../fixtures";
 
 /**
  * R16-10(1): `watch(select, onChange)` replaces the string-path `watch(callback, reads?)` form.

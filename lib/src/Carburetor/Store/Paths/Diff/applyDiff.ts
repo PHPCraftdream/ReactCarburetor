@@ -1,6 +1,7 @@
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {DIFF_PATH_THRESHOLD} from "./DiffThreshold";
+import {keyOrderRequiresReplay} from "./Order/keyOrderRequiresReplay";
 import {sameKind} from "./sameKind";
 
 /** Unwinds the walk once the threshold trips; caught inside applyDiff, never escapes it. */
@@ -62,6 +63,32 @@ const applyKey = (
     assign(target, key, deepClone(next));
 };
 
+/** Refuse an impossible in-place ordering before making even the first draft mutation. */
+const canApplyOrder = (
+    previous: Record<string, unknown>,
+    next: Record<string, unknown>
+): boolean => {
+    const previousKeys = Object.keys(previous);
+    if (!Array.isArray(previous)) {
+        const nextKeys = Object.keys(next);
+        const sameOrder = previousKeys.length === nextKeys.length
+            && previousKeys.every((key, index) => key === nextKeys[index]);
+        if (!sameOrder && keyOrderRequiresReplay(previousKeys, nextKeys)) return false;
+    }
+
+    for (const key of previousKeys) {
+        if (!Object.prototype.hasOwnProperty.call(next, key)) continue;
+        const oldValue = previous[key];
+        const newValue = next[key];
+        if (Object.is(oldValue, newValue)) continue;
+        if (isTrackable(oldValue) && isTrackable(newValue) && sameKind(oldValue, newValue)
+            && !canApplyOrder(
+                oldValue as Record<string, unknown>, newValue as Record<string, unknown>
+            )) return false;
+    }
+    return true;
+};
+
 const applyBranch = (
     target: Record<string, unknown>,
     previous: Record<string, unknown>,
@@ -111,9 +138,9 @@ const applyBranch = (
  * and an untouched branch keeps its object identity: nothing is reassigned unless it differs.
  *
  * Every assigned value is deep-cloned first, so `next`'s own object graph is never adopted into
- * the store — the caller (`restore`) keeps its ownership contract even though this walks into
- * it. Gives up past `DIFF_PATH_THRESHOLD` draft writes, returning `false` so the caller can fall
- * back to a wholesale swap instead of paying for thousands of individual ones.
+ * the store. A key order that native deletion/append cannot install is rejected before any draft
+ * mutation; `restore` then falls back to an owned root copy. Oversized diffs also return `false`
+ * after `DIFF_PATH_THRESHOLD` draft writes, preserving the existing threshold fallback.
  *
  * Caller's responsibility: `previous` and `next` must already share a kind and supported
  * prototype at the root — `restore` checks once before calling here; nested mismatches are
@@ -128,6 +155,8 @@ export const applyDiff = (
     previous: Record<string, unknown>,
     next: Record<string, unknown>
 ): boolean => {
+    if (!canApplyOrder(previous, next)) return false;
+
     try {
         applyBranch(target, previous, next, {spent: 0});
     } catch (error) {
