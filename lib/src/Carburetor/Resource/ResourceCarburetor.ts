@@ -5,6 +5,7 @@ import {IPatchObserver} from "@/Carburetor/Models/Paths";
 import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
+import {cloneOwnedGraph} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
 import {getInitialResourceData} from "./getInitialResourceData";
 import {createAbortHandle} from "./createAbortHandle";
 
@@ -182,11 +183,31 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         // its pre-publication hook reconstructs an Error from the wire message, even
         // when the previous failure had the same serialized description.
         if (ownedReplay) {
-            // History handed over a fresh graph. Keep its native backlinks to this live root;
-            // the public restore path still copies an ordinary caller's snapshot.
-            delete data.key;
-            if (data.status !== status) data.status = status;
-            super.setData(data);
+            // History hands over a fresh graph. Only a non-configurable readonly Pending
+            // descriptor needs another complete owned graph: install its normalized value
+            // before locking the descriptor, without breaking native root backlinks.
+            const statusDescriptor = data.status !== status
+                ? Object.getOwnPropertyDescriptor(data, 'status') : undefined;
+            if (statusDescriptor?.writable === false && statusDescriptor.configurable === false) {
+                const normalized = cloneOwnedGraph(data, undefined, (source, key, descriptor) => {
+                    if (source !== data) return descriptor;
+                    if (key === 'key') return undefined;
+                    if (key === 'status') descriptor.value = status;
+                    return descriptor;
+                });
+                super.setData(normalized);
+            } else {
+                // Writable values and configurable readonly descriptors can change in this
+                // already-owned graph, preserving its root links without another graph copy.
+                if (statusDescriptor?.writable === false) {
+                    statusDescriptor.value = status;
+                    Object.defineProperty(data, 'status', statusDescriptor);
+                } else if (data.status !== status) {
+                    data.status = status;
+                }
+                delete data.key;
+                super.setData(data);
+            }
         } else {
             super.setData(deepClone({
                 status,
