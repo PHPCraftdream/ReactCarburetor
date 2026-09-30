@@ -40,7 +40,7 @@ const refuseLiveEndpoint = (): never => {
  * shape where descriptors permit it; native members share the same cycle ledger and keep their
  * intrinsic contents and own data descriptors. A read view and its raw target share one copy.
  */
-const own = <V>(value: V, onOpaque?: () => void): V => {
+const own = <V>(value: V, onOpaque?: () => void, onLockedArray?: () => void): V => {
     const seen = new WeakMap<object, object>();
     const copy = (source: unknown): unknown => {
         if (source === null || typeof source !== 'object') {
@@ -97,6 +97,7 @@ const own = <V>(value: V, onOpaque?: () => void): V => {
             }
             if (array && key === 'length') {
                 // Other indices must be installed before a non-writable length.
+                if (descriptor.writable === false) onLockedArray?.();
                 length = descriptor;
                 continue;
             }
@@ -117,42 +118,18 @@ const own = <V>(value: V, onOpaque?: () => void): V => {
     return copy(value) as V;
 };
 
-/** Primitive endpoints already have value ownership; only object graphs need detachment. */
-const ownPatch = (patch: IWritePatch): IWritePatch => {
+/** Owns the object endpoints of a patch; primitive-only patches bypass this copier. */
+const ownPatch = (patch: IWritePatch, onLockedArray: () => void): IWritePatch => {
     const previous = patch.previous;
     const next = patch.next;
-    if ((previous === null || typeof previous !== 'object') &&
-        (next === null || typeof next !== 'object')) {
-        return patch;
-    }
 
     return {
         segments: patch.segments,
-        previous: patch.previousExists ? own(previous) : undefined,
-        next: patch.nextExists ? own(next) : undefined,
+        previous: patch.previousExists ? own(previous, undefined, onLockedArray) : undefined,
+        next: patch.nextExists ? own(next, undefined, onLockedArray) : undefined,
         previousExists: patch.previousExists,
         nextExists: patch.nextExists,
     };
-};
-
-/** An opaque plain-state replacement must not copy or grow any locked array through a draft. */
-const containsLockedArray = (value: unknown): boolean => {
-    const seen = new WeakSet<object>();
-    const visit = (node: unknown): boolean => {
-        if (node === null || typeof node !== 'object' || seen.has(node)) return false;
-        seen.add(node);
-        if (Array.isArray(node)) {
-            if (Object.getOwnPropertyDescriptor(node, 'length')!.writable === false) return true;
-        } else {
-            const prototype = Object.getPrototypeOf(node);
-            if (prototype !== Object.prototype && prototype !== null) return false;
-        }
-        for (const key of Object.keys(node)) {
-            if (visit((node as Record<string, unknown>)[key])) return true;
-        }
-        return false;
-    };
-    return visit(value);
 };
 
 /**
@@ -175,6 +152,8 @@ export class CarburetorHistory<T extends object> {
     protected baseline: T;
     /** Plain-only histories retain their patch fast path; native graphs require whole-state ownership. */
     private baselineContainsExotic: boolean;
+    /** Locks in the owned baseline persist unless a patch actually replaces a locked subtree. */
+    private baselineContainsLockedArray: boolean;
     /** The last snapshot endpoint may also be baseline until a patch needs to mutate it. */
     private baselineShared: boolean = false;
     /** The most entries `past` may hold; set from options at construction. */
@@ -236,16 +215,19 @@ export class CarburetorHistory<T extends object> {
         const capture = this.capture();
         this.baseline = capture.state;
         this.baselineContainsExotic = capture.exotic;
-
+        this.baselineContainsLockedArray = capture.lockedArray;
         this.dispose = carburetor.attachPatchListener(this.observer);
     }
 
-    /** The producer captures its authoritative graph and native ownership classification. */
-    private capture(): {state: T; exotic: boolean} {
+    /** The producer captures its authoritative graph and its native/length-lock classification. */
+    private capture(): {state: T; exotic: boolean; lockedArray: boolean} {
         let exotic = false;
+        let lockedArray = false;
         const markOpaque = (): void => { exotic = true; };
-        const state = this.carburetor.captureHistory(<V>(value: V): V => own(value, markOpaque)) as T;
-        return {state, exotic};
+        const markLockedArray = (): void => { lockedArray = true; };
+        const state = this.carburetor.captureHistory(
+            <V>(value: V): V => own(value, markOpaque, markLockedArray)) as T;
+        return {state, exotic, lockedArray};
     }
 
     /**
@@ -338,6 +320,7 @@ export class CarburetorHistory<T extends object> {
         this.future = [];
         this.baseline = capture.state;
         this.baselineContainsExotic = capture.exotic;
+        this.baselineContainsLockedArray = capture.lockedArray;
         this.baselineShared = false;
         this.pendingPatches = [];
         this.pendingOpaque = false;
@@ -372,6 +355,12 @@ export class CarburetorHistory<T extends object> {
             return;
         }
 
+        if ((patch.previous === null || typeof patch.previous !== 'object') &&
+            (patch.next === null || typeof patch.next !== 'object')) {
+            this.pendingPatches.push(patch);
+            return;
+        }
+
         // A native payload can point to an otherwise plain sibling (or the root itself).
         // Installing only the leaf would split that graph, so own the complete endpoints.
         if ((patch.previousExists && containsExoticValue(patch.previous)) ||
@@ -380,7 +369,15 @@ export class CarburetorHistory<T extends object> {
             return;
         }
 
-        this.pendingPatches.push(ownPatch(patch));
+        let lockedArray = false;
+        const ownedPatch = ownPatch(patch, (): void => { lockedArray = true; });
+        if (lockedArray) {
+            // Removing or installing a locked subtree requires a complete endpoint. An
+            // unrelated patch cannot change the baseline's existing lock classification.
+            this.pendingOpaque = true;
+            return;
+        }
+        this.pendingPatches.push(ownedPatch);
     }
 
     /** Flushes the pending publication into one entry, dropping the oldest past the limit. */
@@ -392,6 +389,7 @@ export class CarburetorHistory<T extends object> {
                 const capture = this.capture();
                 this.baseline = capture.state;
                 this.baselineContainsExotic = capture.exotic;
+                this.baselineContainsLockedArray = capture.lockedArray;
                 this.baselineShared = false;
                 this.ownedReplay = false;
                 this.skipReplay = false;
@@ -466,9 +464,11 @@ export class CarburetorHistory<T extends object> {
         if (this.pendingOpaque || this.pendingPatches.length === 0) {
             const before = this.baseline;
             const beforeExotic = this.baselineContainsExotic;
+            const beforeLockedArray = this.baselineContainsLockedArray;
             const capture = this.capture();
             this.baseline = capture.state;
             this.baselineContainsExotic = capture.exotic;
+            this.baselineContainsLockedArray = capture.lockedArray;
             if (sameHistoryGraph(before, capture.state)) {
                 // A conservative opaque publication need not insert an undoable step.
                 this.baselineShared = false;
@@ -480,7 +480,7 @@ export class CarburetorHistory<T extends object> {
                 beforeExotic, afterExotic: capture.exotic,
                 replaceOnReplay: this.pendingLengthLock ||
                     (!beforeExotic && !capture.exotic &&
-                        (containsLockedArray(before) || containsLockedArray(capture.state))),
+                        (beforeLockedArray || capture.lockedArray)),
             };
         }
 
@@ -534,6 +534,7 @@ export class CarburetorHistory<T extends object> {
                 const capture = this.capture();
                 this.baseline = capture.state;
                 this.baselineContainsExotic = capture.exotic;
+                this.baselineContainsLockedArray = capture.lockedArray;
                 this.baselineShared = false;
                 this.skipReplay = this.carburetor.getVersion() !== beforeVersion;
             } else if (this.applying) {

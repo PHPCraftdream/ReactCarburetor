@@ -18,13 +18,14 @@ const roots = {
     fixed: resolve(process.env.AFTER_DIST ?? 'dist'),
 };
 const implementations = Object.fromEntries(await Promise.all(Object.entries(roots).map(async ([name, root]) => {
-    const [store, history, resource] = await Promise.all([
+    const [store, history, resource, cache] = await Promise.all([
         load(root, `${variant}/Carburetor/Store/Carburetor.mjs`),
         load(root, `${variant}/Carburetor/Tooling/CarburetorHistory.mjs`),
         load(root, `${variant}/Carburetor/Resource/ResourceCarburetor.mjs`),
+        load(root, `${variant}/Carburetor/Resource/Cache/ResourceCache.mjs`),
     ]);
     return [name, {store: store.Carburetor, history: history.CarburetorHistory,
-        resource: resource.ResourceCarburetor}];
+        resource: resource.ResourceCarburetor, cache: cache.ResourceCache}];
 })));
 
 const samples = 7;
@@ -84,6 +85,55 @@ async function resource(implementation) {
     return {ms, loads: 64, transitions: 128, snapshots: store.snapshots};
 }
 
+/** Counts the extra complete endpoint walks on a populated public ResourceCache replacement.
+ *
+ * @param implementation - one built variant
+ */
+async function cacheReplacement(implementation) {
+    const cache = new implementation.cache(async key => key);
+    const roots = new WeakSet();
+    const dictionaries = new WeakSet();
+    const bodies = new WeakSet();
+    const capture = cache.captureHistory;
+    cache.captureHistory = function (own) {
+        return capture.call(this, value => {
+            const state = own(value);
+            roots.add(state);
+            dictionaries.add(state.entries);
+            for (const entry of Object.values(state.entries)) bodies.add(entry);
+            return state;
+        });
+    };
+    const history = new implementation.history(cache);
+    for (let n = 0; n < 8; n++) await cache.load(n);
+    const key = cache.keyOf(0);
+    const entries = cache.getData().entries;
+    const replacement = {entries: {...entries, [key]: {...entries[key], data: 17}}};
+    const visits = {rootVisits: 0, dictionaryVisits: 0, entryVisits: 0};
+    const originalKeys = Object.keys;
+    Object.keys = function (value) {
+        if (roots.has(value)) visits.rootVisits++;
+        if (dictionaries.has(value)) visits.dictionaryVisits++;
+        if (bodies.has(value)) visits.entryVisits++;
+        return originalKeys(value);
+    };
+    let ms;
+    try {
+        const start = process.hrtime.bigint();
+        cache.setData(replacement);
+        ms = Number(process.hrtime.bigint() - start) / 1e6;
+    } finally {
+        Object.keys = originalKeys;
+    }
+    if (cache.getData().entries[key].data !== 17 || !history.undo()
+        || cache.getData().entries[key].data !== 0 || !history.redo()
+        || cache.getData().entries[key].data !== 17) {
+        throw new Error('Populated cache replacement lost its history');
+    }
+    history.disconnect();
+    return {ms, snapshots: 1, ...visits};
+}
+
 /** Measures one actual mixed graph capture and original-node reflection work.
  *
  * @param implementation - one built variant
@@ -126,7 +176,7 @@ function mixedCapture(implementation) {
 
 for (const [name, scenario] of [
     ['ordinary patch history', ordinary], ['resource snapshot history', resource],
-    ['mixed graph capture', mixedCapture],
+    ['populated cache replacement', cacheReplacement], ['mixed graph capture', mixedCapture],
 ]) {
     const results = {baseline: [], fixed: []};
     for (let round = -2; round < samples; round++) {
@@ -145,6 +195,7 @@ for (const [name, scenario] of [
             + `-${Math.max(...measurements.map(result => result.ms)).toFixed(3)}ms`
             + ` writes=${work.writes ?? '-'} loads=${work.loads ?? '-'}`
             + ` transitions=${work.transitions ?? '-'} snapshots=${work.snapshots}`
-            + ` rootVisits=${work.rootVisits ?? '-'} rowVisits=${work.rowVisits ?? '-'}`);
+            + ` rootVisits=${work.rootVisits ?? '-'} dictionaryVisits=${work.dictionaryVisits ?? '-'}`
+            + ` entryVisits=${work.entryVisits ?? '-'} rowVisits=${work.rowVisits ?? '-'}`);
     }
 }

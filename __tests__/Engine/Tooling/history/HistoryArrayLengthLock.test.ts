@@ -202,6 +202,33 @@ describe('array length descriptor history', () => {
         history.disconnect();
     });
 
+    test('a locked baseline survives a plain patch and remains exact after removing the lock', () => {
+        const items = [1, 2];
+        Object.defineProperty(items, 'length', {writable: false});
+        const store = new Items({items, marker: 0});
+        const history = new CarburetorHistory(store);
+        store.mark(1);
+        store.update(draft => { draft.items = [3, 4]; });
+        store.setData({items: [5], marker: 2});
+
+        expect(history.undo()).toBe(true);
+        expect(store.getData().items).toEqual([3, 4]);
+        expect(writable(store.getData().items)).toBe(true);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().items).toEqual([1, 2]);
+        expect(writable(store.getData().items)).toBe(false);
+        expect(store.getData().marker).toBe(1);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().marker).toBe(0);
+        expect(writable(store.getData().items)).toBe(false);
+        expect(history.redo()).toBe(true);
+        expect(history.redo()).toBe(true);
+        expect(history.redo()).toBe(true);
+        expect(store.getData().items).toEqual([5]);
+        expect(writable(store.getData().items)).toBe(true);
+        history.disconnect();
+    });
+
     test('failed pre-install undo and redo preserve their cursor and unchanged live state', () => {
         class Guarded extends Items {
             public reject = false;

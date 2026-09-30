@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- History classifies locked array descriptors during its existing ownership pass, removing
+  two extra full endpoint walks for ordinary opaque changes. Primitive patches remain allocation-free.
+
 - Persistent array connection descriptor queries remain lawful after length locks, undo/redo
   and source replacement. Detached selections keep raw descriptor flags and stable equal identity.
 
