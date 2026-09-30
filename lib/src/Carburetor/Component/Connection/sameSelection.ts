@@ -29,8 +29,14 @@ const sameKeyedContent = (
     if (previousKeys.length !== freshKeys.length) {
         return false;
     }
+    let sameOrder = true;
+    for (let index = 0; index < previousKeys.length; index++) {
+        if (previousKeys[index] !== freshKeys[index]) sameOrder = false;
+    }
 
-    return previousKeys.every((key: string | symbol): boolean => {
+    // Even when positions differ, inspect the values so a returned live branch still
+    // subscribes to its leaves for the next publication.
+    const sameContent = previousKeys.every((key: string | symbol): boolean => {
         const previousDescriptor = Object.getOwnPropertyDescriptor(snapshot, key);
         const freshDescriptor = Object.getOwnPropertyDescriptor(freshDescriptorSource, key);
 
@@ -64,6 +70,7 @@ const sameKeyedContent = (
             freshToPrevious
         );
     });
+    return sameOrder && sameContent;
 };
 
 /**

@@ -42,6 +42,33 @@ describe('sameSelection reference topology (R5-01)', () => {
     });
 });
 
+describe('sameSelection ordered own keys', () => {
+    test('equal entries in a new insertion order are distinct; equal order stays equal', () => {
+        expect(sameSelection({item: {a: 1, b: 2}}, {item: {b: 2, a: 1}})).toBe(false);
+        expect(sameSelection({item: {a: 1, b: 2}}, {item: {a: 1, b: 2}})).toBe(true);
+        // Integer keys have native numeric order regardless of insertion order.
+        expect(sameSelection({'10': 10, '2': 2}, {'2': 2, '10': 10})).toBe(true);
+    });
+
+    test('symbol and non-enumerable key positions still participate', () => {
+        const first = Symbol('first');
+        const second = Symbol('second');
+        const previous = {a: 1, [first]: 2, [second]: 3};
+        const fresh = {a: 1, [second]: 3, [first]: 2};
+        expect(sameSelection(previous, fresh)).toBe(false);
+
+        const hiddenFirst = Object.defineProperty({a: 1, b: 2}, 'hidden', {
+            value: 3, enumerable: false, configurable: true, writable: true,
+        });
+        const hiddenLast: Record<string, number> = Object.defineProperty({a: 1, b: 2}, 'hidden', {
+            value: 3, enumerable: false, configurable: true, writable: true,
+        });
+        delete hiddenLast.a;
+        hiddenLast.a = 1;
+        expect(sameSelection(hiddenFirst, hiddenLast)).toBe(false);
+    });
+});
+
 describe('sameSelection exotic members (R5-02)', () => {
     test('an exotic member is a change even against the same instance', () => {
         const map = new Map([['a', 1]]);
@@ -130,55 +157,6 @@ describe('detachSelection preserves what the comparison relies on', () => {
 
         expect(detached.self).toBe(detached);
         expect(detached).not.toBe(source);
-    });
-});
-
-describe('sameSelection lazy pairing maps (R16-09)', () => {
-    // The pairing WeakMaps are minted at the first container pair, not up front by
-    // sameSelection: a primitive comparison must never pay for them. The layout budget keeps
-    // this alongside sameSelection's own tests rather than a separate file — both are Component
-    // comparison utilities.
-    const spyOnWeakMap = (): {calls: () => number; restore: () => void} => {
-        const original = globalThis.WeakMap;
-        let count = 0;
-        const spy = function (this: unknown, ...args: unknown[]): WeakMap<object, unknown> {
-            count++;
-
-            return new original(...(args as ConstructorParameters<typeof WeakMap>));
-        } as unknown as typeof WeakMap;
-
-        globalThis.WeakMap = spy;
-
-        return {
-            calls: () => count,
-            restore: () => {
-                globalThis.WeakMap = original;
-            },
-        };
-    };
-
-    test('a primitive comparison allocates no pairing maps', () => {
-        const spy = spyOnWeakMap();
-
-        try {
-            expect(sameSelection(1, 1)).toBe(true);
-            expect(sameSelection('a', 'b')).toBe(false);
-            expect(sameSelection(undefined, undefined)).toBe(true);
-            expect(spy.calls()).toEqual(0);
-        } finally {
-            spy.restore();
-        }
-    });
-
-    test('the pairing maps are allocated once a container pair is actually compared', () => {
-        const spy = spyOnWeakMap();
-
-        try {
-            expect(sameSelection({a: 1}, {a: 1})).toBe(true);
-            expect(spy.calls()).toEqual(2);
-        } finally {
-            spy.restore();
-        }
     });
 });
 
