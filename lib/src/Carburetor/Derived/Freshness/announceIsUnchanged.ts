@@ -1,4 +1,9 @@
 import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
+import {liveViews} from "@/Carburetor/Store/Tracking/liveViews";
+
+/** Only engine-created facades can contribute a canonical underlying result identity. */
+const canonicalResult = (value: unknown): unknown =>
+    value !== null && typeof value === 'object' ? (liveViews.readTarget(value) ?? value) : value;
 
 /**
  * Decides whether a freshly settled result should stay unannounced, the way `Computed.settle`
@@ -32,8 +37,9 @@ export const announceIsUnchanged = <R>(
 ): boolean => {
     const baseline = announced !== undefined ? announced.value : previous;
     const sameReference = Object.is(baseline, next);
-    const opaqueChanged = sameReference && dependenciesMoved && containsExoticValue(next);
-    const contentSame = !sameReference && announced !== undefined
+    const sameRawReference = sameReference || Object.is(canonicalResult(baseline), canonicalResult(next));
+    const opaqueChanged = sameRawReference && dependenciesMoved && containsExoticValue(next);
+    const contentSame = !sameReference && !opaqueChanged && announced !== undefined
         && equals !== undefined && equals(announced.value, next);
 
     return (sameReference && !opaqueChanged) || contentSame;

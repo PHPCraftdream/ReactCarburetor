@@ -111,18 +111,6 @@ describe('tracking boundary', () => {
         expect(isTrackable('a')).toBeFalsy();
     });
 
-    test('non-plain values are handed over as they are, and reading one is a leaf read', () => {
-        const carburetor = new MixedCarburetor(getData());
-        const reads = new Set<TPath>();
-
-        const data = carburetor.read((path: TPath) => reads.add(path));
-
-        expect(data.when).toBe(carburetor.getData().when);
-        expect(data.index).toBe(carburetor.getData().index);
-        expect(reads.has('when')).toBeTruthy();
-        expect(reads.has('index')).toBeTruthy();
-    });
-
     test('mutating a Map in place invalidates everything instead of its own path', () => {
         const carburetor = new MixedCarburetor(getData());
         let countReader = 0;

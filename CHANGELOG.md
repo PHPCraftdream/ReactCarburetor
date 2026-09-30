@@ -398,6 +398,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Computed announcement compares canonical underlying identities for native read facades,
+  so an in-place exotic mutation cannot be hidden by an always-equal content comparator.
 - History reconciles pending coalesced writes before undo/redo and drops canceled patch batches,
   including an independent recorder's inverse. Unchanged owned native graphs preserve redo
   without creating successful empty undo steps; mixed native graphs copy once with one alias ledger.
