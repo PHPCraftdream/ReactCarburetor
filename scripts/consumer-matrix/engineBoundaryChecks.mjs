@@ -167,5 +167,68 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         history.disconnect();
         completed.push(label + ':key-order-deletion-selection');
     }
+    {
+        const store = new producer.Carburetor({item: {a: 1, b: 1}, other: 0});
+        const changes = [];
+        const stop = store.watch(view => view.item, value => changes.push({...value}));
+        store.update(draft => { draft.item.a = 2; });
+        store.update(draft => { draft.item.b = 2; });
+        assert.deepStrictEqual(changes, [{a: 2, b: 1}, {a: 2, b: 2}]);
+        store.setData({item: {b: 2, a: 2}, other: 0});
+        store.update(draft => { draft.item.b = 3; });
+        store.update(draft => { draft.item.a = 4; });
+        assert.deepStrictEqual(changes.slice(2), [{b: 2, a: 2}, {b: 3, a: 2}, {b: 3, a: 4}]);
+        stop();
+        completed.push(label + ':watch-complete-leaf-reads');
+    }
+    {
+        const old = {id: 1};
+        const next = {id: 1};
+        const store = new producer.Carburetor({a: old, map: new Map([['old', old], ['new', next]])});
+        store.read(() => {}).map.get('old');
+        const version = store.getVersion();
+        store.update(draft => { draft.a = next; });
+        assert.equal(store.getVersion(), version);
+        const changes = [];
+        const stop = store.watch(view => view.map.get('new').id, value => changes.push(value));
+        store.update(draft => { draft.a.id = 2; });
+        assert.deepStrictEqual(changes, [2]);
+        assert.equal(store.getData().a, store.getData().map.get('new'));
+        stop();
+        completed.push(label + ':native-equal-content-retarget');
+    }
+    {
+        const row = {};
+        Object.defineProperty(row, 'n', {value: 2, writable: false, enumerable: true, configurable: true});
+        const store = new producer.Carburetor({other: 0, row});
+        const saved = store.snapshot();
+        saved.other = 7;
+        saved.row.n = 1;
+        store.restore(saved);
+        assert.equal(store.getData().other, 7);
+        assert.equal(store.getData().row.n, 1);
+        saved.row.n = -1;
+        assert.equal(store.getData().row.n, 1);
+        completed.push(label + ':readonly-snapshot-restore');
+    }
+    {
+        const row = {};
+        Object.defineProperty(row, 'n', {value: 1, writable: false, enumerable: true, configurable: true});
+        const store = new producer.Carburetor({row});
+        const history = new recorder.CarburetorHistory(store);
+        const next = {};
+        Object.defineProperty(next, 'n', {value: 2, writable: false, enumerable: true, configurable: true});
+        store.setData({row: next});
+        for (let replay = 0; replay < 2; replay++) {
+            assert.equal(history.undo(), true);
+            assert.equal(store.getData().row.n, 1);
+            assert.equal(Object.getOwnPropertyDescriptor(store.getData().row, 'n').writable, false);
+            assert.equal(history.redo(), true);
+            assert.equal(store.getData().row.n, 2);
+            assert.equal(Object.getOwnPropertyDescriptor(store.getData().row, 'n').writable, false);
+        }
+        history.disconnect();
+        completed.push(label + ':readonly-history-replay');
+    }
     return completed;
 };
