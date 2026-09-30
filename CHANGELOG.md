@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Native alias selections reuse a root-owned path index until mutation invalidates it, replacing
+  repeated full-root searches with one ownership walk while preserving precise live aliases.
+
 - History classifies locked array descriptors during its existing ownership pass, removing
   two extra full endpoint walks for ordinary opaque changes. Primitive patches remain allocation-free.
 

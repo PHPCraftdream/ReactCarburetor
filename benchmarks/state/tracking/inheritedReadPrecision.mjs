@@ -1,11 +1,11 @@
 // Paired baseline/fixed build benchmark for R12-E02. Run after the integration owner builds
-// both trees: BASELINE_DIST=<baseline dist> node benchmarks/state/inheritedReadPrecision.mjs
+// both trees: BASELINE_DIST=<baseline dist> node benchmarks/state/tracking/inheritedReadPrecision.mjs
 // Read-only cases exclude setup and construction. The final case includes construction
 // and a leaf read to measure the weak raw-view registry added for graph alias detachment.
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import path from 'node:path';
 
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const beforeDir = path.resolve(root, process.env.BASELINE_DIST || '.bench-baseline-dist');
 const afterDir = path.resolve(root, 'dist');
 const load = dir => import(pathToFileURL(path.join(dir, 'esm/Carburetor/Store/Tracking/createReadProxy.mjs')).href);

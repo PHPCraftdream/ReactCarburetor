@@ -27,6 +27,13 @@ class NativeAliasStore extends Carburetor<IState> {
     public replaceMapValue(value: object): void {
         this.update(draft => { draft.map.set('row', value); });
     }
+    public change(mutate: (draft: IState) => void): void {
+        this.update(mutate);
+    }
+
+    public publishRaw(): void {
+        this.emitUpdate();
+    }
 }
 
 const makeStore = (): NativeAliasStore => {
@@ -208,5 +215,120 @@ describe('raw native members with ordinary writable aliases', () => {
         store.subscribe(() => { wakes++; }, {reads});
         store.putOther(7);
         expect(wakes).toBe(1);
+    });
+});
+
+describe('native ownership after live topology changes', () => {
+    test('cached Map.get finds a replaced, added, moved and deleted ordinary alias', () => {
+        const original = {n: 1};
+        const next = {n: 2};
+        const rows = [original];
+        const store = new NativeAliasStore({
+            row: original, other: {n: 0}, rows, map: new Map([['row', original]]),
+            set: new Set(),
+        } as IState & {rows: typeof rows});
+        const paths = new Set<string>();
+        const view = store.read(path => paths.add(path));
+        const get = view.map.get;
+        expect(get.call(view.map, 'row')).toBe(original);
+        expect(paths.has('rows.0')).toBe(true);
+
+        store.change(draft => {
+            const liveRows = (draft as IState & {rows: typeof rows}).rows;
+            liveRows[0] = next;
+            draft.row = next;
+            draft.map.set('row', next);
+            paths.clear();
+            expect(get.call(view.map, 'row')).toBe(next);
+            expect(paths.has('rows.0')).toBe(true);
+            expect(paths.has('row')).toBe(true);
+
+            liveRows.push(original);
+            draft.map.set('old', original);
+            paths.clear();
+            expect(get.call(view.map, 'old')).toBe(original);
+            expect(paths.has('rows.1')).toBe(true);
+            expect(paths.has('rows.0')).toBe(false);
+
+            liveRows.reverse();
+            paths.clear();
+            expect(get.call(view.map, 'old')).toBe(original);
+            expect(paths.has('rows.0')).toBe(true);
+            expect(paths.has('rows.1')).toBe(false);
+            paths.clear();
+            expect(get.call(view.map, 'row')).toBe(next);
+            expect(paths.has('rows.1')).toBe(true);
+            liveRows.reverse();
+
+            liveRows.splice(1, 1);
+            paths.clear();
+            expect(get.call(view.map, 'old')).toBe(original);
+            expect(paths.has('rows.1')).toBe(false);
+            expect(paths.has('row')).toBe(false);
+        });
+
+        const changes: number[] = [];
+        const stop = store.watch(data => (data.map.get('row') as typeof next).n,
+            n => { changes.push(n); });
+        store.putOther(9);
+        expect(changes).toEqual([]);
+        store.put(3);
+        expect(changes).toEqual([3]);
+        stop();
+    });
+
+    test('native nested member and new native entry follow same-draft topology', () => {
+        const first = {n: 1};
+        const second = {n: 2};
+        const store = new NativeAliasStore({
+            row: first, other: {n: 0},
+            map: new Map([['nested', {child: first}]]), set: new Set(),
+        });
+        const paths = new Set<string>();
+        const view = store.read(path => paths.add(path));
+        expect((view.map.get('nested') as {child: typeof first}).child).toBe(first);
+        store.change(draft => {
+            draft.row = second;
+            draft.map.set('nested', {child: second});
+            draft.map.set('new', {child: second});
+            paths.clear();
+            expect((view.map.get('nested') as {child: typeof second}).child).toBe(second);
+            expect((view.map.get('new') as {child: typeof second}).child).toBe(second);
+            expect(paths.has('row')).toBe(true);
+            draft.row = first;
+            paths.clear();
+            expect((view.map.get('new') as {child: typeof second}).child).toBe(second);
+            expect(paths.has('row')).toBe(false);
+        });
+    });
+
+    test('setData, restore and raw emit discard stale ordinary ownership', () => {
+        const first = {n: 1};
+        const store = new NativeAliasStore({
+            row: first, other: {n: 0}, map: new Map([['row', first]]), set: new Set(),
+        });
+        const capture = (): Set<string> => {
+            const paths = new Set<string>();
+            store.read(path => paths.add(path)).map.get('row');
+            return paths;
+        };
+        expect(capture().has('row')).toBe(true);
+        const second = {n: 2};
+        const replacement = {
+            row: first, other: second, map: new Map([['row', second]]), set: new Set<{n: number}>(),
+        };
+        store.setData(replacement);
+        expect(capture().has('other')).toBe(true);
+        expect(capture().has('row')).toBe(false);
+        const third = {n: 3};
+        replacement.map.set('row', third);
+        replacement.other = third;
+        store.publishRaw();
+        expect(capture().has('other')).toBe(true);
+        store.restore({
+            row: first, other: {n: 0}, map: new Map([['row', first]]), set: new Set(),
+        });
+        expect(capture().has('row')).toBe(true);
+        expect(capture().has('other')).toBe(false);
     });
 });

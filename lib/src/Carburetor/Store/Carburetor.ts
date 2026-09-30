@@ -20,6 +20,7 @@ import {nativeStoreWriteEpoch} from "./Scheduling/nativeStoreWriteEpoch";
 import {createReadProxy} from "./Tracking/createReadProxy";
 import {createWriteProxy} from "./Tracking/createWriteProxy";
 import {createAliasLedger} from "./Tracking/Aliases/AliasLedger";
+import {nativeAliasIndex} from "./Tracking/Aliases/NativeAliasIndex";
 import {isTrackable} from "./Tracking/isTrackable";
 import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {PatchObserverRegistry} from "./Transaction/PatchObserverRegistry";
@@ -28,7 +29,6 @@ import {IS_DEVELOPMENT} from "./Utils/DevelopmentFlag";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 import {transferReads} from "./Paths/Markers/transferReads";
-
 
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
@@ -81,8 +81,11 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** The write proxy behind draft, memoized across accesses and dropped by setData. */
     protected draftProxy: T | undefined = undefined;
 
-    /** Bound once for `createWriteProxy`, called detached from `this`; forwards to the overridable `recordWrite`. */
-    private readonly writeRecorder = (path: TPath): void => this.recordWrite(path);
+    /** Bound once; draft writes invalidate ownership before any subsequent native read. */
+    private readonly writeRecorder = (path: TPath): void => {
+        if (isTrackable(this.data)) nativeAliasIndex.invalidate(this.data);
+        this.recordWrite(path);
+    };
 
     /**
      * Takes the initial state and the policy that decides when subscribers are woken.
@@ -157,7 +160,8 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         const previous = this.data;
 
         this.aliases?.checkState(data, '', previous);
-
+        if (isTrackable(previous)) nativeAliasIndex.invalidate(previous);
+        if (isTrackable(data)) nativeAliasIndex.invalidate(data);
         this.data = data;
         this.draftProxy = undefined;
         this.didSetData();
@@ -552,6 +556,10 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** Publishes the writes recorded so far, alone or as part of an open transaction. */
     protected emitUpdate(): void {
         this.preEmit();
+        // Raw writes followed by emitUpdate bypass draft traps entirely.
+        if (isTrackable(this.data) && !this.draftTouched && this.writes.size === 0) {
+            nativeAliasIndex.invalidate(this.data);
+        }
 
         const touched = this.draftTouched;
         // Handed off, not copied: a fresh Set takes over as this.writes, so the caller below

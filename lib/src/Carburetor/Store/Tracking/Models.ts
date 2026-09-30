@@ -28,6 +28,8 @@ export const PROXY_CACHE: unique symbol = Symbol('carburetor.proxyCache');
  * has already answered undefined.
  */
 export interface IProxyCache {
+    /** Raw root of a draft tree, if this cache belongs to a write proxy. */
+    readonly nativeAliasRoot?: object;
     /**
      * The cached proxy for (path, source), or undefined when `source` is not cached under
      * `path` right now — a path mismatch or a replaced source both read as a miss.

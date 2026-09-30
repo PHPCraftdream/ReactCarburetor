@@ -1,16 +1,15 @@
 import {TPathRecorder} from "@/Carburetor/Models/Paths";
-import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
+import {nativeAliasIndex} from "./NativeAliasIndex";
 
 /**
- * Subscribes to writable plain aliases exposed by a coarse native read, without wrapping entries.
+ * Subscribes to writable ordinary aliases exposed by a coarse native read without wrapping
+ * entries. Root backlinks subscribe to the whole store. Primitive reads skip the index.
  *
- * Root backlinks subscribe to the whole store.
- *
- * @param root - the current read tree root.
- * @param native - the exposed raw member or collection.
- * @param record - the read dependency recorder.
+ * @param root - current read tree root
+ * @param native - exposed raw member or collection
+ * @param record - read dependency recorder
  */
 export const recordNativeAliasReads = (
     root: object, native: unknown, record: TPathRecorder
@@ -47,19 +46,11 @@ export const recordNativeAliasReads = (
         return;
     }
 
-    // Do not globally mark plain nodes visited: two own paths to the same raw object are both
-    // valid write paths. The active ancestors guard malformed plain cycles in production.
-    const ancestors = new Set<object>();
-    const walk = (value: object, path: string): void => {
-        if (exposed.has(value)) record(path);
-        if (ancestors.has(value)) return;
-        ancestors.add(value);
-        for (const key of Object.keys(value)) {
-            const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
-            const child = descriptor?.value;
-            if (isTrackable(child)) walk(child, joinPath(path, key));
+    const paths = nativeAliasIndex.paths(root);
+    for (const value of exposed) {
+        const aliases = paths.get(value);
+        if (aliases !== undefined) {
+            for (const path of aliases) record(path);
         }
-        ancestors.delete(value);
-    };
-    walk(root, '');
+    }
 };

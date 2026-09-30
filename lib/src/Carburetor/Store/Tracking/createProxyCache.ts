@@ -29,10 +29,15 @@ interface IProxyCacheEntry {
  * about in development — mints a fresh wrapper rather than serving one path's wrapper to
  * another's read.
  */
-export const createProxyCache = (): IProxyCache => new ProxyCache();
+export const createProxyCache = (nativeAliasRoot?: object): IProxyCache => new ProxyCache(nativeAliasRoot);
 
 /** The cache itself: methods on the prototype, so one tree costs one object and its `WeakMap`. */
 class ProxyCache implements IProxyCache {
+    /** Associates a draft cache with the raw root whose alias index its writes invalidate.
+     *
+     * @param nativeAliasRoot - the draft root; absent for read-only cache trees.
+     */
+    constructor(public readonly nativeAliasRoot?: object) {}
     /** Entries by the raw branch object they wrap. */
     private readonly entries: WeakMap<object, IProxyCacheEntry> = new WeakMap();
 

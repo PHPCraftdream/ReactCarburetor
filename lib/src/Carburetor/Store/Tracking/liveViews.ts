@@ -2,6 +2,7 @@ import {TPathRecorder} from "@/Carburetor/Models/Paths";
 import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {IProxyCache} from "./Models";
 import {recordNativeAliasReads} from "./Aliases/NativeAliasReads";
+import {nativeAliasIndex} from "./Aliases/NativeAliasIndex";
 
 /**
  * Engine-owned read views, draft views and persistent connection facades share one weak
@@ -91,6 +92,9 @@ const adaptNativeCollection = (
                     const receiver = canonical(this);
                     const result = (member as (this: unknown, key: unknown, value: unknown) => unknown)
                         .call(receiver, canonical(entryKey), canonical(entryValue));
+                    if (cache.nativeAliasRoot !== undefined) {
+                        nativeAliasIndex.invalidate(cache.nativeAliasRoot);
+                    }
                     return result === receiver && receiver !== this ? this : result;
                 };
             } else if (map && key === 'get') {
@@ -108,6 +112,9 @@ const adaptNativeCollection = (
                     const receiver = canonical(this);
                     const result = (member as (this: unknown, entry: unknown) => unknown)
                         .call(receiver, canonical(entry));
+                    if (cache.nativeAliasRoot !== undefined && key !== 'has') {
+                        nativeAliasIndex.invalidate(cache.nativeAliasRoot);
+                    }
                     return result === receiver && receiver !== this ? this : result;
                 };
             } else if (key === 'forEach') {
@@ -132,6 +139,14 @@ const adaptNativeCollection = (
                     const result = Reflect.apply(member, receiver, args);
                     if (root !== undefined && record !== undefined) {
                         recordNativeAliasReads(root, receiver, record);
+                    }
+                    return result;
+                };
+            } else if (key === 'clear') {
+                method = function (this: unknown): unknown {
+                    const result = Reflect.apply(member, canonical(this), []);
+                    if (cache.nativeAliasRoot !== undefined) {
+                        nativeAliasIndex.invalidate(cache.nativeAliasRoot);
                     }
                     return result;
                 };

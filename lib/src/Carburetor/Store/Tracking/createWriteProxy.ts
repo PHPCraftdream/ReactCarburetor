@@ -9,6 +9,7 @@ import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {createProxyCache} from "./createProxyCache";
 import {IProxyCache, PROXY_CACHE} from "./Models";
 import {isTrackable} from "./isTrackable";
+import {nativeAliasIndex} from "./Aliases/NativeAliasIndex";
 import {liveViews} from "./liveViews";
 
 /** A plain value safe to hand a patch listener: cloned so a later in-place write cannot alias it. */
@@ -327,6 +328,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             // Whatever changes inside it, if anything, cannot be described as a patch: a
             // history attached to this store falls back to a full snapshot for this change.
             this.patchPort?.listener?.(PATCH_OPAQUE);
+            if (this.cache.nativeAliasRoot !== undefined) {
+                nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
+            }
             this.record(this.writtenPath(key));
             return liveViews.adaptNativeCollection(value, this.cache, source, key);
         }
@@ -580,7 +584,7 @@ export const createWriteProxy = <T extends object>(
     patchPort?: TPatchPort,
     basePathSegments: readonly string[] = [],
 ): T => {
-    const cached: IProxyCache = cache ?? createProxyCache();
+    const cached: IProxyCache = cache ?? createProxyCache(target);
     const handler = new WriteProxyHandler<T>(
         basePath, record, aliases, cached, Array.isArray(target), patchPort, basePathSegments
     );
