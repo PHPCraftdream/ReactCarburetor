@@ -1,13 +1,19 @@
 import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
 
 type TOwnedTrait = 'exotic' | 'lockedArray' | 'restricted';
+type TDescriptorTransform = (
+    source: object, key: string | symbol, descriptor: PropertyDescriptor
+) => PropertyDescriptor | undefined;
 
 /** Owns a supported graph in one pass; native members and read views share the cycle ledger.
  *
  * @param value - authoritative graph to detach.
  * @param classify - records replay capability traits during ownership.
+ * @param transform - normalizes or omits data descriptors before they are locked onto the copy.
  */
-export const ownHistoryGraph = <V>(value: V, classify?: (trait: TOwnedTrait) => void): V => {
+export const cloneOwnedGraph = <V>(
+    value: V, classify?: (trait: TOwnedTrait) => void, transform?: TDescriptorTransform
+): V => {
     const seen = new WeakMap<object, object>();
     const copy = (source: unknown): unknown => {
         if (source === null || typeof source !== 'object') return source;
@@ -50,10 +56,14 @@ export const ownHistoryGraph = <V>(value: V, classify?: (trait: TOwnedTrait) => 
         }
         let length: PropertyDescriptor | undefined;
         for (const key of Reflect.ownKeys(raw)) {
-            const descriptor = Object.getOwnPropertyDescriptor(raw, key);
+            let descriptor = Object.getOwnPropertyDescriptor(raw, key);
             if (!descriptor) continue;
             if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
                 throw new Error('CarburetorHistory: cannot snapshot accessor property ' + String(key));
+            }
+            if (transform) {
+                descriptor = transform(raw, key, descriptor);
+                if (!descriptor) continue;
             }
             if (array && key === 'length') {
                 // Other indices must be installed before a non-writable length.

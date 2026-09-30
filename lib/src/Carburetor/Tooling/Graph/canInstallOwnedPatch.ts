@@ -1,6 +1,6 @@
 import {IWritePatch} from '@/Carburetor/Models/Paths';
 import {installPatch} from '@/Carburetor/Store/Paths/Diff/installPatch';
-import {ownHistoryGraph} from './ownHistoryGraph';
+import {cloneOwnedGraph} from '../../Store/Utils/Graph/cloneOwnedGraph';
 
 const arrayIndex = (key: string): number | undefined => {
     if (!/^(0|[1-9]\d*)$/.test(key)) return undefined;
@@ -94,7 +94,7 @@ export const preflightOwnedPatches = (
             if (dependent) break;
         }
     }
-    const preview = dependent ? ownHistoryGraph(root) : undefined;
+    const preview = dependent ? cloneOwnedGraph(root) : undefined;
     for (const patch of patches) {
         if (!canInstallOwnedPatch(preview ?? root, patch)) return false;
         if (preview) installPatch(preview as Record<string, unknown>, patch, false);

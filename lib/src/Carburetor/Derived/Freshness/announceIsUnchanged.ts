@@ -1,4 +1,4 @@
-import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
+import {containsExoticValue} from "@/Carburetor/Store/Utils/Graph/containsExoticValue";
 import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 
 /** Only engine-created facades can contribute a canonical underlying result identity. */

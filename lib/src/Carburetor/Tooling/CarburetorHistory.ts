@@ -5,9 +5,9 @@ import {
 import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
-import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
+import {containsExoticValue} from "@/Carburetor/Store/Utils/Graph/containsExoticValue";
 import {preflightOwnedPatches} from "./Graph/canInstallOwnedPatch";
-import {ownHistoryGraph as own} from "./Graph/ownHistoryGraph";
+import {cloneOwnedGraph as own} from "../Store/Utils/Graph/cloneOwnedGraph";
 import {sameHistoryGraph} from "./Graph/sameHistoryGraph";
 
 /** One change recorded as the patches to invert it — the fast path (R16-07). */
