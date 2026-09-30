@@ -290,5 +290,24 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         history.disconnect();
         completed.push(label + ':throwing-observer-' + (branch ? 'branch' : 'scalar'));
     }
+    for (const addition of [false, true]) {
+        const store = new producer.Carburetor(addition ? {} : {row: {x: 1}});
+        const history = new recorder.CarburetorHistory(store);
+        const row = {x: 2};
+        Object.defineProperty(row, 'x', {
+            value: 2, enumerable: true, writable: false, configurable: false,
+        });
+        store.update(draft => { draft.row = row; });
+        assert.equal(history.undo(), true);
+        assert.equal(history.redo(), true);
+        assert.equal(store.getData().row.x, 2);
+        assert.equal(Object.getOwnPropertyDescriptor(store.getData().row, 'x').writable, false);
+        assert.equal(Object.getOwnPropertyDescriptor(store.getData().row, 'x').configurable, false);
+        const version = store.getVersion();
+        assert.throws(() => store.update(draft => { draft.row.x = 3; }), TypeError);
+        assert.equal(store.getVersion(), version);
+        history.disconnect();
+        completed.push(label + ':new-restrictive-' + (addition ? 'addition' : 'replacement'));
+    }
     return completed;
 };

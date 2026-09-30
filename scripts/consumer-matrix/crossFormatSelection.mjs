@@ -9,6 +9,7 @@ import {checkEngineBoundaries} from './engineBoundaryChecks.mjs';
  * Runs against `<installDir>/node_modules/react-carburetor`, not the repo's `dist/`.
  */
 const SCRIPT = `
+'use strict';
 const path = require('path');
 const assert = require('node:assert/strict');
 const pkgRoot = path.join(process.cwd(), 'node_modules', 'react-carburetor');
@@ -559,7 +560,8 @@ export const runCrossFormatSelection = (installDir) => {
         'key-order-replacement', 'key-order-deletion-selection', 'watch-complete-leaf-reads',
         'native-equal-content-retarget', 'readonly-snapshot-restore', 'readonly-history-replay',
         'readonly-branch-admission', 'locked-object-restore',
-        'throwing-observer-scalar', 'throwing-observer-branch'];
+        'throwing-observer-scalar', 'throwing-observer-branch',
+        'new-restrictive-replacement', 'new-restrictive-addition'];
     const expectedBoundaries = ['cjs-store/esm-history', 'esm-store/cjs-history']
         .flatMap(label => boundaryKinds.map(kind => label + ':' + kind));
     if (JSON.stringify(parsed.engineCases) !== JSON.stringify(expectedBoundaries)) {
