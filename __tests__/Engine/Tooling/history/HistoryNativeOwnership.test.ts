@@ -216,6 +216,39 @@ describe('native history endpoint ownership', () => {
         history.disconnect();
     });
 
+    test('opaque array-prototype object aliases keep their whole-graph replay classification', () => {
+        const key = {id: 1};
+        const opaque: {key: typeof key} = Object.assign(Object.create(Array.prototype), {key});
+        const store = new Carburetor({key, opaque});
+        const history = new CarburetorHistory(store);
+        store.setData({key: {id: 2}, opaque});
+        expect(store.getData().key).not.toBe(store.getData().opaque.key);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().key).toBe(store.getData().opaque.key);
+        expect(store.getData().key.id).toBe(1);
+        expect(history.redo()).toBe(true);
+        expect(store.getData().key.id).toBe(2);
+        expect(store.getData().opaque.key.id).toBe(1);
+        expect(store.getData().key).not.toBe(store.getData().opaque.key);
+        history.disconnect();
+    });
+
+    test('a patch after an opaque snapshot cannot rewrite that saved endpoint', () => {
+        const store = new Carburetor({count: 0});
+        const history = new CarburetorHistory(store);
+        store.setData(Object.assign(Object.create(null), {count: 1}));
+        store.setData(Object.assign(Object.create(null), {count: 2}));
+        expect(history.undo()).toBe(true);
+        expect(store.getData().count).toBe(1);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().count).toBe(0);
+        expect(history.redo()).toBe(true);
+        expect(store.getData().count).toBe(1);
+        expect(history.redo()).toBe(true);
+        expect(store.getData().count).toBe(2);
+        history.disconnect();
+    });
+
     test('another history records an owned native replay as its own fresh publication', () => {
         const key = {id: 'k'};
         const state: IAliasedState = {key, map: new Map([[key, 'one']])};

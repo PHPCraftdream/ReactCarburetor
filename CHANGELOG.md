@@ -405,6 +405,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Plain history endpoints use a descriptor-safe graph copy instead of the generic native
   detacher. Native-containing graphs still use the strict copier with aliases and refusal
   boundaries intact; stored endpoints remain detached from mutable live state.
+  Opaque publications capture once and reuse an immutable saved baseline until a patch needs
+  its own mutable mirror. Capture classification stays local and preserves opaque sibling aliases.
 - Keyed-cache raw failures belong to their entry object. Whole-entry draft/update replacement
   clears the prior raw cause before subscribers run, including same-message Errors; identical
   replacements cannot inherit it, and unrelated same-entry writes preserve it.

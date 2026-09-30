@@ -20,6 +20,9 @@ interface ISnapshotEntry<T> {
     before: T;
     /** The state right after this change. */
     after: T;
+    /** Whether each stored endpoint contains native state requiring whole-graph replay. */
+    beforeExotic: boolean;
+    afterExotic: boolean;
 }
 
 type THistoryEntry<T> = IPatchesEntry | ISnapshotEntry<T>;
@@ -34,7 +37,7 @@ const refuseLiveEndpoint = (): never => {
  * An opaque member or accessor switches the entire graph to the established native copier,
  * so its keys, backlinks, descriptors and shared references are still copied as one graph.
  */
-const own = <V>(value: V): V => {
+const own = <V>(value: V, onOpaque?: () => void): V => {
     let opaque = false;
     const seen = new WeakMap<object, object>();
     const plain = (source: unknown): unknown => {
@@ -51,6 +54,9 @@ const own = <V>(value: V): V => {
             return previous;
         }
         const array = Array.isArray(source);
+        if (!array && prototype === Array.prototype) {
+            onOpaque?.();
+        }
         // Keep ordinary objects/arrays on their native fast shape; only unusual supported
         // prototypes need adjustment. Inherited names below use defineProperty, never setters.
         const container = array
@@ -90,7 +96,12 @@ const own = <V>(value: V): V => {
         return result;
     };
     const copied = plain(value);
-    return opaque ? detachOpaque(value, refuseLiveEndpoint, refuseLiveEndpoint) : copied as V;
+    if (opaque) {
+        const detached = detachOpaque(value, refuseLiveEndpoint, refuseLiveEndpoint);
+        onOpaque?.();
+        return detached;
+    }
+    return copied as V;
 };
 
 /** Primitive endpoints already have value ownership; only object graphs need detachment. */
@@ -131,6 +142,8 @@ export class CarburetorHistory<T extends object> {
     protected baseline: T;
     /** Plain-only histories retain their patch fast path; native graphs require whole-state ownership. */
     private baselineContainsExotic: boolean;
+    /** The last snapshot endpoint may also be baseline until a patch needs to mutate it. */
+    private baselineShared: boolean = false;
     /** The most entries `past` may hold; set from options at construction. */
     protected limit: number;
     /** True only until the replay's own publication reaches history, not through its subscribers. */
@@ -141,6 +154,8 @@ export class CarburetorHistory<T extends object> {
     private skipClearedPublication: boolean = false;
     /** The exact restore argument identifies history's installation, not nested user restores. */
     private replayTarget: T | undefined;
+    /** The selected replay endpoint's graph classification, valid only while applying. */
+    private replayContainsExotic: boolean = false;
     /** Set by the source immediately before it begins installing replay's own state. */
     private ownedReplay: boolean = false;
     /** Detaches both streams; disconnect() runs it to stop recording. */
@@ -157,7 +172,7 @@ export class CarburetorHistory<T extends object> {
         ownRestore: (state: unknown): boolean => {
             if (this.applying && state === this.replayTarget) {
                 this.ownedReplay = true;
-                return containsExoticValue(state);
+                return this.replayContainsExotic;
             }
             return false;
         },
@@ -180,15 +195,19 @@ export class CarburetorHistory<T extends object> {
             throw new RangeError('CarburetorHistory: limit must be a positive safe integer');
         }
         this.limit = options.limit ?? 50;
-        this.baseline = this.capture();
-        this.baselineContainsExotic = containsExoticValue(this.baseline);
+        const capture = this.capture();
+        this.baseline = capture.state;
+        this.baselineContainsExotic = capture.exotic;
 
         this.dispose = carburetor.attachPatchListener(this.observer);
     }
 
-    /** The producer captures its authoritative raw/wire graph before plain snapshot copying. */
-    private capture(): T {
-        return this.carburetor.captureHistory(own) as T;
+    /** The producer captures its authoritative graph and native ownership classification. */
+    private capture(): {state: T; exotic: boolean} {
+        let exotic = false;
+        const markOpaque = (): void => { exotic = true; };
+        const state = this.carburetor.captureHistory(<V>(value: V): V => own(value, markOpaque)) as T;
+        return {state, exotic};
     }
 
     /**
@@ -238,11 +257,12 @@ export class CarburetorHistory<T extends object> {
 
     /** Forgets history and pending writes through this instant, without canceling other observers. */
     public clear(): void {
-        const baseline = this.capture();
+        const capture = this.capture();
         this.past = [];
         this.future = [];
-        this.baseline = baseline;
-        this.baselineContainsExotic = containsExoticValue(baseline);
+        this.baseline = capture.state;
+        this.baselineContainsExotic = capture.exotic;
+        this.baselineShared = false;
         this.pendingPatches = [];
         this.pendingOpaque = false;
         this.skipClearedPublication = true;
@@ -287,8 +307,10 @@ export class CarburetorHistory<T extends object> {
             this.applying = false;
             if (this.ownedReplay) {
                 // Replay has landed. Its subscribers may now publish their own changes.
-                this.baseline = this.capture();
-                this.baselineContainsExotic = containsExoticValue(this.baseline);
+                const capture = this.capture();
+                this.baseline = capture.state;
+                this.baselineContainsExotic = capture.exotic;
+                this.baselineShared = false;
                 this.ownedReplay = false;
                 this.skipReplay = false;
                 return;
@@ -329,14 +351,22 @@ export class CarburetorHistory<T extends object> {
     protected buildEntry(): THistoryEntry<T> {
         if (this.pendingOpaque || this.pendingPatches.length === 0) {
             const before = this.baseline;
-            const after = this.capture();
-            this.baseline = own(after);
-            this.baselineContainsExotic = containsExoticValue(after);
-
-            return {kind: 'snapshot', before, after};
+            const beforeExotic = this.baselineContainsExotic;
+            const capture = this.capture();
+            this.baseline = capture.state;
+            this.baselineContainsExotic = capture.exotic;
+            this.baselineShared = true;
+            return {
+                kind: 'snapshot', before, after: capture.state,
+                beforeExotic, afterExotic: capture.exotic,
+            };
         }
 
         const patches = this.pendingPatches;
+        if (this.baselineShared) {
+            this.baseline = own(this.baseline);
+            this.baselineShared = false;
+        }
 
         for (const patch of patches) {
             installPatch(this.baseline as unknown as Record<string, unknown>, patch, false);
@@ -366,6 +396,9 @@ export class CarburetorHistory<T extends object> {
             const state = entry.kind === 'snapshot'
                 ? own(inverse ? entry.before : entry.after)
                 : this.reconstruct(entry.patches, inverse);
+            this.replayContainsExotic = entry.kind === 'snapshot'
+                ? (inverse ? entry.beforeExotic : entry.afterExotic)
+                : false;
             this.replayTarget = state;
 
             // Only a publication from this exact restore argument suppresses its own entry;
@@ -374,8 +407,10 @@ export class CarburetorHistory<T extends object> {
             if (this.applying && this.ownedReplay) {
                 // The source deferred replay's publication. Reconcile its actual wire state
                 // now, before any later subscriber can publish on top of it.
-                this.baseline = this.capture();
-                this.baselineContainsExotic = containsExoticValue(this.baseline);
+                const capture = this.capture();
+                this.baseline = capture.state;
+                this.baselineContainsExotic = capture.exotic;
+                this.baselineShared = false;
                 this.skipReplay = this.carburetor.getVersion() !== beforeVersion;
             } else if (this.applying) {
                 // A superseding callback published before the restore could install anything.
@@ -385,6 +420,7 @@ export class CarburetorHistory<T extends object> {
         } finally {
             this.replayTarget = undefined;
             this.ownedReplay = false;
+            this.replayContainsExotic = false;
             this.applying = false;
         }
     }
