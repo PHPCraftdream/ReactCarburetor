@@ -119,5 +119,53 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         assert.equal(cache.getEntry('k').data, 'ready');
         completed.push(label + ':cache-preloader-cancel');
     }
+    {
+        const store = new producer.Carburetor({item: {a: 1, b: 2}, other: 0});
+        const history = new recorder.CarburetorHistory(store);
+        const orders = [];
+        const stop = store.watch(view => Object.keys(view.item), order => orders.push(order));
+        let leafChanges = 0;
+        const stopLeaf = store.watch(view => view.item.a, () => { leafChanges++; });
+        store.setData({item: {b: 2, a: 1}, other: 0});
+        assert.deepStrictEqual(orders, [['b', 'a']]);
+        assert.equal(leafChanges, 0);
+        assert.equal(history.undo(), true);
+        assert.deepStrictEqual(Object.keys(store.getData().item), ['a', 'b']);
+        assert.equal(history.redo(), true);
+        assert.deepStrictEqual(Object.keys(store.getData().item), ['b', 'a']);
+        const version = store.getVersion();
+        store.setData({item: {b: 2, a: 1}, other: 0});
+        assert.equal(store.getVersion(), version);
+        stop();
+        stopLeaf();
+        history.disconnect();
+        completed.push(label + ':key-order-replacement');
+    }
+    {
+        const store = new producer.Carburetor({a: 1, b: 2});
+        const history = new recorder.CarburetorHistory(store);
+        store.update(draft => { delete draft.a; });
+        assert.deepStrictEqual(Object.keys(store.getData()), ['b']);
+        assert.equal(history.undo(), true);
+        assert.deepStrictEqual(Object.keys(store.getData()), ['a', 'b']);
+        assert.equal(history.redo(), true);
+        assert.deepStrictEqual(Object.keys(store.getData()), ['b']);
+        assert.equal(history.undo(), true);
+        const orders = [];
+        const stop = store.watch(view => ({...view}), value => orders.push(Object.keys(value)));
+        store.update(draft => {
+            const value = draft.a;
+            delete draft.a;
+            draft.a = value;
+        });
+        assert.deepStrictEqual(orders, [['b', 'a']]);
+        assert.equal(history.undo(), true);
+        assert.deepStrictEqual(Object.keys(store.getData()), ['a', 'b']);
+        assert.equal(history.redo(), true);
+        assert.deepStrictEqual(Object.keys(store.getData()), ['b', 'a']);
+        stop();
+        history.disconnect();
+        completed.push(label + ':key-order-deletion-selection');
+    }
     return completed;
 };
