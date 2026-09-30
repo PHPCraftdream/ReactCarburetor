@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Keyed-cache raw failures belong to their entry object. Whole-entry draft/update replacement
+  clears the prior raw cause before subscribers run, including same-message Errors; identical
+  replacements cannot inherit it, and unrelated same-entry writes preserve it.
 - Single-slot keyless `setData` replacement drops obsolete settled-key ownership before
   subscribers run, including equal-valued replacements. Exact-object no-ops and explicitly
   keyed restore/hydration retain their matching answer; current requests remain alive.

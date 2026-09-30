@@ -22,18 +22,8 @@ class ResourceCache extends ResourceCacheLifecycle {
     lastKeyJson = void 0;
     lastKeyValue = void 0;
     keyMutationReported = false;
-    replacedEntries;
     constructor(loader, options = {}){
         super(loader, validateOptions(options));
-    }
-    setData(data) {
-        const outerEntries = this.replacedEntries;
-        this.replacedEntries = this.data.entries;
-        try {
-            return super.setData(data);
-        } finally{
-            this.replacedEntries = outerEntries;
-        }
     }
     didSetData() {
         const keys = Object.keys(this.data.entries);
@@ -41,10 +31,9 @@ class ResourceCache extends ResourceCacheLifecycle {
         this.viewCache.forEach((_view, key)=>{
             if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) this.viewCache.delete(key);
         });
-        for (const key of this.failures.keys()){
-            var _this_replacedEntries;
-            if (!Object.prototype.hasOwnProperty.call(this.data.entries, key) || (null == (_this_replacedEntries = this.replacedEntries) ? void 0 : _this_replacedEntries[key]) !== this.data.entries[key]) this.failures.delete(key);
-        }
+        this.failures.forEach((failure, key)=>{
+            if (failure.entry !== this.data.entries[key]) this.failures.delete(key);
+        });
     }
     preEmit() {
         if (0 === this.failures.size || 0 === this.writes.size && this.draftTouched) return;
@@ -53,16 +42,12 @@ class ResourceCache extends ResourceCacheLifecycle {
     }
     reconcileFailure(failure, key) {
         const entry = this.data.entries[key];
-        if (entry && failure.status === EResourceStatus.Error && void 0 === entry.error && (entry.status === EResourceStatus.Pending && this.requests.has(key) || entry.status === EResourceStatus.Idle && entry.failed)) return;
-        if (!entry || entry.status !== failure.status || entry.error !== failure.error) this.failures.delete(key);
+        if (entry === failure.entry && failure.status === EResourceStatus.Error && void 0 === entry.error && (entry.status === EResourceStatus.Pending && this.requests.has(key) || entry.status === EResourceStatus.Idle && entry.failed)) return;
+        if (!entry || entry !== failure.entry || entry.status !== failure.status || entry.error !== failure.error) this.failures.delete(key);
     }
     reconcileFailureWrite(path) {
         if (!path.startsWith(ENTRY_PATH_PREFIX)) return;
         const end = path.indexOf(PATH_SEPARATOR, ENTRY_PATH_PREFIX.length);
-        if (-1 !== end) {
-            const field = path.slice(end + 1);
-            if ('status' !== field && 'error' !== field) return;
-        }
         const escaped = path.slice(ENTRY_PATH_PREFIX.length, -1 === end ? void 0 : end);
         const key = escaped.includes('~') ? escaped.replace(/~1/g, PATH_SEPARATOR).replace(/~0/g, '~') : escaped;
         const failure = this.failures.get(key);
@@ -118,8 +103,10 @@ class ResourceCache extends ResourceCacheLifecycle {
         };
     }
     getFailure(args) {
-        var _this_failures_get;
-        return null == (_this_failures_get = this.failures.get(this.keyOf(args))) ? void 0 : _this_failures_get.value;
+        const key = this.keyOf(args);
+        const failure = this.failures.get(key);
+        if (failure && failure.entry !== this.data.entries[key]) return void this.failures.delete(key);
+        return null == failure ? void 0 : failure.value;
     }
 }
 export { ResourceCache };

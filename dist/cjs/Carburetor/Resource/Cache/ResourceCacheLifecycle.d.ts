@@ -19,11 +19,12 @@ export declare abstract class ResourceCacheLifecycle<T, TArgs> extends Carbureto
     protected requests: Map<string, Promise<void>>;
     /** Abort controllers for in-flight requests. */
     protected controllers: Map<string, AbortController>;
-    /** Raw request failures by cache key. */
+    /** Raw request failures, owned by the current entry at each key. */
     protected failures: Map<string, {
         value: unknown;
         error: string;
         status: EResourceStatus;
+        entry: IResourceEntry<T>;
     }>;
     /** Requests begun against a failed entry, even when its raw rejection is no longer retained. */
     private failedRetries;

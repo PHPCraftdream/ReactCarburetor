@@ -199,9 +199,10 @@ class ResourceCacheLifecycle extends Carburetor {
             return entry.data;
         }
         if (entry && entry.status === EResourceStatus.Error) {
-            var _this_failures_get;
             if (entry.invalidated && !entry.failed) throw this.fetch(key, args, true);
-            throw this.failures.has(key) ? null == (_this_failures_get = this.failures.get(key)) ? void 0 : _this_failures_get.value : new Error(entry.error || 'Carburetor: resource failed');
+            const failure = this.failures.get(key);
+            if (failure && failure.entry !== entry) this.failures.delete(key);
+            throw (null == failure ? void 0 : failure.entry) === entry ? failure.value : new Error(entry.error || 'Carburetor: resource failed');
         }
         const known = this.requests.get(key);
         throw known || this.fetch(key, args, true);
@@ -303,7 +304,8 @@ class ResourceCacheLifecycle extends Carburetor {
         this.failures.set(key, {
             value: error,
             error: message,
-            status: hasData ? entry.status : EResourceStatus.Error
+            status: hasData ? entry.status : EResourceStatus.Error,
+            entry
         });
         this.update((draft)=>{
             var _this_invalidatedRequests;

@@ -33,8 +33,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     protected requests: Map<string, Promise<void>> = new Map<string, Promise<void>>();
     /** Abort controllers for in-flight requests. */
     protected controllers: Map<string, AbortController> = new Map<string, AbortController>();
-    /** Raw request failures by cache key. */
-    protected failures: Map<string, {value: unknown; error: string; status: EResourceStatus}> = new Map();
+    /** Raw request failures, owned by the current entry at each key. */
+    protected failures: Map<string, {value: unknown; error: string; status: EResourceStatus; entry: IResourceEntry<T>}> = new Map();
     /** Requests begun against a failed entry, even when its raw rejection is no longer retained. */
     private failedRetries: WeakSet<AbortController> | undefined;
     /** Requests made obsolete by an explicit invalidation while still in flight. */
@@ -404,9 +404,11 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
                 throw this.fetch(key, args, true);
             }
 
-            throw this.failures.has(key)
-                ? this.failures.get(key)?.value
-                : new Error(entry.error || 'Carburetor: resource failed');
+            const failure = this.failures.get(key);
+            if (failure && failure.entry !== entry) {
+                this.failures.delete(key);
+            }
+            throw failure?.entry === entry ? failure.value : new Error(entry.error || 'Carburetor: resource failed');
         }
 
         const known = this.requests.get(key);
@@ -580,11 +582,10 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
         if (this.isRetentionFree(key)) {
             this.eviction.release();
         }
-
         const entry = this.data.entries[key];
         const hasData = entry.status === EResourceStatus.Success || entry.data !== undefined;
         const message = describeError(error);
-        this.failures.set(key, {value: error, error: message, status: hasData ? entry.status : EResourceStatus.Error});
+        this.failures.set(key, {value: error, error: message, status: hasData ? entry.status : EResourceStatus.Error, entry});
         this.update((draft: IResourceCacheData<T>) => {
             draft.entries[key].error = message;
             draft.entries[key].refreshing = false;
@@ -594,7 +595,6 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
                 draft.entries[key].status = EResourceStatus.Error;
             }
         });
-
         this.evict();
     }
 }

@@ -1,4 +1,4 @@
-import { IResourceCacheData, IResourceCacheOptions, IResourceResolution, IResourceSource, IResourceView, TResourceLoader } from "../../Models/Resource.js";
+import { IResourceCacheOptions, IResourceResolution, IResourceSource, IResourceView, TResourceLoader } from "../../Models/Resource.js";
 import { TPath } from "../../Models/Paths.js";
 import { ResourceCacheLifecycle } from "./ResourceCacheLifecycle.js";
 /**
@@ -22,25 +22,18 @@ export declare class ResourceCache<T, TArgs = void> extends ResourceCacheLifecyc
     protected lastKeyValue: string | undefined;
     /** Whether the mutable-arguments diagnostic was already reported. */
     protected keyMutationReported: boolean;
-    /** Entries from the outer setData call, for reconciling raw failures before publication. */
-    private replacedEntries;
     /** Create a keyed cache for a resource loader.
      *
      * @param loader - Function that loads a resource.
      * @param options - Cache and scheduler settings.
      */
     constructor(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions);
-    /** Replace cache data while retaining the prior entry identities for failure reconciliation.
-     *
-     * @param data - New cache state to adopt.
-     */
-    setData(data: IResourceCacheData<T>): IResourceCacheData<T>;
     /** Keep replacement bookkeeping current before setData delivers synchronously. */
     protected didSetData(): void;
-    /** Reconcile only failures whose error/status paths changed, before subscribers run. */
+    /** Reconcile affected failures before subscribers run. */
     protected preEmit(): void;
     /**
-     * Check one raw rejection against the serializable answer being published.
+     * Check one raw rejection against the entry that owns it and its serializable answer.
      *
      * @param failure - the request's recorded raw rejection and wire description
      * @param key - the owning cache key
@@ -48,6 +41,7 @@ export declare class ResourceCache<T, TArgs = void> extends ResourceCacheLifecyc
     private reconcileFailure;
     /**
      * Resolve a precise write to its owner without scanning unrelated failures.
+     * A whole-entry replacement can be diffed down to a single changed field.
      *
      * @param path - the recorded changed path
      */

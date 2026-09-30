@@ -13,6 +13,11 @@ class EditableCache extends ResourceCache<string, string> {
         this.update((draft) => { change(draft.entries[this.keyOf(key)]); });
     }
 
+    /** Exercise a whole-entry draft replacement rather than a field write. */
+    public replaceEntry(key: string, entry: IResourceEntry<string>): void {
+        this.update((draft) => { draft.entries[this.keyOf(key)] = entry; });
+    }
+
     /** Exercise a subclass's opaque publication when a write bypasses draft tracking. */
     public publishOpaqueError(key: string, message: string): void {
         this.data.entries[this.keyOf(key)].error = message;
@@ -153,6 +158,93 @@ test.each(['a', 'a.b~c'])('Error rewrite for %s detaches raw rejection before ob
     expect(messages).toEqual(['new serialized failure:false:new serialized failure']);
     cache.unsubscribe(id);
 });
+
+test.each(['a', 'a.b~c'])('whole-entry draft replacement detaches the old raw error before delivery for %s', async (key) => {
+    const old = new Error('same message');
+    const other = new Error('other key');
+    const cache = new EditableCache((args) => Promise.reject(args === key ? old : other));
+    await Promise.all([cache.load(key), cache.load('other')]);
+    const existing = cache.getData().entries[cache.keyOf(key)];
+    const observations: Array<{failure: unknown; thrown: unknown; timestamp: number | undefined}> = [];
+    const id = cache.subscribe(() => {
+        let thrown: unknown;
+        try {
+            cache.suspend(key);
+        } catch (error: unknown) {
+            thrown = error;
+        }
+        observations.push({
+            failure: cache.getFailure(key), thrown, timestamp: cache.getEntry(key).updatedAt,
+        });
+    }, {reads: new Set([cache.pathOf(key)])});
+
+    cache.rewrite(key, (entry) => { entry.updatedAt = 3; });
+    expect(cache.getData().entries[cache.keyOf(key)]).toBe(existing);
+    expect(cache.getFailure(key)).toBe(old);
+    expect(observations).toEqual([{failure: old, thrown: old, timestamp: 3}]);
+
+    cache.replaceEntry(key, {...existing, updatedAt: 5});
+    expect(cache.getData().entries[cache.keyOf(key)]).not.toBe(existing);
+    expect(cache.getFailure(key)).toBeUndefined();
+    expect(observations).toHaveLength(2);
+    expect(observations[1].failure).toBeUndefined();
+    expect(observations[1].timestamp).toBe(5);
+    expect(observations[1].thrown).toBeInstanceOf(Error);
+    expect((observations[1].thrown as Error).message).toBe('same message');
+    expect(observations[1].thrown).not.toBe(old);
+    expect(cache.getFailure('other')).toBe(other);
+    cache.unsubscribe(id);
+});
+
+test('a distinct same-shape entry never inherits raw failure, even with no changed field path', async () => {
+    const a = new Error('shared message');
+    const b = new Error('shared message');
+    const cache = new EditableCache((key) => Promise.reject(key === 'a' ? a : b));
+    await Promise.all([cache.load('a'), cache.load('b')]);
+
+    cache.setData(cache.getData());
+    expect(cache.getFailure('a')).toBe(a);
+    expect(cache.getFailure('b')).toBe(b);
+
+    cache.replaceEntry('a', {...cache.getData().entries[cache.keyOf('a')]});
+    cache.replaceEntry('b', {...cache.getData().entries[cache.keyOf('b')]});
+    expect(cache.getFailure('a')).toBeUndefined();
+    let thrown: unknown;
+    try {
+        cache.suspend('b');
+    } catch (error: unknown) {
+        thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toBe('shared message');
+    expect(thrown).not.toBe(b);
+    expect(cache.getFailure('b')).toBeUndefined();
+});
+
+test.each([new Error('loader failure'), undefined, false])(
+    'loader rejection %p remains raw during synchronous publication', async (raw) => {
+        const cache = new ResourceCache<string, string>(() => Promise.reject(raw));
+        const observed: Array<{failure: unknown; thrown: unknown; caught: boolean}> = [];
+        const id = cache.subscribe(() => {
+            if (cache.getEntry('a').status !== EResourceStatus.Error) {
+                return;
+            }
+            let caught = false;
+            let thrown: unknown;
+            try {
+                cache.suspend('a');
+            } catch (error: unknown) {
+                caught = true;
+                thrown = error;
+            }
+            observed.push({failure: cache.getFailure('a'), caught, thrown});
+        }, {reads: new Set([cache.pathOf('a')])});
+
+        await cache.load('a');
+        expect(observed).toEqual([{failure: raw, caught: true, thrown: raw}]);
+        cache.unsubscribe(id);
+    }
+);
 
 test('a published Error-to-Success rewrite clears only its own failure', async () => {
     const a = new Error('a failure');

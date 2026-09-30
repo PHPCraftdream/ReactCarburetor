@@ -561,9 +561,12 @@ A failed entry is not retried automatically — that would loop, since the failu
 component that asked. Call `refresh(args)` to try again, or explicitly `invalidate(args)` /
 `invalidateAll()` to re-arm mounted readers: their retry starts after commit, not during render.
 Aborting a re-armed failed request disarms it again until another explicit invalidation.
-Replacing an entry through `setData` drops its old raw rejection; unchanged entries and their
-in-flight requests retain their ownership. The cache is bounded: the least recently used entries
-are dropped past `maxEntries`, never one with a request in flight or one a component is reading.
+Replacing an entry through `setData` or a subclass's draft/update action drops its old raw rejection
+before subscribers run, even when the new Error has the same wire message. Failure ownership
+belongs to the entry object: a distinct identical-shaped entry cannot inherit it, while unrelated
+writes to the same entry preserve its original rejection. Unchanged entries and in-flight requests
+retain their ownership. The cache is bounded: the least recently used entries are dropped past
+`maxEntries`, never one with a request in flight or one a component is reading.
 
 `suspend(args)` reads per entry: a miss or explicitly re-armed Error throws the current request,
 and a failed, non-invalidated Error throws its rejection without retrying. A stale Success starts

@@ -1,6 +1,7 @@
 import {
     IResourceCacheData,
     IResourceCacheOptions,
+    IResourceEntry,
     IResourceResolution,
     IResourceSource,
     IResourceView,
@@ -61,8 +62,6 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
     protected lastKeyValue: string | undefined = undefined;
     /** Whether the mutable-arguments diagnostic was already reported. */
     protected keyMutationReported: boolean = false;
-    /** Entries from the outer setData call, for reconciling raw failures before publication. */
-    private replacedEntries: IResourceCacheData<T>['entries'] | undefined;
 
     /** Create a keyed cache for a resource loader.
      *
@@ -71,21 +70,6 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      */
     constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
         super(loader, validateOptions(options));
-    }
-
-    /** Replace cache data while retaining the prior entry identities for failure reconciliation.
-     *
-     * @param data - New cache state to adopt.
-     */
-    public setData(data: IResourceCacheData<T>): IResourceCacheData<T> {
-        const outerEntries = this.replacedEntries;
-
-        this.replacedEntries = this.data.entries;
-        try {
-            return super.setData(data);
-        } finally {
-            this.replacedEntries = outerEntries;
-        }
     }
 
     /** Keep replacement bookkeeping current before setData delivers synchronously. */
@@ -98,15 +82,14 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
                 this.viewCache.delete(key);
             }
         });
-        for (const key of this.failures.keys()) {
-            if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)
-                || this.replacedEntries?.[key] !== this.data.entries[key]) {
+        this.failures.forEach((failure, key) => {
+            if (failure.entry !== this.data.entries[key]) {
                 this.failures.delete(key);
             }
-        }
+        });
     }
 
-    /** Reconcile only failures whose error/status paths changed, before subscribers run. */
+    /** Reconcile affected failures before subscribers run. */
     protected preEmit(): void {
         if (this.failures.size === 0 || (this.writes.size === 0 && this.draftTouched)) {
             return;
@@ -120,27 +103,31 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
     }
 
     /**
-     * Check one raw rejection against the serializable answer being published.
+     * Check one raw rejection against the entry that owns it and its serializable answer.
      *
      * @param failure - the request's recorded raw rejection and wire description
      * @param key - the owning cache key
      */
-    private reconcileFailure(failure: {value: unknown; error: string; status: EResourceStatus}, key: string): void {
+    private reconcileFailure(
+        failure: {value: unknown; error: string; status: EResourceStatus; entry: IResourceEntry<T>},
+        key: string
+    ): void {
         const entry = this.data.entries[key];
         // A retry temporarily hides the old Error; abort can leave its raw failure available.
-        if (entry && failure.status === EResourceStatus.Error && entry.error === undefined
+        if (entry === failure.entry && failure.status === EResourceStatus.Error && entry.error === undefined
             && ((entry.status === EResourceStatus.Pending && this.requests.has(key))
                 || (entry.status === EResourceStatus.Idle && entry.failed))) {
             return;
         }
 
-        if (!entry || entry.status !== failure.status || entry.error !== failure.error) {
+        if (!entry || entry !== failure.entry || entry.status !== failure.status || entry.error !== failure.error) {
             this.failures.delete(key);
         }
     }
 
     /**
      * Resolve a precise write to its owner without scanning unrelated failures.
+     * A whole-entry replacement can be diffed down to a single changed field.
      *
      * @param path - the recorded changed path
      */
@@ -150,13 +137,6 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         }
 
         const end = path.indexOf(PATH_SEPARATOR, ENTRY_PATH_PREFIX.length);
-        if (end !== -1) {
-            const field = path.slice(end + 1);
-            if (field !== 'status' && field !== 'error') {
-                return;
-            }
-        }
-
         const escaped = path.slice(ENTRY_PATH_PREFIX.length, end === -1 ? undefined : end);
         const key = escaped.includes('~')
             ? escaped.replace(/~1/g, PATH_SEPARATOR).replace(/~0/g, '~')
@@ -289,6 +269,13 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param args - the loader arguments identifying the entry
      */
     public getFailure(args: TArgs): unknown {
-        return this.failures.get(this.keyOf(args))?.value;
+        const key = this.keyOf(args);
+        const failure = this.failures.get(key);
+        if (failure && failure.entry !== this.data.entries[key]) {
+            this.failures.delete(key);
+            return undefined;
+        }
+
+        return failure?.value;
     }
 }
