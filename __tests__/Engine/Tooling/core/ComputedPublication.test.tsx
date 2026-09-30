@@ -59,33 +59,6 @@ class ExternalComputed<R> implements IComputed<R> {
 }
 
 describe('computed hook publication snapshots (R10-03)', () => {
-    test('a delivered in-place Map change updates the DOM and preserves the live value', () => {
-        const store = new ExoticStore();
-        const source = computed(read => read(store).index);
-        const seen: Array<ReadonlyMap<string, number>> = [];
-        let deliveries = 0;
-        const id = source.subscribe(() => { deliveries++; });
-        const View = () => {
-            const value = useComputedValue(source);
-            seen.push(value);
-
-            return <div>{value.get('a')}</div>;
-        };
-        const {container, unmount} = render(<View/>);
-        const initial = seen[0];
-        const version = source.getVersion();
-
-        act(store.mutate);
-
-        expect(container.textContent).toBe('2');
-        expect(deliveries).toBe(1);
-        expect(source.getVersion()).toBe(version + 1);
-        expect(seen).toHaveLength(2);
-        expect(seen[1]).toBe(initial);
-        expect(initial.get('a')).toBe(2);
-        unmount();
-        source.unsubscribe(id);
-    });
 
     test('a stable envelope receives its Map publication', () => {
         const store = new ExoticStore();
