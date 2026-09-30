@@ -29,7 +29,66 @@ const refuseLiveEndpoint = (): never => {
     throw new Error('CarburetorHistory: cannot own a mutable class instance in a history endpoint');
 };
 
-const own = <V>(value: V): V => detachOpaque(value, refuseLiveEndpoint, refuseLiveEndpoint);
+/**
+ * Plain state needs one quick graph copy, not per-property defineProperty/live-view handling.
+ * An opaque member or accessor switches the entire graph to the established native copier,
+ * so its keys, backlinks, descriptors and shared references are still copied as one graph.
+ */
+const own = <V>(value: V): V => {
+    let opaque = false;
+    const seen = new WeakMap<object, object>();
+    const plain = (source: unknown): unknown => {
+        if (source === null || typeof source !== 'object') {
+            return source;
+        }
+        const prototype = Object.getPrototypeOf(source);
+        if (prototype !== Object.prototype && prototype !== Array.prototype && prototype !== null) {
+            opaque = true;
+            return source;
+        }
+        const previous = seen.get(source);
+        if (previous !== undefined) {
+            return previous;
+        }
+        const array = Array.isArray(source);
+        // Null during construction prevents inherited setters from running on copied data.
+        const result: Record<string | symbol, unknown> = array
+            ? Object.setPrototypeOf([], null) as unknown as Record<string | symbol, unknown>
+            : Object.create(null);
+        seen.set(source, result);
+        const keys = Reflect.ownKeys(source);
+        let length: PropertyDescriptor | undefined;
+        for (const key of keys) {
+            const descriptor = Object.getOwnPropertyDescriptor(source, key);
+            if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+                opaque = true;
+                return result;
+            }
+            if (array && key === 'length') {
+                length = descriptor;
+                continue;
+            }
+            descriptor.value = plain(descriptor.value);
+            if (opaque) {
+                return result;
+            }
+            if (descriptor.writable && descriptor.enumerable && descriptor.configurable) {
+                result[key] = descriptor.value;
+            } else {
+                Object.defineProperty(result, key, descriptor);
+            }
+        }
+        if (array && length) {
+            Object.defineProperty(result, 'length', length);
+        }
+        if (prototype !== null) {
+            Object.setPrototypeOf(result, prototype);
+        }
+        return result;
+    };
+    const copied = plain(value);
+    return opaque ? detachOpaque(value, refuseLiveEndpoint, refuseLiveEndpoint) : copied as V;
+};
 
 /** Primitive endpoints already have value ownership; only object graphs need detachment. */
 const ownPatch = (patch: IWritePatch): IWritePatch => {
