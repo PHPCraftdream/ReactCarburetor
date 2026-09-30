@@ -30,7 +30,6 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     installPatch: ()=>installPatch
 });
-const Paths_js_namespaceObject = require("../../../Models/Paths.js");
 const isTrackable_js_namespaceObject = require("../../Tracking/isTrackable.js");
 const deepClone_js_namespaceObject = require("../../Utils/deepClone.js");
 const installPatch = (root, patch, inverse)=>{
@@ -42,14 +41,14 @@ const installPatch = (root, patch, inverse)=>{
     }
     const key = patch.segments[patch.segments.length - 1];
     const value = inverse ? patch.previous : patch.next;
-    if (value === Paths_js_namespaceObject.PATCH_ABSENT) delete node[key];
-    else if ('__proto__' === key) Object.defineProperty(node, key, {
+    if (inverse ? patch.previousExists : patch.nextExists) if ('__proto__' === key) Object.defineProperty(node, key, {
         value: (0, isTrackable_js_namespaceObject.isTrackable)(value) ? (0, deepClone_js_namespaceObject.deepClone)(value) : value,
         writable: true,
         enumerable: true,
         configurable: true
     });
     else node[key] = (0, isTrackable_js_namespaceObject.isTrackable)(value) ? (0, deepClone_js_namespaceObject.deepClone)(value) : value;
+    else delete node[key];
 };
 exports.installPatch = __webpack_exports__.installPatch;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

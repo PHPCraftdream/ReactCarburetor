@@ -1,1 +1,1 @@
-let r=Symbol.for("react-carburetor/v1/patch-absent"),t=Symbol.for("react-carburetor/v1/patch-opaque");export{r as PATCH_ABSENT,t as PATCH_OPAQUE};
+let r=Symbol.for("react-carburetor/v1/patch-opaque");export{r as PATCH_OPAQUE};

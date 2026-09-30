@@ -1,4 +1,4 @@
-import {IWritePatch, PATCH_ABSENT, TPatchPort} from "@/Carburetor/Models/Paths";
+import {IWritePatch, TPatchPort} from "@/Carburetor/Models/Paths";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
 import {createWriteProxy} from "@/Carburetor/Store/Tracking/createWriteProxy";
 
@@ -33,7 +33,10 @@ test('refused literal prototype writes record neither paths nor patches', () => 
 
 test('patch installation creates a literal own key and never traverses an inherited prototype', () => {
     const root: Record<string, unknown> = {branch: {}};
-    const patch: IWritePatch = {segments: ['branch', '__proto__'], previous: PATCH_ABSENT, next: {x: 1}};
+    const patch: IWritePatch = {
+        segments: ['branch', '__proto__'], previousExists: false, previous: undefined,
+        nextExists: true, next: {x: 1},
+    };
 
     installPatch(root, patch, false);
     const branch = root.branch as Record<string, unknown>;
@@ -45,7 +48,8 @@ test('patch installation creates a literal own key and never traverses an inheri
     expect(Object.getPrototypeOf(branch)).toBe(Object.prototype);
 
     expect(() => installPatch(root, {
-        segments: ['__proto__', 'polluted'], previous: PATCH_ABSENT, next: true,
+        segments: ['__proto__', 'polluted'], previousExists: false, previous: undefined,
+        nextExists: true, next: true,
     }, false)).toThrow(/own segment/);
     expect(Object.prototype.hasOwnProperty.call(Object.prototype, 'polluted')).toBe(false);
 });

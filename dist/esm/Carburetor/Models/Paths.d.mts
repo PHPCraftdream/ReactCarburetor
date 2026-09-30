@@ -25,17 +25,10 @@ export type TAliasLedger = {
     checkKey: (container: object, key: string, path: TPath) => void;
 } | undefined;
 /**
- * Stands in for a patch endpoint that does not exist: an added key's `previous`, or a deleted
- * key's `next` — so a history entry can tell "assign undefined" from "the key was never there"
- * and undo an added key by deleting it, not by writing `undefined` back (R16-07).
- * The protocol key must also match when the store and its history load from different formats.
- */
-export declare const PATCH_ABSENT: unique symbol;
-/**
  * Reported to a patch listener instead of a patch when a write cannot be described precisely:
  * the wildcard, an untrackable root, a whole-root replacement, or a write that bypassed draft
  * (R16-07). A listener that sees this for any write in a change has no patches to invert for it
- * and falls back to a full snapshot. Share its identity across module formats as above.
+ * and falls back to a full snapshot. Share its identity across module formats.
  */
 export declare const PATCH_OPAQUE: unique symbol;
 /**
@@ -46,9 +39,13 @@ export declare const PATCH_OPAQUE: unique symbol;
 export interface IWritePatch {
     /** The keys from the store root to the written field, in order. */
     segments: readonly string[];
-    /** The value before the write, or PATCH_ABSENT when the key was not yet its own. */
+    /** Whether the key was its own before the write (distinct from an own `undefined`). */
+    previousExists: boolean;
+    /** The actual value before the write; `undefined` when `previousExists` is false. */
     previous: unknown;
-    /** The value after the write, or PATCH_ABSENT when the write deleted the key. */
+    /** Whether the key is its own after the write (distinct from an own `undefined`). */
+    nextExists: boolean;
+    /** The actual value after the write; `undefined` when `nextExists` is false. */
     next: unknown;
 }
 /** Delivers one patch per describable write, or PATCH_OPAQUE for one the proxy cannot describe. */

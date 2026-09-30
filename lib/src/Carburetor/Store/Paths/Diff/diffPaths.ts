@@ -1,4 +1,4 @@
-import {PATCH_ABSENT, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
+import {TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
@@ -27,9 +27,14 @@ const addPatch = (
     onPatch: TPatchRecorder | undefined,
     segments: readonly string[],
     previous: unknown,
-    next: unknown
+    next: unknown,
+    previousExists = true,
+    nextExists = true
 ): void => {
-    onPatch?.({segments, previous: patchValue(previous), next: patchValue(next)});
+    onPatch?.({
+        segments, previousExists, previous: patchValue(previous),
+        nextExists, next: patchValue(next),
+    });
 };
 
 const walkContainer = (
@@ -64,7 +69,7 @@ const walkContainer = (
         if (!Object.prototype.hasOwnProperty.call(newValue, key)) {
             keysChanged = true;
             add(into, joinPath(path, key));
-            addPatch(onPatch, [...segments, key], oldValue[key], PATCH_ABSENT);
+            addPatch(onPatch, [...segments, key], oldValue[key], undefined, true, false);
 
             continue;
         }
@@ -79,7 +84,7 @@ const walkContainer = (
 
         keysChanged = true;
         add(into, joinPath(path, key));
-        addPatch(onPatch, [...segments, key], PATCH_ABSENT, newValue[key]);
+        addPatch(onPatch, [...segments, key], undefined, newValue[key], false, true);
     }
 
     if (keysChanged) {

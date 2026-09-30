@@ -1,4 +1,4 @@
-import {IWritePatch, PATCH_ABSENT} from "@/Carburetor/Models/Paths";
+import {IWritePatch} from "@/Carburetor/Models/Paths";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 
@@ -13,7 +13,7 @@ import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
  *
  * @param root - the object the patch's segments are resolved from.
  * @param patch - the patch to install.
- * @param inverse - false installs `next`; true installs `previous`, deleting on PATCH_ABSENT.
+ * @param inverse - false installs `next`; true installs `previous`, deleting when absent.
  */
 export const installPatch = (root: Record<string, unknown>, patch: IWritePatch, inverse: boolean): void => {
     let node: Record<string, unknown> = root;
@@ -29,7 +29,7 @@ export const installPatch = (root: Record<string, unknown>, patch: IWritePatch, 
     const key = patch.segments[patch.segments.length - 1];
     const value = inverse ? patch.previous : patch.next;
 
-    if (value === PATCH_ABSENT) {
+    if (!(inverse ? patch.previousExists : patch.nextExists)) {
         delete node[key];
     } else if (key === '__proto__') {
         Object.defineProperty(node, key, {

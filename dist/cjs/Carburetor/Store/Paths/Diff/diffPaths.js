@@ -30,7 +30,6 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     diffPaths: ()=>diffPaths
 });
-const Paths_js_namespaceObject = require("../../../Models/Paths.js");
 const external_joinPath_js_namespaceObject = require("../joinPath.js");
 const KeysMarker_js_namespaceObject = require("../Markers/KeysMarker.js");
 const external_WildcardPath_js_namespaceObject = require("../WildcardPath.js");
@@ -45,10 +44,12 @@ const add = (into, path)=>{
     into.add(path);
     if (into.size > external_DiffThreshold_js_namespaceObject.DIFF_PATH_THRESHOLD) throw new DiffOverflow();
 };
-const addPatch = (onPatch, segments, previous, next)=>{
+const addPatch = (onPatch, segments, previous, next, previousExists = true, nextExists = true)=>{
     null == onPatch || onPatch({
         segments,
+        previousExists,
         previous: patchValue(previous),
+        nextExists,
         next: patchValue(next)
     });
 };
@@ -72,7 +73,7 @@ const walkContainer = (oldValue, newValue, path, segments, into, onPatch)=>{
             addPatch(onPatch, [
                 ...segments,
                 key
-            ], oldValue[key], Paths_js_namespaceObject.PATCH_ABSENT);
+            ], oldValue[key], void 0, true, false);
             continue;
         }
         walk(oldValue[key], newValue[key], (0, external_joinPath_js_namespaceObject.joinPath)(path, key), [
@@ -86,7 +87,7 @@ const walkContainer = (oldValue, newValue, path, segments, into, onPatch)=>{
         addPatch(onPatch, [
             ...segments,
             key
-        ], Paths_js_namespaceObject.PATCH_ABSENT, newValue[key]);
+        ], void 0, newValue[key], false, true);
     }
     if (keysChanged) add(into, (0, KeysMarker_js_namespaceObject.keysPath)(path));
 };

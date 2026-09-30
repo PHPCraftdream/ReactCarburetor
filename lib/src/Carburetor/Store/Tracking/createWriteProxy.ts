@@ -1,5 +1,5 @@
 import {
-    IWritePatch, PATCH_ABSENT, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger, TPatchPort,
+    IWritePatch, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger, TPatchPort,
 } from "@/Carburetor/Models/Paths";
 import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
@@ -134,14 +134,17 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * @param listener - the patch listener to deliver to; only read from `patchPort` once by
      * each caller, so this takes it directly instead of re-reading the port.
      * @param key - the property this patch describes; appended to `basePathSegments`.
-     * @param previous - the value before the write, or PATCH_ABSENT when `key` was not own.
-     * @param next - the value after the write, or PATCH_ABSENT when the write deleted `key`.
+     * @param previous - the actual value before the write.
+     * @param next - the actual value after the write.
+     * @param previousExists - whether the key was own before the write.
+     * @param nextExists - whether the key is own after the write.
      */
     private reportPatch(
         listener: (patch: IWritePatch | typeof PATCH_OPAQUE) => void,
         key: string,
         previous: unknown,
-        next: unknown
+        next: unknown,
+        previousExists: boolean, nextExists: boolean
     ): void {
         if (this.patchPort?.opaque) {
             listener(PATCH_OPAQUE);
@@ -151,8 +154,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 
         listener({
             segments: [...this.basePathSegments, key],
-            previous: patchValue(previous),
-            next: patchValue(next),
+            previousExists, previous: patchValue(previous),
+            nextExists, next: patchValue(next),
         });
     }
 
@@ -275,7 +278,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
                 this.record(joinPath(this.basePath, key));
 
                 if (concrete) {
-                    this.reportPatch(concrete, key, removedValues?.[i], PATCH_ABSENT);
+                    this.reportPatch(concrete, key, removedValues?.[i], undefined, true, false);
                 }
             }
         }
@@ -290,7 +293,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             this.record(this.writtenPath('length'));
 
             if (concrete) {
-                this.reportPatch(concrete, 'length', previousLength, nextLength);
+                this.reportPatch(concrete, 'length', previousLength, nextLength, true, true);
             }
         }
         if (listener && !concrete && (removedAny || nextLength !== previousLength)) {
@@ -425,7 +428,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             changed.forEach((written: TPath) => this.record(written));
         } else {
             if (listener) {
-                this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, raw);
+                this.reportPatch(listener, key, wasOwn ? previous : undefined, raw, wasOwn, true);
             }
 
             this.record(path);
@@ -435,7 +438,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             const newLength = (source as unknown as {length: number}).length;
 
             if (listener) {
-                this.reportPatch(listener, 'length', previousLength, newLength);
+                this.reportPatch(listener, 'length', previousLength, newLength, true, true);
             }
 
             this.record(this.writtenPath('length'));
@@ -505,7 +508,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const listener = this.patchPort?.listener;
 
         if (listener) {
-            this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, raw);
+            this.reportPatch(listener, key, wasOwn ? previous : undefined, raw, wasOwn, true);
         }
 
         this.record(path);
@@ -513,7 +516,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (previousLength !== undefined && (source as unknown as unknown[]).length !== previousLength) {
             const nextLength = (source as unknown as unknown[]).length;
             if (listener) {
-                this.reportPatch(listener, 'length', previousLength, nextLength);
+                this.reportPatch(listener, 'length', previousLength, nextLength, true, true);
             }
             this.record(this.writtenPath('length'));
         }
@@ -555,7 +558,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const listener = this.patchPort?.listener;
 
         if (listener) {
-            this.reportPatch(listener, key, previous, PATCH_ABSENT);
+            this.reportPatch(listener, key, previous, undefined, true, false);
         }
 
         this.record(path);

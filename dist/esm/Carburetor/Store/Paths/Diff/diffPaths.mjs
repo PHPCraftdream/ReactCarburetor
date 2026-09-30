@@ -1,4 +1,3 @@
-import { PATCH_ABSENT } from "../../../Models/Paths.mjs";
 import { joinPath } from "../joinPath.mjs";
 import { keysPath } from "../Markers/KeysMarker.mjs";
 import { WILDCARD_PATH } from "../WildcardPath.mjs";
@@ -13,10 +12,12 @@ const add = (into, path)=>{
     into.add(path);
     if (into.size > DIFF_PATH_THRESHOLD) throw new DiffOverflow();
 };
-const addPatch = (onPatch, segments, previous, next)=>{
+const addPatch = (onPatch, segments, previous, next, previousExists = true, nextExists = true)=>{
     null == onPatch || onPatch({
         segments,
+        previousExists,
         previous: patchValue(previous),
+        nextExists,
         next: patchValue(next)
     });
 };
@@ -40,7 +41,7 @@ const walkContainer = (oldValue, newValue, path, segments, into, onPatch)=>{
             addPatch(onPatch, [
                 ...segments,
                 key
-            ], oldValue[key], PATCH_ABSENT);
+            ], oldValue[key], void 0, true, false);
             continue;
         }
         walk(oldValue[key], newValue[key], joinPath(path, key), [
@@ -54,7 +55,7 @@ const walkContainer = (oldValue, newValue, path, segments, into, onPatch)=>{
         addPatch(onPatch, [
             ...segments,
             key
-        ], PATCH_ABSENT, newValue[key]);
+        ], void 0, newValue[key], false, true);
     }
     if (keysChanged) add(into, keysPath(path));
 };

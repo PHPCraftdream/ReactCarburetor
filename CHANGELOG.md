@@ -408,8 +408,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Subscriber- or abort-triggered writes during undo/redo form fresh branches and invalidate redo,
   rather than being suppressed as replay. Transaction/throttle coalescing remains intact.
 - Multiple histories retain independent limits and disposal; replacing a patch-only observer
-  does not disconnect them. Shared patch sentinels preserve own-property absence and opaque
-  snapshot undo/redo when the store and history come from different CJS/ESM formats.
+  does not disconnect them. Explicit patch endpoint presence preserves missing keys independently
+  of every legal symbol/undefined payload; the shared opaque marker preserves snapshot replay
+  when the store and history come from different CJS/ESM formats.
 - Computed delivery skips registrations installed or replaced during an earlier publication;
   genuine subsequent publications still reach them.
 - Supported object/array prototype changes publish a branch replacement. Snapshot, restore

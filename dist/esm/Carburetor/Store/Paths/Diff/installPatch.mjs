@@ -1,4 +1,3 @@
-import { PATCH_ABSENT } from "../../../Models/Paths.mjs";
 import { isTrackable } from "../../Tracking/isTrackable.mjs";
 import { deepClone } from "../../Utils/deepClone.mjs";
 const installPatch = (root, patch, inverse)=>{
@@ -10,13 +9,13 @@ const installPatch = (root, patch, inverse)=>{
     }
     const key = patch.segments[patch.segments.length - 1];
     const value = inverse ? patch.previous : patch.next;
-    if (value === PATCH_ABSENT) delete node[key];
-    else if ('__proto__' === key) Object.defineProperty(node, key, {
+    if (inverse ? patch.previousExists : patch.nextExists) if ('__proto__' === key) Object.defineProperty(node, key, {
         value: isTrackable(value) ? deepClone(value) : value,
         writable: true,
         enumerable: true,
         configurable: true
     });
     else node[key] = isTrackable(value) ? deepClone(value) : value;
+    else delete node[key];
 };
 export { installPatch };

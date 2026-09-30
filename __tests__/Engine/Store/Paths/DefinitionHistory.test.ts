@@ -1,5 +1,5 @@
 import {Carburetor, CarburetorHistory} from '@/Carburetor';
-import {IWritePatch, PATCH_ABSENT, TPatchPort} from '@/Carburetor/Models/Paths';
+import {IWritePatch, TPatchPort} from '@/Carburetor/Models/Paths';
 import {createWriteProxy} from '@/Carburetor/Store/Tracking/createWriteProxy';
 
 class DefinitionStore<T extends object> extends Carburetor<T> {
@@ -219,8 +219,8 @@ describe('R10-02: index definitions include native array growth', () => {
         expect(Object.hasOwn(source, '3')).toBe(true);
         expect(paths).toEqual(['~k', '3', 'length']);
         expect(patches).toEqual([
-            {segments: ['3'], previous: PATCH_ABSENT, next: undefined},
-            {segments: ['length'], previous: 1, next: 4},
+            {segments: ['3'], previousExists: false, previous: undefined, nextExists: true, next: undefined},
+            {segments: ['length'], previousExists: true, previous: 1, nextExists: true, next: 4},
         ] satisfies IWritePatch[]);
     });
 

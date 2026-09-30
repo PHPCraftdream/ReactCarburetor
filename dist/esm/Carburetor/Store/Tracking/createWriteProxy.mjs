@@ -1,4 +1,4 @@
-import { PATCH_ABSENT, PATCH_OPAQUE } from "../../Models/Paths.mjs";
+import { PATCH_OPAQUE } from "../../Models/Paths.mjs";
 import { diffPaths } from "../Paths/Diff/diffPaths.mjs";
 import { joinPath } from "../Paths/joinPath.mjs";
 import { keysPath } from "../Paths/Markers/KeysMarker.mjs";
@@ -48,7 +48,7 @@ class WriteProxyHandler {
         }
         return path;
     }
-    reportPatch(listener, key, previous, next) {
+    reportPatch(listener, key, previous, next, previousExists, nextExists) {
         var _this_patchPort;
         if (null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.opaque) return void listener(PATCH_OPAQUE);
         listener({
@@ -56,7 +56,9 @@ class WriteProxyHandler {
                 ...this.basePathSegments,
                 key
             ],
+            previousExists,
             previous: patchValue(previous),
+            nextExists,
             next: patchValue(next)
         });
     }
@@ -125,7 +127,7 @@ class WriteProxyHandler {
             removedAny = true;
             const key = String(entry);
             this.record(joinPath(this.basePath, key));
-            if (concrete) this.reportPatch(concrete, key, null == removedValues ? void 0 : removedValues[i], PATCH_ABSENT);
+            if (concrete) this.reportPatch(concrete, key, null == removedValues ? void 0 : removedValues[i], void 0, true, false);
         }
         if (removedAny) {
             var _this_aliases;
@@ -136,7 +138,7 @@ class WriteProxyHandler {
             var _this_aliases1;
             null == (_this_aliases1 = this.aliases) || _this_aliases1.checkWrite(source, this.basePath);
             this.record(this.writtenPath('length'));
-            if (concrete) this.reportPatch(concrete, 'length', previousLength, nextLength);
+            if (concrete) this.reportPatch(concrete, 'length', previousLength, nextLength, true, true);
         }
         if (listener && !concrete && (removedAny || nextLength !== previousLength)) listener(PATCH_OPAQUE);
         return wrote;
@@ -188,12 +190,12 @@ class WriteProxyHandler {
             if (listener && !concrete && changed.size > 0) listener(PATCH_OPAQUE);
             changed.forEach((written)=>this.record(written));
         } else {
-            if (listener) this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, raw);
+            if (listener) this.reportPatch(listener, key, wasOwn ? previous : void 0, raw, wasOwn, true);
             this.record(path);
         }
         if (void 0 !== previousLength && source.length !== previousLength) {
             const newLength = source.length;
-            if (listener) this.reportPatch(listener, 'length', previousLength, newLength);
+            if (listener) this.reportPatch(listener, 'length', previousLength, newLength, true, true);
             this.record(this.writtenPath('length'));
         }
         return true;
@@ -223,11 +225,11 @@ class WriteProxyHandler {
         null == (_this_aliases3 = this.aliases) || _this_aliases3.forget(previous);
         if (!wasOwn) this.record(this.keysMarker());
         const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
-        if (listener) this.reportPatch(listener, key, wasOwn ? previous : PATCH_ABSENT, raw);
+        if (listener) this.reportPatch(listener, key, wasOwn ? previous : void 0, raw, wasOwn, true);
         this.record(path);
         if (void 0 !== previousLength && source.length !== previousLength) {
             const nextLength = source.length;
-            if (listener) this.reportPatch(listener, 'length', previousLength, nextLength);
+            if (listener) this.reportPatch(listener, 'length', previousLength, nextLength, true, true);
             this.record(this.writtenPath('length'));
         }
         return true;
@@ -243,7 +245,7 @@ class WriteProxyHandler {
         this.record(this.keysMarker());
         const path = this.writtenPath(key);
         const listener = null == (_this_patchPort = this.patchPort) ? void 0 : _this_patchPort.listener;
-        if (listener) this.reportPatch(listener, key, previous, PATCH_ABSENT);
+        if (listener) this.reportPatch(listener, key, previous, void 0, true, false);
         this.record(path);
         return true;
     }

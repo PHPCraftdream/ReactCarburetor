@@ -10,6 +10,6 @@ import { IWritePatch } from "../../../Models/Paths.mjs";
  *
  * @param root - the object the patch's segments are resolved from.
  * @param patch - the patch to install.
- * @param inverse - false installs `next`; true installs `previous`, deleting on PATCH_ABSENT.
+ * @param inverse - false installs `next`; true installs `previous`, deleting when absent.
  */
 export declare const installPatch: (root: Record<string, unknown>, patch: IWritePatch, inverse: boolean) => void;

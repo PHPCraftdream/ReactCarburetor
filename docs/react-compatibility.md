@@ -54,13 +54,14 @@ every later copy or module format gets the same one back.
 | `getUid()` counter | Ids from different copies never collide. A collision is not cosmetic: `UpdateWave.defer(uid, settle)` and `Carburetor.subscribe(cb, {id})` both key a registration by uid, so two copies minting the same id would drop one copy's settlement or steal its subscription. |
 | `carburetorToken` claimed names | The duplicate-name check sees a name claimed by any copy, not just its own. |
 | Read-view identities and raw targets | A selector in one copy can detach another copy's tracked read proxy together with its raw Map key without losing aliases; safely copied foreign plain views do not become live escapes. |
-| Patch absence/opaque markers | Immutable `Symbol.for('react-carburetor/v1/patch-absent')` and `patch-opaque` identities let history undo missing properties and opaque replacements from another module format. |
+| Patch opaque marker | Immutable `Symbol.for('react-carburetor/v1/patch-opaque')` identifies opaque writes across module formats. Own-property presence travels separately from arbitrary payload values. |
 
 Not shared, by design: the `diagnostics.setEnabled` flag (cosmetic), and store-owned tracking caches
 that are only reached through their store. The read-view identity/raw-target `WeakMap` is shared:
 a hook, watcher or class selector can consume a store constructed by another module format.
-Patch markers use versioned `Symbol.for` identities directly; they are immutable protocol values,
-not mutable registry slots.
+The opaque patch marker uses a versioned `Symbol.for` identity, not a mutable registry slot.
+`IWritePatch.previousExists` and `nextExists` are required booleans: no state value, including
+any symbol or own `undefined`, is reserved to mean absence.
 
 The registry key is versioned (`v1`) on purpose: a future breaking change to what's shared ships
 under a new version, so an old and a new copy simply fail to find each other's entry and fall
