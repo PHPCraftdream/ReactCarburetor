@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Cross-format consumer verification runs a temporary CJS probe instead of a large `node -e`
+  argument, avoiding Windows command-line limits while retaining every runtime scenario.
+
 - Accepted readonly values restore without partial sibling writes or native assignment errors.
   History classifies readonly ownership during capture and replays its exact owned descriptors.
 - Successful same-content branch identity replacement invalidates native alias ownership even

@@ -1,3 +1,5 @@
+import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
+import {join} from 'node:path';
 import {run} from './matrix.mjs';
 import {checkEngineBoundaries} from './engineBoundaryChecks.mjs';
 
@@ -478,7 +480,15 @@ const engineCases = [];
 
 /** Checks actual CJS-store/ESM-consumer selection behavior in an installed package. */
 export const runCrossFormatSelection = (installDir) => {
-    const result = run(process.execPath, ['-e', SCRIPT], {cwd: installDir});
+    const directory = mkdtempSync(join(installDir, '.cross-format-'));
+    const file = join(directory, 'probe.cjs');
+    let result;
+    try {
+        writeFileSync(file, SCRIPT);
+        result = run(process.execPath, [file], {cwd: installDir});
+    } finally {
+        rmSync(directory, {recursive: true, force: true});
+    }
 
     if (!result.ok) {
         return {ok: false, stderr: result.stdout + result.stderr};
