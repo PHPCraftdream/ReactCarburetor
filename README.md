@@ -670,6 +670,9 @@ reverses the latest coherent step and a later flush cannot manufacture a new bra
 A conservative native read or equal-content operation creates no history step when its owned
 intrinsics, descriptors and alias topology are unchanged; it does not erase valid redo.
 Mixed plain/native history graphs share one copy ledger, without discarding a copied plain prefix.
+Supported array length definitions also record descriptor-only locks. Undo/redo restores the
+length's writable flag and sparse elements; a refused restore before installation preserves
+the cursor for retry.
 
 Failed storage reads reach `onError` without deleting unread data; when the handler returns,
 later writes remain subscribed. Without a handler, a read failure throws. Malformed stored
@@ -875,6 +878,9 @@ a test pins the exported surface so one does not slip in by accident.
   native facades: intrinsic arguments from tracked read/draft views resolve to their original
   raw keys, members and roots, so `draft.map.set(draft.key, value)` updates the existing key.
   Method chaining and `forEach` callback collections retain that facade's receiver semantics.
+  Exposed plain members, keys and own data links also subscribe to their ordinary writable
+  aliases; writes through those plain paths wake readers without changing raw entry identity.
+  A native backlink to the store root necessarily subscribes to the whole store.
   `Date`, custom instances and unsupported native subclasses remain raw. Native reads are coarse
   leaf reads; reaching one through `draft` conservatively marks its path, not fields inside it.
   A publication after bypassing `draft` invalidates the whole store. Replace values or use plain

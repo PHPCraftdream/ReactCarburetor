@@ -398,6 +398,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Native Map/Set reads subscribe to ordinary writable aliases of exposed plain members, keys
+  and own data fields. Watch, computed and connected renders observe plain-path writes;
+  root backlinks remain coarse, and raw entry identities are unchanged.
+- Supported array length locks publish even when only `writable` changes. History restores
+  sparse contents and the length descriptor through undo/redo, including partial truncation;
+  a restore failure before installation leaves its history cursor retryable.
+
 - Computed announcement compares canonical underlying identities for native read facades,
   so an in-place exotic mutation cannot be hidden by an always-equal content comparator.
 - History reconciles pending coalesced writes before undo/redo and drops canceled patch batches,

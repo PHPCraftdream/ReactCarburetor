@@ -1,4 +1,5 @@
 import {run} from './matrix.mjs';
+import {checkEngineBoundaries} from './engineBoundaryChecks.mjs';
 
 /**
  * A packed CJS store's plain-object/Map-key selection and plain/array/native-root
@@ -10,6 +11,8 @@ const path = require('path');
 const assert = require('node:assert/strict');
 const pkgRoot = path.join(process.cwd(), 'node_modules', 'react-carburetor');
 const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join('/');
+const checkEngineBoundaries = (${checkEngineBoundaries.toString()});
+const engineCases = [];
 
 (async () => {
     const React = require('react');
@@ -461,9 +464,12 @@ const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join
         assert.equal(replacementFailure.code, undefined);
         assert.equal(cache.getFailure('a'), undefined);
         histories.push(label + ':entry-owned-failure');
+        engineCases.push(...checkEngineBoundaries(assert, storeModule, historyModule, label));
     }
 
-    process.stdout.write(JSON.stringify({selections, nativeInitial, nativeNext, nativeDetached, roots, histories}));
+    process.stdout.write(JSON.stringify({
+        selections, nativeInitial, nativeNext, nativeDetached, roots, histories, engineCases
+    }));
 })().catch((error) => {
     process.stderr.write(String((error && error.stack) || error));
     process.exit(1);
@@ -534,6 +540,16 @@ export const runCrossFormatSelection = (installDir) => {
     if (JSON.stringify(parsed.histories) !== JSON.stringify(expectedHistories)) {
         return {ok: false, stderr: 'cross-format history cases did not finish: '
             + JSON.stringify(parsed.histories)};
+    }
+
+    const boundaryKinds = ['alias-map-value', 'alias-set-member', 'alias-map-key', 'alias-native-own',
+        'alias-root-link', 'length-root-flag-only', 'length-root-truncate',
+        'length-nested-flag-only', 'length-nested-truncate'];
+    const expectedBoundaries = ['cjs-store/esm-history', 'esm-store/cjs-history']
+        .flatMap(label => boundaryKinds.map(kind => label + ':' + kind));
+    if (JSON.stringify(parsed.engineCases) !== JSON.stringify(expectedBoundaries)) {
+        return {ok: false, stderr: 'cross-format native alias/array descriptor cases did not finish: '
+            + JSON.stringify(parsed.engineCases)};
     }
 
     return {ok: true};
