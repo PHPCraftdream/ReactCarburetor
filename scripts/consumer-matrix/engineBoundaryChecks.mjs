@@ -331,5 +331,55 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         history.disconnect();
         completed.push(label + ':readonly-resource-' + status);
     }
+    {
+        const resource = new producer.ResourceCarburetor(async () => new Map());
+        const history = new recorder.CarburetorHistory(resource);
+        const next = {...resource.getData(), status: producer.EResourceStatus.Pending,
+            updatedAt: 7, data: new Map()};
+        next.data.set('root', next);
+        Object.defineProperty(next, 'status', {
+            value: producer.EResourceStatus.Pending, enumerable: true, writable: false, configurable: false,
+        });
+        resource.setData(next);
+        assert.equal(history.undo(), true);
+        assert.equal(history.redo(), true);
+        assert.equal(resource.getData().status, producer.EResourceStatus.Idle);
+        assert.equal(resource.getData().updatedAt, 7);
+        assert.equal(Object.getOwnPropertyDescriptor(resource.getData(), 'status').writable, false);
+        assert.equal(resource.getData().data.get('root'), resource.getData());
+        history.disconnect();
+        completed.push(label + ':readonly-transient-slot');
+    }
+    for (const kind of ['pending', 'refreshing', 'both']) {
+        const cache = new producer.ResourceCache(async () => new Map());
+        const history = new recorder.CarburetorHistory(cache);
+        const key = cache.keyOf('k');
+        const pending = kind !== 'refreshing';
+        const entry = {status: pending ? producer.EResourceStatus.Pending : producer.EResourceStatus.Success,
+            refreshing: kind !== 'pending', data: new Map(), updatedAt: 9,
+            error: undefined, invalidated: false, failed: false};
+        const state = {entries: {[key]: entry}};
+        entry.data.set('root', state);
+        entry.data.set('entry', entry);
+        if (pending) Object.defineProperty(entry, 'status', {
+            value: entry.status, enumerable: true, writable: false, configurable: false,
+        });
+        if (kind !== 'pending') Object.defineProperty(entry, 'refreshing', {
+            value: true, enumerable: true, writable: false, configurable: false,
+        });
+        cache.setData(state);
+        assert.equal(history.undo(), true);
+        assert.equal(history.redo(), true);
+        const restored = cache.getData().entries[key];
+        assert.equal(restored.status, pending ? producer.EResourceStatus.Idle : producer.EResourceStatus.Success);
+        assert.equal(restored.refreshing, false);
+        assert.equal(restored.updatedAt, 9);
+        if (pending) assert.equal(Object.getOwnPropertyDescriptor(restored, 'status').writable, false);
+        if (kind !== 'pending') assert.equal(Object.getOwnPropertyDescriptor(restored, 'refreshing').writable, false);
+        assert.equal(restored.data.get('root'), cache.getData());
+        assert.equal(restored.data.get('entry'), restored);
+        history.disconnect();
+        completed.push(label + ':readonly-transient-cache-' + kind);
+    }
     return completed;
 };

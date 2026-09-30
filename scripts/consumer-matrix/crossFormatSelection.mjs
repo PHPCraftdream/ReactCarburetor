@@ -562,7 +562,9 @@ export const runCrossFormatSelection = (installDir) => {
         'readonly-branch-admission', 'locked-object-restore',
         'throwing-observer-scalar', 'throwing-observer-branch',
         'new-restrictive-replacement', 'new-restrictive-addition',
-        'readonly-resource-idle', 'readonly-resource-success', 'readonly-resource-error'];
+        'readonly-resource-idle', 'readonly-resource-success', 'readonly-resource-error',
+        'readonly-transient-slot', 'readonly-transient-cache-pending',
+        'readonly-transient-cache-refreshing', 'readonly-transient-cache-both'];
     const expectedBoundaries = ['cjs-store/esm-history', 'esm-store/cjs-history']
         .flatMap(label => boundaryKinds.map(kind => label + ':' + kind));
     if (JSON.stringify(parsed.engineCases) !== JSON.stringify(expectedBoundaries)) {
