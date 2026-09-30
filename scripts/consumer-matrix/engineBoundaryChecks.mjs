@@ -309,5 +309,27 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         history.disconnect();
         completed.push(label + ':new-restrictive-' + (addition ? 'addition' : 'replacement'));
     }
+    for (const status of [producer.EResourceStatus.Idle,
+        producer.EResourceStatus.Success, producer.EResourceStatus.Error]) {
+        const resource = new producer.ResourceCarburetor(async () => 'answer');
+        const history = new recorder.CarburetorHistory(resource);
+        const next = {...resource.getData(), status, updatedAt: 7,
+            data: status === producer.EResourceStatus.Success ? 'saved' : undefined,
+            error: status === producer.EResourceStatus.Error ? 'failed' : undefined};
+        Object.defineProperty(next, 'status', {
+            value: status, enumerable: true, writable: false, configurable: false,
+        });
+        resource.setData(next);
+        assert.equal(history.undo(), true);
+        assert.equal(history.redo(), true);
+        assert.equal(resource.getData().status, status);
+        assert.equal(resource.getData().updatedAt, 7);
+        assert.equal(Object.getOwnPropertyDescriptor(resource.getData(), 'status').writable, false);
+        assert.equal(Object.getOwnPropertyDescriptor(resource.getData(), 'status').configurable, false);
+        assert.equal(history.canUndo(), true);
+        assert.equal(history.canRedo(), false);
+        history.disconnect();
+        completed.push(label + ':readonly-resource-' + status);
+    }
     return completed;
 };
