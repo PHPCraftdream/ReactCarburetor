@@ -496,6 +496,10 @@ Public `setData` replacement reconciles the raw rejection before subscribers run
 Error-state object gets an Error with its wire message even when that message is unchanged;
 a non-Error state clears the raw cause. Passing the exact current object, or changing unrelated
 fields through a subclass's draft/update action, retains the current Error's original rejection.
+A distinct keyless `setData` replacement also drops the old settled argument key before
+publication, even when its visible fields are equal. It cannot satisfy `suspend(oldArgs)`:
+that read starts the loader again. Exact-object no-ops retain the key; `restore` and
+`fromJSON` retain only the explicit key carried by their wire snapshot.
 Keyless replacement neither invents an argument key nor cancels a current request.
 If a synchronous subscriber or abort listener supersedes a load before its loader starts,
 that load rejects with `AbortError` instead of reporting a successful load that never ran.

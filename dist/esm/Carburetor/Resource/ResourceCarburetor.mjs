@@ -32,6 +32,13 @@ class ResourceCarburetor extends Carburetor {
         this.patchPort.opaque = true;
         return super.attachPatchListener(observer);
     }
+    setData(data) {
+        if (data !== this.data && void 0 !== this.settledKey) {
+            this.markAllChanged();
+            this.settledKey = void 0;
+        }
+        return super.setData(data);
+    }
     snapshot() {
         return {
             ...super.snapshot(),
@@ -55,7 +62,7 @@ class ResourceCarburetor extends Carburetor {
         if (this.settledKey !== nextKey) this.markAllChanged();
         this.settledKey = nextKey;
         const status = data.status === EResourceStatus.Pending ? EResourceStatus.Idle : data.status;
-        this.setData(deepClone({
+        super.setData(deepClone({
             status,
             data: data.data,
             error: data.error,

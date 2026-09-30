@@ -58,6 +58,11 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
      */
     attachPatchListener(observer: IPatchObserver): TDisposer;
     /**
+     * A public whole-state replacement has no request key of its own. Only the exact
+     * current state object still belongs to the request that produced it.
+     */
+    setData(data: IResourceData<T>): IResourceData<T>;
+    /**
      * The state plus the key its answer settled under: what travels across the serialization
      * boundary has to carry enough for the restored slot to tell which arguments the answer
      * belongs to.

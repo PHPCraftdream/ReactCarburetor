@@ -270,22 +270,84 @@ describe('ResourceCarburetor', () => {
 });
 
 describe('single-slot public replacement', () => {
-    test('different Error at the same key publishes the replacement rejection before subscribers run', async () => {
-        const original = new Error('transport-down');
-        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+    test('distinct Success loses its old key before observers, and a read starts the actual loader', async () => {
+        const next = deferred<string>();
+        const requested: string[] = [];
+        const resource = new ResourceCarburetor<string, string>((key) => {
+            requested.push(key);
+            return requested.length === 1 ? Promise.resolve('network:a') : next.promise;
+        });
         await resource.load('a');
-        expect(resource.getLastError()).toBe(original);
+        const seen: IResourceSnapshot<string>[] = [];
+        const stop = resource.subscribe(() => {
+            seen.push(resource.snapshot());
+            expect(JSON.parse(resource.serialize())).toEqual(resource.getData());
+        });
+        const replacement = {...resource.getData(), data: 'manual'};
+
+        resource.setData(replacement);
+        resource.unsubscribe(stop);
+
+        expect(seen).toEqual([{...replacement, key: undefined}]);
+        expect(resource.getData()).toBe(replacement);
+        expect(resource.snapshot()).toEqual({...replacement, key: undefined});
+        expect(JSON.parse(resource.serialize())).toEqual(replacement);
+        const waiting = thrownBy(resource, 'a');
+        expect(waiting).toBeInstanceOf(Promise);
+        expect(requested).toEqual(['a', 'a']);
+        next.resolve('network:a:again');
+        await (waiting as Promise<void>);
+        expect(resource.suspend('a')).toBe('network:a:again');
+    });
+
+    test('equal-valued distinct Success publishes key loss once; the current object does not', async () => {
+        const next = deferred<string>();
+        let calls = 0;
+        const resource = new ResourceCarburetor<string, string>(() => {
+            calls++;
+            return calls === 1 ? Promise.resolve('network:a') : next.promise;
+        });
+        await resource.load('a');
+        const current = resource.getData();
+        const seen: IResourceSnapshot<string>[] = [];
+        const stop = resource.subscribe(() => {
+            seen.push(resource.snapshot());
+        });
+        resource.setData(current);
+        expect(resource.suspend('a')).toBe('network:a');
+        expect(calls).toBe(1);
+        expect(seen).toEqual([]);
+
+        const equal = {...current};
+        resource.setData(equal);
+        resource.unsubscribe(stop);
+        expect(seen).toEqual([{...equal, key: undefined}]);
+        expect(resource.snapshot()).toEqual({...equal, key: undefined});
+        expect(JSON.parse(resource.serialize())).toEqual(equal);
+        const waiting = thrownBy(resource, 'a');
+        expect(waiting).toBeInstanceOf(Promise);
+        expect(calls).toBe(2);
+        next.resolve('fresh');
+        await (waiting as Promise<void>);
+        expect(resource.suspend('a')).toBe('fresh');
+    });
+
+    test('a keyless Error replacement reconciles its raw cause before observers and refetches the old key', async () => {
+        const original = new Error('transport-down');
+        const next = deferred<string>();
+        let calls = 0;
+        const resource = new ResourceCarburetor<string, string>(() => {
+            calls++;
+            return calls === 1 ? Promise.reject(original) : next.promise;
+        });
+        await resource.load('a');
         expect(thrownBy(resource, 'a')).toBe(original);
 
-        const observed: unknown[] = [];
+        const observed: Array<{raw: unknown; wire: IResourceSnapshot<string>; serialized: unknown}> = [];
         const stop = resource.subscribe(() => {
-            const state = resource.getData();
             observed.push({
-                status: state.status,
-                error: state.error,
                 raw: resource.getLastError(),
-                thrown: thrownBy(resource, 'a'),
-                snapshot: resource.snapshot(),
+                wire: resource.snapshot(),
                 serialized: JSON.parse(resource.serialize()),
             });
         });
@@ -298,35 +360,36 @@ describe('single-slot public replacement', () => {
         expect(raw).not.toBe(original);
         expect((raw as Error).message).toBe('access-denied');
         expect(resource.getData()).toBe(replacement);
-        expect(resource.snapshot()).toEqual({...replacement, key: JSON.stringify('a')});
-        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
-        expect(thrownBy(resource, 'a')).toBe(raw);
-        expect(observed).toEqual([{
-            status: EResourceStatus.Error,
-            error: 'access-denied',
-            raw,
-            thrown: raw,
-            snapshot: resource.snapshot(),
-            serialized: resource.snapshot(),
-        }]);
+        expect(resource.snapshot()).toEqual({...replacement, key: undefined});
+        expect(JSON.parse(resource.serialize())).toEqual(replacement);
+        expect(observed).toEqual([{raw, wire: resource.snapshot(), serialized: replacement}]);
+
+        const waiting = thrownBy(resource, 'a');
+        expect(waiting).toBeInstanceOf(Promise);
+        expect(calls).toBe(2);
+        next.resolve('network:a');
+        await (waiting as Promise<void>);
+        expect(resource.suspend('a')).toBe('network:a');
     });
 
-    test('same-message Error replacement drops the former raw cause before synchronous publication', async () => {
+    test('equal-valued distinct Error state publishes only the lost wire key once', async () => {
         const original = new Error('offline');
-        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+        const next = deferred<string>();
+        let calls = 0;
+        const resource = new ResourceCarburetor<string, string>(() => {
+            calls++;
+            return calls === 1 ? Promise.reject(original) : next.promise;
+        });
         await resource.load('a');
-        const seen: Array<{state: IResourceData<string>; wire: IResourceSnapshot<string>;
-            serialized: unknown; raw: unknown; thrown: unknown}> = [];
+        const seen: Array<{wire: IResourceSnapshot<string>; serialized: unknown; raw: unknown}> = [];
         const id = resource.subscribe(() => {
             seen.push({
-                state: {...resource.getData()},
                 wire: resource.snapshot(),
                 serialized: JSON.parse(resource.serialize()),
                 raw: resource.getLastError(),
-                thrown: thrownBy(resource, 'a'),
             });
         });
-        const replacement = {...resource.getData(), updatedAt: (resource.getData().updatedAt ?? 0) + 1};
+        const replacement = {...resource.getData()};
 
         resource.setData(replacement);
         resource.unsubscribe(id);
@@ -334,18 +397,18 @@ describe('single-slot public replacement', () => {
         const raw = resource.getLastError();
         expect(raw).toBeInstanceOf(Error);
         expect(raw).not.toBe(original);
-        expect((raw as Error).message).toBe(original.message);
+        expect((raw as Error).message).toBe('offline');
         expect(resource.getData()).toBe(replacement);
-        expect(resource.snapshot()).toEqual({...replacement, key: JSON.stringify('a')});
-        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
-        expect(thrownBy(resource, 'a')).toBe(raw);
-        expect(seen).toEqual([{
-            state: replacement,
-            wire: resource.snapshot(),
-            serialized: resource.snapshot(),
-            raw,
-            thrown: raw,
-        }]);
+        expect(resource.snapshot()).toEqual({...replacement, key: undefined});
+        expect(JSON.parse(resource.serialize())).toEqual(replacement);
+        expect(seen).toEqual([{wire: resource.snapshot(), serialized: replacement, raw}]);
+
+        const waiting = thrownBy(resource, 'a');
+        expect(waiting).toBeInstanceOf(Promise);
+        expect(calls).toBe(2);
+        next.resolve('recovered');
+        await (waiting as Promise<void>);
+        expect(resource.suspend('a')).toBe('recovered');
     });
 
     test('installing the exact current Error state retains its original raw rejection', async () => {
@@ -363,24 +426,39 @@ describe('single-slot public replacement', () => {
         expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
     });
 
-    test('Error to Success clears raw rejection before publication and retains its settled key', async () => {
+    test('a keyless Success after a failure has no inherited key and fetches the old request again', async () => {
         const original = new Error('down');
-        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+        const next = deferred<string>();
+        let calls = 0;
+        const resource = new ResourceCarburetor<string, string>(() => {
+            calls++;
+            return calls === 1 ? Promise.reject(original) : next.promise;
+        });
         await resource.load('a');
-        const observed: unknown[] = [];
+        const observed: Array<{raw: unknown; wire: IResourceSnapshot<string>; serialized: unknown}> = [];
         const stop = resource.subscribe(() => {
-            observed.push([resource.getLastError(), resource.suspend('a'), resource.snapshot()]);
+            observed.push({
+                raw: resource.getLastError(),
+                wire: resource.snapshot(),
+                serialized: JSON.parse(resource.serialize()),
+            });
         });
 
-        resource.setData({...resource.getData(), status: EResourceStatus.Success, data: 'restored', error: undefined});
+        const replacement = {...resource.getData(), status: EResourceStatus.Success,
+            data: 'manual', error: undefined};
+        resource.setData(replacement);
         resource.unsubscribe(stop);
 
         expect(resource.getLastError()).toBeUndefined();
-        expect(resource.suspend('a')).toBe('restored');
-        expect(resource.getData().status).toBe(EResourceStatus.Success);
-        expect(resource.snapshot().key).toBe(JSON.stringify('a'));
-        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
-        expect(observed).toEqual([[undefined, 'restored', resource.snapshot()]]);
+        expect(resource.snapshot()).toEqual({...replacement, key: undefined});
+        expect(JSON.parse(resource.serialize())).toEqual(replacement);
+        expect(observed).toEqual([{raw: undefined, wire: resource.snapshot(), serialized: replacement}]);
+        const waiting = thrownBy(resource, 'a');
+        expect(waiting).toBeInstanceOf(Promise);
+        expect(calls).toBe(2);
+        next.resolve('network:a');
+        await (waiting as Promise<void>);
+        expect(resource.suspend('a')).toBe('network:a');
     });
 
     test('keyless public replacement leaves a current request alive without manufacturing an answer key', async () => {

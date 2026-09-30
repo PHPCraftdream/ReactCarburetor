@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Single-slot keyless `setData` replacement drops obsolete settled-key ownership before
+  subscribers run, including equal-valued replacements. Exact-object no-ops and explicitly
+  keyed restore/hydration retain their matching answer; current requests remain alive.
 - History records nested synchronous publications separately before ordinary subscribers run.
   Subscriber- or abort-triggered writes during undo/redo form fresh branches and invalidate redo,
   rather than being suppressed as replay. Transaction/throttle coalescing remains intact.

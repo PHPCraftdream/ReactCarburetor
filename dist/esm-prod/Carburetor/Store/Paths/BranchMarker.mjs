@@ -1,0 +1,1 @@
+import{PATH_SEPARATOR as r}from"./PathSeparator.mjs";let t=t=>t+r+"~p";export{t as branchPath};

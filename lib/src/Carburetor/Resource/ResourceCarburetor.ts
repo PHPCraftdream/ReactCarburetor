@@ -89,6 +89,19 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     }
 
     /**
+     * A public whole-state replacement has no request key of its own. Only the exact
+     * current state object still belongs to the request that produced it.
+     */
+    public setData(data: IResourceData<T>): IResourceData<T> {
+        if (data !== this.data && this.settledKey !== undefined) {
+            this.markAllChanged();
+            this.settledKey = undefined;
+        }
+
+        return super.setData(data);
+    }
+
+    /**
      * The state plus the key its answer settled under: what travels across the serialization
      * boundary has to carry enough for the restored slot to tell which arguments the answer
      * belongs to.
@@ -128,10 +141,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         // can publish its own replacement before reaching this point.
         this.patchObservers?.ownRestore(data);
 
-        // Identity is re-established BEFORE the state lands: setData() notifies subscribers
-        // synchronously, and a suspend() from such a callback must see key and data agree.
-        // The key is absent from IResourceData. A key-only change still alters the wire answer
-        // and must publish once to wildcard observers, persistence and DevTools.
+        // Identity is re-established BEFORE the state lands: super.setData() notifies
+        // subscribers synchronously, and a suspend() from such a callback must see key
+        // and data agree. The key is absent from IResourceData; a key-only change still
+        // alters the wire answer and must publish once to wildcard observers.
         const settled = data.status === EResourceStatus.Success || data.status === EResourceStatus.Error;
         const nextKey = settled ? data.key : undefined;
         if (this.settledKey !== nextKey) {
@@ -150,9 +163,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
 
         // The key rides in the snapshot, not in the state: the four state fields are installed
         // explicitly so the live IResourceData contract stays exactly what it was.
-        // setData's pre-publication hook reconstructs an Error from the wire message, even
+        // The base replacement publishes while retaining the explicit key installed above;
+        // its pre-publication hook reconstructs an Error from the wire message, even
         // when the previous failure had the same serialized description.
-        this.setData(deepClone({
+        super.setData(deepClone({
             status,
             data: data.data,
             error: data.error,

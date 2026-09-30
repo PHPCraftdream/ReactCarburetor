@@ -64,6 +64,13 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
         this.patchPort.opaque = true;
         return super.attachPatchListener(observer);
     }
+    setData(data) {
+        if (data !== this.data && void 0 !== this.settledKey) {
+            this.markAllChanged();
+            this.settledKey = void 0;
+        }
+        return super.setData(data);
+    }
     snapshot() {
         return {
             ...super.snapshot(),
@@ -87,7 +94,7 @@ class ResourceCarburetor extends Carburetor_js_namespaceObject.Carburetor {
         if (this.settledKey !== nextKey) this.markAllChanged();
         this.settledKey = nextKey;
         const status = data.status === EResourceStatus_js_namespaceObject.EResourceStatus.Pending ? EResourceStatus_js_namespaceObject.EResourceStatus.Idle : data.status;
-        this.setData((0, deepClone_js_namespaceObject.deepClone)({
+        super.setData((0, deepClone_js_namespaceObject.deepClone)({
             status,
             data: data.data,
             error: data.error,
