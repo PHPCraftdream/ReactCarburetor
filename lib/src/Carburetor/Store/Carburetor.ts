@@ -370,18 +370,18 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         const callback = (): void => {
             const fresh = this.runSelector(select);
             const changed = !sameSelection(previous, fresh.value);
+            const last = previous;
 
-            // Re-filed unconditionally: a selector whose branch moved without moving its
-            // result must still hand the subscription its new read set. transferReads(): this
-            // read set is freshly built by runSelector and never touched again.
+            // Finish comparison and changed-result detachment before filing their live-view reads.
+            if (changed) {
+                previous = detachWatchSelection(fresh.value);
+            }
+
+            // Re-file even when equal: a conditional selector may have changed branches.
             this.subscribe(callback, transferReads(fresh.reads, id));
 
             if (changed) {
-                const next = detachWatchSelection(fresh.value);
-                const last = previous;
-
-                previous = next;
-                onChange(next, last);
+                onChange(previous, last);
             }
         };
 

@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Watch files dependency reads only after comparison and changed-result detachment complete.
+  Later selected leaves remain subscribed after an early difference or reordered branch.
+
 - Equal-valued plain key reorders publish enumeration changes and refresh detached selections.
   History restores original key positions after deletion/reinsertion; ordinary scalar, numeric-key
   and array-index changes retain patch recording. Restore preflights append-impossible ordering

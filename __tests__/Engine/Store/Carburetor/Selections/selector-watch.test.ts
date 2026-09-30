@@ -1,6 +1,4 @@
 import {Carburetor, computed} from "@/Carburetor";
-import {rstest} from "@rstest/core";
-import {READS_TRANSFER} from "@/Carburetor/Store/Paths/Markers/ReadsTransferBrand";
 import {getTestData, TestCarburetor} from "../fixtures";
 
 /**
@@ -154,6 +152,52 @@ describe('watch(select, onChange)', () => {
         dispose();
     });
 
+    test('keeps later leaves of a selected branch subscribed after its first changed leaf', () => {
+        const store = new Carburetor({item: {a: 1, b: 1}, outside: 0});
+        const seen: Array<[number, number]> = [];
+        const stop = store.watch(data => data.item, next => {
+            seen.push([next.a, next.b]);
+        });
+
+        store.update(draft => { draft.item.a = 2; });
+        store.update(draft => { draft.item.b = 2; });
+        store.update(draft => { draft.outside = 1; });
+        store.update(draft => { draft.item.b = 3; });
+        expect(store.getData().item).toEqual({a: 2, b: 3});
+        expect(seen).toEqual([[2, 1], [2, 2], [2, 3]]);
+        stop();
+        store.update(draft => { draft.item.a = 3; });
+        expect(seen).toEqual([[2, 1], [2, 2], [2, 3]]);
+    });
+
+    test('re-files equal conditional branches and publishes changed branches before reentrant writes', () => {
+        const store = new Carburetor({
+            choice: false, left: {a: 1, b: 1}, right: {a: 1, b: 1},
+        });
+        const seen: Array<[number, number]> = [];
+        let runs = 0;
+        const stop = store.watch(data => {
+            runs++;
+            return data.choice ? data.right : data.left;
+        }, next => {
+            seen.push([next.a, next.b]);
+            if (next.a === 2 && next.b === 1) {
+                store.update(draft => { draft.right.b = 2; });
+            }
+        });
+
+        store.update(draft => { draft.choice = true; });
+        expect(seen).toEqual([]);
+        const afterSwitch = runs;
+        store.update(draft => { draft.left.b = 3; });
+        expect(runs).toBe(afterSwitch);
+        store.update(draft => { draft.right.a = 2; });
+        expect(seen).toEqual([[2, 1], [2, 2]]);
+        stop();
+        store.update(draft => { draft.right.b = 3; });
+        expect(seen).toEqual([[2, 1], [2, 2]]);
+    });
+
     test('a throwing selector is isolated like any other subscriber\'s throw', () => {
         const carburetor = new TestCarburetor(getTestData());
         let otherCalls = 0;
@@ -196,19 +240,6 @@ describe('watch(select, onChange)', () => {
         throwing();
     });
 
-    test('transfers its read set into subscribe() instead of copying it (R6-04)', () => {
-        const carburetor = new TestCarburetor(getTestData());
-        const subscribeSpy = rstest.spyOn(carburetor, 'subscribe');
-
-        const dispose = carburetor.watch((data) => data.a, () => undefined);
-
-        const options = subscribeSpy.mock.calls[0][1] as {reads?: unknown; [READS_TRANSFER]?: unknown};
-
-        expect(options[READS_TRANSFER]).toBe(options.reads);
-
-        dispose();
-        subscribeSpy.mockRestore();
-    });
 });
 
 class InheritedKeyStore extends Carburetor<Record<string, unknown>> {

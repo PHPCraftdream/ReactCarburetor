@@ -101,6 +101,24 @@ describe('ordered own keys in publications', () => {
         stop();
     });
 
+    test('reordered changed branches retain later leaf reads across publications', () => {
+        const store = new OrderedStore({item: {a: 1, b: 1}, leaf: 0});
+        const seen: Array<{keys: string[]; a: number; b: number}> = [];
+        const stop = store.watch(data => data.item, next => {
+            seen.push({keys: Object.keys(next), a: next.a, b: next.b});
+        });
+        store.setData({item: {b: 1, a: 2}, leaf: 0});
+        store.changeItem('b', 2);
+        store.changeItem('a', 3);
+        expect(store.getData().item).toEqual({b: 2, a: 3});
+        expect(seen).toEqual([
+            {keys: ['b', 'a'], a: 2, b: 1},
+            {keys: ['b', 'a'], a: 2, b: 2},
+            {keys: ['b', 'a'], a: 3, b: 2},
+        ]);
+        stop();
+    });
+
     test('only a positional string-key deletion signals owned replay', () => {
         const store = new OrderedStore({item: {a: 1, b: 2, c: 3}, leaf: 7});
         let orderChanges = 0;
