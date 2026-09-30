@@ -1,1 +1,0 @@
-let e="u">typeof process&&!1;export{e as IS_DEVELOPMENT};

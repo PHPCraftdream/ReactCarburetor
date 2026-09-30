@@ -1,1 +1,0 @@
-let e=e=>"getSnapshotVersion"in e&&"function"==typeof e.getSnapshotVersion?e.getSnapshotVersion():e.getVersion();export{e as getComputedSnapshotVersion};

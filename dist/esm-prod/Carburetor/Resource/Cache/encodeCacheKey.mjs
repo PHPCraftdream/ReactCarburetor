@@ -1,1 +1,0 @@
-import{escapeCacheKey as e}from"./escapeCacheKey.mjs";let o=o=>e(JSON.stringify(void 0===o?null:o));export{o as encodeCacheKey};

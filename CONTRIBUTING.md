@@ -208,6 +208,10 @@ npm test             # Rstest + @testing-library/react
 npm run test:rules   # just the lint rules, when that is what you changed
 ```
 
+`dist/` is generated and ignored by Git; do not commit bundles or declarations.
+`npm pack` and `npm publish` rebuild it through `prepack`. The package's `files`
+allowlist still includes `dist`, so published consumers receive compiled artifacts.
+
 The demo app has its own package:
 
 ```bash

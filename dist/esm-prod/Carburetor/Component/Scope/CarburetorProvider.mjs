@@ -1,1 +1,0 @@
-"use client";import{CarburetorContext as r}from"./CarburetorContext.mjs";import*as e from"react";class t extends e.Component{render(){return e.createElement(r.Provider,{value:this.props.scope},this.props.children)}}export{t as CarburetorProvider};

@@ -1,1 +1,0 @@
-let r=r=>r instanceof Error?r.message:String(r);export{r as describeError};

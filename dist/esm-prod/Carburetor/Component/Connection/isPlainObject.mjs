@@ -1,1 +1,0 @@
-let t=t=>{if("object"!=typeof t||null===t||Array.isArray(t))return!1;let e=Object.getPrototypeOf(t);return null===e||e===Object.prototype};export{t as isPlainObject};

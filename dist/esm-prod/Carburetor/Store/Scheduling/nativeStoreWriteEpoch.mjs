@@ -1,1 +1,0 @@
-import{sharedSingleton as e}from"../Utils/sharedSingleton.mjs";let t=e("nativeStoreWriteEpoch",()=>({value:0,sources:new WeakMap}));export{t as nativeStoreWriteEpoch};

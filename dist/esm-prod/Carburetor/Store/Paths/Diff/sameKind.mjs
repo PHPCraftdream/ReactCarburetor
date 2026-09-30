@@ -1,1 +1,0 @@
-let r=(r,t)=>Array.isArray(r)===Array.isArray(t)&&Object.getPrototypeOf(r)===Object.getPrototypeOf(t);export{r as sameKind};

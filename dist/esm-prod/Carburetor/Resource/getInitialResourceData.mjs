@@ -1,1 +1,0 @@
-import{EResourceStatus as t}from"../Models/Enums/EResourceStatus.mjs";let e=()=>({status:t.Idle,data:void 0,error:void 0,updatedAt:void 0});export{e as getInitialResourceData};

@@ -1,1 +1,0 @@
-let r=Symbol.for("react-carburetor/v1/patch-opaque");export{r as PATCH_OPAQUE};

@@ -1,1 +1,0 @@
-import{sharedSingleton as e}from"../Utils/sharedSingleton.mjs";let t=e("liveViews",()=>new WeakMap),a={note:e=>{t.has(e)||t.set(e,void 0)},noteReadTarget:(e,a)=>{t.set(e,a)},noteDynamicReadTarget:(e,a)=>{t.set(e,a)},readTarget:e=>{let a=t.get(e);return"function"==typeof a?a():a},has:e=>"object"==typeof e&&null!==e&&t.has(e)};export{a as liveViews};

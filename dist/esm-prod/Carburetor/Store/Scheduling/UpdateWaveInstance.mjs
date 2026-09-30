@@ -1,1 +1,0 @@
-import{sharedSingleton as e}from"../Utils/sharedSingleton.mjs";import{UpdateWave as t}from"./UpdateWave.mjs";let a=e("updateWave",()=>new t);export{a as updateWave};

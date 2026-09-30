@@ -1,1 +1,0 @@
-let t=t=>{if(null===t||"object"!=typeof t)return!1;let e=Object.getPrototypeOf(t);return e===Object.prototype||e===Array.prototype||null===e};export{t as isTrackable};

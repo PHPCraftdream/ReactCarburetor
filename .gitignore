@@ -19,6 +19,9 @@
 /.npmrc
 /node_modules/
 
+# Generated library bundles and declarations; npm prepack rebuilds them.
+/dist/
+
 # Rust build artefacts for the native linter
 native/target/
 

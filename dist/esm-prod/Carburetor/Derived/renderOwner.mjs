@@ -1,1 +1,0 @@
-let e=new class{current=void 0;get(){return this.current}set(e){this.current=e}};export{e as renderOwner};

@@ -1,1 +1,0 @@
-import"../Diagnostics/DiagnosticsInstance.mjs";import{updateBatch as t}from"./UpdateBatchInstance.mjs";let n=n=>{t.begin();try{return n()}finally{t.end()}};export{n as transaction};

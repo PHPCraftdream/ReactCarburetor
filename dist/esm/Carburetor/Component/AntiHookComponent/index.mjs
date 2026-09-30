@@ -1,1 +1,0 @@
-export { AntiHookComponent } from "./AntiHookComponent.mjs";

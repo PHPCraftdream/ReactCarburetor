@@ -1,1 +1,0 @@
-import{PATH_SEPARATOR as t}from"../PathSeparator.mjs";let r=r=>r?r+t+"~k":"~k";export{r as keysPath};

@@ -1,1 +1,0 @@
-let e=(e,r)=>{for(let r of Object.keys(e)){let t=e[r];if(t.source.getVersion()!==t.version)return!0}for(let t of Object.keys(r))if(!Object.prototype.hasOwnProperty.call(e,t))return!0;return!1};export{e as driftedSince};

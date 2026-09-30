@@ -1,1 +1,0 @@
-class e{schedule(e,c){c()}cancel(e){}}export{e as SyncUpdateScheduler};
