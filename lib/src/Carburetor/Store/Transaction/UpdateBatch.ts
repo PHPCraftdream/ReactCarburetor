@@ -18,18 +18,23 @@ export class UpdateBatch {
     /** Writes collected per carburetor while the transaction is open, delivered once at flush. */
     protected pending: Map<INotifiable, TPathSet> = new Map<INotifiable, TPathSet>();
 
-    /** Whether a transaction is open, so writes are collected rather than delivered. */
-    public isActive = (): boolean => {
+    /**
+     * Whether a transaction is open, so writes are collected rather than delivered.
+     *
+     * A method, not an arrow field: every overridable member here is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     */
+    public isActive(): boolean {
         return this.depth > 0;
-    };
+    }
 
     /** Opens a transaction; nesting is counted, so only the outermost one delivers. */
-    public begin = (): void => {
+    public begin(): void {
         this.depth++;
-    };
+    }
 
     /** Closes a transaction, delivering everything collected once the outermost one ends. */
-    public end = (): void => {
+    public end(): void {
         this.depth--;
 
         if (this.depth > 0) {
@@ -38,30 +43,31 @@ export class UpdateBatch {
 
         this.depth = 0;
         this.flush();
-    };
+    }
 
     /**
      * Merges writes into what a carburetor will be notified about.
      *
      * @param target - the carburetor the writes belong to; the map key that folds repeated
      * adds into the single notification pass flush() gives it
-     * @param writes - the paths changed; the first add copies the set, so the caller stays
-     * free to keep mutating its own
+     * @param writes - the paths changed; the first add adopts the set as given, so the caller
+     * must be handing over ownership (emitUpdate always does) rather than keeping it around to
+     * mutate further
      */
-    public add = (target: INotifiable, writes: TPathSet): void => {
+    public add(target: INotifiable, writes: TPathSet): void {
         const merged = this.pending.get(target);
 
         if (!merged) {
-            this.pending.set(target, new Set<TPath>(writes));
+            this.pending.set(target, writes);
 
             return;
         }
 
         writes.forEach((path: TPath) => merged.add(path));
-    };
+    }
 
     /** Delivers one notification pass per carburetor, draining what the passes add. */
-    protected flush = (): void => {
+    protected flush(): void {
         // The whole drain is one wave: a transaction writing several carburetors is one
         // logical write, so a computation reading several of them settles once, after all
         // of them have been told, instead of once per store.
@@ -99,5 +105,5 @@ export class UpdateBatch {
         } finally {
             updateWave.end();
         }
-    };
+    }
 }

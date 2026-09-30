@@ -9,13 +9,16 @@ use oxc_syntax::scope::ScopeFlags;
 
 use crate::rules::support::chain::{chain_root, Base};
 
-/// Every member-position occurrence of a member's name across the file. `this.<name>` and
-/// `this.#<name>` inside the class being fixed — and nothing else — may be rewritten; every
-/// other form (`other.name`, `obj["name"]`, `super.name`, `this.<name>` in another class of the
-/// file, `ClassName.<name>` for a static) blocks the fix, because moving the member out only
-/// stays safe while this file touches it exactly there.
+/// Every member-position occurrence of a member's name across the file. Only `this.#<name>` (a
+/// private target) or `this.<name>` (a public one) inside the class being fixed may be rewritten;
+/// the other form of the same bare name is a different member and is ignored. Every other form
+/// (`other.name`, `obj["name"]`, `super.name`, `this.<name>` in another class of the file,
+/// `ClassName.<name>` for a static) blocks the fix, because moving the member out only stays
+/// safe while this file touches it exactly there.
 pub(super) struct ReferenceScan<'n> {
     name: &'n str,
+    /// Whether the target is `#private`: selects `this.#<name>` over `this.<name>`.
+    private: bool,
     /// The class the member would leave; its `this` is the only `this` a hit may be rooted at.
     class_span: Span,
     /// Whether the class being walked is the one being fixed, innermost last.
@@ -105,7 +108,7 @@ impl<'a, 'n> Visit<'a> for ReferenceScan<'n> {
     fn visit_expression(&mut self, expression: &Expression<'a>) {
         match expression {
             Expression::StaticMemberExpression(member) => {
-                if member.property.name.as_str() == self.name {
+                if !self.private && member.property.name.as_str() == self.name {
                     // The same resolution `closures.rs` uses for this-chains: `this.a.<name>`
                     // is a hit on `a`, not on the member, and `super.<name>` is rooted at
                     // nothing the class owns.
@@ -117,7 +120,7 @@ impl<'a, 'n> Visit<'a> for ReferenceScan<'n> {
                 }
             }
             Expression::PrivateFieldExpression(member) => {
-                if member.field.name.as_str() == self.name {
+                if self.private && member.field.name.as_str() == self.name {
                     let root = chain_root(&member.object);
 
                     // `this.a.#name` reads the private member off `a`, not off the instance.
@@ -167,14 +170,16 @@ impl<'a, 'n> Visit<'a> for ReferenceScan<'n> {
     }
 }
 
-/// Scans the whole file for member-position hits of `name`.
+/// Scans the whole file for member-position hits of `name` in the form `private` selects.
 pub(super) fn scan_references<'n>(
     program: &Program<'_>,
     name: &'n str,
+    private: bool,
     class_span: Span,
 ) -> ReferenceScan<'n> {
     let mut scan = ReferenceScan {
         name,
+        private,
         class_span,
         classes: Vec::new(),
         member_roots: Vec::new(),

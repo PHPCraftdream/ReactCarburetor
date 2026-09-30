@@ -1,17 +1,17 @@
-import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {PROXY_CACHE} from "@/Carburetor/Store/Tracking/Models";
+"use client";
+
+import {TPathSet} from "@/Carburetor/Models/Paths";
+import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
+import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
 import {
     IAttemptEntry,
     IConnection,
     IDependencyDescription,
     IDependencySlot,
+    ITrackedCarburetor,
 } from "@/Carburetor/Component/Models/Connection";
 import {AntiHookComponentEffects} from "./Effects";
-
-const CONNECTION_ATTEMPT_KEY = "c:";
-const TRACKED_ATTEMPT_KEY = "t:";
-const describeFailure = (error: unknown): string =>
-    (error instanceof Error ? error.message : String(error));
 
 const sameReads = (a: TPathSet, b: TPathSet): boolean => {
     if (a.size !== b.size) {
@@ -32,6 +32,15 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      *
      * `forceUpdate` deliberately skips `shouldComponentUpdate`: the props gate must not be able
      * to swallow an update the component is itself subscribed to.
+     *
+     * Stays a per-instance arrow field rather than a shared prototype method: `subscribe` is
+     * handed a detached callback it stores and invokes with no receiver, so whatever reaches
+     * the store must already be bound to this instance. `renderGetter`/`renderSetter` can be one
+     * shared static pair (R14-05) only because React looks `render` up as a property of `this`
+     * and calls it as a method; a callback handed to `subscribe` gets no such lookup, so a bound
+     * function costs the same one-object-per-instance as this closure does. Subscribing keys by
+     * `uid`, not by this function's identity, but the identity still has to exist somewhere to
+     * be callable at all.
      */
     protected onCarburetorUpdate = (): void => {
         this.forceUpdate();
@@ -67,67 +76,147 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         if (fresh) {
             this.committedAttempt = attempt;
 
+            const trackedEntries = attempt.tracked;
+            const touchedConnections = attempt.connections;
+
             // A record the attempt did not touch is gone from the render: release its
             // subscription and drop the record. A connection the attempt did not touch keeps
             // its declaration but loses its committed description — and with it, below, the
-            // subscription: an unused connection must have no active read subscription.
-            Object.keys(this.tracked).forEach((cuid: string) => {
-                if (attempt.entries.has(TRACKED_ATTEMPT_KEY + cuid)) {
-                    return;
+            // subscription: an unused connection must have no active read subscription. An
+            // absent collection reads exactly like an empty one: nothing was touched.
+            if (this.tracked !== undefined) {
+                for (const [source, slot] of this.tracked) {
+                    if (trackedEntries !== undefined && trackedEntries.has(source)) {
+                        continue;
+                    }
+
+                    this.releaseSlot(this.uid, slot);
+                    this.tracked.delete(source);
+                }
+            }
+
+            for (const connection of this.connections) {
+                // Touched this attempt only when the tag matches AND an entry was actually
+                // recorded: resolving the source alone (an `ownKeys`/`has` probe with no path
+                // read) tags the connection but never builds an entry, exactly like the old
+                // per-attempt map, which only ever gained one from a recorded read.
+                if (connection.attemptTag === attempt && connection.attemptEntry !== undefined) {
+                    continue;
                 }
 
-                this.releaseSlot(this.uid, this.tracked[cuid]);
-                delete this.tracked[cuid];
-            });
+                connection.committed = undefined;
+                // Dropped rather than left stale: an unread connection must not keep pinning
+                // last attempt's resolved source and read set alive indefinitely.
+                connection.attemptTag = undefined;
+                connection.attemptSource = undefined;
+                connection.attemptEntry = undefined;
+            }
 
-            this.connections.forEach((connection: IConnection) => {
-                if (!attempt.entries.has(CONNECTION_ATTEMPT_KEY + connection.uid)) {
-                    connection.committed = undefined;
+            // The attempt's read sets become the committed descriptions as-is: recorders write
+            // only while their attempt is open, and it has closed by now. A source still
+            // tracked from the previous commit keeps its slot object, and a slot that already
+            // has a description keeps that object too — both are updated in place rather than
+            // replaced, since nothing outside this method holds either past a single commit.
+            if (trackedEntries !== undefined) {
+                for (const [source, entry] of trackedEntries) {
+                    const existing = this.tracked?.get(source);
+
+                    if (existing) {
+                        this.applyDescription(existing, entry);
+                    } else {
+                        this.ensureTracked().set(source, {
+                            committed: this.buildDescription(entry),
+                            installed: undefined,
+                        });
+                    }
                 }
-            });
+            }
 
-            // What the attempt read becomes the new committed description. The set is copied
-            // at this tentative-to-committed transition so a later read through a stale
-            // captured view cannot alter what a commit established.
-            attempt.entries.forEach((entry: IAttemptEntry, key: string) => {
-                const description: IDependencyDescription = {
-                    carburetor: entry.source,
-                    baselineVersion: entry.baselineVersion,
-                    reads: new Set<TPath>(entry.reads),
-                };
+            if (touchedConnections !== undefined) {
+                for (const connection of touchedConnections) {
+                    const entry = connection.attemptEntry;
 
-                if (entry.connection) {
-                    entry.connection.committed = description;
-
-                    return;
+                    if (entry !== undefined) {
+                        this.applyDescription(connection, entry);
+                    }
                 }
+            }
 
-                const cuid = key.slice(TRACKED_ATTEMPT_KEY.length);
-                const known = this.tracked[cuid];
-
-                this.tracked[cuid] = {
-                    committed: description,
-                    installed: known ? known.installed : undefined,
-                };
-            });
+            // From here on only identity matters — a replayed commit re-aligns from the
+            // descriptions just published above, never from the attempt itself — and
+            // `deferredLoads`, which `loadStaleResources` drains right after this returns.
+            // Releasing the rest here, rather than waiting for the attempt to be replaced by a
+            // future render, is what keeps a retained `pendingAttempt`/`committedAttempt` from
+            // holding this render's dependency maps alive indefinitely.
+            attempt.tracked = undefined;
+            attempt.connections = undefined;
         }
 
         let changedDuringRender = false;
 
-        Object.keys(this.tracked).forEach((cuid: string) => {
-            if (this.alignSubscription(this.uid, this.tracked[cuid])) {
-                changedDuringRender = true;
+        if (this.tracked !== undefined) {
+            for (const slot of this.tracked.values()) {
+                if (this.alignSubscription(this.uid, slot)) {
+                    changedDuringRender = true;
+                }
             }
-        });
+        }
 
-        this.connections.forEach((connection: IConnection) => {
+        for (const connection of this.connections) {
             if (this.alignSubscription(connection.uid, connection)) {
                 changedDuringRender = true;
             }
-        });
+        }
 
         if (changedDuringRender) {
             this.forceUpdate();
+        }
+    }
+
+    /**
+     * Returns the tracked map, allocating it on first use.
+     *
+     * A `connect()`-only component never calls `useCarburetor`/`useComputed`/`useResource`, so
+     * it never needs this map; allocating it here, rather than as a class field default, keeps
+     * that component from paying for a collection it will never fill.
+     */
+    private ensureTracked(): Map<ICarburetorSubscription, ITrackedCarburetor> {
+        if (this.tracked === undefined) {
+            this.tracked = new Map();
+        }
+
+        return this.tracked;
+    }
+
+    /**
+     * Builds a fresh committed description out of one attempt entry.
+     *
+     * @param entry - the attempt's record for the source being committed
+     */
+    private buildDescription(entry: IAttemptEntry): IDependencyDescription {
+        return {carburetor: entry.source, baselineVersion: entry.baselineVersion, reads: entry.reads};
+    }
+
+    /**
+     * Publishes one attempt entry onto a slot's committed description, reusing the existing
+     * description object when there is one instead of allocating a fresh one every commit.
+     *
+     * Safe to mutate in place: a committed description is read only through `slot.committed`
+     * inside `alignSubscription`, in the same synchronous call that follows this one, and is
+     * never held past it or compared by identity anywhere else.
+     *
+     * @param slot - the tracked slot or connection being committed
+     * @param entry - the attempt's record for the source being committed
+     */
+    private applyDescription(slot: IDependencySlot, entry: IAttemptEntry): void {
+        const description = slot.committed;
+
+        if (description) {
+            description.carburetor = entry.source;
+            description.baselineVersion = entry.baselineVersion;
+            description.reads = entry.reads;
+        } else {
+            slot.committed = this.buildDescription(entry);
         }
     }
 
@@ -136,11 +225,18 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      *
      * No description means nothing may be listening: an installed handle is unsubscribed and
      * cleared. Otherwise a handle pointing at another carburetor is dropped first, and an
-     * unchanged read set skips re-registering. Returns the drift check: whether the store's
-     * version moved past the description's baseline, i.e. whether a write landed between the
-     * render's read and this commit — anchored to the baseline captured at the attempt's first
-     * read, not refreshed after every access, which is what keeps an unused connection from
-     * looping forceUpdate forever.
+     * unchanged read set skips re-registering. Returns the drift check: whether a write that
+     * could concern the committed read set landed between the render's read and this commit —
+     * anchored to the baseline captured at the attempt's first read, not refreshed after every
+     * access, which is what keeps an unused connection from looping forceUpdate forever.
+     *
+     * A version equal to the baseline means nothing was written at all since then, so there is
+     * nothing further to check. A version that moved asks the source's own write log (R16-05)
+     * which paths actually changed, and reports a drift only when one of them concerns what was
+     * read — the same three cases `SubscriberIndex.match` uses: the same path, a written
+     * ancestor, a written descendant. A source with no such log (`hasDriftSince` absent, e.g. a
+     * computed, which invalidates at the granularity of its whole value) keeps today's coarser
+     * answer: any version change is a drift.
      *
      * @param uid - the id the slot's registration is keyed under: the component's own for
      * `tracked` records, the connection's own for connections
@@ -169,13 +265,22 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         // cost. The version check below still runs either way.
         if (slot.installed === undefined || !sameReads(slot.installed.reads, committed.reads)) {
             // Subscribing with the slot's own id replaces the previous registration instead of
-            // adding a second one. The carburetor copies the read set, so reads happening later
-            // outside render cannot extend an established subscription.
-            committed.carburetor.subscribe(this.onCarburetorUpdate, {id: uid, reads: committed.reads});
-            slot.installed = {carburetor: committed.carburetor, reads: new Set<TPath>(committed.reads)};
+            // adding a second one. transferReads(): committed.reads is this attempt's own Set,
+            // never touched again outside render, so the carburetor adopts it instead of copying.
+            committed.carburetor.subscribe(this.onCarburetorUpdate, transferReads(committed.reads, uid));
+            slot.installed = {carburetor: committed.carburetor, reads: committed.reads};
         }
 
-        return committed.carburetor.getVersion() !== committed.baselineVersion;
+        const {carburetor, baselineVersion, reads} = committed;
+        const version = getComputedSnapshotVersion(carburetor);
+
+        if (version === baselineVersion) {
+            return false;
+        }
+
+        const hasDriftSince = carburetor.hasDriftSince;
+
+        return hasDriftSince === undefined || hasDriftSince.call(carburetor, baselineVersion, reads);
     }
 
     /**
@@ -208,8 +313,8 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * through a fresh attempt, which clears descriptions wholesale, not through this method.
      */
     protected releaseSubscriptions(): void {
-        Object.keys(this.tracked).forEach((cuid: string) => {
-            this.releaseSlot(this.uid, this.tracked[cuid]);
+        this.tracked?.forEach((slot: ITrackedCarburetor) => {
+            this.releaseSlot(this.uid, slot);
         });
 
         this.connections.forEach((connection: IConnection) => {
@@ -217,51 +322,5 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         });
 
         this.renderAttempt = undefined;
-    }
-
-    /**
-     * Drops every connect()/connectSelection() view's watcher slot from its store's shared
-     * invalidation scope, so an unmounted component stops being scanned on the next write or
-     * cache construction there instead of waiting on garbage collection (R3-07).
-     *
-     * Read from `this.connections`, not a separately populated/cleared list: a connection's
-     * declaration is never pruned, so its `view` reference survives a StrictMode-replayed
-     * componentWillUnmount/componentDidMount pair intact, and a real unmount later still finds
-     * whichever facade the persistent declaration currently owns — even one built after a root
-     * replacement that happened between the replay and the real unmount (R4-05). A list
-     * populated once by connect()/connectSelection() and unconditionally emptied here on every
-     * unmount, replay included, had nothing to repopulate it before that later real unmount.
-     *
-     * `PROXY_CACHE` is a peek, not a read (R4-09): a declaration never actually read during
-     * this component's life has no cache built for it, and the facade answers `undefined`
-     * instead of resolving the source and minting one from scratch just to release it here.
-     *
-     * Each view is released in isolation, the same way `releaseEffects` isolates each cleanup:
-     * one view whose source can no longer be resolved must not cost the views after it their
-     * release.
-     */
-    protected releaseConnectionViews(): void {
-        const failures: unknown[] = [];
-
-        this.connections.forEach((connection: IConnection) => {
-            const view = connection.view;
-
-            if (view === undefined) {
-                return;
-            }
-
-            try {
-                const cache = (view as {[PROXY_CACHE]?: {release?: () => void}})[PROXY_CACHE];
-
-                cache?.release?.();
-            } catch (error: unknown) {
-                failures.push(error);
-            }
-        });
-
-        failures.forEach((error: unknown) => this.reportTeardownFailure(
-            "releasing a connect() view's cache threw while a component unmounted: " +
-            describeFailure(error) + '. The teardown completed anyway.'
-        ));
     }
 }

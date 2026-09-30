@@ -1,3 +1,4 @@
+import { TReadonly } from "../../Models/Base.mjs";
 import { ICarburetor, ICarburetorSubscription } from "../../Models/Store.mjs";
 import { TPathRecorder, TPathSet } from "../../Models/Paths.mjs";
 /**
@@ -56,6 +57,17 @@ export interface IDependencySlot {
  */
 export interface ITrackedCarburetor extends IDependencySlot {
 }
+/** `useCarburetor`'s persistent root view for one carburetor; see buildTrackedView. */
+export interface ITrackedView<T extends object> {
+    /** The data object this view was built for; a different object triggers a rebuild. */
+    data: T;
+    /** The read proxy itself, built once and reused for as long as `data` stays current. */
+    view: TReadonly<T>;
+    /** The render attempt captured at the most recent `useCarburetor()` call for this carburetor. */
+    attempt: IRenderAttempt | undefined;
+    /** That attempt's tracked entry, paired with `attempt`: where the recorder reports paths. */
+    entry: IAttemptEntry | undefined;
+}
 /**
  * A `connect()` declaration's bookkeeping: one persistent slot, independent of any one render.
  *
@@ -76,14 +88,20 @@ export interface IConnection extends IDependencySlot {
      */
     getCarburetor: () => ICarburetorSubscription;
     /**
-     * The connect()/connectSelection() facade this declaration built, if either was ever
-     * called on it (R4-05). Set once and never cleared, alongside the connection itself, so
-     * ownership of the facade's read-proxy cache survives a StrictMode replay's
-     * componentWillUnmount/componentDidMount pair the same way the declaration does — unlike a
-     * separately populated list, which a replayed unmount would empty with no fresh render to
-     * repopulate it before the eventual real unmount.
+     * The attempt this connection's `attemptSource`/`attemptEntry` were captured for; R16-09
+     * moved both off a per-render `Map` and onto the connection itself so a render touching a
+     * connection allocates neither. A mismatch against the attempt currently open means both are
+     * stale and must be rebuilt before use — see `declareConnection`'s `tagAttempt`.
      */
-    view?: object;
+    attemptTag: IRenderAttempt | undefined;
+    /** The source `resolveAttemptSource` resolved for `attemptTag`; stale once the tag mismatches. */
+    attemptSource: ICarburetorSubscription | undefined;
+    /**
+     * This connection's read record for `attemptTag`, created on the first path a render
+     * actually reads through it — resolving the source alone does not set this, matching the
+     * old `attempt.connections` map, which only ever gained an entry from a recorded read.
+     */
+    attemptEntry: IAttemptEntry | undefined;
 }
 /**
  * One source's read record inside one render attempt: tentative, and never merged across
@@ -92,10 +110,10 @@ export interface IConnection extends IDependencySlot {
  * The source and its baseline version are captured once, at the first read of the attempt —
  * not refreshed after every property access — so a write landing mid-render or mid-commit
  * stays detectable at commit time. Later reads in the same attempt only grow the path set.
+ * Which of the attempt's two maps holds an entry already says whether it is a connection's or
+ * a tracked carburetor's, so the entry itself does not need to say so.
  */
 export interface IAttemptEntry {
-    /** Set for a connection read: where a commit publishes the description built from this entry. */
-    connection: IConnection | undefined;
     /** The carburetor the read resolved to, captured at the attempt's first touch. */
     source: ICarburetorSubscription;
     /** The store version at that first touch; the commit-time drift check anchors here. */
@@ -111,30 +129,38 @@ export interface IAttemptEntry {
  * during the render→commit gap, so child mount callbacks, sibling renders, effects and
  * handlers reading a captured view cannot alter this render's dependency set or version
  * evidence. An abandoned attempt (its render threw) is never consumed by a commit.
+ *
+ * Every collection here starts absent and is allocated by whichever read API first needs it: a
+ * render that never calls `connect()`/`connectSelection()` or `useResource()` never allocates
+ * `connections` or `deferredLoads`, and one that reads nothing at all allocates none of them.
+ * `commitSubscriptions` treats an absent collection exactly like an empty one.
  */
 export interface IRenderAttempt {
-    /** Collected entries, keyed by `CONNECTION_ATTEMPT_KEY`/`TRACKED_ATTEMPT_KEY` + source uid. */
-    entries: Map<string, IAttemptEntry>;
+    /** `useCarburetor`/`useComputed`/`useResource` entries, keyed by the source read. */
+    tracked: Map<ICarburetorSubscription, IAttemptEntry> | undefined;
     /**
-     * Sources already resolved during this attempt, keyed like `entries`. The per-attempt memo
-     * behind a connection's resolution: view resolution and the recorder's baseline capture
-     * share it, so reading several fields resolves the source once per attempt instead of once
-     * per field. It dies with the attempt, so no source selection survives into a later render.
+     * `connect()`-family connections this attempt actually read a path through, in touch order.
+     * R16-09: the entry each one collected lives on the connection itself (`attemptEntry`),
+     * tagged with this attempt, so this array only has to say which connections to look at —
+     * not carry a second copy of what they collected.
      */
-    sources: Map<string, ICarburetorSubscription>;
+    connections: IConnection[] | undefined;
     /**
      * The fetches this render queued: tentative like everything else the attempt collected,
      * becoming real only if a commit consumes this attempt. An abandoned attempt's queue dies
      * with the attempt, so a render that never committed cannot leave network work behind for a
      * later commit on the same instance to run.
      */
-    deferredLoads: (() => void)[];
+    deferredLoads: (() => void)[] | undefined;
     /** True when the render threw — an error or a Suspense thenable; a commit will not consume it. */
     abandoned: boolean;
 }
 /**
- * What one connect()-family declaration hands its owner: the registered connection plus the
- * closures the persistent view and the recorder are built on.
+ * What one connect()-family declaration hands its owner: the registered connection, the
+ * resolver/recorder the persistent view is built on, and the facade's own mutable state.
+ *
+ * One object serves both declareConnection's bookkeeping and the facade cache:
+ * `ConnectionFacadeHandler` reads and writes this instance instead of holding a second copy.
  */
 export interface IConnectionSource<T extends object> {
     /** The connection this declaration registered. */
@@ -145,4 +171,18 @@ export interface IConnectionSource<T extends object> {
     resolveAttemptSource: () => ICarburetor<T>;
     /** The read recorder every read through the persistent view reports to. */
     recorder: TPathRecorder;
+    /**
+     * Whether the facade is array-shaped; fixed once by buildPersistentView's declaration-time
+     * probe and never changed afterward — a Proxy's target kind cannot change after creation.
+     */
+    arrayFacade: boolean;
+    /**
+     * The shape probe's own error, when reading the source at declaration time threw — kept so
+     * it can be attached as a later kind-mismatch's cause instead of being discarded.
+     */
+    probeError: unknown;
+    /** The data object the persistent view was last built for; a different object rebuilds it. */
+    cachedTarget: T | undefined;
+    /** The persistent view built over `cachedTarget`; reused while `cachedTarget` stays current. */
+    cachedView: TReadonly<T> | undefined;
 }

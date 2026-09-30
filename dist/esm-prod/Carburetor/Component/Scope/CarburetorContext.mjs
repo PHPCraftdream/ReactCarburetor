@@ -1,1 +1,1 @@
-import*as t from"react";let e=t.createContext(null);export{e as CarburetorContext};
+"use client";import{sharedSingleton as t}from"../../Store/Utils/sharedSingleton.mjs";import*as e from"react";let r=t("CarburetorContext",()=>e.createContext(null),e.Component);export{r as CarburetorContext};

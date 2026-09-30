@@ -119,6 +119,27 @@ jobs:
       - name: Test
         run: npx rstest run __tests__/Engine __tests__/Demo
 
+  # Installs the packed tarball into fresh npm/pnpm consumers on React 18 and 19, ESM and CJS:
+  # typecheck, render, instanceof the consumer's own React.Component, duplicate-copy diagnostic.
+  consumer-matrix:
+    name: Consumer matrix
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Enable corepack (pnpm)
+        run: corepack enable
+
+      - name: Install
+        run: npm ci
+
+      - name: Consumer matrix
+        run: npm run test:consumers
+
   native:
     name: Native linter
     runs-on: ubuntu-latest

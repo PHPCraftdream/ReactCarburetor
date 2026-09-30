@@ -1,8 +1,7 @@
-import { PROXY_CACHE } from "../../Store/Tracking/Models.mjs";
+"use client";
+import { transferReads } from "../../Store/Paths/Markers/transferReads.mjs";
+import { getComputedSnapshotVersion } from "../../Derived/Freshness/getComputedSnapshotVersion.mjs";
 import { AntiHookComponentEffects } from "./Effects.mjs";
-const CONNECTION_ATTEMPT_KEY = "c:";
-const TRACKED_ATTEMPT_KEY = "t:";
-const describeFailure = (error)=>error instanceof Error ? error.message : String(error);
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
@@ -17,40 +16,61 @@ class AntiHookComponentSubscriptions extends AntiHookComponentEffects {
         const fresh = void 0 !== attempt && !attempt.abandoned && attempt !== this.committedAttempt;
         if (fresh) {
             this.committedAttempt = attempt;
-            Object.keys(this.tracked).forEach((cuid)=>{
-                if (attempt.entries.has(TRACKED_ATTEMPT_KEY + cuid)) return;
-                this.releaseSlot(this.uid, this.tracked[cuid]);
-                delete this.tracked[cuid];
-            });
-            this.connections.forEach((connection)=>{
-                if (!attempt.entries.has(CONNECTION_ATTEMPT_KEY + connection.uid)) connection.committed = void 0;
-            });
-            attempt.entries.forEach((entry, key)=>{
-                const description = {
-                    carburetor: entry.source,
-                    baselineVersion: entry.baselineVersion,
-                    reads: new Set(entry.reads)
-                };
-                if (entry.connection) {
-                    entry.connection.committed = description;
-                    return;
+            const trackedEntries = attempt.tracked;
+            const touchedConnections = attempt.connections;
+            if (void 0 !== this.tracked) {
+                for (const [source, slot] of this.tracked)if (!(void 0 !== trackedEntries && trackedEntries.has(source))) {
+                    this.releaseSlot(this.uid, slot);
+                    this.tracked.delete(source);
                 }
-                const cuid = key.slice(TRACKED_ATTEMPT_KEY.length);
-                const known = this.tracked[cuid];
-                this.tracked[cuid] = {
-                    committed: description,
-                    installed: known ? known.installed : void 0
-                };
-            });
+            }
+            for (const connection of this.connections)if (connection.attemptTag !== attempt || void 0 === connection.attemptEntry) {
+                connection.committed = void 0;
+                connection.attemptTag = void 0;
+                connection.attemptSource = void 0;
+                connection.attemptEntry = void 0;
+            }
+            if (void 0 !== trackedEntries) for (const [source, entry] of trackedEntries){
+                var _this_tracked;
+                const existing = null == (_this_tracked = this.tracked) ? void 0 : _this_tracked.get(source);
+                if (existing) this.applyDescription(existing, entry);
+                else this.ensureTracked().set(source, {
+                    committed: this.buildDescription(entry),
+                    installed: void 0
+                });
+            }
+            if (void 0 !== touchedConnections) for (const connection of touchedConnections){
+                const entry = connection.attemptEntry;
+                if (void 0 !== entry) this.applyDescription(connection, entry);
+            }
+            attempt.tracked = void 0;
+            attempt.connections = void 0;
         }
         let changedDuringRender = false;
-        Object.keys(this.tracked).forEach((cuid)=>{
-            if (this.alignSubscription(this.uid, this.tracked[cuid])) changedDuringRender = true;
-        });
-        this.connections.forEach((connection)=>{
-            if (this.alignSubscription(connection.uid, connection)) changedDuringRender = true;
-        });
+        if (void 0 !== this.tracked) {
+            for (const slot of this.tracked.values())if (this.alignSubscription(this.uid, slot)) changedDuringRender = true;
+        }
+        for (const connection of this.connections)if (this.alignSubscription(connection.uid, connection)) changedDuringRender = true;
         if (changedDuringRender) this.forceUpdate();
+    }
+    ensureTracked() {
+        if (void 0 === this.tracked) this.tracked = new Map();
+        return this.tracked;
+    }
+    buildDescription(entry) {
+        return {
+            carburetor: entry.source,
+            baselineVersion: entry.baselineVersion,
+            reads: entry.reads
+        };
+    }
+    applyDescription(slot, entry) {
+        const description = slot.committed;
+        if (description) {
+            description.carburetor = entry.source;
+            description.baselineVersion = entry.baselineVersion;
+            description.reads = entry.reads;
+        } else slot.committed = this.buildDescription(entry);
     }
     alignSubscription(uid, slot) {
         const committed = slot.committed;
@@ -67,16 +87,17 @@ class AntiHookComponentSubscriptions extends AntiHookComponentEffects {
             slot.installed = void 0;
         }
         if (void 0 === slot.installed || !sameReads(slot.installed.reads, committed.reads)) {
-            committed.carburetor.subscribe(this.onCarburetorUpdate, {
-                id: uid,
-                reads: committed.reads
-            });
+            committed.carburetor.subscribe(this.onCarburetorUpdate, transferReads(committed.reads, uid));
             slot.installed = {
                 carburetor: committed.carburetor,
-                reads: new Set(committed.reads)
+                reads: committed.reads
             };
         }
-        return committed.carburetor.getVersion() !== committed.baselineVersion;
+        const { carburetor, baselineVersion, reads } = committed;
+        const version = getComputedSnapshotVersion(carburetor);
+        if (version === baselineVersion) return false;
+        const hasDriftSince = carburetor.hasDriftSince;
+        return void 0 === hasDriftSince || hasDriftSince.call(carburetor, baselineVersion, reads);
     }
     releaseSlot(uid, slot) {
         if (slot.installed) {
@@ -85,28 +106,14 @@ class AntiHookComponentSubscriptions extends AntiHookComponentEffects {
         }
     }
     releaseSubscriptions() {
-        Object.keys(this.tracked).forEach((cuid)=>{
-            this.releaseSlot(this.uid, this.tracked[cuid]);
+        var _this_tracked;
+        null == (_this_tracked = this.tracked) || _this_tracked.forEach((slot)=>{
+            this.releaseSlot(this.uid, slot);
         });
         this.connections.forEach((connection)=>{
             this.releaseSlot(connection.uid, connection);
         });
         this.renderAttempt = void 0;
-    }
-    releaseConnectionViews() {
-        const failures = [];
-        this.connections.forEach((connection)=>{
-            const view = connection.view;
-            if (void 0 === view) return;
-            try {
-                var _cache_release;
-                const cache = view[PROXY_CACHE];
-                null == cache || null == (_cache_release = cache.release) || _cache_release.call(cache);
-            } catch (error) {
-                failures.push(error);
-            }
-        });
-        failures.forEach((error)=>this.reportTeardownFailure("releasing a connect() view's cache threw while a component unmounted: " + describeFailure(error) + '. The teardown completed anyway.'));
     }
 }
 export { AntiHookComponentSubscriptions };

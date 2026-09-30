@@ -27,16 +27,17 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
-const getUid = (()=>{
-    let uid = 0;
-    return ()=>{
-        uid++;
-        return 'carburetor-uid-' + uid;
-    };
-})();
-__webpack_require__.d(__webpack_exports__, {}, {
-    getUid: getUid
+__webpack_require__.d(__webpack_exports__, {
+    getUid: ()=>getUid
 });
+const external_sharedSingleton_js_namespaceObject = require("./sharedSingleton.js");
+const counter = (0, external_sharedSingleton_js_namespaceObject.sharedSingleton)('uidCounter', ()=>({
+        next: 0
+    }));
+const getUid = ()=>{
+    counter.next++;
+    return 'carburetor-uid-' + counter.next;
+};
 exports.getUid = __webpack_exports__.getUid;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "getUid"

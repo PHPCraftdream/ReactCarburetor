@@ -1,4 +1,5 @@
 "use strict";
+"use client";
 var __webpack_require__ = {};
 (()=>{
     __webpack_require__.d = (exports1, getters, values)=>{
@@ -31,6 +32,21 @@ __webpack_require__.d(__webpack_exports__, {
     useComputedValue: ()=>useComputedValue
 });
 const external_react_namespaceObject = require("react");
+const getComputedSnapshotVersion_js_namespaceObject = require("../Carburetor/Derived/Freshness/getComputedSnapshotVersion.js");
+const snapshots = new WeakMap();
+const readSnapshot = (source)=>{
+    const value = source.get();
+    const version = (0, getComputedSnapshotVersion_js_namespaceObject.getComputedSnapshotVersion)(source);
+    const previous = snapshots.get(source);
+    if (previous && previous.version === version && Object.is(previous.value, value)) return previous;
+    const snapshot = {
+        source,
+        version,
+        value
+    };
+    snapshots.set(source, snapshot);
+    return snapshot;
+};
 const useComputedValue = (computed)=>{
     const subscribe = (0, external_react_namespaceObject.useCallback)((onStoreChange)=>{
         const id = computed.subscribe(onStoreChange);
@@ -38,10 +54,10 @@ const useComputedValue = (computed)=>{
     }, [
         computed
     ]);
-    const getSnapshot = (0, external_react_namespaceObject.useCallback)(()=>computed.get(), [
+    const getSnapshot = (0, external_react_namespaceObject.useCallback)(()=>readSnapshot(computed), [
         computed
     ]);
-    return (0, external_react_namespaceObject.useSyncExternalStore)(subscribe, getSnapshot, getSnapshot);
+    return (0, external_react_namespaceObject.useSyncExternalStore)(subscribe, getSnapshot, getSnapshot).value;
 };
 exports.useComputedValue = __webpack_exports__.useComputedValue;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

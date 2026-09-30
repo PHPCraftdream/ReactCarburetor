@@ -1,5 +1,6 @@
 import {detachSelection} from "@/Carburetor/Component/Connection/detachSelection";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
+import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
 
 describe('sameSelection reference topology (R5-01)', () => {
     test('one previous object behind two keys is a change when the fresh side holds two equal copies', () => {
@@ -129,5 +130,121 @@ describe('detachSelection preserves what the comparison relies on', () => {
 
         expect(detached.self).toBe(detached);
         expect(detached).not.toBe(source);
+    });
+});
+
+describe('sameSelection lazy pairing maps (R16-09)', () => {
+    // The pairing WeakMaps are minted at the first container pair, not up front by
+    // sameSelection: a primitive comparison must never pay for them. The layout budget keeps
+    // this alongside sameSelection's own tests rather than a separate file — both are Component
+    // comparison utilities.
+    const spyOnWeakMap = (): {calls: () => number; restore: () => void} => {
+        const original = globalThis.WeakMap;
+        let count = 0;
+        const spy = function (this: unknown, ...args: unknown[]): WeakMap<object, unknown> {
+            count++;
+
+            return new original(...(args as ConstructorParameters<typeof WeakMap>));
+        } as unknown as typeof WeakMap;
+
+        globalThis.WeakMap = spy;
+
+        return {
+            calls: () => count,
+            restore: () => {
+                globalThis.WeakMap = original;
+            },
+        };
+    };
+
+    test('a primitive comparison allocates no pairing maps', () => {
+        const spy = spyOnWeakMap();
+
+        try {
+            expect(sameSelection(1, 1)).toBe(true);
+            expect(sameSelection('a', 'b')).toBe(false);
+            expect(sameSelection(undefined, undefined)).toBe(true);
+            expect(spy.calls()).toEqual(0);
+        } finally {
+            spy.restore();
+        }
+    });
+
+    test('the pairing maps are allocated once a container pair is actually compared', () => {
+        const spy = spyOnWeakMap();
+
+        try {
+            expect(sameSelection({a: 1}, {a: 1})).toBe(true);
+            expect(spy.calls()).toEqual(2);
+        } finally {
+            spy.restore();
+        }
+    });
+});
+
+describe('shallowEqual (R16-09 array branch)', () => {
+    test('identical reference is equal without inspecting contents', () => {
+        const value = {a: 1};
+
+        expect(shallowEqual(value, value)).toBe(true);
+    });
+
+    test('primitives compare by Object.is', () => {
+        expect(shallowEqual(1, 1)).toBe(true);
+        expect(shallowEqual(NaN, NaN)).toBe(true);
+        expect(shallowEqual(0, -0)).toBe(false);
+        expect(shallowEqual(1, 2)).toBe(false);
+        expect(shallowEqual(null, undefined)).toBe(false);
+    });
+
+    test('plain objects compare one level deep by key', () => {
+        expect(shallowEqual({a: 1, b: 'x'}, {a: 1, b: 'x'})).toBe(true);
+        expect(shallowEqual({a: 1}, {a: 2})).toBe(false);
+        expect(shallowEqual({a: 1}, {a: 1, b: 2})).toBe(false);
+        expect(shallowEqual({a: 1, b: 2}, {a: 1})).toBe(false);
+    });
+
+    test('two equal-content arrays compare equal', () => {
+        expect(shallowEqual([1, 2, 3], [1, 2, 3])).toBe(true);
+    });
+
+    test('arrays of different length are unequal', () => {
+        expect(shallowEqual([1, 2], [1, 2, 3])).toBe(false);
+    });
+
+    test('arrays with a differing element at the same index are unequal', () => {
+        expect(shallowEqual([1, 2, 3], [1, 9, 3])).toBe(false);
+    });
+
+    test('element comparison is Object.is, so NaN compares equal and 0/-0 do not', () => {
+        expect(shallowEqual([NaN], [NaN])).toBe(true);
+        expect(shallowEqual([0], [-0])).toBe(false);
+    });
+
+    test('a large id-array pair compares equal via the index loop', () => {
+        const ids = Array.from({length: 4000}, (_, i) => `id-${i}`);
+
+        expect(shallowEqual(ids, ids.slice())).toBe(true);
+        expect(shallowEqual(ids, [...ids.slice(0, -1), 'different'])).toBe(false);
+    });
+
+    // R16-09 narrows this on purpose: the fast array/array path compares length and index
+    // alone, so an own property outside the index range no longer takes part — unlike the
+    // general Object.keys-based branch below, which still would. Fails against the pre-fix
+    // code (which returns false here via the 'tag' mismatch).
+    test('two arrays are compared by length and index alone, ignoring an extra own property', () => {
+        const left = Object.assign([1, 2], {tag: 'left'});
+        const right = Object.assign([1, 2], {tag: 'right'});
+
+        expect(shallowEqual(left, right)).toBe(true);
+    });
+
+    // Preserved from before the array branch existed: an array and a plain object that happen
+    // to carry the same numeric keys still fall through to the general branch, not a hard
+    // `false`.
+    test('an array against a plain object with the same numeric keys still compares by the general branch', () => {
+        expect(shallowEqual([1, 2], {0: 1, 1: 2})).toBe(true);
+        expect(shallowEqual([1, 2], {0: 1})).toBe(false);
+        expect(shallowEqual({0: 1, 1: 2}, [1, 2])).toBe(true);
     });
 });

@@ -1,6 +1,9 @@
+"use client";
+
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {IComputed} from "@/Carburetor/Models/Derived";
+import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
 import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
@@ -11,7 +14,9 @@ import {
     IAttemptEntry,
     IConnectionSource,
     IRenderAttempt,
+    ITrackedView,
 } from "@/Carburetor/Component/Models/Connection";
+import {buildTrackedView} from "@/Carburetor/Component/AntiHookComponent/buildTrackedView";
 import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersistentView";
 import {declareConnection} from "@/Carburetor/Component/Connection/declareConnection";
 import {detachSelection} from "@/Carburetor/Component/Connection/detachSelection";
@@ -19,54 +24,54 @@ import {reportLiveViewEscape} from "@/Carburetor/Component/Connection/reportLive
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {AntiHookComponentFoundation} from "./Foundation";
 
-const CONNECTION_ATTEMPT_KEY = "c:";
-const TRACKED_ATTEMPT_KEY = "t:";
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
+    /** `useCarburetor`'s per-carburetor root views, created on first use; see buildTrackedView. */
+    private trackedViews: WeakMap<ICarburetorSubscription, ITrackedView<object>> | undefined;
+
+    /** Live accessor for the recorder built into a cached view, whose call site is long gone. */
+    private readonly getRenderAttempt = (): IRenderAttempt | undefined => this.renderAttempt;
+
     /**
      * The only way to read state in render: returns tracked data. The component
      * subscribes to exactly the fields it actually reads, and re-renders only when
      * those fields change.
      *
-     * A read is attributed to the render attempt that was open when `useCarburetor` itself
-     * ran — and to nothing else: the identity check inside the recorder stops a view captured
-     * by an older render and read later (from a handler, an effect) from adding paths to some
-     * other attempt's read set.
+     * The view is the same object across renders while the carburetor and its data object stay
+     * the same; `setData`/`restore` rebuild it. Reads outside the attempt that last called this
+     * method record nothing.
      */
-    public useCarburetor = <T extends object>(carburetor: ICarburetor<T>): TReadonly<T> => {
+    public useCarburetor<T extends object>(carburetor: ICarburetor<T>): TReadonly<T> {
         const attempt = this.renderAttempt;
         const entry = this.track(carburetor);
 
-        return carburetor.read((path: TPath) => {
-            if (attempt !== undefined && this.renderAttempt === attempt) {
-                entry.reads.add(path);
-            }
-        });
-    };
+        if (this.trackedViews === undefined) {
+            this.trackedViews = new WeakMap();
+        }
+
+        return buildTrackedView(this.trackedViews, carburetor, this.getRenderAttempt, attempt, entry);
+    }
 
     /**
      * Declares one connect()-family connection into this component's persistent list and builds
      * its per-attempt source resolver and recorder.
      */
-    private declareConnection = <T extends object>(
+    private declareConnection<T extends object>(
         source: ICarburetor<T> | (() => ICarburetor<T>)
-    ): IConnectionSource<T> =>
-        declareConnection(
-            this.connections,
-            CONNECTION_ATTEMPT_KEY,
-            (): IRenderAttempt | undefined => this.renderAttempt,
-            source
-        );
+    ): IConnectionSource<T> {
+        return declareConnection(this.connections, this.getRenderAttempt, source);
+    }
 
     /**
      * A persistent view of a carburetor's data, declared once and read directly in render.
      *
-     * `useCarburetor` allocates a fresh read-tracking proxy every render — for a component that
-     * always reads from the same store this is pure repeated cost. `connect()` instead builds
-     * the view once (a class field initializer is the intended call site) and hands back the
-     * exact same object for as long as the underlying data object does not change; what changes
-     * per render is only what the proxy's recorder collects: a read counts while a render
-     * attempt is open — the same boundary `useCarburetor` records under — so a conditional
-     * branch reading a different field next render still narrows or widens the subscription.
+     * `useCarburetor` also keeps a persistent root view per carburetor (see `buildTrackedView`),
+     * rebuilt only when its data object changes — but it is looked up by carburetor identity on
+     * every call, and declared inline in render. `connect()` instead builds the view once (a
+     * class field initializer is the intended call site) and hands back the exact same object
+     * for as long as the underlying data object does not change; what changes per render is
+     * only what the proxy's recorder collects: a read counts while a render attempt is open —
+     * the same boundary `useCarburetor` records under — so a conditional branch reading a
+     * different field next render still narrows or widens the subscription.
      *
      * The view stays live across `setData`/`restore`: those replace the store's data object
      * wholesale, which this method notices (the cached proxy is rebuilt only when the object it
@@ -104,15 +109,11 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * @param source - the carburetor to read, or a function resolving it at each attempt's
      * first read so a prop swap re-points the connection at the new store
      */
-    public connect = <T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> => {
+    public connect<T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> {
         const declared = this.declareConnection(source);
-        const view = buildPersistentView(declared);
 
-        // Recorded on the connection itself, not a separate list (R4-05): see IConnection.view.
-        declared.connection.view = view;
-
-        return view;
-    };
+        return buildPersistentView(declared);
+    }
 
     /**
      * A typed selection of this component's connected data, safe to hand a child gated by
@@ -134,36 +135,31 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      *
      * `select` reads the same tracked view `connect` hands out, so its reads land in this
      * render's attempt and the component subscribes to exactly the paths the selection
-     * touches. What the call returns is not that view: plain objects and arrays are
-     * shallow-copied, so the child receives detached plain data.
+     * touches. Plain objects and arrays are copied recursively with their own data descriptors;
+     * ordinary Map/Set/Date values are detached too, preserving aliases within the snapshot.
      *
-     * The snapshot's identity changes only when the selected content changes — a plain object's
-     * own enumerable string and symbol keys are compared for membership plus `Object.is` values,
-     * the exact set a shallow spread copies, and an array's length and elements with `Object.is`
-     * — and stays the same object otherwise. That is what lets a gated child re-render exactly
-     * when the selected data changed, and keep its bail-out otherwise.
+     * The snapshot is reused while selected plain content, descriptors, prototypes and
+     * reference-sharing topology match. Mutable exotic members conservatively count as changed;
+     * project them into plain data when a gated child needs precise memoization.
      *
      * The selector runs on every call, including every render, because that is what keeps this
      * render's read set — and with it, the subscription the next update needs — fresh; the
      * internal cache is about identity only and never skips a read (a skipped read would drop
      * the connection's dependencies and strand the child).
      *
-     * Handing out a live view (the facade or a branch of it) as the snapshot or inside it is
-     * not supported and is reported once per selection in development. Select plain values.
+     * Plain/array view branches are copied safely. An opaque live facade that cannot be detached
+     * is reported once per selection in development; project its plain fields instead.
      *
      * @param source - the carburetor to read, or a function resolving it at each attempt's
      * first read so a prop swap re-points the connection at the new store
      * @param select - picks the part of the data this child consumes; runs on every call
      */
-    public connectSelection = <T extends object, R>(
+    public connectSelection<T extends object, R>(
         source: ICarburetor<T> | (() => ICarburetor<T>),
         select: (data: TReadonly<T>) => R
-    ): (() => R) => {
+    ): (() => R) {
         const declared = this.declareConnection(source);
         const view = buildPersistentView(declared);
-
-        // Recorded on the connection itself, not a separate list (R4-05): see IConnection.view.
-        declared.connection.view = view;
 
         let snapshot: {value: R} | undefined = undefined;
         let escapeReported = false;
@@ -183,17 +179,21 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
 
             return snapshot.value;
         };
-    };
+    }
 
     /**
      * Reads a memoized derived value. The component subscribes to the computed itself,
      * not to its inputs, so it re-renders only when the derived value changes.
      */
-    public useComputed = <R extends unknown>(computed: IComputed<R>): R => {
-        this.track(computed).reads.add(WILDCARD_PATH);
+    public useComputed<R extends unknown>(computed: IComputed<R>): R {
+        const entry = this.track(computed);
+        entry.reads.add(WILDCARD_PATH);
+        const value = computed.get();
+        // A lazy first read can move the pre-observation token during render.
+        entry.baselineVersion = getComputedSnapshotVersion(computed);
 
-        return computed.get();
-    };
+        return value;
+    }
 
     /**
      * Reads one entry of a resource cache, and subscribes to that entry alone.
@@ -202,28 +202,28 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * is the hazard the rules report. The fetch is queued and runs after the commit, by which time
      * the subscription exists — so the answer reaches this component.
      *
-     * An entry that failed is left alone. Retrying it from render would loop: the failure re-renders
-     * the component, which would queue the same request again. A failed entry waits for an explicit
-     * `refresh`, which is what the documented behaviour promises.
+     * A failure's own notification must not queue another request. Explicit invalidation
+     * clears `failed` and re-arms even an initial Error entry; the retry still starts only
+     * after the reader's next commit. A failed refresh keeps Success and its old data, with
+     * `failed` preventing an automatic retry until another invalidation or explicit load.
      *
-     * The status check alone cannot see every failure: an entry whose *refresh* failed keeps
-     * `status: Success` with its old data. `failed` on the view is what stops this method from
-     * re-queueing the same failing request from the failure's own notification; only a successful
-     * answer, an explicit `refresh`/`load`, or a new `invalidate` re-arms a fetch.
-     *
-     * @param source - the cache entry's owner: `pathOf(args)` gives the path this render
+     * @param source - the cache entry's owner: `resolve(args)` gives the path this render
      * subscribes to, and a stale entry queues a `load` for after the commit
      * @param args - the cache key, identifying the entry read now and targeted by the deferred
      * `load`; a different value reads a different entry
      */
-    public useResource = <T extends unknown, TArgs extends unknown>(
+    public useResource<T extends unknown, TArgs extends unknown>(
         source: IResourceSource<T, TArgs>,
         args: TArgs
-    ): IResourceView<T> => {
-        this.track(source).reads.add(source.pathOf(args));
+    ): IResourceView<T> {
+        // One call: resolve() serializes args once and hands back the key, the read path and
+        // the current view together (R16-10(4)), where this used to be three separate calls.
+        const {path, view} = source.resolve(args);
 
-        const view = source.getEntry(args);
-        const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus.Error && !view.failed;
+        this.track(source).reads.add(path);
+
+        const worthFetching = view.stale && !view.refreshing && !view.failed
+            && (view.status !== EResourceStatus.Error || view.invalidated);
 
         // The deferred load belongs to the render attempt that queued it, exactly like the reads
         // do: tentative until the commit that consumes the attempt runs it, discarded with an
@@ -234,12 +234,16 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
 
         if (worthFetching) {
             if (attempt) {
+                if (attempt.deferredLoads === undefined) {
+                    attempt.deferredLoads = [];
+                }
+
                 attempt.deferredLoads.push(() => {
                     void source.load(args);
                 });
             } else if (IS_DEVELOPMENT) {
                 diagnostics.report(
-                    'useResource() skipped the deferred load for entry ' + source.pathOf(args) +
+                    'useResource() skipped the deferred load for entry ' + path +
                     ' because it ran outside a render attempt. That is the only place a deferred ' +
                     'load can be attributed to a commit: run useResource() inside render(), the ' +
                     'way every other read API is meant to run, or refresh the entry from an effect.'
@@ -248,7 +252,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         }
 
         return view;
-    };
+    }
 
     /**
      * Runs the fetches the committed render queued, now that the subscriptions they need exist.
@@ -262,8 +266,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      *
      * A replayed StrictMode mount cannot double-load: its second `componentDidMount` finds the
      * attempt already consumed (it is the committed attempt, so not the fresh one it drained at
-     * the first `componentDidMount`), and the drain above swaps each queue out before invoking
-     * its loads anyway — every queue is consumed exactly once, so the replay finds it empty.
+     * the first `componentDidMount`), and the drain above clears the queue before invoking its
+     * loads anyway — every queue is consumed exactly once, so the replay finds it absent.
      */
     protected loadStaleResources(): void {
         const attempt = this.pendingAttempt;
@@ -272,11 +276,15 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             return;
         }
 
-        // Swapped out before the loads run: a load can synchronously notify this component, and
+        // Cleared before the loads run: a load can synchronously notify this component, and
         // the notification path must not find the queue it is draining still in place.
         const queued = attempt.deferredLoads;
 
-        attempt.deferredLoads = [];
+        if (queued === undefined) {
+            return;
+        }
+
+        attempt.deferredLoads = undefined;
 
         queued.forEach((load: () => void) => load());
     }
@@ -294,15 +302,21 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const attempt = this.renderAttempt;
 
         if (!attempt) {
-            return {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
+            return {source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
         }
 
-        const cuid = source.getUID();
-        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + cuid);
+        let tracked = attempt.tracked;
+
+        if (tracked === undefined) {
+            tracked = new Map<ICarburetorSubscription, IAttemptEntry>();
+            attempt.tracked = tracked;
+        }
+
+        let entry = tracked.get(source);
 
         if (!entry) {
-            entry = {connection: undefined, source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
-            attempt.entries.set(TRACKED_ATTEMPT_KEY + cuid, entry);
+            entry = {source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
+            tracked.set(source, entry);
         }
 
         return entry;

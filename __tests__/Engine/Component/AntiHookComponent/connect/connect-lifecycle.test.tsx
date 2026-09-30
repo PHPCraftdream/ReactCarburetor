@@ -115,7 +115,8 @@ describe('connect', () => {
             unmount();
         });
 
-        test('collects reads when render is declared as a class property', () => {
+        test('a render declared as a class property throws at construction instead of silently ' +
+            'collecting no reads', () => {
             const store = new ObservedCarburetor(getCounterData());
 
             class FieldRender extends AntiHookComponent {
@@ -125,19 +126,7 @@ describe('connect', () => {
                 render = () => <div className="value">{this.view.value}</div>;
             }
 
-            const {container, unmount} = render(<FieldRender />);
-
-            expect(store.subscriberCount()).toEqual(1);
-            expect(container.querySelector('.value')?.textContent).toEqual('0');
-
-            act(() => store.incValue());
-
-            expect(container.querySelector('.value')?.textContent).toEqual('1');
-            expect(store.subscribeReads.length).toEqual(1);
-
-            unmount();
-
-            expect(store.subscriberCount()).toEqual(0);
+            expect(() => new FieldRender({} as never)).toThrow(TypeError);
         });
 
         test('a replayed mount does not install a subscription for an unused connection', () => {

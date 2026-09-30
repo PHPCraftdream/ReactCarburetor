@@ -371,7 +371,8 @@ class Widget extends AntiHookComponent {
     assert!(has_overload_signature(
         &parsed.program,
         class.span,
-        "helper"
+        "helper",
+        false
     ));
 }
 

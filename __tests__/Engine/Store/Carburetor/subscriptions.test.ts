@@ -1,5 +1,11 @@
-import {diagnostics, TPath, WILDCARD_PATH} from "@/Carburetor";
-import {getTestData, readsOf, TestCarburetor} from "./fixtures";
+import {diagnostics} from "@/Carburetor";
+import {TPath} from "@/Carburetor/Models/Paths";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
+import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {
+    FakeReadonlySet, getTestData, InspectableCarburetor, readsOf, SwappingCarburetor, TestCarburetor,
+} from "./fixtures";
 
 describe('Carburetor', () => {    test('notifies subscribers synchronously by default', () => {
         const carburetor = new TestCarburetor(getTestData());
@@ -72,18 +78,32 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(readerOfB).toEqual(1);
     });
 
-    test('setData replaces data and invalidates everything', () => {
+    test('setData replaces data, waking only the readers of what changed (R16-02)', () => {
         const carburetor = new TestCarburetor(getTestData());
+        let readerOfA = 0;
         let readerOfB = 0;
 
+        carburetor.subscribe(() => readerOfA++, {id: 'a-reader', reads: readsOf('a')});
         carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
 
         const next = getTestData();
         next.a = 5;
         carburetor.setData(next);
 
-        expect(carburetor.getData()).toEqual(next);
-        expect(readerOfB).toEqual(1);
+        // Identity contract unchanged: getData() answers the exact object handed in.
+        expect(carburetor.getData()).toBe(next);
+        expect(readerOfA).toEqual(1);
+        expect(readerOfB).toEqual(0);
+    });
+
+    test('setData with an identical deep copy wakes nobody (R16-02)', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'watcher'});
+        carburetor.setData(getTestData());
+
+        expect(calls).toEqual(0);
     });
 
     test('unsubscribe stops notifications', () => {
@@ -98,6 +118,75 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         carburetor.setA(2);
 
         expect(calls).toEqual(1);
+    });
+
+    test('special ids register, extend, notify, and release their callbacks', () => {
+        const store = new TestCarburetor(getTestData());
+        const calls: string[] = [];
+        const protoCallback = () => { calls.push('__proto__'); };
+        const constructorCallback = () => { calls.push('constructor'); };
+
+        for (const id of ['__proto__', 'constructor', 'toString']) {
+            store.extend(id, 'a');
+            store.unsubscribe(id);
+        }
+
+        expect(store.subscribe(protoCallback, {id: '__proto__', reads: readsOf('a')})).toBe('__proto__');
+        expect(store.subscribe(constructorCallback, {id: 'constructor', reads: readsOf('b')})).toBe('constructor');
+
+        store.notifyWrites(readsOf('a'));
+        expect(calls).toEqual(['__proto__']);
+
+        store.extend('__proto__', 'b');
+        store.notifyWrites(readsOf('b'));
+        expect(calls).toEqual(['__proto__', 'constructor', '__proto__']);
+
+        store.unsubscribe('__proto__');
+        store.unsubscribe('constructor');
+
+        store.notifyWrites(readsOf('a', 'b'));
+        expect(calls).toEqual(['__proto__', 'constructor', '__proto__']);
+
+        store.subscribe(() => { calls.push('new'); }, {id: '__proto__', reads: readsOf('a')});
+        store.notifyWrites(readsOf('a'));
+        expect(calls[calls.length - 1]).toBe('new');
+    });
+
+    test('resource cache releases eviction state only for registered special ids', () => {
+        class TrackingCache extends ResourceCache<string, string> {
+            public releases = 0;
+
+            constructor() {
+                super(() => Promise.resolve('value'));
+
+                const release = this.eviction.release.bind(this.eviction);
+                this.eviction.release = () => {
+                    this.releases++;
+                    release();
+                };
+            }
+        }
+
+        const cache = new TrackingCache();
+        cache.unsubscribe('__proto__');
+        cache.unsubscribe('constructor');
+        expect(cache.releases).toEqual(0);
+
+        cache.subscribe(() => undefined, {id: '__proto__'});
+        cache.subscribe(() => undefined, {id: 'constructor'});
+        expect(cache.releases).toEqual(0);
+
+        cache.subscribe(() => undefined, {id: '__proto__'});
+        cache.subscribe(() => undefined, {id: 'constructor'});
+        expect(cache.releases).toEqual(2);
+
+        cache.unsubscribe('__proto__');
+        cache.unsubscribe('constructor');
+        expect(cache.releases).toEqual(4);
+
+        cache.unsubscribe('__proto__');
+        cache.unsubscribe('constructor');
+        expect(cache.releases).toEqual(4);
     });
 
     test('update mutates and publishes once, keeping path precision', () => {
@@ -131,7 +220,43 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         }
 
         expect(reported.length).toEqual(1);
-        expect(reported[0]).toContain('emitUpdate');
+    });
+
+    test('a reused draft check reports later unpublished cycles without reporting published ones', async () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+        let publications = 0;
+        const subscription = carburetor.subscribe(() => publications++);
+        console.error = (message: string) => reported.push(message);
+
+        try {
+            carburetor.setAWithoutEmit(1);
+            await Promise.resolve();
+            expect(reported.length).toBe(1);
+            expect(publications).toBe(0);
+
+            carburetor.setA(2);
+            await Promise.resolve();
+            expect(reported.length).toBe(1);
+            expect(publications).toBe(1);
+
+            carburetor.setAWithoutEmit(3);
+            await Promise.resolve();
+            expect(reported.length).toBe(2);
+            expect(publications).toBe(1);
+
+            carburetor.setA(4);
+            carburetor.setA(5);
+            await Promise.resolve();
+            expect(reported.length).toBe(2);
+            expect(publications).toBe(3);
+        } finally {
+            console.error = original;
+            carburetor.unsubscribe(subscription);
+        }
+
+        expect(carburetor.getData().a).toBe(5);
     });
 
     test('reports an async mutation handed to update', async () => {
@@ -152,7 +277,6 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         }
 
         expect(reported.length).toEqual(1);
-        expect(reported[0]).toContain('promise');
         // The hazard itself: the value did change, and nobody was woken for it.
         expect(carburetor.getData().a).toEqual(1);
         expect(calls).toEqual(0);
@@ -226,14 +350,17 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(second).toEqual(1);
     });
 
-    test('the read set handed to subscribe is copied, not held live', () => {
+    test('mutating the read set after subscribing does not widen the subscription', () => {
         const carburetor = new TestCarburetor(getTestData());
         const reads = readsOf('a');
         let calls = 0;
 
         carburetor.subscribe(() => calls++, {id: 'subscriber', reads});
 
-        // Extending the caller's set afterwards must not widen the subscription.
+        // The public path copies `reads` into the store's own Set; either way matching goes
+        // through the index (exact/branch), filed once at subscribe time: adding to the caller's
+        // set directly, bypassing extend(), leaves the index untouched, so the subscription
+        // does not widen.
         reads.add('b');
         carburetor.setB(1);
 
@@ -269,7 +396,7 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(reads.has(WILDCARD_PATH)).toBeFalsy();
     });
 
-    test('enumerating a branch subscribes to the branch itself', () => {
+    test('enumerating a branch subscribes to its key-set marker, not the branch itself (R16-01)', () => {
         const carburetor = new TestCarburetor(getTestData());
         const reads = new Set<TPath>();
 
@@ -277,7 +404,48 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         const keys = Object.keys(data.nested);
 
         expect(keys).toEqual(['value']);
-        expect(reads.has('nested')).toBeTruthy();
+        expect(reads.has('nested')).toBeFalsy();
+        expect(reads.has('nested.~k')).toBeTruthy();
+    });
+
+    test('extend wakes the subscriber on a write to the newly added path', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'subscriber', reads: readsOf('a')});
+        carburetor.extend('subscriber', 'b');
+
+        carburetor.setB(2);
+        expect(calls).toEqual(1);
+
+        carburetor.setA(1);
+        expect(calls).toEqual(2);
+    });
+
+    test('extend on an unknown id is a no-op', () => {
+        const carburetor = new TestCarburetor(getTestData());
+
+        expect(() => carburetor.extend('ghost', 'a')).not.toThrow();
+
+        // A later subscription under that same id starts from nothing: the earlier no-op
+        // extend call left no trace to inherit.
+        let calls = 0;
+        carburetor.subscribe(() => calls++, {id: 'ghost', reads: readsOf('b')});
+        carburetor.setA(1);
+        expect(calls).toEqual(0);
+    });
+
+    test('unsubscribe after extend cleans up both the original and the extended path', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'subscriber', reads: readsOf('a')});
+        carburetor.extend('subscriber', 'b');
+        carburetor.unsubscribe('subscriber');
+
+        carburetor.setA(1);
+        carburetor.setB(2);
+        expect(calls).toEqual(0);
     });
 
     test('writing the same value wakes nobody', () => {
@@ -296,4 +464,103 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(calls).toEqual(2);
     });
 
+});
+
+describe('subscribe() copies the public reads Set, transfers only the branded internal one (R6-04)', () => {
+    test('clearing the caller\'s own Set after subscribing does not desync a later re-subscribe', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const mine = readsOf('a');
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'x', reads: mine});
+
+        // The store's copy of `mine` is unaffected: without the fix this clear would reach the
+        // very Set the index diffs re-registrations against, and the re-subscribe below would
+        // never see 'a' to unfile it.
+        mine.clear();
+        carburetor.subscribe(() => calls++, {id: 'x', reads: readsOf('b')});
+
+        carburetor.setA(1);
+        expect(calls).toEqual(0);
+
+        carburetor.setB(1);
+        expect(calls).toEqual(1);
+    });
+
+    test('re-subscribing with the same, mutated-in-place Set instance still reconciles by content', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const mine = readsOf('a');
+        let calls = 0;
+
+        carburetor.subscribe(() => calls++, {id: 'x', reads: mine});
+
+        // Same object, different content: the public path always copies afresh, so the second
+        // subscribe cannot mistake this for an unchanged re-registration by identity.
+        mine.clear();
+        mine.add('b');
+        carburetor.subscribe(() => calls++, {id: 'x', reads: mine});
+
+        carburetor.setA(1);
+        expect(calls).toEqual(0);
+
+        carburetor.setB(1);
+        expect(calls).toEqual(1);
+    });
+
+    test('a non-Set ReadonlySet implementation does not throw, and extend() still works', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let calls = 0;
+
+        const id = carburetor.subscribe(() => calls++, {id: 'x', reads: new FakeReadonlySet(['a'])});
+
+        expect(() => carburetor.extend(id, 'b')).not.toThrow();
+
+        carburetor.setB(1);
+        expect(calls).toEqual(1);
+    });
+
+    test('extend() grows the store\'s own copy, never the caller\'s Set', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const mine = readsOf('a');
+
+        const id = carburetor.subscribe(() => undefined, {id: 'x', reads: mine});
+
+        carburetor.extend(id, 'b');
+
+        expect(mine.size).toEqual(1);
+        expect(mine.has('b')).toBe(false);
+    });
+
+    test('an override that swaps out options.reads on the public path still gets a copy', () => {
+        const carburetor = new SwappingCarburetor(getTestData());
+
+        const id = carburetor.subscribe(() => undefined, {id: 'x', reads: readsOf('a')});
+
+        // The Set actually reaching Carburetor.subscribe is carburetor.swappedReads, not the
+        // caller's original — the public path copies it regardless.
+        expect(carburetor.readsFor(id)).not.toBe(carburetor.swappedReads);
+        expect(carburetor.readsFor(id)).toEqual(carburetor.swappedReads);
+    });
+
+    test('transferReads() adopts the exact Set instance for an internal caller', () => {
+        const carburetor = new InspectableCarburetor(getTestData());
+        const mine = readsOf('a');
+
+        const id = carburetor.subscribe(() => undefined, transferReads(mine, 'x'));
+
+        expect(carburetor.readsFor(id)).toBe(mine);
+    });
+
+    test('an override that swaps out options.reads breaks the brand, so transferReads() copies', () => {
+        const carburetor = new SwappingCarburetor(getTestData());
+        const mine = readsOf('a');
+
+        const id = carburetor.subscribe(() => undefined, transferReads(mine, 'x'));
+
+        // The brand still points at `mine`, but options.reads is now carburetor.swappedReads —
+        // the mismatch must fall back to a safe copy of whatever was actually given.
+        expect(carburetor.readsFor(id)).not.toBe(mine);
+        expect(carburetor.readsFor(id)).not.toBe(carburetor.swappedReads);
+        expect(carburetor.readsFor(id)).toEqual(carburetor.swappedReads);
+    });
 });

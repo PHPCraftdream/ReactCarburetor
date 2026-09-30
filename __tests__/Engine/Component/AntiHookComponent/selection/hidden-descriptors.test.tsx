@@ -54,7 +54,7 @@ describe('connectSelection own data descriptors (R11-02)', () => {
         unmount();
     });
 
-    test('detects and tracks a live view stored in a hidden property', () => {
+    test('tracks a selected branch stored in a hidden property', () => {
         const store = new ValueCarburetor({value: 1, profile: {name: 'Ann'}});
         let memoRenders = 0;
 
@@ -78,27 +78,13 @@ describe('connectSelection own data descriptors (R11-02)', () => {
             }
         }
 
-        const original = console.error;
-        const reported: string[] = [];
-        let view: ReturnType<typeof render> | undefined;
+        const view = render(<Parent />);
 
-        console.error = (message: string) => reported.push(message);
-
-        try {
-            view = render(<Parent />);
-
-            expect(view.container.querySelector('.hidden-live-view')?.textContent).toEqual('Ann');
-
-            act(() => store.renameProfile('Bob'));
-
-            expect(view.container.querySelector('.hidden-live-view')?.textContent).toEqual('Bob');
-            expect(memoRenders).toEqual(2);
-        } finally {
-            view?.unmount();
-            console.error = original;
-        }
-
-        expect(reported.filter((message) => message.includes('connectSelection()')).length).toEqual(1);
+        expect(view.container.querySelector('.hidden-live-view')?.textContent).toEqual('Ann');
+        act(() => store.renameProfile('Bob'));
+        expect(view.container.querySelector('.hidden-live-view')?.textContent).toEqual('Bob');
+        expect(memoRenders).toEqual(2);
+        view.unmount();
     });
 
     test('rejects an accessor selection without running its getter', () => {

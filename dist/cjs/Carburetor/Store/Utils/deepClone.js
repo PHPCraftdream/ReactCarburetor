@@ -31,23 +31,36 @@ __webpack_require__.d(__webpack_exports__, {
     deepClone: ()=>deepClone
 });
 const isTrackable_js_namespaceObject = require("../Tracking/isTrackable.js");
-const ownEnumerableKeys = (source)=>Reflect.ownKeys(source).filter((key)=>Object.prototype.propertyIsEnumerable.call(source, key));
-const definePlainProperty = (target, key, value)=>{
-    Object.defineProperty(target, key, {
-        value,
-        writable: true,
-        enumerable: true,
-        configurable: true
-    });
-};
 const deepClone = (value)=>{
     if (!(0, isTrackable_js_namespaceObject.isTrackable)(value)) return value;
-    if (Array.isArray(value)) return value.map((item)=>deepClone(item));
+    if (Array.isArray(value)) {
+        const length = value.length;
+        const result = [];
+        result.length = length;
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Array.prototype) Object.setPrototypeOf(result, prototype);
+        if (length <= 4096) {
+            for(let index = 0; index < length; index++)if (Object.prototype.hasOwnProperty.call(value, index)) result[index] = deepClone(value[index]);
+        } else for (const key of Object.keys(value)){
+            const index = Number(key);
+            if (Number.isInteger(index) && index >= 0 && index < length && String(index) === key) result[index] = deepClone(value[index]);
+        }
+        return result;
+    }
     const source = value;
     const result = Object.create(Object.getPrototypeOf(source));
-    ownEnumerableKeys(source).forEach((key)=>{
-        definePlainProperty(result, key, deepClone(source[key]));
-    });
+    const keys = Object.keys(source);
+    for(let i = 0; i < keys.length; i++){
+        const key = keys[i];
+        const cloned = deepClone(source[key]);
+        if ('__proto__' === key) Object.defineProperty(result, key, {
+            value: cloned,
+            writable: true,
+            enumerable: true,
+            configurable: true
+        });
+        else result[key] = cloned;
+    }
     return result;
 };
 exports.deepClone = __webpack_exports__.deepClone;

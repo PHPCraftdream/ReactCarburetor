@@ -18,4 +18,69 @@ export type TAliasLedger = {
     checkWrite: (source: object, path: TPath) => void;
     /** Drops the recorded path of a value draft replaced or deleted. */
     forget: (value: unknown) => void;
+    /**
+     * Throws if `value`'s subtree is not valid state (own symbol key, accessor, non-enumerable
+     * property, or a non-index/`length` array key); a sub-branch `Object.is`-equal to the same
+     * position in `previous` is skipped, unchecked.
+     */
+    checkState: (value: unknown, path: TPath, previous?: unknown) => void;
+    /** Throws if `key` is not a valid array key (an index, or `length`) when `container` is an array. */
+    checkKey: (container: object, key: string, path: TPath) => void;
 } | undefined;
+
+/**
+ * Stands in for a patch endpoint that does not exist: an added key's `previous`, or a deleted
+ * key's `next` — so a history entry can tell "assign undefined" from "the key was never there"
+ * and undo an added key by deleting it, not by writing `undefined` back (R16-07).
+ * The protocol key must also match when the store and its history load from different formats.
+ */
+export const PATCH_ABSENT: unique symbol = Symbol.for('react-carburetor/v1/patch-absent');
+
+/**
+ * Reported to a patch listener instead of a patch when a write cannot be described precisely:
+ * the wildcard, an untrackable root, a whole-root replacement, or a write that bypassed draft
+ * (R16-07). A listener that sees this for any write in a change has no patches to invert for it
+ * and falls back to a full snapshot. Share its identity across module formats as above.
+ */
+export const PATCH_OPAQUE: unique symbol = Symbol.for('react-carburetor/v1/patch-opaque');
+
+/**
+ * One write the proxy could describe precisely, enough to invert it without a diff:
+ * `segments` are the raw, unescaped keys from the store root to the written field — cheap to
+ * replay onto a plain object or a draft, unlike `path`, whose escaping has no declared inverse.
+ */
+export interface IWritePatch {
+    /** The keys from the store root to the written field, in order. */
+    segments: readonly string[];
+    /** The value before the write, or PATCH_ABSENT when the key was not yet its own. */
+    previous: unknown;
+    /** The value after the write, or PATCH_ABSENT when the write deleted the key. */
+    next: unknown;
+}
+
+/** Delivers one patch per describable write, or PATCH_OPAQUE for one the proxy cannot describe. */
+export type TPatchRecorder = (patch: IWritePatch | typeof PATCH_OPAQUE) => void;
+
+/** Mutation and publication stream from one patch source; fields are stable for the attachment. */
+export interface IPatchObserver {
+    /** Called at mutation time for each patch, or PATCH_OPAQUE when no patch describes the write. */
+    patch: TPatchRecorder;
+    /** If present, scheduled before ordinary subscribers at each publication (after coalescing). */
+    publication?: () => void;
+    /**
+     * If present, called with the exact restore argument immediately before its own installation,
+     * after abort listeners have had the chance to supersede it. Nested restores pass their own
+     * argument; consumers distinguish those calls by reference, not wire-state equality.
+     */
+    ownRestore?: (state: unknown) => void;
+}
+
+/**
+ * Shared by every branch of a draft proxy, including proxies created before a listener attaches.
+ * An opaque-only store still records exact write paths, but never constructs patch payloads:
+ * its history captures the full wire snapshot on the same pre-publication patch signal.
+ */
+export type TPatchPort = {
+    listener?: TPatchRecorder;
+    opaque?: boolean;
+};

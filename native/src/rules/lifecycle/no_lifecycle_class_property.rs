@@ -56,6 +56,26 @@ fn member_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
     }
 }
 
+/// `render` gets its own wording: the engine no longer just shadows a base implementation for
+/// it, it rejects the definition outright — a non-configurable accessor installed in the base
+/// constructor makes a class-field `render` throw at construction. The other lifecycle names
+/// stay silently shadowed, so they keep the original wording.
+fn message_for(name: &str) -> String {
+    if name == "render" {
+        return "\"render\" is declared as a class property, which is unsupported: the base \
+                constructor installs a non-configurable render accessor, so this throws a TypeError \
+                at construction. Declare render as a method."
+            .to_string();
+    }
+
+    format!(
+        "\"{name}\" is declared as a class property, which shadows the base \
+         implementation on the prototype: effects, subscription cleanup or the \
+         props gate will silently stop working. Declare it as a method and call \
+         super, or override useEffects/unUseEffects instead."
+    )
+}
+
 /// Rewrites `name = (params) => body` into `name(params) body`, verbatim except for that syntax,
 /// when the property is plain enough for the substitution to be safe. Accessibility, `override`,
 /// `async`, generics, a return type annotation and a rest parameter all mean the same thing on a
@@ -155,12 +175,7 @@ impl<'a> Visit<'a> for Visitor<'a> {
                     self.source,
                     property.span.start,
                     RULE,
-                    format!(
-                        "\"{name}\" is declared as a class property, which shadows the base \
-                         implementation on the prototype: effects, subscription cleanup or the \
-                         props gate will silently stop working. Declare it as a method and call \
-                         super, or override useEffects/unUseEffects instead."
-                    ),
+                    message_for(name),
                     fix,
                 ));
             }
@@ -345,5 +360,95 @@ mod tests {
         let diagnostics = diagnose(source, check);
 
         assert!(diagnostics[0].fix.is_none());
+    }
+
+    #[test]
+    fn a_render_arrow_property_is_fixed_into_a_method() {
+        let source =
+            "class C extends AntiHookComponent {\n    render = () => {\n        return null;\n    };\n}\n";
+
+        assert_eq!(
+            fixed(source),
+            "class C extends AntiHookComponent {\n    render() {\n        return null;\n    }\n}\n"
+        );
+    }
+
+    #[test]
+    fn a_render_arrow_property_on_a_scoped_component_is_fixed_into_a_method() {
+        let source =
+            "class C extends ScopedAntiHookComponent {\n    render = () => null;\n}\n";
+
+        assert_eq!(
+            fixed(source),
+            "class C extends ScopedAntiHookComponent {\n    render() { return null; }\n}\n"
+        );
+    }
+
+    #[test]
+    fn a_render_function_expression_property_is_reported_without_a_fix() {
+        let source = "class C extends AntiHookComponent {\n    render = function () {\n        return null;\n    };\n}\n";
+        let diagnostics = diagnose(source, check);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(
+            diagnostics[0].fix.is_none(),
+            "only an arrow value has a mechanical rewrite to a method"
+        );
+    }
+
+    #[test]
+    fn a_render_property_with_an_explicit_type_is_reported_without_a_fix() {
+        let source =
+            "class C extends AntiHookComponent {\n    render: () => null = () => null;\n}\n";
+        let diagnostics = diagnose(source, check);
+
+        assert!(diagnostics[0].fix.is_none());
+    }
+
+    #[test]
+    fn a_render_string_literal_key_is_fixed_into_a_method() {
+        let source = "class C extends AntiHookComponent {\n    \"render\" = () => null;\n}\n";
+
+        assert_eq!(
+            fixed(source),
+            "class C extends AntiHookComponent {\n    \"render\"() { return null; }\n}\n"
+        );
+    }
+
+    #[test]
+    fn a_private_override_render_property_is_fixed_into_a_method() {
+        let source = "class C extends ScopedAntiHookComponent {\n    private override render = () => null;\n}\n";
+
+        assert_eq!(
+            fixed(source),
+            "class C extends ScopedAntiHookComponent {\n    private override render() { return null; }\n}\n"
+        );
+    }
+
+    #[test]
+    fn a_decorated_render_property_is_reported_without_a_fix() {
+        let source = "class C extends AntiHookComponent {\n    @bind\n    render = () => null;\n}\n";
+        let diagnostics = diagnose(source, check);
+
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0].fix.is_none());
+    }
+
+    #[test]
+    fn the_render_message_says_unsupported_not_just_discouraged() {
+        let source = "class C extends AntiHookComponent {\n    render = () => null;\n}\n";
+        let diagnostics = diagnose(source, check);
+
+        assert!(diagnostics[0].message.contains("unsupported"));
+        assert!(diagnostics[0].message.contains("TypeError"));
+    }
+
+    #[test]
+    fn a_non_render_lifecycle_message_keeps_the_silent_shadowing_wording() {
+        let source = "class C extends AntiHookComponent {\n    componentDidMount = () => {};\n}\n";
+        let diagnostics = diagnose(source, check);
+
+        assert!(diagnostics[0].message.contains("silently stop working"));
+        assert!(!diagnostics[0].message.contains("TypeError"));
     }
 }

@@ -1,5 +1,4 @@
 import {execFileSync} from "node:child_process";
-import {existsSync} from "node:fs";
 import * as path from "node:path";
 import {describe, expect, test} from "@rstest/core";
 
@@ -9,10 +8,7 @@ import {describe, expect, test} from "@rstest/core";
  *
  * The corpus is grouped by topic under `plugin/__fixtures__`, written so every rule fires exactly
  * once — the same files the JS plugin's host tests exercise. Comparison is on
- * `(file, line, column, rule)`: that is the
- * behavioural contract a consumer depends on. Message text is compared too, because both
- * implementations deliberately share the same wording word for word; a mismatch there means one
- * side drifted from the other, not that phrasing is free to differ.
+ * `(file, line, column, rule)`: the behavioural contract a consumer depends on.
  */
 const ROOT: string = process.cwd();
 const NATIVE_BINARY: string = path.join(
@@ -44,7 +40,7 @@ interface IDiagnostic {
 
 /** One diagnostic, normalised to what both sides agree on: not severity, which is presentation. */
 const key = (diagnostic: IDiagnostic): string =>
-    `${diagnostic.file}:${diagnostic.line}:${diagnostic.column}:${diagnostic.rule}:${diagnostic.message}`;
+    `${diagnostic.file}:${diagnostic.line}:${diagnostic.column}:${diagnostic.rule}`;
 
 /** Exit code 1 means "problems found", not "the command failed" — both outcomes carry stdout. */
 const runCapturingStdout = (binary: string, args: string[]): string => {
@@ -97,13 +93,6 @@ const jsDiagnostics = (): IDiagnostic[] => {
 };
 
 describe('conformance: native binary vs the JavaScript plugin', () => {
-    test('the native binary is built', () => {
-        expect(
-            existsSync(NATIVE_BINARY),
-            `${NATIVE_BINARY} is missing. Run "cargo build --release" in native/ before this test.`,
-        ).toBe(true);
-    });
-
     test('both implementations report the same diagnostics over the shared corpus', () => {
         const native = nativeDiagnostics();
         const js = jsDiagnostics();

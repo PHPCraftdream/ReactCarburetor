@@ -16,6 +16,22 @@ const productionDefine = {
 };
 
 /**
+ * The minifier drops a bare string statement unless told to keep directives, which would strip
+ * `"use client"` from the modules that carry it.
+ */
+const productionMinify = {
+    js: true,
+    css: false,
+    jsOptions: {minimizerOptions: {compress: {directives: false}}},
+};
+
+/**
+ * The CJS `import.meta.url` shim is inserted after `"use strict"`, ahead of `"use client"`, which
+ * pushes the directive out of the prologue. The library never reads `import.meta`.
+ */
+const cjsShims = {cjs: {'import.meta.url': false}};
+
+/**
  * The lint plugin ships as one bundled file per format, unlike the library.
  *
  * Its sources import each other through the `#src/*` subpath map in `plugin/package.json`, which
@@ -47,6 +63,7 @@ export default defineConfig({
             format: 'cjs',
             bundle: false,
             dts: true,
+            shims: cjsShims,
             source: {entry},
             output: {distPath: {root: './dist/cjs'}},
         },
@@ -55,14 +72,15 @@ export default defineConfig({
             bundle: false,
             dts: false,
             source: {entry, define: productionDefine},
-            output: {distPath: {root: './dist/esm-prod'}, minify: true},
+            output: {distPath: {root: './dist/esm-prod'}, minify: productionMinify},
         },
         {
             format: 'cjs',
             bundle: false,
             dts: false,
+            shims: cjsShims,
             source: {entry, define: productionDefine},
-            output: {distPath: {root: './dist/cjs-prod'}, minify: true},
+            output: {distPath: {root: './dist/cjs-prod'}, minify: productionMinify},
         },
         {
             format: 'esm',

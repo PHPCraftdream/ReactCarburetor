@@ -1,4 +1,6 @@
-import {TEffect, TEffectDeps} from "@/Carburetor/Models/Base";
+"use client";
+
+import {IDict, TEffect, TEffectDeps} from "@/Carburetor/Models/Base";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {AntiHookComponentReads} from "./Reads";
 import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
@@ -34,30 +36,11 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      *
      * @param failure - the message to report, already naming what ran and what it cost
      */
-    protected reportTeardownFailure = (failure: string): void => {
+    protected reportTeardownFailure(failure: string): void {
         if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
             diagnostics.report(failure);
         }
-    };
-
-    /**
-     * Runs one stage of the unmount teardown, isolated so a failure there costs the stages after
-     * it nothing.
-     *
-     * The failure is filed as the message its report will use and the caller moves on: nothing
-     * here throws, whatever the stage does.
-     *
-     * @param what - the sentence fragment naming the stage, for the failure message
-     * @param stage - the stage itself
-     * @param failures - the messages collected so far, appended to when the stage throws
-     */
-    protected runTeardownStage = (what: string, stage: () => void, failures: string[]): void => {
-        try {
-            stage();
-        } catch (error: unknown) {
-            failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
-        }
-    };
+    }
 
     /**
      * Runs `callBack` when its dependencies changed since the last run.
@@ -72,15 +55,17 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * leaves the record consistent — new deps, no cleanup — instead of a stale cleanup a later
      * unmount would run a second time.
      *
-     * @param callBack - the effect body; a function it returns becomes the cleanup, run before
-     * the next run and on unmount
      * @param name - the key in the per-effect record, so two effects sharing one name would
      * overwrite each other's deps and cleanup
+     * @param callBack - the effect body; a function it returns becomes the cleanup, run before
+     * the next run and on unmount
      * @param deps - compared shallowly with the last run's; an equal set skips the run and
      * leaves the existing cleanup standing
      */
-    protected useEffect = (callBack: TEffect, name: string, deps: TEffectDeps): void => {
-        const known = this.effects[name];
+    protected useEffect(name: string, callBack: TEffect, deps: TEffectDeps): void {
+        const records = this.effects;
+        const known = records && Object.prototype.hasOwnProperty.call(records, name)
+            ? records[name] : undefined;
 
         if (known && shallowEqual(known.deps, deps)) {
             return;
@@ -103,7 +88,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
         // still points at the cleanup that already ran.
         const record: IEffectRecord = {deps, cleanup: undefined};
 
-        this.effects[name] = record;
+        this.ensureEffects()[name] = record;
 
         try {
             const cleanup = callBack();
@@ -115,7 +100,24 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
                 describeFailure(error) + '. The new effect ran anyway.'
             ));
         }
-    };
+    }
+
+    /**
+     * Returns the effects dictionary, allocating it on first use.
+     *
+     * A component that never calls `useEffect` never needs this dictionary; allocating it here,
+     * rather than as a class field default, keeps that component from paying for it.
+     */
+    private ensureEffects(): IDict<IEffectRecord> {
+        if (this.effects !== undefined) {
+            return this.effects;
+        }
+
+        const records: IDict<IEffectRecord> = Object.create(null);
+        this.effects = records;
+
+        return records;
+    }
 
     /**
      * Runs every effect's cleanup once, on unmount, and forgets them.
@@ -123,11 +125,17 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * Each cleanup is isolated, so one that throws costs the cleanups after it neither their
      * turn nor their record: the whole set is dropped once every cleanup has had its turn, and
      * what they collected is reported instead of thrown into the unmount that called this.
+     *
+     * Absent effects (never allocated) skip straight past: nothing ran, nothing to release.
      */
     protected releaseEffects(): void {
         const records = this.effects;
 
-        this.effects = {};
+        if (records === undefined) {
+            return;
+        }
+
+        this.effects = undefined;
 
         const failures: unknown[] = [];
 

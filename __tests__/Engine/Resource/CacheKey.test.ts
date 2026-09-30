@@ -1,6 +1,7 @@
-import {pathsIntersect, WILDCARD_PATH} from "@/Carburetor";
+import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {encodeCacheKey} from "@/Carburetor/Resource/Cache/encodeCacheKey";
 import {escapeCacheKey} from "@/Carburetor/Resource/Cache/escapeCacheKey";
+import {pathsIntersect} from "@/Carburetor/Store/Paths/Diff/pathsIntersect";
 
 /**
  * The key has to survive being used as one path segment, which is the whole reason it is escaped.

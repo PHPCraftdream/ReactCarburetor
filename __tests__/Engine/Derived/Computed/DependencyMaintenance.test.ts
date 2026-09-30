@@ -1,8 +1,156 @@
 import {computed, transaction} from '@/Carburetor';
-import {ListCarburetor, delta, getData} from './fixtures';
+import {sharedSingleton} from '@/Carburetor/Store/Utils/sharedSingleton';
+import {CounterCarburetor, ExternalComputed, ListCarburetor, delta, getData} from './fixtures';
 
 describe('computed', () => {
     describe('dependency maintenance', () => {
+        test.each(['external', '__proto__', 'constructor', 'toString', ':__proto__', ':constructor'])(
+            'external interface source %s stays fresh without observation', (uid) => {
+                const source = new ExternalComputed(7, uid);
+                Object.assign(source, {versions: undefined});
+                const inner = computed(read => read(source) * 2);
+                const outer = computed(read => read(inner) + 1);
+                expect(outer.get()).toEqual(15);
+                expect(source.listeners.size).toEqual(0);
+                source.set(8);
+                expect(outer.get()).toEqual(17);
+                expect(source.listeners.size).toEqual(0);
+            },
+        );
+
+        test.each(['__proto__', 'constructor', 'toString', ':__proto__'])(
+            'observed external id %s retains its edge and releases it', (uid) => {
+                const source = new ExternalComputed(1, uid);
+                const value = computed(read => read(source) * 2);
+                const seen: number[] = [];
+                const id = value.subscribe(() => seen.push(value.get()));
+                source.set(2);
+                source.set(3);
+                expect(seen).toEqual([4, 6]);
+                expect(source.listeners.size).toEqual(1);
+                value.unsubscribe(id);
+                expect(source.listeners.size).toEqual(0);
+            },
+        );
+
+        test('unchanged native read sets keep their upstream registrations', () => {
+            const store = new CounterCarburetor({n: 0});
+            const storeSubscribe = rstest.spyOn(store, 'subscribe');
+            const storeUnsubscribe = rstest.spyOn(store, 'unsubscribe');
+            const inner = computed(read => read(store).n);
+            const innerSubscribe = rstest.spyOn(inner, 'subscribe');
+            const innerUnsubscribe = rstest.spyOn(inner, 'unsubscribe');
+            const outer = computed(read => read(inner) * 2);
+            const id = outer.subscribe(() => undefined);
+            store.setN(1);
+            store.setN(2);
+            expect(outer.get()).toEqual(4);
+            expect(storeSubscribe).toHaveBeenCalledTimes(1);
+            expect(innerSubscribe).toHaveBeenCalledTimes(1);
+            expect(storeUnsubscribe).not.toHaveBeenCalled();
+            expect(innerUnsubscribe).not.toHaveBeenCalled();
+            outer.unsubscribe(id);
+            expect(storeUnsubscribe).toHaveBeenCalledTimes(1);
+            expect(innerUnsubscribe).toHaveBeenCalledTimes(1);
+        });
+
+        test('an observed body that stops reading sources releases its last edge', () => {
+            const source = new ExternalComputed(1, '__proto__');
+            let detached = false;
+            const value = computed(read => detached ? 7 : read(source));
+            const seen: number[] = [];
+            const id = value.subscribe(() => seen.push(value.get()));
+            detached = true;
+            source.set(2);
+            expect(seen).toEqual([7]);
+            expect(source.listeners.size).toEqual(0);
+            source.set(3);
+            expect(value.get()).toEqual(7);
+            expect(seen).toEqual([7]);
+            value.unsubscribe(id);
+        });
+
+        test('an observed external source publishes and releases its shared upstream edge', () => {
+            const source = new ExternalComputed();
+            const value = computed(read => read(source) * 2);
+            const seen: number[] = [];
+            const id = value.subscribe(() => seen.push(value.get()));
+            expect(source.listeners.size).toEqual(1);
+            source.set(8);
+            expect(seen).toEqual([16]);
+            expect(value.getVersion()).toEqual(1);
+            value.unsubscribe(id);
+            expect(source.listeners.size).toEqual(0);
+            source.set(9);
+            expect(seen).toEqual([16]);
+            expect(value.get()).toEqual(18);
+        });
+
+        test('an external diamond evaluates each node once and publishes one settled total', () => {
+            const source = new ExternalComputed(0);
+            const runs = [0, 0, 0];
+            const left = computed(read => { runs[0]++; return read(source) + 1; });
+            const right = computed(read => { runs[1]++; return read(source) * 10; });
+            const total = computed(read => { runs[2]++; return read(left) + read(right); });
+            const seen: number[] = [];
+            const id = total.subscribe(() => seen.push(total.get()));
+            expect(source.listeners.size).toEqual(1);
+            runs.fill(0);
+            source.set(1);
+            expect(runs).toEqual([1, 1, 1]);
+            expect(seen).toEqual([12]);
+            total.unsubscribe(id);
+            expect(source.listeners.size).toEqual(0);
+        });
+
+        test('one external dependent can detach while the remaining bridge stays live', () => {
+            const source = new ExternalComputed(1);
+            const first = computed(read => read(source) * 2);
+            const second = computed(read => read(source) * 3);
+            const seen: number[] = [];
+            const firstId = first.subscribe(() => { throw new Error('detached observer'); });
+            const secondId = second.subscribe(() => seen.push(second.get()));
+            expect(source.listeners.size).toEqual(1);
+            first.unsubscribe(firstId);
+            source.set(2);
+            expect(seen).toEqual([6]);
+            expect(source.listeners.size).toEqual(1);
+            second.unsubscribe(secondId);
+            expect(source.listeners.size).toEqual(0);
+        });
+
+        test('conditional external dependencies detach the abandoned source', () => {
+            const selector = new CounterCarburetor({n: 0});
+            const first = new ExternalComputed(1, '__proto__');
+            const second = new ExternalComputed(2, 'constructor');
+            const value = computed(read => read(read(selector).n ? second : first));
+            const seen: number[] = [];
+            const id = value.subscribe(() => seen.push(value.get()));
+            selector.setN(1);
+            expect(first.listeners.size).toEqual(0);
+            expect(second.listeners.size).toEqual(1);
+            first.set(3);
+            second.set(4);
+            expect(seen).toEqual([2, 4]);
+            value.unsubscribe(id);
+            expect(second.listeners.size).toEqual(0);
+        });
+
+        test('a foreign native metadata getter flattens versions without an instanceof check', () => {
+            const store = new CounterCarburetor({n: 1});
+            const source = new ExternalComputed(2);
+            const metadata = sharedSingleton('computedVersions', () =>
+                new WeakMap<object, () => Record<string, {source: CounterCarburetor; version: number}>>());
+            metadata.set(source, () => ({[store.getUID()]: {source: store, version: store.getVersion()}}));
+            source.get = () => store.getData().n * 2;
+            const outer = computed(read => read(source) + 1);
+            expect(outer.get()).toEqual(3);
+            store.setN(2);
+            expect(source.getVersion()).toEqual(0);
+            expect(outer.get()).toEqual(5);
+            metadata.delete(source);
+        });
+
         test('one source change evaluates each node of a four-node chain once', () => {
             const carburetor = new ListCarburetor(getData());
             const calls: number[] = [0, 0, 0, 0];
@@ -280,6 +428,67 @@ describe('computed', () => {
             expect(seenMidWave).toEqual(11);
             expect(total.get()).toEqual(11);
             expect(innerNotifications).toEqual(1);
+        });
+
+        test('a 26-node ladder marks each node a bounded number of times per write, and every body runs once', () => {
+            const carburetor = new CounterCarburetor({n: 0});
+            const NODES = 26;
+            const nodes: ReturnType<typeof computed<number>>[] = [];
+            const bodyRuns = Array.from({length: NODES}, () => 0);
+
+            nodes.push(computed<number>((read) => {
+                bodyRuns[0]++;
+
+                return read(carburetor).n;
+            }));
+            nodes.push(computed<number>((read) => {
+                bodyRuns[1]++;
+
+                return read(carburetor).n + 1;
+            }));
+
+            for (let i = 2; i < NODES; i++) {
+                const a = nodes[i - 1];
+                const b = nodes[i - 2];
+
+                nodes.push(computed<number>((read) => {
+                    bodyRuns[i]++;
+
+                    return read(a) + read(b);
+                }));
+            }
+
+            // The same map Computed.ts files every computed's invalidation callback under (see
+            // its docstring): wrapping each node's entry counts every markStale call this write
+            // reaches, recursive ones included — the methodology R16-06's evidence table used.
+            const invalidationEdges = sharedSingleton('invalidationEdges', () => new WeakMap<() => void, () => void>());
+            let markStaleCalls = 0;
+
+            nodes.forEach((node) => {
+                const key = (node as unknown as {onDependencyChanged: () => void}).onDependencyChanged;
+                const original = invalidationEdges.get(key);
+
+                if (original) {
+                    invalidationEdges.set(key, () => {
+                        markStaleCalls++;
+                        original();
+                    });
+                }
+            });
+
+            nodes[NODES - 1].subscribe(() => undefined, {id: 'listener'});
+            bodyRuns.fill(0);
+
+            carburetor.setN(1);
+
+            // Every node past the base two reads exactly two upstream computeds, so observing
+            // the whole chain gives each of them exactly two incoming edges: linear in the node
+            // count. Pre-fix, the same write drives roughly a million calls on this ladder
+            // (Fibonacci growth, confirmed by running this assertion against the pre-fix
+            // Computed.ts) because a call that finds its target already marked re-walks the
+            // whole graph below it again instead of returning.
+            expect(markStaleCalls).toEqual(2 * (NODES - 2));
+            expect(bodyRuns).toEqual(Array.from({length: NODES}, () => 1));
         });
     });
 

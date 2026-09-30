@@ -1,7 +1,8 @@
 import {spawnSync} from 'node:child_process';
 import {existsSync} from 'node:fs';
 import path from 'node:path';
-import {Carburetor, carburetorToken, getUid} from '@/Carburetor';
+import {Carburetor, carburetorToken, CarburetorScope, ICarburetorToken} from '@/Carburetor';
+import {getUid} from '@/Carburetor/Store/Utils/getUid';
 
 /**
  * A token's id has to be the same string in two processes: the server serializes scope state
@@ -67,15 +68,48 @@ describe('carburetorToken', () => {
         expect(token.id).toEqual('hydration-e2e/in-process');
     });
 
-    test('a second token claiming a taken name is rejected', () => {
-        carburetorToken(() => new Carburetor({value: 0}), 'hydration-e2e/duplicate');
+    test('a second token claiming a taken name reports once in development instead of throwing', () => {
+        const original = console.error;
+        const reported: string[] = [];
 
-        expect(() => carburetorToken(() => new Carburetor({value: 0}), 'hydration-e2e/duplicate'))
-            .toThrow(/already exists/);
+        console.error = (message: string) => reported.push(message);
+
+        let second: ICarburetorToken<Carburetor<{value: number}>>;
+
+        try {
+            carburetorToken(() => new Carburetor({value: 0}), 'hydration-e2e/duplicate');
+            second = carburetorToken(() => new Carburetor({value: 1}), 'hydration-e2e/duplicate');
+        } finally {
+            console.error = original;
+        }
+
+        expect(reported.filter((message: string) => message.includes('already exists')).length).toEqual(1);
+
+        // The returned token still works: an unused id still instantiates through its own factory.
+        expect(second.id).toEqual('hydration-e2e/duplicate');
+
+        const scope = new CarburetorScope();
+
+        expect(scope.get(second).getData().value).toEqual(1);
     });
 
     test('an empty name is rejected', () => {
         expect(() => carburetorToken(() => new Carburetor({value: 0}), '')).toThrow(/non-empty/);
+    });
+
+    test('claimed names live in the shared globalThis slot, not a module-local Set', () => {
+        const name = 'hydration-e2e/shared-slot-check';
+
+        carburetorToken(() => new Carburetor({value: 0}), name);
+
+        // The key sharedSingleton.ts builds for takenNames; read directly, since the module
+        // does not expose this as part of its actual API.
+        const slot = (globalThis as Record<symbol, {value: Set<string>} | undefined>)[
+            Symbol.for('react-carburetor/v1/takenNames')
+        ];
+
+        expect(slot).toBeDefined();
+        expect(slot!.value.has(name)).toBeTruthy();
     });
 });
 

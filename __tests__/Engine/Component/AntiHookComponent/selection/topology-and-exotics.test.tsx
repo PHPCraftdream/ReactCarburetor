@@ -42,32 +42,17 @@ import {React, act, render, AntiHookComponent, Carburetor, TReadonly} from '../s
                 }
             }
 
-            const original = console.error;
-            const reported: string[] = [];
+            const {container, unmount} = render(<Parent />);
 
-            console.error = (message: string) => reported.push(message);
+            expect(container.querySelector('.memo-pair')?.textContent).toEqual('shared');
+            expect(memoRenders).toEqual(1);
 
-            try {
-                const {container, unmount} = render(<Parent />);
+            // Both objects hold v: 1; the graph's sharing is what changed.
+            act(() => store.setShare(false));
 
-                expect(container.querySelector('.memo-pair')?.textContent).toEqual('shared');
-                expect(memoRenders).toEqual(1);
-
-                // Both objects still hold v: 1, so only a comparison that tracks which previous
-                // objects are shared can see this toggle as a change.
-                act(() => store.setShare(false));
-
-                expect(memoRenders).toEqual(2);
-                expect(container.querySelector('.memo-pair')?.textContent).toEqual('separate');
-
-                unmount();
-            } finally {
-                console.error = original;
-            }
-
-            // Selecting branches is the review's repro shape on purpose: detachment keeps the
-            // child safe, and the escape is still reported once per selection.
-            expect(reported.filter((message) => message.includes('connectSelection()')).length).toEqual(1);
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-pair')?.textContent).toEqual('separate');
+            unmount();
         });
 
         test('two equal copies becoming a shared pair re-renders the memo child (R5-01)', () => {
@@ -88,30 +73,16 @@ import {React, act, render, AntiHookComponent, Carburetor, TReadonly} from '../s
                 }
             }
 
-            const original = console.error;
-            const reported: string[] = [];
+            const {container, unmount} = render(<Parent />);
 
-            console.error = (message: string) => reported.push(message);
+            expect(container.querySelector('.memo-pair')?.textContent).toEqual('separate');
+            expect(memoRenders).toEqual(1);
 
-            try {
-                const {container, unmount} = render(<Parent />);
+            act(() => store.setShare(true));
 
-                expect(container.querySelector('.memo-pair')?.textContent).toEqual('separate');
-                expect(memoRenders).toEqual(1);
-
-                act(() => store.setShare(true));
-
-                expect(memoRenders).toEqual(2);
-                expect(container.querySelector('.memo-pair')?.textContent).toEqual('shared');
-
-                unmount();
-            } finally {
-                console.error = original;
-            }
-
-            // Selecting branches is the review's repro shape on purpose: detachment keeps the
-            // child safe, and the escape is still reported once per selection.
-            expect(reported.filter((message) => message.includes('connectSelection()')).length).toEqual(1);
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-pair')?.textContent).toEqual('shared');
+            unmount();
         });
 
         test('a null-prototype dictionary and an ordinary object with the same fields are a change (R5-01)', () => {
@@ -277,3 +248,227 @@ import {React, act, render, AntiHookComponent, Carburetor, TReadonly} from '../s
             unmount();
         });
     });
+
+type TNativeRoot = Map<unknown, unknown> | Set<unknown> | Date;
+
+/** Makes a native root whose own descriptor and intrinsic contents both point back to it. */
+const nativeRoot = (kind: 'Map' | 'Set' | 'Date', n: number): TNativeRoot => {
+    let root: TNativeRoot;
+
+    if (kind === 'Map') {
+        const map = new Map<unknown, unknown>([['id', n]]);
+        map.set(map, 'self');
+        root = map;
+    } else if (kind === 'Set') {
+        const set = new Set<unknown>([n]);
+        set.add(set);
+        root = set;
+    } else {
+        root = new Date(n * 100);
+    }
+
+    Object.defineProperty(root, 'hidden', {
+        value: {self: root}, enumerable: false, writable: false, configurable: false
+    });
+    return root;
+};
+
+/** Reads a native snapshot through its actual brand-checked methods. */
+const nativeAmount = (value: TReadonly<TNativeRoot>): number => {
+    if (value instanceof Map) {
+        return Number(value.get('id'));
+    }
+    if (value instanceof Set) {
+        return Number(value.values().next().value);
+    }
+    return value.getTime();
+};
+
+describe('connectSelection over an opaque native root', () => {
+    test.each(['Map', 'Set', 'Date'] as const)('%s root follows replacements and source swaps', async kind => {
+        const firstStore = new Carburetor(nativeRoot(kind, 1));
+        const otherStore = new Carburetor(nativeRoot(kind, 3));
+        const snapshots: Array<TReadonly<TNativeRoot>> = [];
+        const unit = kind === 'Date' ? 100 : 1;
+
+        class Parent extends AntiHookComponent<{store: Carburetor<TNativeRoot>}> {
+            private readonly live = this.connect(() => this.props.store);
+            private readonly selected = this.connectSelection(() => this.props.store, () => this.live);
+
+            render() {
+                const selected = this.selected();
+                snapshots.push(selected);
+                const self = Object.getOwnPropertyDescriptor(selected, 'hidden')?.value as {self: object};
+                return <span className="native-root">{nativeAmount(selected)}:{self.self === selected ? 'linked' : 'broken'}</span>;
+            }
+        }
+
+        const view = render(<Parent store={firstStore} />);
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit}:linked`);
+        const initial = snapshots[0];
+        expect(initial).not.toBe(firstStore.getData());
+
+        if (initial instanceof Map) {
+            expect(initial.get(initial)).toBe('self');
+            initial.set('id', 99);
+        } else if (initial instanceof Set) {
+            expect(initial.has(initial)).toBe(true);
+            initial.add(99);
+        } else {
+            initial.setTime(999);
+        }
+        expect(nativeAmount(firstStore.getData())).toBe(unit);
+
+        // An equal owner re-render must re-record the native root wildcard for the
+        // following write, even when the persistent connection cached its raw root.
+        view.rerender(<Parent store={firstStore} />);
+
+        await act(async () => { firstStore.setData(nativeRoot(kind, 2)); });
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 2}:linked`);
+        expect(snapshots[snapshots.length - 1]).not.toBe(initial);
+
+        view.rerender(<Parent store={otherStore} />);
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 3}:linked`);
+        await act(async () => { firstStore.setData(nativeRoot(kind, 4)); });
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 3}:linked`);
+        await act(async () => { otherStore.setData(nativeRoot(kind, 5)); });
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 5}:linked`);
+        view.unmount();
+    });
+});
+
+type TObjectAliasRoot = {id: number; index: Map<object, string>; members: Set<object>};
+type TArrayAliasRoot = [Map<object, string>, Set<object>, number];
+type TAliasRoot = TObjectAliasRoot | TArrayAliasRoot;
+type TAliasRootKind = 'object' | 'null' | 'array' | 'objectArray' | 'nullArray';
+
+/** Creates a valid state root referenced from opaque Map keys and Set members. */
+const aliasRoot = (kind: TAliasRootKind, id: number, answer = `answer${id}`): TAliasRoot => {
+    const array = kind === 'array' || kind === 'objectArray' || kind === 'nullArray';
+    const root = (array ? [] : Object.create(kind === 'null' ? null : Object.prototype)) as TAliasRoot;
+    if (kind === 'objectArray' || kind === 'nullArray') {
+        Object.setPrototypeOf(root, kind === 'nullArray' ? null : Object.prototype);
+    }
+    Object.defineProperty(root, array ? '0' : 'index', {
+        value: new Map<object, string>([[root, answer]]),
+        enumerable: true, writable: true, configurable: false
+    });
+    Object.defineProperty(root, array ? '1' : 'members', {
+        value: new Set<object>([root]),
+        enumerable: true, writable: true, configurable: false
+    });
+    Object.defineProperty(root, array ? '2' : 'id', {
+        value: id, enumerable: true, writable: true, configurable: false
+    });
+    return root;
+};
+
+/** Reads either supported root shape without requiring Array methods on its prototype. */
+const aliasFields = (root: TReadonly<TAliasRoot>): {
+    id: number; index: TReadonly<Map<object, string>>; members: TReadonly<Set<object>>;
+} => {
+    if (Array.isArray(root)) {
+        const value = root as unknown as readonly [Map<object, string>, Set<object>, number];
+        return {index: value[0], members: value[1], id: value[2]};
+    }
+    return root as TReadonly<TObjectAliasRoot>;
+};
+
+/** Read only the id, not the array's Map/Set slots. */
+const aliasId = (root: TReadonly<TAliasRoot>): number =>
+    Array.isArray(root)
+        ? (root as unknown as readonly [unknown, unknown, number])[2]
+        : (root as TReadonly<TObjectAliasRoot>).id;
+
+describe('connectSelection over a supported root facade', () => {
+    test.each([
+        ['object', 'rawFirst'], ['object', 'proxyFirst'],
+        ['null', 'rawFirst'], ['null', 'proxyFirst'],
+        ['array', 'rawFirst'], ['array', 'proxyFirst'],
+        ['objectArray', 'rawFirst'], ['objectArray', 'proxyFirst'],
+        ['nullArray', 'rawFirst'], ['nullArray', 'proxyFirst']
+    ] as const)('%s root preserves %s Map/Set aliases and precise subscriptions', async (kind, order) => {
+        const firstStore = new Carburetor<TAliasRoot>(aliasRoot(kind, 1));
+        const otherStore = new Carburetor<TAliasRoot>(aliasRoot(kind, 3));
+        const snapshots: Array<{
+            root: TReadonly<TAliasRoot>;
+            index: TReadonly<Map<object, string>>;
+            members: TReadonly<Set<object>>
+        }> = [];
+        let narrowRenders = 0;
+
+        class Parent extends AntiHookComponent<{store: Carburetor<TAliasRoot>}> {
+            private readonly live = this.connect(() => this.props.store);
+            private readonly selected = this.connectSelection(() => this.props.store, () => {
+                const {index, members} = aliasFields(this.live);
+                return order === 'rawFirst'
+                    ? {index, members, root: this.live}
+                    : {root: this.live, index, members};
+            });
+
+            render() {
+                const selected = this.selected();
+                snapshots.push(selected);
+                return <span className="alias-root">
+                    {aliasFields(selected.root).id}:{selected.index.get(selected.root)}:
+                    {selected.members.has(selected.root) ? 'member' : 'missing'}
+                </span>;
+            }
+        }
+
+        class Narrow extends AntiHookComponent<{store: Carburetor<TAliasRoot>}> {
+            private readonly live = this.connect(() => this.props.store);
+            private readonly selected = this.connectSelection(
+                () => this.props.store, () => ({id: aliasId(this.live)})
+            );
+
+            render() {
+                narrowRenders++;
+                return <span className="narrow-root">{this.selected().id}</span>;
+            }
+        }
+
+        const view = render(<><Parent store={firstStore} /><Narrow store={firstStore} /></>);
+        const text = (): string | undefined => view.container.querySelector('.alias-root')?.textContent?.replace(/\s/g, '');
+        expect(text()).toBe('1:answer1:member');
+        const initial = snapshots[0];
+        expect(initial.root).not.toBe(firstStore.getData());
+        expect(aliasFields(initial.root).index).toBe(initial.index);
+        expect(aliasFields(initial.root).members).toBe(initial.members);
+        expect(Array.isArray(initial.root)).toBe(kind.includes('Array') || kind === 'array');
+        expect(Object.getPrototypeOf(initial.root)).toBe(
+            kind === 'null' || kind === 'nullArray' ? null
+                : kind === 'objectArray' ? Object.prototype
+                    : kind === 'array' ? Array.prototype : Object.prototype
+        );
+        expect(Object.getOwnPropertyDescriptor(initial.root, Array.isArray(initial.root) ? '2' : 'id')?.configurable)
+            .toBe(false);
+        expect(Object.getOwnPropertyDescriptor(initial.root, Array.isArray(initial.root) ? '0' : 'index')?.enumerable)
+            .toBe(true);
+
+        initial.index.set(initial.root, 'consumer edit');
+        initial.members.delete(initial.root);
+        expect(aliasFields(firstStore.getData()).index.get(firstStore.getData())).toBe('answer1');
+        expect(aliasFields(firstStore.getData()).members.has(firstStore.getData())).toBe(true);
+
+        await act(async () => { firstStore.setData(aliasRoot(kind, 2)); });
+        expect(text()).toBe('2:answer2:member');
+        expect(snapshots[snapshots.length - 1].root).not.toBe(initial.root);
+
+        const beforeNarrowOnly = narrowRenders;
+        await act(async () => { firstStore.setData(aliasRoot(kind, 2, 'changed')); });
+        expect(text()).toBe('2:changed:member');
+        expect(narrowRenders).toBe(beforeNarrowOnly);
+
+        view.rerender(<><Parent store={otherStore} /><Narrow store={otherStore} /></>);
+        expect(text()).toBe('3:answer3:member');
+        const beforeOldSource = narrowRenders;
+        await act(async () => { firstStore.setData(aliasRoot(kind, 4)); });
+        expect(text()).toBe('3:answer3:member');
+        expect(narrowRenders).toBe(beforeOldSource);
+        await act(async () => { otherStore.setData(aliasRoot(kind, 5)); });
+        expect(text()).toBe('5:answer5:member');
+        expect(view.container.querySelector('.narrow-root')?.textContent).toBe('5');
+        view.unmount();
+    });
+});

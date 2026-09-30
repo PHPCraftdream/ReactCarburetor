@@ -1,4 +1,5 @@
-import {EResourceStatus, TPath, TPathSet} from "@/Carburetor";
+import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {encodeCacheKey} from "@/Carburetor/Resource/Cache/encodeCacheKey";
 
@@ -135,15 +136,38 @@ describe('ResourceCache', () => {
         expect(cache.getEntry('a').stale).toBeFalsy();
     });
 
+    test.each([NaN, -1, -Infinity])('rejects ttl %s', (ttl) => {
+        expect(() => new ResourceCache(() => Promise.resolve('value'), {ttl})).toThrow(RangeError);
+    });
+
+    test.each([NaN, -1, -Infinity, 1.5])('rejects maxEntries %s', (maxEntries) => {
+        expect(() => new ResourceCache(() => Promise.resolve('value'), {maxEntries})).toThrow(RangeError);
+    });
+
+    test('accepts fractional ttl and zero or infinite capacity', async () => {
+        const zero = new ResourceCache<string, string>((key) => Promise.resolve(key), {
+            ttl: 0.5, maxEntries: 0,
+        });
+        const unlimited = new ResourceCache<string, string>((key) => Promise.resolve(key), {
+            maxEntries: Infinity,
+        });
+
+        await zero.load('a');
+        expect(Object.keys(zero.getData().entries)).toHaveLength(0);
+
+        await Promise.all(['a', 'b', 'c'].map((key) => unlimited.load(key)));
+        expect(Object.keys(unlimited.getData().entries)).toHaveLength(3);
+    });
+
     test('refreshing an entry that has data keeps it readable', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: -1});
+        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 0});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
         await flush();
 
-        void cache.load('a');
+        void cache.refresh('a');
 
         const entry = cache.getEntry('a');
 
@@ -429,10 +453,12 @@ describe('ResourceCache', () => {
 
         const again = cache.getEntry('missing');
 
-        // Built fresh every time, and no bookkeeping for keys that never loaded.
-        expect(again).not.toBe(first);
+        // One shared, frozen view answers every miss — same shape regardless of key or T — and
+        // no bookkeeping is kept for keys that never loaded.
+        expect(again).toBe(first);
         expect(again).toEqual(first);
         expect(viewCache().size).toEqual(0);
+        expect(Object.isFrozen(first)).toBe(true);
     });
 
     test('one pathOf plus one getEntry serializes the arguments once per lookup, cold and warm', () => {
@@ -466,6 +492,36 @@ describe('ResourceCache', () => {
             cache.getEntry(args);
 
             expect(stringify).toHaveBeenCalledTimes(2);
+        } finally {
+            stringify.mockRestore();
+        }
+    });
+
+    // R16-10(4): resolve() replaces the pathOf+getEntry pair `useResource` used to call, and
+    // does it with one serialization instead of two — keyOf() runs exactly once inside it,
+    // where the old pair each ran their own.
+    test('resolve() serializes the arguments exactly once per lookup, cold and warm', () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+        const args = {id: 'a'};
+
+        const stringify = rstest.spyOn(JSON, 'stringify');
+
+        try {
+            stringify.mockClear();
+
+            const cold = cache.resolve(args);
+
+            expect(stringify).toHaveBeenCalledTimes(1);
+            expect(cold.key).toEqual(cache.keyOf(args));
+            expect(cold.path).toEqual(cache.pathOf(args));
+            expect(cold.view).toEqual(cache.getEntry(args));
+
+            stringify.mockClear();
+
+            cache.resolve(args);
+
+            expect(stringify).toHaveBeenCalledTimes(1);
         } finally {
             stringify.mockRestore();
         }

@@ -30,20 +30,77 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     ResourceCache: ()=>ResourceCache
 });
+const EResourceStatus_js_namespaceObject = require("../../Models/Enums/EResourceStatus.js");
 const DiagnosticsInstance_js_namespaceObject = require("../../Store/Diagnostics/DiagnosticsInstance.js");
 const joinPath_js_namespaceObject = require("../../Store/Paths/joinPath.js");
+const PathSeparator_js_namespaceObject = require("../../Store/Paths/PathSeparator.js");
+const WildcardPath_js_namespaceObject = require("../../Store/Paths/WildcardPath.js");
 const external_escapeCacheKey_js_namespaceObject = require("./escapeCacheKey.js");
 const external_getInitialCacheEntry_js_namespaceObject = require("./getInitialCacheEntry.js");
 const external_ResourceCacheLifecycle_js_namespaceObject = require("./ResourceCacheLifecycle.js");
+const external_isViewCurrent_js_namespaceObject = require("./isViewCurrent.js");
+const ABSENT_VIEW = Object.freeze({
+    ...(0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)(),
+    stale: true
+});
+const ENTRY_PATH_PREFIX = `entries${PathSeparator_js_namespaceObject.PATH_SEPARATOR}`;
+const validateOptions = (options)=>{
+    if (void 0 !== options.ttl && (Number.isNaN(options.ttl) || options.ttl < 0)) throw new RangeError('ResourceCache ttl must be a non-negative number');
+    if (void 0 !== options.maxEntries && 1 / 0 !== options.maxEntries && (!Number.isInteger(options.maxEntries) || options.maxEntries < 0)) throw new RangeError('ResourceCache maxEntries must be a non-negative integer or Infinity');
+    return options;
+};
 class ResourceCache extends external_ResourceCacheLifecycle_js_namespaceObject.ResourceCacheLifecycle {
     lastKeyArgs = void 0;
     lastKeyJson = void 0;
     lastKeyValue = void 0;
     keyMutationReported = false;
+    replacedEntries;
     constructor(loader, options = {}){
-        super(loader, options);
+        super(loader, validateOptions(options));
     }
-    keyOf = (args)=>{
+    setData(data) {
+        const outerEntries = this.replacedEntries;
+        this.replacedEntries = this.data.entries;
+        try {
+            return super.setData(data);
+        } finally{
+            this.replacedEntries = outerEntries;
+        }
+    }
+    didSetData() {
+        const keys = Object.keys(this.data.entries);
+        this.eviction.replace(keys);
+        this.viewCache.forEach((_view, key)=>{
+            if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) this.viewCache.delete(key);
+        });
+        for (const key of this.failures.keys()){
+            var _this_replacedEntries;
+            if (!Object.prototype.hasOwnProperty.call(this.data.entries, key) || (null == (_this_replacedEntries = this.replacedEntries) ? void 0 : _this_replacedEntries[key]) !== this.data.entries[key]) this.failures.delete(key);
+        }
+    }
+    preEmit() {
+        if (0 === this.failures.size || 0 === this.writes.size && this.draftTouched) return;
+        if (0 === this.writes.size || this.writes.has(WildcardPath_js_namespaceObject.WILDCARD_PATH) || this.writes.has('entries')) this.failures.forEach(this.reconcileFailure, this);
+        else this.writes.forEach(this.reconcileFailureWrite, this);
+    }
+    reconcileFailure(failure, key) {
+        const entry = this.data.entries[key];
+        if (entry && failure.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error && void 0 === entry.error && (entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Pending && this.requests.has(key) || entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Idle && entry.failed)) return;
+        if (!entry || entry.status !== failure.status || entry.error !== failure.error) this.failures.delete(key);
+    }
+    reconcileFailureWrite(path) {
+        if (!path.startsWith(ENTRY_PATH_PREFIX)) return;
+        const end = path.indexOf(PathSeparator_js_namespaceObject.PATH_SEPARATOR, ENTRY_PATH_PREFIX.length);
+        if (-1 !== end) {
+            const field = path.slice(end + 1);
+            if ('status' !== field && 'error' !== field) return;
+        }
+        const escaped = path.slice(ENTRY_PATH_PREFIX.length, -1 === end ? void 0 : end);
+        const key = escaped.includes('~') ? escaped.replace(/~1/g, PathSeparator_js_namespaceObject.PATH_SEPARATOR).replace(/~0/g, '~') : escaped;
+        const failure = this.failures.get(key);
+        if (failure) this.reconcileFailure(failure, key);
+    }
+    keyOf(args) {
         const json = JSON.stringify(void 0 === args ? null : args);
         const memoized = this.lastKeyArgs === args && void 0 !== this.lastKeyValue;
         if (memoized && this.lastKeyJson === json && void 0 !== this.lastKeyValue) return this.lastKeyValue;
@@ -57,27 +114,45 @@ class ResourceCache extends external_ResourceCacheLifecycle_js_namespaceObject.R
         this.lastKeyJson = json;
         this.lastKeyValue = key;
         return key;
-    };
-    pathOf = (args)=>(0, joinPath_js_namespaceObject.joinPath)('entries', this.keyOf(args));
-    getEntry = (args)=>{
-        const key = this.keyOf(args);
+    }
+    pathOf(args) {
+        return this.pathOfKey(this.keyOf(args));
+    }
+    pathOfKey(key) {
+        return (0, joinPath_js_namespaceObject.joinPath)('entries', key);
+    }
+    getEntry(args) {
+        return this.getEntryByKey(this.keyOf(args));
+    }
+    getEntryByKey(key) {
         const stored = this.data.entries[key];
-        if (!stored) return {
-            ...(0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)(),
-            stale: true
-        };
+        if (!stored) return ABSENT_VIEW;
         this.touch(key);
         const stale = this.isStale(stored);
         const cached = this.viewCache.get(key);
-        if (cached && this.isViewCurrent(cached, stored, stale)) return cached;
+        if (cached && (0, external_isViewCurrent_js_namespaceObject.isViewCurrent)(cached, stored, stale)) return cached;
         const view = {
             ...stored,
             stale
         };
         this.viewCache.set(key, view);
         return view;
-    };
-    getFailure = (args)=>this.failures.get(this.keyOf(args));
+    }
+    fromJSON(value) {
+        this.restore(value);
+    }
+    resolve(args) {
+        const key = this.keyOf(args);
+        return {
+            key,
+            path: this.pathOfKey(key),
+            view: this.getEntryByKey(key)
+        };
+    }
+    getFailure(args) {
+        var _this_failures_get;
+        return null == (_this_failures_get = this.failures.get(this.keyOf(args))) ? void 0 : _this_failures_get.value;
+    }
 }
 exports.ResourceCache = __webpack_exports__.ResourceCache;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

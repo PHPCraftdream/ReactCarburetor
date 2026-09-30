@@ -236,12 +236,31 @@ mod tests {
     }
 
     #[test]
+    fn pre_emit_as_a_method_is_already_publishing() {
+        // The store's own preEmit is a prototype method, not an arrow field: the exemption
+        // has to follow the member by name regardless of which syntax declared it.
+        let source = store("    preEmit() {\n        this.draft.count = 1;\n    }");
+
+        assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
     fn what_pre_emit_delegates_to_is_exempt_as_well() {
         // The exemption travels along `this.x()` calls, because a helper called from preEmit is in
         // the same position: publishing there would recurse.
         let source = store(
             "    preEmit = () => {\n        this.countStats();\n    };\n\n    \
              countStats = () => {\n        this.draft.count = 1;\n    };",
+        );
+
+        assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn what_a_method_syntax_pre_emit_delegates_to_is_exempt_as_well() {
+        let source = store(
+            "    preEmit() {\n        this.countStats();\n    }\n\n    \
+             countStats() {\n        this.draft.count = 1;\n    }",
         );
 
         assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);

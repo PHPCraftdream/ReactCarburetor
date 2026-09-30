@@ -8,17 +8,17 @@ import {resource} from "./sources";
 export class Row extends AntiHookComponent<{url: string; interval: number}> {
     protected useEffects(): void {
         // no-async-effect
-        this.useEffect(async () => {
+        this.useEffect('load', async () => {
             await resource.load();
-        }, 'load', []);
+        }, []);
 
         // require-effect-deps
-        this.useEffect(() => connect(this.props.url), 'connect', []);
+        this.useEffect('connect', () => connect(this.props.url), []);
 
-        this.useEffect(() => startTimer(this.props.interval), 'timer', [this.props.interval]);
+        this.useEffect('timer', () => startTimer(this.props.interval), [this.props.interval]);
 
         // no-duplicate-effect-name
-        this.useEffect(() => stopTimer(), 'timer', []);
+        this.useEffect('timer', () => stopTimer(), []);
     }
 
     public render() {

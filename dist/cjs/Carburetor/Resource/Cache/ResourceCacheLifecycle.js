@@ -32,26 +32,27 @@ __webpack_require__.d(__webpack_exports__, {
 });
 const EResourceStatus_js_namespaceObject = require("../../Models/Enums/EResourceStatus.js");
 const Carburetor_js_namespaceObject = require("../../Store/Carburetor.js");
-const PathSeparator_js_namespaceObject = require("../../Store/Paths/PathSeparator.js");
 const joinPath_js_namespaceObject = require("../../Store/Paths/joinPath.js");
 const deepClone_js_namespaceObject = require("../../Store/Utils/deepClone.js");
 const external_describeError_js_namespaceObject = require("../describeError.js");
 const external_createAbortHandle_js_namespaceObject = require("../createAbortHandle.js");
 const external_getInitialCacheEntry_js_namespaceObject = require("./getInitialCacheEntry.js");
+const external_EvictionLedger_js_namespaceObject = require("./EvictionLedger.js");
 const DEFAULT_TTL = 30000;
 const DEFAULT_MAX_ENTRIES = 100;
-const ENTRIES_PREFIX = `entries${PathSeparator_js_namespaceObject.PATH_SEPARATOR}`;
 class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
     loader;
+    bulkDepth = 0;
     restoreGeneration = 0;
     ttl;
     maxEntries;
     requests = new Map();
     controllers = new Map();
     failures = new Map();
-    lastUsed = new Map();
-    useTick = 0;
+    failedRetries;
+    invalidatedRequests;
     viewCache = new Map();
+    eviction = new external_EvictionLedger_js_namespaceObject.EvictionLedger();
     constructor(loader, options = {}){
         super({
             entries: {}
@@ -59,14 +60,15 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         this.ttl = void 0 === options.ttl ? DEFAULT_TTL : options.ttl;
         this.maxEntries = void 0 === options.maxEntries ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
-    restore = (data)=>{
+    restore(data) {
+        var _this_patchObservers;
         const generation = ++this.restoreGeneration;
         const controllers = Array.from(this.controllers.entries());
         this.controllers.clear();
         this.requests.clear();
         this.failures.clear();
         this.viewCache.clear();
-        this.lastUsed.clear();
+        this.eviction.reset();
         controllers.forEach(([, controller])=>controller.abort());
         if (generation !== this.restoreGeneration) return;
         const entries = {};
@@ -77,99 +79,115 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
                 refreshing: false,
                 status: entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Pending ? EResourceStatus_js_namespaceObject.EResourceStatus.Idle : entry.status
             };
+            if (!this.eviction.lastUsed.has(key)) this.touch(key);
         });
         this.controllers.forEach((_controller, key)=>{
             const entry = this.data.entries[key];
             if (entry) entries[key] = entry;
         });
+        null == (_this_patchObservers = this.patchObservers) || _this_patchObservers.ownRestore(data);
         this.setData((0, deepClone_js_namespaceObject.deepClone)({
             entries
         }));
-    };
-    touch = (key)=>{
-        this.useTick += 1;
-        this.lastUsed.set(key, this.useTick);
-    };
-    load = (args)=>{
+    }
+    touch(key) {
+        this.eviction.touch(key);
+    }
+    subscribe(callback, options = {}) {
+        if (void 0 !== options.id && Object.prototype.hasOwnProperty.call(this.subscribers, options.id)) this.eviction.release();
+        return super.subscribe(callback, options);
+    }
+    unsubscribe(id) {
+        if (Object.prototype.hasOwnProperty.call(this.subscribers, id)) this.eviction.release();
+        super.unsubscribe(id);
+    }
+    load(args) {
         const key = this.keyOf(args);
         const entry = this.data.entries[key];
         this.touch(key);
         if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success && !this.isStale(entry)) return Promise.resolve();
         return this.fetch(key, args);
-    };
-    refresh = (args)=>{
+    }
+    refresh(args) {
         const key = this.keyOf(args);
         this.touch(key);
         return this.fetch(key, args);
-    };
-    abort = (args)=>{
+    }
+    abort(args) {
         this.abortKey(this.keyOf(args));
-    };
-    abortAll = ()=>{
-        Array.from(this.controllers.keys()).forEach((key)=>this.abortKey(key));
-    };
-    invalidate = (args)=>{
+    }
+    abortAll() {
+        this.bulkDepth++;
+        try {
+            Array.from(this.controllers.entries()).forEach(([key, controller])=>{
+                if (this.controllers.get(key) === controller) this.abortKey(key);
+            });
+        } finally{
+            this.finishBulk();
+        }
+    }
+    invalidate(args) {
         const key = this.keyOf(args);
         if (!this.data.entries[key]) return;
+        const controller = this.controllers.get(key);
+        if (controller) (this.invalidatedRequests || (this.invalidatedRequests = new WeakSet())).add(controller);
         this.update((draft)=>{
             draft.entries[key].invalidated = true;
             draft.entries[key].failed = false;
         });
-    };
-    invalidateAll = ()=>{
+    }
+    invalidateAll() {
         const keys = Object.keys(this.data.entries);
         if (0 === keys.length) return;
         this.update((draft)=>{
             keys.forEach((key)=>{
+                const controller = this.controllers.get(key);
+                if (controller) (this.invalidatedRequests || (this.invalidatedRequests = new WeakSet())).add(controller);
                 draft.entries[key].invalidated = true;
                 draft.entries[key].failed = false;
             });
         });
-    };
-    forget = (args)=>{
+    }
+    forget(args) {
         this.forgetKey(this.keyOf(args));
-    };
-    forgetAll = ()=>{
-        Object.keys(this.data.entries).forEach((key)=>this.forgetKey(key));
-    };
-    forgetKey = (key)=>{
+    }
+    forgetAll() {
+        this.bulkDepth++;
+        try {
+            Object.keys(this.data.entries).forEach((key)=>this.forgetKey(key));
+        } finally{
+            this.finishBulk();
+        }
+    }
+    finishBulk() {
+        this.bulkDepth--;
+        if (0 === this.bulkDepth && (this.draftTouched || this.writes.size > 0)) super.emitUpdate();
+    }
+    emitUpdate() {
+        if (0 === this.bulkDepth) super.emitUpdate();
+    }
+    forgetKey(key) {
         this.abortKey(key);
         if (this.controllers.has(key)) return;
         this.failures.delete(key);
-        this.lastUsed.delete(key);
+        this.eviction.lastUsed.delete(key);
         this.viewCache.delete(key);
         if (!this.data.entries[key]) return;
+        this.eviction.forget(key);
         this.update((draft)=>{
             delete draft.entries[key];
         });
-    };
-    isStale = (entry)=>{
+    }
+    isStale(entry) {
         if (entry.invalidated || void 0 === entry.updatedAt) return true;
         return Date.now() - entry.updatedAt > this.ttl;
-    };
-    isViewCurrent = (view, entry, stale)=>view.stale === stale && view.status === entry.status && view.data === entry.data && view.error === entry.error && view.updatedAt === entry.updatedAt && view.refreshing === entry.refreshing && view.invalidated === entry.invalidated && view.failed === entry.failed;
-    retainedKeys = ()=>{
-        const retained = new Set();
-        Object.keys(this.subscribers).forEach((id)=>{
-            this.subscribers[id].reads.forEach((read)=>{
-                if (!read.startsWith(ENTRIES_PREFIX)) return;
-                const segment = read.slice(ENTRIES_PREFIX.length).split(PathSeparator_js_namespaceObject.PATH_SEPARATOR)[0];
-                if (segment) retained.add(segment);
-            });
-        });
-        return retained;
-    };
-    evict = (deferNotification = false)=>{
-        const keys = Object.keys(this.data.entries);
-        if (keys.length <= this.maxEntries) return;
-        const retained = this.retainedKeys();
-        const candidates = keys.filter((key)=>!this.requests.has(key) && !retained.has((0, joinPath_js_namespaceObject.joinPath)('', key))).sort((left, right)=>(this.lastUsed.get(left) || 0) - (this.lastUsed.get(right) || 0));
-        const excess = keys.length - this.maxEntries;
-        const doomed = candidates.slice(0, excess);
+    }
+    evict(deferNotification = false) {
+        if (this.eviction.shouldSkip(this.maxEntries)) return;
+        const doomed = this.eviction.selectVictims(this.maxEntries, (key)=>this.requests.has(key) || this.subscriberIndex.hasReaderAt((0, joinPath_js_namespaceObject.joinPath)('entries', key)));
         if (0 === doomed.length) return;
         doomed.forEach((key)=>{
             this.failures.delete(key);
-            this.lastUsed.delete(key);
             this.viewCache.delete(key);
         });
         const draft = this.draft;
@@ -178,37 +196,49 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         });
         if (deferNotification) {
             if (!this.pendingEmit) this.emitSoon();
-            return;
-        }
-        this.emitUpdate();
-    };
-    abortKey = (key)=>{
+        } else this.emitUpdate();
+    }
+    isRetentionFree(key) {
+        return !this.requests.has(key) && !this.subscriberIndex.hasReaderAt((0, joinPath_js_namespaceObject.joinPath)('entries', key));
+    }
+    abortKey(key) {
         const controller = this.controllers.get(key);
         if (!controller) return;
-        if (this.controllers.get(key) === controller) {
-            this.controllers.delete(key);
-            this.requests.delete(key);
-        }
+        this.controllers.delete(key);
+        this.requests.delete(key);
         controller.abort();
         if (this.controllers.has(key)) return;
         const entry = this.data.entries[key];
         if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Pending) return void this.update((draft)=>{
+            var _draft_entries_key;
+            var _this_failedRetries;
             draft.entries[key].status = EResourceStatus_js_namespaceObject.EResourceStatus.Idle;
+            (_draft_entries_key = draft.entries[key]).failed || (_draft_entries_key.failed = (null == (_this_failedRetries = this.failedRetries) ? void 0 : _this_failedRetries.has(controller)) || this.failures.has(key));
         });
         if (entry && entry.refreshing) this.update((draft)=>{
+            var _draft_entries_key;
+            var _this_failedRetries;
             draft.entries[key].refreshing = false;
+            (_draft_entries_key = draft.entries[key]).failed || (_draft_entries_key.failed = (null == (_this_failedRetries = this.failedRetries) ? void 0 : _this_failedRetries.has(controller)) || this.failures.has(key));
         });
-    };
-    suspend = (args)=>{
+    }
+    suspend(args) {
         const key = this.keyOf(args);
         const entry = this.data.entries[key];
         this.touch(key);
-        if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success) return entry.data;
-        if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error) throw this.failures.has(key) ? this.failures.get(key) : new Error(entry.error || 'Carburetor: resource failed');
+        if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success) {
+            if (this.isStale(entry) && !entry.failed && !this.requests.has(key)) this.fetch(key, args, true);
+            return entry.data;
+        }
+        if (entry && entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error) {
+            var _this_failures_get;
+            if (entry.invalidated && !entry.failed) throw this.fetch(key, args, true);
+            throw this.failures.has(key) ? null == (_this_failures_get = this.failures.get(key)) ? void 0 : _this_failures_get.value : new Error(entry.error || 'Carburetor: resource failed');
+        }
         const known = this.requests.get(key);
         throw known || this.fetch(key, args, true);
-    };
-    fetch = (key, args, deferNotification = false)=>{
+    }
+    fetch(key, args, deferNotification = false) {
         const known = this.requests.get(key);
         if (known) return known;
         const controller = (0, external_createAbortHandle_js_namespaceObject.createAbortHandle)();
@@ -220,7 +250,9 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         });
         this.controllers.set(key, controller);
         this.requests.set(key, request);
-        this.markLoading(key, deferNotification);
+        const entry = this.data.entries[key];
+        if (entry && (entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Error || entry.failed || void 0 !== entry.error)) (this.failedRetries || (this.failedRetries = new WeakSet())).add(controller);
+        this.markLoading(key, deferNotification, entry);
         if (!this.isCurrent(key, controller)) {
             resolveRequest();
             return request;
@@ -238,69 +270,82 @@ class ResourceCacheLifecycle extends Carburetor_js_namespaceObject.Carburetor {
         }).then(resolveRequest, rejectRequest);
         this.evict(deferNotification);
         return request;
-    };
-    markLoading = (key, deferNotification)=>{
-        const entry = this.data.entries[key];
+    }
+    markLoading(key, deferNotification, entry) {
         const draft = this.draft;
         if (entry) if (entry.status !== EResourceStatus_js_namespaceObject.EResourceStatus.Success) {
             draft.entries[key].status = EResourceStatus_js_namespaceObject.EResourceStatus.Pending;
             draft.entries[key].error = void 0;
         } else draft.entries[key].refreshing = true;
-        else draft.entries[key] = {
-            ...(0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)(),
-            status: EResourceStatus_js_namespaceObject.EResourceStatus.Pending
-        };
+        else {
+            draft.entries[key] = {
+                ...(0, external_getInitialCacheEntry_js_namespaceObject.getInitialCacheEntry)(),
+                status: EResourceStatus_js_namespaceObject.EResourceStatus.Pending
+            };
+            this.eviction.create();
+        }
         if (deferNotification) return void this.emitSoon();
         this.emitUpdate();
-    };
-    isCurrent = (key, controller)=>this.controllers.get(key) === controller && !controller.signal.aborted;
-    settleSuccess = (key, controller, data)=>{
+    }
+    isCurrent(key, controller) {
+        return this.controllers.get(key) === controller && !controller.signal.aborted;
+    }
+    settleSuccess(key, controller, data) {
         if (!this.isCurrent(key, controller)) return;
         if (!this.data.entries[key]) {
             this.controllers.delete(key);
             this.requests.delete(key);
             this.failures.delete(key);
-            this.lastUsed.delete(key);
+            this.eviction.lastUsed.delete(key);
             this.viewCache.delete(key);
             return;
         }
         this.controllers.delete(key);
         this.requests.delete(key);
         this.failures.delete(key);
+        if (this.isRetentionFree(key)) this.eviction.release();
         this.update((draft)=>{
+            var _this_invalidatedRequests;
             draft.entries[key].status = EResourceStatus_js_namespaceObject.EResourceStatus.Success;
             draft.entries[key].data = data;
             draft.entries[key].error = void 0;
             draft.entries[key].updatedAt = Date.now();
             draft.entries[key].refreshing = false;
-            draft.entries[key].invalidated = false;
+            draft.entries[key].invalidated = (null == (_this_invalidatedRequests = this.invalidatedRequests) ? void 0 : _this_invalidatedRequests.has(controller)) || false;
             draft.entries[key].failed = false;
         });
         this.evict();
-    };
-    settleFailure = (key, controller, error)=>{
+    }
+    settleFailure(key, controller, error) {
         if (!this.isCurrent(key, controller)) return;
         if (!this.data.entries[key]) {
             this.controllers.delete(key);
             this.requests.delete(key);
             this.failures.delete(key);
-            this.lastUsed.delete(key);
+            this.eviction.lastUsed.delete(key);
             this.viewCache.delete(key);
             return;
         }
         this.controllers.delete(key);
         this.requests.delete(key);
-        this.failures.set(key, error);
+        if (this.isRetentionFree(key)) this.eviction.release();
         const entry = this.data.entries[key];
         const hasData = entry.status === EResourceStatus_js_namespaceObject.EResourceStatus.Success || void 0 !== entry.data;
+        const message = (0, external_describeError_js_namespaceObject.describeError)(error);
+        this.failures.set(key, {
+            value: error,
+            error: message,
+            status: hasData ? entry.status : EResourceStatus_js_namespaceObject.EResourceStatus.Error
+        });
         this.update((draft)=>{
-            draft.entries[key].error = (0, external_describeError_js_namespaceObject.describeError)(error);
+            var _this_invalidatedRequests;
+            draft.entries[key].error = message;
             draft.entries[key].refreshing = false;
-            draft.entries[key].failed = true;
+            draft.entries[key].failed = !(null == (_this_invalidatedRequests = this.invalidatedRequests) ? void 0 : _this_invalidatedRequests.has(controller));
             if (!hasData) draft.entries[key].status = EResourceStatus_js_namespaceObject.EResourceStatus.Error;
         });
         this.evict();
-    };
+    }
 }
 exports.ResourceCacheLifecycle = __webpack_exports__.ResourceCacheLifecycle;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

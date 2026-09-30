@@ -1,5 +1,22 @@
-import {EResourceStatus, ResourceCarburetor} from "@/Carburetor";
+import {EResourceStatus, IResourceData, IResourceSnapshot, ResourceCarburetor} from "@/Carburetor";
 import {deferred, flush, IDeferred} from "./helpers";
+
+const thrownBy = (resource: ResourceCarburetor<string, string>, key: string): unknown => {
+    try {
+        resource.suspend(key);
+    } catch (error: unknown) {
+        return error;
+    }
+
+    return undefined;
+};
+
+class WritableResource extends ResourceCarburetor<string, string> {
+    /** Exposes the ordinary draft/update mutation for resource regression coverage. */
+    public change(mutate: (draft: IResourceData<string>) => void): void {
+        this.update(mutate);
+    }
+}
 
 describe('ResourceCarburetor', () => {
     test('restoring over a request in flight drops the stale answer', async () => {
@@ -249,5 +266,254 @@ describe('ResourceCarburetor', () => {
         await reloaded;
 
         expect(resource.getData().data).toEqual('a-again');
+    });
+});
+
+describe('single-slot public replacement', () => {
+    test('different Error at the same key publishes the replacement rejection before subscribers run', async () => {
+        const original = new Error('transport-down');
+        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+        await resource.load('a');
+        expect(resource.getLastError()).toBe(original);
+        expect(thrownBy(resource, 'a')).toBe(original);
+
+        const observed: unknown[] = [];
+        const stop = resource.subscribe(() => {
+            const state = resource.getData();
+            observed.push({
+                status: state.status,
+                error: state.error,
+                raw: resource.getLastError(),
+                thrown: thrownBy(resource, 'a'),
+                snapshot: resource.snapshot(),
+                serialized: JSON.parse(resource.serialize()),
+            });
+        });
+        const replacement = {...resource.getData(), status: EResourceStatus.Error, error: 'access-denied'};
+        resource.setData(replacement);
+        resource.unsubscribe(stop);
+
+        const raw = resource.getLastError();
+        expect(raw).toBeInstanceOf(Error);
+        expect(raw).not.toBe(original);
+        expect((raw as Error).message).toBe('access-denied');
+        expect(resource.getData()).toBe(replacement);
+        expect(resource.snapshot()).toEqual({...replacement, key: JSON.stringify('a')});
+        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+        expect(thrownBy(resource, 'a')).toBe(raw);
+        expect(observed).toEqual([{
+            status: EResourceStatus.Error,
+            error: 'access-denied',
+            raw,
+            thrown: raw,
+            snapshot: resource.snapshot(),
+            serialized: resource.snapshot(),
+        }]);
+    });
+
+    test('same-message Error replacement drops the former raw cause before synchronous publication', async () => {
+        const original = new Error('offline');
+        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+        await resource.load('a');
+        const seen: Array<{state: IResourceData<string>; wire: IResourceSnapshot<string>;
+            serialized: unknown; raw: unknown; thrown: unknown}> = [];
+        const id = resource.subscribe(() => {
+            seen.push({
+                state: {...resource.getData()},
+                wire: resource.snapshot(),
+                serialized: JSON.parse(resource.serialize()),
+                raw: resource.getLastError(),
+                thrown: thrownBy(resource, 'a'),
+            });
+        });
+        const replacement = {...resource.getData(), updatedAt: (resource.getData().updatedAt ?? 0) + 1};
+
+        resource.setData(replacement);
+        resource.unsubscribe(id);
+
+        const raw = resource.getLastError();
+        expect(raw).toBeInstanceOf(Error);
+        expect(raw).not.toBe(original);
+        expect((raw as Error).message).toBe(original.message);
+        expect(resource.getData()).toBe(replacement);
+        expect(resource.snapshot()).toEqual({...replacement, key: JSON.stringify('a')});
+        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+        expect(thrownBy(resource, 'a')).toBe(raw);
+        expect(seen).toEqual([{
+            state: replacement,
+            wire: resource.snapshot(),
+            serialized: resource.snapshot(),
+            raw,
+            thrown: raw,
+        }]);
+    });
+
+    test('installing the exact current Error state retains its original raw rejection', async () => {
+        const original = new Error('offline');
+        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+        await resource.load('a');
+        const current = resource.getData();
+
+        resource.setData(current);
+
+        expect(resource.getData()).toBe(current);
+        expect(resource.getLastError()).toBe(original);
+        expect(thrownBy(resource, 'a')).toBe(original);
+        expect(resource.snapshot()).toEqual({...current, key: JSON.stringify('a')});
+        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+    });
+
+    test('Error to Success clears raw rejection before publication and retains its settled key', async () => {
+        const original = new Error('down');
+        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+        await resource.load('a');
+        const observed: unknown[] = [];
+        const stop = resource.subscribe(() => {
+            observed.push([resource.getLastError(), resource.suspend('a'), resource.snapshot()]);
+        });
+
+        resource.setData({...resource.getData(), status: EResourceStatus.Success, data: 'restored', error: undefined});
+        resource.unsubscribe(stop);
+
+        expect(resource.getLastError()).toBeUndefined();
+        expect(resource.suspend('a')).toBe('restored');
+        expect(resource.getData().status).toBe(EResourceStatus.Success);
+        expect(resource.snapshot().key).toBe(JSON.stringify('a'));
+        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+        expect(observed).toEqual([[undefined, 'restored', resource.snapshot()]]);
+    });
+
+    test('keyless public replacement leaves a current request alive without manufacturing an answer key', async () => {
+        const gate = deferred<string>();
+        let calls = 0;
+        let signal: AbortSignal | undefined;
+        const resource = new ResourceCarburetor<string, string>((_key, nextSignal) => {
+            calls++;
+            signal = nextSignal;
+            return gate.promise;
+        });
+        const loading = resource.load('a');
+
+        resource.setData({...resource.getData(), status: EResourceStatus.Error, error: 'manual'});
+
+        expect(signal?.aborted).toBe(false);
+        expect(resource.snapshot().key).toBeUndefined();
+        expect(resource.getLastError()).toMatchObject({message: 'manual'});
+        expect(resource.load('a')).toBe(loading);
+        expect(calls).toBe(1);
+        gate.resolve('server');
+        await loading;
+        expect(resource.getData().data).toBe('server');
+        expect(resource.getLastError()).toBeUndefined();
+        expect(resource.snapshot().key).toBe(JSON.stringify('a'));
+        expect(resource.suspend('a')).toBe('server');
+    });
+
+    test('restore and fromJSON reconstruct rejection instead of retaining the previous raw cause', async () => {
+        const original = new Error('down');
+        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+        await resource.load('a');
+
+        resource.restore({...resource.snapshot(), error: 'restored'});
+        const restored = resource.getLastError();
+        expect(restored).toBeInstanceOf(Error);
+        expect(restored).not.toBe(original);
+        expect((restored as Error).message).toBe('restored');
+        expect(thrownBy(resource, 'a')).toBe(restored);
+        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+
+        const wire = {...resource.snapshot(), error: 'hydrated', key: JSON.stringify('b')};
+        resource.fromJSON(wire);
+        const hydrated = resource.getLastError();
+        expect(hydrated).toBeInstanceOf(Error);
+        expect(hydrated).not.toBe(restored);
+        expect((hydrated as Error).message).toBe('hydrated');
+        expect(thrownBy(resource, 'b')).toBe(hydrated);
+        expect(resource.getData().error).toBe('hydrated');
+        expect(resource.snapshot()).toEqual(wire);
+        expect(JSON.parse(resource.serialize())).toEqual(wire);
+    });
+});
+
+describe('single-slot subclass mutation', () => {
+    test('draft Error changes publish a matching raw cause and a later Success clears it', async () => {
+        const original = new Error('older');
+        const resource = new WritableResource(() => Promise.reject(original));
+        await resource.load('a');
+        const observations: Array<{
+            state: IResourceData<string>;
+            wire: IResourceSnapshot<string>;
+            serialized: unknown;
+            raw: unknown;
+            result: unknown;
+        }> = [];
+        const id = resource.subscribe(() => {
+            const state = resource.getData();
+            observations.push({
+                state: {...state},
+                wire: resource.snapshot(),
+                serialized: JSON.parse(resource.serialize()),
+                raw: resource.getLastError(),
+                result: state.status === EResourceStatus.Success
+                    ? resource.suspend('a')
+                    : thrownBy(resource, 'a'),
+            });
+        });
+
+        resource.change(draft => { draft.error = 'changed-by-update'; });
+        const updated = resource.getLastError();
+        expect(updated).toBeInstanceOf(Error);
+        expect(updated).not.toBe(original);
+        expect((updated as Error).message).toBe('changed-by-update');
+        expect(resource.getData().error).toBe('changed-by-update');
+        expect(resource.snapshot().error).toBe('changed-by-update');
+        expect(thrownBy(resource, 'a')).toBe(updated);
+
+        resource.change(draft => { draft.updatedAt = 123; });
+        expect(resource.getLastError()).toBe(updated);
+        expect(thrownBy(resource, 'a')).toBe(updated);
+
+        resource.change(draft => {
+            draft.status = EResourceStatus.Success;
+            draft.data = 'recovered';
+            draft.error = undefined;
+        });
+        resource.unsubscribe(id);
+        expect(resource.getLastError()).toBeUndefined();
+        expect(resource.suspend('a')).toBe('recovered');
+        expect(resource.snapshot().key).toBe(JSON.stringify('a'));
+        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+        expect(observations).toHaveLength(3);
+        for (const observation of observations) {
+            expect(observation.wire).toEqual({...observation.state, key: JSON.stringify('a')});
+            expect(observation.serialized).toEqual(observation.wire);
+            if (observation.state.status === EResourceStatus.Error) {
+                expect(observation.raw).toBe(updated);
+                expect(observation.result).toBe(updated);
+            } else {
+                expect(observation.state.status).toBe(EResourceStatus.Success);
+                expect(observation.raw).toBeUndefined();
+                expect(observation.result).toBe('recovered');
+            }
+        }
+    });
+
+    test('an unchanged draft Error retains a non-Error raw rejection across publication', async () => {
+        const original = {reason: 'offline'};
+        const resource = new WritableResource(() => Promise.reject(original));
+        await resource.load('a');
+        const seen: unknown[] = [];
+        const id = resource.subscribe(() => {
+            seen.push([resource.getLastError(), thrownBy(resource, 'a'), resource.snapshot()]);
+        });
+
+        resource.change(draft => { draft.updatedAt = 123; });
+        resource.unsubscribe(id);
+
+        expect(resource.getLastError()).toBe(original);
+        expect(thrownBy(resource, 'a')).toBe(original);
+        expect(resource.snapshot().key).toBe(JSON.stringify('a'));
+        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+        expect(seen).toEqual([[original, original, resource.snapshot()]]);
     });
 });

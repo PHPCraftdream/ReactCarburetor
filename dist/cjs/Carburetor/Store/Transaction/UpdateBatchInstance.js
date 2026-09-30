@@ -30,8 +30,9 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     updateBatch: ()=>updateBatch
 });
+const sharedSingleton_js_namespaceObject = require("../Utils/sharedSingleton.js");
 const external_UpdateBatch_js_namespaceObject = require("./UpdateBatch.js");
-const updateBatch = new external_UpdateBatch_js_namespaceObject.UpdateBatch();
+const updateBatch = (0, sharedSingleton_js_namespaceObject.sharedSingleton)('updateBatch', ()=>new external_UpdateBatch_js_namespaceObject.UpdateBatch());
 exports.updateBatch = __webpack_exports__.updateBatch;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "updateBatch"

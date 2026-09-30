@@ -1,0 +1,47 @@
+# API and engine review, round 15 — integrated repairs — 2026-09-30
+
+Round 15 was **not zero**: the independent xs1 API review established one P2 and the xs1 engine review established two P2s. Integration then reproduced two additional P2 history regressions. All five are closed individually by actual behavior proof; the next complete independent round must still establish zero P0–P3.
+
+Source repairs came from hs1 / GPT-6 Sol6 / high isolated worktrees. Product source, tests, docs and tracked/new generated bundles remain uncommitted in `worktrees/cycle-integration`. Only review reports are committed; no push, version change or /rush. Other dirty worktrees were not reset. `dist` is tracked, not disposable ignored scaffolding.
+
+## Findings and proof
+
+| Finding | Mechanism and final repair | Observed behavior |
+|---|---|---|
+| R15-API-01, P2 | Single-slot failure ownership now includes the owning state-root identity, not only the wire message. Reconcile before publication. | A distinct same-message Error state with a newer timestamp exposes a reconstructed failure inside synchronous subscribers; exact-current-object no-ops and unrelated draft timestamp writes retain the original rejection. No settled key is invented and current request ownership is unchanged. |
+| R15-ENGINE-01, P2 | Mutation patches and publication are one typed observer protocol. Record before ordinary subscribers, using the same scheduler/coalescing boundary. | Both observer registration orders yield `x: 2 → undo 1 → undo 0`, with two real operations instead of a no-op first undo. A transaction remains one coalesced operation. |
+| R15-ENGINE-02, P2 | Suppress only the exact replay-owned restore installation, after abort-supersession guards; do not blanket-suppress writes while replay is active. | Patch and opaque replay subscriber writes preserve `{x:0,y:1}`, clear redo, then undo the fresh branch to `{x:0,y:0}`. Resource abort/load re-entry retains its new settled wire answer and key. |
+| R15-ENGINE-01A, P2 | Replace the accidental exclusive history observer with a store-local registry: independent publication cancellation keys, limits and disposers; patch-only replacement remains separate. | Before the first repair both histories could undo; the first repair incorrectly left `[false,true]`. Final source smoke restores `[true,true]`; regressions cover independent limits, deferred disconnect, replay as a fresh change for another history and callback-error isolation. |
+| R15-ENGINE-03, P2 | Missing/opaque patch endpoints were private per-copy Symbols. Use immutable versioned `Symbol.for` protocol identities, retaining `unique symbol` declaration types. | Actual rebuilt CJS Store + ESM History and the reverse now undo an added key by removing its own property; opaque `setData` records an undo and restores `x=0`, then redo restores `x=1`. Before: leaked foreign Symbol values hidden by JSON and no opaque undo, with a subscriber TypeError. The installed-package fixture additionally asserts deletion-redo absence and successful resource wire-key/answer undo/redo in both directions. |
+
+The clean API cutover is `attachPatchListener({patch, publication?, ownRestore?})`, not a bare-function compatibility overload. Custom producers must honor publication before ordinary subscribers and notify the exact own-restore argument before installation, after cancellation guards. Updated callers, declaration output, README, changelog and module-sharing docs describe the same contract. The lazy registry keeps the usual single-observer dispatcher direct and iterates registration values without per-entry tuple arrays.
+
+Actual-source proof artifacts: `local://r15-slot-ownership-smoke.json`, `r15-history-ownership-smoke.json`, `r15-resource-wire-replay-smoke.json`, `r15-multi-history-before-after.json`, `r15-multi-history-after-repair.json`. Actual built-format before/after: `local://r15-built-cross-format-history-smoke.json`, `r15-built-cross-format-history-after.json`. The standalone rebuilt consumer fixture exited 0 with empty stderr; its new history cases assert actual state and property absence, not captured log echoes.
+
+## Performance measurements
+
+All nine existing paired drivers were rerun sequentially after the final registry and sentinel repair, with no concurrent owned suite/packaging run. Node used the real library and below-normal priority. Baseline: `D:/system_artefact/Temp/carburetor-r11-baseline-z3akesas/dist`; candidate: integration `dist`. Raw stdout/stderr and exact driver paths are preserved in `local://r15-repaired-paired-benchmark-observations.json`. Medians are milliseconds; wall times are noisy and are not allocated-byte measurements or attribution to one isolated change.
+
+| Driver / workload | Baseline → candidate | Observable work / tradeoff |
+|---|---|---|
+| computedPulls, 10k unobserved stable reads, 1 / 12 / 128 dependencies | 1.1655→0.2997 / 4.5344→0.0951 / 96.0408→0.3383; median paired ratios 0.15794 / 0.02156 / 0.00343 | Stable body evaluations 0; unrelated writes reevaluate 1→0; changed dependency reevaluates once. |
+| computedFreshness, native, 400 stable reads / 20 writes, 1 / 12 dependencies | Stable 0.1093→0.1163 / 0.0962→0.1016; writes 4.5398→4.9088 / 5.9188→6.0877 | Native control retains 0 stable body evaluations, 20 changed evaluations and 20 commits. No blanket speedup claim. |
+| computedFreshness, generic adapter, same workload | Stable 0.1321→0.3341 / 0.1257→0.7855; writes 4.9793→5.7308 / 5.7151→6.5403 | Correctness fallback costs 1200 / 14400 stable version checks; changed body work 20→40, with 20 commits. |
+| descriptorHistory, 300 writes and full undo/redo, 6 rounds | Writes 9.67115→7.2248; replay 66.0741→69.2019 | 900 versions and deliveries, 300 undos and redos, final length 301, both variants. Replay is slightly slower in this run. |
+| canceled / uncanceled deliveries, 128k queued | 19.068→29.305 / 14.232→18.238 | Canceled callbacks delivered 128000→2000, with 126000 canceled; uncanceled control delivers 128000 in both. Correct cancellation has measured overhead. |
+| unchanged NaN views, 30k reads | 20.281→16.076 | View identities 30001→1. |
+| persistenceDateAliases, 100 writes / graph copies, 2500 rows | Serialization 37.6201→29.2891; Date graph 86.8287→55.6126; key-first 63.2927→64.5068; Map-first 56.9424→55.223 | Same serialized bytes/writes and 0 snapshots; Date copies 50400→100, plain-key copies 200→100; 100 actual detached-key Map lookups instead of 0. Key-first is not faster. |
+| unpublishedDraftCheck, 10k writes/sample, 9 alternating measured rounds | 46.305→9.661; paired median ratio 0.199 | Diagnostic callback identities 9→1; writes/deliveries/warnings remain 10/9/1 in the small control. |
+| r12StoreDelivery, 32k normal deliveries | 1.786→2.030 | Same 32000 deliveries; measured delivery overhead, not a throughput improvement. |
+| inheritedReadPrecision, own plain / array method / array index+length / 2000 constructed views | 3.022→3.127 / 4.687→4.400 / 20.456→21.772 / 3.078→2.555; paired ratios 1.027 / 0.966 / 1.132 / 1.021 | Precision/prototype correctness cost is explicit; ratios are medians of paired samples, not ratios of medians. |
+| resourceHistory, 128 ordinary writes / 64 loads with 128 resource transitions | Ordinary 0.548→0.532; resource wire 0.998→11.406 | Ordinary snapshots stay 1; complete wire history snapshots 1→129. Wire-answer/key correctness is materially more expensive. |
+
+A separate earlier 1000-row connected-class SSR control produced identical full HTML and unchanged store version 0, with 9 alternating measured rounds after 3 warmups: baseline median 5.516ms, R15 pre-history-repair candidate 7.971ms, paired ratio 1.388. It measures whole-candidate class overhead, **not** a weak-registry-only attribution or the final registry revision; raw observations: `local://r15-connected-class-overhead-control.json`.
+
+## Actual surface and verification
+
+The owned Chromium surface exercised native Map/Set/Date persistent roots and a plain root with raw-first Map-key selection: initial 1, replacement 2, source swap 3, ignored old-source write 4, current-source write 5. Detached mutation left all raw native/store values at 5. Screenshot observed, browser errors empty, no false live-escape warning; page unmounted and tab closed. Evidence: `local://r15-root-browser-observations.json`. These graph/class paths did not change during the subsequent history-only repairs. The new cross-format standalone smoke directory was removed after proof; no throwaway test was installed.
+
+Final typecheck, lint (advisory warnings remain; no errors), layout, build and focused changed-path suite passed: **79/79 in 5 files**, no skips or snapshot changes (artifact://532). Earlier full **1316/1316 in 124 files** and packed **16/16** gates covered the registry before the shared-symbol repair and are not mislabeled as final marker coverage.
+
+After the shared-symbol repair, fresh complete integration gates passed: **1316/1316 in 124 files**, zero skips/failures/todos and zero snapshot changes (351.60s); packed React18/19 npm/pnpm ESM/CJS plus expanded cross-format selection/history and Next16.3.5 Turbopack/Webpack: **16/16**, zero skips/failures (143.70s). These, the rebuilt standalone consumer and the nine final paired drivers cover the repaired candidate. The independent next API+engine round remains required; this report does not assert zero findings.

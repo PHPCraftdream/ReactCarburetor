@@ -23,21 +23,37 @@ class ResourceCarburetor extends Carburetor {
     lastError = void 0;
     hasLastError = false;
     operationVersion = 0;
+    lastErrorMessage = void 0;
+    errorOwner = void 0;
     constructor(loader, scheduler){
         super(getInitialResourceData(), scheduler), this.loader = loader;
     }
-    snapshot = ()=>({
-            ...deepClone(this.data),
+    attachPatchListener(observer) {
+        this.patchPort.opaque = true;
+        return super.attachPatchListener(observer);
+    }
+    snapshot() {
+        return {
+            ...super.snapshot(),
+            key: this.settledKey
+        };
+    }
+    serialize() {
+        return JSON.stringify({
+            ...this.getData(),
             key: this.settledKey
         });
-    restore = (data)=>{
+    }
+    restore(data) {
+        var _this_patchObservers;
         const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
         if (this.operationVersion !== operationVersion) return;
+        null == (_this_patchObservers = this.patchObservers) || _this_patchObservers.ownRestore(data);
         const settled = data.status === EResourceStatus.Success || data.status === EResourceStatus.Error;
-        this.settledKey = settled ? data.key : void 0;
-        this.hasLastError = data.status === EResourceStatus.Error;
-        this.lastError = this.hasLastError ? new Error(data.error || '') : void 0;
+        const nextKey = settled ? data.key : void 0;
+        if (this.settledKey !== nextKey) this.markAllChanged();
+        this.settledKey = nextKey;
         const status = data.status === EResourceStatus.Pending ? EResourceStatus.Idle : data.status;
         this.setData(deepClone({
             status,
@@ -45,41 +61,70 @@ class ResourceCarburetor extends Carburetor {
             error: data.error,
             updatedAt: data.updatedAt
         }));
-    };
-    getLastError = ()=>this.lastError;
-    suspend = (args)=>{
+    }
+    fromJSON(value) {
+        this.restore(value);
+    }
+    didSetData() {
+        this.reconcileError();
+    }
+    preEmit() {
+        this.reconcileError();
+    }
+    reconcileError() {
+        const state = this.data;
+        if (state.status === EResourceStatus.Error) {
+            if (!this.hasLastError || this.errorOwner !== state || this.lastErrorMessage !== state.error) {
+                this.lastError = new Error(state.error || '');
+                this.lastErrorMessage = state.error;
+                this.errorOwner = state;
+                this.hasLastError = true;
+            }
+        } else {
+            this.lastError = void 0;
+            this.lastErrorMessage = void 0;
+            this.errorOwner = void 0;
+            this.hasLastError = false;
+        }
+    }
+    getLastError() {
+        return this.lastError;
+    }
+    suspend(args) {
         const state = this.data;
         const key = this.keyOf(args);
         if (state.status === EResourceStatus.Success && this.settledKey === key) return state.data;
         if (state.status === EResourceStatus.Error && this.settledKey === key) throw this.hasLastError ? this.lastError : new Error(state.error || 'Carburetor: resource failed');
         if (this.pendingRequest && this.pendingKey === key) throw this.pendingRequest;
         throw this.start(args, true);
-    };
-    load = (args)=>this.start(args, false);
-    reload = ()=>{
+    }
+    load(args) {
+        return this.start(args, false);
+    }
+    reload() {
         if (void 0 === this.lastKey) return Promise.resolve();
         const args = this.lastArgs;
         this.pendingKey = void 0;
         this.pendingRequest = void 0;
         return this.start(args, false);
-    };
-    abort = ()=>{
+    }
+    abort() {
         if (!this.controller) return;
         const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
         if (this.operationVersion !== operationVersion) return;
         this.draft.status = EResourceStatus.Idle;
         this.emitUpdate();
-    };
-    cancelInFlight = ()=>{
+    }
+    cancelInFlight() {
         const controller = this.controller;
         if (!controller) return;
         this.controller = void 0;
         this.pendingRequest = void 0;
         this.pendingKey = void 0;
         controller.abort();
-    };
-    start = (args, deferNotification)=>{
+    }
+    start(args, deferNotification) {
         const key = this.keyOf(args);
         if (this.pendingRequest && this.pendingKey === key) return this.pendingRequest;
         const operationVersion = ++this.operationVersion;
@@ -122,10 +167,14 @@ class ResourceCarburetor extends Carburetor {
             this.settleError(controller, key, error);
         }).then(resolveRequest, rejectRequest);
         return request;
-    };
-    keyOf = (args)=>JSON.stringify(void 0 === args ? null : args);
-    isCurrent = (controller)=>this.controller === controller && !controller.signal.aborted;
-    settleSuccess = (controller, key, data)=>{
+    }
+    keyOf(args) {
+        return JSON.stringify(void 0 === args ? null : args);
+    }
+    isCurrent(controller) {
+        return this.controller === controller && !controller.signal.aborted;
+    }
+    settleSuccess(controller, key, data) {
         if (!this.isCurrent(controller)) return;
         this.controller = void 0;
         this.pendingRequest = void 0;
@@ -137,18 +186,21 @@ class ResourceCarburetor extends Carburetor {
         this.draft.error = void 0;
         this.draft.updatedAt = Date.now();
         this.emitUpdate();
-    };
-    settleError = (controller, key, error)=>{
+    }
+    settleError(controller, key, error) {
         if (!this.isCurrent(controller)) return;
+        const message = describeError(error);
         this.controller = void 0;
         this.pendingRequest = void 0;
         this.settledKey = key;
         this.lastError = error;
+        this.lastErrorMessage = message;
+        this.errorOwner = this.data;
         this.hasLastError = true;
         this.draft.status = EResourceStatus.Error;
-        this.draft.error = describeError(error);
+        this.draft.error = message;
         this.draft.updatedAt = Date.now();
         this.emitUpdate();
-    };
+    }
 }
 export { ResourceCarburetor };

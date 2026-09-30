@@ -13,8 +13,7 @@ import {React, act, render, AntiHookComponent, Carburetor} from '../support';
 
         const getProfileData = (): {profile: {name: string}} => ({profile: {name: 'Ann'}});
 
-        test('a live view nested two levels inside a plain object reaches the memo child after a ' +
-            'leaf write, and the escape is still reported (bounded reproduction)', () => {
+        test('a nested selected branch wakes a memo child after a leaf write', () => {
             const store = new ProfileCarburetor(getProfileData());
             let memoRenders = 0;
 
@@ -35,34 +34,17 @@ import {React, act, render, AntiHookComponent, Carburetor} from '../support';
                 }
             }
 
-            const original = console.error;
-            const reported: string[] = [];
+            const {container, unmount} = render(<Parent />);
 
-            console.error = (message: string) => reported.push(message);
+            expect(container.querySelector('.memo-name')?.textContent).toEqual('Ann');
+            act(() => store.renameProfile('Bob'));
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-name')?.textContent).toEqual('Bob');
 
-            try {
-                const {container, unmount} = render(<Parent />);
-
-                expect(container.querySelector('.memo-name')?.textContent).toEqual('Ann');
-
-                // The leaf write that stranded the nested live view before the fix: the owner's
-                // subscription must now be precise enough to wake on it.
-                act(() => store.renameProfile('Bob'));
-
-                expect(memoRenders).toEqual(2);
-                expect(container.querySelector('.memo-name')?.textContent).toEqual('Bob');
-
-                unmount();
-            } finally {
-                console.error = original;
-            }
-
-            // Still flagged as an API-contract mistake even though the fix makes it safe: the
-            // report is informational, not a correctness gate.
-            expect(reported.filter((message) => message.includes('connectSelection()')).length).toEqual(1);
+            unmount();
         });
 
-        test('a live view nested inside an array element reaches the memo child after a leaf write (R3-02)', () => {
+        test('an array member selected through a view wakes its memo child after a leaf write', () => {
             const store = new ProfileCarburetor(getProfileData());
             let memoRenders = 0;
 
@@ -80,30 +62,17 @@ import {React, act, render, AntiHookComponent, Carburetor} from '../support';
                 }
             }
 
-            const original = console.error;
-            const reported: string[] = [];
+            const {container, unmount} = render(<Parent />);
 
-            console.error = (message: string) => reported.push(message);
+            expect(container.querySelector('.memo-row')?.textContent).toEqual('Ann');
+            act(() => store.renameProfile('Bob'));
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-row')?.textContent).toEqual('Bob');
 
-            try {
-                const {container, unmount} = render(<Parent />);
-
-                expect(container.querySelector('.memo-row')?.textContent).toEqual('Ann');
-
-                act(() => store.renameProfile('Bob'));
-
-                expect(memoRenders).toEqual(2);
-                expect(container.querySelector('.memo-row')?.textContent).toEqual('Bob');
-
-                unmount();
-            } finally {
-                console.error = original;
-            }
-
-            expect(reported.filter((message) => message.includes('connectSelection()')).length).toEqual(1);
+            unmount();
         });
 
-        test('a live view reachable only through an enumerable symbol key is detected and detached (R3-02)', () => {
+        test('a symbol-keyed selected branch wakes its memo child after a leaf write', () => {
             const store = new ProfileCarburetor(getProfileData());
             const SYM_PROFILE = Symbol('r3-02/profile');
 
@@ -126,27 +95,50 @@ import {React, act, render, AntiHookComponent, Carburetor} from '../support';
                 }
             }
 
-            const original = console.error;
-            const reported: string[] = [];
+            const {container, unmount} = render(<Parent />);
 
-            console.error = (message: string) => reported.push(message);
+            expect(container.querySelector('.memo-sym')?.textContent).toEqual('Ann');
+            act(() => store.renameProfile('Bob'));
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-sym')?.textContent).toEqual('Bob');
 
-            try {
-                const {container, unmount} = render(<Parent />);
+            unmount();
+        });
 
-                expect(container.querySelector('.memo-sym')?.textContent).toEqual('Ann');
-
-                act(() => store.renameProfile('Bob'));
-
-                expect(memoRenders).toEqual(2);
-                expect(container.querySelector('.memo-sym')?.textContent).toEqual('Bob');
-
-                unmount();
-            } finally {
-                console.error = original;
+        test('an opaque root facade still reports a live escape and strands a gated child', async () => {
+            class OpaqueProfile {
+                public constructor(public name: string) {}
             }
 
-            expect(reported.filter((message) => message.includes('connectSelection()')).length).toEqual(1);
+            const store = new Carburetor(new OpaqueProfile('Ann'));
+            const Child = React.memo(({model}: {model: OpaqueProfile}) =>
+                <span className="opaque-profile">{model.name}</span>
+            );
+            class Parent extends AntiHookComponent {
+                private readonly selected = this.connectSelection(() => store, data => ({model: data}));
+
+                render() {
+                    return <Child model={this.selected().model} />;
+                }
+            }
+
+            const original = console.error;
+            const reported: string[] = [];
+            let mounted: {container: HTMLElement; unmount: () => void} | undefined;
+            console.error = (message: string) => { reported.push(message); };
+
+            try {
+                mounted = render(<Parent />);
+                expect(mounted.container.querySelector('.opaque-profile')?.textContent).toBe('Ann');
+
+                await act(async () => { store.setData(new OpaqueProfile('Bob')); });
+                expect(store.getData().name).toBe('Bob');
+                expect(mounted.container.querySelector('.opaque-profile')?.textContent).toBe('Ann');
+                expect(reported).toHaveLength(1);
+            } finally {
+                mounted?.unmount();
+                console.error = original;
+            }
         });
 
         test('a cyclic plain container in the selection does not overflow the stack (R3-02)', () => {

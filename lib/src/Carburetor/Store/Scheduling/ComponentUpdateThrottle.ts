@@ -18,6 +18,23 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
     protected timeout: TTimerHandle = undefined;
     /** Updates waiting for the next flush, keyed by subscriber; letsUpdate() drains it until empty. */
     protected updaters: Map<string, TUpdater> = new Map<string, TUpdater>();
+    /** Current flush round; remaining entries can still be cancelled or replaced. */
+    private flushing: Map<string, TUpdater> | undefined;
+    /** Empty map from the previous round, reused for updates scheduled during delivery. */
+    private spareUpdaters: Map<string, TUpdater> | undefined;
+    /** Failures of the active flush; nested flushes save and restore their caller's list. */
+    private flushFailures: unknown[] | undefined;
+    /** Enclosing rounds, allocated only when a callback explicitly flushes recursively. */
+    private enclosingFlushes: Map<string, TUpdater>[] | undefined;
+    /** Rounds spent by this entire flush chain, including nested letsUpdate() calls. */
+    private flushDepth = 0;
+    /** Number of active letsUpdate() frames; the outermost frame resets the depth budget. */
+    private flushNesting = 0;
+    /** Identifies a depth error so callback isolation does not swallow the loop guard. */
+    private depthError: Error | undefined;
+
+    /** Bound once for `setTimeout`, called detached from `this`; forwards to the overridable `letsUpdate`. */
+    private readonly letsUpdateBound = (): void => this.letsUpdate();
 
     /** Takes the coalescing window in milliseconds. */
     constructor(protected updateTimeout: number = 40) {
@@ -26,77 +43,124 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
     /**
      * Queues one update per subscriber, so repeated writes collapse into one render.
      *
-     * @param uid - the subscriber's id, the queue key whose reuse replaces the still-unrun
-     * update instead of queueing a second one
-     * @param updater - the callback the flush runs; nothing here invokes it, and cancel()
-     * before the window elapses drops it unrun
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     *
+     * @param uid - the internal delivery key, unique across stores sharing this scheduler;
+     * reuse for one store-local subscription replaces its still-unrun update
+     * @param updater - the callback to run unless cancelled or replaced, including during a flush
      */
-    public schedule = (uid: string, updater: TUpdater) => {
+    public schedule(uid: string, updater: TUpdater): void {
+        this.cancelActive(uid);
         this.updaters.set(uid, updater);
         this.setupTimeout();
-    };
+    }
 
-    /** Drops a queued update, for a subscriber that unsubscribed before the flush. */
-    public cancel = (uid: string) => {
+    /** Drops an update even when its flush round has already begun. */
+    public cancel(uid: string): void {
+        this.cancelActive(uid);
         this.updaters.delete(uid);
-    };
+    }
+
+    /** Removes a pending key from every active round, including suspended outer rounds. */
+    private cancelActive(uid: string): void {
+        this.flushing?.delete(uid);
+        const enclosing = this.enclosingFlushes;
+        if (enclosing) {
+            for (let index = 0; index < enclosing.length; index++) {
+                enclosing[index].delete(uid);
+            }
+        }
+    }
 
     /** Arms the flush, leaving an already armed one alone: the window must not slide. */
-    protected setupTimeout = () => {
+    protected setupTimeout(): void {
         if (!this.timeout) {
-            this.timeout = setTimeout(this.letsUpdate, this.updateTimeout);
+            this.timeout = setTimeout(this.letsUpdateBound, this.updateTimeout);
         }
-    };
+    }
 
     /** Disarms the flush timer. */
-    protected clearTimeout = () => {
+    protected clearTimeout(): void {
         if (this.timeout) {
             clearTimeout(this.timeout);
         }
 
         this.timeout = undefined;
-    };
+    }
 
     /** Runs one queued update; a seam for tests and subclasses. */
-    protected runUpdater = (updater: TUpdater) => {
+    protected runUpdater(updater: TUpdater): void {
         updater();
-    };
+    }
+
+    /** Runs one captured callback without allocating a closure for each flush round. */
+    private runFlushingUpdater(updater: TUpdater): void {
+        try {
+            this.runUpdater(updater);
+        } catch (error: unknown) {
+            if (error === this.depthError) {
+                throw error;
+            }
+            (this.flushFailures ??= []).push(error);
+        }
+    }
 
     /** Flushes the queue, including what the flush itself queues, and fails on a loop. */
-    protected letsUpdate = () => {
+    protected letsUpdate(): void {
         // Updates queued while flushing (for example from an effect that writes to a
         // carburetor) have to run in this very cycle, otherwise clearing the queue
         // would silently drop them.
-        let depth = 0;
-        // One throwing updater must not cost the updaters after it the flush they were
-        // already promised: each run is isolated and the failures are reported once the
-        // flush settles, below, so they surface even when the depth guard aborts it.
-        const failures: unknown[] = [];
+        const enclosing = this.flushing;
+        if (enclosing) {
+            (this.enclosingFlushes ??= []).push(enclosing);
+        }
+        this.flushNesting++;
+        // Failures are rare; keep the normal path allocation-free and isolate nested flushes.
+        const previousFailures = this.flushFailures;
+        this.flushFailures = undefined;
 
         try {
             while (this.updaters.size > 0) {
-                if (depth++ >= this.maxUpdateDepth) {
+                if (this.flushDepth++ >= this.maxUpdateDepth) {
                     this.updaters.clear();
-
-                    throw new Error(
+                    this.flushing?.clear();
+                    this.enclosingFlushes?.forEach((batch) => batch.clear());
+                    throw (this.depthError = new Error(
                         'ComponentUpdateThrottle: exceeded max update depth of ' + this.maxUpdateDepth +
                         '. An updater keeps scheduling new updates — this is an infinite update loop.'
-                    );
+                    ));
                 }
 
-                const batch = Array.from(this.updaters.values());
-                this.updaters.clear();
+                const batch = this.updaters;
+                this.updaters = this.spareUpdaters ?? new Map<string, TUpdater>();
+                this.spareUpdaters = undefined;
+                this.flushing = batch;
 
-                batch.forEach((updater: TUpdater) => {
-                    try {
-                        this.runUpdater(updater);
-                    } catch (error: unknown) {
-                        failures.push(error);
-                    }
-                });
+                // Removing only pending entries during iteration preserves cancellation and
+                // replacement. Executed entries need no per-callback delete: clear the round
+                // after traversal, before recycling its map.
+                batch.forEach(this.runFlushingUpdater, this);
+                batch.clear();
+                this.flushing = undefined;
+                this.spareUpdaters = batch;
             }
         } finally {
-            failures.forEach((error: unknown) => {
+            this.flushing = enclosing;
+            if (enclosing) {
+                this.enclosingFlushes?.pop();
+                if (this.enclosingFlushes?.length === 0) {
+                    this.enclosingFlushes = undefined;
+                }
+            }
+            if (--this.flushNesting === 0) {
+                this.flushDepth = 0;
+                this.depthError = undefined;
+            }
+            // The Map callback can assign this field outside TypeScript's local flow analysis.
+            const failures = this.flushFailures as unknown[] | undefined;
+            this.flushFailures = previousFailures;
+            failures?.forEach((error: unknown) => {
                 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
                     diagnostics.report(
                         'an updater threw while the throttle flushed: ' +
@@ -111,5 +175,5 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
             // never arm again — every update after a throwing one would sit queued forever.
             this.clearTimeout();
         }
-    };
+    }
 }

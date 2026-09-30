@@ -16,6 +16,12 @@ declare const process: {
     /** Present unless Node runs with reports disabled; read only to pick the glibc or musl
      * platform package. */
     readonly report?: {getReport(): {header: {glibcVersionRuntime?: string}}};
+    /** Signal `0` sends nothing; it only probes whether `pid` is a live process. */
+    kill(pid: number, signal: number): void;
+    /** Seconds since this process started; process-wide, identical across its own threads. */
+    uptime(): number;
+    /** Registers a listener that survives to the very end of this process's own life. */
+    once(event: 'exit', listener: () => void): void;
 };
 
 declare const Buffer: {
@@ -49,6 +55,10 @@ declare module "node:fs" {
     export function unlinkSync(path: string): void;
     export function readFileSync(path: string, encoding: 'utf8'): string;
     export function writeFileSync(path: string, data: string): void;
+    export function readdirSync(path: string): string[];
+    export function renameSync(oldPath: string, newPath: string): void;
+    /** Only the fields this bridge reads: a lock's age, and its filesystem identity. */
+    export function statSync(path: string): {dev: number; ino: number; mtimeMs: number};
 }
 
 declare module "node:os" {

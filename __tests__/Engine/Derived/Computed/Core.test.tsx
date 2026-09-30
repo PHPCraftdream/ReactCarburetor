@@ -128,7 +128,7 @@ describe('computed', () => {
         expect(notified).toEqual(1);
     });
 
-    test('a chain of computeds stays quiet when the inner value does not move', () => {
+    test('a chain of computeds stays quiet when a title write touches neither computed (R16-01)', () => {
         const carburetor = new ListCarburetor(getData());
         let innerRuns = 0;
         let outerRuns = 0;
@@ -152,16 +152,18 @@ describe('computed', () => {
         expect(innerRuns).toEqual(1);
         expect(outerRuns).toEqual(1);
 
-        // A title change invalidates the inner computed but does not move its value,
-        // so the outer one is never asked to recompute.
+        // Enumerating `items` subscribes to its key-set marker, not its own path (R16-01): a
+        // title write changes no key, so the inner computed is not even asked to recompute,
+        // and the outer one — reading only the inner's value — stays quiet too.
         carburetor.setTitle('a', 'renamed');
 
-        expect(innerRuns).toEqual(2);
+        expect(innerRuns).toEqual(1);
         expect(outerRuns).toEqual(1);
         expect(notified).toEqual(0);
 
         carburetor.setDone('a', true);
 
+        expect(innerRuns).toEqual(2);
         expect(outerRuns).toEqual(2);
         expect(notified).toEqual(1);
     });
@@ -327,6 +329,122 @@ describe('computed', () => {
         expect(total.get()).toEqual(1);
         expect(runs).toEqual(2);
         expect(notified).toEqual(1);
+    });
+
+    test('a subscriber that unsubscribes a later one during delivery skips it for this delivery', () => {
+        const carburetor = new ListCarburetor(getData());
+        let secondCalls = 0;
+
+        const doneCount = computed<number>((read) => {
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        doneCount.subscribe(() => doneCount.unsubscribe('second'), {id: 'first'});
+        doneCount.subscribe(() => secondCalls++, {id: 'second'});
+
+        carburetor.setDone('a', true);
+
+        // 'second' was still registered when this delivery started, but 'first' unsubscribed
+        // it before its own turn came, so it is skipped instead of woken.
+        expect(secondCalls).toEqual(0);
+    });
+
+    test('a subscriber that subscribes a new listener during delivery does not wake it until the next delivery', () => {
+        const carburetor = new ListCarburetor(getData());
+        let joinerCalls = 0;
+        let joined = false;
+
+        const doneCount = computed<number>((read) => {
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        doneCount.subscribe(() => {
+            if (!joined) {
+                joined = true;
+                doneCount.subscribe(() => joinerCalls++, {id: 'joiner'});
+            }
+        }, {id: 'first'});
+
+        carburetor.setDone('a', true);
+
+        // The joiner subscribed mid-delivery, after this pass's subscriber list was captured.
+        expect(joinerCalls).toEqual(0);
+
+        carburetor.setDone('a', false);
+
+        expect(joinerCalls).toEqual(1);
+    });
+
+    test('replacing a pending subscriber under the same id cancels its old publication', () => {
+        const store = new ListCarburetor(getData());
+        const value = computed(read => read(store).items.a.done);
+        const seen: string[] = [];
+
+        value.subscribe(() => {
+            const current = value.get();
+            seen.push(`first:${current}`);
+            if (current) {
+                value.subscribe(() => seen.push(`replacement:${value.get()}`), {id: 'target'});
+            }
+        }, {id: 'first'});
+        value.subscribe(() => seen.push(`old:${value.get()}`), {id: 'target'});
+
+        store.setDone('a', true);
+        expect(seen).toEqual(['first:true']);
+        expect(value.getVersion()).toEqual(1);
+
+        store.setDone('a', false);
+        expect(seen).toEqual(['first:true', 'first:false', 'replacement:false']);
+        expect(value.getVersion()).toEqual(2);
+    });
+
+    test('readded and newly joined listeners receive a nested new publication, not the old one', () => {
+        const store = new ListCarburetor(getData());
+        const value = computed(read => read(store).items.a.done);
+        const seen: string[] = [];
+
+        value.subscribe(() => {
+            const current = value.get();
+            seen.push(`first:${current}`);
+            if (current) {
+                value.unsubscribe('target');
+                value.subscribe(() => seen.push(`readded:${value.get()}`), {id: 'target'});
+                value.subscribe(() => seen.push(`joined:${value.get()}`), {id: 'joined'});
+                store.setDone('a', false);
+            }
+        }, {id: 'first'});
+        value.subscribe(() => seen.push(`old:${value.get()}`), {id: 'target'});
+
+        store.setDone('a', true);
+
+        expect(seen).toEqual(['first:true', 'first:false', 'readded:false', 'joined:false']);
+        expect(value.getVersion()).toEqual(2);
+    });
+
+    test('a joiner replacing a leaver during delivery still waits for the next delivery', () => {
+        const carburetor = new ListCarburetor(getData());
+        let joinerCalls = 0;
+
+        const doneCount = computed<number>((read) => {
+            const {items} = read(carburetor);
+
+            return Object.keys(items).filter((id: string) => items[id].done).length;
+        });
+
+        doneCount.subscribe(() => {
+            doneCount.unsubscribe('leaver');
+            doneCount.subscribe(() => joinerCalls++, {id: 'joiner'});
+        }, {id: 'first'});
+        doneCount.subscribe(() => undefined, {id: 'leaver'});
+
+        carburetor.setDone('a', true);
+
+        // Same subscriber count as at the start, but the joiner was not part of this pass.
+        expect(joinerCalls).toEqual(0);
     });
 
 });

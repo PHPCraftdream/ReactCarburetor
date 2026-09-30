@@ -1,23 +1,42 @@
 import * as React from "react";
 import { IDict, TEffectCleanup, TEffectDeps } from "../../Models/Base.js";
+import { ICarburetorSubscription } from "../../Models/Store.js";
 import { IConnection, IRenderAttempt, ITrackedCarburetor } from "../Models/Connection.js";
+/**
+ * Keys for the render accessor's per-instance state (`installRenderBoundary`). Symbol-keyed so
+ * no subclass field name, however generic, can ever collide with them: `renderRaw`, `boundary`
+ * or `assigned` are all plausible names for a subclass's own state.
+ */
+declare const RENDER_RAW: unique symbol;
+declare const RENDER_BOUNDARY: unique symbol;
+declare const RENDER_ASSIGNED: unique symbol;
 export declare abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.Component<P, S> {
     /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
     protected uid: string;
-    /** Per-effect state: the deps it last ran with, and the cleanup it returned. */
+    /**
+     * Per-effect state: the deps it last ran with, and the cleanup it returned.
+     *
+     * Absent until the first `useEffect` call: a component that declares no effects never
+     * allocates this dictionary.
+     */
     protected effects: IDict<{
         deps: TEffectDeps;
         cleanup: TEffectCleanup | undefined;
-    }>;
+    }> | undefined;
     /**
      * Carburetors read through `useCarburetor`/`useComputed`/`useResource`: one dependency slot
-     * per carburetor, written by commits out of what a fresh render attempt collected.
+     * per carburetor, keyed by the carburetor itself and written by commits out of what a fresh
+     * render attempt collected.
+     *
+     * Absent until the first commit that has something to track: a `connect()`-only component
+     * never reads through `useCarburetor`/`useComputed`/`useResource`, so it never allocates
+     * this map.
      *
      * The committed descriptions outlive unmount: releaseSubscriptions keeps them, so a
      * replayed mount lifecycle can restore the subscriptions without a render to refill them.
      * The records themselves do not: a commit whose attempt never touched a record drops it.
      */
-    protected tracked: IDict<ITrackedCarburetor>;
+    protected tracked: Map<ICarburetorSubscription, ITrackedCarburetor> | undefined;
     /**
      * Persistent `connect()` declarations, in declaration order.
      *
@@ -36,20 +55,66 @@ export declare abstract class AntiHookComponentFoundation<P = {}, S = {}> extend
      * has a new render behind it.
      */
     protected committedAttempt: IRenderAttempt | undefined;
+    /** The raw render last seen: the prototype's, or whatever a constructor assigned. */
+    private [RENDER_RAW];
+    /** The boundary built around the current raw render; rebuilt only when that render changes. */
+    private [RENDER_BOUNDARY];
+    /** Whether a constructor assigned `render` directly, rather than leaving it on the prototype. */
+    private [RENDER_ASSIGNED];
     /**
-     * Hands React a boundary proxy instead of the instance, so every later read or definition
-     * of `render` goes through its traps and the render-attempt boundary is installed at the
-     * moment the render first exists.
+     * Installs the render-attempt boundary as a non-configurable own accessor, so the moment
+     * `render` first exists — a prototype method looked up through it, or a value later
+     * assigned to it — it is wrapped.
      *
-     * Returning an object from a derived constructor replaces `this` for the rest of
-     * construction, which is what makes definition-time wrapping possible: a subclass's
-     * class-field initializers then run against the proxy, and a class-field `render` is
-     * defined through its `defineProperty` trap. Neither alternative can do that. A prototype
-     * accessor cannot: class fields are installed with `Object.defineProperty` semantics,
-     * which replaces an inherited accessor instead of calling it. And no React lifecycle hook
-     * can: React never calls a mount hook for a component that defines
+     * An own instance accessor, not a prototype one: class fields are installed with
+     * `Object.defineProperty` semantics, which would replace an inherited prototype accessor
+     * instead of calling it, so only an own property installed ahead of the subclass's own
+     * field initializers can intercept anything. It has to be installed here rather than from
+     * a React lifecycle hook, too: React never calls a mount hook for a component that defines
      * `getDerivedStateFromProps` or `getSnapshotBeforeUpdate`, so a fallback installed there
      * silently never runs for exactly those components.
+     *
+     * `configurable: false` is what makes a class-field `render` fail loudly instead of
+     * quietly replacing the accessor: a field initializer defines its property with
+     * `configurable: true`, and redefining a non-configurable property to one that is
+     * configurable is rejected outright, so the engine throws `TypeError: Cannot redefine
+     * property: 'render'` at construction, before the component ever renders. A configurable
+     * accessor would instead let the field initializer silently overwrite it — the mount's
+     * first render would already run unwrapped, with no render-attempt open, before any later
+     * check could catch it. `no-lifecycle-class-property` (H13) is what turns this into a
+     * clear, actionable message: it flags a class-field `render` at lint time, before the
+     * throw ever happens at runtime.
+     *
+     * The setter stays reachable through plain assignment (`this.render = fn`, typically from
+     * a constructor body): assignment goes through `[[Set]]`, which calls an accessor's setter,
+     * not `[[DefineOwnProperty]]` — the two are distinguishable at the engine level, which is
+     * why one can stay supported while the other is rejected.
+     *
+     * `get`/`set` are one shared function pair, not per-instance closures: V8 keeps accessor
+     * functions in the hidden class, so a fresh pair per instance drops every instance after the
+     * first into dictionary-mode properties. The state the pair needs lives in symbol-keyed fields.
+     */
+    private installRenderBoundary;
+    /**
+     * Reads `render`: the value a constructor assigned, or else the prototype's, wrapped in the
+     * boundary that opens and closes a render attempt around it.
+     *
+     * Static, and referenced through the base class, so every instance shares it and no subclass
+     * member of the same name can replace it. Rebuilds the boundary only when the raw render changed.
+     */
+    private static renderGetter;
+    /**
+     * Sets `render` directly — typically a constructor assignment — and rebuilds the boundary
+     * around the new value right away.
+     *
+     * Shared the same way as `renderGetter`.
+     *
+     * @param this - the instance whose `render` is assigned
+     * @param value - the value assigned to `this.render`; wrapped only when it is a function
+     */
+    private static renderSetter;
+    /**
+     * Installs the render boundary once `super` has wired up React's own instance state.
      *
      * @param props - forwarded to `React.Component` untouched
      */
@@ -85,43 +150,20 @@ export declare abstract class AntiHookComponentFoundation<P = {}, S = {}> extend
      */
     componentWillUnmount(): void;
     /**
-     * Wraps this instance in the render boundary proxy; the constructor hands the proxy to
-     * React in place of `this`.
-     *
-     * Only `render` is special-cased — every other property forwards to the target untouched,
-     * so the instance keeps its ordinary shape: own keys, property descriptors and the
-     * prototype chain are the target's own. The raw render and the boundary built for it live
-     * in this closure, so a boundary is built exactly once per raw render per instance.
-     *
-     * The ordinary get/set traps forward through `receiver` (this same proxy), not `target`
-     * (R4-01): a subclass getter/setter that touches a native `#private` field runs with
-     * `this` bound to whichever object `Reflect.get`/`Reflect.set` were given as receiver, and
-     * that field was installed on the proxy (a derived constructor's returned object replaces
-     * `this` for the rest of construction). Forwarding through the raw target instead brand-
-     * checked the wrong object and threw. Plain data properties — `props`, `state`, React's own
-     * internal fields — are unaffected either way: a receiver only matters to an accessor.
-     */
-    private withRenderBoundary;
-    /**
      * Builds the boundary around one raw render: opens a render attempt before it runs, marks
      * the attempt abandoned when the render throws (an error, or a Suspense thenable), and
      * closes it right after — a commit never consumes what an abandoned render collected.
      *
-     * The render-attempt bookkeeping stays anchored to the raw base instance (`this`, closed
-     * over here) regardless of receiver: `renderAttempt`/`pendingAttempt` are ordinary fields,
-     * not native `#private` ones, so there is exactly one logical component either way.
+     * `realRender` runs against `this`, the real instance — there is no proxy standing in for
+     * it, so a subclass's native `#private` field or accessor brand-checks the exact object it
+     * was installed on and just works.
      *
      * @param realRender - the subclass's own render
-     * @param receiver - the object `realRender` runs against: the proxy this constructor
-     * returns, not the raw instance — a subclass's native `#private` field is installed on
-     * that returned proxy (whatever a derived constructor returns becomes `this` for the rest
-     * of construction, including field initializers), and native private access brand-checks
-     * its receiver, so calling `realRender` against anything else throws for a subclass that
-     * uses one
      */
     private buildRenderBoundary;
     /**
-     * Opens a fresh render attempt: an empty entry map this render's reads will fill.
+     * Opens a fresh render attempt: every collection starts absent, and is allocated by
+     * whichever read API first needs it during this render.
      *
      * Any previous tentative state is discarded by replacement — it simply stops being
      * reachable — so an abandoned collection can never bleed into a new attempt.
@@ -143,7 +185,6 @@ export declare abstract class AntiHookComponentFoundation<P = {}, S = {}> extend
     protected abstract releaseEffects(): void;
     protected abstract commitSubscriptions(): void;
     protected abstract releaseSubscriptions(): void;
-    protected abstract releaseConnectionViews(): void;
-    protected abstract reportTeardownFailure: (failure: string) => void;
-    protected abstract runTeardownStage: (what: string, stage: () => void, failures: string[]) => void;
+    protected abstract reportTeardownFailure(failure: string): void;
 }
+export {};

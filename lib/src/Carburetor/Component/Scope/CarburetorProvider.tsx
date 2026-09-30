@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import {CarburetorContext} from "./CarburetorContext";
 import {CarburetorScope} from "./CarburetorScope";

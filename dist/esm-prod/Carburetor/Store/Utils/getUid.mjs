@@ -1,1 +1,1 @@
-let e;let t=(e=0,()=>"carburetor-uid-"+ ++e);export{t as getUid};
+import{sharedSingleton as e}from"./sharedSingleton.mjs";let t=e("uidCounter",()=>({next:0})),r=()=>(t.next++,"carburetor-uid-"+t.next);export{r as getUid};

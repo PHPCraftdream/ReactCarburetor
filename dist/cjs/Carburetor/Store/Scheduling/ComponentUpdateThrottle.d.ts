@@ -14,25 +14,47 @@ export declare class ComponentUpdateThrottle implements IUpdateScheduler {
     protected timeout: TTimerHandle;
     /** Updates waiting for the next flush, keyed by subscriber; letsUpdate() drains it until empty. */
     protected updaters: Map<string, TUpdater>;
+    /** Current flush round; remaining entries can still be cancelled or replaced. */
+    private flushing;
+    /** Empty map from the previous round, reused for updates scheduled during delivery. */
+    private spareUpdaters;
+    /** Failures of the active flush; nested flushes save and restore their caller's list. */
+    private flushFailures;
+    /** Enclosing rounds, allocated only when a callback explicitly flushes recursively. */
+    private enclosingFlushes;
+    /** Rounds spent by this entire flush chain, including nested letsUpdate() calls. */
+    private flushDepth;
+    /** Number of active letsUpdate() frames; the outermost frame resets the depth budget. */
+    private flushNesting;
+    /** Identifies a depth error so callback isolation does not swallow the loop guard. */
+    private depthError;
+    /** Bound once for `setTimeout`, called detached from `this`; forwards to the overridable `letsUpdate`. */
+    private readonly letsUpdateBound;
     /** Takes the coalescing window in milliseconds. */
     constructor(updateTimeout?: number);
     /**
      * Queues one update per subscriber, so repeated writes collapse into one render.
      *
-     * @param uid - the subscriber's id, the queue key whose reuse replaces the still-unrun
-     * update instead of queueing a second one
-     * @param updater - the callback the flush runs; nothing here invokes it, and cancel()
-     * before the window elapses drops it unrun
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     *
+     * @param uid - the internal delivery key, unique across stores sharing this scheduler;
+     * reuse for one store-local subscription replaces its still-unrun update
+     * @param updater - the callback to run unless cancelled or replaced, including during a flush
      */
-    schedule: (uid: string, updater: TUpdater) => void;
-    /** Drops a queued update, for a subscriber that unsubscribed before the flush. */
-    cancel: (uid: string) => void;
+    schedule(uid: string, updater: TUpdater): void;
+    /** Drops an update even when its flush round has already begun. */
+    cancel(uid: string): void;
+    /** Removes a pending key from every active round, including suspended outer rounds. */
+    private cancelActive;
     /** Arms the flush, leaving an already armed one alone: the window must not slide. */
-    protected setupTimeout: () => void;
+    protected setupTimeout(): void;
     /** Disarms the flush timer. */
-    protected clearTimeout: () => void;
+    protected clearTimeout(): void;
     /** Runs one queued update; a seam for tests and subclasses. */
-    protected runUpdater: (updater: TUpdater) => void;
+    protected runUpdater(updater: TUpdater): void;
+    /** Runs one captured callback without allocating a closure for each flush round. */
+    private runFlushingUpdater;
     /** Flushes the queue, including what the flush itself queues, and fails on a loop. */
-    protected letsUpdate: () => void;
+    protected letsUpdate(): void;
 }

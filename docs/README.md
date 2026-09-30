@@ -8,6 +8,9 @@ examples, and the public API.
 - [Async resource cache](promise-cache.md) — keys, freshness, invalidation, and hydration.
 - [Lint rule reference](rules.md) — rules, severities, options, and host setup.
 - [Native linter](../native/README.md) — binary usage and supported platforms.
+- [React compatibility](react-compatibility.md) — supported versions, how the library binds to
+  the consumer's React, the dual-package/duplicate-React hazard and its fixes, and how
+  compatibility is tested.
 
 ## Contributing and maintaining
 

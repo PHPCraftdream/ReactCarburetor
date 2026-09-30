@@ -1,0 +1,1 @@
+let e=(e,t,a)=>e.stale===a&&e.status===t.status&&Object.is(e.data,t.data)&&e.error===t.error&&e.updatedAt===t.updatedAt&&e.refreshing===t.refreshing&&e.invalidated===t.invalidated&&e.failed===t.failed;export{e as isViewCurrent};

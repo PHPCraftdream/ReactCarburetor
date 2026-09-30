@@ -3,8 +3,9 @@
 // way the rule's message claims.
 /* oxlint-disable carburetor/no-untrackable-draft-mutation */
 /* oxlint-disable carburetor/no-untrackable-store-data */
-import {Carburetor, isTrackable, TPath} from "@/Carburetor";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+import {Carburetor} from "@/Carburetor";
+import {TPath} from "@/Carburetor/Models/Paths";
+import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 
 class Profile {
     public name: string = 'anonymous';
@@ -85,28 +86,6 @@ class MixedCarburetor extends Carburetor<IMixedData> {
                 writable: true,
                 configurable: true,
             });
-        });
-    };
-}
-
-const TAG: unique symbol = Symbol('tag');
-
-interface ISymbolData {
-    a: number;
-    [TAG]?: number;
-}
-
-/** A symbol key has no string path, so a write through one has nothing to be precise about. */
-class SymbolCarburetor extends Carburetor<ISymbolData> {
-    public tag = (value: number) => {
-        this.update((draft: ISymbolData) => {
-            draft[TAG] = value;
-        });
-    };
-
-    public untag = () => {
-        this.update((draft: ISymbolData) => {
-            delete draft[TAG];
         });
     };
 }
@@ -245,21 +224,6 @@ describe('tracking boundary', () => {
         expect(reader).toEqual(1);
     });
 
-    test('a write under a symbol key invalidates everything', () => {
-        const carburetor = new SymbolCarburetor({a: 0});
-        let reader = 0;
-
-        carburetor.subscribe(() => reader++, {id: 'a-reader', reads: new Set<TPath>(['a'])});
-
-        carburetor.tag(1);
-        expect(carburetor.getData()[TAG]).toEqual(1);
-        expect(reader).toEqual(1);
-
-        carburetor.untag();
-        expect(TAG in carburetor.getData()).toBeFalsy();
-        expect(reader).toEqual(2);
-    });
-
     test('iterating an array through draft is not a write', () => {
         const carburetor = new MixedCarburetor(getData());
         let countReader = 0;
@@ -280,133 +244,5 @@ describe('tracking boundary', () => {
         expect(taken.list).not.toBe(carburetor.getData().list);
         expect(taken.when).toBe(carburetor.getData().when);
         expect(taken.index).toBe(carburetor.getData().index);
-    });
-});
-
-const BRANCH: unique symbol = Symbol('branch');
-
-interface ISymbolBranchData {
-    a: number;
-    [BRANCH]: {n: number};
-}
-
-const getSymbolBranchData = (): ISymbolBranchData => ({a: 0, [BRANCH]: {n: 1}});
-
-/** A symbol-keyed VALUE that is itself a plain object — the branch R3-05 covers. */
-class SymbolBranchCarburetor extends Carburetor<ISymbolBranchData> {
-    public bumpBranch = (): void => {
-        this.update((draft: ISymbolBranchData) => {
-            draft[BRANCH].n++;
-        });
-    };
-
-    /** An unrelated write, used to prove a wildcard read wakes on ANY later write. */
-    public bumpA = (): void => {
-        this.update((draft: ISymbolBranchData) => {
-            draft.a++;
-        });
-    };
-
-    /** Runs an arbitrary mutation through draft, to capture the reference draft hands out. */
-    public edit = (mutate: (draft: ISymbolBranchData) => void): void => {
-        this.update(mutate);
-    };
-}
-
-describe('symbol-keyed branches are tracked and wrapped (R3-05)', () => {
-    test('reading a symbol-keyed branch by direct property access records the wildcard and wraps it read-only', () => {
-        const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-
-        const branch = view[BRANCH];
-
-        expect(branch.n).toEqual(1);
-        expect(reads.has(WILDCARD_PATH)).toBe(true);
-
-        // Wrapped, not the raw object: the same read-only contract every string-keyed
-        // branch already has. A raw object would accept this assignment silently.
-        expect(() => {
-            (branch as unknown as {n: number}).n = 99;
-        }).toThrow(/read-only/);
-        expect(carburetor.getData()[BRANCH].n).toEqual(1);
-    });
-
-    test('a direct symbol-key read wakes on any later write, having recorded the wildcard', () => {
-        const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-        let wakes = 0;
-
-        expect(view[BRANCH].n).toEqual(1);
-
-        carburetor.subscribe(() => wakes++, {id: 'branch-reader', reads});
-
-        // Nothing named the branch's own path — an unrelated write is the only thing a
-        // wildcard-conservative read can rely on to invalidate correctly.
-        carburetor.bumpA();
-
-        expect(wakes).toEqual(1);
-    });
-
-    test('a symbol-key descriptor read records the wildcard and wraps its value read-only', () => {
-        const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-
-        const descriptor = Reflect.getOwnPropertyDescriptor(view, BRANCH);
-        const branch = descriptor?.value as {n: number};
-
-        expect(branch.n).toEqual(1);
-        expect(reads.has(WILDCARD_PATH)).toBe(true);
-
-        expect(() => {
-            branch.n = 99;
-        }).toThrow(/read-only/);
-        expect(carburetor.getData()[BRANCH].n).toEqual(1);
-    });
-
-    test('a descriptor-route symbol-key read wakes on any later write, having recorded the wildcard', () => {
-        const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-        let wakes = 0;
-
-        const first = Object.getOwnPropertyDescriptor(view, BRANCH)?.value as {n: number};
-        expect(first.n).toEqual(1);
-
-        carburetor.subscribe(() => wakes++, {id: 'branch-descriptor-reader', reads});
-
-        carburetor.bumpA();
-
-        expect(wakes).toEqual(1);
-    });
-
-    test('a symbol-keyed branch reached through draft is wrapped, not the raw object', () => {
-        const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
-        const raw = carburetor.getData()[BRANCH];
-        let seen: unknown;
-
-        carburetor.edit((draft: ISymbolBranchData) => {
-            seen = draft[BRANCH];
-        });
-
-        expect(seen).not.toBe(raw);
-    });
-
-    test('a nested draft write under a symbol key publishes and lands in the raw data', () => {
-        const carburetor = new SymbolBranchCarburetor(getSymbolBranchData());
-        let wakes = 0;
-
-        // Reads an unrelated path: only a wildcard write reaches this subscriber.
-        carburetor.subscribe(() => wakes++, {id: 'a-reader', reads: new Set<TPath>(['a'])});
-
-        const versionBefore = carburetor.getVersion();
-
-        carburetor.bumpBranch();
-
-        expect(carburetor.getData()[BRANCH].n).toEqual(2);
-        expect(carburetor.getVersion()).toEqual(versionBefore + 1);
-        expect(wakes).toEqual(1);
     });
 });

@@ -47,9 +47,9 @@ const connectDevTools = (carburetors, options = {})=>{
     const subscriberId = (0, getUid_js_namespaceObject.getUid)();
     const names = Object.keys(carburetors);
     let applyingTimeTravel = false;
-    const snapshots = {};
+    const snapshots = Object.create(null);
     const composeState = ()=>{
-        const state = {};
+        const state = Object.create(null);
         names.forEach((name)=>{
             const version = carburetors[name].getVersion();
             const cached = snapshots[name];
@@ -80,7 +80,7 @@ const connectDevTools = (carburetors, options = {})=>{
         applyingTimeTravel = true;
         try {
             names.forEach((name)=>{
-                if (name in next) carburetors[name].fromJSON(next[name]);
+                if (Object.prototype.hasOwnProperty.call(next, name)) carburetors[name].fromJSON(next[name]);
             });
         } finally{
             applyingTimeTravel = false;

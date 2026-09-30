@@ -30,62 +30,138 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     CarburetorHistory: ()=>CarburetorHistory
 });
-const WildcardPath_js_namespaceObject = require("../Store/Paths/WildcardPath.js");
+const Paths_js_namespaceObject = require("../Models/Paths.js");
+const installPatch_js_namespaceObject = require("../Store/Paths/Diff/installPatch.js");
+const deepClone_js_namespaceObject = require("../Store/Utils/deepClone.js");
 class CarburetorHistory {
     carburetor;
     past = [];
     future = [];
-    current;
+    baseline;
     limit;
     applying = false;
+    skipReplay = false;
+    replayTarget;
+    ownedReplay = false;
     dispose;
-    constructor(carburetor, options = {}){
-        this.carburetor = carburetor;
-        this.limit = options.limit || 50;
-        this.current = carburetor.snapshot();
-        this.dispose = carburetor.watch(new Set([
-            WildcardPath_js_namespaceObject.WILDCARD_PATH
-        ]), this.record);
-    }
-    canUndo = ()=>this.past.length > 0;
-    canRedo = ()=>this.future.length > 0;
-    undo = ()=>{
-        const previous = this.past.pop();
-        if (void 0 === previous) return false;
-        this.future.push(this.current);
-        this.apply(previous);
-        return true;
-    };
-    redo = ()=>{
-        const next = this.future.pop();
-        if (void 0 === next) return false;
-        this.past.push(this.current);
-        this.apply(next);
-        return true;
-    };
-    clear = ()=>{
-        this.past = [];
-        this.future = [];
-    };
-    disconnect = ()=>{
-        this.dispose();
-    };
-    record = ()=>{
-        if (this.applying) return;
-        this.past.push(this.current);
-        if (this.past.length > this.limit) this.past.shift();
-        this.future = [];
-        this.current = this.carburetor.snapshot();
-    };
-    apply = (state)=>{
-        this.applying = true;
-        try {
-            this.carburetor.restore(state);
-            this.current = state;
-        } finally{
-            this.applying = false;
+    pendingPatches = [];
+    pendingOpaque = false;
+    observer = {
+        patch: (patch)=>this.onPatch(patch),
+        publication: ()=>this.record(),
+        ownRestore: (state)=>{
+            if (this.applying && state === this.replayTarget) this.ownedReplay = true;
         }
     };
+    constructor(carburetor, options = {}){
+        this.carburetor = carburetor;
+        if (void 0 !== options.limit && (!Number.isSafeInteger(options.limit) || options.limit <= 0)) throw new RangeError('CarburetorHistory: limit must be a positive safe integer');
+        this.limit = options.limit ?? 50;
+        this.baseline = carburetor.snapshot();
+        this.dispose = carburetor.attachPatchListener(this.observer);
+    }
+    canUndo() {
+        return this.past.length > 0;
+    }
+    canRedo() {
+        return this.future.length > 0;
+    }
+    undo() {
+        const entry = this.past.pop();
+        if (void 0 === entry) return false;
+        this.future.push(entry);
+        this.apply(entry, true);
+        return true;
+    }
+    redo() {
+        const entry = this.future.pop();
+        if (void 0 === entry) return false;
+        this.past.push(entry);
+        this.apply(entry, false);
+        return true;
+    }
+    clear() {
+        this.past = [];
+        this.future = [];
+    }
+    disconnect() {
+        this.dispose();
+    }
+    onPatch(patch) {
+        if (this.applying && this.ownedReplay) return;
+        if (patch === Paths_js_namespaceObject.PATCH_OPAQUE) {
+            this.pendingOpaque = true;
+            return;
+        }
+        this.pendingPatches.push(patch);
+    }
+    record() {
+        if (this.applying) {
+            this.applying = false;
+            if (this.ownedReplay) {
+                this.baseline = this.carburetor.snapshot();
+                this.ownedReplay = false;
+                this.skipReplay = false;
+                return;
+            }
+            this.skipReplay = false;
+        }
+        if (this.skipReplay && !this.pendingOpaque && 0 === this.pendingPatches.length) {
+            this.skipReplay = false;
+            return;
+        }
+        this.skipReplay = false;
+        this.past.push(this.buildEntry());
+        if (this.past.length > this.limit) this.past.shift();
+        this.future = [];
+        this.pendingPatches = [];
+        this.pendingOpaque = false;
+    }
+    buildEntry() {
+        if (this.pendingOpaque || 0 === this.pendingPatches.length) {
+            const before = this.baseline;
+            const after = this.carburetor.snapshot();
+            this.baseline = (0, deepClone_js_namespaceObject.deepClone)(after);
+            return {
+                kind: 'snapshot',
+                before,
+                after
+            };
+        }
+        const patches = this.pendingPatches;
+        for (const patch of patches)(0, installPatch_js_namespaceObject.installPatch)(this.baseline, patch, false);
+        return {
+            kind: 'patches',
+            patches
+        };
+    }
+    apply(entry, inverse) {
+        const beforeVersion = this.carburetor.getVersion();
+        this.applying = true;
+        this.ownedReplay = false;
+        this.skipReplay = true;
+        try {
+            const state = 'snapshot' === entry.kind ? inverse ? entry.before : entry.after : this.reconstruct(entry.patches, inverse);
+            this.replayTarget = state;
+            this.carburetor.restore(state);
+            if (this.applying && this.ownedReplay) {
+                this.baseline = this.carburetor.snapshot();
+                this.skipReplay = this.carburetor.getVersion() !== beforeVersion;
+            } else if (this.applying) this.skipReplay = false;
+        } finally{
+            this.replayTarget = void 0;
+            this.ownedReplay = false;
+            this.applying = false;
+        }
+    }
+    reconstruct(patches, inverse) {
+        const target = (0, deepClone_js_namespaceObject.deepClone)(this.baseline);
+        const ordered = inverse ? [
+            ...patches
+        ].reverse() : patches;
+        for (const patch of ordered)(0, installPatch_js_namespaceObject.installPatch)(target, patch, inverse);
+        return target;
+    }
 }
 exports.CarburetorHistory = __webpack_exports__.CarburetorHistory;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

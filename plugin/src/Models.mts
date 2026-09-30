@@ -59,6 +59,8 @@ export interface ISourceCode {
     getText(node?: IAstNode): string;
     /** The comments between the previous token and `node`, in source order. */
     getCommentsBefore(node: IAstNode): readonly ICommentNode[];
+    /** Every comment in the file, in source order. */
+    getAllComments(): readonly ICommentNode[];
 }
 
 /** The part of the host's rule context this plugin uses. */

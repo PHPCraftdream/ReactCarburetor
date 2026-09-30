@@ -1,31 +1,53 @@
 import {IDict, TDisposer, TReadonly, TSubscriber} from "@/Carburetor/Models/Base";
-import {TPath, TPathRecorder, TPathSet, TAliasLedger} from "@/Carburetor/Models/Paths";
-import {ICarburetor, INotifiable, ISubscribeOptions, IUpdateScheduler} from "@/Carburetor/Models/Store";
+import {
+    IPatchObserver, PATCH_OPAQUE, TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
+} from "@/Carburetor/Models/Paths";
+import {
+    ICarburetor, INotifiable, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector,
+} from "@/Carburetor/Models/Store";
+import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {deepClone} from "./Utils/deepClone";
+import {applyDiff} from "./Paths/Diff/applyDiff";
+import {diffPaths} from "./Paths/Diff/diffPaths";
+import {sameKind} from "./Paths/Diff/sameKind";
+import {detachWatchSelection} from "./Utils/Selection/detachWatchSelection";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
+import {WriteLog} from "./Paths/WriteLog";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
 import {syncUpdateScheduler} from "./Scheduling/SyncUpdateSchedulerInstance";
 import {updateWave} from "./Scheduling/UpdateWaveInstance";
+import {nativeStoreWriteEpoch} from "./Scheduling/nativeStoreWriteEpoch";
 import {createReadProxy} from "./Tracking/createReadProxy";
 import {createWriteProxy} from "./Tracking/createWriteProxy";
 import {createAliasLedger} from "./Tracking/AliasLedger";
 import {isTrackable} from "./Tracking/isTrackable";
 import {updateBatch} from "./Transaction/UpdateBatchInstance";
+import {PatchObserverRegistry} from "./Transaction/PatchObserverRegistry";
 import {getUid} from "./Utils/getUid";
+import {IS_DEVELOPMENT} from "./Utils/DevelopmentFlag";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
+import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
+import {transferReads} from "./Paths/Markers/transferReads";
 
-// Declared locally rather than through @types/node: bundlers substitute this exact member
-// expression at build time, which is what lets the guarded blocks below be dropped whole.
+
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
 interface ISubscriberRecord {
     callback: TSubscriber;
-    reads: TPathSet;
+    schedulerKey: string;
+    generation: number;
 }
 
-export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable {
-    /** The subscriber records the index points at: delivery schedules the callback it finds here. */
-    protected subscribers: IDict<ISubscriberRecord> = {};
+export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable, IPatchSource {
+    /** Shared base-method identities; no registration record allocated per store. */
+    private static readonly nativeStoreMethods = {
+        getVersion: Carburetor.prototype.getVersion,
+        emitUpdate: Carburetor.prototype.emitUpdate,
+    };
+    /** Registered callbacks and their stable scheduler keys, indexed by public local id. */
+    protected subscribers: IDict<ISubscriberRecord> = Object.create(null);
+    /** Distinguishes registrations created after an event selected its subscribers. */
+    private subscriptionGeneration = 0;
 
     /** Finds the subscribers a write concerns without scanning all of them. */
     protected subscriberIndex: SubscriberIndex = new SubscriberIndex();
@@ -33,6 +55,11 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** Development alias ledger handed to both proxies; undefined outside development. */
     protected aliases: TAliasLedger = createAliasLedger();
 
+    /** The currently attached patch listener, if any; shared with the write proxy tree (R16-07). */
+    protected patchPort: TPatchPort = {};
+
+    /** Lazily attached mutation/publication observers, shared by draft and restore paths. */
+    protected patchObservers: PatchObserverRegistry | undefined;
     /** The store's identity, minted once at construction. */
     protected uid: string = getUid();
     /** The counter getVersion() returns; bumped by every emitUpdate. */
@@ -41,13 +68,21 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     /** Paths changed since the last emitUpdate. */
     protected writes: TPathSet = new Set<TPath>();
 
+    /** Which paths recent emits touched, bounded and watermarked; feeds the commit drift check (R16-05). */
+    protected writeLog: WriteLog = new WriteLog();
+
     /** Whether draft was touched: it tells an empty write set from "nothing changed". */
     protected draftTouched: boolean = false;
 
     /** An emit already scheduled for a later microtask, so the dev check stays quiet. */
     protected pendingEmit: boolean = false;
+    /** Minted on the first development draft write; later checks reuse the same callback. */
+    declare private unpublishedDraftCheck: (() => void) | undefined;
     /** The write proxy behind draft, memoized across accesses and dropped by setData. */
     protected draftProxy: T | undefined = undefined;
+
+    /** Bound once for `createWriteProxy`, called detached from `this`; forwards to the overridable `recordWrite`. */
+    private readonly writeRecorder = (path: TPath): void => this.recordWrite(path);
 
     /**
      * Takes the initial state and the policy that decides when subscribers are woken.
@@ -58,12 +93,19 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * defaults to immediate, synchronous delivery.
      */
     constructor(protected data: T, protected scheduler: IUpdateScheduler = syncUpdateScheduler) {
+        this.aliases?.checkState(data, '');
+        nativeStoreWriteEpoch.sources.set(this, Carburetor.nativeStoreMethods);
     }
 
-    /** The store's identity, which subscriptions and dev tooling key on. */
-    public getUID = (): string => {
+    /**
+     * The store's identity, which subscriptions and dev tooling key on.
+     *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     */
+    public getUID(): string {
         return this.uid;
-    };
+    }
 
     /**
      * The write counter, bumped on every emit.
@@ -71,17 +113,32 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * A component compares it between render and commit to notice a write that landed in
      * between, which would otherwise leave it subscribed to stale paths.
      */
-    public getVersion = (): number => {
+    public getVersion(): number {
         return this.version;
-    };
+    }
+
+    /**
+     * The path-precise form of the drift check above: whether a write since `baselineVersion`
+     * could concern `reads`, per the write log.
+     *
+     * Falls back to `true` once the log cannot answer for that baseline — see
+     * `WriteLog.matches`. Optional on the subscription surface so a source with no such log (a
+     * computed) keeps today's coarse "the version moved" behaviour.
+     *
+     * @param baselineVersion - the version a render's read set was captured at
+     * @param reads - the paths that read set touched
+     */
+    public hasDriftSince(baselineVersion: number, reads: ReadonlySet<TPath>): boolean {
+        return this.writeLog.matches(baselineVersion, reads);
+    }
 
     /** The state as it is, untracked: reads through it subscribe to nothing. */
-    public getData = (): T => {
+    public getData(): T {
         return this.data;
-    };
+    }
 
     /** The state behind a read proxy that reports every path the caller touches. */
-    public read = (record: TPathRecorder): TReadonly<T> => {
+    public read(record: TPathRecorder): TReadonly<T> {
         const data: unknown = this.data;
 
         if (!isTrackable(data)) {
@@ -91,112 +148,252 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
 
         return createReadProxy(data, record, '', this.aliases) as unknown as TReadonly<T>;
-    };
+    }
 
-    /** Replaces the whole state and wakes everyone: no path survives a root swap. */
-    public setData = (data: T): T => {
+    /** Adopts `data` verbatim, publishing precise changed paths (wildcard on root kind
+     * changes). Views keyed on root identity rebuild lazily; unchanged leaf readers stay asleep.
+     */
+    public setData(data: T): T {
+        const previous = this.data;
+
+        this.aliases?.checkState(data, '', previous);
+
         this.data = data;
         this.draftProxy = undefined;
-        this.writes.add(WILDCARD_PATH);
+        this.didSetData();
+
+        // Marks this as a confirmed operation, the same as an access to draft would: an empty
+        // diff then takes emitUpdate()'s real no-op path (nothing recorded, draft touched)
+        // instead of its no-path fallback for a write that bypassed draft, where nothing is
+        // known and everything must wake.
+        this.touchDraft();
+
+        const changed = diffPaths(previous, data);
+        // Opaque to a patch listener (R16-07), only when something actually changed.
+        if (changed.size > 0) {
+            this.patchPort.listener?.(PATCH_OPAQUE);
+            changed.forEach((path: TPath) => this.recordWrite(path));
+        }
 
         this.emitUpdate();
 
         return data;
-    };
+    }
+
+    /** Lets subclasses synchronize derived state before replacement notifications. */
+    protected didSetData(): void {}
 
     /** A deep copy of the state, detached from further writes. */
-    public snapshot = (): T => {
+    public snapshot(): T {
         return deepClone(this.data);
-    };
+    }
 
-    /** Installs a snapshot as the current state, copying it so the caller keeps its own. */
-    public restore = (data: T): void => {
-        this.setData(deepClone(data));
-    };
+    /** Installs a detached snapshot with precise draft changes. A root kind change or an
+     * oversized structural diff falls back to a whole-root replacement through setData().
+     *
+     * @param data - read but never mutated or retained as the live state.
+     */
+    public restore(data: T): void {
+        const current: unknown = this.data;
+
+        this.aliases?.checkState(data, '');
+
+        // Nested user restores carry different arguments from the replay's own installation.
+        this.patchObservers?.ownRestore(data);
+
+        if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data)) {
+            this.setData(deepClone(data));
+
+            return;
+        }
+
+        const applied = applyDiff(
+            this.draft as unknown as Record<string, unknown>,
+            current as Record<string, unknown>,
+            data as unknown as Record<string, unknown>
+        );
+
+        if (!applied) {
+            this.setData(deepClone(data));
+
+            return;
+        }
+
+        this.emitUpdate();
+    }
 
     /** The type-erased half of the snapshot bridge, for callers that do not know `T`. */
-    public toJSON = (): unknown => {
+    public toJSON(): unknown {
         return this.snapshot();
-    };
+    }
 
-    /** The type-erased half of `restore`; the cast is the caller's promise about the shape. */
-    public fromJSON = (value: unknown): void => {
-        this.restore(value as T);
-    };
+    /** Persistence stringifies live data directly; snapshot()/toJSON() remain detached. */
+    public serialize(): string {
+        return JSON.stringify(this.data);
+    }
 
     /**
-     * Registers a subscriber, returning the id it is cancelled and rescheduled by.
+     * The type-erased half of `setData`: adopts `value` directly, diffed the same way (R16-02).
      *
-     * @param callback - called with no arguments per matching write; it must re-read to
-     * see fresh values, and a throw costs it only a development-mode complaint.
-     * @param options - the id to reuse across re-subscribes and the paths to watch;
-     * without `reads` the subscription matches every write.
+     * Unlike `restore`, which copies to protect a snapshot the caller may reuse, `value` here is
+     * expected to be freshly parsed JSON the caller does not keep, so no second copy is made
+     * (R16-09).
+     *
+     * @param value - the parsed state to install; the cast is the caller's promise about the
+     * shape, and the store keeps this exact object as `getData()`'s answer.
      */
-    public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
+    public fromJSON(value: unknown): void {
+        this.setData(value as T);
+    }
+
+    /**
+     * Registers a subscriber, returning its public, store-local id.
+     * Public read sets are copied; fresh sets branded by `transferReads()` are adopted
+     * so `extend()` can grow them in place.
+     *
+     * @param callback - called on matching writes; failures do not stop other subscribers
+     * @param options - optional local id and paths to watch (omitted reads match every write)
+     */
+    public subscribe(callback: TSubscriber, options: ISubscribeOptions = {}): string {
         const id = options.id || getUid();
+        const given = options.reads;
+        let reads: TPathSet;
 
-        // A subscription without a path set is a subscription to everything: coarse,
-        // but no update can be missed.
-        const reads = options.reads ? new Set<TPath>(options.reads) : new Set<TPath>([WILDCARD_PATH]);
+        if (given === undefined) {
+            reads = new Set<TPath>([WILDCARD_PATH]);
+        } else if ((options as {[READS_TRANSFER]?: unknown})[READS_TRANSFER] === given) {
+            reads = given as TPathSet;
+        } else {
+            reads = new Set<TPath>(given);
+        }
 
-        this.subscribers[id] = {callback, reads};
+        // Keep the same private queue slot when replacing this store's local id.
+        const previous = this.subscribers[id];
+        if (previous) {
+            this.scheduler.cancel(previous.schedulerKey);
+        }
+
+        this.subscribers[id] = {
+            callback, schedulerKey: previous?.schedulerKey ?? getUid(),
+            generation: ++this.subscriptionGeneration,
+        };
         this.subscriberIndex.add(id, reads);
 
         return id;
-    };
+    }
+
+    /**
+     * Adds one path to an already-registered subscription, without copying or re-filing
+     * the rest of its read set — the incremental sibling of `subscribe`, for a caller
+     * that discovers one more path after the subscription already exists.
+     *
+     * `reads` here is the same Set instance `subscriberIndex` files paths into, so filing
+     * the path there is all that is needed to keep the subscriber's own read set current.
+     *
+     * @param id - the subscription to extend; an unknown id is left alone
+     * @param path - the path to add to that subscription's read set
+     */
+    public extend(id: string, path: TPath): void {
+        if (!Object.prototype.hasOwnProperty.call(this.subscribers, id)) {
+            return;
+        }
+
+        this.subscriberIndex.addPath(id, path);
+    }
 
     /** Drops a subscriber, its index entries and any update already scheduled for it. */
-    public unsubscribe = (id: string) => {
-        if (id in this.subscribers) {
-            this.scheduler.cancel(id);
+    public unsubscribe(id: string): void {
+        const record = this.subscribers[id];
+        if (record) {
+            this.scheduler.cancel(record.schedulerKey);
             this.subscriberIndex.remove(id);
             delete this.subscribers[id];
         }
-    };
+    }
+
+    /** Attaches one observer without displacing independent history recorders. */
+    public attachPatchListener(observer: IPatchObserver): TDisposer {
+        const registry = this.patchObservers ??= new PatchObserverRegistry(this.patchPort, this.scheduler);
+        return registry.attach(observer);
+    }
 
     /**
-     * Subscribes outside React — for persistence, logging, analytics.
-     *
-     * @param reads - the paths the callback cares about; a set holding the wildcard path
-     * hears about every write.
-     * @param callback - run per matching write with no arguments; the returned disposer
-     * unsubscribes it.
+     * Runs `select` against a tracked read of the data, returning both the result and the
+     * paths that produced it — the one place `watch()` reads, so its first call and every
+     * later re-run go through the identical mechanism.
      */
-    public watch = (reads: TPathSet, callback: TSubscriber): TDisposer => {
-        const id = this.subscribe(callback, {reads});
+    private runSelector<R>(select: TSelector<T, R>): {value: R; reads: TPathSet} {
+        const reads = new Set<TPath>();
+        const view = this.read((path: TPath) => reads.add(path));
+
+        return {value: select(view), reads};
+    }
+
+    /**
+     * Subscribes outside React — for persistence, logging, analytics — to a derived value
+     * rather than to raw paths; see the interface doc for the fuller contract.
+     *
+     * Reads twice per matching write: once (isolated, by `notifyWrites`) to recompute
+     * `select`, and — only when the fresh result differs from the previous one — the detach
+     * that turns it into a value `onChange` and the next comparison can hold onto safely.
+     * Re-registering the read set on every invocation, changed or not, is what keeps a
+     * conditional selector's subscription following whichever branch it read last.
+     *
+     * @param select - reads the part of the data this subscription cares about
+     * @param onChange - called with the fresh and previous selection when they differ
+     */
+    public watch<R>(select: TSelector<T, R>, onChange: (next: R, previous: R) => void): TDisposer {
+        const id = getUid();
+        const initial = this.runSelector(select);
+
+        let previous: R = detachWatchSelection(initial.value);
+
+        const callback = (): void => {
+            const fresh = this.runSelector(select);
+            const changed = !sameSelection(previous, fresh.value);
+
+            // Re-filed unconditionally: a selector whose branch moved without moving its
+            // result must still hand the subscription its new read set. transferReads(): this
+            // read set is freshly built by runSelector and never touched again.
+            this.subscribe(callback, transferReads(fresh.reads, id));
+
+            if (changed) {
+                const next = detachWatchSelection(fresh.value);
+                const last = previous;
+
+                previous = next;
+                onChange(next, last);
+            }
+        };
+
+        this.subscribe(callback, transferReads(initial.reads, id));
 
         return () => {
             this.unsubscribe(id);
         };
-    };
+    }
 
     /** Called by the batch coordinator when a transaction closes. */
-    public notifyWrites = (writes: TPathSet): void => {
-        // Delivering one write is one wave: whatever its delivery cascades into settles
-        // before the wave ends, so outer observers only ever hear settled values.
+    public notifyWrites(writes: TPathSet): void {
         updateWave.begin();
 
         try {
-            // The write has already landed when delivery runs, so one throwing subscriber
-            // must not cost the subscribers after it their notification: each delivery is
-            // isolated, and the failures are reported once the pass finishes rather than
-            // re-thrown into whoever made the write.
-            const failures: unknown[] = [];
-
-            this.subscriberIndex.match(writes).forEach((id: string) => {
-                // A subscriber may have unsubscribed while this batch was being delivered.
+            let failures: unknown[] | undefined;
+            const generation = this.subscriptionGeneration;
+            const matched = this.subscriberIndex.match(writes);
+            failures = this.patchObservers?.publish();
+            matched.forEach((id: string) => {
+                // A removed/replaced registration cannot inherit an earlier event's match.
                 const record = this.subscribers[id];
-
-                if (record) {
+                if (record && record.generation <= generation) {
                     try {
-                        this.scheduler.schedule(id, record.callback);
+                        this.scheduler.schedule(record.schedulerKey, record.callback);
                     } catch (error: unknown) {
-                        failures.push(error);
+                        (failures ??= []).push(error);
                     }
                 }
             });
-
-            failures.forEach((error: unknown) => {
+            failures?.forEach((error: unknown) => {
                 if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
                     diagnostics.report(
                         'a subscriber threw while a write was delivered: ' +
@@ -208,7 +405,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         } finally {
             updateWave.end();
         }
-    };
+    }
 
     /**
      * Writes go through draft: changed paths are remembered, and only the subscribers
@@ -230,13 +427,16 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             // The store itself cannot be wrapped (a Map or a class instance as the root),
             // so a mutation through this reference is invisible. There is no path to be
             // precise about either, which makes the whole store the honest answer.
+            this.patchPort.listener?.(PATCH_OPAQUE);
             this.recordWrite(WILDCARD_PATH);
 
             return this.data;
         }
 
         if (!this.draftProxy) {
-            this.draftProxy = createWriteProxy(data, this.recordWrite, '', this.aliases) as T;
+            this.draftProxy = createWriteProxy(
+                data, this.writeRecorder, '', this.aliases, undefined, this.patchPort
+            ) as T;
         }
 
         return this.draftProxy;
@@ -252,7 +452,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * Rolling the writes back would take a full snapshot of the state before every update,
      * too high a price on the hot path for a programming error.
      */
-    protected update = (mutate: (draft: T) => void): void => {
+    protected update(mutate: (draft: T) => void): void {
         let result: unknown;
 
         try {
@@ -272,66 +472,83 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
                 );
             }
         }
-    };
+    }
 
     /** Publishes on the next microtask — for writes made where notifying now is unsafe. */
-    protected emitSoon = (): void => {
+    protected emitSoon(): void {
         this.pendingEmit = true;
+        const scheduledAt = this.version;
 
         queueMicrotask(() => {
             this.pendingEmit = false;
-            this.emitUpdate();
+
+            // Keep the opaque fallback, unless a synchronous emit already published it.
+            if (this.version === scheduledAt || this.draftTouched || this.writes.size > 0) {
+                this.emitUpdate();
+            }
         });
-    };
+    }
 
     /** Marks draft as used and arms the development check for a write that never published. */
-    protected touchDraft = (): void => {
+    protected touchDraft(): void {
         if (this.draftTouched) {
             return;
         }
 
         this.draftTouched = true;
 
-        // The message lives inside the guard, not in a method of its own: a class member
-        // stays reachable whatever the branch does, so its string would survive into a
-        // production bundle.
-        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-            queueMicrotask(() => {
-                if (!this.draftTouched || this.pendingEmit) {
-                    return;
-                }
+        // Keep the diagnostic inside the development guard so its message is removed from
+        // production bundles. A single callback per store suffices: it reads the current cycle.
+        if (IS_DEVELOPMENT) {
+            if (this.unpublishedDraftCheck === undefined) {
+                this.unpublishedDraftCheck = (): void => {
+                    if (!this.draftTouched || this.pendingEmit) {
+                        return;
+                    }
 
-                diagnostics.report(
-                    'a write went through draft, but emitUpdate() was never called, so no ' +
-                    'subscriber was notified. Prefer this.update(draft => ...), which does both.'
-                );
-            });
+                    diagnostics.report(
+                        'a write went through draft, but emitUpdate() was never called, so no ' +
+                        'subscriber was notified. Prefer this.update(draft => ...), which does both.'
+                    );
+                };
+            }
+
+            queueMicrotask(this.unpublishedDraftCheck);
         }
-    };
+    }
 
     /** Remembers one changed path, so the emit wakes only the subscribers that read it. */
-    protected recordWrite = (path: TPath) => {
+    protected recordWrite(path: TPath): void {
         this.writes.add(path);
-    };
+    }
 
     /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
-    protected markAllChanged = (): void => {
+    protected markAllChanged(): void {
+        // Always a real change, unlike emitUpdate()'s own bypass fallback below (R16-07).
+        this.patchPort.listener?.(PATCH_OPAQUE);
         this.recordWrite(WILDCARD_PATH);
-    };
+    }
 
     /** A hook for subclasses to write derived state before an emit goes out. */
-    protected preEmit = () => {
+    protected preEmit(): void {
 
-    };
+    }
 
     /** Publishes the writes recorded so far, alone or as part of an open transaction. */
-    protected emitUpdate = () => {
+    protected emitUpdate(): void {
         this.preEmit();
 
-        const changed: TPathSet | undefined = this.writes.size > 0 ? new Set<TPath>(this.writes) : undefined;
         const touched = this.draftTouched;
+        // Handed off, not copied: a fresh Set takes over as this.writes, so the caller below
+        // (notifyWrites, or the update batch) owns this one exclusively and may keep it as is.
+        // An empty writes Set is never handed off anywhere, so it is reused as-is instead of
+        // being replaced on every emit, including the (common) no-op ones.
+        const changed: TPathSet | undefined = this.writes.size > 0 ? this.writes : undefined;
 
-        this.writes.clear();
+        if (changed) {
+            this.writes = new Set<TPath>();
+        }
+
         this.draftTouched = false;
 
         // Draft was used, but no value actually changed — there is nobody to wake.
@@ -339,9 +556,15 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             return;
         }
 
-        // Writes bypassed draft: the changed paths are unknown, so treat everything as changed.
+        // Writes bypassed draft: unknown and opaque, same as the wildcard itself (R16-07).
+        if (!changed) {
+            this.patchPort.listener?.(PATCH_OPAQUE);
+        }
+
         const writes = changed || new Set<TPath>([WILDCARD_PATH]);
         this.version++;
+        nativeStoreWriteEpoch.value++;
+        this.writeLog.record(this.version, writes);
 
         if (updateBatch.isActive()) {
             updateBatch.add(this, writes);
@@ -350,5 +573,5 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
 
         this.notifyWrites(writes);
-    };
+    }
 }

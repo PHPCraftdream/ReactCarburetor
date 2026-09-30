@@ -1,0 +1,1 @@
+import{nativeStoreWriteEpoch as e}from"./nativeStoreWriteEpoch.mjs";let t=t=>{let r=e.sources.get(t);return void 0!==r&&t.getVersion===r.getVersion&&t.emitUpdate===r.emitUpdate};export{t as isNativeStoreSource};

@@ -27,16 +27,27 @@ var __webpack_require__ = {};
 })();
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
-const knownViews = new WeakSet();
+__webpack_require__.d(__webpack_exports__, {
+    liveViews: ()=>liveViews
+});
+const sharedSingleton_js_namespaceObject = require("../Utils/sharedSingleton.js");
+const knownViews = (0, sharedSingleton_js_namespaceObject.sharedSingleton)('liveViews', ()=>new WeakMap());
 const liveViews = {
     note: (view)=>{
-        knownViews.add(view);
+        if (!knownViews.has(view)) knownViews.set(view, void 0);
+    },
+    noteReadTarget: (view, target)=>{
+        knownViews.set(view, target);
+    },
+    noteDynamicReadTarget: (view, resolve)=>{
+        knownViews.set(view, resolve);
+    },
+    readTarget: (view)=>{
+        const known = knownViews.get(view);
+        return 'function' == typeof known ? known() : known;
     },
     has: (value)=>'object' == typeof value && null !== value && knownViews.has(value)
 };
-__webpack_require__.d(__webpack_exports__, {}, {
-    liveViews: liveViews
-});
 exports.liveViews = __webpack_exports__.liveViews;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "liveViews"

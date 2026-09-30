@@ -34,7 +34,7 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         }
 
-        let Some(Expression::StringLiteral(name)) = call.arguments.get(1).and_then(|a| a.as_expression())
+        let Some(Expression::StringLiteral(name)) = call.arguments.first().and_then(|a| a.as_expression())
         else {
             return;
         };
@@ -86,7 +86,7 @@ mod tests {
     #[test]
     fn two_effects_with_the_same_name_are_reported() {
         let source = component(
-            "        this.useEffect(this.load, 'load', []);\n        this.useEffect(this.retry, 'load', []);",
+            "        this.useEffect('load', this.load, []);\n        this.useEffect('load', this.retry, []);",
         );
 
         assert_eq!(lines(&diagnose(&source, check)), [4]);
@@ -95,7 +95,7 @@ mod tests {
     #[test]
     fn two_effects_with_different_names_are_correct() {
         let source = component(
-            "        this.useEffect(this.load, 'load', []);\n        this.useEffect(this.retry, 'retry', []);",
+            "        this.useEffect('load', this.load, []);\n        this.useEffect('retry', this.retry, []);",
         );
 
         assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
@@ -103,14 +103,14 @@ mod tests {
 
     #[test]
     fn a_name_built_at_runtime_cannot_be_compared() {
-        let source = component("        this.useEffect(this.load, name, []);\n        this.useEffect(this.retry, name, []);");
+        let source = component("        this.useEffect(name, this.load, []);\n        this.useEffect(name, this.retry, []);");
 
         assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn the_same_name_in_two_different_components_is_not_a_duplicate() {
-        let source = "class A extends AntiHookComponent {\n    useEffects() {\n        this.useEffect(this.load, 'load', []);\n    }\n}\n\nclass B extends AntiHookComponent {\n    useEffects() {\n        this.useEffect(this.load, 'load', []);\n    }\n}\n";
+        let source = "class A extends AntiHookComponent {\n    useEffects() {\n        this.useEffect('load', this.load, []);\n    }\n}\n\nclass B extends AntiHookComponent {\n    useEffects() {\n        this.useEffect('load', this.load, []);\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }

@@ -1,12 +1,21 @@
 import {IDict, TSubscriber} from "@/Carburetor/Models/Base";
-import {IComputed, TComputeBody, TComputedReader} from "@/Carburetor/Models/Derived";
+import {IComputed, IComputedOptions, TComputeBody, TComputedReader} from "@/Carburetor/Models/Derived";
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carburetor/Models/Store";
-import {containsExoticValue} from "@/Carburetor/Store/Utils/containsExoticValue";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
+import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
+import {nativeStoreWriteEpoch} from "@/Carburetor/Store/Scheduling/nativeStoreWriteEpoch";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
+import {announceIsUnchanged} from "./Freshness/announceIsUnchanged";
+import {reportComputedEscape} from "./reportComputedEscape";
+import {captureLeafVersions} from "./Freshness/captureLeafVersions";
+import {driftedSince} from "./Freshness/driftedSince";
+import {ILeafVersion} from "./Freshness/Models";
+import {leafVersionsDrifted} from "./Freshness/leafVersionsDrifted";
+import {computedDependencies} from "./computedDependencies";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
@@ -15,24 +24,50 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
  * Maps a live computed's invalidation callback to the call that marks that computed's
  * cached value stale. Invalidation travels downstream along these edges — and only
  * these: a plain value observer is woken by a delivered change, never by a mark.
+ *
+ * Shared across every copy of the library in this process — see sharedSingleton — so an outer
+ * computed from one copy still gets marked when an inner computed from another copy's settlement
+ * fails without announcing.
  */
-const invalidationEdges: WeakMap<TSubscriber, () => void> = new WeakMap<TSubscriber, () => void>();
+const invalidationEdges: WeakMap<TSubscriber, () => void> =
+    sharedSingleton('invalidationEdges', () => new WeakMap<TSubscriber, () => void>());
 
+/**
+ * A dependency's source, with the store-only hook a live leaf read amends through. A computed
+ * source never has `extend` — it notifies at the granularity of its whole value — so the field
+ * is optional rather than widening `ICarburetorSubscription` itself for one caller.
+ */
+interface IDependencySource extends ICarburetorSubscription {
+    extend?: (id: string, path: TPath) => void;
+}
+
+/** One source's read set for one recompute cycle, plus attachDependencies' own bookkeeping. */
 interface IDependency {
-    source: ICarburetorSubscription;
+    source: IDependencySource;
     reads: TPathSet;
+    /** Set by attachDependencies once this becomes `this.dependencies[cuid]`. */
+    published: boolean;
+    observed: boolean;
+    /** Prior cycle's dependency for the same source, read only to count `overlap`. */
+    previous: IDependency | undefined;
+    /** Paths added to `reads` this cycle that `previous.reads` already held. */
+    overlap: number;
 }
 
-/** One store a value was computed from, and the version it held at the time. */
-interface IDependencyVersion {
-    source: ICarburetorSubscription;
-    version: number;
-}
+const ownDependency = (record: IDict<IDependency>, id: string): IDependency | undefined =>
+    Object.prototype.hasOwnProperty.call(record, id) ? record[id] : undefined;
+
 
 /** The value the last notification carried, and the dependency versions it was read from. */
 interface IAnnouncement<R> {
     value: R;
-    versions: IDict<IDependencyVersion>;
+    versions: IDict<ILeafVersion>;
+}
+
+/** A subscriber's callback and the registration generation that owns it. */
+interface IComputedSubscriber {
+    callback: TSubscriber;
+    generation: number;
 }
 
 /**
@@ -46,13 +81,21 @@ export class Computed<R> implements IComputed<R> {
     protected uid: string = getUid();
     /** Moves only when a changed value is announced, letting a component spot writes across a render. */
     protected version: number = 0;
-    /** Callbacks woken when a changed value settles, keyed by subscription id. */
-    protected subscribers: IDict<TSubscriber> = {};
+    /** Successful unobserved changes that had no subscriber to receive a publication. */
+    protected snapshotRevision: number = 0;
+    /** Callbacks woken when a changed value settles, keyed by public subscription id. */
+    protected subscribers: Map<string, IComputedSubscriber> = new Map<string, IComputedSubscriber>();
+    /** Distinguishes registrations created after a publication selected its subscribers. */
+    private subscriptionGeneration = 0;
     /** What the current value was computed from, observed only while somebody is listening. */
     protected dependencies: IDict<IDependency> = {};
 
-    /** The stores the current value was computed from, including those behind inner computeds. */
-    protected versions: IDict<IDependencyVersion> = {};
+    /** Leaf versions, including flattened native computations and public external sources. */
+    protected versions: IDict<ILeafVersion> = {};
+    /** A shared write epoch is enough to trust a cache whose leaves are all native stores. */
+    protected allNativeSources: boolean = true;
+    /** Last epoch whose leaf versions were validated. */
+    protected validatedEpoch: number = nativeStoreWriteEpoch.value;
 
     /**
      * The value an observer last had delivered: the baseline a settlement is judged
@@ -69,32 +112,43 @@ export class Computed<R> implements IComputed<R> {
     /** Whether the cached value can be trusted; cleared when a dependency moves or the last listener leaves. */
     protected valid: boolean = false;
 
-    /** Takes the body whose reads become this value's dependencies. */
-    constructor(protected body: TComputeBody<R>) {
+    /**
+     * Takes the body whose reads become this value's dependencies.
+     *
+     * @param body - runs against a tracking reader; everything it reads becomes a dependency
+     * @param options - `equals` judges two results by content instead of by reference
+     */
+    constructor(protected body: TComputeBody<R>, protected options: IComputedOptions<R> = {}) {
         // Files this computed's invalidation callback so computations upstream of it can
         // reach it when they are invalidated — including when their settlement fails and
         // nothing is announced.
         invalidationEdges.set(this.onDependencyChanged, this.markStale);
+        computedDependencies.versions.set(this, () => this.versions);
     }
 
     /** The identity a component or another computed subscribes by. */
-    public getUID = (): string => {
+    public getUID(): string {
         return this.uid;
-    };
+    }
 
     /** Bumped once per delivered change, not on every recompute. */
-    public getVersion = (): number => {
+    public getVersion(): number {
         return this.version;
-    };
+    }
+
+    /** Includes unannounced changes to a previously rendered value. */
+    public getSnapshotVersion(): number {
+        return this.version + this.snapshotRevision;
+    }
 
     /** The value, recomputing first if it cannot be trusted. */
-    public get = (): R => {
+    public get(): R {
         if (this.isStale()) {
             this.recompute();
         }
 
         return this.value as R;
-    };
+    }
 
     /**
      * `options.reads` is accepted for interface compatibility and deliberately ignored:
@@ -104,33 +158,35 @@ export class Computed<R> implements IComputed<R> {
      * @param callback - woken only when a settled value differs from the last announced one
      * @param options - `id` keys the subscription for later unsubscribe; a uid is generated when omitted
      */
-    public subscribe = (callback: TSubscriber, options: ISubscribeOptions = {}): string => {
+    public subscribe(callback: TSubscriber, options: ISubscribeOptions = {}): string {
         const id = options.id || getUid();
-        const wasUnobserved = Object.keys(this.subscribers).length === 0;
+        const wasUnobserved = this.subscribers.size === 0;
+        const previous = this.subscribers.get(id);
 
-        this.subscribers[id] = callback;
+        this.subscribers.set(id, {callback, generation: ++this.subscriptionGeneration});
 
-        // A value nobody reads is not worth keeping fresh, so dependencies are only observed
-        // once someone is listening. While unobserved the computed misses every write, so
-        // observation starts with a freshness check: the cached value survives only when the
-        // stores it was computed from have not moved since. The check is `hasDrifted` rather
-        // than `isStale` because the subscriber above already made this computed observed.
-        if (!this.valid || (wasUnobserved && this.hasDrifted())) {
-            this.recompute();
-        } else if (wasUnobserved) {
-            this.observeDependencies();
-        }
+        try {
+            if (!this.valid || (wasUnobserved && this.hasDrifted())) {
+                this.recompute(wasUnobserved);
+            } else if (wasUnobserved) {
+                this.attachDependencies(this.dependencies);
+            }
 
-        // First observation is the moment the value becomes a publication: whoever just
-        // subscribed is looking at exactly this value, so it is the baseline the first
-        // settlement is judged against. A body that just threw leaves the baseline alone —
-        // there is nothing successful to be told about yet.
-        if (wasUnobserved && this.valid) {
-            this.announced = {value: this.value as R, versions: {...this.versions}};
+            if (wasUnobserved && this.valid) {
+                this.announced = {value: this.value as R, versions: this.versions};
+            }
+        } catch (error: unknown) {
+            if (previous) {
+                this.subscribers.set(id, previous);
+            } else {
+                this.subscribers.delete(id);
+            }
+            this.valid = false;
+            throw error;
         }
 
         return id;
-    };
+    }
 
     /**
      * Drops a subscriber, and stops observing dependencies once the last one leaves.
@@ -138,67 +194,56 @@ export class Computed<R> implements IComputed<R> {
      * The value is invalidated at the same time: while unobserved it receives no
      * invalidations, so what it holds cannot be trusted when someone subscribes again.
      */
-    public unsubscribe = (id: string) => {
-        if (!(id in this.subscribers)) {
+    public unsubscribe(id: string): void {
+        if (!this.subscribers.has(id)) {
             return;
         }
 
-        delete this.subscribers[id];
+        this.subscribers.delete(id);
 
-        if (Object.keys(this.subscribers).length === 0) {
+        if (this.subscribers.size === 0) {
             this.releaseDependencies();
             this.valid = false;
         }
-    };
+    }
 
-    /** Whether the cached value can still be handed out. */
-    protected isStale = (): boolean => {
-        // Observed, invalidations arrive through the subscription, so `valid` is authoritative.
-        if (Object.keys(this.subscribers).length > 0) {
-            return !this.valid;
+    /** Whether the cached value can still be handed out, including deferred invalidations. */
+    protected isStale(): boolean {
+        return !this.valid || this.hasDrifted();
+    }
+
+    /** Whether any leaf source moved since this value was read. */
+    protected hasDrifted(): boolean {
+        const epoch = nativeStoreWriteEpoch.value;
+        if (this.allNativeSources && this.validatedEpoch === epoch) {
+            return false;
         }
 
-        return !this.valid || this.hasDrifted();
-    };
-
-    /** Whether any store this value was computed from moved since it was read. */
-    protected hasDrifted = (): boolean => {
-        return Object.keys(this.versions).some((cuid: string) => {
-            const recorded = this.versions[cuid];
-
-            return recorded.source.getVersion() !== recorded.version;
-        });
-    };
-
-    /**
-     * Whether any dependency moved since the given version snapshot was taken.
-     *
-     * @param record - the versions captured at an earlier moment, e.g. alongside an announcement
-     */
-    protected driftedSince = (record: IDict<IDependencyVersion>): boolean => {
-        const moved = Object.keys(record).some((cuid: string) => {
-            const recorded = record[cuid];
-
-            return recorded.source.getVersion() !== recorded.version;
-        });
-
-        if (moved) {
+        if (leafVersionsDrifted(this.versions, this.dependencies)) {
             return true;
         }
 
-        // A body that now reads a store the snapshot never saw has changed inputs too.
-        return Object.keys(this.versions).some((cuid: string) => !(cuid in record));
-    };
+        this.validatedEpoch = epoch;
+
+        return false;
+    }
 
     /** Runs the body, collecting the paths it reads as this computed's dependencies. */
-    protected recompute = (): void => {
+    protected recompute(wasUnobserved: boolean = this.subscribers.size === 0): void {
         const collected: IDict<IDependency> = {};
 
         const track = (source: ICarburetor<object> | IComputed<unknown>): unknown => {
-            const cuid = source.getUID();
-            const dependency = collected[cuid] || {source, reads: new Set<TPath>()};
+            // Encode arbitrary public ids so __proto__ is an ordinary data key.
+            const cuid = ':' + source.getUID();
+            let dependency = ownDependency(collected, cuid);
 
-            collected[cuid] = dependency;
+            if (!dependency) {
+                dependency = {
+                    source, reads: new Set<TPath>(), published: false, observed: false,
+                    previous: ownDependency(this.dependencies, cuid), overlap: 0,
+                };
+                collected[cuid] = dependency;
+            }
 
             if ('read' in source) {
                 return source.read((path: TPath) => {
@@ -206,215 +251,186 @@ export class Computed<R> implements IComputed<R> {
                 });
             }
 
-            // Another computed notifies at the granularity of its whole value,
-            // so there is no finer path to depend on than "it changed".
-            dependency.reads.add(WILDCARD_PATH);
+            // Another computed notifies at the granularity of its whole value — no finer path
+            // to depend on — routed through the recorder so an unchanged wildcard still counts.
+            this.recordDependencyRead(dependency, WILDCARD_PATH);
 
             return source.get();
         };
 
-        this.value = this.body(track as TComputedReader);
+        const previous = this.value;
+        const hadValue = this.valid || Object.keys(this.versions).length > 0;
+        const oldVersions = this.versions;
+        const value = this.body(track as TComputedReader);
+        this.attachDependencies(collected);
+        this.value = value;
         this.valid = true;
 
-        this.attachDependencies(collected);
-    };
+        // Before observation no dependency can announce a change to an already-rendered
+        // value. A stable exotic result may have changed in place.
+        if (wasUnobserved && hadValue && driftedSince(oldVersions, this.versions)
+            && !announceIsUnchanged(undefined, previous, value, true, this.options.equals)) {
+            this.snapshotRevision++;
+        }
+    }
 
-    /**
-     * Records one path read through a dependency, amending an established registration
-     * when the read arrives after the body's own evaluation.
+    /** Records body reads and extends adopted store edges for later live leaf reads.
      *
-     * The value a computed hands out stays live: a consumer reading a deeper leaf off it
-     * re-enters the read proxy the value was built from, whose recorder reports here long
-     * after attachDependencies published the read set. The store copied that set at
-     * subscription time, so the mutation alone reaches no registration — while the leaf is
-     * exactly what that consumer renders from, and a write to it must wake this computed.
-     * Re-subscribing the dependency under this computed's own id replaces the registration
-     * with the amended set, the same way a fresh edge is published.
-     *
-     * During the body's own evaluation the dependency being filled is not yet the published
-     * one (attachDependencies swaps it in after the body returns), so nothing is amended
-     * there; once nobody listens there is no registration to amend either.
-     *
-     * @param dependency - the dependency edge the read belongs to
-     * @param path - the path the read proxy reported
+     * @param dependency - The edge receiving the read.
+     * @param path - The recorded path.
      */
-    protected recordDependencyRead = (dependency: IDependency, path: TPath): void => {
+    protected recordDependencyRead(dependency: IDependency, path: TPath): void {
         if (dependency.reads.has(path)) {
             return;
         }
 
         dependency.reads.add(path);
 
-        const published = dependency === this.dependencies[dependency.source.getUID()];
-        const observed = Object.keys(this.subscribers).length > 0;
-
-        if (published && observed) {
-            dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
+        // Grown past the previous set, it cannot match: stop paying a lookup per path.
+        if (dependency.previous !== undefined && dependency.reads.size > dependency.previous.reads.size) {
+            dependency.previous = undefined;
+        } else if (dependency.previous?.reads.has(path)) {
+            dependency.overlap++;
         }
-    };
+
+        if (dependency.published && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+            reportComputedEscape(this, (id: string) => this.subscribers.has(id));
+        }
+
+        if (dependency.published && this.subscribers.size > 0 && dependency.source.extend) {
+            dependency.source.extend(this.uid, path);
+        }
+    }
 
     /** Swaps in a fresh dependency set, keeping every edge the body still reads. */
-    protected attachDependencies = (collected: IDict<IDependency>): void => {
-        // Only registrations the fresh collection does not already hold need work: kept
-        // edges stay subscribed under the same id and read set, departed edges are
-        // dropped, new or changed edges are subscribed below. Releasing a retained edge
-        // instead would unsubscribe an upstream computed, whose last-subscriber release
-        // invalidates it and drags the whole upstream chain through an eager recompute
-        // mid-wave — work no settlement deduplicates, because it is not a settlement.
+    protected attachDependencies(collected: IDict<IDependency>): void {
         const fresh = this.diffDependencies(collected);
-
-        this.dependencies = collected;
+        const previousVersions = this.versions;
+        const previousAllNative = this.allNativeSources;
+        const previousEpoch = this.validatedEpoch;
         this.recordVersions(collected);
-
-        // Dependencies are only observed while somebody is listening to the computed.
-        if (Object.keys(this.subscribers).length === 0) {
+        // Retained edges need no setup transaction or subscription churn.
+        if (!fresh) {
+            for (const cuid of Object.keys(this.dependencies)) {
+                const previous = this.dependencies[cuid];
+                const next = ownDependency(collected, cuid);
+                previous.published = false;
+                if (next) {
+                    next.published = true;
+                    next.observed = previous.observed;
+                    next.previous = undefined;
+                } else if (previous.observed) {
+                    computedDependencies.unsubscribe(previous.source, this.uid);
+                }
+            }
+            this.dependencies = collected;
             return;
         }
-
-        Object.keys(collected).forEach((cuid: string) => {
-            if (!fresh[cuid]) {
-                return;
+        const attempted: string[] = [];
+        try {
+            if (this.subscribers.size > 0) {
+                for (const cuid of fresh) {
+                    const dependency = collected[cuid];
+                    attempted.push(cuid);
+                    computedDependencies.subscribe(dependency.source, this.onDependencyChanged,
+                        transferReads(dependency.reads, this.uid));
+                }
             }
+        } catch (error: unknown) {
+            // Restore replaced edges; release new edges, including a partially attached failure.
+            for (const cuid of attempted.reverse()) {
+                const previous = ownDependency(this.dependencies, cuid);
+                try {
+                    if (previous?.observed && previous.source === collected[cuid].source) {
+                        computedDependencies.subscribe(previous.source, this.onDependencyChanged,
+                            transferReads(previous.reads, this.uid));
+                    } else {
+                        computedDependencies.unsubscribe(collected[cuid].source, this.uid);
+                    }
+                } catch { /* Preserve the attachment error. */ }
+            }
+            this.versions = previousVersions;
+            this.allNativeSources = previousAllNative;
+            this.validatedEpoch = previousEpoch;
+            this.valid = false;
+            throw error;
+        }
 
+        for (const cuid of Object.keys(this.dependencies)) {
+            const previous = this.dependencies[cuid];
+            previous.published = false;
+            if (previous.observed && previous.source !== ownDependency(collected, cuid)?.source) {
+                computedDependencies.unsubscribe(previous.source, this.uid);
+            }
+        }
+        for (const cuid of Object.keys(collected)) {
             const dependency = collected[cuid];
+            dependency.published = true;
+            dependency.observed = this.subscribers.size > 0;
+            dependency.previous = undefined;
+        }
+        this.dependencies = collected;
+    }
 
-            dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
-        });
-    };
+    /** Keeps equal read sets subscribed, and replaces changed or newly collected edges. */
+    protected diffDependencies(collected: IDict<IDependency>): string[] | undefined {
+        let fresh: string[] | undefined;
 
-    /**
-     * Splits a fresh collection into edges already held and edges needing a registration.
-     *
-     * A kept edge survives with its live subscription untouched — same source, same read
-     * set, same subscription id — so recomputing while observed never churns the upstream
-     * subscriber list. Sources the body no longer reads are unsubscribed; a source still
-     * read through different paths is reported as fresh, and the caller's subscribe
-     * replaces that registration in place.
-     *
-     * @param collected - the dependencies the body just collected, compared against the held set
-     * @returns the collected ids that still need a subscription: new sources, and sources
-     * now read through different paths
-     */
-    protected diffDependencies = (collected: IDict<IDependency>): IDict<boolean> => {
-        const fresh: IDict<boolean> = {};
-
-        Object.keys(this.dependencies).forEach((cuid: string) => {
+        for (const cuid of Object.keys(collected)) {
             const next = collected[cuid];
-
-            if (!next) {
-                this.dependencies[cuid].source.unsubscribe(this.uid);
-
-                return;
+            const previous = ownDependency(this.dependencies, cuid);
+            if (!previous?.observed || next.source !== previous.source
+                || (next !== previous && (next.overlap !== previous.reads.size
+                    || next.overlap !== next.reads.size))) {
+                (fresh ??= []).push(cuid);
             }
-
-            if (!this.sameReads(this.dependencies[cuid].reads, next.reads)) {
-                fresh[cuid] = true;
-            }
-        });
-
-        Object.keys(collected).forEach((cuid: string) => {
-            if (!(cuid in this.dependencies)) {
-                fresh[cuid] = true;
-            }
-        });
+        }
 
         return fresh;
-    };
+    }
 
-    /**
-     * Whether two read sets name exactly the same paths.
-     *
-     * @param before - the paths an edge is currently registered under
-     * @param after - the paths the fresh collection recorded for the same source
-     * @returns true when both sets hold the same paths, so the registration can stay
-     */
-    protected sameReads = (before: TPathSet, after: TPathSet): boolean => {
-        if (before === after) {
-            return true;
-        }
-
-        if (before.size !== after.size) {
-            return false;
-        }
-
-        let same = true;
-
-        before.forEach((path: TPath) => {
-            if (!after.has(path)) {
-                same = false;
-            }
-        });
-
-        return same;
-    };
-
-    /**
-     * Records the store versions the value was computed from. An inner computed hides the
-     * stores behind it, so those are recorded in its place — otherwise a write they saw
-     * while nobody was listening could never be noticed here.
-     *
-     * The body has just read every dependency, so their own records are current.
-     */
-    protected recordVersions = (collected: IDict<IDependency>): void => {
-        const versions: IDict<IDependencyVersion> = {};
-
-        const record = (dependency: IDependency): void => {
-            if ('read' in dependency.source) {
-                versions[dependency.source.getUID()] = {
-                    source: dependency.source,
-                    version: dependency.source.getVersion(),
-                };
-
-                return;
-            }
-
-            const inner = dependency.source as Computed<unknown>;
-
-            Object.keys(inner.versions).forEach((cuid: string) => {
-                versions[cuid] = inner.versions[cuid];
-            });
-        };
-
-        Object.keys(collected).forEach((cuid: string) => {
-            record(collected[cuid]);
-        });
-
+    /** Flattens native dependency metadata; external sources expose their public version. */
+    protected recordVersions(collected: IDict<IDependency>): void {
+        const versions: IDict<ILeafVersion> = {};
+        const allNative = captureLeafVersions(collected, versions);
         this.versions = versions;
-    };
-
-    /** Subscribes to every dependency under this computed's own id. */
-    protected observeDependencies = (): void => {
-        Object.keys(this.dependencies).forEach((cuid: string) => {
-            const dependency = this.dependencies[cuid];
-
-            dependency.source.subscribe(this.onDependencyChanged, {id: this.uid, reads: dependency.reads});
-        });
-    };
+        this.allNativeSources = allNative;
+        this.validatedEpoch = nativeStoreWriteEpoch.value;
+    }
 
     /** Unsubscribes from every dependency and forgets them. */
-    protected releaseDependencies = (): void => {
+    protected releaseDependencies(): void {
         Object.keys(this.dependencies).forEach((cuid: string) => {
-            this.dependencies[cuid].source.unsubscribe(this.uid);
+            const dependency = this.dependencies[cuid];
+            dependency.published = false;
+            if (dependency.observed) {
+                computedDependencies.unsubscribe(dependency.source, this.uid);
+                dependency.observed = false;
+            }
         });
 
         this.dependencies = {};
-    };
+    }
 
-    /** Invalidates on a dependency write, and settles once the wave around it has passed. */
+    /**
+     * Invalidates on a dependency write, and settles once the wave around it has passed.
+     *
+     * A bound field, not a method: it is the key `invalidationEdges` files `markStale` under
+     * and the callback a dependency's `subscribers` map holds, both called detached from
+     * `this`, so its identity and receiver have to survive past this call.
+     */
     protected onDependencyChanged = (): void => {
-        // An upstream announcement can arrive after something else already pulled this
-        // value fresh — an eager get() during a sibling's settlement, for instance. Once
-        // recomputed, this value's own recorded versions bottom out at the same raw stores
-        // the announcement traces back to, so a clean hasDrifted() here means the pull
-        // already saw everything this notification is reporting: nothing to act on.
+        // A pull during a transaction or throttle delay can refresh the cache without
+        // delivering the change. The queued invalidation still owes a settlement against
+        // the independent announcement baseline.
         if (this.valid && !this.hasDrifted()) {
-            return;
+            if (this.announced === undefined || !driftedSince(this.announced.versions, this.versions)) {
+                return;
+            }
+        } else {
+            // Propagate staleness through native dependencies before settlement starts.
+            this.markStale();
         }
-
-        // Invalidation travels before any settlement runs: everything downstream is marked
-        // stale now, so a settlement that pulls a dependent's cached value recomputes it
-        // from current inputs instead of combining a new input with a stale derived one.
-        this.markStale();
 
         // One write reaches this computed's dependencies one after another inside the same
         // pass. Settling for each notification would announce values built from inputs that
@@ -439,33 +455,49 @@ export class Computed<R> implements IComputed<R> {
      * even when no settlement of theirs follows — when the settlement upstream fails, no
      * announcement ever comes, and an unmarked dependent would keep serving its cached
      * value as if it were still current.
+     *
+     * A bound field, not a method: it is the value `invalidationEdges` maps this computed's
+     * `onDependencyChanged` to, looked up and called detached from `this`.
+     *
+     * Returns early once `valid` is already false. Validity is monotone: `recompute` is the
+     * only place that sets it true, and only after reading every current upstream, which
+     * revalidates that upstream first — so an already-invalid computed's downstream was
+     * already marked by whichever pass invalidated it. Every other site touching `valid`
+     * (`subscribe`, `settle`, `unsubscribe`, a thrown body) only ever recomputes, clears it,
+     * or leaves it alone.
      */
     protected markStale = (): void => {
+        if (!this.valid) {
+            return;
+        }
+
         this.valid = false;
 
-        Object.keys(this.subscribers).forEach((id: string) => {
-            const callback = this.subscribers[id];
-
-            if (!callback) {
-                return;
-            }
-
-            const mark = invalidationEdges.get(callback);
+        // Live, not a snapshot: marking never subscribes or unsubscribes, so the map is stable.
+        for (const record of this.subscribers.values()) {
+            const mark = invalidationEdges.get(record.callback);
 
             if (mark) {
                 mark();
             }
-        });
+        }
     };
 
     /**
      * Recomputes and wakes subscribers if the value moved past what was last announced.
      *
-     * A body that throws changes nothing here: the value, `valid` and `announced` stand
-     * untouched, so no old cached value can be announced as a newly successful computation.
+     * A failed body or attachment preserves the last successful value and announcement.
+     * The stale computation cannot announce an old value as a newly successful result.
      * The error escapes to the wave, which isolates it and keeps settling the other
      * computations; an explicit get() reruns the body and hands the error to its reader,
      * and the next write to a dependency retries it.
+     *
+     * The judgment itself — reference, the R6-02/R7-02 exotic-mutation carve-out, and the
+     * caller's `equals` — is `announceIsUnchanged`'s; see its docstring for exactly which
+     * case each rule covers and why `equals` cannot reach the exotic one.
+     *
+     * A bound field, not a method: `updateWave.defer` holds onto it and calls it detached
+     * from `this` once the wave drains.
      */
     protected settle = (): void => {
         const previous = this.value;
@@ -479,59 +511,53 @@ export class Computed<R> implements IComputed<R> {
             this.recompute();
         }
 
-        // The judgment is against the publication baseline, not `previous`: a read that
-        // landed mid-wave can have refreshed the cache without the observer ever seeing
-        // the intermediate value, so what was last ANNOUNCED is what a change is measured
-        // from. `announced` is undefined only when observation never produced a
-        // successful value, and then the last cached value is all there is to compare with.
-        const baseline = this.announced !== undefined ? this.announced.value : previous;
-
-        // An exotic result is judged by its dependencies, not its reference (R6-02): the same
-        // Map can have been mutated in place since it was announced, so Object.is alone would
-        // suppress a notification the dependency genuinely earned. A plain envelope holding an
-        // exotic member is judged the same way (R7-02): the envelope can keep its identity
-        // across evaluations while the wrapped value mutates in place. Plain results keep the
-        // reference check by itself.
-        const sameReference = Object.is(baseline, this.value);
-        const moved = this.announced !== undefined && this.driftedSince(this.announced.versions);
-        // Only a stable reference with changed dependencies can hide an in-place exotic mutation.
-        // A new result reference already proves a change; an unmoved dependency proves there is
-        // nothing new to inspect. Besides avoiding needless traversal, this keeps caller getters
-        // out of settlement unless their result can affect notification semantics.
-        const opaqueChanged = sameReference && moved && containsExoticValue(this.value);
-        const unchanged = sameReference && !opaqueChanged;
+        const moved = this.announced !== undefined && driftedSince(this.announced.versions, this.versions);
+        const unchanged = announceIsUnchanged(this.announced, previous, this.value as R, moved, this.options.equals);
 
         if (unchanged) {
             return;
         }
 
-        this.announced = {value: this.value as R, versions: {...this.versions}};
+        this.announced = {value: this.value as R, versions: this.versions};
         this.version++;
         this.deliver();
     };
 
     /**
-     * Wakes every subscriber with the settled value.
+     * Wakes the subscribers owned by registrations present when delivery began.
      *
-     * Each subscriber is isolated, matching notifyWrites(): one that throws costs the
+     * A leaver is skipped; replacing or readding a captured id creates a new registration
+     * that waits for its own publication, even though its public id is unchanged. Each
+     * subscriber is isolated, matching notifyWrites(): one that throws costs the
      * subscribers after it neither their notification nor the wave its remaining work, and
      * the failures are reported once delivery finishes rather than re-thrown.
+     * A lone subscriber is called without copying the id list.
      */
-    protected deliver = (): void => {
-        const failures: unknown[] = [];
+    protected deliver(): void {
+        let failures: unknown[] | undefined = undefined;
+        const generation = this.subscriptionGeneration;
+        // Snapshot past one subscriber: a leaver is skipped, a joiner waits for the next pass.
+        const single = this.subscribers.size === 1;
+        const ids = single ? this.subscribers.keys() : Array.from(this.subscribers.keys());
 
-        Object.keys(this.subscribers).forEach((id: string) => {
-            // A subscriber may have left while this very batch was being delivered.
-            const callback = this.subscribers[id];
-
-            if (callback) {
+        for (const id of ids) {
+            const record = this.subscribers.get(id);
+            if (record && record.generation <= generation) {
                 try {
-                    callback();
+                    record.callback();
                 } catch (error: unknown) {
-                    failures.push(error);
+                    (failures ??= []).push(error);
                 }
             }
-        });
+
+            if (single) {
+                break;
+            }
+        }
+
+        if (!failures) {
+            return;
+        }
 
         failures.forEach((error: unknown) => {
             if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
@@ -542,5 +568,5 @@ export class Computed<R> implements IComputed<R> {
                 );
             }
         });
-    };
+    }
 }

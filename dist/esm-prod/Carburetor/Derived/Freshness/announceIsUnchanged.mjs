@@ -1,0 +1,1 @@
+import{containsExoticValue as e}from"../../Store/Utils/containsExoticValue.mjs";let o=(o,t,i,n,a)=>{let l=Object.is(void 0!==o?o.value:t,i),r=l&&n&&e(i),c=!l&&void 0!==o&&void 0!==a&&a(o.value,i);return l&&!r||c};export{o as announceIsUnchanged};

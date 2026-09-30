@@ -1,0 +1,1 @@
+import"../Diagnostics/DiagnosticsInstance.mjs";let e={},r=(r,t,o)=>{let a=globalThis,l=Symbol.for(`react-carburetor/v1/${r}`),i=a[l];if(i)return i.copy,void 0!==o&&i.react,i.value;let c={value:t(),copy:e,react:o,reported:!1};return a[l]=c,c.value};export{r as sharedSingleton};

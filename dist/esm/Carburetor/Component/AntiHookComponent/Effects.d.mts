@@ -17,19 +17,7 @@ export declare abstract class AntiHookComponentEffects<P = {}, S = {}> extends A
      *
      * @param failure - the message to report, already naming what ran and what it cost
      */
-    protected reportTeardownFailure: (failure: string) => void;
-    /**
-     * Runs one stage of the unmount teardown, isolated so a failure there costs the stages after
-     * it nothing.
-     *
-     * The failure is filed as the message its report will use and the caller moves on: nothing
-     * here throws, whatever the stage does.
-     *
-     * @param what - the sentence fragment naming the stage, for the failure message
-     * @param stage - the stage itself
-     * @param failures - the messages collected so far, appended to when the stage throws
-     */
-    protected runTeardownStage: (what: string, stage: () => void, failures: string[]) => void;
+    protected reportTeardownFailure(failure: string): void;
     /**
      * Runs `callBack` when its dependencies changed since the last run.
      *
@@ -43,20 +31,29 @@ export declare abstract class AntiHookComponentEffects<P = {}, S = {}> extends A
      * leaves the record consistent — new deps, no cleanup — instead of a stale cleanup a later
      * unmount would run a second time.
      *
-     * @param callBack - the effect body; a function it returns becomes the cleanup, run before
-     * the next run and on unmount
      * @param name - the key in the per-effect record, so two effects sharing one name would
      * overwrite each other's deps and cleanup
+     * @param callBack - the effect body; a function it returns becomes the cleanup, run before
+     * the next run and on unmount
      * @param deps - compared shallowly with the last run's; an equal set skips the run and
      * leaves the existing cleanup standing
      */
-    protected useEffect: (callBack: TEffect, name: string, deps: TEffectDeps) => void;
+    protected useEffect(name: string, callBack: TEffect, deps: TEffectDeps): void;
+    /**
+     * Returns the effects dictionary, allocating it on first use.
+     *
+     * A component that never calls `useEffect` never needs this dictionary; allocating it here,
+     * rather than as a class field default, keeps that component from paying for it.
+     */
+    private ensureEffects;
     /**
      * Runs every effect's cleanup once, on unmount, and forgets them.
      *
      * Each cleanup is isolated, so one that throws costs the cleanups after it neither their
      * turn nor their record: the whole set is dropped once every cleanup has had its turn, and
      * what they collected is reported instead of thrown into the unmount that called this.
+     *
+     * Absent effects (never allocated) skip straight past: nothing ran, nothing to release.
      */
     protected releaseEffects(): void;
 }

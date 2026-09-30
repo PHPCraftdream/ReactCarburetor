@@ -1,4 +1,6 @@
 import { IResourceData, IResourceSnapshot, TResourceLoader } from "../Models/Resource.mjs";
+import { TDisposer } from "../Models/Base.mjs";
+import { IPatchObserver } from "../Models/Paths.mjs";
 import { IUpdateScheduler } from "../Models/Store.mjs";
 import { Carburetor } from "../Store/Carburetor.mjs";
 /**
@@ -34,6 +36,10 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
     protected hasLastError: boolean;
     /** Changes when a newer operation takes ownership during synchronous abort callbacks. */
     protected operationVersion: number;
+    /** Serializable error description paired with the current raw rejection. */
+    private lastErrorMessage;
+    /** The live state root that owns that raw rejection; a new root owns a new answer. */
+    private errorOwner;
     /**
      * Takes the loader this resource calls, and starts out empty.
      *
@@ -44,42 +50,73 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
      */
     constructor(loader: TResourceLoader<T, TArgs>, scheduler?: IUpdateScheduler);
     /**
+     * Records resource history as complete wire snapshots, including the private settled key.
+     *
+     * Opaque recording skips concrete payload construction while keeping exact write paths.
+     *
+     * @param observer - the history patch/publication observer
+     */
+    attachPatchListener(observer: IPatchObserver): TDisposer;
+    /**
      * The state plus the key its answer settled under: what travels across the serialization
      * boundary has to carry enough for the restored slot to tell which arguments the answer
      * belongs to.
-     *
-     * deepClone is repeated from the base rather than called through super: every base member
-     * is an instance field, so there is no super.snapshot() to reach (TS2855).
      */
-    snapshot: () => IResourceSnapshot<T>;
+    snapshot(): IResourceSnapshot<T>;
+    /** The settled key belongs to the wire answer, not the live slot's data. */
+    serialize(): string;
     /**
      * Installs a snapshot as the current state, and re-establishes the answer's identity
      * with it: the data alone says nothing about which arguments produced it.
+     *
+     * @param data - the snapshot to restore
      */
-    restore: (data: IResourceSnapshot<T>) => void;
+    restore(data: IResourceSnapshot<T>): void;
+    /**
+     * Hydration goes through restore(), not the base fromJSON's adopt-and-diff shortcut: only
+     * restore() re-establishes the answer's key and normalizes a restored Pending status.
+     *
+     * @param value - the serialized snapshot; the cast is the caller's promise about the shape
+     */
+    fromJSON(value: unknown): void;
+    /**
+     * Reconciles whole-state replacements before patch listeners or subscribers inspect
+     * the new answer. An identical state object retains its original raw rejection.
+     */
+    protected didSetData(): void;
+    /** Reconciles draft/update writes before their subscribers see the published state. */
+    protected preEmit(): void;
+    /** Keeps a raw rejection only while its state root and wire message still describe it. */
+    private reconcileError;
     /** The raw rejection value, which the serializable state cannot carry. */
-    getLastError: () => unknown;
+    getLastError(): unknown;
     /**
      * Reads the value, suspending while it loads and rethrowing when it failed.
      *
      * The request is started on first read, and its "pending" notification is deferred to a
      * microtask, because a render must not notify subscribers. A failure is rethrown so the
      * nearest error boundary handles it.
+     *
+     * @param args - the loader arguments identifying the answer
      */
-    suspend: (args: TArgs) => T;
-    /** Starts a load, or joins the one already in flight for the same arguments. */
-    load: (args: TArgs) => Promise<void>;
+    suspend(args: TArgs): T;
+    /**
+     * Starts a load, or joins the one already in flight for the same arguments.
+     *
+     * @param args - the loader arguments identifying the answer
+     */
+    load(args: TArgs): Promise<void>;
     /** Repeats the last load with the same arguments. */
-    reload: () => Promise<void>;
+    reload(): Promise<void>;
     /** Cancels the request in flight; its result is ignored when it arrives, and the slot returns to Idle. */
-    abort: () => void;
+    abort(): void;
     /**
      * The bookkeeping half of abort(): fires the handle and drops the request, writing nothing.
      *
      * Shared with start(), which replaces a request rather than giving up on one — only abort()
      * publishes the slot going idle.
      */
-    protected cancelInFlight: () => void;
+    protected cancelInFlight(): void;
     /**
      * The one path into a request: deduplicates, aborts the previous one, publishes pending.
      *
@@ -91,11 +128,19 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
      * @param deferNotification - true from suspend(): the pending write goes out on a microtask
      * because the caller is mid-render
      */
-    protected start: (args: TArgs, deferNotification: boolean) => Promise<void>;
-    /** The identity of a set of arguments, for telling one request from another. */
-    protected keyOf: (args: TArgs) => string;
-    /** Whether a settled request is still the one whose answer this resource wants. */
-    protected isCurrent: (controller: AbortController) => boolean;
+    protected start(args: TArgs, deferNotification: boolean): Promise<void>;
+    /**
+     * The identity of a set of arguments, for telling one request from another.
+     *
+     * @param args - the loader arguments to derive the key from
+     */
+    protected keyOf(args: TArgs): string;
+    /**
+     * Whether a settled request is still the one whose answer this resource wants.
+     *
+     * @param controller - the request to check
+     */
+    protected isCurrent(controller: AbortController): boolean;
     /**
      * Stores a successful answer, unless a newer request has since taken over.
      *
@@ -106,7 +151,7 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
      * @param data - the answer stored verbatim; landing it also drops any raw error an earlier
      * failure had kept
      */
-    protected settleSuccess: (controller: AbortController, key: string, data: T) => void;
+    protected settleSuccess(controller: AbortController, key: string, data: T): void;
     /**
      * Stores a failure, keeping the raw rejection aside for `suspend` to rethrow.
      *
@@ -117,5 +162,5 @@ export declare class ResourceCarburetor<T, TArgs = void> extends Carburetor<IRes
      * @param error - the rejection as thrown: lastError keeps it whole, while the state carries
      * only the message describeError() extracts
      */
-    protected settleError: (controller: AbortController, key: string, error: unknown) => void;
+    protected settleError(controller: AbortController, key: string, error: unknown): void;
 }

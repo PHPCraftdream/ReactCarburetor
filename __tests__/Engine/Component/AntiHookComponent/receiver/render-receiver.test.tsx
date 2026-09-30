@@ -19,9 +19,6 @@ describe('', () => {
             const view = new PrivateView({} as never);
 
             expect(view.read()).toEqual(7);
-            // Before the fix this threw: "Cannot read private member #value from an object
-            // whose class did not declare it" — render ran with the original base instance as
-            // `this`, not the proxy the constructor actually returned and #value was installed on.
             expect(view.render()).toEqual(7);
         });
 
@@ -89,7 +86,7 @@ describe('', () => {
             unmount();
         });
 
-        test('a class-field arrow render also reads a private field (control: unaffected by the receiver bug)', () => {
+        test('a class-field arrow render throws at construction instead of silently replacing the boundary', () => {
             class ArrowPrivateView extends AntiHookComponent {
                 #value = 9;
 
@@ -97,11 +94,7 @@ describe('', () => {
                 render = () => <div className="value">{this.#value}</div>;
             }
 
-            const {container, unmount} = render(<ArrowPrivateView />);
-
-            expect(container.querySelector('.value')?.textContent).toEqual('9');
-
-            unmount();
+            expect(() => new ArrowPrivateView({} as never)).toThrow(TypeError);
         });
 
         test('a component ref and an inner DOM ref both resolve through the render boundary', () => {
@@ -160,7 +153,7 @@ describe('', () => {
         });
     });
 
-    describe('instance proxy accessor receiver (R4-01)', () => {
+    describe('native private accessor receiver', () => {
         test('a native private getter and setter both work when called from render', () => {
             class AccessorView extends AntiHookComponent {
                 #value = 7;
@@ -174,9 +167,6 @@ describe('', () => {
                 }
 
                 render() {
-                    // Before the fix, reading/assigning `amount` here threw: the ordinary get/set
-                    // traps forwarded to Reflect.get/Reflect.set with the raw target as receiver,
-                    // so the getter/setter body's `this.#value` failed the private-brand check.
                     // `amount` is a data accessor, not a callback the rule below is meant to catch.
                     // oxlint-disable-next-line carburetor/require-bind-for-passed-method
                     this.amount = this.amount + 1;

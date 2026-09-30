@@ -135,6 +135,29 @@ import {getCounterData, ObservedCarburetor, React, act, render, AntiHookComponen
                 const shape = fieldRender ? 'class-field' : 'prototype-method';
                 const label = modern === 'none' ? 'no modern lifecycle API' : modern;
 
+                if (fieldRender) {
+                    // A class-field render is rejected at construction, no matter which modern
+                    // lifecycle API sits alongside it: the accessor installed in the base
+                    // constructor is non-configurable, so redefining it as a field throws before
+                    // React ever calls render.
+                    test(`a ${shape} render with ${label} throws at construction instead of ` +
+                        'silently mis-tracking', () => {
+                        const store = new ObservedCarburetor(getCounterData());
+                        const Component = buildComponent(store, fieldRender, modern, () => undefined);
+                        const original = console.error;
+
+                        console.error = () => undefined;
+
+                        try {
+                            expect(() => render(<Component />)).toThrow(TypeError);
+                        } finally {
+                            console.error = original;
+                        }
+                    });
+
+                    continue;
+                }
+
                 test(`a ${shape} render with ${label} is tracked from the first mount`, () => {
                     const store = new ObservedCarburetor(getCounterData());
                     let renders = 0;

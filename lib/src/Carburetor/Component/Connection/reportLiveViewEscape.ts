@@ -7,14 +7,13 @@ const describeSegment = (segment: string | symbol): string =>
     typeof segment === 'symbol' ? '[' + segment.toString() + ']' : segment;
 
 /**
- * Depth-first search for the first live view reachable from `value`, through plain objects and
- * arrays at any depth and through own string and symbol data properties alike. Accessors are
- * skipped here and rejected by detachment, so inspecting the result never invokes a getter.
+ * Depth-first search for the first engine view that actually survives detachment, through
+ * plain objects and arrays at any depth and through own string and symbol data properties.
+ * Tracked plain/array read views and supported native-root facades are copied, not escapes;
+ * an opaque custom-root facade remains live and is reported. Accessors are skipped here
+ * and rejected by detachment without running their getters.
  *
- * A plain container already on the current path is skipped instead of walked again: the only
- * way this could fail to terminate is a cycle the selection's own data introduced, not the
- * traversal, and a container the selection already passed through cannot be hiding a live view
- * this search has not already seen by the time it is revisited.
+ * A plain container already visited is skipped; cycles cannot cause repeated traversal.
  *
  * @param value - the candidate to inspect
  * @param visited - plain containers already on the current path
@@ -26,16 +25,20 @@ const findLiveView = (
     visited: Set<object>,
     path: Array<string | symbol>
 ): Array<string | symbol> | undefined => {
-    if (liveViews.has(value)) {
-        return path;
-    }
-
     if (typeof value !== 'object' || value === null) {
         return undefined;
     }
 
-    if (!Array.isArray(value) && !isPlainObject(value)) {
-        return undefined;
+    const copied = Array.isArray(value) || isPlainObject(value);
+
+    if (!copied) {
+        if (!liveViews.has(value)) {
+            return undefined;
+        }
+
+        // Only a registered native facade whose current root can be detached is safe.
+        // Its resolver also records the root wildcard before anyone reads through raw data.
+        return liveViews.readTarget(value) === undefined ? path : undefined;
     }
 
     if (visited.has(value)) {

@@ -1,4 +1,9 @@
+import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {UpdateWave} from "./UpdateWave";
 
-/** The wave every notification pass runs inside, so one write settles before it is announced. */
-export const updateWave = new UpdateWave();
+/**
+ * The wave every notification pass runs inside, so one write settles before it is announced.
+ * Shared across every copy of the library in this process — see sharedSingleton — so a computed
+ * deferred by one copy is still drained by whichever copy's wave actually settled the write.
+ */
+export const updateWave = sharedSingleton('updateWave', () => new UpdateWave());

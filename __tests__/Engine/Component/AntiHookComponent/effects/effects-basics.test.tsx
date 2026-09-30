@@ -144,8 +144,8 @@ describe('<AntiHookComponent />', () => {
             protected useEffects(): void {
                 const {a, b} = this.props;
 
-                this.useEffect(useEffectA, 'useEffectA', [a]);
-                this.useEffect(useEffectB, 'useEffectB', [b]);
+                this.useEffect('useEffectA', useEffectA, [a]);
+                this.useEffect('useEffectB', useEffectB, [b]);
 
                 countUseEffects++;
             }
@@ -208,6 +208,7 @@ describe('<AntiHookComponent />', () => {
         class Subscription extends AntiHookComponent<{channel: string}> {
             protected useEffects(): void {
                 this.useEffect(
+                    'channel',
                     () => {
                         const channel = this.props.channel;
                         log.push('open:' + channel);
@@ -216,7 +217,6 @@ describe('<AntiHookComponent />', () => {
                         // carburetor-disable-next-line carburetor/require-method-for-closure
                         return () => closeChannel(channel);
                     },
-                    'channel',
                     [this.props.channel]
                 );
             }
@@ -245,12 +245,12 @@ describe('<AntiHookComponent />', () => {
         class Watcher extends AntiHookComponent<{channel: string; unrelated: number}> {
             protected useEffects(): void {
                 this.useEffect(
+                    'channel',
                     () => {
                         log.push('run');
 
                         return cleanup;
                     },
-                    'channel',
                     [this.props.channel]
                 );
             }
@@ -277,9 +277,9 @@ describe('<AntiHookComponent />', () => {
 
         class Pair extends AntiHookComponent<{a: number; b: number}> {
             protected useEffects(): void {
-                this.useEffect(() => {
+                this.useEffect('pair', () => {
                     runs++;
-                }, 'pair', [this.props.a, this.props.b]);
+                }, [this.props.a, this.props.b]);
             }
 
             render() {
@@ -304,9 +304,9 @@ describe('<AntiHookComponent />', () => {
 
         class Once extends AntiHookComponent<{tick: number}> {
             protected useEffects(): void {
-                this.useEffect(() => {
+                this.useEffect('once', () => {
                     runs++;
-                }, 'once', []);
+                }, []);
             }
 
             render() {
@@ -321,6 +321,66 @@ describe('<AntiHookComponent />', () => {
         expect(runs).toEqual(1);
 
         unmount();
+    });
+
+    test('a component that never calls useEffect never allocates the effects dictionary', () => {
+        class NoEffects extends AntiHookComponent {
+            render() {
+                return <div/>;
+            }
+        }
+
+        let instance: NoEffects | null = null;
+
+        const {unmount} = render(<NoEffects ref={(r: NoEffects | null) => { instance = r; }} />);
+
+        expect((instance as unknown as {effects: unknown}).effects).toBeUndefined();
+
+        unmount();
+    });
+
+    test('prototype-named effects rerun and release their last cleanup on unmount', () => {
+        const log: string[] = [];
+
+        class NamedEffects extends AntiHookComponent<{channel: string}> {
+            public effectKeys = (): string[] => Object.keys(this.effects ?? {});
+            public hasEffects = (): boolean => this.effects !== undefined;
+
+            protected useEffects(): void {
+                for (const name of ['__proto__', 'constructor']) {
+                    this.useEffect(name, () => {
+                        const channel = this.props.channel;
+                        log.push('open:' + name + ':' + channel);
+
+                        return () => log.push('close:' + name + ':' + channel);
+                    }, [this.props.channel]);
+                }
+            }
+
+            render() {
+                return <div/>;
+            }
+        }
+
+        let instance: NamedEffects | null = null;
+        const {rerender, unmount} = render(<NamedEffects channel="a" ref={(value) => { instance = value; }}/>);
+        const mounted = instance as unknown as NamedEffects;
+        expect(mounted.effectKeys()).toEqual(['__proto__', 'constructor']);
+        expect(log).toEqual(['open:__proto__:a', 'open:constructor:a']);
+
+        rerender(<NamedEffects channel="a" ref={(value) => { instance = value; }}/>);
+        expect(log).toEqual(['open:__proto__:a', 'open:constructor:a']);
+
+        rerender(<NamedEffects channel="b" ref={(value) => { instance = value; }}/>);
+        expect(log).toEqual([
+            'open:__proto__:a', 'open:constructor:a',
+            'close:__proto__:a', 'open:__proto__:b',
+            'close:constructor:a', 'open:constructor:b'
+        ]);
+
+        unmount();
+        expect(log.slice(-2)).toEqual(['close:__proto__:b', 'close:constructor:b']);
+        expect(mounted.hasEffects()).toBe(false);
     });
 
 });

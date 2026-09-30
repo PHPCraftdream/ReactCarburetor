@@ -11,9 +11,9 @@ export declare class UpdateWave {
     /** Settlements deferred during the pass, keyed so a re-defer replaces the earlier one. */
     protected pending: Map<string, () => void>;
     /** Whether a notification pass is open. */
-    isActive: () => boolean;
+    isActive(): boolean;
     /** Opens a pass; invalidations inside it are collected instead of settled. */
-    begin: () => void;
+    begin(): void;
     /**
      * Closes a pass, then drains deferred work until the cascades stop producing more.
      *
@@ -22,8 +22,11 @@ export declare class UpdateWave {
      * while the drain runs — the loop keeps going until `pending` is empty. Failures are
      * reported once the drain finishes rather than re-thrown into whoever made the write,
      * and the depth is restored no matter how the drain went.
+     *
+     * A method, not an arrow field: every overridable member here is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
      */
-    end: () => void;
+    end(): void;
     /**
      * Remembers one deferred computation; a later invalidation replaces an earlier one.
      *
@@ -32,5 +35,5 @@ export declare class UpdateWave {
      * @param settle - the callback end()'s drain invokes once the cascades stop; it is not
      * run at defer time
      */
-    defer: (uid: string, settle: () => void) => void;
+    defer(uid: string, settle: () => void): void;
 }

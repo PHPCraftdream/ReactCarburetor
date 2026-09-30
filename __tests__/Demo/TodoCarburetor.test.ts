@@ -1,8 +1,10 @@
-import {TPath, TPathSet} from "@/Carburetor";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {MockToDoClientAPI} from "@/ToDo/API/MockToDoClientAPI";
-import {ITodo, IToDoClientAPI, ITodoList} from "@/ToDo/API/Models";
-import {someCarburetor} from "@/ToDo/Carburetors/SomeCarburetorInstance";
+import {ITodo, ITodoDetails, IToDoClientAPI, ITodoList} from "@/ToDo/API/Models";
 import {TodoCarburetor} from "@/ToDo/Carburetors/TodoCarburetor";
+import {createTodoScope} from "@/ToDo/Scope/createTodoScope";
+import {statusToken} from "@/ToDo/Scope/Tokens/statusToken";
+import {todoToken} from "@/ToDo/Scope/Tokens/todoToken";
 
 /** The protected members a test wraps to count whole-list derivation work. */
 interface IDerivationInternals {
@@ -50,16 +52,23 @@ const countDerivation = (carburetor: TodoCarburetor): IDerivationCounts => {
     return counts;
 };
 
-/** Counts the writes that reach a set of paths, with the disposer to end the watch. */
+/**
+ * Counts the writes that reach a set of paths, with the disposer to end the watch.
+ *
+ * Uses `subscribe(callback, {reads})` directly rather than the public `watch(select, onChange)`
+ * (R16-10(1)): this test tooling wants raw path precision — including nested and multi-path
+ * read sets a selector cannot express as cheaply — which is exactly the engine's documented
+ * extension contract, not the hidden-grammar consumer surface.
+ */
 const watchPaths = (carburetor: TodoCarburetor, ...paths: TPath[]): IWriteWatcher => {
     const reads: TPathSet = new Set<TPath>(paths);
     let notifications = 0;
 
-    const dispose = carburetor.watch(reads, () => {
+    const id = carburetor.subscribe(() => {
         notifications++;
-    });
+    }, {reads});
 
-    return {writes: () => notifications, dispose};
+    return {writes: () => notifications, dispose: () => carburetor.unsubscribe(id)};
 };
 
 /** Fires loadData and waits out the API promise, as the mount effect would. */
@@ -74,7 +83,8 @@ const loadThroughAPI = async (carburetor: TodoCarburetor): Promise<void> => {
 /** An API that always answers with one fixed list, copied per call like a server would. */
 const staticApi = (list: ITodoList): IToDoClientAPI => ({
     getTodoList: (): Promise<ITodoList> => Promise.resolve(JSON.parse(JSON.stringify(list)) as ITodoList),
-    updateTodoList: (data: ITodoList): Promise<ITodoList> => Promise.resolve(data)
+    updateTodoList: (data: ITodoList): Promise<ITodoList> => Promise.resolve(data),
+    getTodoDetails: (id: string): Promise<ITodoDetails> => Promise.resolve({id, estimateMinutes: 1, checkedAt: ''})
 });
 
 /** Done and active items intermixed, with stale counters and an order a stable sort moves. */
@@ -244,7 +254,9 @@ describe('TodoCarburetor', () => {
     });
 
     test('a repeated identical update does no work and notifies nobody', async () => {
-        const carburetor = new TodoCarburetor(new MockToDoClientAPI());
+        const {scope, dispose} = createTodoScope();
+        const carburetor = scope.get(todoToken);
+        const status = scope.get(statusToken);
 
         await loadThroughAPI(carburetor);
 
@@ -253,8 +265,8 @@ describe('TodoCarburetor', () => {
         const order = watchPaths(carburetor, 'orderIds');
         const counters = watchPaths(carburetor, 'doneCount', 'activeCount');
         const versionBefore = carburetor.getVersion();
-        const someVersionBefore = someCarburetor.getVersion();
-        const messageBefore = someCarburetor.getData().emittedMessage;
+        const statusVersionBefore = status.getVersion();
+        const messageBefore = status.getData().emittedMessage;
         const stored: ITodo = carburetor.getData().items.workTodo1;
 
         carburetor.updateTodo({...stored});
@@ -267,13 +279,40 @@ describe('TodoCarburetor', () => {
         expect(order.writes()).toEqual(0);
         expect(counters.writes()).toEqual(0);
         expect(carburetor.getVersion()).toEqual(versionBefore);
-        expect(someCarburetor.getVersion()).toEqual(someVersionBefore);
-        expect(someCarburetor.getData().emittedMessage).toEqual(messageBefore);
+        expect(status.getVersion()).toEqual(statusVersionBefore);
+        expect(status.getData().emittedMessage).toEqual(messageBefore);
         expect(carburetor.getData().items.workTodo1).toBe(stored);
 
         item.dispose();
         order.dispose();
         counters.dispose();
+        dispose();
+    });
+
+    test('a real write moves the emit timestamp through the scope wiring', async () => {
+        const {scope, dispose} = createTodoScope();
+        const carburetor = scope.get(todoToken);
+        const status = scope.get(statusToken);
+
+        await loadThroughAPI(carburetor);
+
+        // The timestamp has millisecond resolution: an identical value is no change and bumps
+        // nothing, so let the clock move past the load's own timestamp first.
+        await new Promise<void>((resolve: () => void) => {
+            setTimeout(resolve, 5);
+        });
+
+        const versionBefore = status.getVersion();
+
+        carburetor.createTodo();
+
+        expect(status.getVersion()).toBeGreaterThan(versionBefore);
+        expect(status.getData().emittedMessage).not.toEqual('');
+
+        dispose();
+        carburetor.createTodo();
+
+        expect(status.getVersion()).toEqual(versionBefore + 1);
     });
 
     test('replacing the data derives the counters and the stable order from the new items', async () => {

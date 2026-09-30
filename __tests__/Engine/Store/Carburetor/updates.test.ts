@@ -160,4 +160,54 @@ describe('Carburetor', () => {
         expect(readerOfB).toEqual(1);
         expect(carburetor.getVersion()).toEqual(versionBefore + 1);
     });
+
+    test('an empty writes Set is reused across no-op emits, not reallocated (R15-09)', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const before = carburetor.writesRef();
+
+        carburetor.touchDraftWithoutWrite();
+        carburetor.touchDraftWithoutWrite();
+
+        expect(carburetor.writesRef()).toBe(before);
+    });
+
+    test('a real write still gets a fresh writes Set once it is handed off (R15-09)', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const empty = carburetor.writesRef();
+
+        carburetor.setA(1);
+
+        // The Set handed to notifyWrites is not reused for the next round of writes: the
+        // no-op reuse above must not leak into an emit that actually publishes something.
+        expect(carburetor.writesRef()).not.toBe(empty);
+        expect(carburetor.writesRef().size).toEqual(0);
+    });
+
+    test('several throwing subscribers are all isolated and all reported (R15-09)', async () => {
+        const carburetor = new TestCarburetor(getTestData());
+        const original = console.error;
+        const reported: string[] = [];
+        let readerOfB = 0;
+
+        console.error = (message: string) => reported.push(message);
+        const throwing = (text: string) => () => { throw new Error(text); };
+
+        carburetor.subscribe(throwing('first reader threw'), {id: 'a-reader-1', reads: readsOf('a')});
+        carburetor.subscribe(throwing('second reader threw'), {id: 'a-reader-2', reads: readsOf('a')});
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
+
+        try {
+            carburetor.setAandUntrackedBWithMark(1, 1);
+
+            await new Promise(resolve => queueMicrotask(() => resolve(undefined)));
+        } finally {
+            console.error = original;
+        }
+
+        // Both throwing subscribers ran and both were reported; neither swallowed the
+        // notification meant for the subscriber that does not throw.
+        expect(readerOfB).toEqual(1);
+        expect(reported.some(message => message.includes('first reader threw'))).toBeTruthy();
+        expect(reported.some(message => message.includes('second reader threw'))).toBeTruthy();
+    });
 });

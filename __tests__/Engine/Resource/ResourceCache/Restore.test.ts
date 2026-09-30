@@ -1,4 +1,4 @@
-import {EResourceStatus} from "@/Carburetor";
+import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 
 interface IUser {

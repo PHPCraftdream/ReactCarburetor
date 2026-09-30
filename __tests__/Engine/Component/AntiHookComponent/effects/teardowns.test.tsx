@@ -16,22 +16,22 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
             class TwoCleanups extends AntiHookComponent {
                 protected useEffects(): void {
                     this.useEffect(
+                        'a',
                         () => {
                             log.push('open:a');
 
                             return closeA;
                         },
-                        'a',
                         []
                     );
 
                     this.useEffect(
+                        'b',
                         () => {
                             log.push('open:b');
 
                             return closeB;
                         },
-                        'b',
                         []
                     );
                 }
@@ -76,11 +76,11 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
 
             class BrokenTeardown extends AntiHookComponent {
                 protected useEffects(): void {
-                    this.useEffect(() => {
+                    this.useEffect('a', () => {
                         log.push('open:a');
 
                         return closeA;
-                    }, 'a', []);
+                    }, []);
                 }
 
                 protected unUseEffects(): void {
@@ -129,6 +129,7 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
             class Channel extends AntiHookComponent<{channel: string}> {
                 protected useEffects(): void {
                     this.useEffect(
+                        'channel',
                         () => {
                             const channel = this.props.channel;
                             log.push('open:' + channel);
@@ -137,7 +138,6 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
                             // carburetor-disable-next-line carburetor/require-method-for-closure
                             return () => closeChannel(channel);
                         },
-                        'channel',
                         [this.props.channel]
                     );
                 }
@@ -185,6 +185,7 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
             class BrokenSetup extends AntiHookComponent<{fail: boolean}> {
                 protected useEffects(): void {
                     this.useEffect(
+                        'effect',
                         () => {
                             if (this.props.fail) {
                                 throw new Error('setup failed');
@@ -194,7 +195,6 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
 
                             return cleanup;
                         },
-                        'effect',
                         [this.props.fail]
                     );
                 }
@@ -258,6 +258,7 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
             class Both extends AntiHookComponent<{fail: boolean}> {
                 protected useEffects(): void {
                     this.useEffect(
+                        'effect',
                         () => {
                             if (this.props.fail) {
                                 throw new Error('setup failed');
@@ -267,7 +268,6 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
 
                             return cleanup;
                         },
-                        'effect',
                         [this.props.fail]
                     );
                 }

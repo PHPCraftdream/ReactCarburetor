@@ -1,7 +1,8 @@
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
-import {AntiHookComponent, Carburetor, TPath} from '@/Carburetor';
+import {AntiHookComponent, Carburetor} from '@/Carburetor';
+import {TPath} from '@/Carburetor/Models/Paths';
 import {createProxyCache} from '@/Carburetor/Store/Tracking/createProxyCache';
 import {IProxyCache, PROXY_CACHE} from '@/Carburetor/Store/Tracking/Models';
 import {TReadonly} from '@/Carburetor/Models/Base';
@@ -19,9 +20,6 @@ const getTreeData = (): ITreeData => ({
     items: {a: {title: 'first'}, b: {title: 'second'}},
     list: [{n: 1}, {n: 2}],
 });
-
-// A symbol has no place in a dotted path, so a write through one is the wildcard case.
-const TAG: unique symbol = Symbol('proxy-cache-tag');
 
 class TreeCarburetor extends Carburetor<ITreeData> {
     /** Deletes the items.a branch through draft and publishes the write. */
@@ -63,13 +61,6 @@ class TreeCarburetor extends Carburetor<ITreeData> {
     public edit = (mutate: (draft: ITreeData) => void): void => {
         this.update(mutate);
     };
-
-    /** Writes through a symbol key, which no path can name. */
-    public writeTag = (value: number): void => {
-        this.update((draft: ITreeData) => {
-            (draft as unknown as {[TAG]?: number})[TAG] = value;
-        });
-    };
 }
 
 /** The cache handle a tracking proxy answers its introspection symbol with. */
@@ -89,44 +80,24 @@ describe('proxy cache ownership', () => {
         expect(firstRead).toBe(secondRead);
         expect(firstRead.title).toEqual('first');
         expect(cacheOf(view.items).owns('items.a', branch)).toBeTruthy();
-        expect(cacheOf(view.items).size()).toEqual(1);
     });
 
-    test('reproduction: deleting a read branch leaves its object held by the live view cache', () => {
+    test('deleting a branch drops it from the view; the sibling wrapper is unaffected', () => {
         const carburetor = new TreeCarburetor(getTreeData());
-        const removed = carburetor.getData().items.a;
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-
-        const wrapper = view.items.a;
+        const view = carburetor.read(() => {});
         const sibling = view.items.b;
-
-        const itemsCache = cacheOf(view.items);
-        expect(itemsCache.owns('items.a', removed)).toBeTruthy();
 
         carburetor.deleteA();
 
-        // The write has landed, but nothing has consulted the cache since: the sweep is lazy,
-        // and this assertion pins that laziness down deterministically.
-        expect(itemsCache.owns('items.a', removed)).toBeTruthy();
-
-        // Reading ANOTHER path is the production access that must release the deleted branch.
-        // No read at items.a happens here, and nothing below depends on garbage collection.
-        expect(view.items.b.title).toEqual('second');
-
-        expect(itemsCache.owns('items.a', removed)).toBe(false);
-        expect(itemsCache.size()).toEqual(1);
-        expect(itemsCache.owns('items.b', carburetor.getData().items.b)).toBeTruthy();
-
-        // The handed-out data follows the write even though the old wrapper was released.
         expect(view.items.a).toBeUndefined();
+        // The sibling's raw object never changed, so its cached wrapper survives untouched —
+        // no release step is needed to make that true, only the object-identity match.
         expect(view.items.b).toBe(sibling);
-        expect(wrapper.title).toEqual('first');
+        expect(view.items.b.title).toEqual('second');
     });
 
-    test("deleting a read branch releases it from a component's persistent connect() view", () => {
+    test("deleting a read branch is reflected in a component's persistent connect() view", () => {
         const store = new TreeCarburetor(getTreeData());
-        const removed = store.getData().items.a;
         let captured: unknown = undefined;
 
         class TitleView extends AntiHookComponent {
@@ -152,24 +123,18 @@ describe('proxy cache ownership', () => {
         // The component re-rendered and re-read, so the deletion must have changed what it shows.
         expect(container.querySelector('.title')?.textContent).toEqual('second');
 
-        // captured.items walks the facade onto the live read proxy's items branch — the proxy
-        // whose cache held items.a across the delete.
+        // captured.items walks the facade onto the live read proxy's items branch.
         const capturedView = captured as TReadonly<ITreeData>;
-        const itemsCache = cacheOf(capturedView.items);
 
-        expect(itemsCache.owns('items.a', removed)).toBe(false);
-        // The post-delete render read only items.b past the sweep, and that branch entry is the
-        // one thing the cache still holds.
-        expect(itemsCache.size()).toEqual(1);
+        expect(capturedView.items.a).toBeUndefined();
+        expect(capturedView.items.b.title).toEqual('second');
 
         unmount();
     });
 
-    test('replacing a branch releases the old target without another read at that path', () => {
+    test('replacing a branch mints a fresh wrapper; the sibling keeps its identity', () => {
         const carburetor = new TreeCarburetor(getTreeData());
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-        const oldBranch = carburetor.getData().items.a;
+        const view = carburetor.read(() => {});
         const newBranch: IBranch = {title: 'replaced'};
 
         const oldWrapper = view.items.a;
@@ -177,21 +142,11 @@ describe('proxy cache ownership', () => {
 
         carburetor.replaceA(newBranch);
 
-        // The sweep trigger is a read at a DIFFERENT path: releasing items.a must not depend on
-        // anything re-reading it.
-        expect(view.items.b.title).toEqual('second');
-
-        const itemsCache = cacheOf(view.items);
-
-        expect(itemsCache.owns('items.a', oldBranch)).toBe(false);
-        // The written path has not been re-read yet, so no fresh entry may stand for it either.
-        expect(itemsCache.owns('items.a', newBranch)).toBe(false);
-        expect(itemsCache.size()).toEqual(1);
-
         const newWrapper = view.items.a;
 
         expect(newWrapper).not.toBe(oldWrapper);
         expect(newWrapper.title).toEqual('replaced');
+        expect(cacheOf(view.items).owns('items.a', newBranch)).toBe(true);
         expect(view.items.b).toBe(siblingWrapper);
     });
 
@@ -240,7 +195,6 @@ describe('proxy cache ownership', () => {
 
         carburetor.writeBTitle('changed');
 
-        // The read-back is itself the sweep the unrelated write published into.
         expect(view.items.a).toBe(wrapper);
         expect(cacheOf(view.items).owns('items.a', branchA)).toBe(true);
 
@@ -261,7 +215,6 @@ describe('proxy cache ownership', () => {
 
         carburetor.setATitle('edited');
 
-        // The sweep runs through the sibling branch, never through the written path itself.
         expect(view.items.b.title).toEqual('second');
 
         expect(view.items.a).toBe(wrapper);
@@ -269,13 +222,10 @@ describe('proxy cache ownership', () => {
         expect(view.items.a.title).toEqual('edited');
     });
 
-    test("each recorder's view owns its cache entries independently", () => {
+    test("each recorder gets its own cache, independent of any other view's", () => {
         const carburetor = new TreeCarburetor(getTreeData());
-        const removedA = carburetor.getData().items.a;
-        const reads1 = new Set<TPath>();
-        const reads2 = new Set<TPath>();
-        const view1 = carburetor.read((path: TPath) => reads1.add(path));
-        const view2 = carburetor.read((path: TPath) => reads2.add(path));
+        const view1 = carburetor.read(() => {});
+        const view2 = carburetor.read(() => {});
 
         const a1 = view1.items.a;
         const a2 = view2.items.a;
@@ -286,24 +236,19 @@ describe('proxy cache ownership', () => {
 
         carburetor.deleteA();
 
-        // Reading through view1 sweeps view1's cache only — view2 has not been consulted.
+        // Both views see the deletion independently — neither's cache for the surviving
+        // sibling was ever shared with the other's.
+        expect(view1.items.a).toBeUndefined();
+        expect(view2.items.a).toBeUndefined();
         expect(view1.items.b.title).toEqual('second');
-
-        expect(cacheOf(view1.items).owns('items.a', removedA)).toBe(false);
-        expect(cacheOf(view2.items).owns('items.a', removedA)).toBe(true);
-
-        // Eviction is keyed by written paths, never by anyone's read set: view2 releases the
-        // same entry only when something consults ITS cache.
         expect(view2.items.b.title).toEqual('second');
-        expect(cacheOf(view2.items).owns('items.a', removedA)).toBe(false);
+        expect(view1.items.b).not.toBe(view2.items.b);
     });
 
-    test("the draft's write-proxy cache releases replaced branches too", () => {
+    test("the draft's write-proxy cache keeps the untouched sibling's wrapper across edits", () => {
         const store = new TreeCarburetor(getTreeData());
-        const removedA = store.getData().items.a;
         let draftWrapper: unknown = undefined;
         let draftSibling: unknown = undefined;
-        let draftCache: unknown = undefined;
         let draftSibling2: unknown = undefined;
 
         store.edit((draft: ITreeData) => {
@@ -316,156 +261,81 @@ describe('proxy cache ownership', () => {
         store.deleteA();
 
         store.edit((draft: ITreeData) => {
-            draftCache = cacheOf(draft.items);
             draftSibling2 = draft.items.b;
         });
 
-        const cache = draftCache as IProxyCache;
-
-        expect(cache.owns('items.a', removedA)).toBe(false);
-        expect(cache.size()).toEqual(1);
         // The untouched sibling keeps its wrapper identity across edits.
         expect(draftSibling2).toBe(draftSibling);
     });
 
-    test('a write under a symbol key invalidates the whole scope', () => {
-        const carburetor = new TreeCarburetor(getTreeData());
-        const reads = new Set<TPath>();
-        const view = carburetor.read((path: TPath) => reads.add(path));
-        const itemsObject = carburetor.getData().items;
-
-        const wrapper = view.items.a;
-
-        carburetor.writeTag(1);
-
-        // A root-level read is the sweep trigger: the wildcard invalidation covers every entry
-        // the root cache holds, 'items' and 'list' alike.
-        expect(view.list[0].n).toEqual(1);
-
-        expect(cacheOf(view).owns('items', itemsObject)).toBe(false);
-        expect(view.items.a).not.toBe(wrapper);
-    });
+    // R6-02/R6-03: a symbol-keyed write through draft is now rejected outright, so there is no
+    // longer a symbol write left to keep the cache valid across. See StateModel.test.ts.
 });
 
 describe('createProxyCache', () => {
-    test('the cache evicts a path and its descendants, keeping unrelated entries', () => {
-        const cache = createProxyCache({});
+    test('a miss answers undefined; a filed entry is then a hit for the same (path, source)', () => {
+        const cache = createProxyCache();
         const x = {name: 'x'};
-        const y = {name: 'y'};
-        const qObj = {name: 'q'};
-        const xWrapper = {version: 1};
+        const built = {version: 1};
 
-        cache('p.x', x, () => xWrapper);
-        cache('p.x.y', y, () => ({version: 2}));
-        cache('q', qObj, () => ({version: 3}));
+        expect(cache.get('p.x', x)).toBeUndefined();
 
-        cache.invalidate('p.x');
+        cache.set('p.x', x, built);
 
-        // Lazy: the published invalidation has swept nothing while nobody consulted the cache.
+        expect(cache.get('p.x', x)).toBe(built);
         expect(cache.owns('p.x', x)).toBe(true);
-        expect(cache.owns('p.x.y', y)).toBe(true);
-
-        const reRead = cache('p.x', x, () => ({version: 4}));
-
-        expect(reRead).not.toBe(xWrapper);
-        expect(cache.owns('p.x', x)).toBe(true);
-        expect(cache.owns('p.x.y', y)).toBe(false);
-        expect(cache.owns('q', qObj)).toBe(true);
     });
 
-    test('an entry minted after its path was invalidated survives the sweep', () => {
-        const cache = createProxyCache({});
-        const c = {name: 'c'};
-
-        cache.invalidate('p');
-
-        const fresh = cache('p.c', c, () => ({version: 1}));
-
-        // The revision stamp protects the entry: a sweep never evicts what it postdates.
-        expect(cache('p.c', c, () => ({version: 2}))).toBe(fresh);
-    });
-
-    test("scopes are per raw object, so one object's invalidation never touches another's cache", () => {
-        const objA = {name: 'a'};
-        const objB = {name: 'b'};
-        const cacheA = createProxyCache(objA);
-        const cacheB = createProxyCache(objB);
+    test('the same object filed at a different path answers a miss at the old one', () => {
+        const cache = createProxyCache();
         const shared = {name: 'shared'};
+        const atA = {at: 'a'};
+        const atB = {at: 'b'};
 
-        cacheA('x', shared, () => ({side: 'a'}));
-        const wrapperB = cacheB('x', shared, () => ({side: 'b'}));
+        cache.set('a', shared, atA);
+        cache.set('b', shared, atB);
 
-        cacheA.invalidate('x');
-
-        // Same path, same source — but a different raw object's scope: the lookup must hand back
-        // exactly what it first minted.
-        expect(cacheB('x', shared, () => ({side: 'b2'}))).toBe(wrapperB);
+        expect(cache.get('b', shared)).toBe(atB);
+        // The cache holds one entry per source: the newer path wins, the older one is gone.
+        expect(cache.owns('b', shared)).toBe(true);
+        expect(cache.owns('a', shared)).toBe(false);
+        expect(cache.get('a', shared)).toBeUndefined();
     });
 
-    test('a record is kept until every cache sharing the scope has applied it', () => {
-        const target = {};
-        const cacheA = createProxyCache(target);
-        const cacheB = createProxyCache(target);
-        const o1 = {name: 'p'};
-        const o2 = {name: 'q'};
-        const originalB = cacheB('p', o1, () => ({side: 'b'}));
+    test('a different object at the same path is filed independently of the old one', () => {
+        const cache = createProxyCache();
+        const before = {name: 'before'};
+        const after = {name: 'after'};
+        const genOne = {gen: 1};
+        const genTwo = {gen: 2};
 
-        cacheA('p', o1, () => ({side: 'a'}));
+        cache.set('p', before, genOne);
+        cache.set('p', after, genTwo);
 
-        cacheA.invalidate('p');
-
-        // A read at another path sweeps cacheA — the engine's release-without-rereading behavior.
-        cacheA('q', o2, () => ({side: 'a2'}));
-
-        // cacheB never consulted its cache since the write, so the record must survive cacheA's
-        // sweep: retiring it now would leave cacheB's stale entry unreleased forever.
-        expect(cacheA.pending()).toEqual(1);
-
-        // The surviving record still evicts cacheB's stale entry the moment cacheB is consulted.
-        const fresh = cacheB('p', o1, () => ({fresh: true}));
-
-        expect(fresh).not.toBe(originalB);
-        expect(cacheB.pending()).toEqual(0);
+        expect(cache.get('p', before)).toBe(genOne);
+        expect(cache.get('p', after)).toBe(genTwo);
+        expect(cache.owns('p', before)).toBe(true);
+        expect(cache.owns('p', after)).toBe(true);
     });
 
-    test('a record retires once no cache holds an entry it could evict', () => {
-        const target = {};
-        const cacheA = createProxyCache(target);
-        const cacheB = createProxyCache(target);
-        const o1 = {name: 'p'};
-        const o2 = {name: 'q'};
-        const o3 = {name: 'r'};
-        const originalQ = cacheB('q', o2, () => ({side: 'b'}));
+    test('two caches are fully independent, even over the same object and path', () => {
+        const cacheA = createProxyCache();
+        const cacheB = createProxyCache();
+        const shared = {name: 'shared'};
+        const wrapperA = {side: 'a'};
+        const wrapperB = {side: 'b'};
 
-        cacheA('p', o1, () => ({side: 'a'}));
+        cacheA.set('x', shared, wrapperA);
+        cacheB.set('x', shared, wrapperB);
 
-        cacheA.invalidate('p');
-
-        // A read at another path sweeps cacheA and drops the entry the record covers.
-        cacheA('r', o3, () => ({side: 'r'}));
-
-        // cacheB was never synced since the write, but it holds no entry 'p' covers: the record
-        // must retire anyway, or the ledger would grow with writes no live entry answers to.
-        expect(cacheA.pending()).toEqual(0);
-
-        // Nothing evicted cacheB's unrelated entry: it still answers with its first wrapper.
-        expect(cacheB('q', o2, () => ({side: 'b2'}))).toBe(originalQ);
+        expect(cacheB.get('x', shared)).not.toBe(cacheA.get('x', shared));
+        expect(cacheA.get('x', shared)).toBe(wrapperA);
+        expect(cacheB.get('x', shared)).toBe(wrapperB);
     });
 
-    test('a wildcard record retires like any other once applied', () => {
-        const cache = createProxyCache({});
-        const p = {name: 'p'};
-        const q = {name: 'q'};
-
-        cache('p', p, () => ({version: 1}));
-
-        // The wildcard path: a symbol write cannot be attributed to a dotted path, so the
-        // engine publishes '*' and every entry under the scope is obsolete.
-        cache.invalidate('*');
-
-        cache('q', q, () => ({version: 2}));
-
-        expect(cache.owns('p', p)).toBe(false);
-        expect(cache.pending()).toEqual(0);
-    });
+    // A removed branch's cache entry needs no explicit release to prove correct: it lives in
+    // a `WeakMap` keyed by the branch's own raw object, so once nothing outside the cache
+    // references that object, the entry is collectable by construction. Pinning that down
+    // with a `FinalizationRegistry` needs `global.gc()`, which this test runner does not
+    // expose (no `--expose-gc`), so it is documented here instead of faked with a timer.
 });

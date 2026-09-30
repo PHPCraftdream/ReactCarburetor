@@ -1,44 +1,24 @@
 import { IProxyCache } from "./Models.mjs";
 /**
- * Cache of proxies for nested branches, with explicit ownership of obsolete targets: the map holds a branch's
- * source and wrapper only while the branch is still the live value at its path. It also remembers the source object:
- * if the value behind a path has been replaced, the proxy over the old object is no longer valid and gets recreated.
+ * Cache of proxies for nested branches, ephemeral by construction: entries live in a
+ * `WeakMap` keyed by the branch's own raw object, so an entry is reachable only through the
+ * object it describes and never keeps that object alive on its own.
  *
- * When a write replaces or deletes a branch, or reorders an array, the write proxy publishes
- * the written path to the invalidation scope shared by every proxy over the same raw object;
- * each cache sweeps the obsolete entries the next time anything consults it. A read at another
- * path is enough to release a deleted branch — no read at the old path is required, and no
- * garbage-collection timing is involved. Entries minted after an invalidation carry the newer
- * revision and survive the sweep: re-reading the written path files a fresh, valid entry.
+ * When a branch is removed or replaced, its old raw object stops being referenced anywhere
+ * else in the data or by any live proxy; the moment that happens, the entry — and the wrapper
+ * it held — becomes collectable on its own. No read-driven sweep, no write-driven invalidation
+ * and no watcher bookkeeping is needed to make that true: it falls out of what a `WeakMap`
+ * already guarantees.
  *
- * Sweeping is lazy by design: the cost lands on the next reader rather than the writer, and
- * the tests pin the resulting ownership down deterministically through `owns`/`size`.
+ * One cache belongs to one proxy tree — the root `createReadProxy`/`createWriteProxy` call
+ * creates it, and every nested call over the same tree receives it as an argument — not to one
+ * raw object. Two trees over the same data (two `read()` views, the read tree and the write
+ * tree) mint independent wrappers: one recorder's read set can never be satisfied by another's
+ * branch wrapper.
  *
- * The published records are a worklist, not a history: each is retired the moment no live
- * cache needs it — every cache sharing the scope has swept through it, or none of the ones
- * that have not holds an entry it would evict. Repeated writes to the SAME path never grow this
- * worklist either: a new record for a path replaces that path's pending record instead of
- * queuing beside it (R3-06), so an idle view that never re-consults its cache still leaves the
- * ledger proportional to the distinct paths touched, not to how many times each was written.
- *
- * A fresh cache also prunes the watcher set on construction, not only on a write — a read-only
- * run that never writes still gets a retirement pass every time a new view is created (R3-07).
- * That still leans on garbage collection having actually run by then, so a view whose owner
- * knows it is done should call `release()` instead of waiting on either a write or the
- * collector: it drops the watcher slot immediately and unconditionally.
- *
- * A watcher holding zero entries needs no record, by construction: `needsRecord` can only ever
- * answer true for a watcher with at least one entry. Pruning such a watcher from `watchers`
- * therefore loses nothing — it cannot silently strand a stale entry, because it has none — and
- * it drops without waiting for the runtime to actually collect it (R4-07/R4-08). A watcher that
- * later mints its first entry re-adds its own slot at that moment, so protection resumes exactly
- * when it starts having something to protect. This is also why every write's retirement pass now
- * runs the full per-entry check immediately (no more cheap/deferred split): the entries a live
- * scope holds at any moment are already bounded by what is actually cached, so the check's cost
- * tracks that live state instead of the object's lifetime write history.
- *
- * @param target - the raw object the proxies asking for this cache front; scopes are shared
- * per raw object, so a read proxy and the write proxies over the same data observe the same
- * invalidations.
+ * A hit requires both the same raw object and the same path it is currently cached under: the
+ * same object reached at a second path within one tree — the aliasing the alias ledger warns
+ * about in development — mints a fresh wrapper rather than serving one path's wrapper to
+ * another's read.
  */
-export declare const createProxyCache: (target: object) => IProxyCache;
+export declare const createProxyCache: () => IProxyCache;

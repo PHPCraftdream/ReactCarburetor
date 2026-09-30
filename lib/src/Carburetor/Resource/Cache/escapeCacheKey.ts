@@ -17,9 +17,8 @@ import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
  * from the package entry point: the cache imports it directly.
  */
 export const escapeCacheKey = (json: string): string => {
-    return json
-        .split('~')
-        .join('~0')
-        .split(PATH_SEPARATOR)
-        .join('~1');
+    // Scanning first keeps the common case — no separator or tilde in the JSON — allocation-free.
+    return json.includes('~') || json.includes(PATH_SEPARATOR)
+        ? json.split('~').join('~0').split(PATH_SEPARATOR).join('~1')
+        : json;
 };

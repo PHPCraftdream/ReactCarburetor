@@ -169,6 +169,54 @@ import {
 
             unmount();
         });
+
+        test('a committed attempt releases its collections once consumed, and a replayed mount still restores every subscription', () => {
+            const store = new CounterCarburetor(getCounterData());
+            const other = new CounterCarburetor(getCounterData());
+
+            class Combo extends AntiHookComponent {
+                private readonly linked = this.connect(() => other);
+
+                render() {
+                    const {value} = this.useCarburetor(store);
+
+                    return <div className="value">{value}-{this.linked.value}</div>;
+                }
+            }
+
+            let instance: Combo | null = null;
+
+            const {container, unmount} = render(
+                <React.StrictMode><Combo ref={(r: Combo | null) => { instance = r; }} /></React.StrictMode>
+            );
+
+            const committed = (instance as unknown as {
+                committedAttempt: {tracked: unknown; connections: unknown; sources: unknown} | undefined;
+            }).committedAttempt;
+
+            expect(committed).toBeDefined();
+            // Only identity survives a consumed attempt: its collections are released the
+            // moment the commit that consumed them copied what it needed onto `tracked`/
+            // `connections`.
+            expect(committed?.tracked).toBeUndefined();
+            expect(committed?.connections).toBeUndefined();
+            expect(committed?.sources).toBeUndefined();
+
+            // The replayed mount lifecycles restored both subscriptions from those committed
+            // descriptions, not from the (now-released) attempt maps.
+            expect(store.subscriberCount()).toEqual(1);
+            expect(other.subscriberCount()).toEqual(1);
+
+            act(() => store.incValue());
+            act(() => other.incValue());
+
+            expect(container.querySelector('.value')?.textContent).toEqual('1-1');
+
+            unmount();
+
+            expect(store.subscriberCount()).toEqual(0);
+            expect(other.subscriberCount()).toEqual(0);
+        });
     });
 
     /**

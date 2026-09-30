@@ -84,12 +84,14 @@ render counts branch on the installed major at runtime, so nothing is excluded. 
 newest of the 18.x line; the range's `18.0.0` floor and the point releases between are not
 separately exercised — a coverage gap, not a report that they fail.
 
-The proxy cache behind every tracked read requires a global `WeakRef` — this is a browser
-library, not just a Node one, so the requirement is a runtime capability, not only the
-`engines.node` floor in `package.json`. Any environment without it (see
-[MDN](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/WeakRef)
-or [caniuse](https://caniuse.com/mdn-javascript_builtins_weakref) for supported browser
-versions) throws a clear, actionable error on the first tracked read instead of running.
+`@types/react` is an optional peer, `^18.0.0 || ^19.0.0`: a TypeScript project sees a warning
+only on a real version mismatch, and a plain-JS project needs nothing. See
+[`docs/react-compatibility.md`](docs/react-compatibility.md) for how the library binds to the
+consumer's own React, what a duplicate-React install looks like, and how compatibility is tested.
+
+With React Server Components (Next.js App Router), components and hooks ship as `"use client"`
+modules while stores, caches and scopes stay importable on the server; your own components that
+extend `AntiHookComponent` still live in a `"use client"` file. Details are in the same document.
 
 Async resources use a global `AbortController`, which Node added in 14.17.0 while the
 `engines.node` floor in `package.json` is older. Where it is missing, a stand-in signal
@@ -117,13 +119,18 @@ belong to the carburetor, through `update`:
 
 ```ts
 export class TodoCarburetor extends Carburetor<ITodoList> {
-    public updateTodo = (todo: ITodo) => {
+    public renameTodo = (id: string, title: string) => {
         this.update((draft) => {
-            draft.items[todo.id] = todo;   // records the changed path: items.<id>
+            draft.items[id].title = title;   // records the changed path: items.<id>.title
         });
     };
 }
 ```
+
+Write the fields that change, or `Object.assign(draft.items[id], patch)`: the no-op check skips
+fields that already hold the value, so only real changes are recorded. Replacing a whole object
+(`draft.items[id] = next`) is precise too — it is diffed against the object it replaces and
+records only the fields that differ — but pays a walk over the replaced object to find them.
 
 `update` mutates through `draft` and publishes in one step. You can also write to `this.draft`
 directly and call `this.emitUpdate()` yourself, but forgetting the second half changes the data
@@ -132,9 +139,10 @@ letting it pass silently.
 
 ### A persistent connection: `connect()`
 
-`useCarburetor` builds a fresh read-tracking proxy every render. For a component that always
-reads from the same store, `connect()` builds it once instead — a field initializer is the
-intended call site — and hands back the same object for the component's whole lifetime:
+`connect()` is the default way to read a store: declared once — a field initializer is the
+intended call site — it hands back the same object for the component's whole lifetime.
+`useCarburetor` reads the same way but is called in render, which suits a store chosen per
+render (a prop, a scope lookup) or an array-rooted scoped store:
 
 ```tsx
 class TodoApp extends AntiHookComponent<ITodoProps> {
@@ -170,14 +178,9 @@ through the live view; a non-configurable descriptor is reported configurable, w
 nothing, because every mutation trap — assignment, deletion, `defineProperty`, prototype and
 extension changes — is rejected.
 
-Views stay live across writes: when a write replaces or deletes a branch, the engine releases the
-replaced branch's internal wrapper the next time anything reads through the view — a read of some
-other path is enough, and nothing waits on garbage collection. Every kind of read counts: leaf
-reads, `in` checks and key enumeration reclaim the same way a branch fetch does, so a view left
-reading only primitives still lets deleted branches go. Per written path the engine keeps a path
-string and a revision number only while some live cache still needs that record to evict its
-obsolete entry; applied records are retired, so the ledger tracks the live caches and their
-pending writes rather than the store's lifetime write churn.
+Views stay live across writes. Branch wrappers are cached per proxy tree in a `WeakMap` keyed by
+the raw branch object, so a branch that a write replaces or deletes takes its wrapper with it: once
+nothing references the old object, both are collectable, with no sweep and no bookkeeping.
 
 ### Passing connected data to children
 
@@ -212,36 +215,54 @@ class TodoList extends AntiHookComponent<ITodoProps> {
 ```
 
 `select` reads the same tracked view `connect` hands out, so the owner subscribes to exactly
-the paths the selection touches. What the call returns is detached plain data: plain objects
+the paths the selection touches. What the call returns is detached data: plain objects
 and arrays are copied recursively, including non-enumerable own data fields and symbol keys.
-Accessors are rejected without running their getters. The snapshot keeps its identity while
-the selected content and reference-sharing topology stay the same, so a gated child avoids
-unrelated redraws. Mutable exotic values remain a conservative always-changed boundary.
+Ordinary Maps, Sets and Dates are copied too; repeated references and Map-key aliases stay
+shared within the copy, including a key selected through a tracked view. Custom instances
+remain live. Accessors are rejected without running their getters, and so is an `Array`
+subclass, whose copy would lack its private state — select `Array.from(value)` or the fields
+the child needs instead. The snapshot keeps its identity while the selected plain content
+and reference-sharing topology stay the same. Mutable exotic values remain a conservative
+always-changed boundary.
 
 The selector runs on every render — that is what keeps the owner's subscription fresh — while
-the snapshot object itself is reused until the content actually changes. A selection that hands
-out a live view (the facade, or a branch of it) as the snapshot or inside it is reported once
-in development:
-select plain values — primitives, or plain objects and arrays built from them.
+the snapshot object itself is reused until the content actually changes. Tracked plain-object
+and array branches are copied safely. An opaque live facade that cannot be detached is reported
+once in development; project its plain fields instead of handing the facade to a gated child.
 
 ### Precise invalidation
 
 `emitUpdate` compares the written paths against every subscriber's read paths. A write
 touches a read when the paths are equal or one is nested in the other:
 
-| read path            | write `items.a1` | write `items.a2` | write `orderIds` |
-|----------------------|------------------|------------------|------------------|
-| `items.a1.title`     | wakes            | —                | —                |
-| `items` (enumerated) | wakes            | wakes            | —                |
-| `orderIds.0`         | —                | —                | wakes            |
+| read path            | write `items.a1.title` | add or delete `items.a3` | write `orderIds` |
+|----------------------|------------------------|--------------------------|------------------|
+| `items.a1.title`     | wakes                  | —                        | —                |
+| `items` (enumerated) | —                      | wakes                    | —                |
+| `orderIds.0`         | —                      | —                        | wakes            |
 
 Two properties keep this honest:
 
 - **Traversal is not a read.** Reaching into `data.items` on the way to `items.a1.title`
-  subscribes you to the leaf, not to the whole container. Enumerating (`Object.keys`) or
-  probing (`'a1' in items`) *does* subscribe to the structure, because that genuinely reads it.
+  subscribes you to the leaf, not to the whole container. Enumerating (`Object.keys`,
+  `Object.values`, `for…in`, spread) subscribes to the key set — woken when a key is added or
+  removed, not by an edit under a key it listed; probing (`'a1' in items`) subscribes to that
+  key's presence — woken when it is added or removed, not by edits inside it. That is also what `items.map(...)` does per index, so a parent laying out rows is
+  not re-rendered by an edit inside one. Inherited members (`map`, `Symbol.iterator`) are not
+  data and record nothing, so `for…of` and spread track only the elements they visit.
+- **Array writes are per index.** `push` wakes readers of `length` and the new index, not the
+  existing rows; replacing `items[5]` wakes the readers of `items[5]`; `sort` wakes the indices
+  it moved.
 - **Writing the same value wakes nobody.** Recomputing a counter that ends up unchanged, or
   re-sorting an already sorted array, invalidates nothing.
+- **Replacements are diffed.** Replacing an object or array with another of the same kind —
+  through `draft`, `setData`, `restore`, `fromJSON`, or an undo — records only the leaves that
+  differ, plus the key set where keys were added or removed. A kind change (array ↔ object, plain
+  ↔ `Map`/class instance), or a supported object/array prototype change, records the replaced
+  path itself, and so does a replacement that changes more than 2000 leaves. Snapshots and
+  history preserve supported null-prototype containers. A branch that is the same object
+  on both sides is skipped without a look, so never mutate what `getData()` returns and hand it
+  back: those edits are invisible to the diff.
 
 If a write bypasses `draft` (a direct `this.data.x = y`), the changed paths are unknown, so
 the whole store is treated as changed. Coarse, but never a missed update.
@@ -330,6 +351,48 @@ export const summary = computed<string>((read) => `${read(activeCount)} left`);
 Calling `activeCount.get()` inside the body instead would register no dependency and leave
 `summary` stale — the reader is what records it.
 
+`get()` reads current dependencies even while a transaction or throttle has deferred delivery.
+That eager read does not consume a subscriber's pending notification: settlement still publishes
+the changed result once. Unchanged primitive results stay unpublished.
+
+A computed's result is live, not a copy: when it returns store data (`read(store).items`), a
+consumer reading deeper fields off it subscribes the computed to those fields too, so an edit
+inside the list wakes the computed and, through it, the consumer. Each newly read field is added
+to the existing subscription in O(path depth). Return plain values when you only need a count or
+a flag — the unchanged-result check then saves the re-render.
+
+A body that has to build a new array or object on every recompute — `filter`, `map`, `slice`, an
+object literal — cannot rely on that check: a new reference looks like a change even when its
+content is identical. Pass `equals` to judge the result by content instead:
+
+```ts
+export const visibleIds = computed<string[]>((read) => {
+    const {orderIds, items} = read(todoCarburetor);
+
+    return orderIds.filter((id) => !items[id].done);
+}, {equals: shallowEqual});
+```
+
+`shallowEqual` (also exported) compares an array element-wise, or an object key-by-key, with
+`Object.is`, so a recompute that lands on the same ids re-renders nobody. `equals` is consulted
+only when the reference actually changed — an in-place mutation of an exotic result (a `Map` or
+`Set` the computed hands back live) still announces regardless of `equals`, because `previous`
+and `next` would alias the same mutated object and there would be nothing new for `equals` to
+compare.
+
+### Derived lists
+
+A computed feeding a list should return ids or plain values, with each row reading the store
+itself — the way the demo's `TodoViews.visibleIds` and `TodoItem` do — rather than receiving the
+computed's live elements as props. A computed's result is live: every element the body returns is
+a fresh proxy on each recompute, so handing those elements to rows makes a one-field edit
+recompute the whole computed and re-render the parent and every visible row (500 renders at 1000
+rows, 2000 at 4000). Returning ids and reading the store per row lets a title edit wake exactly
+the one row that shows it, and adding `{equals}` (above) stops even the parent from re-rendering
+when the visible ids themselves do not change. In development, rendering through a computed's
+live result without being one of its subscribers — the value having reached a component through
+props — is reported once per computed.
+
 ### Transactions
 
 Writes inside `transaction` are delivered as one update per carburetor, however many stores
@@ -353,6 +416,9 @@ coalescing actually helps:
 export const presenceCarburetor = new PresenceCarburetor(initial, new ComponentUpdateThrottle(40));
 ```
 
+Cancelling or replacing a subscription id also removes its not-yet-run callback from an
+in-progress throttle flush. A callback already running is not interrupted.
+
 ### Effects without hooks
 
 Override `useEffects`, and declare each effect with a name and its dependencies:
@@ -360,22 +426,22 @@ Override `useEffects`, and declare each effect with a name and its dependencies:
 ```tsx
 export class TodoApp extends AntiHookComponent<ITodoProps> {
     protected useEffects(): void {
-        this.useEffect(this.props.carburetor.loadData, 'loadData', []);
+        this.useEffect('loadData', this.props.carburetor.loadData, []);
 
         this.useEffect(
+            'channel',
             () => {
                 const socket = connect(this.props.channel);
 
                 return () => socket.close();
             },
-            'channel',
             [this.props.channel]
         );
     }
 }
 ```
 
-`useEffect(callback, name, deps)` runs `callback` when `deps` changed since the last run,
+`useEffect(name, callback, deps)` runs `callback` when `deps` changed since the last run,
 compared element by element with `Object.is`. Whatever the callback returns is its cleanup: it
 runs before that same effect runs again, and on unmount. Setup and teardown therefore stay
 paired per effect — a changed dependency of one effect does not tear down the others.
@@ -387,9 +453,9 @@ is not tied to one effect.
 ### Diagnostics
 
 The engine complains about a few kinds of misuse — a write that was never published, a
-`transaction` handed an async body, a `connectSelection()` snapshot that hands a live store view
-— the facade or a branch of it — to a child, reported once per selection. Select plain values
-instead. Those complaints are development-only and switchable:
+`transaction` handed an async body, a `connectSelection()` snapshot that hands an opaque live
+facade to a child, reported once per selection. Safely copied plain/array views are supported;
+project plain fields from opaque live instances. Those complaints are development-only and switchable:
 
 ```ts
 diagnostics.setEnabled(false);   // silence them anywhere
@@ -426,6 +492,11 @@ if (profile.getData().status === EResourceStatus.Error) {
 Concurrent loads with the same arguments share one request; a load with different arguments
 aborts the previous one. The state stays serializable — the failure is stored as a message,
 with the original rejection available through `getLastError()`.
+Public `setData` replacement reconciles the raw rejection before subscribers run: a distinct
+Error-state object gets an Error with its wire message even when that message is unchanged;
+a non-Error state clears the raw cause. Passing the exact current object, or changing unrelated
+fields through a subclass's draft/update action, retains the current Error's original rejection.
+Keyless replacement neither invents an argument key nor cancels a current request.
 If a synchronous subscriber or abort listener supersedes a load before its loader starts,
 that load rejects with `AbortError` instead of reporting a successful load that never ran.
 
@@ -479,15 +550,23 @@ Three decisions are worth knowing because they differ from the hooks libraries:
 - **`invalidate` does not refetch.** It marks entries stale; the ones on screen refetch themselves on
   the next render. A cache of two hundred entries should not fire two hundred requests because one
   mutation succeeded.
+  An answer from a request started before the invalidation does not consume it: the answer stays
+  stale, or a failure keeps the explicit retry armed, until a later request settles.
 
 A failed entry is not retried automatically — that would loop, since the failure re-renders the
-component that asked. Call `refresh(args)` to try again. And the cache is bounded: the least recently
-used entries are dropped past `maxEntries`, never one with a request in flight or one a component is
-reading.
+component that asked. Call `refresh(args)` to try again, or explicitly `invalidate(args)` /
+`invalidateAll()` to re-arm mounted readers: their retry starts after commit, not during render.
+Aborting a re-armed failed request disarms it again until another explicit invalidation.
+Replacing an entry through `setData` drops its old raw rejection; unchanged entries and their
+in-flight requests retain their ownership. The cache is bounded: the least recently used entries
+are dropped past `maxEntries`, never one with a request in flight or one a component is reading.
 
-`suspend(args)` throws for a Suspense boundary, per entry. Server rendering needs nothing extra: a
-scope's `dehydrate()` carries the entries, and a hydrated entry counts as fresh for the rest of its
-lifetime rather than being refetched on mount.
+`suspend(args)` reads per entry: a miss or explicitly re-armed Error throws the current request,
+and a failed, non-invalidated Error throws its rejection without retrying. A stale Success starts
+revalidation with deferred publication and returns its previous value; a Suspense-only consumer
+needs a subsequent parent render to display the refreshed answer unless it also subscribes.
+Server rendering needs nothing extra: a scope's `dehydrate()` carries the entries, and a hydrated
+entry counts as fresh for the rest of its lifetime rather than being refetched on mount.
 
 Explicit non-goals, so the shape is clear: no retries with backoff, no refetch on window focus or
 interval, no pagination, no normalisation, no optimistic updates. See
@@ -542,10 +621,14 @@ no token claims is reported in development. A single store can also be seeded di
 // Redux DevTools: state inspection plus time travel back onto the carburetors.
 connectDevTools({todos: todoCarburetor, filter: filterCarburetor});
 
-// Mirror a store in a storage; loads what was stored on connect.
+// Mirror a store in a storage; loads what was stored on connect. Writes are synchronous;
+// `coalesce: true` stringifies once per microtask instead of once per write.
 persist(settingsCarburetor, {key: 'settings', storage: localStorage});
 
-// Undo/redo built on snapshots.
+// React to a selection outside React; onChange runs only when it changes.
+const stop = todoCarburetor.watch((data) => data.activeCount, (next, previous) => log(next, previous));
+
+// Undo/redo built on patches.
 const history = new CarburetorHistory(todoCarburetor, {limit: 50});
 history.undo();
 history.redo();
@@ -554,11 +637,41 @@ history.redo();
 await waitForUpdate(presenceCarburetor);
 ```
 
+`persist` writes `store.serialize()` and restores its parsed JSON through `restore()`.
+Ordinary stores stringify live data without first cloning a snapshot. A subclass with a
+different persisted representation overrides `serialize(): string` to produce JSON that its
+`restore()` accepts. `ResourceCarburetor` includes its settled argument key, so a restored
+successful or failed answer is reused only for matching arguments; Pending restores as Idle.
+`snapshot()` and `toJSON()` retain their detached snapshot contracts for scope and DevTools.
+Changing only a resource's settled key is still a published change, even when its visible
+status/data/error/timestamp are equal. Resource history records complete wire snapshots so
+undo/redo restores the answer's key too; ordinary store history stays patch-based.
+History records each published operation before ordinary subscribers run, so a subscriber's
+nested write remains a separate undo step regardless of registration order. Writes caused by
+undo/redo subscribers or superseding abort listeners are fresh branches and invalidate redo;
+only history's own restore installation is suppressed. Transactions and throttles still coalesce
+their writes into one published step. Multiple histories keep independent limits and disposers;
+attaching or replacing a patch-only observer does not disconnect those histories.
+
+Failed storage reads reach `onError` without deleting unread data; when the handler returns,
+later writes remain subscribed. Without a handler, a read failure throws. Malformed stored
+data is reported before removal, and a removal failure is reported separately.
+
 ## Hooks interop
 
 The engine needs no hooks, but the ecosystem around it is hooks-first. An opt-in entry point
 bridges the boundary, with the same path precision: the selector is run through the tracking
 proxy to learn what it depends on.
+
+For reactive selectors, read a primitive with `data.key` or `Reflect.get(data, 'key')`.
+`Object.getOwnPropertyDescriptor(data, 'key')?.value` and
+`Object.prototype.hasOwnProperty.call(data, 'key')` inspect structure, but do not register a
+dependency on that primitive value. Descriptor lookup is also part of `Object.keys` and
+`for…in`; those operations track the key set without subscribing to every listed value.
+Descriptor values that are plain objects or arrays remain read-only wrapped views, so later
+ordinary property reads through them are tracked. A frozen or otherwise locked property whose
+object value cannot legally be wrapped is refused in development; production may return the raw
+value at that boundary. Keep store data unfrozen if those read guarantees matter.
 
 ```tsx
 import {useCarburetorValue, useComputedValue} from 'react-carburetor/interop';
@@ -570,13 +683,27 @@ const NameBadge = () => {
 };
 ```
 
-Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe. Pass an equality
-function as the third argument when the selector builds a new object.
+Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe.
 Selected plain objects, arrays, `Map`, `Set` and `Date` values are detached for a stable
 React snapshot. A class instance cannot be copied safely, so selecting one directly or
-inside another value throws an actionable error; select the fields you render instead.
+inside another value throws an actionable error; select the fields you render instead. A
+`Map`, `Set` or `Date` subclass counts as a class instance here, not as the built-in.
 Own data fields are preserved even when non-enumerable; accessor fields are rejected
 because their getters cannot provide a detached snapshot without running user code.
+Repeated references and cycles stay connected within one detached selection, including a
+`Date` used both as a `Map` key and elsewhere in the selected graph.
+
+The third argument is the equality check that decides whether a recomputed selection
+counts as changed. It defaults to a structural comparison — own data properties and
+`Object.is` values, recursively through plain objects and arrays — because every
+selected object is detached into a fresh container, so `Object.is` itself could never
+call two of them equal: a selector rebuilt on every render, or a write that replaces an
+ancestor of the selected data without changing its content, would otherwise re-render
+every time. A `Map`, `Set`, `Date` or class instance still always compares as changed,
+since its content can mutate in place. Pass `Object.is` explicitly for the old,
+reference-only behavior.
+A different comparator re-evaluates the current selection even if the previous comparator
+suppressed the latest write. Values truly equal under the new policy keep their snapshot identity.
 
 ## Lint rules
 
@@ -669,19 +796,24 @@ describes.
 | `constructor(data, scheduler?)` | Initial data and delivery policy (defaults to immediate delivery).  |
 | `getData(): T`                  | Untracked data, for code outside render.                           |
 | `read(record)`                  | Tracked, read-only plain data; every read path goes to `record`.   |
-| `setData(data)`                 | Replaces the data and invalidates everything.                      |
+| `setData(data)`                 | Replaces the data (`getData() === data` afterwards) and wakes the readers of what changed; the protected `markAllChanged()` wakes everyone. |
 | `snapshot(): T`                 | Detached deep copy, safe to serialize or keep.                     |
-| `restore(data)`                 | Replaces the data with a snapshot.                                 |
-| `toJSON()` / `fromJSON(value)`  | Type-erased bridge for devtools, persistence and hydration.        |
-| `watch(paths, callback)`        | Subscribes outside React; returns a disposer.                      |
+| `serialize(): string`            | JSON for persistence; the base stringifies live data without a snapshot clone. Override together with `restore` for a custom persisted representation. |
+| `restore(data)`                 | Installs a snapshot: applies the difference, copying only what it assigns; the caller's object is never kept. |
+| `toJSON()` / `fromJSON(value)`  | Type-erased bridge for DevTools and hydration. `fromJSON` adopts `value` without copying — hand it freshly parsed JSON. |
+| `watch(select, onChange)`       | Subscribes outside React to a selection: `onChange(next, previous)` runs only when it changes. Returns a disposer. |
 | `getVersion(): number`          | Write counter.                                                     |
-| `subscribe(cb, options?)`       | Subscribes. `options.reads` narrows it to paths, `options.id` reuses a stable id so re-subscribing replaces the previous registration. |
+| `subscribe(cb, options?)`       | Subscribes to every write, for tooling. `options.id` reuses a stable id so re-subscribing replaces the previous registration; `options.reads` (with `read(record)`) is the engine's extension contract — its path strings are not a stable user-facing API; the set is copied, so changing it afterwards has no effect. |
 | `unsubscribe(id)`               | Removes the subscription and cancels a pending update.             |
 | `update(mutate)` *(protected)*  | Mutates through `draft` and publishes — the recommended write form. |
 | `draft: T` *(protected)*        | Write proxy that records changed paths.                            |
 | `emitSoon()` *(protected)*      | Publishes on the next microtask, for writes made where notifying now is unsafe. |
 | `preEmit()` *(protected)*       | Runs before notification — derive state here.                      |
 | `emitUpdate()` *(protected)*    | Notifies subscribers whose read paths intersect the writes.        |
+
+Members are prototype methods — here and on `ComponentUpdateThrottle`, `CarburetorScope`,
+`CarburetorHistory` and `Diagnostics`: override them with method syntax and reach the base through
+`super`. Bind one before handing it out as a callback (`onClick={() => history.undo()}`).
 
 ### `AntiHookComponent<P, S>`
 
@@ -693,7 +825,7 @@ describes.
 | `useComputed(computed)`           | Reads a derived value and subscribes to it, not to its inputs.  |
 | `useEffects()` *(protected)*      | Declares the component's effects; runs on mount and after every committed update. |
 | `unUseEffects(prevProps)`         | Component-wide teardown, before every `useEffects` pass and on unmount. |
-| `useEffect(cb, name, deps)`       | Runs `cb` when `deps` changed; its return value is that effect's cleanup. |
+| `useEffect(name, cb, deps)`       | Runs `cb` when `deps` changed; its return value is that effect's cleanup. |
 | `shouldComponentUpdate(…)`        | The props/state gate. Override only with a `super` call.        |
 | `@bind` *(decorator)*             | Binds a method once per instance, keeping it on the prototype and its reference stable. |
 
@@ -701,21 +833,20 @@ describes.
 
 | export                                        | purpose                                     |
 |-----------------------------------------------|---------------------------------------------|
-| `computed(body)`                              | Memoized derived value.                     |
+| `computed(body, options?)`                    | Memoized derived value; `options.equals` judges the result by content instead of by reference. |
 | `transaction(body)`                           | One notification pass for a group of writes. |
-| `SyncUpdateScheduler` *(default)*             | Immediate delivery; React batches.          |
 | `ComponentUpdateThrottle(ms)`                 | Coalescing for streaming sources.           |
 | `ResourceCarburetor(loader, scheduler?)`      | Async state with status and cancellation.    |
 | `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent` | Per-request stores. |
 | `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
 | `diagnostics`, `Diagnostics`                  | The development-only warning switch.         |
 | `EResourceStatus`, `EDevToolsAction`, `EDevToolsMessageType` | Enums for the resource status and the DevTools protocol. |
-| `syncUpdateScheduler`, `getInitialResourceData`, `CarburetorContext` | The default scheduler instance, the initial resource state, and the context a scope is provided through. |
-| `deepClone`, `pathsIntersect`, `isTrackable`, `shallowEqual`, `SubscriberIndex`, `getUid`, `WILDCARD_PATH` | Building blocks, exported for extensions. |
+| `getInitialResourceData`, `CarburetorContext` | The initial resource state and the context a scope is provided through. |
+| `deepClone`, `shallowEqual`                   | Building blocks, exported for extensions.    |
 
-Internals — the tracking proxies, the proxy cache, path string plumbing and the batch
-coordinator — are deliberately not exported: they are implementation details, and a test pins
-the exported surface so one does not slip in by accident.
+Internals — the tracking proxies, the proxy cache, path string plumbing, the update scheduler
+and the batch coordinator — are deliberately not exported: they are implementation details, and
+a test pins the exported surface so one does not slip in by accident.
 
 ## Caveats
 
@@ -730,19 +861,35 @@ the exported surface so one does not slip in by accident.
   invalidates the whole store. Replace the value instead of mutating it, and keep plain data in
   stores you want precision on. A store whose root is untrackable has no path to be precise
   about at all: every write to it invalidates everything.
-- A write under a symbol key cannot be expressed as a path, so it invalidates the whole store.
+- **What counts as state.** A container's state is its own enumerable string-keyed data — what
+  `Object.keys` lists — and an array's is its elements and `length`. Symbol keys, getters and
+  setters, non-enumerable properties and non-index keys on an array are not state: they have no
+  path, so diffing, `snapshot()` and `restore()` could not carry them. Development throws on them
+  at the constructor, `setData`, `restore` and every `draft` write; a symbol key or a
+  non-data `defineProperty` through `draft` throws in every build, including new properties with
+  omitted writable/configurable flags, which JavaScript defaults to false; production does not check the
+  rest and leaves their behaviour unspecified. Keep a derived value in a `computed`, and a value
+  with its own identity in a `Map` or a class instance, which are leaves.
 - `update(mutate)` publishes when `mutate` returns. An `async` callback is accepted by its
   `void`-returning signature and publishes at the first `await`, leaving everything written
   afterwards unpublished — development warns about it. Do the async work first, then write.
 - Render stays pure — nothing subscribes during render — but a write that lands between
-  render and commit is only detected afterwards, by comparing the carburetor version, and
-  corrected with an extra render. There is no consistency guarantee *within* a single
+  render and commit is only detected afterwards and corrected with an extra render. The check
+  compares the store's recent writes with the paths the render read, so a write elsewhere in the
+  store costs nothing; once the store has indexed more than 8192 distinct written paths since the render, or a write the store
+  cannot name (`markAllChanged`, a write that bypassed `draft`) landed there, it falls back to
+  re-rendering. There is no consistency guarantee *within* a single
   concurrent render pass; don't write to stores from render.
 - The props gate means a component that relied on its parent re-rendering to pick up data it
   never read will stop updating. Read what you render, through `useCarburetor`.
-- Undo/redo costs one deep copy of the state per change — the floor for snapshot-based history,
-  since the previous state has to be captured while it still exists. On a large store written
-  on every keystroke that is measurable: narrow what history observes, or keep the limit low.
+- Ordinary undo/redo records patches — O(changed values), not O(state). Opaque writes and
+  resource wire identity use full snapshots instead. Undo and redo install through `restore`,
+  waking readers of the changed paths; a key-only resource restore invalidates the slot.
+  `CarburetorHistory` needs an `attachPatchListener` source, not just an `ICarburetor`. This method
+  accepts `{patch, publication?, ownRestore?}`, not a bare function. Custom sources must deliver
+  requested publication callbacks before ordinary subscribers, after transaction/throttle
+  coalescing, and call `ownRestore` with the exact snapshot argument just before their own
+  installation, after cancellation listeners can supersede it. Patch-only observers use `{patch}`.
 - Overriding a lifecycle method without calling `super` silently disables effects, subscription
   cleanup or the props gate. Override `useEffects` / `unUseEffects` instead.
 
@@ -750,7 +897,10 @@ the exported surface so one does not slip in by accident.
 
 The `lib/` folder contains a Todo app built on the library (React 19, Rsbuild, Tailwind).
 Each row shows its own render counter, so you can watch precise invalidation at work: edit
-one todo and only that row's counter moves.
+one todo and only that row's counter moves. It uses the library's features where an app would
+need them — scoped stores, async resources and a cache, computeds, selections, transactions,
+undo/redo, persistence, throttling and the hooks interop; [lib/README.md](lib/README.md) maps
+each feature to the file that uses it.
 
 ```bash
 cd lib

@@ -23,12 +23,21 @@ export interface IStorageLike {
 export interface IPersistOptions {
     key: string;
     storage: IStorageLike;
-    /** Called when stored data cannot be read; by default the bad entry is dropped. */
+    /** Load/write errors reach this callback. Without it, getItem failures throw;
+     * corrupt stored data is removed by default.
+     */
     onError?: (error: unknown) => void;
+    /**
+     * Batches same-microtask writes into one stringify instead of one per write (R16-09):
+     * stringifying the whole store on every keystroke measured 0.94–1.44 ms at 4000 items.
+     * Off by default, since persistence is otherwise synchronous — a write lands in storage
+     * before the call that caused it returns. The disposer flushes a write still pending.
+     */
+    coalesce?: boolean;
 }
 
 export interface IHistoryOptions {
-    /** How many past states to keep; older ones are dropped. */
+    /** Maximum past states to retain. A positive safe integer; defaults to 50. Invalid values throw. */
     limit?: number;
 }
 

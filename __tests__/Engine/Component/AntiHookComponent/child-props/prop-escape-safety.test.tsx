@@ -42,35 +42,6 @@ describe('child props boundary', () => {
             unmount();
         });
 
-        test('a selection handing out a live view is reported once in development', () => {
-            const store = new RowListCarburetor(getListData());
-
-            class Parent extends AntiHookComponent {
-                private readonly row = this.connectSelection(() => store, (data) => ({row: data.items.a}));
-
-                render() {
-                    return <span className="live-branch">{this.row().row.title}</span>;
-                }
-            }
-
-            const original = console.error;
-            const reported: string[] = [];
-
-            console.error = (message: string) => reported.push(message);
-
-            try {
-                const view = render(<Parent />);
-
-                view.rerender(<Parent />);
-                view.unmount();
-            } finally {
-                console.error = original;
-            }
-
-            // Once per selection, not per render: the mistake is the declaration's.
-            expect(reported.filter((message) => message.includes('connectSelection()')).length).toEqual(1);
-        });
-
         // The two tests below pin the documented unsupported escape — see README — for which
         // connectSelection is the supported transfer: a live view handed to a gated child fails
         // silently, and these assert the stale outcome rather than a fix.

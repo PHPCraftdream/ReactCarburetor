@@ -35,9 +35,12 @@ const liveViews_js_namespaceObject = require("../../Store/Tracking/liveViews.js"
 const external_isPlainObject_js_namespaceObject = require("./isPlainObject.js");
 const describeSegment = (segment)=>'symbol' == typeof segment ? '[' + segment.toString() + ']' : segment;
 const findLiveView = (value, visited, path)=>{
-    if (liveViews_js_namespaceObject.liveViews.has(value)) return path;
     if ('object' != typeof value || null === value) return;
-    if (!Array.isArray(value) && !(0, external_isPlainObject_js_namespaceObject.isPlainObject)(value)) return;
+    const copied = Array.isArray(value) || (0, external_isPlainObject_js_namespaceObject.isPlainObject)(value);
+    if (!copied) {
+        if (!liveViews_js_namespaceObject.liveViews.has(value)) return;
+        return void 0 === liveViews_js_namespaceObject.liveViews.readTarget(value) ? path : void 0;
+    }
     if (visited.has(value)) return;
     visited.add(value);
     for (const key of Reflect.ownKeys(value)){

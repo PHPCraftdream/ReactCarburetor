@@ -6,9 +6,8 @@ import path from 'node:path';
 // second React instance whose hook dispatcher is always null.
 const rootReact = path.resolve(process.cwd(), 'node_modules', 'react');
 
-export default defineConfig({
+const shared = {
     globals: true,
-    testEnvironment: 'jsdom',
     setupFiles: ['./__tests__/setupTests.ts'],
     include: ['__tests__/**/*.test.{ts,tsx}'],
     tools: {
@@ -16,7 +15,7 @@ export default defineConfig({
             jsc: {
                 transform: {
                     react: {
-                        runtime: 'automatic',
+                        runtime: 'automatic' as const,
                     },
                 },
             },
@@ -27,4 +26,23 @@ export default defineConfig({
             react$: rootReact,
         },
     },
+};
+
+export default defineConfig({
+    // oxlint reserves a 6 GiB parser buffer per worker.
+    pool: {type: 'forks', maxWorkers: 1},
+    projects: [
+        {
+            ...shared,
+            name: 'rules',
+            testEnvironment: 'node',
+            include: ['__tests__/Plugin/**/*.test.ts'],
+        },
+        {
+            ...shared,
+            name: 'runtime',
+            testEnvironment: 'jsdom',
+            exclude: ['__tests__/Plugin/**'],
+        },
+    ],
 });

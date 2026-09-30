@@ -30,117 +30,215 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     Carburetor: ()=>Carburetor
 });
+const Paths_js_namespaceObject = require("../Models/Paths.js");
+const sameSelection_js_namespaceObject = require("../Component/Connection/sameSelection.js");
 const deepClone_js_namespaceObject = require("./Utils/deepClone.js");
+const applyDiff_js_namespaceObject = require("./Paths/Diff/applyDiff.js");
+const diffPaths_js_namespaceObject = require("./Paths/Diff/diffPaths.js");
+const sameKind_js_namespaceObject = require("./Paths/Diff/sameKind.js");
+const detachWatchSelection_js_namespaceObject = require("./Utils/Selection/detachWatchSelection.js");
 const SubscriberIndex_js_namespaceObject = require("./Paths/SubscriberIndex.js");
+const WriteLog_js_namespaceObject = require("./Paths/WriteLog.js");
 const WildcardPath_js_namespaceObject = require("./Paths/WildcardPath.js");
 const SyncUpdateSchedulerInstance_js_namespaceObject = require("./Scheduling/SyncUpdateSchedulerInstance.js");
 const UpdateWaveInstance_js_namespaceObject = require("./Scheduling/UpdateWaveInstance.js");
+const nativeStoreWriteEpoch_js_namespaceObject = require("./Scheduling/nativeStoreWriteEpoch.js");
 const createReadProxy_js_namespaceObject = require("./Tracking/createReadProxy.js");
 const createWriteProxy_js_namespaceObject = require("./Tracking/createWriteProxy.js");
 const AliasLedger_js_namespaceObject = require("./Tracking/AliasLedger.js");
 const isTrackable_js_namespaceObject = require("./Tracking/isTrackable.js");
 const UpdateBatchInstance_js_namespaceObject = require("./Transaction/UpdateBatchInstance.js");
+const PatchObserverRegistry_js_namespaceObject = require("./Transaction/PatchObserverRegistry.js");
 const getUid_js_namespaceObject = require("./Utils/getUid.js");
+const DevelopmentFlag_js_namespaceObject = require("./Utils/DevelopmentFlag.js");
 const DiagnosticsInstance_js_namespaceObject = require("./Diagnostics/DiagnosticsInstance.js");
+const ReadsTransferBrand_js_namespaceObject = require("./Paths/Markers/ReadsTransferBrand.js");
+const transferReads_js_namespaceObject = require("./Paths/Markers/transferReads.js");
 class Carburetor {
     data;
     scheduler;
-    subscribers = {};
+    static nativeStoreMethods = {
+        getVersion: Carburetor.prototype.getVersion,
+        emitUpdate: Carburetor.prototype.emitUpdate
+    };
+    subscribers = Object.create(null);
+    subscriptionGeneration = 0;
     subscriberIndex = new SubscriberIndex_js_namespaceObject.SubscriberIndex();
     aliases = (0, AliasLedger_js_namespaceObject.createAliasLedger)();
+    patchPort = {};
+    patchObservers;
     uid = (0, getUid_js_namespaceObject.getUid)();
     version = 0;
     writes = new Set();
+    writeLog = new WriteLog_js_namespaceObject.WriteLog();
     draftTouched = false;
     pendingEmit = false;
     draftProxy = void 0;
+    writeRecorder = (path)=>this.recordWrite(path);
     constructor(data, scheduler = SyncUpdateSchedulerInstance_js_namespaceObject.syncUpdateScheduler){
+        var _this_aliases;
         this.data = data;
         this.scheduler = scheduler;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '');
+        nativeStoreWriteEpoch_js_namespaceObject.nativeStoreWriteEpoch.sources.set(this, Carburetor.nativeStoreMethods);
     }
-    getUID = ()=>this.uid;
-    getVersion = ()=>this.version;
-    getData = ()=>this.data;
-    read = (record)=>{
+    getUID() {
+        return this.uid;
+    }
+    getVersion() {
+        return this.version;
+    }
+    hasDriftSince(baselineVersion, reads) {
+        return this.writeLog.matches(baselineVersion, reads);
+    }
+    getData() {
+        return this.data;
+    }
+    read(record) {
         const data = this.data;
         if (!(0, isTrackable_js_namespaceObject.isTrackable)(data)) {
             record(WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return this.data;
         }
         return (0, createReadProxy_js_namespaceObject.createReadProxy)(data, record, '', this.aliases);
-    };
-    setData = (data)=>{
+    }
+    setData(data) {
+        var _this_aliases;
+        const previous = this.data;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '', previous);
         this.data = data;
         this.draftProxy = void 0;
-        this.writes.add(WildcardPath_js_namespaceObject.WILDCARD_PATH);
+        this.didSetData();
+        this.touchDraft();
+        const changed = (0, diffPaths_js_namespaceObject.diffPaths)(previous, data);
+        if (changed.size > 0) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, Paths_js_namespaceObject.PATCH_OPAQUE);
+            changed.forEach((path)=>this.recordWrite(path));
+        }
         this.emitUpdate();
         return data;
-    };
-    snapshot = ()=>(0, deepClone_js_namespaceObject.deepClone)(this.data);
-    restore = (data)=>{
-        this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
-    };
-    toJSON = ()=>this.snapshot();
-    fromJSON = (value)=>{
-        this.restore(value);
-    };
-    subscribe = (callback, options = {})=>{
+    }
+    didSetData() {}
+    snapshot() {
+        return (0, deepClone_js_namespaceObject.deepClone)(this.data);
+    }
+    restore(data) {
+        var _this_aliases, _this_patchObservers;
+        const current = this.data;
+        null == (_this_aliases = this.aliases) || _this_aliases.checkState(data, '');
+        null == (_this_patchObservers = this.patchObservers) || _this_patchObservers.ownRestore(data);
+        if (!(0, isTrackable_js_namespaceObject.isTrackable)(current) || !(0, isTrackable_js_namespaceObject.isTrackable)(data) || !(0, sameKind_js_namespaceObject.sameKind)(current, data)) return void this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
+        const applied = (0, applyDiff_js_namespaceObject.applyDiff)(this.draft, current, data);
+        if (!applied) return void this.setData((0, deepClone_js_namespaceObject.deepClone)(data));
+        this.emitUpdate();
+    }
+    toJSON() {
+        return this.snapshot();
+    }
+    serialize() {
+        return JSON.stringify(this.data);
+    }
+    fromJSON(value) {
+        this.setData(value);
+    }
+    subscribe(callback, options = {}) {
         const id = options.id || (0, getUid_js_namespaceObject.getUid)();
-        const reads = options.reads ? new Set(options.reads) : new Set([
+        const given = options.reads;
+        let reads;
+        reads = void 0 === given ? new Set([
             WildcardPath_js_namespaceObject.WILDCARD_PATH
-        ]);
+        ]) : options[ReadsTransferBrand_js_namespaceObject.READS_TRANSFER] === given ? given : new Set(given);
+        const previous = this.subscribers[id];
+        if (previous) this.scheduler.cancel(previous.schedulerKey);
         this.subscribers[id] = {
             callback,
-            reads
+            schedulerKey: (null == previous ? void 0 : previous.schedulerKey) ?? (0, getUid_js_namespaceObject.getUid)(),
+            generation: ++this.subscriptionGeneration
         };
         this.subscriberIndex.add(id, reads);
         return id;
-    };
-    unsubscribe = (id)=>{
-        if (id in this.subscribers) {
-            this.scheduler.cancel(id);
+    }
+    extend(id, path) {
+        if (!Object.prototype.hasOwnProperty.call(this.subscribers, id)) return;
+        this.subscriberIndex.addPath(id, path);
+    }
+    unsubscribe(id) {
+        const record = this.subscribers[id];
+        if (record) {
+            this.scheduler.cancel(record.schedulerKey);
             this.subscriberIndex.remove(id);
             delete this.subscribers[id];
         }
-    };
-    watch = (reads, callback)=>{
-        const id = this.subscribe(callback, {
+    }
+    attachPatchListener(observer) {
+        const registry = this.patchObservers ?? (this.patchObservers = new PatchObserverRegistry_js_namespaceObject.PatchObserverRegistry(this.patchPort, this.scheduler));
+        return registry.attach(observer);
+    }
+    runSelector(select) {
+        const reads = new Set();
+        const view = this.read((path)=>reads.add(path));
+        return {
+            value: select(view),
             reads
-        });
+        };
+    }
+    watch(select, onChange) {
+        const id = (0, getUid_js_namespaceObject.getUid)();
+        const initial = this.runSelector(select);
+        let previous = (0, detachWatchSelection_js_namespaceObject.detachWatchSelection)(initial.value);
+        const callback = ()=>{
+            const fresh = this.runSelector(select);
+            const changed = !(0, sameSelection_js_namespaceObject.sameSelection)(previous, fresh.value);
+            this.subscribe(callback, (0, transferReads_js_namespaceObject.transferReads)(fresh.reads, id));
+            if (changed) {
+                const next = (0, detachWatchSelection_js_namespaceObject.detachWatchSelection)(fresh.value);
+                const last = previous;
+                previous = next;
+                onChange(next, last);
+            }
+        };
+        this.subscribe(callback, (0, transferReads_js_namespaceObject.transferReads)(initial.reads, id));
         return ()=>{
             this.unsubscribe(id);
         };
-    };
-    notifyWrites = (writes)=>{
+    }
+    notifyWrites(writes) {
         UpdateWaveInstance_js_namespaceObject.updateWave.begin();
         try {
-            const failures = [];
-            this.subscriberIndex.match(writes).forEach((id)=>{
+            var _this_patchObservers;
+            let failures;
+            const generation = this.subscriptionGeneration;
+            const matched = this.subscriberIndex.match(writes);
+            failures = null == (_this_patchObservers = this.patchObservers) ? void 0 : _this_patchObservers.publish();
+            matched.forEach((id)=>{
                 const record = this.subscribers[id];
-                if (record) try {
-                    this.scheduler.schedule(id, record.callback);
+                if (record && record.generation <= generation) try {
+                    this.scheduler.schedule(record.schedulerKey, record.callback);
                 } catch (error) {
-                    failures.push(error);
+                    (failures ?? (failures = [])).push(error);
                 }
             });
-            failures.forEach((error)=>{
+            null == failures || failures.forEach((error)=>{
                 if ("u" > typeof process && 'production' !== process.env.NODE_ENV) DiagnosticsInstance_js_namespaceObject.diagnostics.report('a subscriber threw while a write was delivered: ' + (error instanceof Error ? error.message : String(error)) + '. The write had already landed, so the remaining subscribers were notified anyway.');
             });
         } finally{
             UpdateWaveInstance_js_namespaceObject.updateWave.end();
         }
-    };
+    }
     get draft() {
         const data = this.data;
         this.touchDraft();
         if (!(0, isTrackable_js_namespaceObject.isTrackable)(data)) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, Paths_js_namespaceObject.PATCH_OPAQUE);
             this.recordWrite(WildcardPath_js_namespaceObject.WILDCARD_PATH);
             return this.data;
         }
-        if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.recordWrite, '', this.aliases);
+        if (!this.draftProxy) this.draftProxy = (0, createWriteProxy_js_namespaceObject.createWriteProxy)(data, this.writeRecorder, '', this.aliases, void 0, this.patchPort);
         return this.draftProxy;
     }
-    update = (mutate)=>{
+    update(mutate) {
         let result;
         try {
             result = mutate(this.draft);
@@ -150,43 +248,55 @@ class Carburetor {
         if ("u" > typeof process && 'production' !== process.env.NODE_ENV) {
             if (result instanceof Promise) DiagnosticsInstance_js_namespaceObject.diagnostics.report("update(mutate) published before the mutation finished: the callback returned a promise, so writes made after its first await wake nobody. Keep the callback synchronous and publish after the await instead.");
         }
-    };
-    emitSoon = ()=>{
+    }
+    emitSoon() {
         this.pendingEmit = true;
+        const scheduledAt = this.version;
         queueMicrotask(()=>{
             this.pendingEmit = false;
-            this.emitUpdate();
+            if (this.version === scheduledAt || this.draftTouched || this.writes.size > 0) this.emitUpdate();
         });
-    };
-    touchDraft = ()=>{
+    }
+    touchDraft() {
         if (this.draftTouched) return;
         this.draftTouched = true;
-        if ("u" > typeof process && 'production' !== process.env.NODE_ENV) queueMicrotask(()=>{
-            if (!this.draftTouched || this.pendingEmit) return;
-            DiagnosticsInstance_js_namespaceObject.diagnostics.report("a write went through draft, but emitUpdate() was never called, so no subscriber was notified. Prefer this.update(draft => ...), which does both.");
-        });
-    };
-    recordWrite = (path)=>{
+        if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) {
+            if (void 0 === this.unpublishedDraftCheck) this.unpublishedDraftCheck = ()=>{
+                if (!this.draftTouched || this.pendingEmit) return;
+                DiagnosticsInstance_js_namespaceObject.diagnostics.report("a write went through draft, but emitUpdate() was never called, so no subscriber was notified. Prefer this.update(draft => ...), which does both.");
+            };
+            queueMicrotask(this.unpublishedDraftCheck);
+        }
+    }
+    recordWrite(path) {
         this.writes.add(path);
-    };
-    markAllChanged = ()=>{
+    }
+    markAllChanged() {
+        var _this_patchPort_listener, _this_patchPort;
+        null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, Paths_js_namespaceObject.PATCH_OPAQUE);
         this.recordWrite(WildcardPath_js_namespaceObject.WILDCARD_PATH);
-    };
-    preEmit = ()=>{};
-    emitUpdate = ()=>{
+    }
+    preEmit() {}
+    emitUpdate() {
         this.preEmit();
-        const changed = this.writes.size > 0 ? new Set(this.writes) : void 0;
         const touched = this.draftTouched;
-        this.writes.clear();
+        const changed = this.writes.size > 0 ? this.writes : void 0;
+        if (changed) this.writes = new Set();
         this.draftTouched = false;
         if (!changed && touched) return;
+        if (!changed) {
+            var _this_patchPort_listener, _this_patchPort;
+            null == (_this_patchPort_listener = (_this_patchPort = this.patchPort).listener) || _this_patchPort_listener.call(_this_patchPort, Paths_js_namespaceObject.PATCH_OPAQUE);
+        }
         const writes = changed || new Set([
             WildcardPath_js_namespaceObject.WILDCARD_PATH
         ]);
         this.version++;
+        nativeStoreWriteEpoch_js_namespaceObject.nativeStoreWriteEpoch.value++;
+        this.writeLog.record(this.version, writes);
         if (UpdateBatchInstance_js_namespaceObject.updateBatch.isActive()) return void UpdateBatchInstance_js_namespaceObject.updateBatch.add(this, writes);
         this.notifyWrites(writes);
-    };
+    }
 }
 exports.Carburetor = __webpack_exports__.Carburetor;
 for(var __rspack_i in __webpack_exports__)if (-1 === [

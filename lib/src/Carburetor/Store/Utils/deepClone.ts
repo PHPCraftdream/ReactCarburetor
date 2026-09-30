@@ -1,30 +1,15 @@
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 
 /**
- * The own enumerable keys of a plain container — strings and symbols alike, in `Reflect.ownKeys`
- * order. Written locally rather than imported from Component/Connection: Store must not reach
- * into Component, and `detachSelection`'s helper is exactly this filter.
- */
-const ownEnumerableKeys = (source: object): Array<string | symbol> =>
-    Reflect.ownKeys(source).filter((key: string | symbol): boolean =>
-        Object.prototype.propertyIsEnumerable.call(source, key));
-
-/**
- * Installs `key` as a genuine own data property, bypassing any inherited accessor a plain
- * `target[key] = value` assignment would invoke instead — the case that matters is a source
- * object with an own enumerable key literally named `__proto__`: assigning it would reset the
- * target's prototype rather than store the value.
- */
-const definePlainProperty = (target: object, key: string | symbol, value: unknown): void => {
-    Object.defineProperty(target, key, {value, writable: true, enumerable: true, configurable: true});
-};
-
-/**
  * A detached copy of plain data.
  *
  * Only plain objects and arrays are copied — the same boundary the tracking proxies use.
  * Anything else (Map, Set, Date, class instances) is carried over by reference, because the
- * engine does not track it field by field either.
+ * engine does not track it field by field either. State is own enumerable string-keyed data:
+ * `Object.keys` is what the state model (R6-02/R6-03) says a container's fields are, so it is
+ * also what this walks — no symbol keys, no non-enumerable properties to weigh each one against.
+ * Arrays retain their supported prototype too; an own key literally named `__proto__`
+ * still needs `Object.defineProperty` on objects to avoid reassigning the target's prototype.
  */
 export const deepClone = <T>(value: T): T => {
     if (!isTrackable(value)) {
@@ -32,17 +17,50 @@ export const deepClone = <T>(value: T): T => {
     }
 
     if (Array.isArray(value)) {
-        return value.map((item: unknown) => deepClone(item)) as unknown as T;
+        const length: number = value.length;
+        // Holes stay holes, as with `map`.
+        const result: unknown[] = [];
+        result.length = length;
+        const prototype = Object.getPrototypeOf(value);
+        if (prototype !== Array.prototype) {
+            Object.setPrototypeOf(result, prototype);
+        }
+
+        if (length <= 4096) {
+            for (let index = 0; index < length; index++) {
+                if (Object.prototype.hasOwnProperty.call(value, index)) {
+                    result[index] = deepClone(value[index]);
+                }
+            }
+        } else {
+            for (const key of Object.keys(value)) {
+                const index = Number(key);
+
+                if (Number.isInteger(index) && index >= 0 && index < length && String(index) === key) {
+                    result[index] = deepClone(value[index]);
+                }
+            }
+        }
+
+        return result as unknown as T;
     }
 
-    const source = value as Record<string | symbol, unknown>;
+    const source = value as Record<string, unknown>;
     // Object.create(getPrototypeOf(source)) keeps a null-prototype dictionary null-prototype
     // instead of always landing on Object.prototype the way `{}` would.
-    const result: Record<string | symbol, unknown> = Object.create(Object.getPrototypeOf(source));
+    const result: Record<string, unknown> = Object.create(Object.getPrototypeOf(source));
+    const keys: string[] = Object.keys(source);
 
-    ownEnumerableKeys(source).forEach((key: string | symbol): void => {
-        definePlainProperty(result, key, deepClone(source[key]));
-    });
+    for (let i = 0; i < keys.length; i++) {
+        const key: string = keys[i];
+        const cloned: unknown = deepClone(source[key]);
+
+        if (key === '__proto__') {
+            Object.defineProperty(result, key, {value: cloned, writable: true, enumerable: true, configurable: true});
+        } else {
+            result[key] = cloned;
+        }
+    }
 
     return result as unknown as T;
 };

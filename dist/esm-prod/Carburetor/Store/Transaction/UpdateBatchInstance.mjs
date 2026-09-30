@@ -1,1 +1,1 @@
-import{UpdateBatch as t}from"./UpdateBatch.mjs";let e=new t;export{e as updateBatch};
+import{sharedSingleton as t}from"../Utils/sharedSingleton.mjs";import{UpdateBatch as e}from"./UpdateBatch.mjs";let a=t("updateBatch",()=>new e);export{a as updateBatch};

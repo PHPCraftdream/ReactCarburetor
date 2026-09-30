@@ -1,44 +1,68 @@
 import { getUid } from "../../Store/Utils/getUid.mjs";
-const declareConnection = (connections, attemptKeyPrefix, getAttempt, source)=>{
-    const getCarburetor = 'function' == typeof source ? source : ()=>source;
-    const connection = {
-        uid: getUid(),
-        getCarburetor,
-        committed: void 0,
-        installed: void 0
-    };
-    connections.push(connection);
-    const resolveAttemptSource = ()=>{
-        const attempt = getAttempt();
-        if (!attempt) return getCarburetor();
-        const key = attemptKeyPrefix + connection.uid;
-        const resolved = attempt.sources.get(key);
-        if (void 0 !== resolved) return resolved;
-        const carburetor = getCarburetor();
-        attempt.sources.set(key, carburetor);
+class ConnectionSource {
+    getAttempt;
+    connection;
+    getCarburetor;
+    recorder;
+    arrayFacade = false;
+    probeError = void 0;
+    cachedTarget = void 0;
+    cachedView = void 0;
+    constructor(getAttempt, source){
+        this.getAttempt = getAttempt;
+        this.getCarburetor = 'function' == typeof source ? source : ()=>source;
+        this.connection = {
+            uid: getUid(),
+            getCarburetor: this.getCarburetor,
+            committed: void 0,
+            installed: void 0,
+            attemptTag: void 0,
+            attemptSource: void 0,
+            attemptEntry: void 0
+        };
+        this.recorder = this.recordPath.bind(this);
+    }
+    tagAttempt(attempt) {
+        const connection = this.connection;
+        if (connection.attemptTag !== attempt) {
+            connection.attemptTag = attempt;
+            connection.attemptSource = void 0;
+            connection.attemptEntry = void 0;
+        }
+    }
+    resolveAttemptSource() {
+        const attempt = this.getAttempt();
+        if (!attempt) return this.getCarburetor();
+        this.tagAttempt(attempt);
+        const connection = this.connection;
+        if (void 0 !== connection.attemptSource) return connection.attemptSource;
+        const carburetor = this.getCarburetor();
+        connection.attemptSource = carburetor;
         return carburetor;
-    };
-    const recorder = (path)=>{
-        const attempt = getAttempt();
+    }
+    recordPath(path) {
+        const attempt = this.getAttempt();
         if (!attempt) return;
-        let entry = attempt.entries.get(attemptKeyPrefix + connection.uid);
+        this.tagAttempt(attempt);
+        const connection = this.connection;
+        let entry = connection.attemptEntry;
         if (!entry) {
-            const carburetor = resolveAttemptSource();
+            const carburetor = this.resolveAttemptSource();
             entry = {
-                connection,
                 source: carburetor,
                 baselineVersion: carburetor.getVersion(),
                 reads: new Set()
             };
-            attempt.entries.set(attemptKeyPrefix + connection.uid, entry);
+            connection.attemptEntry = entry;
+            if (void 0 === attempt.connections) attempt.connections = [];
+            attempt.connections.push(connection);
         }
         entry.reads.add(path);
-    };
-    return {
-        connection,
-        getCarburetor,
-        resolveAttemptSource,
-        recorder
-    };
+    }
+}
+const declareConnection = (connections, getAttempt, source)=>{
+    const state = new ConnectionSource(getAttempt, source);
+    connections.push(state.connection);
+    return state;
 };
 export { declareConnection };

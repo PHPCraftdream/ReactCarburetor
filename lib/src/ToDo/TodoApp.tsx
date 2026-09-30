@@ -1,13 +1,18 @@
 import * as React from "react";
-import {AntiHookComponent} from "@/Carburetor";
-import {EmitStatus} from "./Components/EmitStatus";
-import {TodoItem} from "./Components/TodoItem";
-import {someCarburetor} from "./Carburetors/SomeCarburetorInstance";
-import {TodoCarburetor} from "./Carburetors/TodoCarburetor";
-
-interface ITodoProps {
-    carburetor: TodoCarburetor;
-}
+import {bind, ScopedAntiHookComponent, TReadonly} from "@/Carburetor";
+import {ITodoList} from "./API/Models";
+import {EmitStatus} from "./Components/Footer/EmitStatus";
+import {ListStatus} from "./Components/Footer/ListStatus";
+import {FilterBar} from "./Components/Header/FilterBar";
+import {ITodoStats} from "./Components/Header/Models";
+import {ProgressBadge} from "./Components/Header/ProgressBadge";
+import {StatsSummary} from "./Components/Header/StatsSummary";
+import {Toolbar} from "./Components/Header/Toolbar";
+import {TodoItem} from "./Components/List/TodoItem";
+import {statusToken} from "./Scope/Tokens/statusToken";
+import {todoToken} from "./Scope/Tokens/todoToken";
+import {undoToken} from "./Scope/Tokens/undoToken";
+import {viewsToken} from "./Scope/Tokens/viewsToken";
 
 /** The plus icon on the add button. */
 function renderPlusIcon() {
@@ -26,22 +31,18 @@ function renderPlusIcon() {
     );
 }
 
-/** One counter pill.
- * @param label - caption before the count
- * @param value - count, or undefined before the first emit
- * @param tone - color classes
- * @param testId - test selector
+/**
+ * Whether a key event belongs to a text field, whose own native undo must win.
+ *
+ * @param event - the keydown being routed
  */
-function renderCounter(label: string, value: number | undefined, tone: string, testId: string) {
-    return (
-        <span className={'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ' + tone}>
-            {label}
-            <span className="tabular-nums" data-testid={testId}>{value || 0}</span>
-        </span>
-    );
+function isTyping(event: KeyboardEvent): boolean {
+    const target = event.target as HTMLElement | null;
+
+    return !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA');
 }
 
-/** What the list shows before the first todo exists. */
+/** What the list shows when no todo passes the filter. */
 function renderEmpty() {
     return (
         <li className="px-5 py-14 text-center text-sm text-slate-400 dark:text-slate-500">
@@ -51,30 +52,82 @@ function renderEmpty() {
 }
 
 /**
- * The list reads only the order and the counters. Individual todos are read by the rows,
- * so editing one todo does not re-render the list.
+ * The counters a stats child needs, as plain data.
+ *
+ * @param data - the tracked list; the reads here subscribe the owner
  */
-export class TodoApp extends AntiHookComponent<ITodoProps> {
-    /** Built once; reads through it stay tracked field by field on every render. */
-    private readonly todos = this.connect(() => this.props.carburetor);
+function selectStats(data: TReadonly<ITodoList>): ITodoStats {
+    return {active: data.activeCount ?? 0, done: data.doneCount ?? 0};
+}
 
-    /** Loads the list once, after the first commit. */
+/** One row; the row resolves the store itself, id is the map callback's only argument. */
+function renderTodoItem(id: string) {
+    return <TodoItem key={id} id={id}/>;
+}
+
+/**
+ * The list reads the filtered ids and a counters snapshot. Individual todos are read by the
+ * rows, so editing one todo does not re-render the list. Stores come from the surrounding scope.
+ */
+export class TodoApp extends ScopedAntiHookComponent {
+    /** A detached counters snapshot for the stats child, stable until the counters change. */
+    private readonly stats = this.connectSelection(() => this.resolve(todoToken), selectStats);
+
+    /** Loads the list once, and listens for undo keys while mounted. */
     protected useEffects(): void {
-        this.useEffect(this.props.carburetor.loadData, "loadData", []);
+        this.useEffect("loadData", this.loadList, []);
+        this.useEffect("undoKeys", this.listenForUndoKeys, []);
     }
 
-    /** One row; carburetor comes from props, id is the map callback's only argument. */
-    public renderTodoItem = (id: string) => {
-        return <TodoItem key={id} carburetor={this.props.carburetor} id={id}/>;
-    };
+    /** Starts the load; a fresh server list is not something to undo back out of. */
+    @bind
+    protected loadList(): void {
+        void this.resolve(todoToken).loadData().then(this.resolve(undoToken).reset);
+    }
 
-    /** Reads the order and the counters only: a todo's own fields are read by its row. */
+    /** Adds the keyboard listener; the returned cleanup removes it on unmount. */
+    @bind
+    protected listenForUndoKeys(): () => void {
+        document.addEventListener('keydown', this.handleUndoKeys);
+
+        return this.stopListeningForUndoKeys;
+    }
+
+    /** The effect's cleanup. */
+    @bind
+    protected stopListeningForUndoKeys(): void {
+        document.removeEventListener('keydown', this.handleUndoKeys);
+    }
+
+    /**
+     * Ctrl/Cmd+Z undoes, Ctrl/Cmd+Y or Ctrl/Cmd+Shift+Z redoes, outside text fields.
+     *
+     * @param event - the keydown on the document
+     */
+    @bind
+    protected handleUndoKeys(event: KeyboardEvent): void {
+        if (!(event.ctrlKey || event.metaKey) || isTyping(event)) {
+            return;
+        }
+
+        const key = event.key.toLowerCase();
+        const undo = this.resolve(undoToken);
+
+        if (key === 'z' && !event.shiftKey) {
+            event.preventDefault();
+            undo.undo();
+        } else if (key === 'y' || (key === 'z' && event.shiftKey)) {
+            event.preventDefault();
+            undo.redo();
+        }
+    }
+
+    /** Reads the visible ids and the counters snapshot: a todo's own fields are read by its row. */
     public render() {
-        const {carburetor} = this.props;
+        const carburetor = this.resolve(todoToken);
 
-        // The fields read here become the subscription, same as useCarburetor — connect()
-        // only moves where the tracking proxy is built, not what it tracks.
-        const {orderIds, activeCount, doneCount} = this.todos;
+        // Subscribed to the computed, not to its inputs: it wakes this list only when the ids change.
+        const visibleIds = this.useComputed(this.resolve(viewsToken).visibleIds);
 
         return (
             <section className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white/85 shadow-xl shadow-slate-900/5 backdrop-blur dark:border-slate-800 dark:bg-slate-900/80 dark:shadow-black/30">
@@ -100,30 +153,24 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
                 </header>
 
                 <div className="flex flex-wrap items-center gap-2 px-5 py-3">
-                    {renderCounter(
-                        'active:',
-                        activeCount,
-                        'bg-sky-100 text-sky-700 dark:bg-sky-400/10 dark:text-sky-300',
-                        'active-count'
-                    )}
-                    {renderCounter(
-                        'done:',
-                        doneCount,
-                        'bg-emerald-100 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300',
-                        'done-count'
-                    )}
+                    <StatsSummary stats={this.stats()}/>
+                    <FilterBar/>
+                    <ProgressBadge/>
                 </div>
 
+                <Toolbar/>
+
                 <ul className="divide-y divide-slate-200/70 border-y dark:divide-slate-800 dark:border-slate-800">
-                    {orderIds.length === 0
+                    {visibleIds.length === 0
                         ? renderEmpty()
-                        : orderIds.map(this.renderTodoItem)}
+                        : visibleIds.map(renderTodoItem)}
                 </ul>
 
                 <footer className="flex items-center justify-between gap-3 px-5 py-3 font-mono text-[11px] text-slate-400 dark:text-slate-500">
                     <span data-testid="app-renders">
-                        list renders: {someCarburetor.printRenderCount()}
+                        list renders: {this.resolve(statusToken).printRenderCount()}
                     </span>
+                    <ListStatus/>
                     <EmitStatus/>
                 </footer>
             </section>

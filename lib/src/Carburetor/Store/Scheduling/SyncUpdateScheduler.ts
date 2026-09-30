@@ -11,16 +11,19 @@ export class SyncUpdateScheduler implements IUpdateScheduler {
     /**
      * Runs the update immediately; React batches what happens in one event.
      *
+     * A method, not an arrow field: a subclass override lands on the prototype instead of an
+     * own property shadowing it.
+     *
      * @param _uid - ignored: nothing is queued here, so there is no id to file an update under
      * @param updater - run on the call itself, before it returns; nothing defers it to a
      * later tick
      */
-    public schedule = (_uid: string, updater: TUpdater) => {
+    public schedule(_uid: string, updater: TUpdater): void {
         updater();
-    };
+    }
 
     // noinspection JSUnusedLocalSymbols
     /** Nothing to cancel: an update was already delivered by the time this could be called. */
-    public cancel = (_uid: string) => {
-    };
+    public cancel(_uid: string): void {
+    }
 }

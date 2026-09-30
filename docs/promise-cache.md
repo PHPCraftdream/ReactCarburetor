@@ -62,7 +62,7 @@ transformation applied, because the dot is the only character path matching give
 a quote, a digit or a brace. A test pins that, because if it ever stopped being true, one entry would
 silently subscribe to the entire cache.
 
-## Freshness is lazy, and a read never writes
+## Freshness is lazy; passive reads do not write
 
 The default TTL is 30 seconds, and `Infinity` means an entry never goes stale. A default of zero —
 which is what the hooks libraries use — would make every read refetch and leave the cache as nothing
@@ -72,11 +72,11 @@ An entry records `updatedAt`. Whether it is stale is computed when someone asks 
 `Date.now() - updatedAt > ttl` — and never by a timer. Timers would mean a handle per entry to leak,
 wake-ups in an idle tab, and a cache that keeps the process alive.
 
-The consequence to respect: **reading a stale entry must not start a request during render.** Writing
-to a store from render notifies subscribers mid-render (hazards.md, H11) and React reports it as an
-update-depth error far from the cause. So a read reports staleness and nothing else; the refetch is
-triggered from an effect, or from the microtask after the render commits. The component API does the
-triggering, so a consumer never has to remember this.
+`getEntry` only reports staleness. `useResource` starts the refetch after commit, never during
+render: synchronous publication from render would notify subscribers mid-render (hazards.md, H11).
+`suspend` must arrange a request while rendering to supply its pending promise, so that path defers
+publication to a microtask. A stale Success keeps its old value while revalidating; a Suspense-only
+reader needs another parent render to display the answer unless it also subscribes.
 
 ## A failed refresh keeps the good data
 
@@ -89,6 +89,11 @@ For the same reason, refreshing an already-successful entry does not move it bac
 there is nothing to put in place of the data, and flashing a spinner over data the user is reading is
 a regression, not a loading state. The refresh is visible as a separate flag.
 
+Explicit invalidation belongs to request ordering: an answer from a request started before
+`invalidate`/`invalidateAll` may land, but cannot erase the newer stale mark or disarm its retry.
+A subsequent request can consume that invalidation. Failed entries otherwise stay quiet until an
+explicit re-arm; aborting a retry does not cause an automatic failure loop.
+
 ## The public surface
 
 | Member | Purpose |
@@ -100,7 +105,7 @@ a regression, not a loading state. The refresh is visible as a separate flag.
 | `invalidateAll()` | Marks every entry stale and re-arms any failed entry, the usual move after a write the server accepted. Never refetches. |
 | `forget(args)` | Removes one entry, cancelling its request first so a late answer cannot resurrect it. |
 | `forgetAll()` | Removes every entry. |
-| `suspend(args)` | Reads for Suspense: throws the in-flight promise, or the error. |
+| `suspend(args)` | Reads for Suspense: a miss or re-armed Error throws its request; a non-invalidated Error throws its failure. Stale Success revalidates with deferred publication and returns the old value. |
 | `abort(args)` | Cancels one entry's in-flight request, leaving whatever data the entry already holds. |
 | `abortAll()` | Cancels every request in flight. |
 
@@ -112,6 +117,11 @@ Eviction is not optional: without it the cache grows by one entry per distinct a
 lifetime of the process. A maximum entry count is set in the constructor, least-recently-used entries
 go first, and an entry is never evicted while a request for it is in flight or while a component is
 subscribed to it.
+
+Raw loader rejections are not part of the serialized entry. Replacing an entry with `setData()`,
+`restore()` or `fromJSON()` cannot leave its former rejection attached to a different Error.
+Subclass actions using `draft`/`update` also reconcile changed error/status paths before subscribers
+run; unchanged entries retain their raw failures. Raw-failure reconciliation does not cancel requests.
 
 ## Server rendering
 

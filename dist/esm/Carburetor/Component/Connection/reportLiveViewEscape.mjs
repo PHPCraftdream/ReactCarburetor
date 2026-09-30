@@ -3,9 +3,12 @@ import { liveViews } from "../../Store/Tracking/liveViews.mjs";
 import { isPlainObject } from "./isPlainObject.mjs";
 const describeSegment = (segment)=>'symbol' == typeof segment ? '[' + segment.toString() + ']' : segment;
 const findLiveView = (value, visited, path)=>{
-    if (liveViews.has(value)) return path;
     if ('object' != typeof value || null === value) return;
-    if (!Array.isArray(value) && !isPlainObject(value)) return;
+    const copied = Array.isArray(value) || isPlainObject(value);
+    if (!copied) {
+        if (!liveViews.has(value)) return;
+        return void 0 === liveViews.readTarget(value) ? path : void 0;
+    }
     if (visited.has(value)) return;
     visited.add(value);
     for (const key of Reflect.ownKeys(value)){

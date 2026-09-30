@@ -17,20 +17,22 @@ const sameValue = (a, b, previousToFresh, freshToPrevious)=>{
     if (isExotic(a) || isExotic(b)) return false;
     if (Object.is(a, b)) return true;
     if ('object' != typeof a || null === a || 'object' != typeof b || null === b) return false;
-    const mapped = previousToFresh.get(a);
+    const previous = previousToFresh ?? new WeakMap();
+    const fresh = freshToPrevious ?? new WeakMap();
+    const mapped = previous.get(a);
     if (void 0 !== mapped) return mapped === b;
-    if (void 0 !== freshToPrevious.get(b)) return false;
+    if (void 0 !== fresh.get(b)) return false;
     if (Array.isArray(a) || Array.isArray(b)) {
         if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length || Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
-        previousToFresh.set(a, b);
-        freshToPrevious.set(b, a);
-        return sameKeyedContent(a, b, previousToFresh, freshToPrevious);
+        previous.set(a, b);
+        fresh.set(b, a);
+        return sameKeyedContent(a, b, previous, fresh);
     }
     if (!isPlainObject(a) || !isPlainObject(b)) return false;
     if (Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)) return false;
-    previousToFresh.set(a, b);
-    freshToPrevious.set(b, a);
-    return sameKeyedContent(a, b, previousToFresh, freshToPrevious);
+    previous.set(a, b);
+    fresh.set(b, a);
+    return sameKeyedContent(a, b, previous, fresh);
 };
-const sameSelection = (snapshot, next)=>sameValue(snapshot, next, new WeakMap(), new WeakMap());
+const sameSelection = (snapshot, next)=>sameValue(snapshot, next);
 export { sameSelection };

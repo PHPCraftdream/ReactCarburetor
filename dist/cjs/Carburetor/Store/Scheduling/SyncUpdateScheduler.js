@@ -28,10 +28,10 @@ var __webpack_require__ = {};
 var __webpack_exports__ = {};
 __webpack_require__.r(__webpack_exports__);
 class SyncUpdateScheduler {
-    schedule = (_uid, updater)=>{
+    schedule(_uid, updater) {
         updater();
-    };
-    cancel = (_uid)=>{};
+    }
+    cancel(_uid) {}
 }
 __webpack_require__.d(__webpack_exports__, {
     SyncUpdateScheduler: ()=>SyncUpdateScheduler

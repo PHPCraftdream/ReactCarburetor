@@ -1,13 +1,15 @@
 import * as React from 'react';
 import {act} from 'react';
 import {fireEvent, render} from '@testing-library/react';
-import {MockToDoClientAPI} from "@/ToDo/API/MockToDoClientAPI";
+import {CarburetorProvider} from "@/Carburetor";
 import {TodoApp} from "@/ToDo/TodoApp";
-import {TodoCarburetor} from "@/ToDo/Carburetors/TodoCarburetor";
+import {createTodoScope} from "@/ToDo/Scope/createTodoScope";
+import {todoToken} from "@/ToDo/Scope/Tokens/todoToken";
 
 const renderApp = async () => {
-    const carburetor = new TodoCarburetor(new MockToDoClientAPI());
-    const mounted = render(<TodoApp carburetor={carburetor} />);
+    const {scope} = createTodoScope();
+    const carburetor = scope.get(todoToken);
+    const mounted = render(<CarburetorProvider scope={scope}><TodoApp/></CarburetorProvider>);
 
     // loadData is fired from useEffects on mount — wait for the API response.
     await act(async () => undefined);

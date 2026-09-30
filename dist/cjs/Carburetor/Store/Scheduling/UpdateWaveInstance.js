@@ -30,8 +30,9 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     updateWave: ()=>updateWave
 });
+const sharedSingleton_js_namespaceObject = require("../Utils/sharedSingleton.js");
 const external_UpdateWave_js_namespaceObject = require("./UpdateWave.js");
-const updateWave = new external_UpdateWave_js_namespaceObject.UpdateWave();
+const updateWave = (0, sharedSingleton_js_namespaceObject.sharedSingleton)('updateWave', ()=>new external_UpdateWave_js_namespaceObject.UpdateWave());
 exports.updateWave = __webpack_exports__.updateWave;
 for(var __rspack_i in __webpack_exports__)if (-1 === [
     "updateWave"

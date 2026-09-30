@@ -1,32 +1,60 @@
+"use client";
+
 import * as React from "react";
 import {IDict, TEffectCleanup, TEffectDeps} from "@/Carburetor/Models/Base";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {
-    IAttemptEntry,
     IConnection,
     IRenderAttempt,
     ITrackedCarburetor,
 } from "@/Carburetor/Component/Models/Connection";
 import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
+import {renderOwner} from "@/Carburetor/Derived/renderOwner";
+// See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
+declare const process: {env: {NODE_ENV?: string}} | undefined;
+
 const RENDER_KEY = "render";
+
+/**
+ * Keys for the render accessor's per-instance state (`installRenderBoundary`). Symbol-keyed so
+ * no subclass field name, however generic, can ever collide with them: `renderRaw`, `boundary`
+ * or `assigned` are all plausible names for a subclass's own state.
+ */
+const RENDER_RAW: unique symbol = Symbol('carburetor.antiHookComponent.renderRaw');
+const RENDER_BOUNDARY: unique symbol = Symbol('carburetor.antiHookComponent.renderBoundary');
+const RENDER_ASSIGNED: unique symbol = Symbol('carburetor.antiHookComponent.renderAssigned');
+
+/** Formats an unmount-teardown failure the same way Effects.tsx's own describeFailure does. */
+const describeUnmountFailure = (error: unknown): string =>
+    (error instanceof Error ? error.message : String(error));
 
 export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.Component<P, S> {
     /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
     protected uid: string = getUid();
 
-    /** Per-effect state: the deps it last ran with, and the cleanup it returned. */
-    protected effects: IDict<{deps: TEffectDeps; cleanup: TEffectCleanup | undefined}> = {};
+    /**
+     * Per-effect state: the deps it last ran with, and the cleanup it returned.
+     *
+     * Absent until the first `useEffect` call: a component that declares no effects never
+     * allocates this dictionary.
+     */
+    protected effects: IDict<{deps: TEffectDeps; cleanup: TEffectCleanup | undefined}> | undefined = undefined;
 
     /**
      * Carburetors read through `useCarburetor`/`useComputed`/`useResource`: one dependency slot
-     * per carburetor, written by commits out of what a fresh render attempt collected.
+     * per carburetor, keyed by the carburetor itself and written by commits out of what a fresh
+     * render attempt collected.
+     *
+     * Absent until the first commit that has something to track: a `connect()`-only component
+     * never reads through `useCarburetor`/`useComputed`/`useResource`, so it never allocates
+     * this map.
      *
      * The committed descriptions outlive unmount: releaseSubscriptions keeps them, so a
      * replayed mount lifecycle can restore the subscriptions without a render to refill them.
      * The records themselves do not: a commit whose attempt never touched a record drops it.
      */
-    protected tracked: IDict<ITrackedCarburetor> = {};
+    protected tracked: Map<ICarburetorSubscription, ITrackedCarburetor> | undefined = undefined;
 
     /**
      * Persistent `connect()` declarations, in declaration order.
@@ -50,27 +78,107 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      */
     protected committedAttempt: IRenderAttempt | undefined = undefined;
 
+    /** The raw render last seen: the prototype's, or whatever a constructor assigned. */
+    private [RENDER_RAW]: unknown = undefined;
+
+    /** The boundary built around the current raw render; rebuilt only when that render changes. */
+    private [RENDER_BOUNDARY]: (() => React.ReactNode) | undefined = undefined;
+
+    /** Whether a constructor assigned `render` directly, rather than leaving it on the prototype. */
+    private [RENDER_ASSIGNED] = false;
+
     /**
-     * Hands React a boundary proxy instead of the instance, so every later read or definition
-     * of `render` goes through its traps and the render-attempt boundary is installed at the
-     * moment the render first exists.
+     * Installs the render-attempt boundary as a non-configurable own accessor, so the moment
+     * `render` first exists — a prototype method looked up through it, or a value later
+     * assigned to it — it is wrapped.
      *
-     * Returning an object from a derived constructor replaces `this` for the rest of
-     * construction, which is what makes definition-time wrapping possible: a subclass's
-     * class-field initializers then run against the proxy, and a class-field `render` is
-     * defined through its `defineProperty` trap. Neither alternative can do that. A prototype
-     * accessor cannot: class fields are installed with `Object.defineProperty` semantics,
-     * which replaces an inherited accessor instead of calling it. And no React lifecycle hook
-     * can: React never calls a mount hook for a component that defines
+     * An own instance accessor, not a prototype one: class fields are installed with
+     * `Object.defineProperty` semantics, which would replace an inherited prototype accessor
+     * instead of calling it, so only an own property installed ahead of the subclass's own
+     * field initializers can intercept anything. It has to be installed here rather than from
+     * a React lifecycle hook, too: React never calls a mount hook for a component that defines
      * `getDerivedStateFromProps` or `getSnapshotBeforeUpdate`, so a fallback installed there
      * silently never runs for exactly those components.
+     *
+     * `configurable: false` is what makes a class-field `render` fail loudly instead of
+     * quietly replacing the accessor: a field initializer defines its property with
+     * `configurable: true`, and redefining a non-configurable property to one that is
+     * configurable is rejected outright, so the engine throws `TypeError: Cannot redefine
+     * property: 'render'` at construction, before the component ever renders. A configurable
+     * accessor would instead let the field initializer silently overwrite it — the mount's
+     * first render would already run unwrapped, with no render-attempt open, before any later
+     * check could catch it. `no-lifecycle-class-property` (H13) is what turns this into a
+     * clear, actionable message: it flags a class-field `render` at lint time, before the
+     * throw ever happens at runtime.
+     *
+     * The setter stays reachable through plain assignment (`this.render = fn`, typically from
+     * a constructor body): assignment goes through `[[Set]]`, which calls an accessor's setter,
+     * not `[[DefineOwnProperty]]` — the two are distinguishable at the engine level, which is
+     * why one can stay supported while the other is rejected.
+     *
+     * `get`/`set` are one shared function pair, not per-instance closures: V8 keeps accessor
+     * functions in the hidden class, so a fresh pair per instance drops every instance after the
+     * first into dictionary-mode properties. The state the pair needs lives in symbol-keyed fields.
+     */
+    private installRenderBoundary(): void {
+        Object.defineProperty(this, RENDER_KEY, {
+            configurable: false,
+            enumerable: false,
+            get: AntiHookComponentFoundation.renderGetter,
+            set: AntiHookComponentFoundation.renderSetter,
+        });
+    }
+
+    /**
+     * Reads `render`: the value a constructor assigned, or else the prototype's, wrapped in the
+     * boundary that opens and closes a render attempt around it.
+     *
+     * Static, and referenced through the base class, so every instance shares it and no subclass
+     * member of the same name can replace it. Rebuilds the boundary only when the raw render changed.
+     */
+    private static renderGetter(this: AntiHookComponentFoundation<unknown, unknown>): unknown {
+        const raw = this[RENDER_ASSIGNED]
+            ? this[RENDER_RAW]
+            : Reflect.get(Object.getPrototypeOf(this), RENDER_KEY, this);
+
+        if (typeof raw !== 'function') {
+            return raw;
+        }
+
+        if (this[RENDER_BOUNDARY] === undefined || raw !== this[RENDER_RAW]) {
+            this[RENDER_RAW] = raw;
+            this[RENDER_BOUNDARY] = this.buildRenderBoundary(raw as () => React.ReactNode);
+        }
+
+        return this[RENDER_BOUNDARY];
+    }
+
+    /**
+     * Sets `render` directly — typically a constructor assignment — and rebuilds the boundary
+     * around the new value right away.
+     *
+     * Shared the same way as `renderGetter`.
+     *
+     * @param this - the instance whose `render` is assigned
+     * @param value - the value assigned to `this.render`; wrapped only when it is a function
+     */
+    private static renderSetter(this: AntiHookComponentFoundation<unknown, unknown>, value: unknown): void {
+        this[RENDER_ASSIGNED] = typeof value === 'function';
+        this[RENDER_RAW] = value;
+        this[RENDER_BOUNDARY] = this[RENDER_ASSIGNED]
+            ? this.buildRenderBoundary(value as () => React.ReactNode)
+            : undefined;
+    }
+
+    /**
+     * Installs the render boundary once `super` has wired up React's own instance state.
      *
      * @param props - forwarded to `React.Component` untouched
      */
     constructor(props: Readonly<P>) {
         super(props);
 
-        return this.withRenderBoundary();
+        this.installRenderBoundary();
     }
 
     /**
@@ -119,118 +227,34 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     public componentWillUnmount(): void {
         const failures: string[] = [];
 
-        this.runTeardownStage('the component-wide unUseEffects callback threw while a component ' +
-            'unmounted', () => this.unUseEffects(this.props), failures);
-        this.runTeardownStage('an effect cleanup threw while a component unmounted',
-            () => this.releaseEffects(), failures);
-        this.runTeardownStage('releasing subscriptions threw while a component unmounted',
-            () => this.releaseSubscriptions(), failures);
-        this.runTeardownStage("releasing a connect() view's cache threw while a component unmounted",
-            () => this.releaseConnectionViews(), failures);
+        // Each stage is inlined rather than run through a shared helper taking a callback: a
+        // fresh arrow per stage per unmount is exactly the kind of per-call allocation R16-09
+        // removes, and the three stages differ only in which method runs and what to say if it
+        // throws, so a loop would need the same three closures to describe them.
+        try {
+            this.unUseEffects(this.props);
+        } catch (error: unknown) {
+            failures.push('the component-wide unUseEffects callback threw while a component ' +
+                'unmounted: ' + describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
 
-        failures.forEach((failure: string) => this.reportTeardownFailure(failure));
-    }
+        try {
+            this.releaseEffects();
+        } catch (error: unknown) {
+            failures.push('an effect cleanup threw while a component unmounted: ' +
+                describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
 
-    /**
-     * Wraps this instance in the render boundary proxy; the constructor hands the proxy to
-     * React in place of `this`.
-     *
-     * Only `render` is special-cased — every other property forwards to the target untouched,
-     * so the instance keeps its ordinary shape: own keys, property descriptors and the
-     * prototype chain are the target's own. The raw render and the boundary built for it live
-     * in this closure, so a boundary is built exactly once per raw render per instance.
-     *
-     * The ordinary get/set traps forward through `receiver` (this same proxy), not `target`
-     * (R4-01): a subclass getter/setter that touches a native `#private` field runs with
-     * `this` bound to whichever object `Reflect.get`/`Reflect.set` were given as receiver, and
-     * that field was installed on the proxy (a derived constructor's returned object replaces
-     * `this` for the rest of construction). Forwarding through the raw target instead brand-
-     * checked the wrong object and threw. Plain data properties — `props`, `state`, React's own
-     * internal fields — are unaffected either way: a receiver only matters to an accessor.
-     */
-    private withRenderBoundary(): this {
-        let rawRender: unknown;
-        let boundary: (() => React.ReactNode) | undefined;
-        let wrapped = false;
+        try {
+            this.releaseSubscriptions();
+        } catch (error: unknown) {
+            failures.push('releasing subscriptions threw while a component unmounted: ' +
+                describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
 
-        // Assigned once, immediately below, to the proxy this method returns — before any trap
-        // can possibly fire, since a derived class's field initializers (which is what runs a
-        // class-field `render`'s `defineProperty` trap, or installs a native `#field`) only run
-        // once this whole constructor call has returned. Every trap below reads it lazily, at
-        // invocation time, never at closure-creation time, so this forward reference is safe.
-        let receiver: object;
-
-        const proxy = new Proxy(this as unknown as object, {
-            get: (target: object, key: string | symbol): unknown => {
-                if (key !== RENDER_KEY) {
-                    return Reflect.get(target, key, receiver);
-                }
-
-                // A render the definition traps absorbed lives only in this closure; anything
-                // else — a prototype-method render, or no render at all — is looked up on the
-                // target like a plain property read.
-                const raw = wrapped ? rawRender : Reflect.get(target, RENDER_KEY, receiver);
-
-                if (typeof raw !== 'function') {
-                    return raw;
-                }
-
-                // One boundary per raw render: a new render definition replaces the previous
-                // one, and re-reading an unchanged render returns the boundary already built.
-                if (boundary === undefined || rawRender !== raw) {
-                    rawRender = raw;
-                    boundary = this.buildRenderBoundary(raw as () => React.ReactNode, receiver);
-                }
-
-                return boundary;
-            },
-            set: (target: object, key: string | symbol, value: unknown): boolean => {
-                if (key !== RENDER_KEY) {
-                    return Reflect.set(target, key, value, receiver);
-                }
-
-                // Absorbed, never forwarded: the render exists only through `get`, so there is
-                // no plain own property a later read could bypass the boundary with.
-                rawRender = value;
-                wrapped = typeof value === 'function';
-                boundary = wrapped ? this.buildRenderBoundary(value as () => React.ReactNode, receiver) : undefined;
-
-                return true;
-            },
-            defineProperty: (target: object, key: string | symbol, descriptor: PropertyDescriptor): boolean => {
-                if (key !== RENDER_KEY) {
-                    return Reflect.defineProperty(target, key, descriptor);
-                }
-
-                // The [[Define]] form a class-field initializer uses lands here: the same
-                // wrap-at-definition treatment as the assignment above.
-                rawRender = descriptor.value;
-                wrapped = typeof descriptor.value === 'function';
-
-                if (wrapped) {
-                    boundary = this.buildRenderBoundary(descriptor.value as () => React.ReactNode, receiver);
-                } else {
-                    boundary = undefined;
-                }
-
-                return true;
-            },
-            deleteProperty: (target: object, key: string | symbol): boolean => {
-                if (key === RENDER_KEY) {
-                    rawRender = undefined;
-                    boundary = undefined;
-                    wrapped = false;
-                }
-
-                return Reflect.deleteProperty(target, key);
-            },
-            has: (target: object, key: string | symbol): boolean =>
-                key === RENDER_KEY ? wrapped || Reflect.has(target, RENDER_KEY) : Reflect.has(target, key),
-        });
-
-        receiver = proxy;
-
-        return proxy as this;
+        for (let i = 0; i < failures.length; i++) {
+            this.reportTeardownFailure(failures[i]);
+        }
     }
 
     /**
@@ -238,45 +262,54 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      * the attempt abandoned when the render throws (an error, or a Suspense thenable), and
      * closes it right after — a commit never consumes what an abandoned render collected.
      *
-     * The render-attempt bookkeeping stays anchored to the raw base instance (`this`, closed
-     * over here) regardless of receiver: `renderAttempt`/`pendingAttempt` are ordinary fields,
-     * not native `#private` ones, so there is exactly one logical component either way.
+     * `realRender` runs against `this`, the real instance — there is no proxy standing in for
+     * it, so a subclass's native `#private` field or accessor brand-checks the exact object it
+     * was installed on and just works.
      *
      * @param realRender - the subclass's own render
-     * @param receiver - the object `realRender` runs against: the proxy this constructor
-     * returns, not the raw instance — a subclass's native `#private` field is installed on
-     * that returned proxy (whatever a derived constructor returns becomes `this` for the rest
-     * of construction, including field initializers), and native private access brand-checks
-     * its receiver, so calling `realRender` against anything else throws for a subclass that
-     * uses one
      */
-    private buildRenderBoundary(realRender: () => React.ReactNode, receiver: object): () => React.ReactNode {
+    private buildRenderBoundary(realRender: () => React.ReactNode): () => React.ReactNode {
         return (): React.ReactNode => {
             const attempt = this.openRenderAttempt();
+            // Only the development escape diagnostic reads the owner; production allocates nothing here.
+            const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+            const previousOwner = development ? renderOwner.get() : undefined;
+
+            if (development) {
+                renderOwner.set({
+                    uid: this.uid,
+                    hasTracked: (source) => attempt.tracked !== undefined && attempt.tracked.has(source),
+                });
+            }
 
             try {
-                return realRender.call(receiver);
+                return realRender.call(this);
             } catch (error: unknown) {
                 attempt.abandoned = true;
 
                 throw error;
             } finally {
+                if (development) {
+                    renderOwner.set(previousOwner);
+                }
+
                 this.closeRenderAttempt(attempt);
             }
         };
     }
 
     /**
-     * Opens a fresh render attempt: an empty entry map this render's reads will fill.
+     * Opens a fresh render attempt: every collection starts absent, and is allocated by
+     * whichever read API first needs it during this render.
      *
      * Any previous tentative state is discarded by replacement — it simply stops being
      * reachable — so an abandoned collection can never bleed into a new attempt.
      */
     private openRenderAttempt(): IRenderAttempt {
         const attempt: IRenderAttempt = {
-            entries: new Map<string, IAttemptEntry>(),
-            sources: new Map<string, ICarburetorSubscription>(),
-            deferredLoads: [],
+            tracked: undefined,
+            connections: undefined,
+            deferredLoads: undefined,
             abandoned: false,
         };
 
@@ -306,7 +339,5 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     protected abstract releaseEffects(): void;
     protected abstract commitSubscriptions(): void;
     protected abstract releaseSubscriptions(): void;
-    protected abstract releaseConnectionViews(): void;
-    protected abstract reportTeardownFailure: (failure: string) => void;
-    protected abstract runTeardownStage: (what: string, stage: () => void, failures: string[]) => void;
+    protected abstract reportTeardownFailure(failure: string): void;
 }

@@ -1,3 +1,4 @@
+import { sharedSingleton } from "../Utils/sharedSingleton.mjs";
 import { UpdateWave } from "./UpdateWave.mjs";
-const updateWave = new UpdateWave();
+const updateWave = sharedSingleton('updateWave', ()=>new UpdateWave());
 export { updateWave };

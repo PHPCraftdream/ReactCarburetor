@@ -1,5 +1,4 @@
 import { IDict } from "./Base.js";
-import { TPath } from "./Paths.js";
 import { ICarburetorSubscription, IUpdateScheduler } from "./Store.js";
 import { EResourceStatus } from "./Enums/EResourceStatus.js";
 export interface IResourceData<T> {
@@ -41,7 +40,7 @@ export interface IResourceEntry<T> extends IResourceData<T> {
      */
     invalidated: boolean;
     /**
-     * The most recent settled attempt failed, and nothing has asked to try again since.
+     * The most recent attempt failed and automatic retries are currently disarmed.
      *
      * Separate from `status` because a refresh that fails keeps `status: Success` — the data on
      * hand is still good — while the component layer must not queue another fetch from that
@@ -50,9 +49,9 @@ export interface IResourceEntry<T> extends IResourceData<T> {
      * Set by any failed attempt. Cleared by a successful answer, and by an explicit
      * `invalidate`/`invalidateAll`: a write the server accepted is a new external event, and the
      * documented contract of an invalidation is that entries being read refetch on the next
-     * render, which must include an entry whose last attempt failed. A retry left in flight or
-     * aborted does not clear it — the flag describes the last settled outcome, so an abandoned
-     * retry leaves the entry waiting for an explicit `refresh`/`load`.
+     * render, which includes an initial Error entry. A pending retry does not erase the last
+     * failure. Aborting a retry restores this guard even if the raw rejection was replaced or
+     * the Error entry came from hydration; another explicit invalidation can re-arm it.
      */
     failed: boolean;
 }
@@ -65,11 +64,26 @@ export interface IResourceView<T> extends IResourceEntry<T> {
     stale: boolean;
 }
 export interface IResourceCacheOptions {
-    /** How long an answer counts as fresh, in milliseconds. `Infinity` never goes stale. */
+    /** Non-negative milliseconds; fractional values and `Infinity` are valid. `Infinity` never goes stale. */
     ttl?: number;
-    /** Upper bound on kept entries; the least recently used go first. */
+    /** Non-negative integer or `Infinity`; zero keeps only retained entries, `Infinity` disables eviction. */
     maxEntries?: number;
     scheduler?: IUpdateScheduler;
+}
+/**
+ * One argument set resolved to everything a reader needs: the cache key, the path to subscribe
+ * to, and the entry's current view. One call, one serialization of `args` (R16-10(4)) — the six
+ * member split this replaced existed only so a caller already holding the key (`pathOfKey`,
+ * `getEntryByKey`) would not re-serialize `args` to get it, which `resolve` no longer requires
+ * anyone to do.
+ */
+export interface IResourceResolution<T> {
+    /** The cache key this argument set resolved to. */
+    key: string;
+    /** The path a reader should subscribe to for this entry and nothing else. */
+    path: string;
+    /** The entry's current view, with the freshness verdict computed at resolve time. */
+    view: IResourceView<T>;
 }
 /**
  * What a component needs from a cache, and nothing more.
@@ -78,8 +92,7 @@ export interface IResourceCacheOptions {
  * component layer depends on this shape, the cache implements it, and neither imports the other.
  */
 export interface IResourceSource<T, TArgs> extends ICarburetorSubscription {
-    /** The read path for one entry, so a component subscribes to that entry and nothing else. */
-    pathOf(args: TArgs): TPath;
-    getEntry(args: TArgs): IResourceView<T>;
+    /** Resolves one argument set to its key, read path and current view — see `IResourceResolution`. */
+    resolve(args: TArgs): IResourceResolution<T>;
     load(args: TArgs): Promise<void>;
 }

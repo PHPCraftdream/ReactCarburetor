@@ -10,10 +10,15 @@
 export declare class Diagnostics {
     /** The switch setEnabled() flips; on by default in development, off in production. */
     protected enabled: boolean;
-    /** Whether complaints are currently reported. */
-    isEnabled: () => boolean;
+    /**
+     * Whether complaints are currently reported.
+     *
+     * A method, not an arrow field: every overridable member below is, so a subclass override
+     * lands on the prototype instead of an own property shadowing it.
+     */
+    isEnabled(): boolean;
     /** Turns complaints on or off, for a test that asserts one or a session tired of them. */
-    setEnabled: (enabled: boolean) => void;
+    setEnabled(enabled: boolean): void;
     /** Reports one complaint, prefixed so its source is obvious in a console. */
-    report: (message: string) => void;
+    report(message: string): void;
 }

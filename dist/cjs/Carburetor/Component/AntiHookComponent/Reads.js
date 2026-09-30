@@ -1,4 +1,5 @@
 "use strict";
+"use client";
 var __webpack_require__ = {};
 (()=>{
     __webpack_require__.d = (exports1, getters, values)=>{
@@ -30,37 +31,37 @@ __webpack_require__.r(__webpack_exports__);
 __webpack_require__.d(__webpack_exports__, {
     AntiHookComponentReads: ()=>AntiHookComponentReads
 });
+const getComputedSnapshotVersion_js_namespaceObject = require("../../Derived/Freshness/getComputedSnapshotVersion.js");
 const EResourceStatus_js_namespaceObject = require("../../Models/Enums/EResourceStatus.js");
 const WildcardPath_js_namespaceObject = require("../../Store/Paths/WildcardPath.js");
 const DiagnosticsInstance_js_namespaceObject = require("../../Store/Diagnostics/DiagnosticsInstance.js");
 const DevelopmentFlag_js_namespaceObject = require("../../Store/Utils/DevelopmentFlag.js");
+const external_buildTrackedView_js_namespaceObject = require("./buildTrackedView.js");
 const buildPersistentView_js_namespaceObject = require("../Connection/buildPersistentView.js");
 const declareConnection_js_namespaceObject = require("../Connection/declareConnection.js");
 const detachSelection_js_namespaceObject = require("../Connection/detachSelection.js");
 const reportLiveViewEscape_js_namespaceObject = require("../Connection/reportLiveViewEscape.js");
 const sameSelection_js_namespaceObject = require("../Connection/sameSelection.js");
 const external_Foundation_js_namespaceObject = require("./Foundation.js");
-const CONNECTION_ATTEMPT_KEY = "c:";
-const TRACKED_ATTEMPT_KEY = "t:";
 class AntiHookComponentReads extends external_Foundation_js_namespaceObject.AntiHookComponentFoundation {
-    useCarburetor = (carburetor)=>{
+    trackedViews;
+    getRenderAttempt = ()=>this.renderAttempt;
+    useCarburetor(carburetor) {
         const attempt = this.renderAttempt;
         const entry = this.track(carburetor);
-        return carburetor.read((path)=>{
-            if (void 0 !== attempt && this.renderAttempt === attempt) entry.reads.add(path);
-        });
-    };
-    declareConnection = (source)=>(0, declareConnection_js_namespaceObject.declareConnection)(this.connections, CONNECTION_ATTEMPT_KEY, ()=>this.renderAttempt, source);
-    connect = (source)=>{
+        if (void 0 === this.trackedViews) this.trackedViews = new WeakMap();
+        return (0, external_buildTrackedView_js_namespaceObject.buildTrackedView)(this.trackedViews, carburetor, this.getRenderAttempt, attempt, entry);
+    }
+    declareConnection(source) {
+        return (0, declareConnection_js_namespaceObject.declareConnection)(this.connections, this.getRenderAttempt, source);
+    }
+    connect(source) {
+        const declared = this.declareConnection(source);
+        return (0, buildPersistentView_js_namespaceObject.buildPersistentView)(declared);
+    }
+    connectSelection(source, select) {
         const declared = this.declareConnection(source);
         const view = (0, buildPersistentView_js_namespaceObject.buildPersistentView)(declared);
-        declared.connection.view = view;
-        return view;
-    };
-    connectSelection = (source, select)=>{
-        const declared = this.declareConnection(source);
-        const view = (0, buildPersistentView_js_namespaceObject.buildPersistentView)(declared);
-        declared.connection.view = view;
         let snapshot;
         let escapeReported = false;
         return ()=>{
@@ -72,49 +73,57 @@ class AntiHookComponentReads extends external_Foundation_js_namespaceObject.Anti
             };
             return snapshot.value;
         };
-    };
-    useComputed = (computed)=>{
-        this.track(computed).reads.add(WildcardPath_js_namespaceObject.WILDCARD_PATH);
-        return computed.get();
-    };
-    useResource = (source, args)=>{
-        this.track(source).reads.add(source.pathOf(args));
-        const view = source.getEntry(args);
-        const worthFetching = view.stale && !view.refreshing && view.status !== EResourceStatus_js_namespaceObject.EResourceStatus.Error && !view.failed;
+    }
+    useComputed(computed) {
+        const entry = this.track(computed);
+        entry.reads.add(WildcardPath_js_namespaceObject.WILDCARD_PATH);
+        const value = computed.get();
+        entry.baselineVersion = (0, getComputedSnapshotVersion_js_namespaceObject.getComputedSnapshotVersion)(computed);
+        return value;
+    }
+    useResource(source, args) {
+        const { path, view } = source.resolve(args);
+        this.track(source).reads.add(path);
+        const worthFetching = view.stale && !view.refreshing && !view.failed && (view.status !== EResourceStatus_js_namespaceObject.EResourceStatus.Error || view.invalidated);
         const attempt = this.renderAttempt;
         if (worthFetching) {
-            if (attempt) attempt.deferredLoads.push(()=>{
-                source.load(args);
-            });
-            else if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) DiagnosticsInstance_js_namespaceObject.diagnostics.report('useResource() skipped the deferred load for entry ' + source.pathOf(args) + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
+            if (attempt) {
+                if (void 0 === attempt.deferredLoads) attempt.deferredLoads = [];
+                attempt.deferredLoads.push(()=>{
+                    source.load(args);
+                });
+            } else if (DevelopmentFlag_js_namespaceObject.IS_DEVELOPMENT) DiagnosticsInstance_js_namespaceObject.diagnostics.report('useResource() skipped the deferred load for entry ' + path + " because it ran outside a render attempt. That is the only place a deferred load can be attributed to a commit: run useResource() inside render(), the way every other read API is meant to run, or refresh the entry from an effect.");
         }
         return view;
-    };
+    }
     loadStaleResources() {
         const attempt = this.pendingAttempt;
         if (void 0 === attempt || attempt.abandoned || attempt !== this.committedAttempt) return;
         const queued = attempt.deferredLoads;
-        attempt.deferredLoads = [];
+        if (void 0 === queued) return;
+        attempt.deferredLoads = void 0;
         queued.forEach((load)=>load());
     }
     track(source) {
         const attempt = this.renderAttempt;
         if (!attempt) return {
-            connection: void 0,
             source,
             baselineVersion: source.getVersion(),
             reads: new Set()
         };
-        const cuid = source.getUID();
-        let entry = attempt.entries.get(TRACKED_ATTEMPT_KEY + cuid);
+        let tracked = attempt.tracked;
+        if (void 0 === tracked) {
+            tracked = new Map();
+            attempt.tracked = tracked;
+        }
+        let entry = tracked.get(source);
         if (!entry) {
             entry = {
-                connection: void 0,
                 source,
                 baselineVersion: source.getVersion(),
                 reads: new Set()
             };
-            attempt.entries.set(TRACKED_ATTEMPT_KEY + cuid, entry);
+            tracked.set(source, entry);
         }
         return entry;
     }

@@ -1,4 +1,5 @@
-import {Carburetor, deepClone, TPath, transaction} from "@/Carburetor";
+import {Carburetor, deepClone, transaction} from "@/Carburetor";
+import {TPath} from "@/Carburetor/Models/Paths";
 
 interface ITestData {
     a: number;
@@ -8,9 +9,6 @@ interface ITestData {
 }
 
 const getTestData = (): ITestData => ({a: 0, nested: {list: [1, 2]}});
-
-const TAG = Symbol('tag');
-const DEEP_TAG = Symbol('deepTag');
 
 class TestCarburetor extends Carburetor<ITestData> {
     public setA = (a: number) => {
@@ -135,88 +133,72 @@ describe('snapshot / restore', () => {
         expect(clone.dictionary).not.toBe(dictionary);
     });
 
-    // R5-05: Object.keys() sees string keys only, so a symbol-keyed field survived tracking but
-    // silently vanished from every local snapshot/restore round trip.
-    test('deepClone preserves own enumerable symbol keys (R5-05)', () => {
+    // R6-02/R6-03: state is own enumerable string-keyed data only; a symbol key is no longer
+    // part of the model (superseded R5-05) — see diff.test.ts's "state model" describe block
+    // for the rejection this produces at the constructor/setData/restore boundary instead.
+    test('deepClone does not copy an own symbol key (R6-02/R6-03, supersedes R5-05)', () => {
         const tag = Symbol('tag');
-        const deep = Symbol('deep');
-        const hidden = Symbol('hidden');
-        const source: Record<string | symbol, unknown> = {
-            plain: 1,
-            [tag]: {count: 1},
-            nested: {deep: {[deep]: {n: 2}}},
-        };
-
-        // A non-enumerable own symbol is invisible to a spread, so the copy leaves it out too.
-        Object.defineProperty(source, hidden, {value: 'secret', enumerable: false});
+        const source: Record<string | symbol, unknown> = {plain: 1, [tag]: {count: 1}};
 
         const clone = deepClone(source) as Record<string | symbol, unknown>;
-        const sourceNested = source.nested as Record<string | symbol, unknown>;
-        const cloneNested = clone.nested as Record<string | symbol, unknown>;
-        const sourceNestedDeep = sourceNested.deep as Record<string | symbol, unknown>;
-        const cloneNestedDeep = cloneNested.deep as Record<string | symbol, unknown>;
 
         expect(clone.plain).toEqual(1);
-        expect(clone[tag]).toEqual({count: 1});
-        expect(clone[tag]).not.toBe(source[tag]);
-        expect(cloneNestedDeep[deep]).toEqual({n: 2});
-        expect(cloneNestedDeep[deep]).not.toBe(sourceNestedDeep[deep]);
-        expect(Object.getOwnPropertySymbols(clone)).toEqual([tag]);
+        expect(Object.getOwnPropertySymbols(clone)).toEqual([]);
+        expect(clone[tag]).toBeUndefined();
     });
 
-    // R5-05: a symbol-keyed field is tracked by the proxies, but snapshot() dropped it and
-    // restore() left it absent — a silent loss on a purely local, in-memory round trip.
-    test('a snapshot round trip preserves a symbol-keyed field beside a string field (R5-05)', () => {
-        const tagValue = {count: 1};
-        const initial = {...getTestData(), [TAG]: tagValue} as unknown as ITestData;
-        const carburetor = new TestCarburetor(initial);
+    test('deepClone preserves array holes instead of filling them with undefined', () => {
+        const sparse: unknown[] = [];
+        sparse[0] = 'a';
+        sparse[2] = 'c';
 
-        const taken = carburetor.snapshot() as unknown as Record<string | symbol, unknown>;
+        const clone = deepClone(sparse);
 
-        expect(taken.a).toEqual(0);
-        expect(taken[TAG]).toEqual({count: 1});
-        expect(taken[TAG]).not.toBe(tagValue);
-
-        carburetor.setData({...getTestData(), a: 5, [TAG]: {count: 99}} as unknown as ITestData);
-        carburetor.restore(taken);
-
-        const data = carburetor.getData() as unknown as Record<string | symbol, unknown>;
-
-        expect(data.a).toEqual(0);
-        expect(data[TAG]).toEqual({count: 1});
-        expect(data[TAG]).not.toBe(taken[TAG]);
-        expect(Object.getOwnPropertySymbols(data)).toEqual([TAG]);
+        expect(clone.length).toEqual(3);
+        expect(Object.keys(clone)).toEqual(['0', '2']);
+        expect(1 in clone).toEqual(false);
+        expect(clone[0]).toEqual('a');
+        expect(clone[2]).toEqual('c');
     });
 
-    test('a snapshot round trip preserves a symbol key nested several levels deep (R5-05)', () => {
-        const deepValue = {n: 7};
-        const initial = {
-            ...getTestData(),
-            nested: {list: [1, 2], deep: {[DEEP_TAG]: deepValue}},
-        } as unknown as ITestData;
-        const carburetor = new TestCarburetor(initial);
+    test('long sparse snapshots preserve length, holes and own undefined through restore', () => {
+        const rows: Array<{n: number} | undefined> = [];
+        rows[0] = {n: 1};
+        rows[50_000] = undefined;
+        rows[99_999] = {n: 2};
+        rows.length = 100_000;
+        const store = new Carburetor({rows});
+        const taken = store.snapshot();
 
-        const taken = carburetor.snapshot() as unknown as {
-            nested: {deep: Record<PropertyKey, unknown>};
-        };
+        expect(taken.rows.length).toBe(100_000);
+        expect(Object.keys(taken.rows)).toEqual(['0', '50000', '99999']);
+        expect(Object.prototype.hasOwnProperty.call(taken.rows, 50_000)).toBe(true);
+        expect(Object.prototype.hasOwnProperty.call(taken.rows, 50_001)).toBe(false);
+        expect(taken.rows[0]).not.toBe(rows[0]);
 
-        expect(taken.nested.deep[DEEP_TAG]).toEqual({n: 7});
-        expect(taken.nested.deep[DEEP_TAG]).not.toBe(deepValue);
+        const restored = new Carburetor({rows: [] as typeof rows});
+        restored.restore(taken);
+        expect(restored.getData().rows.length).toBe(100_000);
+        expect(Object.keys(restored.getData().rows)).toEqual(['0', '50000', '99999']);
+        expect(restored.getData().rows[99_999]).toEqual({n: 2});
+    });
 
-        // A state swap that lost the symbol-keyed branch entirely must not survive a restore.
-        carburetor.setData({...getTestData(), a: 3} as unknown as ITestData);
-        carburetor.restore(taken);
+    test('deepClone skips a non-enumerable own string key', () => {
+        const source: Record<string, unknown> = {visible: 1};
+        Object.defineProperty(source, 'hidden', {value: 'secret', enumerable: false});
 
-        const data = carburetor.getData() as unknown as {
-            a: number;
-            nested: {list: number[]; deep: Record<PropertyKey, unknown>};
-        };
+        const clone = deepClone(source) as Record<string, unknown>;
 
-        expect(data.a).toEqual(0);
-        expect(data.nested.list).toEqual([1, 2]);
-        expect(data.nested.deep[DEEP_TAG]).toEqual({n: 7});
-        expect(data.nested.deep[DEEP_TAG]).not.toBe(taken.nested.deep[DEEP_TAG]);
-        expect(Object.getOwnPropertySymbols(data.nested.deep)).toEqual([DEEP_TAG]);
+        expect(clone.visible).toEqual(1);
+        expect(Object.prototype.hasOwnProperty.call(clone, 'hidden')).toEqual(false);
+    });
+
+    test('deepClone preserves key order across string keys', () => {
+        const source: Record<string, unknown> = {b: 1, a: 2, c: 4};
+
+        const clone = deepClone(source);
+
+        expect(Object.keys(clone)).toEqual(Object.keys(source));
     });
 });
 
@@ -225,7 +207,7 @@ describe('watch', () => {
         const carburetor = new TestCarburetor(getTestData());
         let calls = 0;
 
-        const dispose = carburetor.watch(new Set<TPath>(['a']), () => calls++);
+        const dispose = carburetor.watch((data) => data.a, () => calls++);
 
         carburetor.setA(1);
         expect(calls).toEqual(1);

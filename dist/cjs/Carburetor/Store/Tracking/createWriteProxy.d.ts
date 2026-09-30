@@ -1,21 +1,14 @@
-import { TPath, TPathRecorder, TAliasLedger } from "../../Models/Paths.js";
+import { TPath, TPathRecorder, TAliasLedger, TPatchPort } from "../../Models/Paths.js";
+import { IProxyCache } from "./Models.js";
 /**
- * Write proxy: every changed branch is recorded as a path, so the carburetor
- * only wakes the subscribers that read it. Reads made elsewhere are consulted through the alias
- * ledger, so writing into an object that another path was read from is reported in development.
+ * Builds a path-recording write proxy with one shared branch cache.
  *
- * A landed write also publishes its recorded path to the proxy cache scope every proxy over the
- * same raw object shares: the caches release the replaced or deleted branches' old wrappers the
- * next time they are consulted, so an obsolete branch stops being pinned by the write that ended it.
- *
- * @param target - the raw object the proxy fronts; it is filed in proxyTargets so a value
- * read back through draft is unwrapped before the write compares it
- * @param record - the store's write sink, feeding the paths the next emitUpdate announces;
- * the get trap also reports unwrappable objects handed out raw, imprecise but never a lost
- * update
- * @param basePath - the dotted path this root answers for, '' being the store root; array
- * writes collapse onto it (or the wildcard) instead of naming an index
- * @param aliases - consulted on every write to complain when it lands in an object another
- * path was read from; undefined outside development
+ * @param target - raw state, filed for unwrapping values read back through draft
+ * @param record - write-path sink; unwrappable leaves invalidate their owner
+ * @param basePath - escaped dotted path, empty at the root
+ * @param aliases - development alias and state-model validation
+ * @param cache - shared branch-wrapper cache, created by the root call
+ * @param patchPort - shared current listener and opaque recording mode
+ * @param basePathSegments - unescaped path keys, empty at the root
  */
-export declare const createWriteProxy: <T extends object>(target: T, record: TPathRecorder, basePath?: TPath, aliases?: TAliasLedger) => T;
+export declare const createWriteProxy: <T extends object>(target: T, record: TPathRecorder, basePath?: TPath, aliases?: TAliasLedger, cache?: IProxyCache, patchPort?: TPatchPort, basePathSegments?: readonly string[]) => T;

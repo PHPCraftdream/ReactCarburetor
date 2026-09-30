@@ -1,0 +1,137 @@
+import {mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
+import path from 'node:path';
+import {FIXTURE, TSC_BIN, pnpmCommand, run} from './matrix.mjs';
+
+/**
+ * One `npm`/`pnpm install` per (React version, package manager) — shared by both formats.
+ *
+ * @param installDir - the fresh directory the consumer project is written into
+ * @param reactVersion - the cell's react/react-dom/@types version set
+ * @param packageManager - 'npm' or 'pnpm'
+ * @param tarballPath - the packed tarball installed as the `react-carburetor` dependency
+ */
+export const installConsumer = (installDir, reactVersion, packageManager, tarballPath) => {
+    rmSync(installDir, {recursive: true, force: true});
+    mkdirSync(installDir, {recursive: true});
+
+    writeFileSync(path.join(installDir, 'package.json'), JSON.stringify({
+        name: 'consumer-matrix-fixture',
+        private: true,
+        version: '0.0.0',
+        dependencies: {
+            react: reactVersion.react,
+            'react-dom': reactVersion.reactDom,
+            '@types/react': `^${reactVersion.types}`,
+            '@types/react-dom': `^${reactVersion.types}`,
+            'react-carburetor': `file:${tarballPath}`,
+        },
+    }, null, 2));
+
+    if (packageManager === 'npm') {
+        return run('npm', ['install', '--no-audit', '--no-fund'], {cwd: installDir});
+    }
+
+    const pnpm = pnpmCommand();
+
+    if (!pnpm) {
+        return {ok: false, skip: true, stderr: 'pnpm is not available locally (no corepack, no pnpm binary)'};
+    }
+
+    return run(pnpm.command, [...pnpm.prefix, 'install', '--no-frozen-lockfile'], {cwd: installDir});
+};
+
+const TSCONFIG = (format) => ({
+    compilerOptions: {
+        target: 'ES2020',
+        module: format === 'esm' ? 'ESNext' : 'CommonJS',
+        moduleResolution: 'bundler',
+        lib: ['ES2020', 'DOM'],
+        jsx: 'react-jsx',
+        strict: true,
+        esModuleInterop: true,
+        skipLibCheck: true,
+        // A separate outDir, not "."/rootDir: tsc treats outDir === rootDir as "the output
+        // directory contains the input", auto-excludes it, and finds nothing to compile.
+        outDir: 'out',
+        rootDir: '.',
+        types: [],
+    },
+    include: ['consumer.tsx'],
+});
+
+const HARNESS_ESM = `import * as React from 'react';
+import {renderToString} from 'react-dom/server';
+import {App, registry} from './out/consumer.js';
+
+const html = renderToString(React.createElement(App));
+const checks = [
+    ['direct output', html.includes('direct:1:1:2:idle')],
+    ['scoped output', html.includes('scoped:5')],
+    ['hooks output', html.includes('hooks:1:2')],
+    ['instanceof this React.Component', registry.instance instanceof React.Component],
+];
+const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
+
+if (failed.length > 0) {
+    console.error('FAIL: ' + failed.join(', ') + ' -- html: ' + html);
+    process.exit(1);
+}
+
+console.log('OK');
+`;
+
+const HARNESS_CJS = `const React = require('react');
+const {renderToString} = require('react-dom/server');
+const {App, registry} = require('./out/consumer.js');
+
+const html = renderToString(React.createElement(App));
+const checks = [
+    ['direct output', html.includes('direct:1:1:2:idle')],
+    ['scoped output', html.includes('scoped:5')],
+    ['hooks output', html.includes('hooks:1:2')],
+    ['instanceof this React.Component', registry.instance instanceof React.Component],
+];
+const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
+
+if (failed.length > 0) {
+    console.error('FAIL: ' + failed.join(', ') + ' -- html: ' + html);
+    process.exit(1);
+}
+
+console.log('OK');
+`;
+
+/**
+ * Typechecks + compiles the fixture for one module format, then runs the smoke harness.
+ *
+ * @param installDir - an already-installed consumer directory (see installConsumer)
+ * @param format - 'esm' or 'cjs'
+ */
+export const checkFormat = (installDir, format) => {
+    const formatDir = path.join(installDir, `run-${format}`);
+
+    mkdirSync(formatDir, {recursive: true});
+    writeFileSync(path.join(formatDir, 'consumer.tsx'), readFileSync(FIXTURE, 'utf8'));
+    writeFileSync(path.join(formatDir, 'tsconfig.json'), JSON.stringify(TSCONFIG(format), null, 2));
+    writeFileSync(path.join(formatDir, 'package.json'), JSON.stringify({
+        type: format === 'esm' ? 'module' : 'commonjs',
+    }, null, 2));
+
+    const typecheck = run(process.execPath, [TSC_BIN, '-p', 'tsconfig.json'], {cwd: formatDir});
+
+    if (!typecheck.ok) {
+        return {ok: false, stage: 'typecheck', stderr: typecheck.stdout + typecheck.stderr};
+    }
+
+    const harnessName = format === 'esm' ? 'harness.mjs' : 'harness.cjs';
+
+    writeFileSync(path.join(formatDir, harnessName), format === 'esm' ? HARNESS_ESM : HARNESS_CJS);
+
+    const smoke = run(process.execPath, [harnessName], {cwd: formatDir});
+
+    if (!smoke.ok) {
+        return {ok: false, stage: 'runtime', stderr: smoke.stdout + smoke.stderr};
+    }
+
+    return {ok: true};
+};

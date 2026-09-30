@@ -1,4 +1,5 @@
 "use strict";
+"use client";
 var __webpack_require__ = {};
 (()=>{
     __webpack_require__.d = (exports1, getters, values)=>{
@@ -31,20 +32,39 @@ __webpack_require__.d(__webpack_exports__, {
     useCarburetorValue: ()=>useCarburetorValue
 });
 const external_react_namespaceObject = require("react");
-const detachOpaque_js_namespaceObject = require("../Carburetor/Store/Utils/detachOpaque.js");
+const detachOpaque_js_namespaceObject = require("../Carburetor/Store/Utils/Selection/detachOpaque.js");
+const sameSelection_js_namespaceObject = require("../Carburetor/Component/Connection/sameSelection.js");
+const isTrackable_js_namespaceObject = require("../Carburetor/Store/Tracking/isTrackable.js");
+const transferReads_js_namespaceObject = require("../Carburetor/Store/Paths/Markers/transferReads.js");
 const sameReads = (a, b)=>{
     if (a.size !== b.size) return false;
     for (const path of a)if (!b.has(path)) return false;
     return true;
 };
+const resolveView = (cached, carburetor, record)=>{
+    const data = carburetor.getData();
+    if (null !== cached && cached.carburetor === carburetor && cached.data === data && (0, isTrackable_js_namespaceObject.isTrackable)(data)) return cached;
+    return {
+        carburetor,
+        data,
+        view: carburetor.read(record)
+    };
+};
 const describeInstance = (instance)=>{
     var _Object_getPrototypeOf_constructor, _Object_getPrototypeOf;
     return (null == (_Object_getPrototypeOf = Object.getPrototypeOf(instance)) ? void 0 : null == (_Object_getPrototypeOf_constructor = _Object_getPrototypeOf.constructor) ? void 0 : _Object_getPrototypeOf_constructor.name) || 'class';
 };
-const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
+const detach = (value)=>{
+    if (null === value || 'object' != typeof value) return value;
+    return (0, detachOpaque_js_namespaceObject.detachOpaque)(value, (instance)=>{
+        throw new Error('useCarburetorValue() cannot select a live ' + describeInstance(instance) + " instance because in-place changes cannot produce a safe React snapshot. Select the fields the component renders or return a plain object of those fields.");
+    });
+};
+const useCarburetorValue = (carburetor, select, isEqual = sameSelection_js_namespaceObject.sameSelection)=>{
     const cache = (0, external_react_namespaceObject.useRef)({
         carburetor: void 0,
         select: void 0,
+        isEqual: void 0,
         version: -1,
         value: void 0,
         filled: false
@@ -52,6 +72,12 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const pendingReads = (0, external_react_namespaceObject.useRef)(new Set());
     const active = (0, external_react_namespaceObject.useRef)(null);
     const notify = (0, external_react_namespaceObject.useRef)(null);
+    const view = (0, external_react_namespaceObject.useRef)(null);
+    const currentReads = (0, external_react_namespaceObject.useRef)(void 0);
+    const recordRead = (0, external_react_namespaceObject.useCallback)((path)=>{
+        var _currentReads_current;
+        null == (_currentReads_current = currentReads.current) || _currentReads_current.add(path);
+    }, []);
     const install = (0, external_react_namespaceObject.useCallback)(()=>{
         const onStoreChange = notify.current;
         if (!onStoreChange) return;
@@ -59,9 +85,7 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
         const current = active.current;
         if (current && current.carburetor === carburetor && sameReads(current.reads, reads)) return;
         if (current) current.carburetor.unsubscribe(current.id);
-        const id = carburetor.subscribe(onStoreChange, {
-            reads
-        });
+        const id = carburetor.subscribe(onStoreChange, (0, transferReads_js_namespaceObject.transferReads)(reads));
         active.current = {
             carburetor,
             id,
@@ -89,35 +113,34 @@ const useCarburetorValue = (carburetor, select, isEqual = Object.is)=>{
     const getSnapshot = (0, external_react_namespaceObject.useCallback)(()=>{
         const entry = cache.current;
         const version = carburetor.getVersion();
-        if (entry.filled && entry.carburetor === carburetor && entry.select === select && entry.version === version) return entry.value;
+        if (entry.filled && entry.carburetor === carburetor && entry.select === select && entry.isEqual === isEqual && entry.version === version) return entry.value;
+        view.current = resolveView(view.current, carburetor, recordRead);
         const reads = new Set();
-        let next = select(carburetor.read((path)=>reads.add(path)));
-        if (null !== next && 'object' == typeof next) next = (0, detachOpaque_js_namespaceObject.detachOpaque)(next, (instance)=>{
-            throw new Error('useCarburetorValue() cannot select a live ' + describeInstance(instance) + " instance because in-place changes cannot produce a safe React snapshot. Select the fields the component renders or return a plain object of those fields.");
-        });
-        pendingReads.current = reads;
-        if (entry.filled && isEqual(entry.value, next)) {
-            cache.current = {
-                carburetor,
-                select,
-                version,
-                value: entry.value,
-                filled: true
-            };
-            return entry.value;
+        currentReads.current = reads;
+        let result;
+        try {
+            const fresh = select(view.current.view);
+            pendingReads.current = reads;
+            const liveCompare = isEqual === sameSelection_js_namespaceObject.sameSelection;
+            const candidate = liveCompare ? fresh : detach(fresh);
+            result = entry.filled && isEqual(entry.value, candidate) ? entry.value : liveCompare ? detach(fresh) : candidate;
+        } finally{
+            currentReads.current = void 0;
         }
         cache.current = {
             carburetor,
             select,
+            isEqual,
             version,
-            value: next,
+            value: result,
             filled: true
         };
-        return next;
+        return result;
     }, [
         carburetor,
         select,
-        isEqual
+        isEqual,
+        recordRead
     ]);
     (0, external_react_namespaceObject.useLayoutEffect)(()=>{
         install();

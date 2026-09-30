@@ -1,10 +1,10 @@
 import {isPlainObject} from "./isPlainObject";
 
 /**
- * Whether the value is an object `detachSelection` passes through untouched — a Map, Set, Date,
- * class instance. Its reference can stay identical while its visible content mutates in place,
- * so no comparison of references can prove one unchanged: any selection holding one is treated
- * as changed.
+ * Whether the value is an exotic object — a Map, Set, Date or class instance. Its
+ * reference can stay identical while its visible content mutates in place (and class
+ * instances may pass through detachment live), so no reference comparison can prove one
+ * unchanged: any selection holding one is treated as changed.
  */
 const isExotic = (value: unknown): boolean =>
     typeof value === 'object' && value !== null && !Array.isArray(value) && !isPlainObject(value);
@@ -95,8 +95,8 @@ const sameKeyedContent = (
 const sameValue = (
     a: unknown,
     b: unknown,
-    previousToFresh: WeakMap<object, object>,
-    freshToPrevious: WeakMap<object, object>
+    previousToFresh?: WeakMap<object, object>,
+    freshToPrevious?: WeakMap<object, object>
 ): boolean => {
     // Mutable exotic members are decided before the `Object.is` shortcut (R5-02): the same Map
     // instance on both sides can have been mutated in place between the two reads, so identity
@@ -115,17 +115,28 @@ const sameValue = (
         return false;
     }
 
-    const mapped = previousToFresh.get(a);
+    // Minted here, at the first container pair, not by sameSelection up front (R16-09): a
+    // primitive comparison returns above and never pays for these — 202 ns against 15 ns for
+    // Object.is. Once created, the same pair threads through the whole recursion via
+    // sameKeyedContent's non-optional parameters, so cycle detection still spans the call.
+    const previous = previousToFresh ?? new WeakMap<object, object>();
+    const fresh = freshToPrevious ?? new WeakMap<object, object>();
+
+    const mapped = previous.get(a);
 
     if (mapped !== undefined) {
         return mapped === b;
     }
 
-    if (freshToPrevious.get(b) !== undefined) {
+    if (fresh.get(b) !== undefined) {
         return false;
     }
 
     if (Array.isArray(a) || Array.isArray(b)) {
+        // `a` (already handed out) can never be an Array subclass — detachSelection() rejects one
+        // before a snapshot holding it is ever built (R12-01) — so a fresh `b` that is one always
+        // fails this prototype check and falls through to that same rejection instead of being
+        // reported "same" or silently forged here.
         if (
             !Array.isArray(a) || !Array.isArray(b) ||
             a.length !== b.length || Object.getPrototypeOf(a) !== Object.getPrototypeOf(b)
@@ -133,10 +144,10 @@ const sameValue = (
             return false;
         }
 
-        previousToFresh.set(a, b);
-        freshToPrevious.set(b, a);
+        previous.set(a, b);
+        fresh.set(b, a);
 
-        return sameKeyedContent(a, b, previousToFresh, freshToPrevious);
+        return sameKeyedContent(a, b, previous, fresh);
     }
 
     if (!isPlainObject(a) || !isPlainObject(b)) {
@@ -147,10 +158,10 @@ const sameValue = (
         return false;
     }
 
-    previousToFresh.set(a, b);
-    freshToPrevious.set(b, a);
+    previous.set(a, b);
+    fresh.set(b, a);
 
-    return sameKeyedContent(a, b, previousToFresh, freshToPrevious);
+    return sameKeyedContent(a, b, previous, fresh);
 };
 
 /**
@@ -168,4 +179,4 @@ const sameValue = (
  * @param next - the fresh selection to compare it against
  */
 export const sameSelection = (snapshot: unknown, next: unknown): boolean =>
-    sameValue(snapshot, next, new WeakMap<object, object>(), new WeakMap<object, object>());
+    sameValue(snapshot, next);

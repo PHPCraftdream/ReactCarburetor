@@ -5,6 +5,15 @@ export declare abstract class AntiHookComponentSubscriptions<P = {}, S = {}> ext
      *
      * `forceUpdate` deliberately skips `shouldComponentUpdate`: the props gate must not be able
      * to swallow an update the component is itself subscribed to.
+     *
+     * Stays a per-instance arrow field rather than a shared prototype method: `subscribe` is
+     * handed a detached callback it stores and invokes with no receiver, so whatever reaches
+     * the store must already be bound to this instance. `renderGetter`/`renderSetter` can be one
+     * shared static pair (R14-05) only because React looks `render` up as a property of `this`
+     * and calls it as a method; a callback handed to `subscribe` gets no such lookup, so a bound
+     * function costs the same one-object-per-instance as this closure does. Subscribing keys by
+     * `uid`, not by this function's identity, but the identity still has to exist somewhere to
+     * be callable at all.
      */
     protected onCarburetorUpdate: () => void;
     /**
@@ -26,15 +35,48 @@ export declare abstract class AntiHookComponentSubscriptions<P = {}, S = {}> ext
      */
     protected commitSubscriptions(): void;
     /**
+     * Returns the tracked map, allocating it on first use.
+     *
+     * A `connect()`-only component never calls `useCarburetor`/`useComputed`/`useResource`, so
+     * it never needs this map; allocating it here, rather than as a class field default, keeps
+     * that component from paying for a collection it will never fill.
+     */
+    private ensureTracked;
+    /**
+     * Builds a fresh committed description out of one attempt entry.
+     *
+     * @param entry - the attempt's record for the source being committed
+     */
+    private buildDescription;
+    /**
+     * Publishes one attempt entry onto a slot's committed description, reusing the existing
+     * description object when there is one instead of allocating a fresh one every commit.
+     *
+     * Safe to mutate in place: a committed description is read only through `slot.committed`
+     * inside `alignSubscription`, in the same synchronous call that follows this one, and is
+     * never held past it or compared by identity anywhere else.
+     *
+     * @param slot - the tracked slot or connection being committed
+     * @param entry - the attempt's record for the source being committed
+     */
+    private applyDescription;
+    /**
      * Brings one slot's registration in line with its committed description.
      *
      * No description means nothing may be listening: an installed handle is unsubscribed and
      * cleared. Otherwise a handle pointing at another carburetor is dropped first, and an
-     * unchanged read set skips re-registering. Returns the drift check: whether the store's
-     * version moved past the description's baseline, i.e. whether a write landed between the
-     * render's read and this commit — anchored to the baseline captured at the attempt's first
-     * read, not refreshed after every access, which is what keeps an unused connection from
-     * looping forceUpdate forever.
+     * unchanged read set skips re-registering. Returns the drift check: whether a write that
+     * could concern the committed read set landed between the render's read and this commit —
+     * anchored to the baseline captured at the attempt's first read, not refreshed after every
+     * access, which is what keeps an unused connection from looping forceUpdate forever.
+     *
+     * A version equal to the baseline means nothing was written at all since then, so there is
+     * nothing further to check. A version that moved asks the source's own write log (R16-05)
+     * which paths actually changed, and reports a drift only when one of them concerns what was
+     * read — the same three cases `SubscriberIndex.match` uses: the same path, a written
+     * ancestor, a written descendant. A source with no such log (`hasDriftSince` absent, e.g. a
+     * computed, which invalidates at the granularity of its whole value) keeps today's coarser
+     * answer: any version change is a drift.
      *
      * @param uid - the id the slot's registration is keyed under: the component's own for
      * `tracked` records, the connection's own for connections
@@ -65,26 +107,4 @@ export declare abstract class AntiHookComponentSubscriptions<P = {}, S = {}> ext
      * through a fresh attempt, which clears descriptions wholesale, not through this method.
      */
     protected releaseSubscriptions(): void;
-    /**
-     * Drops every connect()/connectSelection() view's watcher slot from its store's shared
-     * invalidation scope, so an unmounted component stops being scanned on the next write or
-     * cache construction there instead of waiting on garbage collection (R3-07).
-     *
-     * Read from `this.connections`, not a separately populated/cleared list: a connection's
-     * declaration is never pruned, so its `view` reference survives a StrictMode-replayed
-     * componentWillUnmount/componentDidMount pair intact, and a real unmount later still finds
-     * whichever facade the persistent declaration currently owns — even one built after a root
-     * replacement that happened between the replay and the real unmount (R4-05). A list
-     * populated once by connect()/connectSelection() and unconditionally emptied here on every
-     * unmount, replay included, had nothing to repopulate it before that later real unmount.
-     *
-     * `PROXY_CACHE` is a peek, not a read (R4-09): a declaration never actually read during
-     * this component's life has no cache built for it, and the facade answers `undefined`
-     * instead of resolving the source and minting one from scratch just to release it here.
-     *
-     * Each view is released in isolation, the same way `releaseEffects` isolates each cleanup:
-     * one view whose source can no longer be resolved must not cost the views after it their
-     * release.
-     */
-    protected releaseConnectionViews(): void;
 }

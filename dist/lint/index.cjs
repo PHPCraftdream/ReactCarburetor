@@ -129,17 +129,100 @@ const platformPackageBinary = ()=>{
 const ALL_RULE_IDS = Object.keys(RECOMMENDED);
 const WAIT_TIMEOUT_MS = 30000;
 const POLL_INTERVAL_MS = 20;
+const BRIDGE_DIR = external_path_namespaceObject.join(external_os_namespaceObject.tmpdir(), 'carburetor-lint');
+const PROCESS_START_MS = Date.now() - Math.round(1000 * process.uptime());
+const STALE_LOCK_TOLERANCE_MS = 2000;
+const MAX_CLAIM_ATTEMPTS = 5;
 let cached;
+const pendingCleanup = new Set();
+let cleanupRegistered = false;
 const sleepSync = (milliseconds)=>{
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 };
 const runPaths = (cwd)=>{
     const digest = Buffer.from(cwd).toString('base64url').slice(0, 24);
-    const base = external_path_namespaceObject.join(external_os_namespaceObject.tmpdir(), `carburetor-lint-${process.pid}-${digest}`);
     return {
-        lock: `${base}.lock`,
-        result: `${base}.json`
+        lock: external_path_namespaceObject.join(BRIDGE_DIR, `${process.pid}-${digest}.lock`),
+        digest
     };
+};
+const resultPathFor = (lock, identity)=>lock.replace(/\.lock$/, `.${identity.dev.toString(36)}${identity.ino.toString(36)}.json`);
+const isAlive = (pid)=>{
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (error) {
+        return 'EPERM' === error.code;
+    }
+};
+const sweepStaleFiles = (digest)=>{
+    let entries;
+    try {
+        entries = (0, external_fs_namespaceObject.readdirSync)(BRIDGE_DIR);
+    } catch  {
+        return;
+    }
+    const pattern = new RegExp(`^(\\d+)-${digest}(?:\\.[0-9a-z]+)?\\.(?:lock|json)$`);
+    for (const name of entries){
+        const match = pattern.exec(name);
+        const pid = null === match ? void 0 : Number(match[1]);
+        if (!(void 0 === pid || pid === process.pid || isAlive(pid))) try {
+            (0, external_fs_namespaceObject.unlinkSync)(external_path_namespaceObject.join(BRIDGE_DIR, name));
+        } catch  {}
+    }
+};
+const scheduleCleanup = (...paths)=>{
+    paths.forEach((file)=>pendingCleanup.add(file));
+    if (cleanupRegistered) return;
+    cleanupRegistered = true;
+    process.once('exit', ()=>{
+        for (const file of pendingCleanup)try {
+            (0, external_fs_namespaceObject.unlinkSync)(file);
+        } catch  {}
+    });
+};
+const writeAtomic = (target, content)=>{
+    const tmp = `${target}.${process.pid}-${Math.random().toString(36).slice(2)}.tmp`;
+    (0, external_fs_namespaceObject.writeFileSync)(tmp, content);
+    try {
+        (0, external_fs_namespaceObject.renameSync)(tmp, target);
+    } catch (error) {
+        try {
+            (0, external_fs_namespaceObject.unlinkSync)(tmp);
+        } catch  {}
+        throw error;
+    }
+};
+const isForeignAndDead = (lock)=>{
+    try {
+        return (0, external_fs_namespaceObject.statSync)(lock).mtimeMs < PROCESS_START_MS - STALE_LOCK_TOLERANCE_MS;
+    } catch  {
+        return false;
+    }
+};
+const claimLock = (lock)=>{
+    for(let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt++){
+        try {
+            (0, external_fs_namespaceObject.closeSync)((0, external_fs_namespaceObject.openSync)(lock, 'wx'));
+            return {
+                isRunner: true,
+                identity: (0, external_fs_namespaceObject.statSync)(lock)
+            };
+        } catch  {}
+        if (isForeignAndDead(lock)) {
+            try {
+                (0, external_fs_namespaceObject.unlinkSync)(lock);
+            } catch  {}
+            continue;
+        }
+        try {
+            return {
+                isRunner: false,
+                identity: (0, external_fs_namespaceObject.statSync)(lock)
+            };
+        } catch  {}
+    }
+    throw new Error('react-carburetor/lint: could not claim or read the native bridge lock.');
 };
 const runBinary = (cwd, resolve = resolveBinary)=>{
     const binary = resolve();
@@ -162,30 +245,25 @@ const runBinary = (cwd, resolve = resolveBinary)=>{
 };
 const runNativeOnce = (cwd, resolve = resolveBinary)=>{
     if (cached) return cached;
-    const { lock, result } = runPaths(cwd);
-    (0, external_fs_namespaceObject.mkdirSync)(external_path_namespaceObject.dirname(lock), {
+    const { lock, digest } = runPaths(cwd);
+    (0, external_fs_namespaceObject.mkdirSync)(BRIDGE_DIR, {
         recursive: true
     });
-    let isRunner = false;
-    try {
-        (0, external_fs_namespaceObject.closeSync)((0, external_fs_namespaceObject.openSync)(lock, 'wx'));
-        isRunner = true;
-    } catch  {
-        isRunner = false;
-    }
-    if (isRunner) try {
-        cached = runBinary(cwd, resolve);
-        (0, external_fs_namespaceObject.writeFileSync)(result, JSON.stringify(cached));
-        return cached;
-    } catch (error) {
-        (0, external_fs_namespaceObject.writeFileSync)(result, JSON.stringify({
-            error: error instanceof Error ? error.message : String(error)
-        }));
-        throw error;
-    } finally{
+    const { isRunner, identity } = claimLock(lock);
+    const result = resultPathFor(lock, identity);
+    scheduleCleanup(lock, result);
+    if (isRunner) {
+        sweepStaleFiles(digest);
         try {
-            (0, external_fs_namespaceObject.unlinkSync)(lock);
-        } catch  {}
+            cached = runBinary(cwd, resolve);
+            writeAtomic(result, JSON.stringify(cached));
+            return cached;
+        } catch (error) {
+            writeAtomic(result, JSON.stringify({
+                error: error instanceof Error ? error.message : String(error)
+            }));
+            throw error;
+        }
     }
     const deadline = Date.now() + WAIT_TIMEOUT_MS;
     while(!(0, external_fs_namespaceObject.existsSync)(result) && Date.now() < deadline)sleepSync(POLL_INTERVAL_MS);

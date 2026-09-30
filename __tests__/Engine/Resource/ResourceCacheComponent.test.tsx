@@ -97,6 +97,39 @@ describe('a component reading a resource cache', () => {
         unmount();
     });
 
+    test('useResource serializes object args once per render, not once per accessor', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, {id: string}>((args) => loader.load(args.id));
+
+        // Pre-settled and fresh, so a render neither queues a deferred load nor forces a second
+        // render — the stringify count below is attributable to useResource's own read alone.
+        void cache.load({id: 'a'});
+        loader.settle[0]('Ann');
+        await flush();
+
+        const stringify = rstest.spyOn(JSON, 'stringify');
+
+        try {
+            stringify.mockClear();
+
+            const {rerender, unmount} = render(<QueryRow cache={cache} query={{id: 'a'}}/>);
+
+            // useResource resolves the key once (keyOf) and reuses it for both the read path
+            // (pathOfKey) and the entry lookup (getEntryByKey), instead of paying keyOf's
+            // stringify twice per render.
+            expect(stringify).toHaveBeenCalledTimes(1);
+
+            stringify.mockClear();
+            rerender(<QueryRow cache={cache} query={{id: 'a'}}/>);
+
+            expect(stringify).toHaveBeenCalledTimes(1);
+
+            unmount();
+        } finally {
+            stringify.mockRestore();
+        }
+    });
+
     test('the answer reaches the component that asked for it', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, string>(loader.load);

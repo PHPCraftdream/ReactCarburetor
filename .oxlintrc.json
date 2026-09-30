@@ -19,6 +19,7 @@
         "carburetor-internal/no-blank-line-after-tsdoc": "error",
         "carburetor-internal/no-parent-import": "error",
         "carburetor-internal/require-tsdoc": ["error", {"requireParamDocs": true, "requireFieldDocs": true}],
+        "carburetor-internal/tsdoc-blank-line-before-tags": "error",
         "carburetor/no-async-effect": "error",
         "carburetor/no-async-transaction": "error",
         "carburetor/no-computed-get-in-computed": "error",

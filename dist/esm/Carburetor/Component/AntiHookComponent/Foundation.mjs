@@ -1,18 +1,49 @@
+"use client";
 import { getUid } from "../../Store/Utils/getUid.mjs";
 import { shallowEqual } from "../shallowEqual.mjs";
+import { renderOwner } from "../../Derived/renderOwner.mjs";
 import * as __rspack_external_react from "react";
 const RENDER_KEY = "render";
+const RENDER_RAW = Symbol('carburetor.antiHookComponent.renderRaw');
+const RENDER_BOUNDARY = Symbol('carburetor.antiHookComponent.renderBoundary');
+const RENDER_ASSIGNED = Symbol('carburetor.antiHookComponent.renderAssigned');
+const describeUnmountFailure = (error)=>error instanceof Error ? error.message : String(error);
 class AntiHookComponentFoundation extends __rspack_external_react.Component {
     uid = getUid();
-    effects = {};
-    tracked = {};
+    effects = void 0;
+    tracked = void 0;
     connections = [];
     renderAttempt = void 0;
     pendingAttempt = void 0;
     committedAttempt = void 0;
+    [RENDER_RAW] = void 0;
+    [RENDER_BOUNDARY] = void 0;
+    [RENDER_ASSIGNED] = false;
+    installRenderBoundary() {
+        Object.defineProperty(this, RENDER_KEY, {
+            configurable: false,
+            enumerable: false,
+            get: AntiHookComponentFoundation.renderGetter,
+            set: AntiHookComponentFoundation.renderSetter
+        });
+    }
+    static renderGetter() {
+        const raw = this[RENDER_ASSIGNED] ? this[RENDER_RAW] : Reflect.get(Object.getPrototypeOf(this), RENDER_KEY, this);
+        if ('function' != typeof raw) return raw;
+        if (void 0 === this[RENDER_BOUNDARY] || raw !== this[RENDER_RAW]) {
+            this[RENDER_RAW] = raw;
+            this[RENDER_BOUNDARY] = this.buildRenderBoundary(raw);
+        }
+        return this[RENDER_BOUNDARY];
+    }
+    static renderSetter(value) {
+        this[RENDER_ASSIGNED] = 'function' == typeof value;
+        this[RENDER_RAW] = value;
+        this[RENDER_BOUNDARY] = this[RENDER_ASSIGNED] ? this.buildRenderBoundary(value) : void 0;
+    }
     constructor(props){
         super(props);
-        return this.withRenderBoundary();
+        this.installRenderBoundary();
     }
     shouldComponentUpdate(nextProps, nextState) {
         return !shallowEqual(this.props, nextProps) || !shallowEqual(this.state, nextState);
@@ -30,73 +61,48 @@ class AntiHookComponentFoundation extends __rspack_external_react.Component {
     }
     componentWillUnmount() {
         const failures = [];
-        this.runTeardownStage("the component-wide unUseEffects callback threw while a component unmounted", ()=>this.unUseEffects(this.props), failures);
-        this.runTeardownStage('an effect cleanup threw while a component unmounted', ()=>this.releaseEffects(), failures);
-        this.runTeardownStage("releasing subscriptions threw while a component unmounted", ()=>this.releaseSubscriptions(), failures);
-        this.runTeardownStage("releasing a connect() view's cache threw while a component unmounted", ()=>this.releaseConnectionViews(), failures);
-        failures.forEach((failure)=>this.reportTeardownFailure(failure));
+        try {
+            this.unUseEffects(this.props);
+        } catch (error) {
+            failures.push("the component-wide unUseEffects callback threw while a component unmounted: " + describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
+        try {
+            this.releaseEffects();
+        } catch (error) {
+            failures.push('an effect cleanup threw while a component unmounted: ' + describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
+        try {
+            this.releaseSubscriptions();
+        } catch (error) {
+            failures.push("releasing subscriptions threw while a component unmounted: " + describeUnmountFailure(error) + '. The teardown completed anyway.');
+        }
+        for(let i = 0; i < failures.length; i++)this.reportTeardownFailure(failures[i]);
     }
-    withRenderBoundary() {
-        let rawRender;
-        let boundary;
-        let wrapped = false;
-        let receiver;
-        const proxy = new Proxy(this, {
-            get: (target, key)=>{
-                if (key !== RENDER_KEY) return Reflect.get(target, key, receiver);
-                const raw = wrapped ? rawRender : Reflect.get(target, RENDER_KEY, receiver);
-                if ('function' != typeof raw) return raw;
-                if (void 0 === boundary || rawRender !== raw) {
-                    rawRender = raw;
-                    boundary = this.buildRenderBoundary(raw, receiver);
-                }
-                return boundary;
-            },
-            set: (target, key, value)=>{
-                if (key !== RENDER_KEY) return Reflect.set(target, key, value, receiver);
-                rawRender = value;
-                wrapped = 'function' == typeof value;
-                boundary = wrapped ? this.buildRenderBoundary(value, receiver) : void 0;
-                return true;
-            },
-            defineProperty: (target, key, descriptor)=>{
-                if (key !== RENDER_KEY) return Reflect.defineProperty(target, key, descriptor);
-                rawRender = descriptor.value;
-                wrapped = 'function' == typeof descriptor.value;
-                boundary = wrapped ? this.buildRenderBoundary(descriptor.value, receiver) : void 0;
-                return true;
-            },
-            deleteProperty: (target, key)=>{
-                if (key === RENDER_KEY) {
-                    rawRender = void 0;
-                    boundary = void 0;
-                    wrapped = false;
-                }
-                return Reflect.deleteProperty(target, key);
-            },
-            has: (target, key)=>key === RENDER_KEY ? wrapped || Reflect.has(target, RENDER_KEY) : Reflect.has(target, key)
-        });
-        receiver = proxy;
-        return proxy;
-    }
-    buildRenderBoundary(realRender, receiver) {
+    buildRenderBoundary(realRender) {
         return ()=>{
             const attempt = this.openRenderAttempt();
+            const development = "u" > typeof process && 'production' !== process.env.NODE_ENV;
+            const previousOwner = development ? renderOwner.get() : void 0;
+            if (development) renderOwner.set({
+                uid: this.uid,
+                hasTracked: (source)=>void 0 !== attempt.tracked && attempt.tracked.has(source)
+            });
             try {
-                return realRender.call(receiver);
+                return realRender.call(this);
             } catch (error) {
                 attempt.abandoned = true;
                 throw error;
             } finally{
+                if (development) renderOwner.set(previousOwner);
                 this.closeRenderAttempt(attempt);
             }
         };
     }
     openRenderAttempt() {
         const attempt = {
-            entries: new Map(),
-            sources: new Map(),
-            deferredLoads: [],
+            tracked: void 0,
+            connections: void 0,
+            deferredLoads: void 0,
             abandoned: false
         };
         this.renderAttempt = attempt;

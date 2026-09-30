@@ -1,0 +1,1 @@
+import{READS_TRANSFER as r}from"./ReadsTransferBrand.mjs";let e=(e,a)=>({id:a,reads:e,[r]:e});export{e as transferReads};

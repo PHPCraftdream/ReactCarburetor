@@ -1,4 +1,5 @@
-import {Carburetor, TPath} from "@/Carburetor";
+import {Carburetor} from "@/Carburetor";
+import {TPath} from "@/Carburetor/Models/Paths";
 import {getTestData, readsOf, TestCarburetor} from "./fixtures";
 
 describe('Carburetor', () => {    test('draft stays correct after a nested branch is replaced', () => {
@@ -77,9 +78,12 @@ describe('Carburetor', () => {    test('draft stays correct after a nested branc
         expect(Object.keys(data.nested)).toEqual(['value']);
 
         // The gOPD call the enumeration performs is a structure check, not a value read:
-        // recording it would wake this reader when only `nested.value` changes.
+        // recording it would wake this reader when only `nested.value` changes. It also
+        // subscribes to the key-set marker (R16-01), not `nested`'s own path — a value write
+        // under an unchanged key set must not wake an enumerator either.
         expect(reads.has('nested.value')).toBeFalsy();
-        expect(reads.has('nested')).toBeTruthy();
+        expect(reads.has('nested')).toBeFalsy();
+        expect(reads.has('nested.~k')).toBeTruthy();
     });
 
     test('reading into a frozen branch refuses with the path instead of the raw TypeError', () => {
@@ -161,44 +165,29 @@ describe('Carburetor', () => {    test('draft stays correct after a nested branc
         expect(renders).toEqual(1);
     });
 
-    test('a getter reads through the proxy, so the reads inside it are tracked', () => {
+    // R6-02/R6-03: a getter is no longer valid state — accessors are incompatible with paths,
+    // diffing and cloning; the constructor now rejects one before it is ever read, and never
+    // invokes it while checking. See StateModel.test.ts for the fuller coverage of this
+    // rejection (root, nested, and through draft).
+    test('a getter in the initial state is rejected at construction, without ever being invoked', () => {
         interface IDoublerData {
             n: number;
             readonly doubled: number;
         }
 
+        let calls = 0;
+
         const getDoublerData = (): IDoublerData => ({
             n: 1,
             get doubled(): number {
+                calls++;
+
                 return this.n * 2;
             },
         });
 
-        class DoublerCarburetor extends Carburetor<IDoublerData> {
-            public setN = (n: number) => {
-                this.update((draft: IDoublerData) => {
-                    draft.n = n;
-                });
-            };
-        }
-
-        const carburetor = new DoublerCarburetor(getDoublerData());
-        const reads = new Set<TPath>();
-        let renders = 0;
-
-        const data = carburetor.read((path: TPath) => reads.add(path));
-        const doubled = data.doubled;
-
-        carburetor.subscribe(() => renders++, {id: 'doubled-reader', reads});
-
-        expect(doubled).toEqual(2);
-        expect(reads.has('doubled')).toBeTruthy();
-        // `this.n` inside the getter went through the proxy: the reader depends on `n` too.
-        expect(reads.has('n')).toBeTruthy();
-
-        carburetor.setN(5);
-        expect(renders).toEqual(1);
-        expect(carburetor.read(() => undefined).doubled).toEqual(10);
+        expect(() => new Carburetor<IDoublerData>(getDoublerData())).toThrow('doubled');
+        expect(calls).toEqual(0);
     });
 
     test('an object reachable under two paths is reported when read and when written', () => {

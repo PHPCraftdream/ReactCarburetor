@@ -1,3 +1,4 @@
+"use client";
 import { diagnostics } from "../../Store/Diagnostics/DiagnosticsInstance.mjs";
 import { AntiHookComponentReads } from "./Reads.mjs";
 import { shallowEqual } from "../shallowEqual.mjs";
@@ -5,18 +6,12 @@ const describeFailure = (error)=>error instanceof Error ? error.message : String
 class AntiHookComponentEffects extends AntiHookComponentReads {
     useEffects() {}
     unUseEffects(_prevProps) {}
-    reportTeardownFailure = (failure)=>{
+    reportTeardownFailure(failure) {
         if ("u" > typeof process && 'production' !== process.env.NODE_ENV) diagnostics.report(failure);
-    };
-    runTeardownStage = (what, stage, failures)=>{
-        try {
-            stage();
-        } catch (error) {
-            failures.push(what + ': ' + describeFailure(error) + '. The teardown completed anyway.');
-        }
-    };
-    useEffect = (callBack, name, deps)=>{
-        const known = this.effects[name];
+    }
+    useEffect(name, callBack, deps) {
+        const records = this.effects;
+        const known = records && Object.prototype.hasOwnProperty.call(records, name) ? records[name] : void 0;
         if (known && shallowEqual(known.deps, deps)) return;
         const failures = [];
         if (known && known.cleanup) try {
@@ -28,17 +23,24 @@ class AntiHookComponentEffects extends AntiHookComponentReads {
             deps,
             cleanup: void 0
         };
-        this.effects[name] = record;
+        this.ensureEffects()[name] = record;
         try {
             const cleanup = callBack();
             record.cleanup = 'function' == typeof cleanup ? cleanup : void 0;
         } finally{
             failures.forEach((error)=>this.reportTeardownFailure('an effect cleanup threw while an effect was replaced: ' + describeFailure(error) + '. The new effect ran anyway.'));
         }
-    };
+    }
+    ensureEffects() {
+        if (void 0 !== this.effects) return this.effects;
+        const records = Object.create(null);
+        this.effects = records;
+        return records;
+    }
     releaseEffects() {
         const records = this.effects;
-        this.effects = {};
+        if (void 0 === records) return;
+        this.effects = void 0;
         const failures = [];
         Object.keys(records).forEach((name)=>{
             const cleanup = records[name].cleanup;

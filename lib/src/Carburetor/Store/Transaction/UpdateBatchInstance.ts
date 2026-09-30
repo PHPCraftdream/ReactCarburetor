@@ -1,4 +1,9 @@
+import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {UpdateBatch} from "./UpdateBatch";
 
-/** The batch every carburetor reports to, so one transaction can span several stores. */
-export const updateBatch = new UpdateBatch();
+/**
+ * The batch every carburetor reports to, so one transaction can span several stores. Shared
+ * across every copy of the library in this process — see sharedSingleton — so a transaction
+ * batches a store from another copy too, instead of that store notifying immediately.
+ */
+export const updateBatch = sharedSingleton('updateBatch', () => new UpdateBatch());
