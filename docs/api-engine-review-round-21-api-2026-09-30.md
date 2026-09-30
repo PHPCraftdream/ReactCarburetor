@@ -4,41 +4,20 @@
 
 Reviewed the frozen `D:/dev/ReactCarburetor/worktrees/cycle-review-r21-api-xs` product at **`9008b8f749bb63b25d335c6ba4dab5bb213a4def`**. This is an independent API-slice verdict, not a rerun of the parent's suites or an adoption of the round-20 findings. I changed no product source, existing tests, generated distribution or dependencies.
 
-**Established API findings: P0 = 0; P1 = 0; P2 = 2; P3 = 0. This slice is not zero.** Both findings use accepted, own **enumerable string-keyed data** with an ordinary non-writable descriptor; neither depends on unsupported accessor state, symbol-keyed state, array subclasses or direct raw mutation. The separate engine slice must supply its own verdict.
+**Established API findings: P0 = 0; P1 = 0; P2 = 1; P3 = 0. This slice is not zero.** The finding changes an actual enumerable data value in an accepted state object; it does not depend on unsupported accessor state, symbol-keyed state, array subclasses or direct raw mutation. A separate metadata-only observation below is **not** counted as a finding. The independent engine slice must supply its own verdict.
 
 | Priority | Count | Findings |
 | --- | ---: | --- |
 | P0 | 0 | None established. |
 | P1 | 0 | None established. |
-| P2 | 2 | R21-API-01 and R21-API-02 below. |
+| P2 | 1 | R21-API-02 below. |
 | P3 | 0 | None established. |
 
-## R21-API-01 — Descriptor-only `setData` changes are invisible to readers and history (P2)
+## Contract disposition — descriptor-metadata-only replacement is not a finding
 
-**Supported input and mechanism.** `Store/Tracking/Aliases/AliasLedger.ts:33-50,123-138` accepts own enumerable, data-only object fields without requiring their `writable` and `configurable` flags to be true. `Store/Carburetor.ts:159-184` adopts a caller's new root *verbatim*. But `Store/Paths/Diff/diffPaths.ts:65-110,114-143` compares enumerable key order, ownership and values, not the descriptors of equal-valued object fields (the special array `length` comparison at `:49-63` is narrower). No changed path is emitted when only `row.n` changes from writable to non-writable. `Store/Carburetor.ts:169-183,564-580` then takes the touched/empty-diff no-op path: version does not advance and neither indexed readers nor the patch/history observer publish. This contradicts the selection contract that preserves and compares the raw descriptor flags at `Component/Connection/sameSelection.ts:16-73` and `Store/Utils/Selection/detachOpaque.ts:8-36,213-232`.
+An executed Node 24.12.0 built-CJS control and Bun 1.4.2 actual-source control replaced `{row:{n:1}}` with an otherwise equal object whose own enumerable `row.n` had `writable:false`. Both observed a raw non-writable property, version `0`, no `watch(d => d.row)` callback, and no history step. An actual mounted React 19.3.0 `connectSelection(s, d => d.row)` class remained `<span>writable</span>` after that metadata-only replacement; explicitly reselecting produced a snapshot with the new flag. The mechanism is `Store/Paths/Diff/diffPaths.ts:65-110,114-143` comparing enumerable key order/values rather than ordinary descriptor flags, then `Store/Carburetor.ts:169-183,564-580` treating its empty diff as a no-op.
 
-**Actual bounded evidence, Node 24.12.0 loading this worktree's pre-existing built CJS export:**
-
-```js
-const {Carburetor, CarburetorHistory} = require('react-carburetor');
-const s = new Carburetor({row: {n: 1}});
-const h = new CarburetorHistory(s), changes = [];
-s.watch(x => x.row, (next, previous) => changes.push([
-  Object.getOwnPropertyDescriptor(previous, 'n').writable,
-  Object.getOwnPropertyDescriptor(next, 'n').writable
-]));
-const next = {row: {}};
-Object.defineProperty(next.row, 'n', {
-  value: 1, writable: false, enumerable: true, configurable: true
-});
-s.setData(next);
-console.log(Object.getOwnPropertyDescriptor(s.getData().row, 'n').writable,
-            s.getVersion(), changes, h.canUndo());
-```
-
-Observed: `false 0 [] false`. An independently executed Bun 1.4.2 **actual-source** probe also observed raw `writable:false`, version `0`, no `watch` callback and no history entry; explicitly calling a class `connectSelection` afterward produced a fresh `writable:false` snapshot but could not wake a mounted reader. A separate **actual mounted React 19.3.0/JSDOM** class `connectSelection(s, d => d.row)` rendered `<span>writable</span>` before `setData` and **still** `<span>writable</span>` afterward while the live descriptor was non-writable and the store version remained zero. Thus this is an observable stale UI, not merely a missing diagnostic or a theoretical descriptor comparison.
-
-**Expected / remedy.** Replacing a supported root with a different own descriptor must announce its affected dependency (and permit a history step) even when key order and field value match. Compare the effective own data descriptor flags during the structural diff; report a change path and an opaque/owned history transition for flags that value-only patches cannot represent. Keep unchanged leaf subscriptions asleep for true no-ops and preserve the already-working array-length and key-order paths. See R21-API-02: publishing alone is insufficient to make replay/installing that descriptor safe.
+**Why this is not a supported-contract discrepancy:** `README.md:893-901` defines a plain container's *state* by its `Object.keys` enumerable data and an array's elements/length; `Store/Utils/deepClone.ts:8-10,48-65` explicitly copies those values into ordinary, normalized descriptors. `Models/Store.ts:5-11,101-110` says descriptor introspection itself does **not** register a value dependency. `sameSelection` and selection detachment preserve/compare descriptors **when a selection is evaluated**, but do not promise a store publication on metadata-only ordinary-object changes. The repro proves an observable metadata difference, not a promised state-value update; requiring descriptor-diff publication would expand the public state model rather than repair R21-API-02. Do not count it or change product behavior on this basis.
 
 ## R21-API-02 — `restore` and history undo cannot replace an accepted non-writable field's value (P2)
 
@@ -65,8 +44,8 @@ Observed `TypeError`, then `2 0` (and the development warning). Independently, w
 
 ## Independently examined public contracts and causal paths
 
-- **Stores, state model, tracking and selection:** Public barrel and model surfaces (`lib/src/Carburetor/index.ts:5-51`, `Models/{Base,Store,Paths}.ts`); `Store/Carburetor.ts:41-600`, `Tracking/{createReadProxy,createWriteProxy,liveViews,isTrackable}.ts`, `Tracking/Aliases/{AliasLedger,NativeAliasIndex,NativeAliasReads}.ts`, `Paths/{SubscriberIndex,WriteLog,Markers/*,Diff/{diffPaths,applyDiff,installPatch,sameKind,Order/*}}.ts`, `Utils/{deepClone,Selection/detachOpaque}.ts`, and `Component/Connection/{sameSelection,detachSelection,buildPersistentView,ConnectionFacadeHandler}.ts`. Followed raw `getData`, tracked `read`/`watch`/`subscribe` and conditional reads, draft publication, `setData`, snapshot/toJSON/serialize/fromJSON, restore diff/fallback, native aliases, root retarget, descriptor fidelity, key order and persistent facade introspection. The two findings concern a supported *object descriptor*, not the already repaired string-key ordering or array-length facade cases.
-- **History, computed, scheduling and tooling:** `Tooling/{CarburetorHistory,sameHistoryGraph,persist,connectDevTools}.ts`, `Store/Transaction/{transaction,PatchObserverRegistry}.ts`, store scheduler/update-wave components, `Derived/{Computed,computedDependencies,Freshness/*}.ts`. Inspected independent observer publication, owned native/plain replay, cursor failure, clear, root ownership, computed dependency reattachment/leaf versions and conditional subscribers, coalesced persistence/disposal, and Redux DevTools composition/time travel. The descriptor-only no-entry and failing undo above are independently observed consequences; no claim of exhaustive interleavings is made.
+- **Stores, state model, tracking and selection:** Public barrel and model surfaces (`lib/src/Carburetor/index.ts:5-51`, `Models/{Base,Store,Paths}.ts`); `Store/Carburetor.ts:41-600`, `Tracking/{createReadProxy,createWriteProxy,liveViews,isTrackable}.ts`, `Tracking/Aliases/{AliasLedger,NativeAliasIndex,NativeAliasReads}.ts`, `Paths/{SubscriberIndex,WriteLog,Markers/*,Diff/{diffPaths,applyDiff,installPatch,sameKind,Order/*}}.ts`, `Utils/{deepClone,Selection/detachOpaque}.ts`, and `Component/Connection/{sameSelection,detachSelection,buildPersistentView,ConnectionFacadeHandler}.ts`. Followed raw `getData`, tracked `read`/`watch`/`subscribe` and conditional reads, draft publication, `setData`, snapshot/toJSON/serialize/fromJSON, restore diff/fallback, native aliases, root retarget, descriptor fidelity, key order and persistent facade introspection. The remaining finding concerns value-changing restore into a supported readonly *object property*, not the already repaired string-key ordering or array-length facade cases.
+- **History, computed, scheduling and tooling:** `Tooling/{CarburetorHistory,sameHistoryGraph,persist,connectDevTools}.ts`, `Store/Transaction/{transaction,PatchObserverRegistry}.ts`, store scheduler/update-wave components, `Derived/{Computed,computedDependencies,Freshness/*}.ts`. Inspected independent observer publication, owned native/plain replay, cursor failure, clear, root ownership, computed dependency reattachment/leaf versions and conditional subscribers, coalesced persistence/disposal, and Redux DevTools composition/time travel. The value-changing readonly restore/undo failure above is independently observed; the metadata-only no-entry control is explicitly a non-finding. No claim of exhaustive interleavings is made.
 - **Resources:** `Resource/ResourceCarburetor.ts:38-510`, `Resource/Cache/{ResourceCache,ResourceCacheLifecycle,EvictionLedger}.ts`, `Models/Resource.ts:5-110`, `docs/promise-cache.md:65-127`. Examined request keying and settled wire key, `load`/`reload`/`suspend`, abort and late result suppression, `snapshot`/`restore` of Pending, cache `keyOf`/`pathOf`/`resolve`, TTL, LRU retention, refresh/invalidation, per-key/bulk cancellation/forget, synchronous Pending subscriber cancellation and raw failure ownership.
 - **React and package:** `Component/AntiHookComponent/{Foundation,Reads,Subscriptions,Effects}.tsx`, `Connection/{declareConnection,ConnectionFacadeHandler,sameSelection}.ts`, `Component/{ScopedAntiHookComponent,Scope/*}.tsx`, `Interop/{useCarburetorValue,useComputedValue}.ts`, root/interop conditional exports and declarations in `package.json:5-47`, `docs/react-compatibility.md:9-82,115-122`. Followed render attempt → commit subscription, selectors/order/descriptors, source and root retarget, postcommit resource loads, hook selector/comparator and read-set reconciliation, actual Suspense, SSR scoped class/provider, and CJS–ESM shared state.
 
