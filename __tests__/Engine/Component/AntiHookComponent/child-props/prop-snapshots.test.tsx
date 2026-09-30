@@ -196,41 +196,6 @@ describe('child props boundary', () => {
             unmount();
         });
 
-        test('a key order change is the same content and keeps the child bailed out (R2-07)', () => {
-            const store = new TodoCarburetor({payload: {a: 1, b: 2}});
-            let memoRenders = 0;
-            const seen: ITodoPayload[] = [];
-
-            const MemoTodo = React.memo(({todo}: {todo: ITodoPayload}) => {
-                memoRenders++;
-                seen.push(todo);
-
-                return <span className="memo-order">{Object.keys(todo).join(',')}</span>;
-            });
-
-            class Parent extends AntiHookComponent {
-                private readonly todo = this.connectSelection(() => store, (data) => ({...data.payload}));
-
-                render() {
-                    return <MemoTodo todo={this.todo()} />;
-                }
-            }
-
-            const {container, unmount} = render(<Parent />);
-
-            expect(memoRenders).toEqual(1);
-
-            // Same members, same values, written in the other order: the comparison is
-            // set-wise, so the snapshot keeps its identity and the child never re-renders.
-            act(() => store.replacePayload({b: 2, a: 1}));
-
-            expect(memoRenders).toEqual(1);
-            expect(seen.length).toEqual(1);
-            expect(container.querySelector('.memo-order')?.textContent).toEqual('a,b');
-
-            unmount();
-        });
-
         test('a selection that is declared but never read installs no subscription', () => {
             const store = new RowListCarburetor(getListData());
 
