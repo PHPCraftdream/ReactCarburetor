@@ -20,6 +20,8 @@ import {prepareCacheRequest} from "./State/prepareCacheRequest";
 import {removeCacheEntries} from "./State/Mutation/removeCacheEntries";
 import {abortCacheKey} from "./State/abortCacheKey";
 import {rebindCacheFailures} from "./State/Mutation/rebindCacheFailures";
+import {prepareCacheInvalidation} from "./State/Mutation/prepareCacheInvalidation";
+import {applyCacheInvalidation} from "./State/Mutation/applyCacheInvalidation";
 
 const DEFAULT_TTL: number = 30_000;
 const DEFAULT_MAX_ENTRIES: number = 100;
@@ -168,39 +170,29 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
     /** Mark an entry stale without removing its data. */
     public invalidate(args: TArgs): void {
         const key = this.keyOf(args);
-
-        if (!this.data.entries[key]) {
-            return;
-        }
+        const entry = this.data.entries[key];
+        if (!entry) return;
+        const prepared = prepareCacheInvalidation(this.data, key);
         const controller = this.controllers.get(key);
-        if (controller) {
-            (this.invalidatedRequests ||= new WeakSet<AbortController>()).add(controller);
-        }
-
-        this.update((draft: IResourceCacheData<T>) => {
-            draft.entries[key].invalidated = true;
-            draft.entries[key].failed = false;
-        });
+        if (controller) (this.invalidatedRequests ||= new WeakSet<AbortController>()).add(controller);
+        if (prepared) this.replaceOwnedCacheData(prepared);
+        else if (entry.invalidated !== true || entry.failed !== false)
+            this.update((draft) => applyCacheInvalidation(this.data, draft, key));
     }
 
     /** Mark every entry stale. */
     public invalidateAll(): void {
         const keys = Object.keys(this.data.entries);
+        if (keys.length === 0) return;
 
-        if (keys.length === 0) {
-            return;
+        // Prepare every restrictive endpoint before changing live state or request epochs.
+        const prepared = prepareCacheInvalidation(this.data, keys);
+        for (const key of keys) {
+            const controller = this.controllers.get(key);
+            if (controller) (this.invalidatedRequests ||= new WeakSet<AbortController>()).add(controller);
         }
-
-        this.update((draft: IResourceCacheData<T>) => {
-            keys.forEach((key: string) => {
-                const controller = this.controllers.get(key);
-                if (controller) {
-                    (this.invalidatedRequests ||= new WeakSet<AbortController>()).add(controller);
-                }
-                draft.entries[key].invalidated = true;
-                draft.entries[key].failed = false;
-            });
-        });
+        if (prepared) this.replaceOwnedCacheData(prepared);
+        else this.update((draft) => applyCacheInvalidation(this.data, draft, keys));
     }
 
     /** Remove an entry and cancel its request. */
@@ -294,15 +286,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
      */
     private removeEntries(keys: string[], deferNotification: boolean): void {
         removeCacheEntries(this.data, keys, deferNotification, {
-            replace: (previous, next) => {
-                rebindCacheFailures(this.failures, previous, next);
-                try {
-                    this.setData(next);
-                } catch (error) {
-                    if (this.data === previous) rebindCacheFailures(this.failures, next, previous);
-                    throw error;
-                }
-            },
+            replace: (_previous, next) => this.replaceOwnedCacheData(next),
             draft: () => this.draft,
             current: () => this.data,
             forgot: (key, replaced) => {
@@ -314,6 +298,21 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends Carburetor<IResou
             },
             publish: (defer) => { if (defer) this.emitSoon(); else this.emitUpdate(); },
         });
+    }
+
+    /** Rebind surviving failure owners before publishing a detached operational root.
+     *
+     * @param next - replacement cache graph.
+     */
+    private replaceOwnedCacheData(next: IResourceCacheData<T>): void {
+        const previous = this.data;
+        rebindCacheFailures(this.failures, previous, next);
+        try {
+            this.setData(next);
+        } catch (error) {
+            if (this.data === previous) rebindCacheFailures(this.failures, next, previous);
+            throw error;
+        }
     }
 
     /** Whether a key has neither an in-flight request nor a reader right now.

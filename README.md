@@ -662,6 +662,9 @@ and update capacity bookkeeping only after the key is actually gone.
 Operational copies preserve native `Map`/`Set`/`Date` accessor descriptors without evaluating them;
 unrelated native metadata does not block requests or removals. Actual history capture remains strict
 and rejects native accessors rather than claiming it owns values returned by arbitrary getters.
+Cache `invalidate` and `invalidateAll` reserve readonly invalidation fields before changing live state.
+Bulk invalidation prepares all affected entries before the first write, publishes the complete stale
+state once, and does not fetch. Held replay endpoints stay restricted; already-targeted flags are no-ops.
 History records each published operation before ordinary subscribers run, so a subscriber's
 nested write remains a separate undo step regardless of registration order. Writes caused by
 undo/redo subscribers or superseding abort listeners are fresh branches and invalidate redo;

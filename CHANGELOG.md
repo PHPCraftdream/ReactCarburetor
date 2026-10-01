@@ -398,6 +398,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Cache invalidate/invalidateAll can mark accepted readonly entries stale through owned operational
+  replacement. Bulk preflight finishes before live writes or request invalidation epochs change;
+  no-op locked flags stay unchanged, raw failures/native aliases and late-request stale state survive.
+
 - Operational resource/cache graph replacement preserves native accessor metadata without invoking
   getters or setters; unrelated native payloads no longer block requests or locked-slot removal.
   Actual history capture still rejects accessor-bearing native endpoints.
