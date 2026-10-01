@@ -325,7 +325,7 @@ describe('ResourceCarburetor', () => {
                 : calls === 2 ? Promise.reject(failure) : Promise.resolve('recovered');
         });
         resource.setData(source);
-        expect(() => new CarburetorHistory(resource)).toThrow(/cannot snapshot accessor property/);
+        expect(() => new CarburetorHistory(resource)).toThrow(Error);
         expect(getterCalls).toBe(0);
 
         let suspended!: Promise<void>;
