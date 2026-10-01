@@ -212,7 +212,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Breaking:** `CarburetorHistory` takes `ICarburetor<T> & IPatchSource`: every `Carburetor`
   qualifies. `attachPatchListener` takes `{patch, publication?, ownRestore?}`, not a function;
   hand-written sources must honor requested pre-subscriber publication and exact restore-owned
-  installation callbacks. Patch-only callers pass `{patch}`.
+  installation callbacks. Patch-only callers pass `{patch}`. A subclass that overrides `snapshot()`
+  must also implement `captureHistory(own)`: `CarburetorHistory` throws at creation without it.
 - **Performance:** `CarburetorHistory` records the patches behind each change instead of a deep
   copy of the state: one title write at 4000 items went from 3.9–5.1 ms to ~0.01 ms, and 50 entries
   retain 0.5 MB instead of 20.5 MB. A change the write proxy cannot describe still records a full
@@ -413,6 +414,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A scalar draft write no longer rebuilds the native-alias index: with a `Map` in the store, each
+  write-then-read cycle walked the whole tree (128 rebuilds over 64 cycles, now 2). Only a
+  container added, replaced or removed refreshes it; deleting a container used to rely on that
+  blanket refresh and now does it itself.
+- A restore claim set by a custom producer no longer outlives an intermediate patch when exactly
+  one observer is attached; it already did not with several.
 - React 18 CI builds fresh package distributions after its dependency swap before running
   built-format regressions; generated `dist` is no longer assumed to exist in a fresh checkout.
 

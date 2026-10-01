@@ -266,8 +266,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (!wrote) {
             return false;
         }
-        // Raw identity may change without a changed value path; refresh root native ownership.
-        if (isTrackable(previous) && previous !== raw && this.cache.nativeAliasRoot !== undefined) {
+        // Topology refresh: only a container added, replaced or removed shifts raw ownership.
+        if ((isTrackable(previous) || isTrackable(raw)) && previous !== raw
+            && this.cache.nativeAliasRoot !== undefined) {
             nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
         }
 
@@ -382,7 +383,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (!wrote) {
             return false;
         }
-        if (isTrackable(previous) && previous !== raw && this.cache.nativeAliasRoot !== undefined) {
+        if ((isTrackable(previous) || isTrackable(raw)) && previous !== raw
+            && this.cache.nativeAliasRoot !== undefined) {
             nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
         }
 
@@ -448,6 +450,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         this.aliases?.forget(previous);
+        if (isTrackable(previous) && this.cache.nativeAliasRoot !== undefined) {
+            nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
+        }
         this.record(this.keysMarker());
         const path = this.writtenPath(key);
         this.record(path);

@@ -1,42 +1,24 @@
 import {
-    IStateInstallation, IStatePublication, IStateRestoreClaim, PATCH_OPAQUE,
-    STATE_PUBLIC_REPLACEMENT, TAliasLedger, TPath, TPatchPort,
+    IStateInstallation, PATCH_OPAQUE,
+    STATE_PUBLIC_REPLACEMENT, TPath,
 } from '@/Carburetor/Models/Paths';
+import {IStateInstallPort} from '@/Carburetor/Store/Transaction/Models';
 import {diffPaths} from '@/Carburetor/Store/Paths/Diff/diffPaths';
 import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
 import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
 import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
 
-/** Core fields and boundaries required to install a root without duplicating store orchestration. */
-interface IStateInstallPort<T extends object> {
-    data: T;
-    aliases: TAliasLedger;
-    draftProxy: T | undefined;
-    patchPort: TPatchPort;
-    draftTouched: boolean;
-    writes: Set<TPath>;
-    publicationPending: boolean;
-    pendingPublication: IStatePublication | undefined;
-    patchObservers: {consumeRestoreClaim(state: unknown): IStateRestoreClaim | undefined} | undefined;
-    didSetData(): void;
-    touchDraft(): void;
-    recordWrite(path: TPath): void;
-    rememberPublication(installation?: IStateInstallation): void;
-    emitSoon(installation?: IStateInstallation, deferredContinuation?: boolean): void;
-    emitUpdate(installation?: IStateInstallation, deferredContinuation?: boolean): void;
-}
-
 /** Installs a prepared root, closes its metadata, and publishes even when delivery fails.
  *
- * @param receiver - the Carburetor whose protected transition state is being committed
+ * @param receiver - the typed install port over the store's protected transition state
  * @param data - the prepared root adopted by the operation
  * @param installation - explicit origin/owner/representation, or a pending exact restore claim
  * @param continuation - whether this commit continues an already-filed restore operation
  */
 export const installState = <T extends object>(
-    receiver: object, data: T, installation?: IStateInstallation, continuation: boolean = false
+    receiver: IStateInstallPort<T>, data: T, installation?: IStateInstallation, continuation: boolean = false
 ): T => {
-    const store = receiver as unknown as IStateInstallPort<T>;
+    const store = receiver;
     const claim = store.patchObservers?.consumeRestoreClaim(data);
     const transition: IStateInstallation = claim
         && (installation === undefined || installation.origin === 'replacement')

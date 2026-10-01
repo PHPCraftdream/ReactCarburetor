@@ -40,6 +40,13 @@ export class PatchObserverRegistry {
     /** Created only if a second observer attaches; the usual one-observer path stays direct. */
     private fanout: TPatchRecorder | undefined;
 
+    /** Single-observer fast path: clears the restore claim exactly like the fan-out path. */
+    private readonly directPatch = (patch: Parameters<TPatchRecorder>[0]): void => {
+        this.pendingRestoreClaim = undefined;
+        const observer = this.single?.observer;
+        if (observer) observer.patch(patch);
+    };
+
     /** Delivers one mutation to the active attachment set. */
     private reportPatch(patch: Parameters<TPatchRecorder>[0]): void {
         this.pendingRestoreClaim = undefined;
@@ -111,7 +118,7 @@ export class PatchObserverRegistry {
             this.fanout ??= (patch: Parameters<TPatchRecorder>[0]): void =>
                 this.reportPatch(patch);
         }
-        this.port.listener = this.single?.observer.patch ?? this.fanout;
+        this.port.listener = this.single ? this.directPatch : this.fanout;
         return () => this.detach(registration);
     }
 
@@ -136,7 +143,7 @@ export class PatchObserverRegistry {
             : undefined;
         this.port.listener = this.registrations.size === 0
             ? undefined
-            : this.single?.observer.patch ?? this.fanout;
+            : this.single ? this.directPatch : this.fanout;
     }
 
     /**
@@ -184,6 +191,34 @@ export class PatchObserverRegistry {
         return claim;
     }
 
+    /**
+     * Queues one registration's publication; returns the scheduler failure, if any.
+     *
+     * @param registration - the attachment whose callback is scheduled
+     * @param fact - the closed transition fact, mixed in when one is already pending
+     */
+    private queuePublication(registration: IRegistration, fact: IStatePublication): unknown {
+        if (!registration.deliverPublication || registration.schedulerKey === undefined) {
+            return undefined;
+        }
+        if (!registration.publicationPending) {
+            registration.publicationPending = true;
+            registration.publicationFact = fact;
+        } else {
+            registration.publicationAmbiguous = true;
+            registration.publicationFact = STATE_MIXED_PUBLICATION;
+        }
+        try {
+            this.scheduler.schedule(registration.schedulerKey, registration.deliverPublication);
+        } catch (error: unknown) {
+            registration.publicationPending = false;
+            registration.publicationFact = undefined;
+            registration.publicationAmbiguous = false;
+            return error;
+        }
+        return undefined;
+    }
+
     /** Queues closed history boundaries before ordinary subscribers; failures do not starve another history.
      *
      * @param fact - closed transition fact, defaulting to an ordinary mutation
@@ -192,24 +227,8 @@ export class PatchObserverRegistry {
         this.pendingRestoreClaim = undefined;
         const sole = this.single;
         if (sole) {
-            if (sole.deliverPublication && sole.schedulerKey !== undefined) {
-                if (!sole.publicationPending) {
-                    sole.publicationPending = true;
-                    sole.publicationFact = fact;
-                } else {
-                    sole.publicationAmbiguous = true;
-                    sole.publicationFact = STATE_MIXED_PUBLICATION;
-                }
-                try {
-                    this.scheduler.schedule(sole.schedulerKey, sole.deliverPublication);
-                } catch (error: unknown) {
-                    sole.publicationPending = false;
-                    sole.publicationFact = undefined;
-                    sole.publicationAmbiguous = false;
-                    return [error];
-                }
-            }
-            return undefined;
+            const error = this.queuePublication(sole, fact);
+            return error === undefined ? undefined : [error];
         }
         if (this.registrations.size === 0) {
             return undefined;
@@ -221,22 +240,9 @@ export class PatchObserverRegistry {
             if (registration.generation > generation || this.registrations.get(observer) !== registration) {
                 continue;
             }
-            if (registration.deliverPublication && registration.schedulerKey !== undefined) {
-                if (!registration.publicationPending) {
-                    registration.publicationPending = true;
-                    registration.publicationFact = fact;
-                } else {
-                    registration.publicationAmbiguous = true;
-                    registration.publicationFact = STATE_MIXED_PUBLICATION;
-                }
-                try {
-                    this.scheduler.schedule(registration.schedulerKey, registration.deliverPublication);
-                } catch (error: unknown) {
-                    registration.publicationPending = false;
-                    registration.publicationFact = undefined;
-                    registration.publicationAmbiguous = false;
-                    (failures ??= []).push(error);
-                }
+            const error = this.queuePublication(registration, fact);
+            if (error !== undefined) {
+                (failures ??= []).push(error);
             }
         }
         return failures;

@@ -1,38 +1,23 @@
 import {
-    IStateInstallation, IStatePublication, PATCH_OPAQUE, TPath, TPathSet, TPatchPort,
+    IStateInstallation, PATCH_OPAQUE, TPath, TPathSet,
 } from '@/Carburetor/Models/Paths';
-import {WriteLog} from '@/Carburetor/Store/Paths/WriteLog';
+import {IStorePublicationPort} from '@/Carburetor/Store/Transaction/Models';
 import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
 import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
 import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
 import {nativeStoreWriteEpoch} from '@/Carburetor/Store/Scheduling/nativeStoreWriteEpoch';
 import {updateBatch} from '@/Carburetor/Store/Transaction/UpdateBatchInstance';
 
-/** Store boundary consumed by the shared mutation commit implementation. */
-interface IStorePublicationPort<T extends object> {
-    data: T;
-    draftTouched: boolean;
-    writes: TPathSet;
-    writeLog: WriteLog;
-    version: number;
-    publicationPending: boolean;
-    pendingPublication: IStatePublication | undefined;
-    patchPort: TPatchPort;
-    preEmit(): void;
-    rememberPublication(installation?: IStateInstallation): void;
-    notifyWrites(writes: TPathSet): void;
-}
-
 /** Closes writes, records their publication owner and delivers despite earlier observer failure.
  *
- * @param receiver - the Carburetor supplying its existing mutation and delivery state
+ * @param receiver - the typed publication port over the store's mutation and delivery state
  * @param installation - an explicit root transition, when this write set installs one
  * @param deferredContinuation - whether its publication fact was already queued
  */
 export const emitStoreUpdate = <T extends object>(
-    receiver: object, installation?: IStateInstallation, deferredContinuation: boolean = false
+    receiver: IStorePublicationPort<T>, installation?: IStateInstallation, deferredContinuation: boolean = false
 ): void => {
-    const store = receiver as unknown as IStorePublicationPort<T>;
+    const store = receiver;
     let failed = false;
     let firstError: unknown;
     try {

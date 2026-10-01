@@ -20,9 +20,9 @@ import {createReadProxy} from "./Tracking/createReadProxy";
 import {createWriteProxy} from "./Tracking/createWriteProxy";
 import {watchSelection} from "./Tracking/Observation/watchSelection";
 import {createAliasLedger} from "./Tracking/Aliases/AliasLedger";
-import {nativeAliasIndex} from "./Tracking/Aliases/NativeAliasIndex";
 import {isTrackable} from "./Tracking/isTrackable";
 import {PatchObserverRegistry} from "./Transaction/PatchObserverRegistry";
+import {IStateInstallPort} from "./Transaction/Models";
 import {installState} from "./Transaction/installState";
 import {emitStoreUpdate} from "./Transaction/emitStoreUpdate";
 import {getUid} from "./Utils/getUid";
@@ -44,6 +44,20 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         getVersion: Carburetor.prototype.getVersion,
         emitUpdate: Carburetor.prototype.emitUpdate,
     };
+    /**
+     * Never called: the build fails if a member the transaction ports read is renamed or retyped.
+     * A per-store port object would allocate on every store; this costs nothing at runtime.
+     */
+    private static checkPort<T extends object>(s: Carburetor<T>): IStateInstallPort<T> {
+        return {
+            data: s.data, aliases: s.aliases, draftProxy: s.draftProxy, patchPort: s.patchPort,
+            draftTouched: s.draftTouched, writes: s.writes, writeLog: s.writeLog, version: s.version,
+            publicationPending: s.publicationPending, pendingPublication: s.pendingPublication,
+            patchObservers: s.patchObservers, preEmit: s.preEmit, didSetData: s.didSetData,
+            touchDraft: s.touchDraft, recordWrite: s.recordWrite, rememberPublication: s.rememberPublication,
+            notifyWrites: s.notifyWrites, emitSoon: s.emitSoon, emitUpdate: s.emitUpdate,
+        };
+    }
     /** Registered callbacks and their stable scheduler keys, indexed by public local id. */
     protected subscribers: IDict<ISubscriberRecord> = Object.create(null);
     /** Distinguishes registrations created after an event selected its subscribers. */
@@ -86,9 +100,8 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     private pendingPublication: IStatePublication | undefined;
     /** Exact root installation currently being applied through restore's draft diff. */
     private activeInstallation: IStateInstallation | undefined;
-    /** Bound once; draft writes invalidate ownership before any subsequent native read. */
+    /** Bound once; draft writes announce paths, and topological ones refresh ownership (createWriteProxy). */
     private readonly writeRecorder = (path: TPath): void => {
-        if (isTrackable(this.data)) nativeAliasIndex.invalidate(this.data);
         this.recordWrite(path);
         const installation = this.activeInstallation;
         if (installation && (!this.publicationPending || this.pendingPublication !== installation)) {
@@ -175,7 +188,12 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     protected commitState(
         data: T, installation: IStateInstallation = STATE_PUBLIC_REPLACEMENT
     ): T {
-        return installState(this, data, installation);
+        return installState(this.port, data, installation);
+    }
+
+    /** The transaction ports' typed view of this store; `checkPort` guards its shape. */
+    private get port(): IStateInstallPort<T> {
+        return this as unknown as IStateInstallPort<T>;
     }
 
     /** Lets subclasses synchronize derived state before replacement notifications. */
@@ -244,7 +262,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         this.activeInstallation = previousInstallation;
 
         if (!applied) {
-            installState(this, deepClone(data), installation, true);
+            installState(this.port, deepClone(data), installation, true);
             return;
         }
 
@@ -545,6 +563,6 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * @param deferredContinuation - whether its publication fact was already queued
      */
     protected emitUpdate(installation?: IStateInstallation, deferredContinuation: boolean = false): void {
-        emitStoreUpdate<T>(this, installation, deferredContinuation);
+        emitStoreUpdate<T>(this.port, installation, deferredContinuation);
     }
 }
