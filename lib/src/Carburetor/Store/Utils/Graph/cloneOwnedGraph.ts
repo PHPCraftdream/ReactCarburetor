@@ -10,7 +10,7 @@ type TDescriptorTransform = (
  * @param value - authoritative graph to detach.
  * @param classify - records replay capability traits during ownership.
  * @param transform - normalizes or omits data descriptors before they are locked onto the copy.
- * @param opaqueByReference - keeps unrelated opaque operational payloads live; history remains strict.
+ * @param opaqueByReference - retains opaque payloads and native accessor metadata; history remains strict.
  */
 export const cloneOwnedGraph = <V>(
     value: V, classify?: (trait: TOwnedTrait) => void, transform?: TDescriptorTransform,
@@ -62,7 +62,12 @@ export const cloneOwnedGraph = <V>(
             let descriptor = Object.getOwnPropertyDescriptor(raw, key);
             if (!descriptor) continue;
             if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-                throw new Error('CarburetorHistory: cannot snapshot accessor property ' + String(key));
+                if (!native || !opaqueByReference) {
+                    throw new Error('CarburetorHistory: cannot snapshot accessor property ' + String(key));
+                }
+                // Operational ownership preserves native metadata without evaluating it.
+                Object.defineProperty(result, key, descriptor);
+                continue;
             }
             if (transform) {
                 descriptor = transform(raw, key, descriptor);

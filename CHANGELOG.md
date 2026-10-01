@@ -398,6 +398,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Operational resource/cache graph replacement preserves native accessor metadata without invoking
+  getters or setters; unrelated native payloads no longer block requests or locked-slot removal.
+  Actual history capture still rejects accessor-bearing native endpoints.
+
 - Readonly resource/cache replay can restart through public load, suspend and refresh: operational
   fields are prepared on an owned graph without modifying captured endpoint restrictions.
 - Failed pre-loader publication unwinds only its own request, preventing orphaned shared promises.

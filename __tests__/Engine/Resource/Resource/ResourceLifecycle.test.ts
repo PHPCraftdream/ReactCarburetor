@@ -286,28 +286,99 @@ describe('ResourceCarburetor', () => {
         history.disconnect();
     });
 
-    test('a failed readonly preparation has no request, publication or replay key', async () => {
-        let calls = 0;
-        const resource = new ResourceCarburetor<Map<string, number>, string>(async () => {
-            calls++;
-            return new Map();
-        });
-        const payload = new Map<string, number>();
-        Object.defineProperty(payload, 'unsupported', {get: () => 1});
-        const invalid = {
-            status: EResourceStatus.Idle, data: payload, error: undefined, updatedAt: 2,
+    test('readonly slot operations keep native accessor metadata, aliases and held endpoints', async () => {
+        const key = {id: 1};
+        const map = new Map<unknown, unknown>();
+        const set = new Set<unknown>();
+        const date = new Date(123);
+        const payload = {key, alias: key, map, set, date};
+        const source = {
+            status: EResourceStatus.Success, data: payload, error: undefined, updatedAt: 7,
         };
-        Object.defineProperty(invalid, 'status', {
-            value: EResourceStatus.Idle, writable: false, configurable: false, enumerable: true,
+        map.set(key, source);
+        map.set(source, payload);
+        set.add(source);
+        set.add(key);
+        Object.defineProperty(date, 'owner', {
+            value: source, enumerable: false, writable: false, configurable: false,
         });
-        resource.setData(invalid);
-        expect(() => resource.load('never')).toThrow('cannot snapshot accessor property unsupported');
+        let getterCalls = 0;
+        let setterCalls = 0;
+        const getter = (): string => { getterCalls++; throw new Error('native getter invoked'); };
+        const setter = (_value: string): void => { setterCalls++; };
+        for (const native of [map, set, date]) {
+            Object.defineProperty(native, 'metadata', {
+                get: getter, set: setter, enumerable: true, configurable: false,
+            });
+        }
+        for (const field of ['status', 'data', 'error', 'updatedAt'] as const) {
+            Object.defineProperty(source, field, {
+                value: source[field], enumerable: true, writable: false, configurable: false,
+            });
+        }
+        const first = deferred<string>();
+        const failure = new Error('unavailable');
+        let calls = 0;
+        const resource = new ResourceCarburetor<typeof payload | string, string>(() => {
+            calls++;
+            return calls === 1 ? first.promise
+                : calls === 2 ? Promise.reject(failure) : Promise.resolve('recovered');
+        });
+        resource.setData(source);
+        expect(() => new CarburetorHistory(resource)).toThrow(/cannot snapshot accessor property/);
+        expect(getterCalls).toBe(0);
+
+        let suspended!: Promise<void>;
+        try {
+            resource.suspend('first');
+        } catch (thrown) {
+            suspended = thrown as Promise<void>;
+        }
+        expect(calls).toBe(1);
+        const pending = resource.getData();
+        const owned = pending.data as typeof payload;
+        expect(pending).not.toBe(source);
+        expect(pending.status).toBe(EResourceStatus.Pending);
+        expect(owned).not.toBe(payload);
+        expect(owned.alias).toBe(owned.key);
+        expect(owned.map.get(owned.key)).toBe(pending);
+        expect(owned.map.get(pending)).toBe(owned);
+        expect(owned.set.has(pending)).toBe(true);
+        expect(owned.set.has(owned.key)).toBe(true);
+        expect(owned.date.getTime()).toBe(123);
+        expect(Object.getOwnPropertyDescriptor(owned.date, 'owner')).toMatchObject({
+            value: pending, enumerable: false, writable: false, configurable: false,
+        });
+        for (const native of [owned.map, owned.set, owned.date]) {
+            expect(Object.getOwnPropertyDescriptor(native, 'metadata')).toMatchObject({
+                get: getter, set: setter, enumerable: true, configurable: false,
+            });
+        }
+        expect(Object.getOwnPropertyDescriptor(source, 'status')?.writable).toBe(false);
+        expect(source.status).toBe(EResourceStatus.Success);
+        expect(map.get(source)).toBe(payload);
+        expect(set.has(source)).toBe(true);
+        expect(Object.getOwnPropertyDescriptor(date, 'owner')?.value).toBe(source);
         resource.abort();
-        await resource.reload();
-        expect(calls).toBe(0);
-        expect(resource.getData()).toBe(invalid);
+        first.resolve('stale');
+        await suspended;
         expect(resource.getData().status).toBe(EResourceStatus.Idle);
-        expect(resource.snapshot().key).toBeUndefined();
+        expect(resource.getData().data).toBe(owned);
+
+        resource.setData(source);
+        await resource.load('second');
+        expect(calls).toBe(2);
+        expect(resource.getData().status).toBe(EResourceStatus.Error);
+        expect(resource.getData().error).toBe('unavailable');
+        expect(resource.getLastError()).toBe(failure);
+        resource.setData(source);
+        await resource.reload();
+        expect(calls).toBe(3);
+        expect(resource.getData().status).toBe(EResourceStatus.Success);
+        expect(resource.getData().data).toBe('recovered');
+        expect(resource.snapshot().key).toBe(JSON.stringify('second'));
+        expect(getterCalls).toBe(0);
+        expect(setterCalls).toBe(0);
     });
 
     test('a failed Pending publication rejects only its request and restores the old answer', async () => {
