@@ -438,5 +438,59 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         if (!forget) assert.equal(cache.getEntry('b').data, 'b!');
         completed.push(label + ':locked-cache-' + (forget ? 'forget' : 'evict'));
     }
+    {
+        let reads = 0, calls = 0;
+        const getter = () => { reads++; throw new Error('native getter must not run'); };
+        const slot = new producer.ResourceCarburetor(async () => { calls++; return 'native-answer'; });
+        const state = {...slot.getData(), status: producer.EResourceStatus.Success, data: 'prior'};
+        Object.defineProperty(state, 'status', {
+            value: producer.EResourceStatus.Success, enumerable: true, writable: false, configurable: false,
+        });
+        state.native = new Map([['root', state]]);
+        Object.defineProperty(state.native, 'metadata', {get: getter, enumerable: true, configurable: false});
+        slot.setData(state);
+        await slot.load('native');
+        const next = slot.getData();
+        assert.equal(next.status, producer.EResourceStatus.Success);
+        assert.equal(slot.suspend('native'), 'native-answer');
+        assert.equal(calls, 1);
+        assert.equal(reads, 0);
+        assert.equal(next.native.get('root'), next);
+        assert.equal(Object.getOwnPropertyDescriptor(next.native, 'metadata').get, getter);
+        assert.equal(Object.getOwnPropertyDescriptor(state, 'status').writable, false);
+        assert.equal(state.native.get('root'), state);
+        completed.push(label + ':native-accessor-slot-request');
+    }
+    {
+        let reads = 0, calls = 0;
+        const getter = () => { reads++; throw new Error('surviving native getter must not run'); };
+        const cache = new producer.ResourceCache(async value => { calls++; return value + '!'; });
+        const a = cache.keyOf('a'), b = cache.keyOf('b');
+        const entry = {...producer.getInitialCacheEntry(), status: producer.EResourceStatus.Success,
+            data: 'prior', updatedAt: 1};
+        Object.defineProperty(entry, 'status', {
+            value: producer.EResourceStatus.Success, enumerable: true, writable: false, configurable: false,
+        });
+        const entries = {[b]: entry};
+        Object.defineProperty(entries, a, {value: producer.getInitialCacheEntry(),
+            enumerable: true, writable: false, configurable: false});
+        const state = {entries, native: new Map([['entry', entry]])};
+        state.native.set('root', state);
+        Object.defineProperty(state.native, 'metadata', {get: getter, enumerable: true, configurable: false});
+        cache.setData(state);
+        cache.forget('a');
+        await cache.refresh('b');
+        const next = cache.getData();
+        assert.equal(Object.hasOwn(next.entries, a), false);
+        assert.equal(cache.getEntry('b').data, 'b!');
+        assert.equal(calls, 1);
+        assert.equal(reads, 0);
+        assert.equal(next.native.get('root'), next);
+        assert.equal(next.native.get('entry'), next.entries[b]);
+        assert.equal(Object.getOwnPropertyDescriptor(next.native, 'metadata').get, getter);
+        assert.equal(Object.hasOwn(entries, a), true);
+        assert.equal(Object.getOwnPropertyDescriptor(entry, 'status').writable, false);
+        completed.push(label + ':native-accessor-cache-removal-refresh');
+    }
     return completed;
 };

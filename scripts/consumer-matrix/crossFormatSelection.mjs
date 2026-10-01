@@ -566,7 +566,8 @@ export const runCrossFormatSelection = (installDir) => {
         'readonly-transient-slot', 'readonly-transient-cache-pending',
         'readonly-transient-cache-refreshing', 'readonly-transient-cache-both',
         'readonly-slot-restart', 'readonly-cache-restart', 'readonly-cache-refresh',
-        'locked-cache-evict', 'locked-cache-forget'];
+        'locked-cache-evict', 'locked-cache-forget',
+        'native-accessor-slot-request', 'native-accessor-cache-removal-refresh'];
     const expectedBoundaries = ['cjs-store/esm-history', 'esm-store/cjs-history']
         .flatMap(label => boundaryKinds.map(kind => label + ':' + kind));
     if (JSON.stringify(parsed.engineCases) !== JSON.stringify(expectedBoundaries)) {
