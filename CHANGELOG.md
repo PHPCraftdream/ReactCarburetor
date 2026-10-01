@@ -398,6 +398,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- React 18 CI builds fresh package distributions after its dependency swap before running
+  built-format regressions; generated `dist` is no longer assumed to exist in a fresh checkout.
+
 - Cache invalidate/invalidateAll can mark accepted readonly entries stale through owned operational
   replacement. Bulk preflight finishes before live writes or request invalidation epochs change;
   no-op locked flags stay unchanged, raw failures/native aliases and late-request stale state survive.

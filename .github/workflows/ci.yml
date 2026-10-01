@@ -116,6 +116,10 @@ jobs:
           npm install --no-save react@18.3.1 react-dom@18.3.1
           cd lib && npm install --no-save react@18.3.1 react-dom@18.3.1
 
+      # Built-format regressions need fresh dist; generated bundles are not tracked.
+      - name: Build
+        run: npm run build
+
       - name: Test
         run: npx rstest run __tests__/Engine __tests__/Demo
 
