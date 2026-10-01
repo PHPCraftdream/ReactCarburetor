@@ -6,8 +6,10 @@ import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {cloneOwnedGraph} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
+import {nativeAliasIndex} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex";
 import {getInitialResourceData} from "./getInitialResourceData";
 import {createAbortHandle} from "./createAbortHandle";
+import {prepareSlotRequest} from "./prepareSlotRequest";
 
 /** The message a failure is stored under: the state has to stay serializable. */
 const describeError = (error: unknown): string => {
@@ -393,33 +395,93 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             return Promise.reject(createSupersededError());
         }
 
+        // Preparation does not touch the live replay. In particular, copying a locked
+        // endpoint can fail before any controller/key or pending publication exists.
+        const nextState = prepareSlotRequest(this.data);
+        const previousState = this.data;
+        const previousStatus = previousState.status;
+        const previousError = previousState.error;
+        const previousSettledKey = this.settledKey;
+        const previousLastArgs = this.lastArgs;
+        const previousLastKey = this.lastKey;
+        const previousLastError = this.lastError;
+        const previousLastErrorMessage = this.lastErrorMessage;
+        const previousErrorOwner = this.errorOwner;
+        const previousHasLastError = this.hasLastError;
         const controller = createAbortHandle();
-
-        this.controller = controller;
-        this.pendingKey = key;
-        this.lastArgs = args;
-        this.lastKey = key;
-        this.hasLastError = false;
-
-        // `load` and `reload` both come through here, so starting a request replaces
-        // whatever the slot held: the old answer stops being served from this moment.
-        this.settledKey = undefined;
-
-        this.draft.status = EResourceStatus.Pending;
-        this.draft.error = undefined;
-
-        let resolveRequest: () => void = () => undefined;
-        let rejectRequest: (error: unknown) => void = () => undefined;
+        let resolveRequest!: () => void;
+        let rejectRequest!: (error: unknown) => void;
         const request = new Promise<void>((resolve, reject) => {
             resolveRequest = resolve;
             rejectRequest = reject;
         });
-        this.pendingRequest = request;
 
-        if (deferNotification) {
-            this.emitSoon();
-        } else {
-            this.emitUpdate();
+        this.controller = controller;
+        this.pendingKey = key;
+        this.pendingRequest = request;
+        this.lastArgs = args;
+        this.lastKey = key;
+        this.hasLastError = false;
+
+        // Subscribers to Pending may synchronously join or replace this request, so
+        // registration precedes publication. A replacement root publishes only once.
+        this.settledKey = undefined;
+        try {
+            if (nextState) {
+                if (deferNotification) {
+                    // A render cannot notify subscribers synchronously. Retain the
+                    // replacement's alias checks while scheduling its publication.
+                    this.aliases?.checkState(nextState, '', this.data);
+                    nativeAliasIndex.invalidate(this.data);
+                    nativeAliasIndex.invalidate(nextState);
+                    this.data = nextState;
+                    this.draftProxy = undefined;
+                    this.reconcileError();
+                    this.markAllChanged();
+                    if (this.isCurrent(controller)) this.emitSoon();
+                } else {
+                    super.setData(nextState);
+                }
+            } else {
+                this.draft.status = EResourceStatus.Pending;
+                if (this.isCurrent(controller)) {
+                    this.draft.error = undefined;
+                    if (this.isCurrent(controller)) {
+                        if (deferNotification) this.emitSoon();
+                        else this.emitUpdate();
+                    }
+                }
+            }
+        } catch (error: unknown) {
+            if (this.controller === controller) {
+                this.controller = undefined;
+                this.pendingRequest = undefined;
+                this.pendingKey = undefined;
+                this.settledKey = previousSettledKey;
+                this.lastArgs = previousLastArgs;
+                this.lastKey = previousLastKey;
+                this.lastError = previousLastError;
+                this.lastErrorMessage = previousLastErrorMessage;
+                this.errorOwner = previousErrorOwner;
+                this.hasLastError = previousHasLastError;
+                try {
+                    if (nextState && this.data === nextState) {
+                        this.data = previousState;
+                        this.draftProxy = undefined;
+                    } else {
+                        this.data.status = previousStatus;
+                        this.data.error = previousError;
+                    }
+                    // Publication can throw after some subscribers have observed Pending.
+                    // Give those readers the restored answer, without hiding the first failure.
+                    this.markAllChanged();
+                    this.emitUpdate();
+                } catch {
+                    // A second failure cannot leave the cancelled controller/request live.
+                }
+            }
+            rejectRequest(error);
+            return request;
         }
 
         // A synchronous subscriber may replace or abort this request during publication.

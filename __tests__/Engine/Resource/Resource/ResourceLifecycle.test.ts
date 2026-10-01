@@ -1,4 +1,4 @@
-import {EResourceStatus, ResourceCarburetor} from "@/Carburetor";
+import {CarburetorHistory, EResourceStatus, ResourceCarburetor} from "@/Carburetor";
 import {deferred, flush} from "./helpers";
 
 describe('ResourceCarburetor', () => {
@@ -163,5 +163,284 @@ describe('ResourceCarburetor', () => {
 
         expect(statusReader).toEqual(2);
         expect(dataReader).toEqual(1);
+    });
+    test('loads through an owned readonly Pending replay without mutating captured endpoints', async () => {
+        const gate = deferred<number>();
+        let calls = 0;
+        const resource = new ResourceCarburetor<number | {map: Map<object, object>}, string>(() => {
+            calls++;
+            return gate.promise;
+        });
+        const history = new CarburetorHistory(resource);
+        const map = new Map<object, object>();
+        const payload = {map};
+        const pending = {status: EResourceStatus.Pending, data: payload, error: 'old', updatedAt: 7};
+        map.set(pending, payload);
+        map.set(payload, pending);
+        for (const field of ['status', 'data', 'error', 'updatedAt'] as const) {
+            Object.defineProperty(pending, field, {
+                value: pending[field], writable: false, configurable: false, enumerable: true,
+            });
+        }
+        resource.setData(pending);
+        expect(history.undo()).toBe(true);
+        expect(history.redo()).toBe(true);
+        const held = resource.getData();
+        const loading = resource.load('new');
+        expect(calls).toBe(1);
+        expect(resource.getData().status).toBe(EResourceStatus.Pending);
+        expect(resource.load('new')).toBe(loading);
+        const current = resource.getData();
+        const currentPayload = current.data as typeof payload;
+        expect(currentPayload.map.get(current)).toBe(currentPayload);
+        expect(currentPayload.map.get(currentPayload)).toBe(current);
+        gate.resolve(42);
+        await loading;
+        expect(resource.getData().status).toBe(EResourceStatus.Success);
+        expect(resource.getData().data).toBe(42);
+        expect(resource.getData().error).toBeUndefined();
+        expect(resource.getData().updatedAt).toBeGreaterThan(7);
+        expect(resource.snapshot().key).toBe(JSON.stringify('new'));
+        expect(held.status).toBe(EResourceStatus.Idle);
+        expect(held.error).toBe('old');
+        expect(held.updatedAt).toBe(7);
+        expect(Object.getOwnPropertyDescriptor(held, 'updatedAt')?.writable).toBe(false);
+        expect(pending.status).toBe(EResourceStatus.Pending);
+        expect(map.get(pending)).toBe(payload);
+        history.disconnect();
+    });
+
+    test('suspend, abort, error and reload settle after readonly replay', async () => {
+        const first = deferred<number>();
+        const second = deferred<number>();
+        const raw = {reason: 'offline'};
+        let calls = 0;
+        const resource = new ResourceCarburetor<number, string>(() => {
+            calls++;
+            return calls === 1 ? first.promise : calls === 2 ? Promise.reject(raw) : second.promise;
+        });
+        const history = new CarburetorHistory(resource);
+        const pending = {status: EResourceStatus.Pending, data: 3, error: undefined, updatedAt: 7};
+        Object.defineProperty(pending, 'status', {
+            value: EResourceStatus.Pending, writable: false, configurable: false, enumerable: true,
+        });
+        Object.defineProperty(pending, 'updatedAt', {
+            value: 7, writable: false, configurable: false, enumerable: true,
+        });
+        resource.setData(pending);
+        history.undo();
+        history.redo();
+        let suspended!: Promise<void>;
+        try {
+            resource.suspend('one');
+        } catch (thrown) {
+            suspended = thrown as Promise<void>;
+        }
+        expect(calls).toBe(1);
+        resource.abort();
+        expect(resource.getData().status).toBe(EResourceStatus.Idle);
+        first.resolve(10);
+        await suspended;
+        expect(resource.getData().data).toBe(3);
+        await resource.load('two');
+        expect(resource.getData().status).toBe(EResourceStatus.Error);
+        expect(resource.getData().error).toBe('[object Object]');
+        expect(resource.getLastError()).toBe(raw);
+        expect(resource.snapshot().key).toBe(JSON.stringify('two'));
+        const reload = resource.reload();
+        second.resolve(99);
+        await reload;
+        expect(resource.getData().status).toBe(EResourceStatus.Success);
+        expect(resource.getData().data).toBe(99);
+        expect(resource.snapshot().key).toBe(JSON.stringify('two'));
+        expect(calls).toBe(3);
+        history.disconnect();
+    });
+
+    test('a pending subscriber joins readonly replay before its loader runs', async () => {
+        const gate = deferred<number>();
+        let calls = 0;
+        let joined: Promise<void> | undefined;
+        const resource = new ResourceCarburetor<number, string>(() => {
+            calls++;
+            return gate.promise;
+        });
+        const history = new CarburetorHistory(resource);
+        const pending = {status: EResourceStatus.Pending, data: 1, error: undefined, updatedAt: 2};
+        Object.defineProperty(pending, 'status', {
+            value: EResourceStatus.Pending, writable: false, configurable: false, enumerable: true,
+        });
+        resource.setData(pending);
+        history.undo();
+        history.redo();
+        resource.watch(state => state.status, status => {
+            if (status === EResourceStatus.Pending) joined = resource.load('same');
+        });
+        const request = resource.load('same');
+        expect(joined).toBe(request);
+        expect(calls).toBe(1);
+        gate.resolve(8);
+        await request;
+        expect(resource.getData().data).toBe(8);
+        expect(resource.snapshot().key).toBe(JSON.stringify('same'));
+        history.disconnect();
+    });
+
+    test('a failed readonly preparation has no request, publication or replay key', async () => {
+        let calls = 0;
+        const resource = new ResourceCarburetor<Map<string, number>, string>(async () => {
+            calls++;
+            return new Map();
+        });
+        const payload = new Map<string, number>();
+        Object.defineProperty(payload, 'unsupported', {get: () => 1});
+        const invalid = {
+            status: EResourceStatus.Idle, data: payload, error: undefined, updatedAt: 2,
+        };
+        Object.defineProperty(invalid, 'status', {
+            value: EResourceStatus.Idle, writable: false, configurable: false, enumerable: true,
+        });
+        resource.setData(invalid);
+        expect(() => resource.load('never')).toThrow('cannot snapshot accessor property unsupported');
+        resource.abort();
+        await resource.reload();
+        expect(calls).toBe(0);
+        expect(resource.getData()).toBe(invalid);
+        expect(resource.getData().status).toBe(EResourceStatus.Idle);
+        expect(resource.snapshot().key).toBeUndefined();
+    });
+
+    test('a failed Pending publication rejects only its request and restores the old answer', async () => {
+        class ThrowingResource extends ResourceCarburetor<number, string> {
+            public failPublication = false;
+
+            protected preEmit(): void {
+                if (this.failPublication) {
+                    this.failPublication = false;
+                    throw new Error('publication failed');
+                }
+                super.preEmit();
+            }
+        }
+        let calls = 0;
+        const resource = new ThrowingResource(async () => ++calls);
+        const old = {status: EResourceStatus.Idle, data: 1, error: undefined, updatedAt: 3};
+        Object.defineProperty(old, 'status', {
+            value: EResourceStatus.Idle, writable: false, configurable: false, enumerable: true,
+        });
+        resource.setData(old);
+        resource.failPublication = true;
+        await expect(resource.load('first')).rejects.toThrow('publication failed');
+        expect(calls).toBe(0);
+        expect(resource.getData()).toBe(old);
+        expect(resource.getData().status).toBe(EResourceStatus.Idle);
+        expect(resource.snapshot().key).toBeUndefined();
+        await resource.reload();
+        expect(calls).toBe(0);
+        await resource.load('second');
+        expect(resource.getData().data).toBe(1);
+        expect(resource.snapshot().key).toBe(JSON.stringify('second'));
+    });
+
+    test('readonly replay supersession leaves the synchronous abort listener in charge', async () => {
+        const first = deferred<number>();
+        const replacement = deferred<number>();
+        const calls: string[] = [];
+        let resource!: ResourceCarburetor<number, string>;
+        resource = new ResourceCarburetor<number, string>((key, signal) => {
+            calls.push(key);
+            if (key === 'first') {
+                signal.addEventListener('abort', () => { void resource.load('replacement'); });
+                return first.promise;
+            }
+            return replacement.promise;
+        });
+        const history = new CarburetorHistory(resource);
+        const pending = {status: EResourceStatus.Pending, data: 4, error: undefined, updatedAt: 7};
+        Object.defineProperty(pending, 'status', {
+            value: EResourceStatus.Pending, writable: false, configurable: false, enumerable: true,
+        });
+        resource.setData(pending);
+        history.undo();
+        history.redo();
+        const stale = resource.load('first');
+        await expect(resource.load('interrupted')).rejects.toMatchObject({name: 'AbortError'});
+        expect(calls).toEqual(['first', 'replacement']);
+        first.resolve(88);
+        await stale;
+        replacement.resolve(33);
+        await flush();
+        expect(resource.getData().status).toBe(EResourceStatus.Success);
+        expect(resource.getData().data).toBe(33);
+        expect(resource.snapshot().key).toBe(JSON.stringify('replacement'));
+        history.disconnect();
+    });
+
+    test('nested opaque payloads remain live while native root aliases stay owned', async () => {
+        class Payload {
+            constructor(public readonly value: number) {}
+        }
+        const original = new Payload(1);
+        const result = new Payload(2);
+        const map = new Map<object, object>();
+        const payload = {item: original, map};
+        const resource = new ResourceCarburetor<Payload | typeof payload, string>(async () => result);
+        const state = {status: EResourceStatus.Idle, data: payload, error: undefined, updatedAt: 7};
+        map.set(state, payload);
+        map.set(payload, state);
+        for (const field of ['status', 'data', 'error', 'updatedAt'] as const) {
+            Object.defineProperty(state, field, {
+                value: state[field], writable: false, configurable: false, enumerable: true,
+            });
+        }
+        resource.setData(state);
+        const request = resource.load('new');
+        const pending = resource.getData();
+        const currentPayload = pending.data as typeof payload;
+        expect(currentPayload.item).toBe(original);
+        expect(currentPayload.map.get(pending)).toBe(currentPayload);
+        expect(currentPayload.map.get(currentPayload)).toBe(pending);
+        await request;
+        expect(resource.getData().status).toBe(EResourceStatus.Success);
+        expect(resource.getData().data).toBe(result);
+        expect(state.data).toBe(payload);
+        expect(state.status).toBe(EResourceStatus.Idle);
+    });
+
+    test('a patch observer supersedes deferred readonly Pending before the old loader', async () => {
+        const gate = deferred<number>();
+        const calls: string[] = [];
+        const resource = new ResourceCarburetor<number, string>(key => {
+            calls.push(key);
+            return gate.promise;
+        });
+        const idle = {status: EResourceStatus.Idle, data: 1, error: undefined, updatedAt: 7};
+        Object.defineProperty(idle, 'status', {
+            value: EResourceStatus.Idle, writable: false, configurable: false, enumerable: true,
+        });
+        resource.setData(idle);
+        let replaced = false;
+        const disconnect = resource.attachPatchListener({
+            patch() {
+                if (!replaced) {
+                    replaced = true;
+                    void resource.load('replacement');
+                }
+            },
+        });
+        let suspended!: Promise<void>;
+        try {
+            resource.suspend('old');
+        } catch (thrown) {
+            suspended = thrown as Promise<void>;
+        }
+        await expect(suspended).rejects.toMatchObject({name: 'AbortError'});
+        expect(calls).toEqual(['replacement']);
+        gate.resolve(99);
+        await flush();
+        expect(resource.getData().status).toBe(EResourceStatus.Success);
+        expect(resource.getData().data).toBe(99);
+        expect(resource.snapshot().key).toBe(JSON.stringify('replacement'));
+        disconnect();
     });
 });
