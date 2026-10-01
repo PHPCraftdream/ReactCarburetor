@@ -492,5 +492,42 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         assert.equal(Object.getOwnPropertyDescriptor(entry, 'status').writable, false);
         completed.push(label + ':native-accessor-cache-removal-refresh');
     }
+    for (const bulk of [false, true]) {
+        let calls = 0;
+        const cache = new producer.ResourceCache(async () => { calls++; return 'loaded'; }, {ttl: Infinity});
+        const history = new recorder.CarburetorHistory(cache);
+        const a = cache.keyOf('a'), b = cache.keyOf('b');
+        const good = {...producer.getInitialCacheEntry(), status: producer.EResourceStatus.Success,
+            data: 'a', updatedAt: 1};
+        const locked = {...producer.getInitialCacheEntry(), status: producer.EResourceStatus.Success,
+            data: 'b', updatedAt: 1};
+        for (const field of ['invalidated', 'failed']) Object.defineProperty(locked, field, {
+            value: false, enumerable: true, writable: false, configurable: false,
+        });
+        const state = {entries: {[a]: good, [b]: locked}, native: new Map()};
+        state.native.set('root', state).set('entry', locked);
+        cache.setData(state);
+        assert.equal(history.undo(), true);
+        assert.equal(history.redo(), true);
+        const held = cache.getData(), version = cache.getVersion();
+        if (bulk) cache.invalidateAll();
+        else cache.invalidate('b');
+        const next = cache.getData();
+        assert.equal(cache.getEntry('b').invalidated, true);
+        assert.equal(cache.getEntry('b').stale, true);
+        assert.equal(cache.getEntry('a').invalidated, bulk);
+        assert.equal(cache.getVersion(), version + 1);
+        assert.equal(calls, 0);
+        assert.equal(next.native.get('root'), next);
+        assert.equal(next.native.get('entry'), next.entries[b]);
+        assert.equal(held.entries[b].invalidated, false);
+        assert.equal(Object.getOwnPropertyDescriptor(held.entries[b], 'invalidated').writable, false);
+        assert.equal(history.undo(), true);
+        assert.equal(cache.getEntry('b').invalidated, false);
+        assert.equal(history.redo(), true);
+        assert.equal(cache.getEntry('b').invalidated, true);
+        history.disconnect();
+        completed.push(label + ':readonly-cache-invalidate' + (bulk ? '-all' : ''));
+    }
     return completed;
 };
