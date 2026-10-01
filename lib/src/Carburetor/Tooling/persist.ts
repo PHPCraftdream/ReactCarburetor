@@ -55,7 +55,8 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     // subscribers notified after this one; the last good entry stays in place.
     const write = (): void => {
         try {
-            storage.setItem(key, carburetor.serialize());
+            // The store's wire form: JSON.stringify invokes its toJSON(), without cloning it.
+            storage.setItem(key, JSON.stringify(carburetor));
         } catch (error: unknown) {
             if (options.onError) {
                 options.onError(error);
@@ -73,7 +74,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     }
 
     // One write per microtask: further changes before it runs just move the value it will
-    // serialize, since write() reads fresh state rather than a scheduled snapshot.
+    // stringify, since write() reads fresh state rather than a scheduled snapshot.
     let pending = false;
 
     const flush = (): void => {

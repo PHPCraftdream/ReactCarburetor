@@ -17,6 +17,15 @@ import {TPath} from "@/Carburetor/Models/Paths";
 export const PROXY_CACHE: unique symbol = Symbol('carburetor.proxyCache');
 
 /**
+ * The key an engine view answers with the raw object it fronts: the reverse of `PROXY_CACHE`,
+ * consumed by `liveViews.readTarget`/`has` instead of a registry insert per proxy. Shared
+ * through `Symbol.for` so two package copies (see sharedSingleton) recognize each other's
+ * views. Internal to the engine; the get traps answer it before touching the target, so
+ * reading it records nothing, creates nothing, and never appears in a path.
+ */
+export const RAW_TARGET: unique symbol = Symbol.for('react-carburetor.rawTarget');
+
+/**
  * The ownership contract of the branch cache: one cache belongs to one proxy tree, and an
  * entry survives only while its source is still the live value at its path. Keying by raw
  * object identity alone would hand one path's wrapper to another path reaching the same

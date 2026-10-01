@@ -9,10 +9,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `Carburetor.serialize(): string`: an explicit JSON persistence contract. Ordinary stores
-  stringify live state without cloning; resource stores include their settled argument key.
-  Custom persisted representations override `serialize` and restore the matching parsed shape.
-
 - `persist(store, {coalesce: true})`: one `JSON.stringify` per microtask instead of one per write
   (0.94–1.44 ms per keystroke at 4000 items). Off by default, so a write still lands in storage
   before the call that caused it returns; the disposer flushes a pending write.
@@ -177,8 +173,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   failed pre-loader publication restores the previous reload target, and cache restore retains
   callback-started requests alongside normalized captured siblings.
 - History suppresses only its exact replay owner, preserving fresh branches after deferred mixed
-  publications and independent recorders. Existing boolean owned-restore/zero-argument publication
-  custom producers remain valid; the history constructor requires only the methods it actually uses.
+  publications and independent recorders. Zero-argument `publication` callbacks remain supported for
+  custom producers; the history constructor requires only the methods it actually uses.
 - Watch/class/hooks explicitly close selected values and read sets before transfer. Completed reads
   have a readonly internal surface; computed dependencies retain their intentionally extendable path.
 - Owned graph copying uses named history/operational policies. Strict history admission and ordinary
@@ -411,6 +407,38 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `connect()` and `connectSelection()`, and its pure selection-comparison/detachment helpers now
   live in `Component/Connection/` and `Component/Models/`; the class itself keeps only lifecycle
   orchestration. The public API and its behavior are unchanged.
+- **Breaking:** `ICarburetor.extend` and `ICarburetorSubscription.hasDriftSince` moved to an internal
+  symbol-keyed protocol (`Symbol.for('react-carburetor/v1/subscription-extend')` /
+  `.../subscription-has-drift`); they are no longer part of the public interfaces or the package
+  exports.
+- **Breaking:** `toJSON()` is the wire form without a copy (live data; resource stores add the
+  settled key) instead of a detached snapshot; `persist` writes `JSON.stringify(store)`. Use
+  `snapshot()` for a detached copy — `CarburetorScope.dehydrate()` and `connectDevTools` do.
+  `IInspectable` now requires `snapshot()`, and `CarburetorScope` only dehydrates instances that
+  provide it.
+- **Breaking:** `IPatchObserver.ownRestore` removed along with the registry's one-shot pending claim;
+  use `restoreClaim(state)` returning `{owner, representation, adopt}`.
+- `Carburetor.captureHistory` no longer throws when `snapshot()` is overridden: the default owns the
+  live graph, and only classes whose wire form differs need an override.
+- **Breaking:** a connection/`select` selection follows the state model: own enumerable string keys,
+  array elements and `length`. Descriptors, symbol keys and non-enumerable keys are neither compared
+  nor copied, and an accessor's getter runs once. A detached Date compares by time, a Map/Set by
+  content over primitive keys (object-keyed collections and class instances still count as changed),
+  so an unchanged `Date`/`Map`/`Set` field no longer re-renders a gated child.
+- Reading an opaque value (class instance, Map, Set, Date) no longer walks its reachable graph on
+  every read: the answer is cached per native and revalidated by a per-root generation that only
+  topology changes bump. Measured against `1a02d29`: repeated read of an instance with a 10000-row
+  payload 9110 → 0.24 µs; iterating a `Map(10000)` through a view 17.9× → 1.11× raw iteration.
+- Read proxies are found through a `Symbol.for('react-carburetor.rawTarget')` hatch instead of a
+  process-wide registry insert per proxy; fresh 4000-row tree construction 0.57–0.75× of before,
+  cached re-walk unchanged within noise (0.94–1.17×).
+- `computed` and `watch` keep one persistent read tree per source and rebuild it only when the
+  store's data object changes; `watch` re-subscribes only when its read set changed. One write at
+  4000 rows: observed computed recompute 18.8 → 7.95 ms (0.42×), watch fire 13.8 → 4.65 ms (0.34×).
+- Smaller costs: `ResourceCache.resolve` for primitive ids 435.7 → 146.7 ns (clock and LRU work only
+  when `ttl`/`maxEntries` are finite); subscriber filing 525 → 410 ns per path (0.74×, no per-path
+  array/closure); selection compare 2.77 → 0.93 µs and detach 3.05 → 0.59 µs for a two-field
+  selection; `useCarburetorValue` initializers run once instead of every render.
 
 ### Fixed
 

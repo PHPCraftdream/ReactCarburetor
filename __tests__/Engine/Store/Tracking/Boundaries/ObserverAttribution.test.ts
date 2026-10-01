@@ -182,7 +182,7 @@ describe('effective writes survive a throwing patch observer', () => {
         history.disconnect();
     });
 
-    test('custom restore producers retain the boolean exact-owned adoption contract', () => {
+    test('custom restore producers follow the exact-owned restoreClaim contract', () => {
         type Row = {n: number};
         type State = {row: Row; map: Map<string, Row>};
         class CustomProducer extends Carburetor<State> {
@@ -190,8 +190,15 @@ describe('effective writes survive a throwing patch observer', () => {
                 this.setData({row, map: new Map([['row', row]])});
             }
             public restore(data: State): void {
-                const owned = this.patchObservers?.ownRestore(data) === true;
-                this.setData(owned ? data : {row: {n: data.row.n}, map: new Map(data.map)});
+                const claim = this.patchObservers?.claimRestore(data);
+                const owned = claim?.adopt === true;
+                const next = owned ? data : {row: {n: data.row.n}, map: new Map(data.map)};
+
+                // The claim names the installation: committing the adoption as a plain public
+                // replacement would read as a fresh branch and drop redo.
+                this.commitState(next, claim === undefined ? undefined : {
+                    origin: 'restore', owner: claim.owner, representation: claim.representation,
+                });
             }
         }
 

@@ -3,9 +3,21 @@ import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {nativeAliasIndex} from "./NativeAliasIndex";
 
+/** Cached alias answer for one opaque value, valid for one root at one index generation. */
+interface IAliasAnswer {
+    root: object;
+    generation: number;
+    wildcard: boolean;
+    paths: string[];
+}
+
+const answers = new WeakMap<object, IAliasAnswer>();
+
 /**
- * Subscribes to writable ordinary aliases exposed by a coarse native read without wrapping
- * entries. Root backlinks subscribe to the whole store. Primitive reads skip the index.
+ * Subscribes to the ordinary aliases a coarse native read exposes, cached per root generation.
+ *
+ * Root backlinks subscribe to the whole store; primitive reads skip the index. An in-place
+ * mutation of the value is picked up only after the next topological write.
  *
  * @param root - current read tree root
  * @param native - exposed raw member or collection
@@ -15,6 +27,14 @@ export const recordNativeAliasReads = (
     root: object, native: unknown, record: TPathRecorder
 ): void => {
     if (native === null || typeof native !== 'object') return;
+    const generation = nativeAliasIndex.generation(root);
+    const cached = answers.get(native);
+    if (cached !== undefined && cached.root === root && cached.generation === generation) {
+        if (cached.wildcard) record(WILDCARD_PATH);
+        else for (const path of cached.paths) record(path);
+        return;
+    }
+
     const exposed = new Set<object>();
     const visited = new Set<object>();
     const visit = (value: unknown): void => {
@@ -40,17 +60,16 @@ export const recordNativeAliasReads = (
         }
     };
     visit(native);
-    if (exposed.size === 0) return;
-    if (exposed.has(root)) {
-        record(WILDCARD_PATH);
-        return;
-    }
-
-    const paths = nativeAliasIndex.paths(root);
-    for (const value of exposed) {
-        const aliases = paths.get(value);
-        if (aliases !== undefined) {
-            for (const path of aliases) record(path);
+    const wildcard = exposed.has(root);
+    const paths: string[] = [];
+    if (!wildcard && exposed.size > 0) {
+        const index = nativeAliasIndex.paths(root);
+        for (const value of exposed) {
+            const aliases = index.get(value);
+            if (aliases !== undefined) paths.push(...aliases);
         }
     }
+    answers.set(native, {root, generation, wildcard, paths});
+    if (wildcard) record(WILDCARD_PATH);
+    else for (const path of paths) record(path);
 };

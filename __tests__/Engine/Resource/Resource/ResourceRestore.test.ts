@@ -281,7 +281,7 @@ describe('single-slot public replacement', () => {
         const seen: IResourceSnapshot<string>[] = [];
         const stop = resource.subscribe(() => {
             seen.push(resource.snapshot());
-            expect(JSON.parse(resource.serialize())).toEqual(resource.getData());
+            expect(JSON.parse(JSON.stringify(resource))).toEqual(resource.getData());
         });
         const replacement = {...resource.getData(), data: 'manual'};
 
@@ -291,7 +291,7 @@ describe('single-slot public replacement', () => {
         expect(seen).toEqual([{...replacement, key: undefined}]);
         expect(resource.getData()).toBe(replacement);
         expect(resource.snapshot()).toEqual({...replacement, key: undefined});
-        expect(JSON.parse(resource.serialize())).toEqual(replacement);
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(replacement);
         const waiting = thrownBy(resource, 'a');
         expect(waiting).toBeInstanceOf(Promise);
         expect(requested).toEqual(['a', 'a']);
@@ -323,7 +323,7 @@ describe('single-slot public replacement', () => {
         resource.unsubscribe(stop);
         expect(seen).toEqual([{...equal, key: undefined}]);
         expect(resource.snapshot()).toEqual({...equal, key: undefined});
-        expect(JSON.parse(resource.serialize())).toEqual(equal);
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(equal);
         const waiting = thrownBy(resource, 'a');
         expect(waiting).toBeInstanceOf(Promise);
         expect(calls).toBe(2);
@@ -348,7 +348,7 @@ describe('single-slot public replacement', () => {
             observed.push({
                 raw: resource.getLastError(),
                 wire: resource.snapshot(),
-                serialized: JSON.parse(resource.serialize()),
+                serialized: JSON.parse(JSON.stringify(resource)),
             });
         });
         const replacement = {...resource.getData(), status: EResourceStatus.Error, error: 'access-denied'};
@@ -361,7 +361,7 @@ describe('single-slot public replacement', () => {
         expect((raw as Error).message).toBe('access-denied');
         expect(resource.getData()).toBe(replacement);
         expect(resource.snapshot()).toEqual({...replacement, key: undefined});
-        expect(JSON.parse(resource.serialize())).toEqual(replacement);
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(replacement);
         expect(observed).toEqual([{raw, wire: resource.snapshot(), serialized: replacement}]);
 
         const waiting = thrownBy(resource, 'a');
@@ -385,7 +385,7 @@ describe('single-slot public replacement', () => {
         const id = resource.subscribe(() => {
             seen.push({
                 wire: resource.snapshot(),
-                serialized: JSON.parse(resource.serialize()),
+                serialized: JSON.parse(JSON.stringify(resource)),
                 raw: resource.getLastError(),
             });
         });
@@ -400,7 +400,7 @@ describe('single-slot public replacement', () => {
         expect((raw as Error).message).toBe('offline');
         expect(resource.getData()).toBe(replacement);
         expect(resource.snapshot()).toEqual({...replacement, key: undefined});
-        expect(JSON.parse(resource.serialize())).toEqual(replacement);
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(replacement);
         expect(seen).toEqual([{wire: resource.snapshot(), serialized: replacement, raw}]);
 
         const waiting = thrownBy(resource, 'a');
@@ -423,7 +423,7 @@ describe('single-slot public replacement', () => {
         expect(resource.getLastError()).toBe(original);
         expect(thrownBy(resource, 'a')).toBe(original);
         expect(resource.snapshot()).toEqual({...current, key: JSON.stringify('a')});
-        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(resource.snapshot());
     });
 
     test('a keyless Success after a failure has no inherited key and fetches the old request again', async () => {
@@ -440,7 +440,7 @@ describe('single-slot public replacement', () => {
             observed.push({
                 raw: resource.getLastError(),
                 wire: resource.snapshot(),
-                serialized: JSON.parse(resource.serialize()),
+                serialized: JSON.parse(JSON.stringify(resource)),
             });
         });
 
@@ -451,7 +451,7 @@ describe('single-slot public replacement', () => {
 
         expect(resource.getLastError()).toBeUndefined();
         expect(resource.snapshot()).toEqual({...replacement, key: undefined});
-        expect(JSON.parse(resource.serialize())).toEqual(replacement);
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(replacement);
         expect(observed).toEqual([{raw: undefined, wire: resource.snapshot(), serialized: replacement}]);
         const waiting = thrownBy(resource, 'a');
         expect(waiting).toBeInstanceOf(Promise);
@@ -498,7 +498,7 @@ describe('single-slot public replacement', () => {
         expect(restored).not.toBe(original);
         expect((restored as Error).message).toBe('restored');
         expect(thrownBy(resource, 'a')).toBe(restored);
-        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(resource.snapshot());
 
         const wire = {...resource.snapshot(), error: 'hydrated', key: JSON.stringify('b')};
         resource.fromJSON(wire);
@@ -509,7 +509,7 @@ describe('single-slot public replacement', () => {
         expect(thrownBy(resource, 'b')).toBe(hydrated);
         expect(resource.getData().error).toBe('hydrated');
         expect(resource.snapshot()).toEqual(wire);
-        expect(JSON.parse(resource.serialize())).toEqual(wire);
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(wire);
     });
 });
 
@@ -530,7 +530,7 @@ describe('single-slot subclass mutation', () => {
             observations.push({
                 state: {...state},
                 wire: resource.snapshot(),
-                serialized: JSON.parse(resource.serialize()),
+                serialized: JSON.parse(JSON.stringify(resource)),
                 raw: resource.getLastError(),
                 result: state.status === EResourceStatus.Success
                     ? resource.suspend('a')
@@ -560,7 +560,7 @@ describe('single-slot subclass mutation', () => {
         expect(resource.getLastError()).toBeUndefined();
         expect(resource.suspend('a')).toBe('recovered');
         expect(resource.snapshot().key).toBe(JSON.stringify('a'));
-        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(resource.snapshot());
         expect(observations).toHaveLength(3);
         for (const observation of observations) {
             expect(observation.wire).toEqual({...observation.state, key: JSON.stringify('a')});
@@ -591,7 +591,7 @@ describe('single-slot subclass mutation', () => {
         expect(resource.getLastError()).toBe(original);
         expect(thrownBy(resource, 'a')).toBe(original);
         expect(resource.snapshot().key).toBe(JSON.stringify('a'));
-        expect(JSON.parse(resource.serialize())).toEqual(resource.snapshot());
+        expect(JSON.parse(JSON.stringify(resource))).toEqual(resource.snapshot());
         expect(seen).toEqual([[original, original, resource.snapshot()]]);
     });
 });

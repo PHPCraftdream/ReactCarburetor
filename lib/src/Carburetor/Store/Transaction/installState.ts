@@ -12,18 +12,14 @@ import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
  *
  * @param receiver - the typed install port over the store's protected transition state
  * @param data - the prepared root adopted by the operation
- * @param installation - explicit origin/owner/representation, or a pending exact restore claim
+ * @param installation - explicit origin/owner/representation, or the ordinary public replacement
  * @param continuation - whether this commit continues an already-filed restore operation
  */
 export const installState = <T extends object>(
     receiver: IStateInstallPort<T>, data: T, installation?: IStateInstallation, continuation: boolean = false
 ): T => {
     const store = receiver;
-    const claim = store.patchObservers?.consumeRestoreClaim(data);
-    const transition: IStateInstallation = claim
-        && (installation === undefined || installation.origin === 'replacement')
-        ? {origin: 'restore', owner: claim.owner, representation: claim.representation}
-        : installation ?? STATE_PUBLIC_REPLACEMENT;
+    const transition: IStateInstallation = installation ?? STATE_PUBLIC_REPLACEMENT;
     if (transition.origin === 'operational' && !transition.owner) {
         throw new Error('Carburetor: operational installation requires its owner');
     }

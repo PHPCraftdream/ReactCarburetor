@@ -87,13 +87,9 @@ export class CarburetorHistory<T extends object> {
     private readonly observer: IPatchObserver = {
         patch: (patch: Parameters<TPatchRecorder>[0]): void => this.onPatch(patch),
         publication: (fact?: IStatePublication): void => this.record(fact),
-        ownRestore: (state: unknown): boolean => {
-            if (state !== this.replayTarget || this.replayOwner === undefined) return false;
-            this.pendingReplayOwner = this.replayOwner;
-            return this.replayContainsExotic || this.replayReplaceOnReplay;
-        },
         restoreClaim: (state: unknown) => {
             if (state !== this.replayTarget || this.replayOwner === undefined) return undefined;
+            this.pendingReplayOwner = this.replayOwner;
             return {
                 owner: this.replayOwner, representation: 'history-owned',
                 adopt: this.replayContainsExotic || this.replayReplaceOnReplay,

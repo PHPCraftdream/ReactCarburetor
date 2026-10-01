@@ -30,6 +30,10 @@ interface IProfileData {
     name: string;
 }
 
+interface ICounterData {
+    count: number;
+}
+
 describe('useCarburetorValue default comparator', () => {
     test('an ancestor rewrite that keeps the selected content equal does not re-render', () => {
         const carburetor = new TodoCarburetor({todo: {title: 'shopping', done: false}});
@@ -210,5 +214,134 @@ describe('useCarburetorValue default comparator', () => {
         unmount();
         expect(first.observerCount).toBe(0);
         expect(second.observerCount).toBe(0);
+    });
+});
+
+// A stable selector: the cached-value path must be taken on a warm re-render, so the only
+// measurable difference is the hook's per-render initializer allocations (R30-10).
+const selectCount = (data: ICounterData): number => data.count;
+
+describe('useCarburetorValue lazy initialization (R30-10)', () => {
+    test('a warm re-render allocates no more Sets than the same render without the hook', () => {
+        const carburetor = new Carburetor<ICounterData>({count: 0});
+
+        const Counter = () => {
+            const value = useCarburetorValue(carburetor, selectCount);
+
+            return <div className="count">{value}</div>;
+        };
+
+        // A control with identical markup but no hook: it pins React's own per-rerender
+        // Set allocation floor, so the assertion survives React's internal allocations.
+        const Control = () => <div className="count">0</div>;
+
+        const hooked = render(<Counter/>);
+        const control = render(<Control/>);
+
+        const rerenderAllocations = (
+            target: {rerender: (ui: React.ReactElement) => void}, element: React.ReactElement
+        ): number => {
+            const OriginalSet = globalThis.Set;
+            let allocations = 0;
+
+            const CountingSet = function (...args: unknown[]): Set<unknown> {
+                allocations += 1;
+
+                return new OriginalSet(...(args as []));
+            } as unknown as SetConstructor;
+
+            globalThis.Set = CountingSet;
+
+            try {
+                act(() => target.rerender(element));
+            } finally {
+                globalThis.Set = OriginalSet;
+            }
+
+            return allocations;
+        };
+
+        const controlAllocations = rerenderAllocations(control, <Control/>);
+        const hookedAllocations = rerenderAllocations(hooked, <Counter/>);
+
+        // The old implementation built `completeReads(new Set())` on every render, which
+        // shows up as exactly one extra allocation here.
+        expect(hookedAllocations).toBe(controlAllocations);
+        expect(hooked.container.querySelector('.count')?.textContent).toBe('0');
+
+        hooked.unmount();
+        control.unmount();
+    });
+});
+
+describe('useCarburetorValue over detached Date/Map/Set (R30-03)', () => {
+    test('an unchanged Date keeps the hook render count stable; a changed time re-renders', () => {
+        const at = new Date(1000);
+        const carburetor = new Carburetor<{at: Date; other: number}>({at, other: 0});
+        let renders = 0;
+
+        const WhenView = () => {
+            renders++;
+
+            const value = useCarburetorValue(carburetor, (data) => ({at: data.at}));
+
+            return <div className="when">{value.at.getTime()}</div>;
+        };
+
+        const {container, unmount} = render(<WhenView />);
+
+        expect(container.textContent).toBe('1000');
+        const afterMount = renders;
+
+        // A write outside the selection: no recompute at all.
+        act(() => { carburetor.setData({at, other: 1}); });
+        expect(renders).toBe(afterMount);
+
+        // A wake with unchanged selected content (a fresh equal Date): the snapshot keeps
+        // its identity, so React does not re-render.
+        act(() => { carburetor.setData({at: new Date(1000), other: 2}); });
+        expect(renders).toBe(afterMount);
+
+        // A changed time is a content change: one re-render.
+        act(() => { carburetor.setData({at: new Date(2000), other: 2}); });
+        expect(renders).toBe(afterMount + 1);
+        expect(container.textContent).toBe('2000');
+
+        unmount();
+    });
+
+    test('an unchanged Map keeps the hook render count stable; a new entry re-renders', () => {
+        const map = new Map([['a', 1]]);
+        const carburetor = new Carburetor<{map: Map<string, number>; other: number}>(
+            // The rule is right; the opaque Map is the subject of this R30-03 test.
+            // oxlint-disable-next-line carburetor/no-untrackable-store-data
+            {map, other: 0}
+        );
+        let renders = 0;
+
+        const MapView = () => {
+            renders++;
+
+            const value = useCarburetorValue(carburetor, (data) => ({map: data.map}));
+
+            return <div className="map">{value.map.get('a')}</div>;
+        };
+
+        const {container, unmount} = render(<MapView />);
+
+        expect(container.textContent).toBe('1');
+        const afterMount = renders;
+
+        act(() => { carburetor.setData({map, other: 1}); });
+        expect(renders).toBe(afterMount);
+
+        act(() => { carburetor.setData({map: new Map([['a', 1]]), other: 2}); });
+        expect(renders).toBe(afterMount);
+
+        act(() => { carburetor.setData({map: new Map([['a', 2]]), other: 2}); });
+        expect(renders).toBe(afterMount + 1);
+        expect(container.textContent).toBe('2');
+
+        unmount();
     });
 });

@@ -3,6 +3,7 @@
 /* oxlint-disable carburetor/no-untrackable-store-data */
 import {Carburetor, Computed} from "@/Carburetor";
 import {TReadonly} from "@/Carburetor/Models/Base";
+import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 
 interface IState {
     row: {n: number};
@@ -142,9 +143,10 @@ describe('raw native members with ordinary writable aliases', () => {
         expect(selected.has('row')).toBe(true);
         const baseline = store.getVersion();
         store.putOther(4);
-        expect(store.hasDriftSince(baseline, selected)).toBe(false);
+        // The drift check lives on the internal symbol protocol now (R30-06a).
+        expect((store as IInternalSubscriptionProtocol)[CARBURETOR_HAS_DRIFT]!(baseline, selected)).toBe(false);
         store.put(2);
-        expect(store.hasDriftSince(baseline, selected)).toBe(true);
+        expect((store as IInternalSubscriptionProtocol)[CARBURETOR_HAS_DRIFT]!(baseline, selected)).toBe(true);
         let renders = 0;
         store.subscribe(() => { renders++; }, {reads: selected});
         store.putOther(5);

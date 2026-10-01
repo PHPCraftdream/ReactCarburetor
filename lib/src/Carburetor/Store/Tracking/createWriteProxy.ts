@@ -7,7 +7,7 @@ import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {clonePatchValue} from "./Proxy/clonePatchValue";
 import {createProxyCache} from "./Proxy/createProxyCache";
-import {IProxyCache, PROXY_CACHE} from "./Models";
+import {IProxyCache, PROXY_CACHE, RAW_TARGET} from "./Models";
 import {isTrackable} from "./isTrackable";
 import {isOpaqueDescriptor} from "./Proxy/isOpaqueDescriptor";
 import {forbidSymbolKey} from "./Proxy/forbidSymbolKey";
@@ -176,10 +176,14 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      * @param key - the property being read.
      */
     get(source: T, key: string | symbol): unknown {
-        // One branch, not two: PROXY_CACHE is itself a symbol, so folding its check inside the
+        // One branch, not two: both hatches are symbols, so folding their checks inside the
         // `typeof` branch costs the overwhelmingly common string-keyed read only one comparison
         // instead of two.
         if (typeof key === 'symbol') {
+            if (key === RAW_TARGET) {
+                return source;
+            }
+
             return key === PROXY_CACHE ? this.cache : Reflect.get(source, key);
         }
 
@@ -475,7 +479,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
 /**
  * Builds a path-recording write proxy with one shared branch cache.
  *
- * @param target - raw state, filed for unwrapping values read back through draft
+ * @param target - raw state, answered raw through the RAW_TARGET hatch for unwrapping
  * @param record - write-path sink; unwrappable leaves invalidate their owner
  * @param basePath - escaped dotted path, empty at the root
  * @param aliases - development alias and state-model validation
@@ -496,9 +500,6 @@ export const createWriteProxy = <T extends object>(
     const handler = new WriteProxyHandler<T>(
         basePath, record, aliases, cached, Array.isArray(target), patchPort, basePathSegments
     );
-    const proxy = new Proxy(target, handler);
 
-    liveViews.noteTarget(proxy, target);
-
-    return proxy as T;
+    return new Proxy(target, handler) as T;
 };

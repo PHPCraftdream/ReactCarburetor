@@ -1,69 +1,11 @@
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 
-/**
- * Copies an own data descriptor without invoking an accessor. Accessors cannot make
- * stable snapshots, so they are rejected with an actionable error.
- */
-const detachedDescriptor = (
-    source: object,
-    key: string | symbol,
-    seen: WeakMap<object, unknown>,
-    onLiveInstance: TReportLiveInstance | undefined,
-    onArraySubclass: TArraySubclassGuard | undefined,
-    descriptorSource: object = source
-): PropertyDescriptor | undefined => {
-    // A forwarding facade relaxes non-configurable descriptors to satisfy its empty
-    // Proxy target. Read the trusted raw descriptor to retain the original flags, but
-    // traverse the facade below so each selected field still records its path.
-    const descriptor = Object.getOwnPropertyDescriptor(descriptorSource, key);
-
-    if (!descriptor) {
-        return undefined;
-    }
-
-    if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-        throw new Error(
-            (onArraySubclass === undefined ? 'detachOpaque()' : 'detachSelection()') +
-            ' cannot snapshot accessor property ' + String(key) +
-            ': select plain data fields instead.'
-        );
-    }
-
-    // A data-property read lets the store's read proxy record the selected path.
-    descriptor.value = detach(Reflect.get(source, key), seen, onLiveInstance, onArraySubclass);
-
-    return descriptor;
-};
-
 /** The per-instance report a caller can wire in: fired for each live class instance handed over. */
 type TReportLiveInstance = (instance: object) => void;
 
 /** Optional stricter array policy used by class connection selections. */
 type TArraySubclassGuard = (instance: object) => never;
-
-/**
- * Copies native own data fields after their intrinsic contents, using the same cycle ledger
- * so a hidden field can refer back to the native copy or across its keys and members.
- */
-const copyNativeFields = (
-    source: object,
-    copy: object,
-    seen: WeakMap<object, unknown>,
-    onLiveInstance: TReportLiveInstance | undefined,
-    onArraySubclass: TArraySubclassGuard | undefined
-): void => {
-    const keys = Reflect.ownKeys(source);
-
-    for (let index = 0; index < keys.length; index++) {
-        const key = keys[index];
-        const descriptor = detachedDescriptor(source, key, seen, onLiveInstance, onArraySubclass);
-
-        if (descriptor) {
-            Object.defineProperty(copy, key, descriptor);
-        }
-    }
-};
 
 /**
  * One recursive step, split from the export only so the entry point can hand a fresh cycle guard.
@@ -83,19 +25,25 @@ const detach = (
     }
 
     const target = liveViews.readTarget(value);
-    const known = seen.get(target ?? value);
+    const native = target ?? value;
+    const known = seen.get(value) ?? (target !== undefined ? seen.get(target) : undefined);
 
     if (known !== undefined) {
         if (target !== undefined && !seen.has(value)) {
-            // The raw branch may have been copied first through an opaque Map. Still visit
-            // this recognized read proxy once: its field reads subscribe to the selected
+            // The raw branch may have been copied first through an opaque container. Still
+            // visit this recognized read proxy once: its field reads subscribe to the selected
             // paths, including descendants, without making a second detached copy.
             seen.set(value, known);
-            Reflect.ownKeys(value).forEach((key: string | symbol): void => {
-                if (!Array.isArray(value) || key !== 'length') {
-                    detachedDescriptor(value, key, seen, onLiveInstance, onArraySubclass, target);
+
+            if (!Array.isArray(value)) {
+                const keys = Object.keys(value);
+
+                const branch = value as Record<string, unknown>;
+
+                for (let index = 0; index < keys.length; index++) {
+                    void branch[keys[index]];
                 }
-            });
+            }
         }
 
         return known;
@@ -103,18 +51,14 @@ const detach = (
 
     // A persistent facade can front a native root, but native methods require their real
     // internal-slot receiver. Its registered resolver already recorded the root wildcard.
-    const native = target ?? value;
-
-    // Exact prototype: a subclass falls through to the class-instance guard, not a lossy rebuild.
     if (native instanceof Date && Object.getPrototypeOf(native) === Date.prototype) {
         const copy = new Date(Date.prototype.getTime.call(native));
 
         seen.set(value, copy);
+
         if (target !== undefined) {
             seen.set(target, copy);
         }
-
-        copyNativeFields(native, copy, seen, onLiveInstance, onArraySubclass);
 
         return copy;
     }
@@ -123,6 +67,7 @@ const detach = (
         const copy = new Map<unknown, unknown>();
 
         seen.set(value, copy);
+
         if (target !== undefined) {
             seen.set(target, copy);
         }
@@ -132,8 +77,6 @@ const detach = (
                 detach(member, seen, onLiveInstance, onArraySubclass));
         });
 
-        copyNativeFields(native, copy, seen, onLiveInstance, onArraySubclass);
-
         return copy;
     }
 
@@ -141,6 +84,7 @@ const detach = (
         const copy = new Set<unknown>();
 
         seen.set(value, copy);
+
         if (target !== undefined) {
             seen.set(target, copy);
         }
@@ -148,8 +92,6 @@ const detach = (
         Set.prototype.forEach.call(native, (member: unknown): void => {
             copy.add(detach(member, seen, onLiveInstance, onArraySubclass));
         });
-
-        copyNativeFields(native, copy, seen, onLiveInstance, onArraySubclass);
 
         return copy;
     }
@@ -169,9 +111,15 @@ const detach = (
             return value;
         }
 
-        const copy: unknown[] = prototype === Array.prototype
-            ? []
-            : Object.setPrototypeOf([], prototype);
+        // Holes stay holes; a null-prototype array keeps its prototype.
+        const copy: unknown[] = [];
+        const length = value.length;
+
+        copy.length = length;
+
+        if (prototype !== Array.prototype) {
+            Object.setPrototypeOf(copy, prototype);
+        }
 
         seen.set(value, copy);
 
@@ -179,23 +127,10 @@ const detach = (
             seen.set(target, copy);
         }
 
-        // Defining data descriptors preserves holes and flags without invoking indexed getters.
-        Reflect.ownKeys(value).forEach((key: string | symbol): void => {
-            if (key !== 'length') {
-                const descriptor = detachedDescriptor(value, key, seen, onLiveInstance, onArraySubclass, target);
-
-                if (descriptor) {
-                    Object.defineProperty(copy, key, descriptor);
-                }
+        for (let index = 0; index < length; index++) {
+            if (Object.prototype.hasOwnProperty.call(value, index)) {
+                copy[index] = detach(value[index], seen, onLiveInstance, onArraySubclass);
             }
-        });
-
-        // A persistent array facade reports writable length even when the current raw
-        // array is locked, as required by its shared Proxy target. Copy the real flags.
-        const length = Object.getOwnPropertyDescriptor(native, 'length');
-
-        if (length) {
-            Object.defineProperty(copy, 'length', length);
         }
 
         return copy;
@@ -210,10 +145,13 @@ const detach = (
         return value;
     }
 
-    const source = value as Record<string | symbol, unknown>;
-    // Object.create(getPrototypeOf(source)) keeps a null-prototype dictionary null-prototype
-    // instead of always landing on Object.prototype the way `{}` would.
-    const result: Record<string | symbol, unknown> = Object.create(Object.getPrototypeOf(source));
+    const source = value as Record<string, unknown>;
+    // The literal is the fast path for the common prototype; Object.create keeps a
+    // null-prototype dictionary null-prototype instead of always landing on Object.prototype.
+    const prototype = Object.getPrototypeOf(native);
+    const result: Record<string, unknown> = prototype === Object.prototype
+        ? {}
+        : Object.create(prototype);
 
     seen.set(value, result);
 
@@ -221,33 +159,92 @@ const detach = (
         seen.set(target, result);
     }
 
-    Reflect.ownKeys(source).forEach((key: string | symbol): void => {
-        const descriptor = detachedDescriptor(source, key, seen, onLiveInstance, onArraySubclass, target);
+    // Own enumerable string keys only — the state model (R6-02). Reads go through the value
+    // itself so a live view records every selected path.
+    const keys = Object.keys(source);
 
-        if (descriptor) {
-            Object.defineProperty(result, key, descriptor);
-        }
-    });
+    for (let index = 0; index < keys.length; index++) {
+        const child: unknown = source[keys[index]];
+
+        assign(result, keys[index], child !== null && typeof child === 'object'
+            ? detach(child, seen, onLiveInstance, onArraySubclass)
+            : child);
+    }
 
     return result;
 };
 
 /**
- * Recursively detaches plain objects, arrays, Maps, Sets and Dates.
- * Own string and symbol data descriptors are preserved; accessors are rejected without invocation.
+ * Stores one copied field; an own key literally named `__proto__` needs defineProperty to
+ * avoid reassigning the copy's prototype.
  *
- * A null-prototype dictionary stays null-prototype. An accessor cannot produce a detached
- * snapshot because its value may remain connected to mutable source state.
+ * @param result - the copy under construction
+ * @param key - the field name
+ * @param cloned - the detached value
+ */
+const assign = (result: Record<string, unknown>, key: string, cloned: unknown): void => {
+    if (key === '__proto__') {
+        Object.defineProperty(result, key, {value: cloned, writable: true, enumerable: true, configurable: true});
+    } else {
+        result[key] = cloned;
+    }
+};
+
+/**
+ * Copies a plain Object.prototype object. Primitive fields go straight into a literal with
+ * no cycle ledger; on the first container field the ledger is created and the rest is walked
+ * by `detach`, reusing the value already read — a getter never runs twice.
+ * `undefined` means "not applicable, take the full path" (nothing has been read).
  *
- * That is the boundary `deepClone` deliberately does not provide: the store's own
- * snapshot/restore round trip carries opaque values by reference, while a React snapshot handed to
- * `useSyncExternalStore` must stay immutable under in-place mutation.
+ * @param value - the candidate
+ * @param onLiveInstance - live-instance report
+ * @param onArraySubclass - array-subclass guard
+ */
+const tryFastPrimitiveCopy = (
+    value: object,
+    onLiveInstance: TReportLiveInstance | undefined,
+    onArraySubclass: TArraySubclassGuard | undefined
+): Record<string, unknown> | undefined => {
+    if (Array.isArray(value) ||
+        liveViews.readTarget(value) !== undefined ||
+        Object.getPrototypeOf(value) !== Object.prototype) {
+        return undefined;
+    }
+
+    const source = value as Record<string, unknown>;
+    const keys = Object.keys(source);
+    const copy: Record<string, unknown> = {};
+    let seen: WeakMap<object, unknown> | undefined;
+
+    for (let index = 0; index < keys.length; index++) {
+        const child: unknown = source[keys[index]];
+
+        if (child !== null && typeof child === 'object') {
+            if (seen === undefined) {
+                seen = new WeakMap<object, unknown>();
+                seen.set(value, copy);
+            }
+
+            assign(copy, keys[index], detach(child, seen, onLiveInstance, onArraySubclass));
+        } else {
+            assign(copy, keys[index], child);
+        }
+    }
+
+    return copy;
+};
+
+/**
+ * Recursively detaches a selection the way the state model defines one (R30-04).
  *
- * A class instance — anything else with a prototype of its own, including a Map/Set/Date
- * subclass — has no generic safe copy and passes through live, at the root and nested alike;
- * `onLiveInstance` lets the caller hear about each one. A recognized tracked read proxy and
- * its raw branch share one detached copy, including when the raw branch is visited first via
- * a Map; only the original source key still misses lookups into the detached Map.
+ * Plain objects by own enumerable string keys, arrays by elements and `length` (holes kept),
+ * detached copies of plain Date/Map/Set, and everything else — class instances, Array and
+ * native subclasses — by reference. Symbol keys, non-enumerable keys and descriptor flags
+ * are not part of a selection and are not copied. An accessor's getter runs once, like any
+ * plain read, and its value is what the copy keeps.
+ *
+ * A null-prototype dictionary stays null-prototype. Shared references and cycles survive
+ * through the cycle ledger: one source value, one detached copy.
  *
  * @param value - the value to detach
  * @param onLiveInstance - optional report fired for each live class instance the copy has to hand
@@ -259,4 +256,14 @@ export const detachOpaque = <T>(
     value: T,
     onLiveInstance?: TReportLiveInstance,
     onArraySubclass?: TArraySubclassGuard
-): T => detach(value, new WeakMap<object, unknown>(), onLiveInstance, onArraySubclass) as T;
+): T => {
+    if (value !== null && typeof value === 'object') {
+        const fast = tryFastPrimitiveCopy(value, onLiveInstance, onArraySubclass);
+
+        if (fast !== undefined) {
+            return fast as unknown as T;
+        }
+    }
+
+    return detach(value, new WeakMap<object, unknown>(), onLiveInstance, onArraySubclass) as T;
+};

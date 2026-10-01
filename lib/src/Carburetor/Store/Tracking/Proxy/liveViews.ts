@@ -1,18 +1,19 @@
 import {TPathRecorder} from "@/Carburetor/Models/Paths";
 import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
-import {IProxyCache} from "@/Carburetor/Store/Tracking/Models";
+import {IProxyCache, RAW_TARGET} from "@/Carburetor/Store/Tracking/Models";
 import {recordNativeAliasReads} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasReads";
 import {nativeAliasIndex} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex";
 
 /**
- * Engine-owned read views, draft views and persistent connection facades share one weak
- * registry across package copies and module formats. A tracked proxy maps to its raw
- * target; a persistent facade resolves its current native root when detached (it can retarget
- * after setData). A dropped view is never kept alive by the registry.
+ * Read proxies, draft proxies and native collection facades answer RAW_TARGET with their raw
+ * target, so a tracked view maps back to its original without a registry insert. The weak
+ * registry stays only for persistent connection facades, which need a dynamic resolver (it
+ * can retarget after setData). A dropped view is never kept alive by either structure.
  *
- * All roles share process-wide identity: another package copy can detach a tracked selection
- * or normalize a raw Map key passed through a draft from this copy. The
- * versioned sharedSingleton key deliberately does not promise a cross-version ABI.
+ * Both structures share process-wide identity: another package copy can detach a tracked
+ * selection or normalize a raw Map key passed through a draft from this copy — the hatch via
+ * `Symbol.for`, the registry via sharedSingleton. The versioned sharedSingleton key
+ * deliberately does not promise a cross-version ABI.
  */
 type TDynamicReadTarget = () => object | undefined;
 
@@ -26,6 +27,22 @@ const canonical = (value: unknown): unknown =>
 
 /** A collection is adapted once per tracking tree, including when reached by another alias. */
 const facades = new WeakMap<IProxyCache, WeakMap<object, object>>();
+
+/**
+ * Reads a view's RAW_TARGET hatch: answered by a get trap, so probing a foreign Proxy runs
+ * that proxy's own get trap, and a throw reads as "not an engine view".
+ *
+ * @param value - candidate engine view or raw object
+ */
+const readHatch = (value: object): object | undefined => {
+    try {
+        const hatch: unknown = Reflect.get(value, RAW_TARGET);
+
+        return typeof hatch === 'object' && hatch !== null ? hatch : undefined;
+    } catch {
+        return undefined;
+    }
+};
 
 /**
  * Map/Set own intrinsic slots cannot be called through a Proxy. Forward intrinsic reads to
@@ -68,6 +85,10 @@ const adaptNativeCollection = (
     const methods = new Map<PropertyKey, unknown>();
     const facade = new Proxy(value, {
         get(target, key): unknown {
+            if (key === RAW_TARGET) {
+                return target;
+            }
+
             // Native getters (notably size) require a receiver with the collection's slots.
             const member: unknown = Reflect.get(target, key, target);
             if (root !== undefined && record !== undefined
@@ -164,7 +185,6 @@ const adaptNativeCollection = (
     });
 
     tree.set(value, facade);
-    liveViews.noteTarget(facade, value);
     return facade;
 };
 
@@ -208,16 +228,36 @@ export const liveViews = {
     /**
      * The raw branch of a registered engine view, including a draft or native facade.
      *
+     * Tracked views answer through their RAW_TARGET get trap, which runs in O(1) with no
+     * registry write at creation. The probe reads the symbol through `get`, so a foreign
+     * Proxy's own get trap may run first; an exception it throws is treated as "not an engine
+     * view", falling back to the registry. The registry then only serves persistent
+     * connect() facades (`noteDynamicReadTarget`, `note`), which need a dynamic resolver.
+     *
      * @param view - candidate engine view
      */
     readTarget: (view: object): object | undefined => {
+        const direct = readHatch(view);
+
+        if (direct !== undefined) {
+            return direct;
+        }
+
         const known = knownViews.get(view);
 
         return typeof known === 'function' ? known() : known;
     },
 
-    /** Whether `value` is a registered engine view rather than detached plain data. */
+    /** Whether `value` is an engine view rather than detached plain data. Same probe
+     * trade-off and fallback as `readTarget`.
+     *
+     * @param value - candidate engine view or raw value
+     */
     has: (value: unknown): boolean => {
-        return typeof value === 'object' && value !== null && knownViews.has(value);
+        if (typeof value !== 'object' || value === null) {
+            return false;
+        }
+
+        return readHatch(value) !== undefined || knownViews.has(value);
     },
 };

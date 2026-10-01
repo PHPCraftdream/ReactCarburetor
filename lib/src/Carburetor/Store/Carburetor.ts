@@ -28,6 +28,9 @@ import {emitStoreUpdate} from "./Transaction/emitStoreUpdate";
 import {getUid} from "./Utils/getUid";
 import {IS_DEVELOPMENT} from "./Utils/DevelopmentFlag";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
+import {
+    CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol,
+} from "./Utils/Models";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 
 declare const process: {env: {NODE_ENV?: string}} | undefined;
@@ -38,7 +41,8 @@ interface ISubscriberRecord {
     generation: number;
 }
 
-export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable, IPatchSource {
+export class Carburetor<T extends object> implements
+    ICarburetor<T>, INotifiable, IPatchSource, IInternalSubscriptionProtocol {
     /** Shared base-method identities; no registration record allocated per store. */
     private static readonly nativeStoreMethods = {
         getVersion: Carburetor.prototype.getVersion,
@@ -143,17 +147,17 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     }
 
     /**
-     * The path-precise form of the drift check above: whether a write since `baselineVersion`
-     * could concern `reads`, per the write log.
+     * The path-precise drift check (R16-05): whether a write since `baselineVersion` could
+     * concern `reads`, per the write log.
      *
      * Falls back to `true` once the log cannot answer for that baseline — see
-     * `WriteLog.matches`. Optional on the subscription surface so a source with no such log (a
-     * computed) keeps today's coarse "the version moved" behaviour.
+     * `WriteLog.matches`. Optional so a source with no such log (a computed) keeps today's
+     * coarse "the version moved" behaviour.
      *
      * @param baselineVersion - the version a render's read set was captured at
      * @param reads - the paths that read set touched
      */
-    public hasDriftSince(baselineVersion: number, reads: ReadonlySet<TPath>): boolean {
+    public [CARBURETOR_HAS_DRIFT](baselineVersion: number, reads: ReadonlySet<TPath>): boolean {
         return this.writeLog.matches(baselineVersion, reads);
     }
 
@@ -204,14 +208,13 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return deepClone(this.data);
     }
 
-    /** Owns the raw graph for history; custom snapshot wire projections must override this too.
+    /** Owns the live graph for history: it is the authoritative raw state (R30-06b).
      *
-     * @param own - detaches the complete raw graph while preserving native/plain aliases
+     * Classes whose wire state differs from their live data must override this.
+     *
+     * @param own - detaches the live graph while preserving native/plain aliases
      */
     public captureHistory(own: <V>(value: V) => V): T {
-        if (this.snapshot !== Carburetor.prototype.snapshot) {
-            throw new Error('CarburetorHistory: a custom snapshot() must provide captureHistory()');
-        }
         return own(this.data);
     }
 
@@ -269,14 +272,13 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         this.emitUpdate(undefined, true);
     }
 
-    /** The type-erased half of the snapshot bridge, for callers that do not know `T`. */
+    /** The store's wire form: the live data as it stands, without a copy.
+     *
+     * Ordinary stores expose live data; classes with another wire form override it. A detached
+     * copy is `snapshot()`.
+     */
     public toJSON(): unknown {
-        return this.snapshot();
-    }
-
-    /** Persistence stringifies live data directly; snapshot()/toJSON() copy only plain state. */
-    public serialize(): string {
-        return JSON.stringify(this.data);
+        return this.data;
     }
 
     /**
@@ -340,7 +342,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      * @param id - the subscription to extend; an unknown id is left alone
      * @param path - the path to add to that subscription's read set
      */
-    public extend(id: string, path: TPath): void {
+    public [CARBURETOR_EXTEND](id: string, path: TPath): void {
         if (!Object.prototype.hasOwnProperty.call(this.subscribers, id)) {
             return;
         }

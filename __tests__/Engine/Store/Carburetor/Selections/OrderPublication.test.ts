@@ -1,5 +1,6 @@
 import {Carburetor} from '@/Carburetor';
 import {PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath} from '@/Carburetor/Models/Paths';
+import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
 
 class OrderedStore extends Carburetor<{item: Record<string, number>; leaf: number}> {
     public move(key: string): void {
@@ -40,8 +41,9 @@ describe('ordered own keys in publications', () => {
         expect(enumerator).toBe(1);
         expect(leaf).toBe(0);
         expect(seen).toEqual([['b', 'a']]);
-        expect(store.hasDriftSince(0, reads)).toBe(true);
-        expect(store.hasDriftSince(0, new Set(['leaf']))).toBe(false);
+        // hasDriftSince lives on the internal symbol protocol now (R30-06a).
+        expect((store as IInternalSubscriptionProtocol)[CARBURETOR_HAS_DRIFT]!(0, reads)).toBe(true);
+        expect((store as IInternalSubscriptionProtocol)[CARBURETOR_HAS_DRIFT]!(0, new Set(['leaf']))).toBe(false);
 
         store.setData({item: {b: 2, a: 1}, leaf: 7});
         expect(store.getVersion()).toBe(1);

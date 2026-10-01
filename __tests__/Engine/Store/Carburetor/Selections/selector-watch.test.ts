@@ -374,3 +374,58 @@ describe('tracked native collection keys resolve to their raw graph aliases', ()
         stop();
     });
 });
+
+describe('watch over detached Date/Map/Set (R30-03)', () => {
+    test('an unchanged Date fires no onChange on a wake; an in-place setTime does', () => {
+        const at = new Date(1000);
+        const carburetor = new Carburetor<{at: Date; other: number}>({at, other: 0});
+        const calls: Array<[number, number]> = [];
+        // Reads `other` so a write to it wakes the watch, while the selected content is only
+        // the Date — exactly the shape where an in-place mutation becomes visible.
+        const stop = carburetor.watch(data => {
+            void data.other;
+
+            return {at: data.at};
+        }, (next, previous) => {
+            calls.push([next.at.getTime(), previous.at.getTime()]);
+        });
+
+        // setData wakes the read set but the selected content (the Date's time) is unchanged:
+        // the detached copy compares equal to the live value, so nothing fires.
+        carburetor.setData({at, other: 1});
+        expect(calls).toEqual([]);
+
+        // An in-place mutation of the live Date is a content change on the next wake.
+        at.setTime(2000);
+        carburetor.setData({at, other: 2});
+        expect(calls).toEqual([[2000, 1000]]);
+
+        stop();
+    });
+
+    test('an unchanged Map fires no onChange on a wake; a Map.set on the live value does', () => {
+        const map = new Map([['a', 1]]);
+        const carburetor = new Carburetor<{map: Map<string, number>; other: number}>(
+            // The rule is right; the opaque Map is the subject of this R30-03 test.
+            // oxlint-disable-next-line carburetor/no-untrackable-store-data
+            {map, other: 0}
+        );
+        const calls: string[] = [];
+        const stop = carburetor.watch(data => {
+            void data.other;
+
+            return {map: data.map};
+        }, next => {
+            calls.push(String(next.map.get('a')));
+        });
+
+        carburetor.setData({map, other: 1});
+        expect(calls).toEqual([]);
+
+        map.set('a', 2);
+        carburetor.setData({map, other: 2});
+        expect(calls).toEqual(['2']);
+
+        stop();
+    });
+});

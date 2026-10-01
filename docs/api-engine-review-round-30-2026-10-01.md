@@ -336,3 +336,31 @@ shared with other agents; they are not load tests or application profiles, and a
 between runs. React render counts in R30-03 follow from the cited code (`sameSelection` returns false,
 so a new snapshot identity is handed out); they were not measured in a browser. No product source,
 tests, dependencies or generated files were changed; only this report is committed.
+
+## Resolution
+
+All ten findings are implemented in the working tree (not yet committed). Measured against a build
+of `1a02d29` in a separate directory, each side in its own child process, one benchmark at a time on
+a machine shared with other agents and an IDE language server, so single ratios carry noise of
+roughly ±15% on millisecond bodies. A gate that did not pass is recorded as not passed.
+
+| Finding | Change | Benchmark gate | Result |
+| --- | --- | --- | --- |
+| R30-01 | per-native answer cache, per-root generation | repeated read ≤ 2 µs; `Map(10000)` iteration ≤ 1.5× raw; fresh ≤ 1.1× | 0.24 µs; 1.11×; 1.016× — pass |
+| R30-02 | `RAW_TARGET` hatch replaces the per-proxy registry insert | fresh walk ≤ 0.6×; computed recompute ≤ 0.8×; cached re-walk ≤ 1.03× | fresh 0.57–0.75× over 5 runs (≤ 0.6 in 1 of 5) — **not confirmed**; recompute 0.61–0.69× — pass; cached re-walk 0.94–1.17× (≤ 1.03 in 2 of 5) — **not confirmed**, the control moves with noise; an isolated run during the change gave 0.556× / 1.011× |
+| R30-03/04 | selection model = state model | compare ≤ 0.6×; detach ≤ 0.6×; absolute caps | 0.34×; 0.19× with detach at 0.589 µs against a 0.6 µs cap (2% margin); Date compare 0.58× — 6/6 pass |
+| R30-05 | persistent read tree for `computed` / `watch` | recompute ≤ 0.5×; watch fire ≤ 0.6× | 0.42×; 0.34× — pass. An earlier run against a baseline that already contained R30-02 gave 0.79× / 0.69× and was recorded as missed; the gate is defined against `1a02d29`, and the harness now isolates each side and times repeated writes |
+| R30-06, R30-07 | internal symbol protocol, `toJSON` wire form, one restore-claim channel | none (API) | full suite, public-surface test, CHANGELOG Breaking entries |
+| R30-08 | `resolve` primitive fast path | ≤ 300 ns | 146.7 ns (baseline 435.7 ns) — pass |
+| R30-09 | in-place ancestor walk in `SubscriberIndex` | ≤ 0.8× | 0.738× — pass. An earlier in-process run gave ~0.85× under load |
+| R30-10 | lazy hook initializers; `watch` keeps its subscription for an unchanged read set | none | covered by tests |
+
+Changes made while closing the round: a selection copy no longer runs a getter twice when a container
+field follows primitive fields (the fast path now continues in place); the one dist-reading test
+without an existence guard now fails with an explicit "run npm run build" message and a longer child
+timeout.
+
+Known limits. The alias cache is keyed by native and validated against one root, so a native read
+alternately through two roots recomputes each time — never wrong, at most the pre-R30-01 cost plus
+one `WeakMap.set`. The R30-02 gates above are not confirmed on this machine under load; rerun
+`benchmarks/state/tracking/readTreeRegistry.mjs` on a quiet one before treating them as met or missed.

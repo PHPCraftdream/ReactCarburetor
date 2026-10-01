@@ -153,7 +153,7 @@ test.each(['a', 'a.b~c'])('Error rewrite for %s detaches raw rejection before ob
 
     cache.rewrite(key, (entry) => { entry.error = 'new serialized failure'; });
     expect(cache.getEntry(key).error).toBe('new serialized failure');
-    expect(cache.serialize()).toContain('new serialized failure');
+    expect(JSON.stringify(cache)).toContain('new serialized failure');
     expect(cache.getFailure(key)).toBeUndefined();
     expect(messages).toEqual(['new serialized failure:false:new serialized failure']);
     cache.unsubscribe(id);

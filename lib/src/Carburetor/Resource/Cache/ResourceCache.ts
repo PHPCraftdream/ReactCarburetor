@@ -26,6 +26,10 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
 // so sharing it across keys and across ResourceCache instances is safe.
 const ABSENT_VIEW: IResourceView<unknown> = Object.freeze({...getInitialCacheEntry<unknown>(), stale: true});
 const ENTRY_PATH_PREFIX = `entries${PATH_SEPARATOR}`;
+const PRIMED_LIMIT = 4096;
+
+/** Arguments a key can be derived from without serialization: a primitive value encodes to itself. */
+type TPrimitiveArgs = string | number | boolean | null | undefined;
 
 const validateOptions = (options: IResourceCacheOptions): IResourceCacheOptions => {
     if (options.ttl !== undefined && (Number.isNaN(options.ttl) || options.ttl < 0)) {
@@ -62,6 +66,8 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
     protected lastKeyValue: string | undefined = undefined;
     /** Whether the mutable-arguments diagnostic was already reported. */
     protected keyMutationReported: boolean = false;
+    /** Key and path per primitive argument set, bounded by clearing at the limit. */
+    private primedKeys: Map<TPrimitiveArgs, {key: string; path: TPath}> | undefined = undefined;
 
     /** Create a keyed cache for a resource loader.
      *
@@ -128,12 +134,48 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         this.reconcileFailure(key);
     }
 
+    /** Cached key and path for a primitive argument set, avoiding stringify, escape and concat.
+     *
+     * The first occurrence computes through the ordinary keyOf derivation, so the cached key is
+     * byte-identical to what keyOf would return; repeats answer from the map. Object arguments
+     * return undefined and keep the memoized mutation check.
+     *
+     * @param args - the loader arguments to derive the key from
+     */
+    private primed(args: TArgs): {key: string; path: TPath} | undefined {
+        if (args !== null && args !== undefined && typeof args !== 'string' && typeof args !== 'number'
+            && typeof args !== 'boolean') return undefined;
+
+        const primitive = args as TPrimitiveArgs;
+        let primed = this.primedKeys?.get(primitive);
+
+        if (primed === undefined) {
+            const key = escapeCacheKey(JSON.stringify(args === undefined ? null : args) as string);
+
+            primed = {key, path: joinPath('entries', key)};
+
+            if (this.primedKeys === undefined) {
+                this.primedKeys = new Map<TPrimitiveArgs, {key: string; path: TPath}>();
+            } else if (this.primedKeys.size >= PRIMED_LIMIT) {
+                this.primedKeys.clear();
+            }
+
+            this.primedKeys.set(primitive, primed);
+        }
+
+        return primed;
+    }
+
     /**
      * The key an argument set is stored under, memoized while both reference and JSON are unchanged.
      *
      * @param args - the loader arguments to derive the key from
      */
     public keyOf(args: TArgs): string {
+        const primed = this.primed(args);
+
+        if (primed !== undefined) return primed.key;
+
         const json = JSON.stringify(args === undefined ? null : args) as string;
         const memoized = this.lastKeyArgs === args && this.lastKeyValue !== undefined;
 
@@ -167,7 +209,9 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param args - the loader arguments identifying the entry
      */
     public pathOf(args: TArgs): TPath {
-        return this.pathOfKey(this.keyOf(args));
+        const primed = this.primed(args);
+
+        return primed ? primed.path : this.pathOfKey(this.keyOf(args));
     }
 
     /**
@@ -185,7 +229,9 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param args - the loader arguments identifying the entry
      */
     public getEntry(args: TArgs): IResourceView<T> {
-        return this.getEntryByKey(this.keyOf(args));
+        const primed = this.primed(args);
+
+        return this.getEntryByKey(primed ? primed.key : this.keyOf(args));
     }
 
     /**
@@ -200,7 +246,10 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
             return ABSENT_VIEW as IResourceView<T>;
         }
 
-        this.touch(key);
+        // LRU bookkeeping only matters when a bound can actually evict; Infinity keeps no order.
+        if (this.maxEntries !== Infinity) {
+            this.touch(key);
+        }
 
         const stale = this.isStale(stored);
         const cached = this.viewCache.get(key);
@@ -237,6 +286,13 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param args - the loader arguments identifying the entry
      */
     public resolve(args: TArgs): IResourceResolution<T> {
+        const primed = this.primed(args);
+
+        if (primed !== undefined) {
+            // A fresh record: resolve() is public, and a shared scratch object would alias results.
+            return {key: primed.key, path: primed.path, view: this.getEntryByKey(primed.key)};
+        }
+
         const key = this.keyOf(args);
 
         // A fresh record: resolve() is public, and a shared scratch object would alias results.

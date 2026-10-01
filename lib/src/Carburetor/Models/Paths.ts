@@ -125,13 +125,8 @@ export interface IPatchObserver {
     /** If present, scheduled before ordinary subscribers at each publication (after coalescing). */
     publication?: (fact?: IStatePublication) => void;
     /**
-     * Owned-restore adoption signal for source extensions. Return true only when the exact
-     * restore argument is a freshly detached graph the producer may adopt as-is.
-     */
-    ownRestore?: (state: unknown) => boolean;
-    /**
-     * Optional exact installation claim used by sources that propagate operation ownership
-     * through publication. It does not change whether the original graph may be adopted.
+     * The exact installation claim: return `{owner, representation, adopt?}` — `adopt` true only
+     * when the exact restore argument is a freshly detached graph the producer may adopt as-is.
      */
     restoreClaim?: (state: unknown) => IStateRestoreClaim | undefined;
 }

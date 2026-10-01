@@ -79,8 +79,8 @@ describe('Date alias detachment through public consumers (R11-05)', () => {
     });
 });
 
-describe('native own data fields through public selections (R14-E02)', () => {
-    test('a root Map watch publishes its hidden cyclic field after a native write', () => {
+describe('native own data fields through public selections (R30-04)', () => {
+    test('a root Map watch publishes its content copy; own fields are not part of a selection', () => {
         class MapStore extends Carburetor<Map<string, number>> {
             public change(): void {
                 this.update(draft => {
@@ -103,16 +103,11 @@ describe('native own data fields through public selections (R14-E02)', () => {
         expect(seen).toHaveLength(1);
 
         const copy = seen[0];
-        const field = Object.getOwnPropertyDescriptor(copy, 'label');
-        const label = field?.value as {text: string; owner: object} | undefined;
         expect(copy).not.toBe(index);
         expect(copy.get('id')).toBe(2);
-        expect(label?.text).toBe('current');
-        expect(label?.owner).toBe(copy);
-        expect(label).not.toBe(Object.getOwnPropertyDescriptor(index, 'label')?.value);
-        expect(field?.enumerable).toBe(false);
-        expect(field?.writable).toBe(false);
-        expect(field?.configurable).toBe(false);
+        // R30-04: the own field is not part of a selection and is not copied.
+        expect(Object.getOwnPropertyDescriptor(copy, 'label')).toBeUndefined();
+        expect(Object.getOwnPropertySymbols(copy)).toEqual([]);
 
         copy.set('id', 99);
         expect(store.getData().get('id')).toBe(2);
@@ -177,14 +172,8 @@ const assertPlainAlias = (value: TPlainSelection, store: PlainKeyStore, answer: 
     expect(value.index.get(value.key)).toBe(answer);
     expect(value.key).not.toBe(store.getData().key);
     expect(value.index).not.toBe(store.getData().index);
-    const labelDescriptor = Object.getOwnPropertyDescriptor(value.index, 'label');
-    const label = labelDescriptor?.value as {key: object; index: object} | undefined;
-    expect(labelDescriptor?.enumerable).toBe(false);
-    expect(labelDescriptor?.writable).toBe(false);
-    expect(labelDescriptor?.configurable).toBe(false);
-    expect(label?.key).toBe(value.key);
-    expect(label?.index).toBe(value.index);
-    expect(label).not.toBe(Object.getOwnPropertyDescriptor(store.getData().index, 'label')?.value);
+    // R30-04: the Map's own fields are not part of a selection and are not copied.
+    expect(Object.getOwnPropertyDescriptor(value.index, 'label')).toBeUndefined();
 };
 
 describe('tracked plain key and raw Map graph (R13-E03)', () => {

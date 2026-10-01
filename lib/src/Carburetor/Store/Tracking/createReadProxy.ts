@@ -4,7 +4,7 @@ import {branchPath} from "@/Carburetor/Store/Paths/Markers/BranchMarker";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {createProxyCache} from "./Proxy/createProxyCache";
-import {IProxyCache, PROXY_CACHE} from "./Models";
+import {IProxyCache, PROXY_CACHE, RAW_TARGET} from "./Models";
 import {liveViews} from "./Proxy/liveViews";
 import {isTrackable} from "./isTrackable";
 import {recordNativeAliasReads} from "./Aliases/NativeAliasReads";
@@ -238,10 +238,14 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * accessor's own reads run against it and land in the recording too.
      */
     get(source: T, key: string | symbol, receiver: unknown): unknown {
-        // One branch, not two: PROXY_CACHE is itself a symbol, so folding its check inside the
+        // One branch, not two: both hatches are symbols, so folding their checks inside the
         // `typeof` branch costs the overwhelmingly common string-keyed read only one comparison
         // instead of two.
         if (typeof key === 'symbol') {
+            if (key === RAW_TARGET) {
+                return source;
+            }
+
             return key === PROXY_CACHE ? this.cache : Reflect.get(source, key, receiver);
         }
 
@@ -437,9 +441,6 @@ export const createReadProxy = <T extends object>(
     root: object = target
 ): T => {
     const cached: IProxyCache = cache ?? createProxyCache();
-    const proxy = new Proxy(target, new ReadProxyHandler<T>(basePath, record, aliases, cached, root)) as T;
 
-    liveViews.noteTarget(proxy, target);
-
-    return proxy;
+    return new Proxy(target, new ReadProxyHandler<T>(basePath, record, aliases, cached, root)) as T;
 };

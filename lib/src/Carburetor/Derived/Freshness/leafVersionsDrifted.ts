@@ -1,5 +1,6 @@
 import {IDict} from '@/Carburetor/Models/Base';
 import {isNativeStoreSource} from '@/Carburetor/Store/Scheduling/isNativeStoreSource';
+import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
 import {ILeafVersion, IReadSet} from './Models';
 
 /** Checks leaf drift without allocating a key array.
@@ -22,7 +23,8 @@ export const leafVersionsDrifted = (
             const reads = recorded.reads ?? (dependency?.source === recorded.source
                 ? dependency.reads : undefined);
             if (reads && isNativeStoreSource(recorded.source)
-                && recorded.source.hasDriftSince?.(recorded.version, reads) === false) {
+                && (recorded.source as IInternalSubscriptionProtocol)[CARBURETOR_HAS_DRIFT]?.(
+                    recorded.version, reads) === false) {
                 continue;
             }
 

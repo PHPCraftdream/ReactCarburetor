@@ -49,6 +49,9 @@ export class CarburetorScope {
     /**
      * Serializable state of every carburetor created in this scope, keyed by token name.
      * Take this after rendering on the server and send it to the client.
+     *
+     * A detached copy per instance, not its live wire form: the payload must survive the server
+     * rendering that produced it.
      */
     public dehydrate(): IDict<unknown> {
         // Object.fromEntries creates own data properties (CreateDataPropertyOrThrow), unlike
@@ -58,7 +61,7 @@ export class CarburetorScope {
 
         this.instances.forEach((instance: unknown, id: string) => {
             if (this.isInspectable(instance)) {
-                entries.push([id, instance.toJSON()]);
+                entries.push([id, instance.snapshot()]);
             }
         });
 
@@ -116,14 +119,15 @@ export class CarburetorScope {
         }
     }
 
-    /** Whether an instance can be serialized: a scope may hold things that cannot. */
+    /** Whether an instance can be serialized, and hands back a detached copy. */
     protected isInspectable(instance: unknown): instance is IInspectable {
         if (typeof instance !== 'object' || instance === null) {
             return false;
         }
 
-        const candidate = instance as {toJSON?: unknown; fromJSON?: unknown};
+        const candidate = instance as {toJSON?: unknown; fromJSON?: unknown; snapshot?: unknown};
 
-        return typeof candidate.toJSON === 'function' && typeof candidate.fromJSON === 'function';
+        return typeof candidate.toJSON === 'function' && typeof candidate.fromJSON === 'function'
+            && typeof candidate.snapshot === 'function';
     }
 }

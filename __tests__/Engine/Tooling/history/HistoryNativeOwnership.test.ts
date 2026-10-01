@@ -408,14 +408,29 @@ describe('native history endpoint ownership', () => {
         cacheHistory.disconnect();
     });
 
-    test('a custom snapshot projection must supply its own authoritative history capture', () => {
-        class Projected extends Carburetor<{value: number}> {
-            public snapshot(): {value: number; wire: string} {
-                return {...super.snapshot(), wire: 'private-state'};
+    test('a subclass overriding snapshot() for logging can still attach a history', () => {
+        const seen: number[] = [];
+
+        class Logged extends Carburetor<{value: number}> {
+            public snapshot(): {value: number} {
+                const copy = super.snapshot();
+                seen.push(copy.value);
+
+                return copy;
             }
         }
-        expect(() => new CarburetorHistory(new Projected({value: 1})))
-            .toThrow(/custom snapshot.*provide captureHistory/);
+
+        const store = new Logged({value: 1});
+        const history = new CarburetorHistory(store);
+
+        store.update(draft => { draft.value = 2; });
+        store.snapshot();
+
+        expect(history.undo()).toBe(true);
+        expect(store.getData().value).toBe(1);
+        expect(seen).toEqual([2]);
+
+        history.disconnect();
     });
 
     test('unsupported class instances and accessors are rejected rather than promising a false undo', () => {

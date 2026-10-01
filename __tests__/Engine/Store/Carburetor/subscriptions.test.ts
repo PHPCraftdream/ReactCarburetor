@@ -1,11 +1,16 @@
 import {diagnostics} from "@/Carburetor";
 import {TPath} from "@/Carburetor/Models/Paths";
+import {CARBURETOR_EXTEND, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {
     FakeReadonlySet, getTestData, InspectableCarburetor, readsOf, SwappingCarburetor, TestCarburetor,
 } from "./fixtures";
+
+// extend() lives on the internal symbol protocol now (R30-06a): call it through the symbol.
+const extendSubscription = (store: unknown, id: string, path: TPath): void =>
+    (store as IInternalSubscriptionProtocol)[CARBURETOR_EXTEND]!(id, path);
 
 describe('Carburetor', () => {    test('notifies subscribers synchronously by default', () => {
         const carburetor = new TestCarburetor(getTestData());
@@ -127,7 +132,7 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         const constructorCallback = () => { calls.push('constructor'); };
 
         for (const id of ['__proto__', 'constructor', 'toString']) {
-            store.extend(id, 'a');
+            extendSubscription(store, id, 'a');
             store.unsubscribe(id);
         }
 
@@ -137,7 +142,7 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         store.notifyWrites(readsOf('a'));
         expect(calls).toEqual(['__proto__']);
 
-        store.extend('__proto__', 'b');
+        extendSubscription(store, '__proto__', 'b');
         store.notifyWrites(readsOf('b'));
         expect(calls).toEqual(['__proto__', 'constructor', '__proto__']);
 
@@ -413,7 +418,7 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         let calls = 0;
 
         carburetor.subscribe(() => calls++, {id: 'subscriber', reads: readsOf('a')});
-        carburetor.extend('subscriber', 'b');
+        extendSubscription(carburetor, 'subscriber', 'b');
 
         carburetor.setB(2);
         expect(calls).toEqual(1);
@@ -425,7 +430,7 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
     test('extend on an unknown id is a no-op', () => {
         const carburetor = new TestCarburetor(getTestData());
 
-        expect(() => carburetor.extend('ghost', 'a')).not.toThrow();
+        expect(() => extendSubscription(carburetor, 'ghost', 'a')).not.toThrow();
 
         // A later subscription under that same id starts from nothing: the earlier no-op
         // extend call left no trace to inherit.
@@ -440,7 +445,7 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         let calls = 0;
 
         carburetor.subscribe(() => calls++, {id: 'subscriber', reads: readsOf('a')});
-        carburetor.extend('subscriber', 'b');
+        extendSubscription(carburetor, 'subscriber', 'b');
         carburetor.unsubscribe('subscriber');
 
         carburetor.setA(1);
@@ -513,7 +518,7 @@ describe('subscribe() copies the public reads Set, transfers only the branded in
 
         const id = carburetor.subscribe(() => calls++, {id: 'x', reads: new FakeReadonlySet(['a'])});
 
-        expect(() => carburetor.extend(id, 'b')).not.toThrow();
+        expect(() => extendSubscription(carburetor, id, 'b')).not.toThrow();
 
         carburetor.setB(1);
         expect(calls).toEqual(1);
@@ -525,7 +530,7 @@ describe('subscribe() copies the public reads Set, transfers only the branded in
 
         const id = carburetor.subscribe(() => undefined, {id: 'x', reads: mine});
 
-        carburetor.extend(id, 'b');
+        extendSubscription(carburetor, id, 'b');
 
         expect(mine.size).toEqual(1);
         expect(mine.has('b')).toBe(false);

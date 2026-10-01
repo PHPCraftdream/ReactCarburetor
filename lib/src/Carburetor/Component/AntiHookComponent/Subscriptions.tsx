@@ -4,6 +4,7 @@ import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
 import {
     IAttemptEntry,
@@ -238,9 +239,9 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * nothing further to check. A version that moved asks the source's own write log (R16-05)
      * which paths actually changed, and reports a drift only when one of them concerns what was
      * read — the same three cases `SubscriberIndex.match` uses: the same path, a written
-     * ancestor, a written descendant. A source with no such log (`hasDriftSince` absent, e.g. a
-     * computed, which invalidates at the granularity of its whole value) keeps today's coarser
-     * answer: any version change is a drift.
+     * ancestor, a written descendant. A source with no such log (the internal drift symbol
+     * absent, e.g. a computed, which invalidates at the granularity of its whole value) keeps
+     * today's coarser answer: any version change is a drift.
      *
      * @param uid - the id the slot's registration is keyed under: the component's own for
      * `tracked` records, the connection's own for connections
@@ -281,9 +282,9 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             return false;
         }
 
-        const hasDriftSince = carburetor.hasDriftSince;
+        const hasDrift = (carburetor as IInternalSubscriptionProtocol)[CARBURETOR_HAS_DRIFT];
 
-        return hasDriftSince === undefined || hasDriftSince.call(carburetor, baselineVersion, reads);
+        return hasDrift === undefined || hasDrift.call(carburetor, baselineVersion, reads);
     }
 
     /**

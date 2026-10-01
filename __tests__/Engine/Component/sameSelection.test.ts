@@ -49,55 +49,158 @@ describe('sameSelection ordered own keys', () => {
         // Integer keys have native numeric order regardless of insertion order.
         expect(sameSelection({'10': 10, '2': 2}, {'2': 2, '10': 10})).toBe(true);
     });
+});
 
-    test('symbol and non-enumerable key positions still participate', () => {
-        const first = Symbol('first');
-        const second = Symbol('second');
-        const previous = {a: 1, [first]: 2, [second]: 3};
-        const fresh = {a: 1, [second]: 3, [first]: 2};
+describe('sameSelection selection model is own enumerable string keys (R30-04)', () => {
+    const first = Symbol('first');
+    const second = Symbol('second');
+
+    test('symbol keys are not part of a selection', () => {
+        const previous = {a: 1, [first]: 2};
+
+        expect(sameSelection(previous, {a: 1})).toBe(true);
+        expect(sameSelection({a: 1}, {a: 1, [second]: 3})).toBe(true);
+    });
+
+    test('non-enumerable keys and descriptor flags are not part of a selection', () => {
+        const previous = Object.defineProperty({a: 1, b: 2}, 'hidden', {
+            value: 3, enumerable: false, configurable: true, writable: true,
+        });
+        const fresh = Object.defineProperty({a: 1, b: 2}, 'hidden', {
+            value: 4, enumerable: false, configurable: false, writable: false,
+        });
+
+        expect(sameSelection(previous, fresh)).toBe(true);
+    });
+
+    test('array custom properties are not part of a selection; elements and length are', () => {
+        expect(sameSelection(Object.assign([1, 2], {extra: 1}), Object.assign([1, 2], {extra: 2}))).toBe(true);
+        expect(sameSelection([1, 2], [1, 3])).toBe(false);
+        expect(sameSelection([1, 2], [1, 2, 3])).toBe(false);
+    });
+
+    test('holes compare as holes', () => {
+        const withHoles: unknown[] = [];
+
+        withHoles[2] = 'x';
+
+        const withUndefined: unknown[] = [undefined, undefined, 'x'];
+
+        expect(sameSelection(withHoles, withHoles.slice())).toBe(true);
+        expect(sameSelection(withHoles, withUndefined)).toBe(false);
+    });
+
+    test('an accessor is read like any plain field and its snapshot participates', () => {
+        let calls = 0;
+        const previous = {a: 1, b: 9};
+        const fresh = {a: 1};
+
+        Object.defineProperty(fresh, 'b', {
+            enumerable: true,
+            configurable: true,
+            get: (): number => {
+                calls++;
+
+                return 9;
+            },
+        });
+
+        expect(sameSelection(previous, fresh)).toBe(true);
+        // The value read is what the comparison saw: a different value behind the same key
+        // set is a change, read exactly once.
+        expect(calls).toBe(1);
+
+        Object.defineProperty(fresh, 'b', {
+            enumerable: true,
+            configurable: true,
+            get: (): number => {
+                calls++;
+
+                return 10;
+            },
+        });
+
         expect(sameSelection(previous, fresh)).toBe(false);
-
-        const hiddenFirst = Object.defineProperty({a: 1, b: 2}, 'hidden', {
-            value: 3, enumerable: false, configurable: true, writable: true,
-        });
-        const hiddenLast: Record<string, number> = Object.defineProperty({a: 1, b: 2}, 'hidden', {
-            value: 3, enumerable: false, configurable: true, writable: true,
-        });
-        delete hiddenLast.a;
-        hiddenLast.a = 1;
-        expect(sameSelection(hiddenFirst, hiddenLast)).toBe(false);
+        expect(calls).toBe(2);
     });
 });
 
-describe('sameSelection exotic members (R5-02)', () => {
-    test('an exotic member is a change even against the same instance', () => {
-        const map = new Map([['a', 1]]);
+describe('sameSelection detached Date/Map/Set compare by content (R30-03)', () => {
+    test('an unchanged detached Date equals the live one; a changed time does not', () => {
+        const live = new Date(1000);
 
-        expect(sameSelection({map}, {map})).toBe(false);
-        expect(sameSelection({map}, {map: new Map([['a', 1]])})).toBe(false);
-        expect(sameSelection(new Date(0), new Date(0))).toBe(false);
+        expect(sameSelection(detachSelection(live), live)).toBe(true);
+        expect(sameSelection(new Date(1000), new Date(2000))).toBe(false);
     });
 
-    test('an exotic member nested inside plain containers is a change', () => {
-        const when = new Date(0);
+    test('an unchanged detached Map equals the live one; a new entry does not', () => {
+        const live = new Map([['a', 1]]);
 
-        expect(sameSelection({at: [{when}]}, {at: [{when}]})).toBe(false);
+        expect(sameSelection(detachSelection(live), live)).toBe(true);
+        live.set('b', 2);
+        expect(sameSelection(detachSelection(new Map([['a', 1]])), live)).toBe(false);
+        expect(sameSelection(new Map([['a', 1]]), new Map([['a', 1], ['b', 2]]))).toBe(false);
     });
 
-    test('plain-data verdicts around the exotic branch are unchanged', () => {
+    test('an unchanged detached Set equals the live one; a new member does not', () => {
+        const live = new Set(['x']);
+
+        expect(sameSelection(detachSelection(live), live)).toBe(true);
+        expect(sameSelection(new Set(['x']), new Set(['x', 'y']))).toBe(false);
+    });
+
+    test('Date/Map/Set pairs register in the topology maps', () => {
+        const date = new Date(5);
+        const previous = {one: date, two: date};
+        const fresh = {one: new Date(5), two: new Date(5)};
+
+        expect(sameSelection(previous, fresh)).toBe(false);
+        expect(sameSelection({one: date, two: date}, {one: date, two: date})).toBe(true);
+    });
+
+    test('a Map with an object key compares conservatively as changed', () => {
+        const key = {id: 1};
+        const value = {v: 1};
+
+        expect(sameSelection(new Map([[key, value]]), new Map([[key, value]]))).toBe(false);
+    });
+
+    test('nested Date/Map/Set values compare recursively inside Map entries', () => {
+        const previous = new Map<string, unknown>([['at', new Date(7)]]);
+        const fresh = new Map<string, unknown>([['at', new Date(7)]]);
+
+        expect(sameSelection(previous, fresh)).toBe(true);
+
+        fresh.set('at', new Date(8));
+        expect(sameSelection(previous, fresh)).toBe(false);
+    });
+
+    test('a class instance is always a change, even against itself', () => {
+        class Box {
+            public constructor(public v: number) {}
+        }
+
+        const box = new Box(1);
+
+        expect(sameSelection({box}, {box})).toBe(false);
+        expect(sameSelection(box, box)).toBe(false);
+    });
+
+    test('a Date/Map/Set subclass is a class instance and always a change', () => {
+        class TaggedDate extends Date {
+            public tag = 'd';
+        }
+
+        const tagged = new TaggedDate(1000);
+
+        expect(sameSelection(tagged, tagged)).toBe(false);
+        expect(sameSelection(tagged, new Date(1000))).toBe(false);
+    });
+
+    test('plain-data verdicts around the native branches are unchanged', () => {
         expect(sameSelection({a: 1, b: 'x'}, {a: 1, b: 'x'})).toBe(true);
         expect(sameSelection({a: 1}, {a: 2})).toBe(false);
         expect(sameSelection({a: undefined}, {b: undefined})).toBe(false);
-
-        const sym = Symbol('r5');
-
-        expect(sameSelection({[sym]: 1}, {[sym]: 1})).toBe(true);
-        expect(sameSelection({[sym]: 1}, {[sym]: 2})).toBe(false);
-
-        const previousArray = Object.assign([1, 2], {extra: 1});
-
-        expect(sameSelection(previousArray, Object.assign([1, 2], {extra: 1}))).toBe(true);
-        expect(sameSelection(previousArray, Object.assign([1, 2], {extra: 2}))).toBe(false);
     });
 });
 
@@ -157,6 +260,32 @@ describe('detachSelection preserves what the comparison relies on', () => {
 
         expect(detached.self).toBe(detached);
         expect(detached).not.toBe(source);
+    });
+
+    test('an own key named __proto__ lands as data, not as a prototype reassignment', () => {
+        const source: Record<string, unknown> = {v: 1};
+
+        Object.defineProperty(source, '__proto__',
+            {value: {v: 2}, enumerable: true, writable: true, configurable: true});
+
+        const detached = detachSelection(source) as Record<string, unknown>;
+
+        expect(Object.getPrototypeOf(detached)).toBe(Object.prototype);
+        expect((detached.__proto__ as {v: number}).v).toEqual(2);
+        expect(Object.prototype.hasOwnProperty.call(detached, '__proto__')).toBe(true);
+    });
+
+    test('symbol keys and non-enumerable keys are not part of a selection (R30-04)', () => {
+        const tag = Symbol('tag');
+        const source: Record<PropertyKey, unknown> = {v: 1, [tag]: 2};
+
+        Object.defineProperty(source, 'hidden', {value: 3, enumerable: false, configurable: true});
+
+        const detached = detachSelection(source) as Record<PropertyKey, unknown>;
+
+        expect(Object.keys(detached)).toEqual(['v']);
+        expect(detached[tag]).toBeUndefined();
+        expect(detached.hidden).toBeUndefined();
     });
 });
 

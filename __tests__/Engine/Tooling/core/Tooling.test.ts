@@ -189,6 +189,28 @@ describe('persist', () => {
             expect(writes).toEqual(1);
         });
     });
+
+    test('the wire form is the live data, and fromJSON reinstalls freshly parsed state', () => {
+        const carburetor = new CounterCarburetor(getData());
+
+        carburetor.setValue(2);
+
+        // No clone: toJSON() hands out the live state itself, which is what persist stringifies.
+        expect(carburetor.toJSON()).toBe(carburetor.getData());
+
+        const wire = JSON.parse(JSON.stringify(carburetor));
+        expect(wire).toEqual({value: 2, label: 'start'});
+
+        // A write after the fact therefore lands in an earlier capture, not in the parsed copy.
+        const captured = carburetor.toJSON() as ICounterData;
+        carburetor.setValue(3);
+        expect(captured.value).toBe(3);
+        expect(wire).toEqual({value: 2, label: 'start'});
+
+        carburetor.fromJSON(wire);
+        expect(carburetor.getData()).toEqual({value: 2, label: 'start'});
+        expect(carburetor.getData()).toBe(wire);
+    });
 });
 
 describe('CarburetorHistory', () => {
@@ -373,11 +395,11 @@ describe('connectDevTools', () => {
 
     const countClones = (store: IInspectable): {count: () => number} => {
         let calls = 0;
-        // toJSON is a prototype method now, not a bound field: detaching it needs an
+        // snapshot is a prototype method now, not a bound field: detaching it needs an
         // explicit bind, the same as any other method taken off its instance.
-        const original = store.toJSON.bind(store);
+        const original = store.snapshot.bind(store);
 
-        store.toJSON = (): unknown => {
+        store.snapshot = (): unknown => {
             calls++;
 
             return original();

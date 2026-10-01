@@ -52,9 +52,8 @@ describe('child props boundary', () => {
         });
 
         // R2-07: what detaching copies is also what the comparison compares — the own
-        // enumerable string and symbol properties, exactly the set a shallow spread copies.
-        // Membership matters as much as value: a key swapped for another one, or a symbol
-        // member whose value changed, is a content change even when the key counts match.
+        // enumerable string keys. Membership matters as much as value: a key swapped for
+        // another one is a content change even when the key counts match.
         test('a key replaced by another undefined-valued key at equal cardinality updates the child (R2-07)', () => {
             const store = new TodoCarburetor({payload: {a: undefined}});
             let memoRenders = 0;
@@ -88,18 +87,17 @@ describe('child props boundary', () => {
             unmount();
         });
 
-        // R6-02/R6-03: state is string-keyed data only, so the symbol member now comes from the
-        // selector, not the store — detachSelection/sameSelection still copy and compare a
-        // symbol member of the SELECTION the same way as before (that model is unchanged), only
-        // the store's own payload may no longer hold one.
-        test('an enumerable symbol member whose value changes updates the child (R2-07)', () => {
+        // R30-04: a selection is own enumerable string keys only — a symbol member is not part
+        // of a selection, so content that moved behind one is invisible to the child and the
+        // snapshot keeps its identity.
+        test('a symbol member whose value changes is not a selection change (R30-04)', () => {
             const store = new TodoCarburetor({payload: {n: 0}});
             let memoRenders = 0;
 
             const MemoTodo = React.memo(({todo}: {todo: ITodoPayload}) => {
                 memoRenders++;
 
-                return <span className="memo-sym">{todo[SYM]}</span>;
+                return <span className="memo-sym">{String(todo[SYM])}</span>;
             });
 
             class Parent extends AntiHookComponent {
@@ -113,14 +111,14 @@ describe('child props boundary', () => {
             const {container, unmount} = render(<Parent />);
 
             expect(memoRenders).toEqual(1);
-            expect(container.querySelector('.memo-sym')?.textContent).toEqual('0');
+            expect(container.querySelector('.memo-sym')?.textContent).toEqual('undefined');
 
-            // The selection copies the symbol member, so the child-visible content did change even
-            // though the string key count stayed at zero on both sides.
+            // The symbol member was never copied into the snapshot, so the child-visible
+            // content did not change and the bail-out holds.
             act(() => store.replacePayload({n: 1}));
 
-            expect(memoRenders).toEqual(2);
-            expect(container.querySelector('.memo-sym')?.textContent).toEqual('1');
+            expect(memoRenders).toEqual(1);
+            expect(container.querySelector('.memo-sym')?.textContent).toEqual('undefined');
 
             unmount();
         });
@@ -156,7 +154,7 @@ describe('child props boundary', () => {
             unmount();
         });
 
-        test('an unchanged selection holding an undefined value and a symbol member keeps its identity (R2-07)', () => {
+        test('an unchanged selection with an undefined-valued key keeps its identity (R2-07)', () => {
             const store = new TodoCarburetor({payload: {a: undefined, n: 0}});
             let memoRenders = 0;
             const seen: ITodoPayload[] = [];
@@ -170,7 +168,7 @@ describe('child props boundary', () => {
 
             class Parent extends AntiHookComponent<{flag?: string}> {
                 private readonly todo = this.connectSelection(
-                    () => store, (data) => ({a: data.payload.a, [SYM]: data.payload.n})
+                    () => store, (data) => ({a: data.payload.a})
                 );
 
                 render() {
@@ -183,15 +181,15 @@ describe('child props boundary', () => {
             expect(memoRenders).toEqual(1);
             expect(container.querySelector('.memo-mixed')?.textContent).toEqual('a');
 
-            // The parent re-renders for its own props, but the selection is unchanged: both the
-            // undefined-valued key and the symbol member compare equal, so the snapshot keeps its
-            // identity and the gated child keeps its bail-out.
+            // The parent re-renders for its own props, but the selection is unchanged: the
+            // undefined-valued key compares equal, so the snapshot keeps its identity and the
+            // gated child keeps its bail-out.
             rerender(<Parent flag="second" />);
 
             expect(memoRenders).toEqual(1);
             expect(seen.length).toEqual(1);
             expect(Object.keys(seen[0])).toEqual(['a']);
-            expect(seen[0][SYM]).toEqual(0);
+            expect(seen[0].a).toBeUndefined();
 
             unmount();
         });

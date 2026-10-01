@@ -38,12 +38,12 @@ export interface ISubscribeOptions {
      * parse — `subscribe(callback, {reads})` is documented only as an extension point that reads
      * a path set already produced by `read()`'s recorder. Copied into the store's own Set at
      * subscribe time: the Set passed in is never mutated or kept by reference, so changing it
-     * afterward has no effect. `extend()` is the supported way to add one more path to a live
-     * subscription — it grows the store's copy, not yours.
+     * afterward has no effect. A live subscription's read set is grown internally by the engine
+     * as its reads accumulate; the caller only ever hands over a fresh set.
      *
      * A custom `ICarburetorSubscription` implementation should copy `reads` too if it keeps it
-     * past the call: the engine only ever grows its own copy immediately before calling your
-     * `extend(id, path)`, never the Set it was handed.
+     * past the call: the engine only ever grows its own copy immediately before notifying the
+     * subscriber, never the Set it was handed.
      */
     reads?: ReadonlySet<string>;
 }
@@ -60,13 +60,6 @@ export interface ICarburetorSubscription {
     getVersion: () => number;
     subscribe: (callback: TSubscriber, options?: ISubscribeOptions) => string;
     unsubscribe: (id: string) => void;
-    /**
-     * The path-precise drift check (R16-05): whether a write since `baselineVersion` could
-     * concern `reads`. Optional — a source with no write log of its own (a computed, which
-     * invalidates at the granularity of its whole value) is left out, and a caller with no
-     * finer answer available falls back to "the version moved at all".
-     */
-    hasDriftSince?: (baselineVersion: number, reads: ReadonlySet<string>) => boolean;
 }
 
 /**
@@ -76,6 +69,8 @@ export interface ICarburetorSubscription {
 export interface IInspectable extends ICarburetorSubscription {
     toJSON: () => unknown;
     fromJSON: (value: unknown) => void;
+    /** Detached copy for tooling that must not hold live state. */
+    snapshot: () => unknown;
 }
 
 export interface ICarburetor<T> extends IInspectable {
@@ -90,11 +85,6 @@ export interface ICarburetor<T> extends IInspectable {
     setData: (data: T) => T;
     /** Copies plain state; native Map/Set/Date and class instances remain shared by reference. */
     snapshot: () => T;
-    /**
-     * JSON text for persistence. Unlike snapshot()/toJSON(), ordinary stores can stringify
-     * live data without cloning it; subclasses whose wire state differs must override this.
-     */
-    serialize: () => string;
     /** Replaces the data with a previously taken snapshot. */
     restore: (data: T) => void;
     /**
@@ -118,15 +108,6 @@ export interface ICarburetor<T> extends IInspectable {
      * @param onChange - called with the fresh and previous selection when they differ
      */
     watch: <R>(select: TSelector<T, R>, onChange: (next: R, previous: R) => void) => TDisposer;
-    /**
-     * Adds one path to an already-registered subscription's read set; an unknown id is a no-op.
-     *
-     * Only a store source ever receives this call: a computed notifies at the granularity of
-     * its whole value, so it has no finer path to extend a subscription with, and this member
-     * lives here rather than on `ICarburetorSubscription` so a third-party subscription source
-     * — a computed among them — does not have to carry a no-op just to satisfy the interface.
-     */
-    extend: (id: string, path: string) => void;
 }
 
 /** A carburetor as seen by the batch coordinator. */
@@ -138,7 +119,7 @@ export interface INotifiable {
  * A source of mutation-time patches and pre-subscriber publication boundaries. History needs
  * both: another subscriber may publish again before a later callback runs. Producers MUST honor
  * `publication` before ordinary subscribers, through the same scheduler (and its transaction/
- * throttle coalescing), and `ownRestore` only when installing that exact restore argument.
+ * throttle coalescing), and `restoreClaim` only when installing that exact restore argument.
  */
 export interface IPatchSource {
     /**

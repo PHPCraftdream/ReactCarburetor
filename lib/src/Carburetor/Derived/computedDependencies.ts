@@ -3,6 +3,7 @@ import {ICarburetorSubscription, ISubscribeOptions} from '@/Carburetor/Models/St
 import {getUid} from '@/Carburetor/Store/Utils/getUid';
 import {sharedSingleton} from '@/Carburetor/Store/Utils/sharedSingleton';
 import {updateWave} from '@/Carburetor/Store/Scheduling/UpdateWaveInstance';
+import {IDependency, IActiveReadSlot} from './Models';
 
 interface IVersion {
     source: ICarburetorSubscription;
@@ -68,6 +69,27 @@ export const computedDependencies = {
         if (bridge.subscribers.size === 0) {
             bridges.delete(source);
             source.unsubscribe(bridge.id);
+        }
+    },
+    ownDependency(record: IDict<IDependency>, id: string): IDependency | undefined {
+        return Object.prototype.hasOwnProperty.call(record, id) ? record[id] : undefined;
+    },
+    /** Points every persistent view's recorder at the published dependency of its source.
+     *
+     * @param dependencies - the published dependency set.
+     * @param activeReads - per-source recorder slots, keyed by encoded source id.
+     */
+    publishActiveReads(dependencies: IDict<IDependency>, activeReads: Map<string, IActiveReadSlot>): void {
+        for (const cuid of Object.keys(dependencies)) {
+            const slot = activeReads.get(cuid);
+            if (slot) {
+                slot.current = dependencies[cuid];
+            }
+        }
+        for (const cuid of activeReads.keys()) {
+            if (!this.ownDependency(dependencies, cuid)) {
+                activeReads.delete(cuid);
+            }
         }
     },
 };

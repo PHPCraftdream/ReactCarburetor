@@ -19,8 +19,11 @@ const rejectArraySubclass = (value: object): never => {
 
 /**
  * The detached form of a selection, sharing the tracked-view/raw-target graph ledger with
- * watch and hook selections. Map/Set/Date contents are copied so a selected key can alias its
- * counterpart inside an opaque container without handing the child mutable store state.
+ * watch and hook selections.
+ *
+ * A selection is plain data in the state-model sense (R30-04): own enumerable string keys,
+ * array elements and `length`, detached copies of plain Date/Map/Set; symbol keys,
+ * non-enumerable keys and descriptor flags are not part of a selection and are not copied.
  *
  * Ordinary class instances still pass through live; Array subclasses remain rejected.
  *

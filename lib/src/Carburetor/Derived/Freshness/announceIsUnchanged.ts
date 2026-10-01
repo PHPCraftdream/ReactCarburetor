@@ -1,6 +1,5 @@
 import {containsExoticValue} from "@/Carburetor/Store/Utils/Graph/containsExoticValue";
 import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
-
 /** Only engine-created facades can contribute a canonical underlying result identity. */
 const canonicalResult = (value: unknown): unknown =>
     value !== null && typeof value === 'object' ? (liveViews.readTarget(value) ?? value) : value;
@@ -38,9 +37,14 @@ export const announceIsUnchanged = <R>(
     const baseline = announced !== undefined ? announced.value : previous;
     const sameReference = Object.is(baseline, next);
     const sameRawReference = sameReference || Object.is(canonicalResult(baseline), canonicalResult(next));
+    // A persistent read tree keeps an engine view's identity stable across recomputes while the
+    // store may have moved under it (in-place writes included): a moved dependency together with
+    // a live result counts as a change, like the exotic-mutation carve-out below.
+    const liveChanged = sameRawReference && dependenciesMoved
+        && next !== null && typeof next === 'object' && liveViews.readTarget(next) !== undefined;
     const opaqueChanged = sameRawReference && dependenciesMoved && containsExoticValue(next);
-    const contentSame = !sameReference && !opaqueChanged && announced !== undefined
+    const contentSame = !sameReference && !opaqueChanged && !liveChanged && announced !== undefined
         && equals !== undefined && equals(announced.value, next);
 
-    return (sameReference && !opaqueChanged) || contentSame;
+    return (sameReference && !liveChanged && !opaqueChanged) || contentSame;
 };

@@ -164,7 +164,7 @@ describe('connectSelection Array-subclass boundary (R12-01)', () => {
         expect(Object.getPrototypeOf(first)).toBe(Array.prototype);
     });
 
-    test('an array with a symbol key and a non-enumerable member is copied as currently supported (control)', () => {
+    test('a symbol key and a non-enumerable member of an array selection are not copied (R30-04)', () => {
         const store = new RowsCarburetor({rows: [1, 2, 3]});
         const TAG = Symbol('array-tag');
 
@@ -183,9 +183,9 @@ describe('connectSelection Array-subclass boundary (R12-01)', () => {
         const first = instance.selected() as unknown[] & {hidden?: number; [TAG]?: string};
 
         expect(Array.from(first)).toEqual([1, 2, 3]);
-        expect(first[TAG]).toEqual('meta');
-        expect(first.hidden).toEqual(99);
-        expect(Object.getOwnPropertyDescriptor(first, 'hidden')?.enumerable).toEqual(false);
+        expect(first[TAG]).toBeUndefined();
+        expect(first.hidden).toBeUndefined();
+        expect(Object.getOwnPropertyDescriptor(first, 'hidden')).toBeUndefined();
     });
 
     test('a null-prototype array selection is copied and keeps its null prototype (control)', () => {

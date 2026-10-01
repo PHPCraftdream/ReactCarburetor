@@ -4,6 +4,9 @@ import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 /** Every ordinary own path to each raw object, scoped to one live root. */
 const ownership = new WeakMap<object, Map<object, string[]>>();
 
+/** Bumped on every topological invalidation, so caches can detect staleness cheaply. */
+const generations = new WeakMap<object, number>();
+
 /** Rebuild only after a real graph mutation, never for another native member of a stable root. */
 const indexRoot = (root: object): Map<object, string[]> => {
     const paths = new Map<object, string[]>();
@@ -28,5 +31,9 @@ const indexRoot = (root: object): Map<object, string[]> => {
 /** One root-owned index shared by fresh read trees and cached native facades. */
 export const nativeAliasIndex = {
     paths: (root: object): Map<object, string[]> => ownership.get(root) ?? indexRoot(root),
-    invalidate: (root: object): void => { ownership.delete(root); },
+    generation: (root: object): number => generations.get(root) ?? 0,
+    invalidate: (root: object): void => {
+        generations.set(root, (generations.get(root) ?? 0) + 1);
+        ownership.delete(root);
+    },
 };

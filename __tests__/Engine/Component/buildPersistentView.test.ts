@@ -314,29 +314,30 @@ describe('persistent array facade length locks', () => {
         expect(view.length).toBe(4);
     });
 
-    test('detaching selected root and nested arrays retains raw locked length flags', () => {
+    test('detaching selected root and nested arrays keeps the raw length value (R30-04)', () => {
         const store = new Carburetor<number[]>([1, 2]);
         const view = buildPersistentView(declare(() => store)) as number[];
         store.update(draft => { Object.defineProperty(draft, 'length', {writable: false}); });
 
         const selected = detachSelection(view) as number[];
         expect(selected).not.toBe(store.getData());
-        expect(Object.getOwnPropertyDescriptor(selected, 'length')).toMatchObject({
-            value: 2, writable: false, configurable: false,
-        });
+        // R30-04: descriptor flags are not part of a selection — the copy is plain writable
+        // data with the true length and elements.
+        expect(selected.length).toBe(2);
+        expect(Array.from(selected)).toEqual([1, 2]);
+        expect(Object.getOwnPropertyDescriptor(selected, 'length'))
+            .toMatchObject({value: 2, writable: true, configurable: false, enumerable: false});
         expect(Object.getOwnPropertyDescriptor(view, 'length')?.writable).toBe(true);
 
         const nested = new Carburetor({items: [3, 4]});
         const parent = buildPersistentView(declare(() => nested));
         nested.update(draft => { Object.defineProperty(draft.items, 'length', {value: 1, writable: false}); });
         const detached = detachSelection(parent) as {items: number[]};
-        expect(Object.getOwnPropertyDescriptor(detached.items, 'length')).toMatchObject({
-            value: 1, writable: false, configurable: false,
-        });
-        expect(detached.items).toEqual([3]);
+        expect(detached.items.length).toBe(1);
+        expect(detached.items[0]).toBe(3);
     });
 
-    test('public connectSelection preserves locked flags and reuses an unchanged detached array', () => {
+    test('public connectSelection reuses the detached array while its content is unchanged (R30-04)', () => {
         const store = new Carburetor<number[]>([1, 2]);
         const history = new CarburetorHistory(store);
 
@@ -352,22 +353,21 @@ describe('persistent array facade length locks', () => {
         const component = new List({});
         const before = component.selected();
         expect(component.selected()).toBe(before);
+
+        // A length lock is a descriptor change, not a selection change: the snapshot keeps
+        // its identity (R30-04).
         store.update(draft => { Object.defineProperty(draft, 'length', {writable: false}); });
-        const locked = component.selected();
-        expect(locked).not.toBe(before);
-        expect(Object.getOwnPropertyDescriptor(component.view, 'length')?.writable).toBe(true);
-        expect(Object.getOwnPropertyDescriptor(locked, 'length')?.writable).toBe(false);
-        expect(component.selected()).toBe(locked);
+        expect(component.selected()).toBe(before);
+
         expect(history.undo()).toBe(true);
-        const restored = component.selected();
-        expect(restored).not.toBe(locked);
-        expect(Object.getOwnPropertyDescriptor(restored, 'length')?.writable).toBe(true);
-        expect(component.selected()).toBe(restored);
-        expect(history.redo()).toBe(true);
-        const redone = component.selected();
-        expect(redone).not.toBe(restored);
-        expect(Object.getOwnPropertyDescriptor(redone, 'length')?.writable).toBe(false);
-        expect(component.selected()).toBe(redone);
+        expect(component.selected()).toBe(before);
+
+        // A real content change is what produces a new snapshot.
+        store.update(draft => { draft.push(3); });
+        const grown = component.selected();
+        expect(grown).not.toBe(before);
+        expect(Array.from(grown as number[])).toEqual([1, 2, 3]);
+        expect(component.selected()).toBe(grown);
         history.disconnect();
     });
 });

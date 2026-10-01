@@ -118,30 +118,24 @@ const detach = <R>(value: R): R => {
  * what the subscription watches
  * @param isEqual - decides whether a recomputed result counts as changed; true keeps the old
  * reference, so React never sees a re-render. Defaults to the same structural comparison
- * `connectSelection` uses: own data properties and `Object.is` values, recursively through
+ * `connectSelection` uses: own enumerable string keys and `Object.is` values, recursively through
  * plain objects and arrays. detachOpaque() rebuilds every plain container fresh, so `Object.is`
  * itself could never call two detached objects equal — pass it explicitly to restore that
- * stricter, reference-only behavior. A `Map`, `Set`, `Date` or class instance always compares
- * as changed: its content can mutate in place, so no comparison of it can be trusted.
+ * stricter, reference-only behavior. A detached `Date` compares by time and a `Map`/`Set` by
+ * content when its keys are primitives; object keys and class instances always count as changed.
  */
 export const useCarburetorValue = <T extends object, R>(
     carburetor: ICarburetor<T>,
     select: TSelector<T, R>,
     isEqual: TValueComparator<R> = sameSelection
 ): R => {
-    const cache = useRef<ICacheEntry<T, R>>({
-        carburetor: undefined,
-        select: undefined,
-        isEqual: undefined,
-        version: -1,
-        value: undefined as unknown as R,
-        reads: undefined,
-        filled: false,
-    });
+    // Initialized lazily: the initializers below are per-render arguments otherwise, evaluated
+    // and discarded after the first render (R30-10).
+    const cache = useRef<ICacheEntry<T, R> | null>(null);
 
     // What the selector read last, and the subscription it produced. getSnapshot refreshes
     // the read set on every call; the commit-phase effect at the bottom acts on it.
-    const pendingReads = useRef<TCompletedReads>(completeReads(new Set<TPath>()));
+    const pendingReads = useRef<TCompletedReads | null>(null);
     const active = useRef<IActiveSubscription<T> | null>(null);
     const notify = useRef<TSubscriber | null>(null);
 
@@ -161,7 +155,7 @@ export const useCarburetorValue = <T extends object, R>(
             return;
         }
 
-        const reads = pendingReads.current;
+        const reads = pendingReads.current ?? (pendingReads.current = completeReads(new Set<TPath>()));
         const current = active.current;
 
         // The common case — the read set did not move — leaves the subscriber index alone.
@@ -215,7 +209,8 @@ export const useCarburetorValue = <T extends object, R>(
 
         // An entry is valid only for the store, selector and comparator that produced it:
         // changing comparison policy must reconsider a result suppressed at this version.
-        if (entry.filled && entry.reads !== undefined && entry.carburetor === carburetor && entry.select === select &&
+        if (entry !== null && entry.filled && entry.reads !== undefined &&
+            entry.carburetor === carburetor && entry.select === select &&
             entry.isEqual === isEqual && entry.version === version) {
             // Restore the read set paired with this cached value if a nested observation moved it.
             pendingReads.current = entry.reads;
@@ -243,7 +238,7 @@ export const useCarburetorValue = <T extends object, R>(
 
             // Same value from a new pairing keeps the old reference; otherwise a fresh detach (or
             // the already-detached candidate) becomes the entry's value.
-            result = entry.filled && isEqual(entry.value, candidate)
+            result = entry !== null && entry.filled && isEqual(entry.value, candidate)
                 ? entry.value
                 : (liveCompare ? detach(fresh) : candidate);
         } finally {
@@ -258,7 +253,6 @@ export const useCarburetorValue = <T extends object, R>(
 
         return result;
     }, [carburetor, select, isEqual, recordRead]);
-
     // React only re-runs subscribe when the callback identity changes, but a selector's read
     // paths can move on their own — a conditional selector flips to another branch. Render
     // stays pure, so reconciliation lives in the commit: every commit compares what the

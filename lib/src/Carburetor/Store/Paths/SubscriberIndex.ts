@@ -88,18 +88,17 @@ export class SubscriberIndex {
             return;
         }
 
-        previous.forEach((path: TPath) => {
+        for (const path of previous) {
             if (path !== WILDCARD_PATH && !reads.has(path)) {
                 this.unfile(id, path);
             }
-        });
+        }
 
-        reads.forEach((path: TPath) => {
+        for (const path of reads) {
             if (path !== WILDCARD_PATH && !previous.has(path)) {
                 this.file(id, path);
             }
-        });
-
+        }
         if (reads.has(WILDCARD_PATH)) {
             this.wildcard.add(id);
         } else {
@@ -158,11 +157,11 @@ export class SubscriberIndex {
         this.readsById.delete(id);
         this.wildcard.delete(id);
 
-        reads.forEach((path: TPath) => {
+        for (const path of reads) {
             if (path !== WILDCARD_PATH) {
                 this.unfile(id, path);
             }
-        });
+        }
     }
 
     /** The subscribers a set of written paths concerns: three lookups per write, no scan. */
@@ -213,15 +212,15 @@ export class SubscriberIndex {
      * @param reads - the paths to file
      */
     protected registerFresh(id: string, reads: TPathSet): void {
-        reads.forEach((path: TPath) => {
+        for (const path of reads) {
             if (path === WILDCARD_PATH) {
                 this.wildcard.add(id);
 
-                return;
+                continue;
             }
 
             this.file(id, path);
-        });
+        }
     }
 
     /**
@@ -245,7 +244,16 @@ export class SubscriberIndex {
      */
     protected file(id: string, path: TPath): void {
         this.register(this.exact, path, id);
-        this.ancestorsOf(path).forEach((ancestor: TPath) => this.registerBranch(ancestor, id));
+
+        // Ancestors walked in place, longest first, stopping before the root segment: no
+        // ancestors array and no closure per path, just a backward scan for the literal
+        // `.` separator (see match's own comment for why the scan is safe).
+        let cut = path.lastIndexOf(PATH_SEPARATOR);
+
+        while (cut > 0) {
+            this.registerBranch(path.slice(0, cut), id);
+            cut = path.lastIndexOf(PATH_SEPARATOR, cut - 1);
+        }
     }
 
     /**
@@ -258,27 +266,14 @@ export class SubscriberIndex {
      */
     protected unfile(id: string, path: TPath): void {
         this.unregister(this.exact, path, id);
-        this.ancestorsOf(path).forEach((ancestor: TPath) => this.unregisterBranch(ancestor, id));
-    }
 
-    /**
-     * A path's ancestors, longest first, stopping before the root segment.
-     *
-     * @param path - the path to slice up; a single-segment path has no ancestors and
-     * returns an empty array.
-     */
-    protected ancestorsOf(path: TPath): TPath[] {
-        const chain: TPath[] = [];
+        // Same in-place walk as file: ancestors visited longest first, no array, no closure.
         let cut = path.lastIndexOf(PATH_SEPARATOR);
 
         while (cut > 0) {
-            const ancestor = path.slice(0, cut);
-
-            chain.push(ancestor);
-            cut = ancestor.lastIndexOf(PATH_SEPARATOR);
+            this.unregisterBranch(path.slice(0, cut), id);
+            cut = path.lastIndexOf(PATH_SEPARATOR, cut - 1);
         }
-
-        return chain;
     }
 
     /**

@@ -31,89 +31,85 @@ class ErrorBoundary extends React.Component<
     }
 }
 
-describe('hidden selector properties', () => {
-    test('a rendered hidden primitive survives the hook snapshot detach', () => {
+describe('hidden selector properties (R30-04: not part of a selection)', () => {
+    test('a non-enumerable primitive does not reach the hook snapshot', () => {
         const carburetor = new TestCarburetor({value: 'visible through descriptor', box: new HiddenBox(1)});
 
         const View = () => {
             const selected = useCarburetorValue(carburetor, (data) => {
-                const result = {} as {hidden: string};
+                const result = {} as {plain: string; hidden: string};
 
+                result.plain = data.value;
                 Object.defineProperty(result, 'hidden', {value: data.value, enumerable: false});
 
                 return result;
             });
 
-            return <div className="value">{selected.hidden}</div>;
+            return <div className="value">{String(selected.plain)}:{String(selected.hidden)}</div>;
         };
 
         const {container, unmount} = render(<View/>);
 
-        expect(container.querySelector('.value')?.textContent).toEqual('visible through descriptor');
+        expect(container.querySelector('.value')?.textContent).toEqual('visible through descriptor:undefined');
         unmount();
     });
 
-    test('a hidden class instance fails through an error boundary', () => {
+    test('a hidden class instance is never detached, so it never throws', () => {
         const carburetor = new TestCarburetor({value: 'x', box: new HiddenBox(1)});
         const View = () => {
             const selected = useCarburetorValue(carburetor, (data) => {
-                const result = {} as {hidden: HiddenBox};
+                const result = {} as {plain: string; hidden: HiddenBox};
 
+                result.plain = data.value;
                 Object.defineProperty(result, 'hidden', {value: data.box, enumerable: false});
 
                 return result;
             });
 
-            return <div>{selected.hidden.value}</div>;
+            return <div>{String(selected.plain)}:{String(selected.hidden)}</div>;
         };
-        const originalError = console.error;
+        const {container, unmount} = render(<ErrorBoundary><View/></ErrorBoundary>);
 
-        console.error = () => undefined;
-
-        try {
-            const {container, unmount} = render(<ErrorBoundary><View/></ErrorBoundary>);
-
-            expect(container.querySelector('[role="alert"]')?.textContent)
-                .toContain('useCarburetorValue() cannot select a live HiddenBox instance');
-            unmount();
-        } finally {
-            console.error = originalError;
-        }
+        expect(container.querySelector('[role="alert"]')).toBeNull();
+        expect(container.textContent).toEqual('x:undefined');
+        unmount();
     });
 
-    test('a hidden accessor fails without evaluating its getter', () => {
+    test('a non-enumerable accessor is never read; an enumerable one is read once', () => {
         const carburetor = new TestCarburetor({value: 'x', box: new HiddenBox(1)});
-        let getterCalls = 0;
+        let hiddenCalls = 0;
+        let plainCalls = 0;
         const View = () => {
             const selected = useCarburetorValue(carburetor, () => {
-                const result = {} as {hidden: string};
+                const result = {} as {plain: string; hidden: string};
 
                 Object.defineProperty(result, 'hidden', {
                     get: () => {
-                        getterCalls++;
+                        hiddenCalls++;
 
                         return 'live';
+                    },
+                });
+                Object.defineProperty(result, 'plain', {
+                    enumerable: true,
+                    configurable: true,
+                    get: () => {
+                        plainCalls++;
+
+                        return 'plain';
                     },
                 });
 
                 return result;
             });
 
-            return <div>{selected.hidden}</div>;
+            return <div>{String(selected.plain)}:{String(selected.hidden)}</div>;
         };
-        const originalError = console.error;
+        const {container, unmount} = render(<View/>);
 
-        console.error = () => undefined;
-
-        try {
-            const {container, unmount} = render(<ErrorBoundary><View/></ErrorBoundary>);
-
-            expect(container.querySelector('[role="alert"]')?.textContent)
-                .toContain('cannot snapshot accessor property hidden');
-            expect(getterCalls).toEqual(0);
-            unmount();
-        } finally {
-            console.error = originalError;
-        }
+        expect(container.textContent).toEqual('plain:undefined');
+        expect(plainCalls).toEqual(1);
+        expect(hiddenCalls).toEqual(0);
+        unmount();
     });
 });

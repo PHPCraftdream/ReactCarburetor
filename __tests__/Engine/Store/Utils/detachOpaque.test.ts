@@ -156,7 +156,7 @@ describe('detachOpaque', () => {
         expect(copy.name).toEqual('root');
     });
 
-    test('plain-container guarantees survive: null-prototype dictionaries, symbol keys, sparse arrays', () => {
+    test('null-prototype dictionaries and sparse arrays keep their shape; symbol keys are not part of a selection (R30-04)', () => {
         const tag = Symbol('tag');
         const dictionary: Record<string, unknown> = Object.create(null);
 
@@ -171,16 +171,15 @@ describe('detachOpaque', () => {
         const copy = detachOpaque(source);
 
         expect(Object.getPrototypeOf(copy.dictionary)).toBeNull();
-        expect(Object.getOwnPropertySymbols(copy.tagged)).toEqual([tag]);
+        expect(Object.keys(copy.tagged)).toEqual([]);
         expect(copy.sparse.length).toEqual(3);
         expect(Object.keys(copy.sparse)).toEqual(['2']);
         expect(0 in copy.sparse).toEqual(false);
     });
 
-    test('non-enumerable data descriptors are detached with their flags preserved', () => {
+    test('non-enumerable keys are not part of a selection (R30-04)', () => {
         const box = new Instance(2);
         const source = {};
-        const reported: object[] = [];
 
         Object.defineProperty(source, 'hidden', {
             value: box,
@@ -189,16 +188,10 @@ describe('detachOpaque', () => {
             configurable: true,
         });
 
-        const copy = detachOpaque(source, (instance: object) => reported.push(instance));
-        const sourceDescriptor = Object.getOwnPropertyDescriptor(source, 'hidden');
-        const copyDescriptor = Object.getOwnPropertyDescriptor(copy, 'hidden');
+        const copy = detachOpaque(source, (_instance: object) => []);
 
-        expect(copyDescriptor?.value).toBe(box);
-        expect(copyDescriptor?.enumerable).toEqual(false);
-        expect(copyDescriptor?.writable).toEqual(false);
-        expect(copyDescriptor?.configurable).toEqual(true);
-        expect(reported).toEqual([box]);
-        expect(sourceDescriptor?.value).toBe(box);
+        expect(Object.keys(copy)).toEqual([]);
+        expect(Object.getOwnPropertySymbols(copy)).toEqual([]);
     });
 
     test('a Map/Set/Date subclass passes through live and is reported, not rebuilt as the base class (R12-02)', () => {
@@ -244,111 +237,84 @@ describe('detachOpaque', () => {
         expect(copy.date.getTime()).toEqual(1000);
     });
 
-    test('native own fields preserve flags and links to contents and other native copies', () => {
+    test('native own fields on a Map/Set/Date are not part of a selection (R30-04)', () => {
         const key = {id: 1};
         const map = new Map<object, unknown>([[key, 'answer']]);
-        const set = new Set<object>([key, map]);
+        const set = new Set<object>([key]);
         const date = new Date(1000);
         const symbol = Symbol('native-field');
 
         Object.defineProperty(map, 'hidden', {
-            value: {key, map, set, date}, enumerable: false, writable: false, configurable: false
-        });
-        Object.defineProperty(map, symbol, {
-            value: set, enumerable: true, writable: true, configurable: true
-        });
-        Object.defineProperty(set, 'hidden', {
-            value: {key, map, set}, enumerable: false, writable: false, configurable: false
+            value: {key}, enumerable: false, writable: false, configurable: false
         });
         Object.defineProperty(set, symbol, {
             value: date, enumerable: true, writable: true, configurable: true
         });
-        Object.defineProperty(date, 'hidden', {
-            value: {key, map, date}, enumerable: false, writable: false, configurable: false
-        });
-        Object.defineProperty(date, symbol, {
-            value: {set, date}, enumerable: true, writable: true, configurable: true
-        });
 
         const copy = detachOpaque({key, map, set, date});
         const copiedMap = copy.map;
-        const mapLinks = Object.getOwnPropertyDescriptor(copiedMap, 'hidden')?.value as
-            {key: object; map: object; set: object; date: object};
-        const setLinks = Object.getOwnPropertyDescriptor(copy.set, 'hidden')?.value as
-            {key: object; map: object; set: object};
-        const dateLinks = Object.getOwnPropertyDescriptor(copy.date, 'hidden')?.value as
-            {key: object; map: object; date: object};
 
         expect([...copiedMap.keys()][0]).toBe(copy.key);
         expect(copiedMap.get(copy.key)).toBe('answer');
-        const setMembers = [...copy.set];
-        expect(setMembers[0]).toBe(copy.key);
-        expect(setMembers[1]).toBe(copiedMap);
-        expect(mapLinks.key).toBe(copy.key);
-        expect(mapLinks.map).toBe(copiedMap);
-        expect(mapLinks.set).toBe(copy.set);
-        expect(mapLinks.date).toBe(copy.date);
-        expect(setLinks.key).toBe(copy.key);
-        expect(setLinks.map).toBe(copiedMap);
-        expect(setLinks.set).toBe(copy.set);
-        expect(dateLinks.key).toBe(copy.key);
-        expect(dateLinks.map).toBe(copiedMap);
-        expect(dateLinks.date).toBe(copy.date);
-        expect(Object.getOwnPropertyDescriptor(copiedMap, symbol)?.value).toBe(copy.set);
-        expect(Object.getOwnPropertyDescriptor(copy.set, symbol)?.value).toBe(copy.date);
-        const dateSymbol = Object.getOwnPropertyDescriptor(copy.date, symbol)?.value as {set: object; date: object};
-        expect(dateSymbol.set).toBe(copy.set);
-        expect(dateSymbol.date).toBe(copy.date);
-
-        for (const [source, detached] of [[map, copy.map], [set, copy.set], [date, copy.date]]) {
-            expect(detached).not.toBe(source);
-            for (const field of ['hidden', symbol]) {
-                const original = Object.getOwnPropertyDescriptor(source, field);
-                const result = Object.getOwnPropertyDescriptor(detached, field);
-                expect(result).toBeDefined();
-                expect(result?.enumerable).toBe(original?.enumerable);
-                expect(result?.writable).toBe(original?.writable);
-                expect(result?.configurable).toBe(original?.configurable);
-                expect(result?.value).not.toBe(original?.value);
-            }
-        }
+        expect([...copy.set][0]).toBe(copy.key);
+        expect(Object.getOwnPropertyDescriptor(copiedMap, 'hidden')).toBeUndefined();
+        expect(Object.getOwnPropertyDescriptor(copy.set, symbol)).toBeUndefined();
+        expect(Object.getOwnPropertyDescriptor(copy.date, 'hidden')).toBeUndefined();
 
         copiedMap.set(copy.key, 'changed');
         expect(map.get(key)).toBe('answer');
     });
 
-    test.each(['Map', 'Set', 'Date'] as const)('%s own accessors are rejected without invoking getters', kind => {
-        const native = kind === 'Map' ? new Map([['a', 1]])
-            : kind === 'Set' ? new Set(['a']) : new Date(1000);
+    test('an own accessor on a plain object is read once and its value is the snapshot (R30-04)', () => {
         let getterCalls = 0;
-        Object.defineProperty(native, Symbol('accessor'), {
-            get(): string {
-                getterCalls++;
-                return 'unsafe';
-            }
-        });
+        const getter = (): number => {
+            getterCalls++;
 
-        expect(() => detachOpaque({native})).toThrow(Error);
-        expect(getterCalls).toBe(0);
+            return 7;
+        };
+        const source = {};
+
+        Object.defineProperty(source, 'answer', {get: getter, enumerable: true, configurable: true});
+
+        const copy = detachOpaque(source) as {answer: number};
+
+        expect(copy.answer).toEqual(7);
+        expect(getterCalls).toEqual(1);
     });
 
-    test.each(['Map', 'Set', 'Date'] as const)('%s rejects an own getter shadowing native copying', kind => {
-        const native = kind === 'Map' ? new Map([['a', 1]])
-            : kind === 'Set' ? new Set(['a']) : new Date(1000);
-        const method = kind === 'Date' ? 'getTime' : 'forEach';
-        let getterCalls = 0;
-        Object.defineProperty(native, method, {
-            get(): () => void {
-                getterCalls++;
-                return () => { getterCalls++; };
-            }
+    test('every getter runs once when a container field follows primitive fields (R30-G)', () => {
+        const calls = {title: 0, payload: 0, tail: 0};
+        const source = {};
+
+        Object.defineProperty(source, 'title', {
+            get: () => (calls.title++, 'a'), enumerable: true, configurable: true
+        });
+        Object.defineProperty(source, 'payload', {
+            get: () => (calls.payload++, {n: 1}), enumerable: true, configurable: true
+        });
+        Object.defineProperty(source, 'tail', {
+            get: () => (calls.tail++, 2), enumerable: true, configurable: true
         });
 
-        expect(() => detachOpaque(native)).toThrow(Error);
-        expect(getterCalls).toBe(0);
+        const copy = detachOpaque(source) as {title: string; payload: {n: number}; tail: number};
+
+        expect(copy).toEqual({title: 'a', payload: {n: 1}, tail: 2});
+        expect(calls).toEqual({title: 1, payload: 1, tail: 1});
     });
 
-    test.each(['Map', 'Set', 'Date'] as const)('%s keeps native contents with an own method-name data field', kind => {
+    test('a cycle through the root survives the primitive-first path (R30-G)', () => {
+        const root: {name: string; self?: unknown} = {name: 'r'};
+
+        root.self = root;
+
+        const copy = detachOpaque(root) as {name: string; self: unknown};
+
+        expect(copy).not.toBe(root);
+        expect(copy.self).toBe(copy);
+    });
+
+    test.each(['Map', 'Set', 'Date'] as const)(
+        '%s native contents survive with an own method-name data field', kind => {
         const native = kind === 'Map' ? new Map([['a', 1]])
             : kind === 'Set' ? new Set(['a']) : new Date(1000);
         const method = kind === 'Date' ? 'getTime' : 'forEach';
@@ -357,15 +323,9 @@ describe('detachOpaque', () => {
         });
 
         const copy = detachOpaque(native);
-        const field = Object.getOwnPropertyDescriptor(copy, method);
 
         expect(copy).not.toBe(native);
-        expect(field?.enumerable).toBe(false);
-        expect(field?.writable).toBe(false);
-        expect(field?.configurable).toBe(false);
-        expect(field?.value.native).toBe(copy);
-        expect(field?.value).not.toBe(Object.getOwnPropertyDescriptor(native, method)?.value);
-
+        // Own fields are not part of a selection, but the intrinsic content is copied.
         if (copy instanceof Map) {
             expect(Map.prototype.get.call(copy, 'a')).toBe(1);
         } else if (copy instanceof Set) {
@@ -375,18 +335,16 @@ describe('detachOpaque', () => {
         }
     });
 
-    test('accessor descriptors are rejected without invoking their getter', () => {
-        let getterCalls = 0;
-        const getter = (): number => {
-            getterCalls++;
+    test('an own key named __proto__ lands as data on the copy', () => {
+        const source: Record<string, unknown> = {v: 1};
 
-            return 7;
-        };
-        const source = {};
+        Object.defineProperty(source, '__proto__', {
+            value: {v: 2}, enumerable: true, writable: true, configurable: true
+        });
 
-        Object.defineProperty(source, 'hidden', {get: getter, enumerable: false});
+        const copy = detachOpaque(source) as Record<string, unknown>;
 
-        expect(() => detachOpaque(source)).toThrow(Error);
-        expect(getterCalls).toEqual(0);
+        expect(Object.getPrototypeOf(copy)).toBe(Object.prototype);
+        expect((copy.__proto__ as {v: number}).v).toEqual(2);
     });
 });

@@ -46,7 +46,7 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
             const cached = snapshots[name];
 
             if (!cached || cached.version !== version) {
-                snapshots[name] = {state: carburetors[name].toJSON(), version};
+                snapshots[name] = {state: carburetors[name].snapshot(), version};
             }
 
             state[name] = snapshots[name].state;

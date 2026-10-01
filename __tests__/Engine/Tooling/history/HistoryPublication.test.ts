@@ -387,7 +387,7 @@ describe('history publication boundaries under reentrant writes (R15-ENGINE-01/0
                 this.publish();
             }
             public restore(value: State): void {
-                const owned = this.observers.some(observer => observer.ownRestore?.(value) === true);
+                const owned = this.observers.some(observer => observer.restoreClaim?.(value)?.adopt === true);
                 this.state = owned ? value : {row: {n: value.row.n}, map: new Map(value.map)};
                 this.publish();
             }

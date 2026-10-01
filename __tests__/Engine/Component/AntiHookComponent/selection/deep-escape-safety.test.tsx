@@ -72,16 +72,18 @@ import {React, act, render, AntiHookComponent, Carburetor} from '../support';
             unmount();
         });
 
-        test('a symbol-keyed selected branch wakes its memo child after a leaf write', () => {
+        test('a symbol-keyed selected branch is not part of a selection (R30-04)', () => {
             const store = new ProfileCarburetor(getProfileData());
-            const SYM_PROFILE = Symbol('r3-02/profile');
+            const SYM_PROFILE = Symbol('r30-04/profile');
 
             let memoRenders = 0;
 
             const MemoChild = React.memo(({model}: {model: Record<PropertyKey, unknown>}) => {
                 memoRenders++;
 
-                return <span className="memo-sym">{(model[SYM_PROFILE] as {name: string}).name}</span>;
+                return <span className="memo-sym">
+                    {String((model[SYM_PROFILE] as {name: string} | undefined) === undefined)}
+                </span>;
             });
 
             class Parent extends AntiHookComponent {
@@ -97,10 +99,11 @@ import {React, act, render, AntiHookComponent, Carburetor} from '../support';
 
             const {container, unmount} = render(<Parent />);
 
-            expect(container.querySelector('.memo-sym')?.textContent).toEqual('Ann');
+            expect(container.querySelector('.memo-sym')?.textContent).toEqual('true');
             act(() => store.renameProfile('Bob'));
-            expect(memoRenders).toEqual(2);
-            expect(container.querySelector('.memo-sym')?.textContent).toEqual('Bob');
+            // The symbol member was never copied, so the child stays at its bail-out.
+            expect(memoRenders).toEqual(1);
+            expect(container.querySelector('.memo-sym')?.textContent).toEqual('true');
 
             unmount();
         });

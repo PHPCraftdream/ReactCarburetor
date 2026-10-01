@@ -135,12 +135,12 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      *
      * `select` reads the same tracked view `connect` hands out, so its reads land in this
      * render's attempt and the component subscribes to exactly the paths the selection
-     * touches. Plain objects and arrays are copied recursively with their own data descriptors;
+     * touches. Plain objects (own enumerable string keys) and arrays are copied recursively;
      * ordinary Map/Set/Date values are detached too, preserving aliases within the snapshot.
      *
-     * The snapshot is reused while selected plain content, descriptors, prototypes and
-     * reference-sharing topology match. Mutable exotic members conservatively count as changed;
-     * project them into plain data when a gated child needs precise memoization.
+     * The snapshot is reused while selected plain content, prototypes and reference-sharing
+     * topology match; a detached Date compares by time, a Map/Set by content over primitive keys.
+     * Class instances and object-keyed collections conservatively count as changed.
      *
      * The selector runs on every call, including every render, because that is what keeps this
      * render's read set — and with it, the subscription the next update needs — fresh; the

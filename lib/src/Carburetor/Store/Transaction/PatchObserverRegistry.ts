@@ -34,22 +34,18 @@ export class PatchObserverRegistry {
     private single: IRegistration | undefined;
     /** Replaceable patch-only attachment, independent of histories. */
     private patchOnly: IRegistration | undefined;
-    /** One exact custom restore claim waiting for its matching setData installation. */
-    private pendingRestoreClaim: {state: unknown; claim: IStateRestoreClaim} | undefined;
 
     /** Created only if a second observer attaches; the usual one-observer path stays direct. */
     private fanout: TPatchRecorder | undefined;
 
-    /** Single-observer fast path: clears the restore claim exactly like the fan-out path. */
+    /** Single-observer fast path: delivers patches as directly as the fan-out path does. */
     private readonly directPatch = (patch: Parameters<TPatchRecorder>[0]): void => {
-        this.pendingRestoreClaim = undefined;
         const observer = this.single?.observer;
         if (observer) observer.patch(patch);
     };
 
     /** Delivers one mutation to the active attachment set. */
     private reportPatch(patch: Parameters<TPatchRecorder>[0]): void {
-        this.pendingRestoreClaim = undefined;
         const generation = this.generation;
         let failed = false;
         let firstError: unknown;
@@ -82,8 +78,7 @@ export class PatchObserverRegistry {
 
     /** Registers an independent history, or replaces only the previous patch-only observer. */
     public attach(observer: IPatchObserver): TDisposer {
-        this.pendingRestoreClaim = undefined;
-        if (!observer.publication && !observer.ownRestore && !observer.restoreClaim && this.patchOnly) {
+        if (!observer.publication && !observer.restoreClaim && this.patchOnly) {
             this.detach(this.patchOnly);
         }
         const previous = this.registrations.get(observer);
@@ -110,7 +105,7 @@ export class PatchObserverRegistry {
             };
         }
         this.registrations.set(observer, registration);
-        if (!observer.publication && !observer.ownRestore && !observer.restoreClaim) {
+        if (!observer.publication && !observer.restoreClaim) {
             this.patchOnly = registration;
         }
         this.single = this.registrations.size === 1 ? registration : undefined;
@@ -130,7 +125,6 @@ export class PatchObserverRegistry {
         if (registration.schedulerKey !== undefined) {
             this.scheduler.cancel(registration.schedulerKey);
         }
-        this.pendingRestoreClaim = undefined;
         registration.publicationPending = false;
         registration.publicationFact = undefined;
         registration.publicationAmbiguous = false;
@@ -146,33 +140,11 @@ export class PatchObserverRegistry {
             : this.single ? this.directPatch : this.fanout;
     }
 
-    /**
-     * Preserves the custom-producer boolean contract as a projection of the canonical claim.
-     *
-     * @param state - exact restore argument whose endpoint may be adopted
-     */
-    public ownRestore(state: unknown): boolean {
-        const claim = this.claimRestore(state);
-        this.pendingRestoreClaim = claim ? {state, claim} : undefined;
-        return claim?.adopt === true;
-    }
-
-    /** Consumes a custom producer's one-shot claim only for its exact restore argument.
-     *
-     * @param state - root presented to the installation boundary
-     */
-    public consumeRestoreClaim(state: unknown): IStateRestoreClaim | undefined {
-        const pending = this.pendingRestoreClaim;
-        this.pendingRestoreClaim = undefined;
-        return pending && pending.state === state ? pending.claim : undefined;
-    }
-
     /** Collects exact installation metadata while preserving every independent observer.
      *
      * @param state - exact restore argument whose owner metadata is required
      */
     public claimRestore(state: unknown): IStateRestoreClaim | undefined {
-        this.pendingRestoreClaim = undefined;
         const generation = this.generation;
         let claim: IStateRestoreClaim | undefined;
         for (const registration of this.registrations.values()) {
@@ -180,12 +152,9 @@ export class PatchObserverRegistry {
             if (registration.generation > generation || this.registrations.get(observer) !== registration) {
                 continue;
             }
-            const adopted = observer.ownRestore?.(state);
             const candidate = observer.restoreClaim?.(state);
             if (candidate && claim === undefined) {
                 claim = candidate;
-            } else if (adopted === true) {
-                claim ??= {representation: 'history-owned', adopt: true};
             }
         }
         return claim;
@@ -224,7 +193,6 @@ export class PatchObserverRegistry {
      * @param fact - closed transition fact, defaulting to an ordinary mutation
      */
     public publish(fact: IStatePublication = STATE_MUTATION_PUBLICATION): unknown[] | undefined {
-        this.pendingRestoreClaim = undefined;
         const sole = this.single;
         if (sole) {
             const error = this.queuePublication(sole, fact);

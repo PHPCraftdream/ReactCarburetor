@@ -121,14 +121,8 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         return {...super.snapshot(), key: this.runtime?.answer?.key};
     }
 
-    /** Own the raw state graph before adding wire metadata, retaining native links to its root.
-     *
-     * @param own - detaches the complete live state before its settled key is included
-     */
+    /** Owns the raw state graph for history, including the wire key it adds. */
     public captureHistory(own: <V>(value: V) => V): IResourceSnapshot<T> {
-        if (this.snapshot !== ResourceCarburetor.prototype.snapshot) {
-            throw new Error('CarburetorHistory: a custom snapshot() must provide captureHistory()');
-        }
         const state = own(this.getData());
         Object.defineProperty(state, 'key', {
             value: this.runtime?.answer?.key, configurable: true, enumerable: true, writable: true,
@@ -136,9 +130,12 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         return state;
     }
 
-    /** The settled key belongs to the wire answer, not the live slot's data. */
-    public serialize(): string {
-        return JSON.stringify({...this.getData(), key: this.runtime?.answer?.key});
+    /** The wire form: live data plus the settled answer key, without a copy.
+     *
+     * A detached copy is `snapshot()`.
+     */
+    public toJSON(): IResourceSnapshot<T> {
+        return {...this.getData(), key: this.runtime?.answer?.key};
     }
 
     /**

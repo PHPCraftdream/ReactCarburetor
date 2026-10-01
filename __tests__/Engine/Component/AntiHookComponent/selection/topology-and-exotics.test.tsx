@@ -195,7 +195,87 @@ import {React, act, render, AntiHookComponent, Carburetor, TReadonly} from '../s
             unmount();
         });
 
-        test('a selection holding an exotic member is treated as changed on every owner render (R5-02)', () => {
+        test('an unchanged Date in the selection keeps the memo child bail-out (R30-03)', () => {
+            const at = new Date(1000);
+            const store = new Carburetor<{at: Date; other: number}>({at, other: 0});
+            let memoRenders = 0;
+
+            const MemoWhen = React.memo(({model}: {model: {at: Date}}) => {
+                memoRenders++;
+
+                return <span className="memo-when">{model.at.getTime()}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{flag?: string}> {
+                private readonly selected = this.connectSelection(
+                    () => store,
+                    (data: TReadonly<{at: Date; other: number}>) => ({at: data.at})
+                );
+
+                render() {
+                    return <MemoWhen model={this.selected()} />;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent />);
+
+            expect(container.querySelector('.memo-when')?.textContent).toEqual('1000');
+            expect(memoRenders).toEqual(1);
+
+            // An owner re-render with no content change: the detached Date compares equal to
+            // the live one, so the snapshot keeps its identity and the child bails out.
+            rerender(<Parent flag="second" />);
+            expect(memoRenders).toEqual(1);
+
+            // An in-place setTime is a content change on the next comparison.
+            at.setTime(2000);
+            rerender(<Parent flag="third" />);
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-when')?.textContent).toEqual('2000');
+
+            unmount();
+        });
+
+        test('a class instance in the selection is always a change for the memo child (R30-03)', () => {
+            class Box {
+                public constructor(public v: number) {}
+            }
+
+            const store = new Carburetor<{box: Box}>({box: new Box(1)});
+            let memoRenders = 0;
+
+            const MemoBox = React.memo(({model}: {model: {box: Box}}) => {
+                memoRenders++;
+
+                return <span className="memo-box">{model.box.v}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{flag?: string}> {
+                private readonly selected = this.connectSelection(
+                    () => store,
+                    (data) => ({box: data.box})
+                );
+
+                render() {
+                    return <MemoBox model={this.selected()} />;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent />);
+
+            expect(container.querySelector('.memo-box')?.textContent).toEqual('1');
+            expect(memoRenders).toEqual(1);
+
+            // A live class instance cannot be proven unchanged, so the child re-renders with
+            // the owner even though no store write happened.
+            rerender(<Parent flag="second" />);
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-box')?.textContent).toEqual('1');
+
+            unmount();
+        });
+
+        test('an unchanged Map keeps the memo child bail-out; a Map.set re-renders it (R30-03)', () => {
             interface IMapData {
                 // The rule is right; the exotic Map in store data is the subject of this R5-02 test.
                 // oxlint-disable-next-line carburetor/no-untrackable-store-data
@@ -237,13 +317,18 @@ import {React, act, render, AntiHookComponent, Carburetor, TReadonly} from '../s
             expect(container.querySelector('.memo-map')?.textContent).toEqual('1');
             expect(memoRenders).toEqual(1);
 
-            // The documented tradeoff: with a mutable member in play the comparison cannot
-            // prove "unchanged", so the child re-renders with the owner even though no store
-            // write happened. Projecting the Map into plain data restores precision.
+            // R30-03: the detached copy compares by content, so an unchanged Map lets the
+            // snapshot keep its identity and the memo child keeps its bail-out.
             rerender(<Parent flag="second" />);
 
-            expect(memoRenders).toEqual(2);
+            expect(memoRenders).toEqual(1);
             expect(container.querySelector('.memo-map')?.textContent).toEqual('1');
+
+            // An in-place Map.set is a content change: the child re-renders with the new value.
+            act(() => store.setEntry('a', 2));
+
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-map')?.textContent).toEqual('2');
 
             unmount();
         });
@@ -251,7 +336,7 @@ import {React, act, render, AntiHookComponent, Carburetor, TReadonly} from '../s
 
 type TNativeRoot = Map<unknown, unknown> | Set<unknown> | Date;
 
-/** Makes a native root whose own descriptor and intrinsic contents both point back to it. */
+/** Makes a native root whose intrinsic contents point back to it (R30-04: own fields are not copied). */
 const nativeRoot = (kind: 'Map' | 'Set' | 'Date', n: number): TNativeRoot => {
     let root: TNativeRoot;
 
@@ -267,9 +352,6 @@ const nativeRoot = (kind: 'Map' | 'Set' | 'Date', n: number): TNativeRoot => {
         root = new Date(n * 100);
     }
 
-    Object.defineProperty(root, 'hidden', {
-        value: {self: root}, enumerable: false, writable: false, configurable: false
-    });
     return root;
 };
 
@@ -298,15 +380,25 @@ describe('connectSelection over an opaque native root', () => {
             render() {
                 const selected = this.selected();
                 snapshots.push(selected);
-                const self = Object.getOwnPropertyDescriptor(selected, 'hidden')?.value as {self: object};
-                return <span className="native-root">{nativeAmount(selected)}:{self.self === selected ? 'linked' : 'broken'}</span>;
+                return <span className="native-root">{nativeAmount(selected)}</span>;
             }
         }
 
         const view = render(<Parent store={firstStore} />);
-        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit}:linked`);
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit}`);
         const initial = snapshots[0];
         expect(initial).not.toBe(firstStore.getData());
+
+        if (initial instanceof Map) {
+            expect(initial.get(initial)).toBe('self');
+            initial.set('id', 99);
+        } else if (initial instanceof Set) {
+            expect(initial.has(initial)).toBe(true);
+            initial.add(99);
+        } else {
+            initial.setTime(999);
+        }
+        expect(nativeAmount(firstStore.getData())).toBe(unit);
 
         if (initial instanceof Map) {
             expect(initial.get(initial)).toBe('self');
@@ -324,15 +416,15 @@ describe('connectSelection over an opaque native root', () => {
         view.rerender(<Parent store={firstStore} />);
 
         await act(async () => { firstStore.setData(nativeRoot(kind, 2)); });
-        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 2}:linked`);
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 2}`);
         expect(snapshots[snapshots.length - 1]).not.toBe(initial);
 
         view.rerender(<Parent store={otherStore} />);
-        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 3}:linked`);
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 3}`);
         await act(async () => { firstStore.setData(nativeRoot(kind, 4)); });
-        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 3}:linked`);
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 3}`);
         await act(async () => { otherStore.setData(nativeRoot(kind, 5)); });
-        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 5}:linked`);
+        expect(view.container.querySelector('.native-root')?.textContent).toBe(`${unit * 5}`);
         view.unmount();
     });
 });
@@ -441,8 +533,10 @@ describe('connectSelection over a supported root facade', () => {
                 : kind === 'objectArray' ? Object.prototype
                     : kind === 'array' ? Array.prototype : Object.prototype
         );
-        expect(Object.getOwnPropertyDescriptor(initial.root, Array.isArray(initial.root) ? '2' : 'id')?.configurable)
-            .toBe(false);
+        // R30-04: descriptor flags are not part of a selection — the detached copy carries
+        // plain writable/configurable fields, but keeps the enumerable string-key set.
+        expect(Object.getOwnPropertyDescriptor(initial.root, Array.isArray(initial.root) ? '2' : 'id'))
+            .toMatchObject({enumerable: true, writable: true, configurable: true});
         expect(Object.getOwnPropertyDescriptor(initial.root, Array.isArray(initial.root) ? '0' : 'index')?.enumerable)
             .toBe(true);
 

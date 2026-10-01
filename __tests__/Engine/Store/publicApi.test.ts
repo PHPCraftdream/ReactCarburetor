@@ -1,6 +1,8 @@
 import {rstest} from "@rstest/core";
 import * as api from "@/Carburetor";
 import {Carburetor, CarburetorHistory, Diagnostics} from "@/Carburetor";
+import type {ICarburetor, ICarburetorSubscription, IInspectable} from "@/Carburetor";
+import {CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT} from "@/Carburetor/Store/Utils/Models";
 
 /**
  * Snapshot of the runtime surface of the package. Type-only exports do not appear here,
@@ -71,6 +73,47 @@ describe('public API', () => {
         INTERNALS.forEach((name: string) => {
             expect(exported).not.toContain(name);
         });
+    });
+});
+
+// R30-06a/R30-06b: `extend`/`hasDriftSince` moved to an internal symbol-keyed protocol and
+// `serialize()` was removed in favour of the `toJSON()` wire form — neither may return to the
+// public interfaces or the package barrel.
+describe('surface after the internal subscription protocol (R30-06)', () => {
+    test('the interfaces no longer carry extend, hasDriftSince or serialize, and keep snapshot', () => {
+        // Each alias is `false` only while the member stays off the interface, so a member coming
+        // back fails compilation here before it can ship.
+        type HasExtend = 'extend' extends keyof ICarburetor ? true : false;
+        type HasDrift = 'hasDriftSince' extends keyof ICarburetorSubscription ? true : false;
+        type HasSerialize = 'serialize' extends keyof ICarburetor ? true : false;
+        type HasSnapshot = 'snapshot' extends keyof IInspectable ? true : false;
+
+        const withoutExtend: HasExtend = false;
+        const withoutDrift: HasDrift = false;
+        const withoutSerialize: HasSerialize = false;
+        const withSnapshot: HasSnapshot = true;
+
+        expect(withoutExtend).toBe(false);
+        expect(withoutDrift).toBe(false);
+        expect(withoutSerialize).toBe(false);
+        expect(withSnapshot).toBe(true);
+    });
+
+    test('the barrel does not export the internal subscription symbols', () => {
+        const pkg = api as Record<string, unknown>;
+
+        expect(pkg.CARBURETOR_EXTEND).toBeUndefined();
+        expect(pkg.CARBURETOR_HAS_DRIFT).toBeUndefined();
+    });
+
+    test('a store answers the internal protocol under symbol keys, not named members', () => {
+        const store = new Carburetor({value: 1});
+        const protocol = store as unknown as Record<symbol, unknown>;
+
+        expect('extend' in store).toBe(false);
+        expect('hasDriftSince' in store).toBe(false);
+        expect(typeof protocol[CARBURETOR_EXTEND]).toBe('function');
+        expect(typeof protocol[CARBURETOR_HAS_DRIFT]).toBe('function');
     });
 });
 

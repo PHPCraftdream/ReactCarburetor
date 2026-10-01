@@ -296,6 +296,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      */
     protected isStale(entry: IResourceEntry<T>): boolean {
         if (entry.invalidated || entry.updatedAt === undefined) return true;
+        if (this.ttl === Infinity) return false;
         return Date.now() - entry.updatedAt > this.ttl;
     }
 

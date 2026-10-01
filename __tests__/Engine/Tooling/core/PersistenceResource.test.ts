@@ -168,8 +168,8 @@ describe('persist resource serialization (R11-04)', () => {
 
     test('a subtype controls its wire representation without forcing ordinary-store snapshots', () => {
         class EncodedStore extends Carburetor<{value: number}> {
-            public serialize(): string {
-                return JSON.stringify({value: this.getData().value + 100});
+            public toJSON(): {value: number} {
+                return {value: this.getData().value + 100};
             }
             public restore(data: {value: number}): void {
                 super.restore({value: data.value - 100});

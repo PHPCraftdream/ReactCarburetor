@@ -1,7 +1,7 @@
 import {IDict, TSubscriber} from "@/Carburetor/Models/Base";
 import {IComputed, IComputedOptions, TComputeBody, TComputedReader} from "@/Carburetor/Models/Derived";
-import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {ICarburetor, ICarburetorSubscription, ISubscribeOptions} from "@/Carburetor/Models/Store";
+import {TPath} from "@/Carburetor/Models/Paths";
+import {ICarburetor, ISubscribeOptions} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
@@ -9,6 +9,7 @@ import {nativeStoreWriteEpoch} from "@/Carburetor/Store/Scheduling/nativeStoreWr
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
+import {CARBURETOR_EXTEND, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {announceIsUnchanged} from "./Freshness/announceIsUnchanged";
 import {reportComputedEscape} from "./reportComputedEscape";
 import {captureLeafVersions} from "./Freshness/captureLeafVersions";
@@ -16,6 +17,8 @@ import {driftedSince} from "./Freshness/driftedSince";
 import {ILeafVersion} from "./Freshness/Models";
 import {leafVersionsDrifted} from "./Freshness/leafVersionsDrifted";
 import {computedDependencies} from "./computedDependencies";
+import {IDependency, IActiveReadSlot} from "./Models";
+import {PersistentViews} from "@/Carburetor/Store/Tracking/Observation/PersistentViewCache";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
@@ -32,30 +35,9 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
 const invalidationEdges: WeakMap<TSubscriber, () => void> =
     sharedSingleton('invalidationEdges', () => new WeakMap<TSubscriber, () => void>());
 
-/**
- * A dependency's source, with the store-only hook a live leaf read amends through. A computed
- * source never has `extend` — it notifies at the granularity of its whole value — so the field
- * is optional rather than widening `ICarburetorSubscription` itself for one caller.
+/*
+ * A dependency's source and the per-cycle dependency record live in ./activeReads.
  */
-interface IDependencySource extends ICarburetorSubscription {
-    extend?: (id: string, path: TPath) => void;
-}
-
-/** One source's read set for one recompute cycle, plus attachDependencies' own bookkeeping. */
-interface IDependency {
-    source: IDependencySource;
-    reads: TPathSet;
-    /** Set by attachDependencies once this becomes `this.dependencies[cuid]`. */
-    published: boolean;
-    observed: boolean;
-    /** Prior cycle's dependency for the same source, read only to count `overlap`. */
-    previous: IDependency | undefined;
-    /** Paths added to `reads` this cycle that `previous.reads` already held. */
-    overlap: number;
-}
-
-const ownDependency = (record: IDict<IDependency>, id: string): IDependency | undefined =>
-    Object.prototype.hasOwnProperty.call(record, id) ? record[id] : undefined;
 
 
 /** The value the last notification carried, and the dependency versions it was read from. */
@@ -89,6 +71,11 @@ export class Computed<R> implements IComputed<R> {
     private subscriptionGeneration = 0;
     /** What the current value was computed from, observed only while somebody is listening. */
     protected dependencies: IDict<IDependency> = {};
+
+    /** Per store source: the dependency the source's persistent view currently records into. */
+    private readonly views = new PersistentViews();
+    /** Per encoded source id: the slot that source's persistent view records through. */
+    private activeReads: Map<string, IActiveReadSlot> = new Map();
 
     /** Leaf versions, including flattened native computations and public external sources. */
     protected versions: IDict<ILeafVersion> = {};
@@ -235,19 +222,30 @@ export class Computed<R> implements IComputed<R> {
         const track = (source: ICarburetor<object> | IComputed<unknown>): unknown => {
             // Encode arbitrary public ids so __proto__ is an ordinary data key.
             const cuid = ':' + source.getUID();
-            let dependency = ownDependency(collected, cuid);
+            let dependency = computedDependencies.ownDependency(collected, cuid);
 
             if (!dependency) {
                 dependency = {
                     source, reads: new Set<TPath>(), published: false, observed: false,
-                    previous: ownDependency(this.dependencies, cuid), overlap: 0,
+                    previous: computedDependencies.ownDependency(this.dependencies, cuid), overlap: 0,
                 };
                 collected[cuid] = dependency;
             }
 
             if ('read' in source) {
-                return source.read((path: TPath) => {
-                    this.recordDependencyRead(dependency, path);
+                // One persistent view per source, rebuilt only when its data object changed.
+                let active = this.activeReads.get(cuid);
+                if (!active) {
+                    active = {current: undefined};
+                    this.activeReads.set(cuid, active);
+                }
+                active.current = dependency;
+                const slot = active;
+
+                return this.views.view(source, (path: TPath) => {
+                    if (slot.current) {
+                        this.recordDependencyRead(slot.current, path);
+                    }
                 });
             }
 
@@ -262,7 +260,14 @@ export class Computed<R> implements IComputed<R> {
         const hadValue = this.valid || Object.keys(this.versions).length > 0;
         const oldVersions = this.versions;
         const value = this.body(track as TComputedReader);
-        this.attachDependencies(collected);
+        try {
+            this.attachDependencies(collected);
+        } catch (error: unknown) {
+            // Late reads go back to the still-published dependencies.
+            computedDependencies.publishActiveReads(this.dependencies, this.activeReads);
+            throw error;
+        }
+        computedDependencies.publishActiveReads(this.dependencies, this.activeReads);
         this.value = value;
         this.valid = true;
 
@@ -297,8 +302,9 @@ export class Computed<R> implements IComputed<R> {
             reportComputedEscape(this, (id: string) => this.subscribers.has(id));
         }
 
-        if (dependency.published && this.subscribers.size > 0 && dependency.source.extend) {
-            dependency.source.extend(this.uid, path);
+        const extend = (dependency.source as IInternalSubscriptionProtocol)[CARBURETOR_EXTEND];
+        if (dependency.published && this.subscribers.size > 0 && extend) {
+            extend.call(dependency.source, this.uid, path);
         }
     }
 
@@ -313,7 +319,7 @@ export class Computed<R> implements IComputed<R> {
         if (!fresh) {
             for (const cuid of Object.keys(this.dependencies)) {
                 const previous = this.dependencies[cuid];
-                const next = ownDependency(collected, cuid);
+                const next = computedDependencies.ownDependency(collected, cuid);
                 previous.published = false;
                 if (next) {
                     next.published = true;
@@ -339,7 +345,7 @@ export class Computed<R> implements IComputed<R> {
         } catch (error: unknown) {
             // Restore replaced edges; release new edges, including a partially attached failure.
             for (const cuid of attempted.reverse()) {
-                const previous = ownDependency(this.dependencies, cuid);
+                const previous = computedDependencies.ownDependency(this.dependencies, cuid);
                 try {
                     if (previous?.observed && previous.source === collected[cuid].source) {
                         computedDependencies.subscribe(previous.source, this.onDependencyChanged,
@@ -359,7 +365,7 @@ export class Computed<R> implements IComputed<R> {
         for (const cuid of Object.keys(this.dependencies)) {
             const previous = this.dependencies[cuid];
             previous.published = false;
-            if (previous.observed && previous.source !== ownDependency(collected, cuid)?.source) {
+            if (previous.observed && previous.source !== computedDependencies.ownDependency(collected, cuid)?.source) {
                 computedDependencies.unsubscribe(previous.source, this.uid);
             }
         }
@@ -378,7 +384,7 @@ export class Computed<R> implements IComputed<R> {
 
         for (const cuid of Object.keys(collected)) {
             const next = collected[cuid];
-            const previous = ownDependency(this.dependencies, cuid);
+            const previous = computedDependencies.ownDependency(this.dependencies, cuid);
             if (!previous?.observed || next.source !== previous.source
                 || (next !== previous && (next.overlap !== previous.reads.size
                     || next.overlap !== next.reads.size))) {
@@ -410,6 +416,9 @@ export class Computed<R> implements IComputed<R> {
         });
 
         this.dependencies = {};
+        for (const slot of this.activeReads.values()) {
+            slot.current = undefined;
+        }
     }
 
     /**

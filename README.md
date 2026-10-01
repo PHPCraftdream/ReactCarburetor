@@ -215,15 +215,20 @@ class TodoList extends AntiHookComponent<ITodoProps> {
 ```
 
 `select` reads the same tracked view `connect` hands out, so the owner subscribes to exactly
-the paths the selection touches. What the call returns is detached data: plain objects
-and arrays are copied recursively, including non-enumerable own data fields and symbol keys.
-Ordinary Maps, Sets and Dates are copied too; repeated references and Map-key aliases stay
-shared within the copy, including a key selected through a tracked view. Custom instances
-remain live. Accessors are rejected without running their getters, and so is an `Array`
-subclass, whose copy would lack its private state — select `Array.from(value)` or the fields
-the child needs instead. The snapshot keeps its identity while the selected plain content
-and reference-sharing topology stay the same. Mutable exotic values remain a conservative
-always-changed boundary.
+the paths the selection touches. What the call returns is detached data in the state-model
+sense: a plain object is its own enumerable string keys, an array is its elements and
+`length` (holes stay holes), and an own key literally named `__proto__` lands as data.
+Symbol keys, non-enumerable properties and descriptor flags are not part of a selection and
+are not copied. Ordinary Maps, Sets and Dates are detached into plain copies (a Date is its
+time); repeated references and Map-key aliases stay shared within the copy, including a key
+selected through a tracked view. Custom instances remain live. An accessor's getter runs
+once, like any plain read, and its value is what the copy keeps. An `Array` subclass is
+rejected — its copy would lack its private state — so select `Array.from(value)` or the
+fields the child needs instead. The snapshot keeps its identity while the selected plain
+content and reference-sharing topology stay the same; a detached `Date`, `Map` or `Set`
+compares by content against the live value, so an unchanged one no longer forces a new
+snapshot. A class instance — including a `Map`, `Set` or `Date` subclass — remains the one
+conservative always-changed boundary.
 
 The selector runs on every render — that is what keeps the owner's subscription fresh — while
 the snapshot object itself is reused until the content actually changes. Tracked plain-object
@@ -384,10 +389,11 @@ compare.
 
 A computed feeding a list should return ids or plain values, with each row reading the store
 itself — the way the demo's `TodoViews.visibleIds` and `TodoItem` do — rather than receiving the
-computed's live elements as props. A computed's result is live: every element the body returns is
-a fresh proxy on each recompute, so handing those elements to rows makes a one-field edit
-recompute the whole computed and re-render the parent and every visible row (500 renders at 1000
-rows, 2000 at 4000). Returning ids and reading the store per row lets a title edit wake exactly
+computed's live elements as props. A computed's result is live, and its elements may keep their
+identity across recomputes: a memo row holding a live element as a prop can keep the very same
+object after an edit recomputes the computed, so the stale prop still compares equal and the row
+never re-renders. That is why returning ids or plain values is the only supported pattern:
+reading the store per row lets a title edit wake exactly
 the one row that shows it, and adding `{equals}` (above) stops even the parent from re-rendering
 when the visible ids themselves do not change. In development, rendering through a computed's
 live result without being one of its subscribers — the value having reached a component through
@@ -644,12 +650,13 @@ history.redo();
 await waitForUpdate(presenceCarburetor);
 ```
 
-`persist` writes `store.serialize()` and restores its parsed JSON through `restore()`.
-Ordinary stores stringify live data without first cloning a snapshot. A subclass with a
-different persisted representation overrides `serialize(): string` to produce JSON that its
+`persist` writes `JSON.stringify(store)` — the store's wire form via `toJSON()` — and restores
+parsed JSON through `restore()`. Ordinary stores stringify live data without first cloning a
+snapshot. A subclass with a different wire form overrides `toJSON()` to produce JSON that its
 `restore()` accepts. `ResourceCarburetor` includes its settled argument key, so a restored
 successful or failed answer is reused only for matching arguments; Pending restores as Idle.
-`snapshot()` and `toJSON()` copy plain containers; opaque values remain shared by reference.
+`snapshot()` copies plain containers (wire `toJSON()` does not copy); opaque values remain
+shared by reference.
 Changing only a resource's settled key is still a published change, even when its visible
 status/data/error/timestamp are equal. Resource history records complete wire graphs so
 undo/redo restores the answer's key too; pure plain-tree store history stays patch-based.
@@ -745,19 +752,21 @@ Selected plain objects, arrays, `Map`, `Set` and `Date` values are detached for 
 React snapshot. A class instance cannot be copied safely, so selecting one directly or
 inside another value throws an actionable error; select the fields you render instead. A
 `Map`, `Set` or `Date` subclass counts as a class instance here, not as the built-in.
-Own data fields are preserved even when non-enumerable; accessor fields are rejected
-because their getters cannot provide a detached snapshot without running user code.
-Repeated references and cycles stay connected within one detached selection, including a
-`Date` used both as a `Map` key and elsewhere in the selected graph.
+A selection is plain data in the state-model sense: own enumerable string keys, array
+elements and `length`; symbol keys, non-enumerable properties and descriptor flags are not
+part of a selection and are not copied. An accessor's getter runs once and its value is the
+snapshot. Repeated references and cycles stay connected within one detached selection,
+including a `Date` used both as a `Map` key and elsewhere in the selected graph.
 
 The third argument is the equality check that decides whether a recomputed selection
-counts as changed. It defaults to a structural comparison — own data properties and
-`Object.is` values, recursively through plain objects and arrays — because every
-selected object is detached into a fresh container, so `Object.is` itself could never
-call two of them equal: a selector rebuilt on every render, or a write that replaces an
-ancestor of the selected data without changing its content, would otherwise re-render
-every time. A `Map`, `Set`, `Date` or class instance still always compares as changed,
-since its content can mutate in place. Pass `Object.is` explicitly for the old,
+counts as changed. It defaults to a structural comparison — own enumerable string keys and
+`Object.is` values, recursively through plain objects and arrays, a detached `Date` by its
+time, and a detached `Map`/`Set` by size and entries over primitive keys (object keys
+count as changed) — because every selected object is detached into a fresh container, so
+`Object.is` itself could never call two of them equal: a selector rebuilt on every render,
+or a write that replaces an ancestor of the selected data without changing its content,
+would otherwise re-render every time. A class instance still always compares as changed,
+since its fields can mutate in place. Pass `Object.is` explicitly for the old,
 reference-only behavior.
 A different comparator re-evaluates the current selection even if the previous comparator
 suppressed the latest write. Values truly equal under the new policy keep their snapshot identity.
@@ -855,9 +864,8 @@ describes.
 | `read(record)`                  | Tracked, read-only plain data; every read path goes to `record`.   |
 | `setData(data)`                 | Replaces the data (`getData() === data` afterwards) and wakes the readers of what changed; the protected `markAllChanged()` wakes everyone. |
 | `snapshot(): T`                 | Copies plain objects/arrays; opaque values stay by reference.      |
-| `serialize(): string`            | JSON for persistence; the base stringifies live data without a snapshot clone. Override together with `restore` for a custom persisted representation. |
 | `restore(data)`                 | Installs a snapshot by diffing/copying plain fields; opaque values stay by reference. Owned native history replay preserves its complete graph. |
-| `toJSON()` / `fromJSON(value)`  | Type-erased bridge for DevTools and hydration. `fromJSON` adopts `value` without copying — hand it freshly parsed JSON. |
+| `toJSON()` / `fromJSON(value)`  | Type-erased bridge for DevTools and hydration: `toJSON()` is the wire form — live data, no copy (resource stores add the settled key); `fromJSON(value)` installs freshly parsed wire state. A detached copy is `snapshot()`. |
 | `watch(select, onChange)`       | Subscribes outside React to a selection: `onChange(next, previous)` runs only when it changes. Returns a disposer. |
 | `getVersion(): number`          | Write counter.                                                     |
 | `subscribe(cb, options?)`       | Subscribes to every write, for tooling. `options.id` reuses a stable id so re-subscribing replaces the previous registration; `options.reads` (with `read(record)`) is the engine's extension contract — its path strings are not a stable user-facing API; the set is copied, so changing it afterwards has no effect. |
@@ -919,6 +927,9 @@ a test pins the exported surface so one does not slip in by accident.
   A native backlink to the store root necessarily subscribes to the whole store.
   `Date`, custom instances and unsupported native subclasses remain raw. Native reads are coarse
   leaf reads; reaching one through `draft` conservatively marks its path, not fields inside it.
+  Alias answers for such a value are cached and refreshed only by a topological write, so an
+  in-place mutation of the value — or of a `Map` behind the facade — keeps its stale alias set
+  until then; that is the same invisibility an opaque leaf's contents already have.
   A publication after bypassing `draft` invalidates the whole store. Replace values or use plain
   data for finer precision; an untrackable root has no narrower path to invalidate.
 - **What counts as state.** A container's state is its own enumerable string-keyed data — what
@@ -946,18 +957,18 @@ a test pins the exported surface so one does not slip in by accident.
   state, opaque writes, positional string-key changes and resource wire identity use owned graphs.
   Undo and redo install through `restore`, waking changed-path readers; key-only resource restores
   invalidate the slot. `CarburetorHistory` requires the full `IPatchSource` contract:
-  `attachPatchListener({patch, publication?, ownRestore?})` and mandatory `captureHistory(own)`.
-  Producers pass their authoritative raw graph to `own` before an ordinary snapshot can split
-  plain/native aliases, then include private wire metadata without splitting that graph again.
-  A subclass with a custom snapshot projection must implement its own capture hook.
+  `attachPatchListener({patch, publication?, restoreClaim?})` and `captureHistory(own)`.
+  The default `captureHistory` owns the live graph, so a subclass that overrides `snapshot()`
+  for its own view still attaches a history; only classes whose wire form differs from their
+  live data override it, passing their authoritative raw graph to `own` and including private
+  wire metadata without splitting that graph.
   Publication runs before ordinary subscribers after transaction/throttle coalescing.
-  `ownRestore` runs with the exact argument after cancellation listeners can supersede it;
-  it returns true only for a fresh replay-owned graph. Patch-only observers use `{patch}`.
+  `restoreClaim(state)` runs with the exact argument after cancellation listeners can supersede
+  it, returning `{owner, representation, adopt}`; `adopt` is true only for a fresh replay-owned
+  graph the producer may adopt as-is. Patch-only observers use `{patch}`.
   History needs `getData`, `getVersion`, `restore` and `IPatchSource`, not unrelated store read APIs.
-  Existing boolean `ownRestore` handoffs and zero-argument `publication` callbacks remain supported.
-  Native sources may also deliver closed publication facts and an optional `restoreClaim` carrying
-  exact installation ownership; custom producers must not replace the exact handoff with a broad
-  replay flag that suppresses subscriber actions.
+  Native sources may also deliver closed publication facts; custom producers must not replace the
+  exact handoff with a broad replay flag that suppresses subscriber actions.
 - Overriding a lifecycle method without calling `super` silently disables effects, subscription
   cleanup or the props gate. Override `useEffects` / `unUseEffects` instead.
 

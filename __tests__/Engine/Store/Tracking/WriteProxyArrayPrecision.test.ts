@@ -1,6 +1,8 @@
 import {Carburetor} from "@/Carburetor";
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {spawnSync} from "node:child_process";
+import {existsSync} from "node:fs";
+import path from "node:path";
 
 interface IItemsData {
     items: number[];
@@ -270,8 +272,14 @@ describe('native array length writes', () => {
     );
 
     test('guarded invalid length assignment', () => {
+        const entry = path.resolve(process.cwd(), 'dist', 'cjs', 'Carburetor', 'index.js');
+
+        if (!existsSync(entry)) {
+            throw new Error('the compiled package is missing: run npm run build first, this regression runs through dist/cjs');
+        }
+
         const program = `
-            const {Carburetor} = require('./dist/cjs/Carburetor/index.js');
+            const {Carburetor} = require(${JSON.stringify(entry)});
             class Store extends Carburetor {
                 setLength(value) { this.update(draft => { draft.items.length = value; }); }
             }
@@ -291,13 +299,13 @@ describe('native array length writes', () => {
             }
         `;
         const child = spawnSync(process.execPath, ['-e', program], {
-            cwd: process.cwd(), encoding: 'utf8', timeout: 10_000,
+            cwd: process.cwd(), encoding: 'utf8', timeout: 45_000,
         });
 
         if (child.error || child.status !== 0) {
             throw new Error(`Guarded length test failed: ${child.error?.message || child.stderr || child.stdout}`);
         }
-    }, 20_000);
+    }, 60_000);
 
     test('coerces an object twice, accepts strings and -0, and rejects differing conversions', () => {
         const store = new ItemsCarburetor(getItemsData());

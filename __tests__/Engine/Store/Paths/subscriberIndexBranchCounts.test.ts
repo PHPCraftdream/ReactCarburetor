@@ -103,3 +103,85 @@ describe('SubscriberIndex branch reference counts', () => {
         expect(wakes).toBe(1);
     });
 });
+
+/** Reference model: the subscribers that should match a write to `path` for these registrations. */
+const expectedMatches = (registrations: Array<[string, string[]]>, path: TPath): string[] => {
+    const matched = new Set<string>();
+
+    for (const [id, reads] of registrations) {
+        for (const read of reads) {
+            if (read === path || read === '*' || path.startsWith(`${read}.`) || read.startsWith(`${path}.`)) {
+                matched.add(id);
+            }
+        }
+    }
+
+    return [...matched].sort(compareIds);
+};
+
+describe('SubscriberIndex filing differential (R30-09: in-place ancestor walk)', () => {
+    test('filed paths match exact, ancestor and descendant writes like the reference model', () => {
+        const index = new SubscriberIndex();
+        const registrations: Array<[string, string[]]> = [
+            ['one', ['rows']],
+            ['leaf', ['rows.0.cells.2']],
+            ['mid', ['rows.0.cells']],
+            ['star', ['*']],
+            ['other', ['config.theme']],
+        ];
+
+        for (const [id, reads] of registrations) {
+            index.add(id, readsOf(...reads));
+        }
+
+        for (const write of ['rows', 'rows.0', 'rows.0.cells', 'rows.0.cells.2', 'config', 'config.theme']) {
+            expect(ids(index, write as TPath)).toEqual(expectedMatches(registrations, write));
+        }
+    });
+
+    test('unfile restores the exact pre-filing match set, ancestors included', () => {
+        const index = new SubscriberIndex();
+
+        index.add('a', readsOf('rows.0.cells.2'));
+        index.add('b', readsOf('rows.0.cells.2', 'rows.1'));
+        index.add('c', readsOf('rows.0'));
+
+        expect(ids(index, 'rows.0.cells.2')).toEqual(['a', 'b', 'c']);
+
+        index.remove('b');
+
+        expect(ids(index, 'rows.0.cells.2')).toEqual(['a', 'c']);
+        expect(ids(index, 'rows.0')).toEqual(['a', 'c']);
+        expect(Array.from(index.match(readsOf('rows.1'))).sort(compareIds)).toEqual([]);
+
+        index.remove('a');
+
+        expect(index.hasReaderAt('rows.0.cells')).toBe(false);
+        expect(index.hasReaderAt('rows.0.cells.2')).toBe(false);
+    });
+
+    test('re-registering with a moved path keeps branch counts consistent', () => {
+        const index = new SubscriberIndex();
+
+        index.add('a', readsOf('rows.0.cells.1', 'rows.0.cells.2'));
+
+        expect(ids(index, 'rows.0.cells.1')).toEqual(['a']);
+        expect(ids(index, 'rows.0.cells.2')).toEqual(['a']);
+
+        index.add('a', readsOf('rows.0.cells.1', 'rows.0.cells.3'));
+
+        expect(ids(index, 'rows.0.cells.2')).toEqual([]);
+        expect(ids(index, 'rows.0.cells.3')).toEqual(['a']);
+        expect(ids(index, 'rows.0.cells.1')).toEqual(['a']);
+        expect(ids(index, 'rows.0')).toEqual(['a']);
+
+        index.add('b', readsOf('rows.0.cells.1'));
+
+        expect(ids(index, 'rows.0.cells.1')).toEqual(['a', 'b']);
+
+        index.remove('a');
+
+        expect(ids(index, 'rows.0.cells.1')).toEqual(['b']);
+        expect(ids(index, 'rows.0')).toEqual(['b']);
+    });
+});
