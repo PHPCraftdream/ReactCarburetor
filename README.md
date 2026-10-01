@@ -653,6 +653,12 @@ successful or failed answer is reused only for matching arguments; Pending resto
 Changing only a resource's settled key is still a published change, even when its visible
 status/data/error/timestamp are equal. Resource history records complete wire graphs so
 undo/redo restores the answer's key too; pure plain-tree store history stays patch-based.
+Resource `load`/`suspend` and cache `load`/`refresh` can restart after readonly history replay.
+They reserve mutable lifecycle fields on a detached operational graph before publishing a request;
+held history endpoints keep their descriptors and direct draft writes still respect readonly fields.
+A failed pre-loader publication removes its own request rather than leaving a joinable pending promise.
+Cache eviction and `forget` also remove non-configurable dictionary slots by owned replacement,
+and update capacity bookkeeping only after the key is actually gone.
 History records each published operation before ordinary subscribers run, so a subscriber's
 nested write remains a separate undo step regardless of registration order. Writes caused by
 undo/redo subscribers or superseding abort listeners are fresh branches and invalidate redo;

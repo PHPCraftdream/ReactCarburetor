@@ -381,5 +381,62 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         history.disconnect();
         completed.push(label + ':readonly-transient-cache-' + kind);
     }
+    {
+        let calls = 0;
+        const slot = new producer.ResourceCarburetor(async value => { calls++; return value + '!'; });
+        const history = new recorder.CarburetorHistory(slot);
+        const saved = {...slot.getData(), updatedAt: 7};
+        Object.defineProperty(saved, 'status', {
+            value: producer.EResourceStatus.Pending, enumerable: true, writable: false, configurable: false,
+        });
+        slot.setData(saved);
+        assert.equal(history.undo(), true);
+        assert.equal(history.redo(), true);
+        await slot.load('new');
+        assert.equal(calls, 1);
+        assert.equal(slot.getData().status, producer.EResourceStatus.Success);
+        assert.equal(slot.suspend('new'), 'new!');
+        history.disconnect();
+        completed.push(label + ':readonly-slot-restart');
+    }
+    for (const refresh of [false, true]) {
+        let calls = 0;
+        const cache = new producer.ResourceCache(async value => { calls++; return value + '!'; });
+        const history = new recorder.CarburetorHistory(cache);
+        const key = cache.keyOf('a');
+        const row = producer.getInitialCacheEntry();
+        row.updatedAt = 7;
+        row.data = refresh ? 'prior' : undefined;
+        Object.defineProperty(row, refresh ? 'refreshing' : 'status', {
+            value: refresh ? true : producer.EResourceStatus.Pending,
+            enumerable: true, writable: false, configurable: false,
+        });
+        if (refresh) row.status = producer.EResourceStatus.Success;
+        cache.setData({entries: {[key]: row}});
+        assert.equal(history.undo(), true);
+        assert.equal(history.redo(), true);
+        await (refresh ? cache.refresh('a') : cache.load('a'));
+        assert.equal(calls, 1);
+        assert.equal(cache.getEntry('a').status, producer.EResourceStatus.Success);
+        assert.equal(cache.getEntry('a').data, 'a!');
+        history.disconnect();
+        completed.push(label + ':readonly-cache-' + (refresh ? 'refresh' : 'restart'));
+    }
+    for (const forget of [false, true]) {
+        const cache = new producer.ResourceCache(async value => value + '!', {maxEntries: 1, ttl: Infinity});
+        const key = cache.keyOf('a');
+        const entries = {};
+        Object.defineProperty(entries, key, {
+            value: {...producer.getInitialCacheEntry(), status: producer.EResourceStatus.Success,
+                data: 'prior', updatedAt: Date.now()},
+            enumerable: true, writable: false, configurable: false,
+        });
+        cache.setData({entries});
+        if (forget) cache.forget('a');
+        else await cache.load('b');
+        assert.equal(Object.hasOwn(cache.getData().entries, key), false);
+        if (!forget) assert.equal(cache.getEntry('b').data, 'b!');
+        completed.push(label + ':locked-cache-' + (forget ? 'forget' : 'evict'));
+    }
     return completed;
 };

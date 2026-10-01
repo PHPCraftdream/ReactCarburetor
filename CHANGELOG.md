@@ -398,6 +398,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Readonly resource/cache replay can restart through public load, suspend and refresh: operational
+  fields are prepared on an owned graph without modifying captured endpoint restrictions.
+- Failed pre-loader publication unwinds only its own request, preventing orphaned shared promises.
+- Cache eviction/forget physically remove locked dictionary slots by owned replacement before
+  changing the eviction ledger, preserving surviving entry failure ownership and native aliases.
+
 - Readonly transient resource/cache replay normalizes Pending to Idle and refreshing to false
   without assigning through locked descriptors. Lazy owned graph copies preserve aliases/flags;
   reentrant publications retain graph ownership without suppressing their independent branches.
