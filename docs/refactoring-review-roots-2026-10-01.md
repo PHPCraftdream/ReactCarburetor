@@ -265,3 +265,38 @@ Patch fast path выбирается по проверенному услови�
 Это не исключит любые будущие баги. Но именно такой рефакторинг способен убрать целые семейства повторяющихся находок, а не только следующий конкретный пример.
 
 Начать следует с transition-ядра ресурсов, сохранив текущий публичный контракт и быстрые пути. Уже сделанные общие механизмы — canonical native identity, observer registry, ownership traversal, alias index — сохранять и использовать, а не переписывать вместе со всем движком.
+
+## 6. Семантическая матрица и законы реализации
+
+Этот раздел фиксирует контракт реализации после принятия плана пользователем.
+
+| Представление | Владение и identity | Descriptors и native значения | Назначение |
+|---|---|---|---|
+| Live store state | `setData` принимает исходный объект verbatim; raw `getData` не tracking API | Принятые restrictions сохраняются; ordinary draft не получает привилегии их обходить | Авторитетные данные для наблюдаемых значений |
+| Ordinary snapshot | Plain containers отделены от live state | Plain flags нормализуются; native/class leaves остаются по ссылке согласно существующему контракту | Обычный snapshot/restore |
+| Detached selection | Поддерживаемый выбранный graph отделён; aliases сохраняются | Собственные data descriptors и native contents сохраняются; неподдерживаемые class/accessor результаты отклоняются без вызова getter | Безопасный consumer snapshot |
+| Owned history endpoint | Полностью owned поддерживаемый graph, не alias живого состояния | Restrictions, key order, holes, prototypes, native contents и backlinks сохраняются; strict unsupported endpoints отклоняются | Точный обратимый endpoint |
+| Operational replacement | Одно необходимое owned replacement только при restrictive effective change | Привилегия касается выбранных lifecycle endpoints; opaque payloads и native accessor descriptors не оцениваются и не превращаются в strict history | Подготовка library-controlled перехода |
+| Wire representation | Формируется авторитетным producer, а не угадывается из `getData` | Содержит документированную wire metadata, включая settled key; controller/promise/raw error не сериализуются | Persistence, hydration и resource history |
+
+Законы:
+
+1. Value/publication revision и topology/identity change — разные факты: equal-content replacement может требовать инвалидирования ownership cache без новой publication.
+2. Read set передаётся индексу после selector, comparison и необходимого detachment. Намеренно расширяемые live computed dependencies используют отдельный lifecycle.
+3. Request ownership устанавливается до Pending publication; снимается до abort callbacks. Продолжение после внешнего callback проверяет generation/owner и не перехватывает replacement.
+4. Invalidation после начала запроса не может быть поглощена его поздним ответом. Bulk capability preflight завершается до первого live write и изменения request epochs.
+5. Raw rejection, включая `undefined` и другие falsy values, принадлежит конкретному answer owner. Новый answer не наследует его только из-за совпадения текста ошибки.
+6. Фактически применённые JS writes оформляются до fallible observer delivery. Исключение не превращает изменение в невидимое; частичный native write не объявляется откатанным.
+7. History получает закрытую границу операции до ordinary subscriber reentry. Replay подавляется только у своего recorder; callback mutation имеет новый origin.
+8. Отложенная publication не возрождает pre-clear history и не создаёт phantom undo после согласования pending writes.
+9. Patch representation выбирается только при точной обратимости обещанной history semantics; otherwise используется owned endpoint. Ordinary metadata-only flags не становятся новой notification dependency.
+10. Scalar/no-op fast paths не выполняют whole-graph ownership, дополнительную сериализацию, per-leaf allocations или speculative копирование. Новая общая граница не является оправданием для повторного O(state) обхода.
+
+Границы работ:
+
+- Integration owner: основная сессия. Исполнители: только запрошенные `xl`, без nested delegation или подмены.
+- Core/publication/history owner: `Store/Carburetor`, mutation/publication registry и history protocol. Он задаёт общий internal installation/replay contract и передаёт его resource owner.
+- Resource owner: slot/cache request и answer runtime records, lifecycle operations и operational graph policies; не правит shared core в чужом worktree.
+- Observation owner: watch/class/hooks observation lifecycle и завершённые read-set transfers; не меняет расширяемые computed dependency contracts.
+- Все исполнители пропускают build/tests/typecheck/lint/format/benchmarks в процессе работы. Основная сессия запускает интегрированные проверки; bounded actual source consumers допустимы для проверки механизма.
+- Сохраняются существующие публичные store/resource/React/custom-producer контракты, синхронный reentry, deferred Suspense publication и CJS/ESM shared identities. Старые private обходные пути удаляются после cutover; никаких no-op fallback или compatibility alias вместо миграции.
