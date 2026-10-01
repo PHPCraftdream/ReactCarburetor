@@ -97,7 +97,7 @@ const engineCases = [];
             const value = this.selected();
             selectedNative = value;
             return React.createElement('span', null, String(value.get('id')) + ':' +
-                String(value.get(value) === 'self' && value.hidden.self === value));
+                String(value.get(value) === 'self' && value.hidden === undefined));
         }
     }
     const nativeInitial = renderToStaticMarkup(React.createElement(NativeReader));
@@ -492,7 +492,11 @@ export const runCrossFormatSelection = (installDir) => {
     }
 
     if (!result.ok) {
-        return {ok: false, stderr: result.stdout + result.stderr};
+        // The probe loads both formats on purpose; its duplicate-copy warnings would fill the
+        // runner's eight-line excerpt and hide the real failure.
+        const output = (result.stdout + result.stderr).split('\n');
+
+        return {ok: false, stderr: output.filter((line) => !line.includes('two copies')).join('\n')};
     }
 
     let parsed;
@@ -529,8 +533,8 @@ export const runCrossFormatSelection = (installDir) => {
     }
 
     if (parsed.roots?.length !== 10 || !parsed.roots.every((entry) => entry.aliases && entry.detached
-        && entry.initial === '<span>1:answer1:true:false</span>'
-        && entry.next === '<span>2:answer2:true:false</span>')) {
+        && entry.initial === '<span>1:answer1:true:true</span>'
+        && entry.next === '<span>2:answer2:true:true</span>')) {
         return {ok: false, stderr: 'cross-format root facade lost its Map/Set identity or data: '
             + JSON.stringify(parsed.roots)};
     }

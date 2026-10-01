@@ -222,7 +222,7 @@ describe('useCarburetorValue default comparator', () => {
 const selectCount = (data: ICounterData): number => data.count;
 
 describe('useCarburetorValue lazy initialization (R30-10)', () => {
-    test('a warm re-render allocates no more Sets than the same render without the hook', () => {
+    test('a warm re-render allocates no Set from the hook itself', () => {
         const carburetor = new Carburetor<ICounterData>({count: 0});
 
         const Counter = () => {
@@ -231,46 +231,33 @@ describe('useCarburetorValue lazy initialization (R30-10)', () => {
             return <div className="count">{value}</div>;
         };
 
-        // A control with identical markup but no hook: it pins React's own per-rerender
-        // Set allocation floor, so the assertion survives React's internal allocations.
-        const Control = () => <div className="count">0</div>;
-
         const hooked = render(<Counter/>);
-        const control = render(<Control/>);
+        const OriginalSet = globalThis.Set;
+        let allocations = 0;
 
-        const rerenderAllocations = (
-            target: {rerender: (ui: React.ReactElement) => void}, element: React.ReactElement
-        ): number => {
-            const OriginalSet = globalThis.Set;
-            let allocations = 0;
-
-            const CountingSet = function (...args: unknown[]): Set<unknown> {
+        // Only Sets constructed from the hook's own frames count: React and jsdom allocate
+        // their own per commit, and how many differs between React 18 and 19.
+        const CountingSet = function (...args: unknown[]): Set<unknown> {
+            if (new Error().stack?.includes('useCarburetorValue')) {
                 allocations += 1;
-
-                return new OriginalSet(...(args as []));
-            } as unknown as SetConstructor;
-
-            globalThis.Set = CountingSet;
-
-            try {
-                act(() => target.rerender(element));
-            } finally {
-                globalThis.Set = OriginalSet;
             }
 
-            return allocations;
-        };
+            return new OriginalSet(...(args as []));
+        } as unknown as SetConstructor;
 
-        const controlAllocations = rerenderAllocations(control, <Control/>);
-        const hookedAllocations = rerenderAllocations(hooked, <Counter/>);
+        globalThis.Set = CountingSet;
 
-        // The old implementation built `completeReads(new Set())` on every render, which
-        // shows up as exactly one extra allocation here.
-        expect(hookedAllocations).toBe(controlAllocations);
+        try {
+            act(() => hooked.rerender(<Counter/>));
+        } finally {
+            globalThis.Set = OriginalSet;
+        }
+
+        // The old implementation built `completeReads(new Set())` on every render.
+        expect(allocations).toBe(0);
         expect(hooked.container.querySelector('.count')?.textContent).toBe('0');
 
         hooked.unmount();
-        control.unmount();
     });
 });
 

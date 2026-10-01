@@ -1,0 +1,189 @@
+name: Release
+
+# Manual only: a publish is never a side effect of a push or a tag. Setup and the two
+# authentication modes are described in docs/releasing.md.
+on:
+  workflow_dispatch:
+    inputs:
+      auth:
+        description: How to authenticate to npm
+        type: choice
+        options: [trusted, token]
+        default: trusted
+      dry_run:
+        description: Pack and verify everything, publish nothing
+        type: boolean
+        default: true
+      dist_tag:
+        description: npm dist-tag for the published versions
+        type: string
+        default: latest
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    name: Verify the commit
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      ci_run: ${{ steps.ci.outputs.run }}
+      version: ${{ steps.versions.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The platform packages are the artifacts CI built and ran on their own targets for this
+      # exact commit; publishing them is publishing what was tested, not a rebuild.
+      - name: Require a green CI run for this commit
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success \
+            --json databaseId --jq '.[0].databaseId')
+          [ -n "$run" ] || { echo "no successful CI run for $GITHUB_SHA" >&2; exit 1; }
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # One version for all eight packages, and the launcher's optionalDependencies must pin it.
+      - name: Check that the package versions agree
+        id: versions
+        run: |
+          node -e '
+            const read = p => JSON.parse(require("fs").readFileSync(p, "utf8"));
+            const root = read("package.json");
+            const lint = read("npm/carburetor-lint/package.json");
+            const platforms = Object.keys(lint.optionalDependencies);
+            const bad = [];
+            for (const name of platforms) {
+              const manifest = read(`npm/${name}/package.json`);
+              if (manifest.name !== name || manifest.version !== root.version) bad.push(name);
+              if (lint.optionalDependencies[name] !== root.version) bad.push(`optional ${name}`);
+            }
+            if (lint.version !== root.version) bad.push("carburetor-lint");
+            if (bad.length) { console.error("version mismatch:", bad.join(", ")); process.exit(1); }
+            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, `version=${root.version}\n`);
+          '
+
+  publish:
+    name: Publish ${{ needs.prepare.outputs.version }} (${{ inputs.auth }}${{ inputs.dry_run && ', dry run' || '' }})
+    needs: prepare
+    runs-on: ubuntu-latest
+    # The environment is where reviewers can be required, and where a trusted publisher on
+    # npmjs.com is told to expect this job. Its name must match that configuration.
+    environment: npm
+    permissions:
+      contents: read
+      actions: read
+      # OIDC: the trusted-publisher exchange and the provenance attestation.
+      id-token: write
+    env:
+      VERSION: ${{ needs.prepare.outputs.version }}
+      DIST_TAG: ${{ inputs.dist_tag }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # No registry-url: setup-node would export a placeholder NODE_AUTH_TOKEN, which npm can
+      # take for a real token and skip the OIDC exchange. Credentials are written below, and
+      # only in token mode.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # Trusted publishing needs npm 11.5.1 or newer; fail here, not halfway through the list.
+      - name: Check the npm version
+        run: |
+          node -e '
+            const v = require("child_process").execSync("npm --version", {encoding: "utf8"}).trim();
+            const [major, minor, patch] = v.split(".").map(Number);
+            const ok = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+            console.log("npm", v);
+            if (!ok) { console.error("npm >= 11.5.1 is required for trusted publishing"); process.exit(1); }
+          '
+
+      - name: Token credentials
+        if: inputs.auth == 'token'
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "$NPM_TOKEN" ]; then
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "NPM_TOKEN is not set; continuing because this is a dry run"
+              exit 0
+            fi
+            echo "secret NPM_TOKEN is not set" >&2
+            exit 1
+          fi
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$RUNNER_TEMP/npmrc"
+          echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/npmrc" >> "$GITHUB_ENV"
+
+      - name: Download the platform packages built by CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CI_RUN: ${{ needs.prepare.outputs.ci_run }}
+        run: gh run download "$CI_RUN" --pattern 'carburetor-lint-*' --dir artifacts
+
+      - name: Install
+        run: npm ci
+
+      # prepack builds dist/ for the library; the launcher has no build step.
+      - name: Pack the library and the launcher
+        run: |
+          mkdir -p artifacts/react-carburetor artifacts/carburetor-lint
+          npm pack --pack-destination artifacts/react-carburetor
+          npm pack ./npm/carburetor-lint --pack-destination artifacts/carburetor-lint
+
+      # Each tarball must hold what its package promises before anything is published.
+      - name: Inspect the tarballs
+        run: |
+          set -e
+          for dir in artifacts/*/; do
+            name=$(basename "$dir")
+            tgz=$(ls "$dir"*.tgz)
+            echo "== $name: $tgz"
+            tar -tf "$tgz" > "$RUNNER_TEMP/files.txt"
+            cat "$RUNNER_TEMP/files.txt"
+            grep -q '^package/LICENSE$' "$RUNNER_TEMP/files.txt"
+            grep -q '^package/LICENSE-MIT$' "$RUNNER_TEMP/files.txt"
+            grep -q '^package/LICENSE-APACHE$' "$RUNNER_TEMP/files.txt"
+            case "$name" in
+              react-carburetor) grep -q '^package/dist/cjs/Carburetor/index.js$' "$RUNNER_TEMP/files.txt" ;;
+              carburetor-lint) grep -q '^package/bin/carburetor-lint.js$' "$RUNNER_TEMP/files.txt" ;;
+              *) grep -q '^package/carburetor-lint' "$RUNNER_TEMP/files.txt" ;;
+            esac
+          done
+
+      # Platform packages first: the launcher's optionalDependencies must already resolve when
+      # it appears. A version that is already on the registry is skipped, so a half-finished
+      # run can simply be started again.
+      - name: Publish
+        run: |
+          set -e
+          flags=(--access public --tag "$DIST_TAG")
+          if [ "$DRY_RUN" = "true" ]; then
+            flags+=(--dry-run)
+          else
+            flags+=(--provenance)
+          fi
+          for name in carburetor-lint-win32-x64 carburetor-lint-darwin-arm64 carburetor-lint-darwin-x64 \
+            carburetor-lint-linux-x64-gnu carburetor-lint-linux-x64-musl carburetor-lint-linux-arm64-gnu \
+            carburetor-lint react-carburetor; do
+            if npm view "$name@$VERSION" version >/dev/null 2>&1; then
+              echo "== $name@$VERSION is already published, skipping"
+              continue
+            fi
+            echo "== publishing $name@$VERSION"
+            npm publish "$(ls artifacts/$name/*.tgz)" "${flags[@]}"
+          done

@@ -38,7 +38,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         assert.deepStrictEqual(events, [2], label + ': ' + kind + ' alias notification');
         assert.equal(derived.get(), 2);
         assert.equal(wakes, 1);
-        assert.equal(store.hasDriftSince(version, paths), true);
+        assert.equal(store[Symbol.for('react-carburetor/v1/subscription-has-drift')](version, paths), true);
         stop();
         derived.unsubscribe(id);
         completed.push(label + ':alias-' + kind);
