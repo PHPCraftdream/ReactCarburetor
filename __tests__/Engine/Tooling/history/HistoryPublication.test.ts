@@ -1,4 +1,5 @@
 import {Carburetor, CarburetorHistory, ComponentUpdateThrottle, transaction} from '@/Carburetor';
+import {IPatchObserver, PATCH_OPAQUE} from '@/Carburetor/Models/Paths';
 
 describe('history publication boundaries under reentrant writes (R15-ENGINE-01/02)', () => {
     class Store extends Carburetor<{x: number; y: number}> {
@@ -318,6 +319,98 @@ describe('history publication boundaries under reentrant writes (R15-ENGINE-01/0
         expect(first.canRedo()).toBe(false);
         first.disconnect();
         second.disconnect();
+    });
+
+    test('a replay callback write belongs to a fresh branch in the replaying history', () => {
+        const store = new Store({x: 0, y: 0});
+        const first = new CarburetorHistory(store);
+        const second = new CarburetorHistory(store);
+        store.write('x', 1);
+        let wroteDuringReplay = false;
+        const subscription = store.subscribe(() => {
+            if (!wroteDuringReplay && store.getData().x === 0) {
+                wroteDuringReplay = true;
+                store.write('y', 1);
+            }
+        });
+
+        expect(first.undo()).toBe(true);
+        expect(store.getData()).toEqual({x: 0, y: 1});
+        expect(first.redo()).toBe(false);
+        expect(first.undo()).toBe(true);
+        expect(store.getData()).toEqual({x: 0, y: 0});
+        expect(second.canUndo()).toBe(true);
+
+        store.unsubscribe(subscription);
+        first.disconnect();
+        second.disconnect();
+    });
+
+    test('a deferred replay coalesced with a fresh write branches from the replay result', () => {
+        class ManualThrottle extends ComponentUpdateThrottle {
+            protected setupTimeout(): void {}
+            public flush(): void { this.letsUpdate(); }
+        }
+        const throttle = new ManualThrottle();
+        const store = new Store({x: 0, y: 0}, throttle);
+        const history = new CarburetorHistory(store);
+        store.write('x', 1);
+        throttle.flush();
+
+        expect(history.undo()).toBe(true);
+        expect(store.getData().x).toBe(0);
+        store.write('x', 2);
+        throttle.flush();
+
+        expect(history.canRedo()).toBe(false);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().x).toBe(0);
+        history.disconnect();
+    });
+
+    test('zero-argument custom producer publications preserve exact replay ownership', () => {
+        type Row = {n: number};
+        type State = {row: Row; map: Map<string, Row>};
+        class CustomSource {
+            private version = 0;
+            private observers: IPatchObserver[] = [];
+            public constructor(private state: State) {}
+            public getData(): State { return this.state; }
+            public getVersion(): number { return this.version; }
+            public captureHistory(own: <V>(value: V) => V): State { return own(this.state); }
+            public attachPatchListener(observer: IPatchObserver): () => void {
+                this.observers.push(observer);
+                return () => { this.observers = this.observers.filter(attached => attached !== observer); };
+            }
+            public replace(row: Row): void {
+                this.state = {row, map: new Map([['row', row]])};
+                this.publish();
+            }
+            public restore(value: State): void {
+                const owned = this.observers.some(observer => observer.ownRestore?.(value) === true);
+                this.state = owned ? value : {row: {n: value.row.n}, map: new Map(value.map)};
+                this.publish();
+            }
+            private publish(): void {
+                this.version++;
+                this.observers.forEach(observer => observer.patch(PATCH_OPAQUE));
+                this.observers.forEach(observer => observer.publication?.());
+            }
+        }
+
+        const row = {n: 1};
+        const source = new CustomSource({row, map: new Map([['row', row]])});
+        const history = new CarburetorHistory(source);
+        source.replace({n: 2});
+
+        expect(history.undo()).toBe(true);
+        expect(source.getData().row.n).toBe(1);
+        expect(source.getData().map.get('row')).toBe(source.getData().row);
+        expect(history.canRedo()).toBe(true);
+        expect(history.redo()).toBe(true);
+        expect(source.getData().row.n).toBe(2);
+        expect(source.getData().map.get('row')).toBe(source.getData().row);
+        history.disconnect();
     });
 
     test('disconnecting one throttled history cancels only its pending publication', () => {

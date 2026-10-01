@@ -1,8 +1,9 @@
 "use client";
 
-import {TPathSet} from "@/Carburetor/Models/Paths";
+import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
+import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
+import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
 import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
 import {
     IAttemptEntry,
@@ -13,7 +14,7 @@ import {
 } from "@/Carburetor/Component/Models/Connection";
 import {AntiHookComponentEffects} from "./Effects";
 
-const sameReads = (a: TPathSet, b: TPathSet): boolean => {
+const sameReads = (a: TCompletedReads, b: TCompletedReads): boolean => {
     if (a.size !== b.size) {
         return false;
     }
@@ -50,9 +51,10 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * Establishes this commit's subscriptions and drops the ones this render no longer needs.
      *
      * A commit consumes the pending render attempt exactly once, and only a fresh one: a fresh
-     * attempt's entries become each dependency's committed description — the read set copied —
-     * records the attempt never touched are released and deleted, and a connection it never
-     * touched loses its description, which `alignSubscription` turns into an unsubscribe. A
+     * attempt's entries become each dependency's committed description with their now-closed
+     * read sets transferred by reference. Records the attempt never touched are released and
+     * deleted, and a connection it never touched loses its description, which `alignSubscription`
+     * turns into an unsubscribe. A
      * commit with no fresh attempt behind it (a StrictMode-replayed mount, a Suspense
      * hide/reveal) skips all of that and only re-aligns, restoring subscriptions from the
      * descriptions the last fresh commit published.
@@ -194,7 +196,9 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * @param entry - the attempt's record for the source being committed
      */
     private buildDescription(entry: IAttemptEntry): IDependencyDescription {
-        return {carburetor: entry.source, baselineVersion: entry.baselineVersion, reads: entry.reads};
+        return {
+            carburetor: entry.source, baselineVersion: entry.baselineVersion, reads: completeReads(entry.reads),
+        };
     }
 
     /**
@@ -214,7 +218,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         if (description) {
             description.carburetor = entry.source;
             description.baselineVersion = entry.baselineVersion;
-            description.reads = entry.reads;
+            description.reads = completeReads(entry.reads);
         } else {
             slot.committed = this.buildDescription(entry);
         }
@@ -264,10 +268,9 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         // re-walk every ancestor of every path only to arrive at the same entries — pure
         // cost. The version check below still runs either way.
         if (slot.installed === undefined || !sameReads(slot.installed.reads, committed.reads)) {
-            // Subscribing with the slot's own id replaces the previous registration instead of
-            // adding a second one. transferReads(): committed.reads is this attempt's own Set,
-            // never touched again outside render, so the carburetor adopts it instead of copying.
-            committed.carburetor.subscribe(this.onCarburetorUpdate, transferReads(committed.reads, uid));
+            // Reuses the slot's id and transfers the attempt's now-closed Set directly into the
+            // subscriber index; the selection/comparison/detachment work finished before render closed.
+            committed.carburetor.subscribe(this.onCarburetorUpdate, transferCompletedReads(committed.reads, uid));
             slot.installed = {carburetor: committed.carburetor, reads: committed.reads};
         }
 

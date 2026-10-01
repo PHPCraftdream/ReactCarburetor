@@ -300,3 +300,100 @@ Patch fast path выбирается по проверенному услови�
 - Observation owner: watch/class/hooks observation lifecycle и завершённые read-set transfers; не меняет расширяемые computed dependency contracts.
 - Все исполнители пропускают build/tests/typecheck/lint/format/benchmarks в процессе работы. Основная сессия запускает интегрированные проверки; bounded actual source consumers допустимы для проверки механизма.
 - Сохраняются существующие публичные store/resource/React/custom-producer контракты, синхронный reentry, deferred Suspense publication и CJS/ESM shared identities. Старые private обходные пути удаляются после cutover; никаких no-op fallback или compatibility alias вместо миграции.
+
+## 7. Реализованный срез и проверка
+
+Реализация выполнена тремя запрошенными исполнителями `xl` в изолированных worktree на базе
+`875ec9a`. Интеграцию, проверку контрактов, исправление выявленных интеграционных ошибок и
+финальные gates выполнила основная сессия. Модели не подменялись, nested delegation и Rush не использовались.
+
+### Что изменено конструктивно
+
+- `Carburetor.commitState` и `Store/Transaction/installState` — общий путь установки prepared root:
+  validation/diff, topology invalidation, установка live root, согласование metadata, закрытие и delivery.
+  `emitStoreUpdate` закрывает применённые writes даже при observer/preEmit exception. Обычный
+  replacement использует frozen `STATE_PUBLIC_REPLACEMENT`, mutation/mixed facts также общие.
+- `IStateInstallation` различает replacement/public, restore/public или history-owned, и
+  operational/owned-operational с обязательным owner. Publication policy и key-only wildcard
+  не угадываются из текущих flags.
+- `PatchObserverRegistry` передаёт operation facts и сохраняет публичный boolean `ownRestore`
+  как проекцию canonical claim. Exact one-shot handoff потребляется в общей installation boundary;
+  посторонние операции его не наследуют. Zero-argument custom producer publications поддержаны.
+- History подавляет только собственный exact replay owner. Deferred replay согласует baseline
+  до последующего fresh delta; mixed batch не откатывает fresh write к pre-replay состоянию.
+  Constructor требует только фактически используемые getData/getVersion/restore и IPatchSource:
+  реальный custom producer больше не маскируется unsafe intersection cast.
+- Slot и cache используют lazy request/answer runtime records. Request identity, shared promise,
+  key/args, invalidation epoch, retry fact и raw failure presence относятся к одному владельцу.
+  `ResourceCacheState` отделяет installation/restore/invalidation/cancellation/eviction от load/settlement.
+  Public slot setData остаётся verbatim и не отменяет активный loader.
+- Operational graph ownership задаётся именованной политикой `'operational'`; strict default
+  `'history'` не меняет ordinary snapshot/selection контракты.
+- Watch, class committed descriptions и hook cache используют completed value/read pairs.
+  Completed reads имеют `ReadonlySet` surface; mutable handoff изолирован в передаче индексу.
+  Computed сохраняет intentionally extendable path. Completion не копирует Set и не создаёт
+  дополнительный value wrapper.
+- Удалены старые abortCacheKey/rebindCacheFailures пути и parallel request/controller/failure
+  maps/WeakSets. Watch сгруппирован в Tracking/Observation; старого forwarding module нет.
+
+### Ошибки, обнаруженные и исправленные при приёмке
+
+Это реальные интеграционные находки, а не причины сузить контракт:
+
+1. Completed type первоначально наследовал mutable Set API: исправлен на ReadonlySet + brand.
+2. Public slot setData первоначально отменял request: восстановлен документированный active-load контракт.
+3. Boolean custom restore сохранял alias, но терял redo: handoff теперь несёт exact installation owner;
+   regression проверяет оба значения, alias и redo.
+4. Deferred undo → fresh write → flush → undo первоначально возвращал pre-replay `1` вместо `0`:
+   исправлено baseline/owner согласование, добавлен настоящий sequence regression.
+5. Failed pre-loader publication оставляла reload target: rollback возвращает все прежние runtime facts.
+6. Cache setData изменял restore generation и терял readonly captured sibling при abort-listener refresh:
+   generation теперь меняется только nested explicit restore, live request overlay сохранён.
+
+Source type/import/doc ошибки исправлены после реальных compiler/lint diagnostics.
+Неизменные поведения не перепинены к новой реализации. Memo consumer получает сам selected
+object, а не только primitive prop, чтобы проверить настоящую snapshot stability.
+
+### Наблюдённая проверка
+
+- Typecheck и layout прошли: семь entries, 600 code lines, один export/file.
+- Lint прошёл: ноль ошибок, 46 warnings; локальный scratch exclusion не коммитится.
+- Observation focused suite: 40/40 в трёх файлах.
+- Resource/history/observer focused suite: 447/447 в 43 файлах, без skips/todos/snapshot changes.
+- Полный suite: 1505/1505 в 140 файлах, без skips/todos/snapshot changes; 484248 ms reported total.
+- Built dev/prod CJS↔ESM transition consumers: 164/164. До изменения те же 164 cases прошли на frozen baseline.
+- Packed consumers: 16/16, React18/19 npm/pnpm CJS/ESM, mixed formats,
+  Next16.3.5 webpack/Turbopack; без skips/failures.
+- Actual Chromium React class + hook: equal branch switch даёт parent renders 1→2,
+  memo/hook остаются 1; old leaf write никого не перерисовывает; selected leaf даёт
+  parent3/memo2/hook2 и DOM `7/7`. Readonly invalidation не запускает loader, refresh даёт `a!`
+  при одном loader call, held flag/readonly и root/entry backlinks сохраняются.
+  Undo subscriber branch даёт `{x:0,y:1}` без redo; её undo даёт `{x:0,y:0}`.
+  Browser error entries пусты. Собственная browser поверхность остановлена после proof.
+
+### Paired реальные workloads
+
+Frozen pre-refactoring distribution `875ec9a` против финальной production distribution;
+семь samples, реальные операции и сохранённые counters. Это не allocated-byte measurement.
+
+| Workload | Baseline median ms | Refactored median ms | Сохранённая работа |
+|---|---:|---:|---|
+| Ordinary patch history | 0.488 | 0.479 | 128 writes, один capture |
+| Resource snapshot history | 22.495 | 32.946 | 64 loads, 128 transitions, 129 captures |
+| Populated cache replacement | 0.049 | 0.053 | extra endpoint visits0/0 |
+| Mixed graph capture | 0.124 | 0.174 | root/row visits1/1 |
+| Native alias selection | 0.4065 | 0.3597 | 128 lookups, checksum8128, paths129, root2/row256 |
+| Completed watch branch transitions | 3.3440 | 3.1072 | 128 rows, notifications128, checksum8256, publications3 |
+| Writable single invalidation | 0.5402 | 0.4291 | 128 entries/publications, loaders0 |
+| Writable bulk invalidation | 0.3899 | 0.4940 | 128 entries, одна publication, loaders0 |
+
+Resource timing первого набора имеет широкий диапазон: baseline14.517–54.111 ms,
+refactored14.639–131.221 ms. Повтор того же paired driver дал 40.273→41.670 ms
+(ranges 33.921–64.496 и 39.634–54.380); ordinary 1.028→0.880 ms,
+cache 0.104→0.144 ms, mixed 0.356→0.314 ms. Оба набора сохранены, никакого speedup
+или доказанной throughput parity не заявляется. Counts не выросли; timings зависят от среды.
+Refactor не добавил whole-graph work к ordinary scalar path, но реальные application profiles
+остаются обязательными перед будущими performance выводами.
+
+Плановый срез реализован целиком, а не scaffold. Это не обещание отсутствия любых будущих
+дефектов и не новый независимый zero-review verdict. Push в этой реализации не запрашивался.

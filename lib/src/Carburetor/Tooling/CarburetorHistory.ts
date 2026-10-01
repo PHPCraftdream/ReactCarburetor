@@ -1,6 +1,7 @@
 import {TDisposer} from "@/Carburetor/Models/Base";
 import {
-    IPatchObserver, IWritePatch, PATCH_ARRAY_LENGTH_LOCK, PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPatchRecorder,
+    IStatePublication, IWritePatch, IPatchObserver, PATCH_ARRAY_LENGTH_LOCK,
+    PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPatchRecorder,
 } from "@/Carburetor/Models/Paths";
 import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
@@ -61,20 +62,18 @@ export class CarburetorHistory<T extends object> {
     private baselineShared: boolean = false;
     /** The most entries `past` may hold; set from options at construction. */
     protected limit: number;
-    /** True only until the replay's own publication reaches history, not through its subscribers. */
-    protected applying: boolean = false;
-    /** A delayed replay notification must not produce an empty history entry. */
-    private skipReplay: boolean = false;
-    /** A queued pre-clear publication with no later writes must not revive the old operation. */
-    private skipClearedPublication: boolean = false;
     /** The exact restore argument identifies history's installation, not nested user restores. */
     private replayTarget: T | undefined;
-    /** The selected replay endpoint's graph classification, valid only while applying. */
+    /** Temporary owner presented while the source synchronously prepares this restore. */
+    private replayOwner: object | undefined;
+    /** One exact restore owner for custom producers whose publication callback carries no fact. */
+    private pendingReplayOwner: object | undefined;
+    /** Deferred facts retain the token; weak identity recognizes only this history's replays. */
+    private readonly replayOwners: WeakSet<object> = new WeakSet<object>();
+    /** The selected replay endpoint's graph classification. */
     private replayContainsExotic: boolean = false;
     /** Structural replay adopts its owned plain graph to preserve key order and locked descriptors. */
     private replayReplaceOnReplay: boolean = false;
-    /** Set by the source immediately before it begins installing replay's own state. */
-    private ownedReplay: boolean = false;
     /** Detaches both streams; disconnect() runs it to stop recording. */
     protected dispose: TDisposer;
     /** Patches collected since the last flush; turned into an entry by record(). */
@@ -84,17 +83,21 @@ export class CarburetorHistory<T extends object> {
     /** The pending publication requires adoption of the exact owned endpoint on replay. */
     private pendingOwnedReplay: boolean = false;
 
-    /** One observer for mutation patches, the pre-subscriber boundary and replay ownership. */
+    /** One observer for mutation patches, the closed publication boundary and exact replay ownership. */
     private readonly observer: IPatchObserver = {
         patch: (patch: Parameters<TPatchRecorder>[0]): void => this.onPatch(patch),
-        publication: (): void => this.record(),
+        publication: (fact?: IStatePublication): void => this.record(fact),
         ownRestore: (state: unknown): boolean => {
-            if (state === this.replayTarget) {
-                // Reentrant publication may end suppression, but cannot revoke graph ownership.
-                if (this.applying) this.ownedReplay = true;
-                return this.replayContainsExotic || this.replayReplaceOnReplay;
-            }
-            return false;
+            if (state !== this.replayTarget || this.replayOwner === undefined) return false;
+            this.pendingReplayOwner = this.replayOwner;
+            return this.replayContainsExotic || this.replayReplaceOnReplay;
+        },
+        restoreClaim: (state: unknown) => {
+            if (state !== this.replayTarget || this.replayOwner === undefined) return undefined;
+            return {
+                owner: this.replayOwner, representation: 'history-owned',
+                adopt: this.replayContainsExotic || this.replayReplaceOnReplay,
+            };
         },
     };
 
@@ -110,7 +113,10 @@ export class CarburetorHistory<T extends object> {
      * applies undo and redo to it.
      * @param options - `limit` caps how far back undo reaches; defaults to 50 entries when omitted
      */
-    constructor(protected carburetor: ICarburetor<T> & IPatchSource, options: IHistoryOptions = {}) {
+    constructor(
+        protected carburetor: Pick<ICarburetor<T>, 'getData' | 'getVersion' | 'restore'> & IPatchSource,
+        options: IHistoryOptions = {}
+    ) {
         if (options.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit <= 0)) {
             throw new RangeError('CarburetorHistory: limit must be a positive safe integer');
         }
@@ -234,7 +240,6 @@ export class CarburetorHistory<T extends object> {
         this.pendingPatches = [];
         this.pendingOpaque = false;
         this.pendingOwnedReplay = false;
-        this.skipClearedPublication = true;
     }
 
     /** Stops watching the carburetor: nothing is recorded after this. */
@@ -242,11 +247,9 @@ export class CarburetorHistory<T extends object> {
         this.dispose();
     }
 
-    /** Collects a patch or opaque fallback, ignoring only the exact replay-owned installation. */
+    /** Collects a patch or opaque fallback until its publication boundary. */
     protected onPatch(patch: Parameters<TPatchRecorder>[0]): void {
-        if (this.applying && this.ownedReplay) {
-            return;
-        }
+        if (this.pendingReplayOwner !== undefined && this.replayTarget !== undefined) return;
 
         if (patch === PATCH_ARRAY_LENGTH_LOCK || patch === PATCH_KEY_ORDER_CHANGE) {
             this.pendingOpaque = true;
@@ -296,37 +299,41 @@ export class CarburetorHistory<T extends object> {
         this.pendingPatches.push(ownedPatch);
     }
 
-    /** Flushes the pending publication into one entry, dropping the oldest past the limit. */
-    protected record(): void {
-        if (this.applying) {
-            this.applying = false;
-            if (this.ownedReplay) {
-                // Replay has landed. Its subscribers may now publish their own changes.
-                const capture = this.capture();
-                this.baseline = capture.state;
-                this.baselineContainsExotic = capture.exotic;
-                this.baselineContainsLockedArray = capture.lockedArray;
-                this.baselineContainsRestricted = capture.restricted;
-                this.baselineShared = false;
-                this.ownedReplay = false;
-                this.skipReplay = false;
+    /** Advances the owned mirror to the source's installed wire representation. */
+    private reconcileBaseline(): void {
+        const capture = this.capture();
+        this.baseline = capture.state;
+        this.baselineContainsExotic = capture.exotic;
+        this.baselineContainsLockedArray = capture.lockedArray;
+        this.baselineContainsRestricted = capture.restricted;
+        this.baselineShared = false;
+    }
+
+    /** Flushes one closed publication, suppressing only this recorder's exact restore owner. */
+    protected record(fact?: IStatePublication): void {
+        if (fact?.origin === 'restore' && fact.representation === 'history-owned'
+            && fact.owner !== undefined && this.replayOwners.has(fact.owner)) {
+            this.pendingReplayOwner = undefined;
+            this.reconcileBaseline();
+            this.pendingPatches = [];
+            this.pendingOpaque = false;
+            this.pendingOwnedReplay = false;
+            return;
+        }
+        if (this.pendingReplayOwner !== undefined) {
+            const customReplay = fact === undefined
+                && !this.pendingOpaque && this.pendingPatches.length === 0;
+            this.pendingReplayOwner = undefined;
+            if (customReplay) {
+                this.reconcileBaseline();
+                this.pendingPatches = [];
+                this.pendingOpaque = false;
+                this.pendingOwnedReplay = false;
                 return;
             }
-            // A synchronous callback (notably a resource abort listener) published before
-            // the restore could install anything. Its patches belong to a fresh branch.
-            this.skipReplay = false;
+            if (fact !== undefined) this.pendingOpaque = true;
         }
 
-        if (this.skipClearedPublication && !this.pendingOpaque && this.pendingPatches.length === 0) {
-            this.skipClearedPublication = false;
-            return;
-        }
-        this.skipClearedPublication = false;
-        if (this.skipReplay && !this.pendingOpaque && this.pendingPatches.length === 0) {
-            this.skipReplay = false;
-            return;
-        }
-        this.skipReplay = false;
         const entry = this.buildEntry();
         this.pendingPatches = [];
         this.pendingOpaque = false;
@@ -449,46 +456,33 @@ export class CarburetorHistory<T extends object> {
      * @param inverse - true undoes `entry` (patches in reverse, or its `before`); false redoes it.
      */
     protected apply(entry: THistoryEntry<T>, inverse: boolean): void {
-        const beforeVersion = this.carburetor.getVersion();
-        this.applying = true;
-        this.ownedReplay = false;
-        this.skipReplay = true;
+        const state = entry.kind === 'snapshot'
+            ? own(inverse ? entry.before : entry.after)
+            : this.reconstruct(entry.patches, inverse);
+        this.replayContainsExotic = entry.kind === 'snapshot'
+            ? (inverse ? entry.beforeExotic : entry.afterExotic)
+            : false;
+        this.replayReplaceOnReplay = entry.kind === 'snapshot'
+            ? entry.replaceOnReplay : this.baselineContainsRestricted;
+        this.replayTarget = state;
+        const owner = {};
+        this.replayOwner = owner;
+        this.replayOwners.add(owner);
 
+        let restored = false;
         try {
-            const state = entry.kind === 'snapshot'
-                ? own(inverse ? entry.before : entry.after)
-                : this.reconstruct(entry.patches, inverse);
-            this.replayContainsExotic = entry.kind === 'snapshot'
-                ? (inverse ? entry.beforeExotic : entry.afterExotic)
-                : false;
-            this.replayReplaceOnReplay = entry.kind === 'snapshot'
-                ? entry.replaceOnReplay : this.baselineContainsRestricted;
-            this.replayTarget = state;
-
-            // Only a publication from this exact restore argument suppresses its own entry;
-            // an abort listener's replacement, or a write by a replay subscriber, is fresh.
+            // A callback write is a separate mutation fact; only this root's owner is suppressed.
             this.carburetor.restore(state);
-            if (this.applying && this.ownedReplay) {
-                // The source deferred replay's publication. Reconcile its actual wire state
-                // now, before any later subscriber can publish on top of it.
-                const capture = this.capture();
-                this.baseline = capture.state;
-                this.baselineContainsExotic = capture.exotic;
-                this.baselineContainsLockedArray = capture.lockedArray;
-                this.baselineContainsRestricted = capture.restricted;
-                this.baselineShared = false;
-                this.skipReplay = this.carburetor.getVersion() !== beforeVersion;
-            } else if (this.applying) {
-                // A superseding callback published before the restore could install anything.
-                // Its pending patches still need the old baseline at deferred delivery.
-                this.skipReplay = false;
-            }
+            restored = true;
         } finally {
+            if (this.pendingReplayOwner === owner) {
+                if (restored) this.reconcileBaseline();
+                else this.pendingReplayOwner = undefined;
+            }
             this.replayTarget = undefined;
-            this.ownedReplay = false;
+            this.replayOwner = undefined;
             this.replayContainsExotic = false;
             this.replayReplaceOnReplay = false;
-            this.applying = false;
         }
     }
 

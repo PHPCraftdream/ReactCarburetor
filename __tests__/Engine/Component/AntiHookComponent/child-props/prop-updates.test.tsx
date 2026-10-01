@@ -204,6 +204,58 @@ describe('child props boundary', () => {
             unmount();
         });
 
+        test('equal selection snapshots still re-file class read branches before memo gating', () => {
+            const store = new RowListCarburetor({
+                items: {
+                    a: {title: 'same', done: false},
+                    b: {title: 'same', done: false},
+                },
+            });
+            let parentRenders = 0;
+            let memoRenders = 0;
+
+            const MemoTitle = React.memo(({row}: {row: {title: string}}) => {
+                memoRenders++;
+
+                return <span className="memo-title">{row.title}</span>;
+            });
+
+            class Parent extends AntiHookComponent<{chooseLeft: boolean}> {
+                private readonly title = this.connectSelection(
+                    () => store,
+                    (data) => ({title: data.items[this.props.chooseLeft ? 'a' : 'b'].title})
+                );
+
+                render() {
+                    parentRenders++;
+
+                    return <MemoTitle row={this.title()} />;
+                }
+            }
+
+            const {container, rerender, unmount} = render(<Parent chooseLeft={true} />);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('same');
+            expect(memoRenders).toEqual(1);
+
+            // The new branch has the same selected value, so the memo child keeps its snapshot.
+            rerender(<Parent chooseLeft={false} />);
+            expect(parentRenders).toEqual(2);
+            expect(memoRenders).toEqual(1);
+
+            // The old branch was removed from the committed read set.
+            act(() => store.renameLeaf('a', 'ignored'));
+            expect(parentRenders).toEqual(2);
+            expect(memoRenders).toEqual(1);
+
+            // The equal-valued new branch remains active and supplies the memo child when it changes.
+            act(() => store.renameLeaf('b', 'selected'));
+            expect(parentRenders).toEqual(3);
+            expect(memoRenders).toEqual(2);
+            expect(container.querySelector('.memo-title')?.textContent).toEqual('selected');
+
+            unmount();
+        });
+
         test('a swapped source re-points the selection at the new store', () => {
             const first = new RowListCarburetor(getListData());
             const second = new RowListCarburetor({items: {a: {title: 'Cara', done: false}}});

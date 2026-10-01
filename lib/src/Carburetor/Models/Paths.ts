@@ -64,20 +64,76 @@ export interface IWritePatch {
 export type TPatchRecorder = (
     patch: IWritePatch | typeof PATCH_OPAQUE | typeof PATCH_ARRAY_LENGTH_LOCK | typeof PATCH_KEY_ORDER_CHANGE
 ) => void;
+/** A library installation's causality and graph ownership at its publication boundary. */
+interface IStateInstallationDelivery {
+    /** Force wildcard publication when an out-of-graph wire fact changes. */
+    wildcard?: true;
+    /** Whether publication is synchronous or queued for the next microtask. */
+    publication?: 'sync' | 'deferred';
+}
+
+export type IStateInstallation =
+    | ({
+        origin: 'replacement';
+        owner?: never;
+        representation: 'public';
+    } & IStateInstallationDelivery)
+    | ({
+        origin: 'restore';
+        owner?: object;
+        representation: 'public' | 'history-owned';
+    } & IStateInstallationDelivery)
+    | ({
+        origin: 'operational';
+        owner: object;
+        representation: 'owned-operational';
+    } & IStateInstallationDelivery);
+/** Shared immutable context for the ordinary public root-replacement fast path. */
+export const STATE_PUBLIC_REPLACEMENT: IStateInstallation =
+    Object.freeze({origin: 'replacement', representation: 'public'});
+
+/** A publication fact exists for every completed operation; several coalesced operations are mixed. */
+export interface IStatePublication {
+    /** Mutation is an in-place producer write; installation origins name root replacements. */
+    origin: 'mutation' | 'replacement' | 'restore' | 'operational' | 'mixed';
+    /** Opaque identity for the request/answer or exact history installation that owns it. */
+    owner?: object;
+    /** The representation accepted by this operation. */
+    representation?: 'public' | 'history-owned' | 'owned-operational';
+    /** The original route's requested delivery policy. */
+    publication?: 'sync' | 'deferred';
+}
+
+/** Shared allocation-free facts for ordinary and coalesced in-place publications. */
+export const STATE_MUTATION_PUBLICATION: IStatePublication = Object.freeze({origin: 'mutation'});
+export const STATE_MIXED_PUBLICATION: IStatePublication = Object.freeze({origin: 'mixed'});
+
+/** Exact history graph ownership claimed before restore installs its argument. */
+export interface IStateRestoreClaim {
+    /** Recorder operation token, absent when a custom producer uses only the adoption boolean. */
+    owner?: object;
+    /** This is the graph policy of the history endpoint that was claimed. */
+    representation: 'history-owned';
+    /** The source may adopt this graph as-is instead of copying/applying its values. */
+    adopt: boolean;
+}
 
 /** Mutation and publication stream from one patch source; fields are stable for the attachment. */
 export interface IPatchObserver {
     /** Called at mutation time for each field patch, opaque write, or owned-replay transition. */
     patch: TPatchRecorder;
     /** If present, scheduled before ordinary subscribers at each publication (after coalescing). */
-    publication?: () => void;
+    publication?: (fact?: IStatePublication) => void;
     /**
-     * Called with the exact restore argument after cancellation guards and before installation.
-     * Return true only for a replay-owned, freshly detached graph: the source may adopt that
-     * graph whole instead of splitting native/plain aliases through its ordinary restore copy.
-     * Other observers still see the call and return false.
+     * Owned-restore adoption signal for source extensions. Return true only when the exact
+     * restore argument is a freshly detached graph the producer may adopt as-is.
      */
     ownRestore?: (state: unknown) => boolean;
+    /**
+     * Optional exact installation claim used by sources that propagate operation ownership
+     * through publication. It does not change whether the original graph may be adopted.
+     */
+    restoreClaim?: (state: unknown) => IStateRestoreClaim | undefined;
 }
 
 /**

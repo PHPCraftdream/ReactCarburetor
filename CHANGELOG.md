@@ -169,6 +169,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Store root replacement and sync/deferred delivery share one installation/commit boundary with
+  explicit origin, owner and graph representation. Ordinary replacement/mutation facts reuse frozen
+  defaults; scalar writes keep their existing patch path.
+- Slot/cache requests and answers use cohesive lazy runtime records instead of parallel request,
+  controller, failure and retry/invalidation side channels. Active slot loads survive public setData;
+  failed pre-loader publication restores the previous reload target, and cache restore retains
+  callback-started requests alongside normalized captured siblings.
+- History suppresses only its exact replay owner, preserving fresh branches after deferred mixed
+  publications and independent recorders. Existing boolean owned-restore/zero-argument publication
+  custom producers remain valid; the history constructor requires only the methods it actually uses.
+- Watch/class/hooks explicitly close selected values and read sets before transfer. Completed reads
+  have a readonly internal surface; computed dependencies retain their intentionally extendable path.
+- Owned graph copying uses named history/operational policies. Strict history admission and ordinary
+  snapshot behavior are unchanged; no runtime ownership mode is inferred from an ambiguous boolean.
+
 - **Breaking:** store state is now defined as own enumerable string-keyed data (an array's is its
   elements and `length`). Symbol keys, getters and setters, non-enumerable properties and non-index
   keys on an array are rejected: development throws at the constructor, `setData`, `restore` and

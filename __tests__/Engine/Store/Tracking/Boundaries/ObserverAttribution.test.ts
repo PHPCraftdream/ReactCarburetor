@@ -181,4 +181,32 @@ describe('effective writes survive a throwing patch observer', () => {
         expect(Object.keys(store.getData().item)).toEqual(['first', 'middle', 'last']);
         history.disconnect();
     });
+
+    test('custom restore producers retain the boolean exact-owned adoption contract', () => {
+        type Row = {n: number};
+        type State = {row: Row; map: Map<string, Row>};
+        class CustomProducer extends Carburetor<State> {
+            public replace(row: Row): void {
+                this.setData({row, map: new Map([['row', row]])});
+            }
+            public restore(data: State): void {
+                const owned = this.patchObservers?.ownRestore(data) === true;
+                this.setData(owned ? data : {row: {n: data.row.n}, map: new Map(data.map)});
+            }
+        }
+
+        const initialRow = {n: 1};
+        const store = new CustomProducer({row: initialRow, map: new Map([['row', initialRow]])});
+        const history = new CarburetorHistory(store);
+        store.replace({n: 2});
+
+        expect(history.undo()).toBe(true);
+        expect(store.getData().row.n).toBe(1);
+        expect(store.getData().map.get('row')).toBe(store.getData().row);
+        expect(history.canRedo()).toBe(true);
+        expect(history.redo()).toBe(true);
+        expect(store.getData().row.n).toBe(2);
+        expect(store.getData().map.get('row')).toBe(store.getData().row);
+        history.disconnect();
+    });
 });

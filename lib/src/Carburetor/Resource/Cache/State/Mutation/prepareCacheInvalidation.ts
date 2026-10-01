@@ -50,7 +50,7 @@ export const prepareCacheInvalidation = <T>(
             descriptor.configurable = true;
         }
         return descriptor;
-    }, true);
+    }, 'operational');
     for (const key of keys) {
         const entry = prepared.entries[key];
         if (!entry) continue;

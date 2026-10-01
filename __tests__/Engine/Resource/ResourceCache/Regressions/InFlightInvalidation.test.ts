@@ -104,3 +104,52 @@ test('invalidating one key leaves another in-flight request untouched', async ()
     await next;
     expect(cache.getEntry('a')).toMatchObject({data: 'new a', stale: false});
 });
+test('undefined raw failure ownership remains distinct from a stale invalidated answer', async () => {
+    const rawAnswer = Promise.withResolvers<string>();
+    const staleAnswer = Promise.withResolvers<string>();
+    const retryAnswer = Promise.withResolvers<string>();
+    const attempts: Record<string, PromiseWithResolvers<string>[]> = {
+        raw: [rawAnswer],
+        stale: [staleAnswer, retryAnswer],
+    };
+
+    const calls: string[] = [];
+    const cache = new ResourceCache<string, string>((key) => {
+        calls.push(key);
+        return attempts[key].shift()!.promise;
+    }, {ttl: Infinity});
+
+    const rawFailure = cache.load('raw');
+    rawAnswer.reject(undefined);
+    await rawFailure;
+    let rawThrown = false;
+    let rawValue: unknown;
+    try {
+        cache.suspend('raw');
+    } catch (error) {
+        rawThrown = true;
+        rawValue = error;
+    }
+    expect(rawThrown).toBe(true);
+    expect(rawValue).toBeUndefined();
+
+    const staleFailure = cache.load('stale');
+    cache.invalidate('stale');
+    staleAnswer.reject(undefined);
+    await staleFailure;
+    expect(cache.getEntry('stale')).toMatchObject({
+        status: EResourceStatus.Error, invalidated: true, failed: false,
+    });
+
+    let retryThrown: unknown;
+    try {
+        cache.suspend('stale');
+    } catch (error) {
+        retryThrown = error;
+    }
+    expect(retryThrown).toBe(cache.load('stale'));
+    expect(calls).toEqual(['raw', 'stale', 'stale']);
+    retryAnswer.resolve('fresh');
+    await (retryThrown as Promise<void>);
+    expect(cache.getEntry('stale')).toMatchObject({data: 'fresh', stale: false, failed: false});
+});

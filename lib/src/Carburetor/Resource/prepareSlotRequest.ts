@@ -28,5 +28,5 @@ export const prepareSlotRequest = <T>(state: IResourceData<T>): IResourceData<T>
             if (field === 'error') descriptor.value = undefined;
         }
         return descriptor;
-    }, true);
+    }, 'operational');
 };

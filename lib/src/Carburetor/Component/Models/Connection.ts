@@ -1,23 +1,23 @@
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
+import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 
 /**
  * What one commit established about a dependency: the carburetor a render attempt resolved,
  * the store version when the reading started, and the paths it read.
  *
- * Published only by a commit consuming a fresh render attempt, with the read set copied at
- * that tentative-to-committed transition — so a later read through a stale captured view can
- * never alter what a commit established. The description survives unmount: it is what a
- * StrictMode-replayed mount's commit restores subscriptions from.
+ * Published by a commit consuming a closed render attempt. Its read set is no longer written
+ * by any render recorder and may be transferred directly into the active subscription.
+ * The description survives unmount: it is what a StrictMode-replayed mount restores from.
  */
 export interface IDependencyDescription {
     /** The carburetor the attempt resolved and read. */
     carburetor: ICarburetorSubscription;
     /** The store version captured at the attempt's first touch; the commit-time drift check anchors here. */
     baselineVersion: number;
-    /** The paths the attempt read; a private copy, never shared with an attempt or a handle. */
-    reads: TPathSet;
+    /** The closed paths this commit established; no render attempt still collects into them. */
+    reads: TCompletedReads;
 }
 
 /**
@@ -31,8 +31,8 @@ export interface IDependencyDescription {
 export interface ISubscriptionHandle {
     /** The store the registration lives in; unsubscribing goes through it. */
     carburetor: ICarburetorSubscription;
-    /** The read set as registered — a copy, so a compare with a fresh description detects drift. */
-    reads: TPathSet;
+    /** The closed read set transferred to the live store registration. */
+    reads: TCompletedReads;
 }
 
 /**

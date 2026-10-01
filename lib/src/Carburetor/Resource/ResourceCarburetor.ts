@@ -1,12 +1,13 @@
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceData, IResourceSnapshot, TResourceLoader} from "@/Carburetor/Models/Resource";
 import {TDisposer} from "@/Carburetor/Models/Base";
-import {IPatchObserver} from "@/Carburetor/Models/Paths";
+import {
+    IStateInstallation, IStateRestoreClaim, IPatchObserver, STATE_PUBLIC_REPLACEMENT,
+} from "@/Carburetor/Models/Paths";
 import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {cloneOwnedGraph} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
-import {nativeAliasIndex} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex";
 import {getInitialResourceData} from "./getInitialResourceData";
 import {createAbortHandle} from "./createAbortHandle";
 import {prepareSlotRequest} from "./prepareSlotRequest";
@@ -29,6 +30,26 @@ const createSupersededError = (): Error => {
     return error;
 };
 
+interface ISlotRequest<TArgs> {
+    key: string;
+    args: TArgs;
+    controller: AbortController;
+    promise: Promise<void>;
+    generation: number;
+}
+
+interface ISlotAnswer<T> {
+    key: string | undefined;
+    owner: IResourceData<T>;
+    failure?: {value: unknown; message: string | undefined};
+}
+
+interface ISlotRuntime<T, TArgs> {
+    request?: ISlotRequest<TArgs>;
+    answer?: ISlotAnswer<T>;
+    last?: {key: string; args: TArgs};
+}
+
 /**
  * An async value with an explicit status, so loading and failure are part of the state
  * rather than something every component reinvents. Concurrent loads with the same
@@ -39,32 +60,15 @@ const createSupersededError = (): Error => {
  * the previous record's data.
  */
 export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceData<T>> {
-    /** The abort handle of the request in flight, fired by abort() and compared against when it settles. */
-    protected controller: AbortController | undefined = undefined;
-    /** The key that request was started with, which a repeated start joins on. */
-    protected pendingKey: string | undefined = undefined;
-    /** The promise behind it: what suspend throws to React and a joining start returns. */
-    protected pendingRequest: Promise<void> | undefined = undefined;
-    /**
-     * The key the stored Success/Error state belongs to; unlike `pendingKey`, which tracks the
-     * in-flight one. restore() re-establishes it from the snapshot.
-     */
-    protected settledKey: string | undefined = undefined;
-    /** The arguments of the most recent start, which reload() replays. */
-    protected lastArgs: TArgs | undefined = undefined;
-    /** The key of that same start, which tells reload() a replay exists: unlike `pendingKey`,
-     * abort() and restore() leave it in place. */
-    protected lastKey: string | undefined = undefined;
-    /** The raw rejection behind the described state.error, kept whole for suspend to rethrow. */
-    protected lastError: unknown = undefined;
-    /** Whether lastError belongs to the current Error state, including when it is undefined. */
-    protected hasLastError: boolean = false;
-    /** Changes when a newer operation takes ownership during synchronous abort callbacks. */
+    /** Request and answer ownership stays empty until the slot is first used. */
+    private runtime: ISlotRuntime<T, TArgs> | undefined;
+    /** Changes when a newer operation takes ownership during synchronous callbacks. */
     protected operationVersion: number = 0;
-    /** Serializable error description paired with the current raw rejection. */
-    private lastErrorMessage: string | undefined = undefined;
-    /** The live state root that owns that raw rejection; a new root owns a new answer. */
-    private errorOwner: IResourceData<T> | undefined = undefined;
+
+    /** Allocates the shared runtime record only when the slot first needs one. */
+    private ensureRuntime(): ISlotRuntime<T, TArgs> {
+        return this.runtime ??= {};
+    }
 
     /**
      * Takes the loader this resource calls, and starts out empty.
@@ -92,16 +96,20 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     }
 
     /**
-     * A public whole-state replacement has no request key of its own. Only the exact
-     * current state object still belongs to the request that produced it.
+     * A public whole-state replacement has no request key of its own and does not cancel a loader.
+     *
+     * @param data - state root adopted verbatim.
      */
     public setData(data: IResourceData<T>): IResourceData<T> {
-        if (data !== this.data && this.settledKey !== undefined) {
-            this.markAllChanged();
-            this.settledKey = undefined;
-        }
+        const replacing = data !== this.data;
+        const keyChanged = replacing && this.runtime?.answer?.key !== undefined;
 
-        return super.setData(data);
+        if (keyChanged) {
+            return this.commitState(data, {
+                origin: 'replacement', representation: 'public', wildcard: true,
+            });
+        }
+        return this.commitState(data, STATE_PUBLIC_REPLACEMENT);
     }
 
     /**
@@ -110,7 +118,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * belongs to.
      */
     public snapshot(): IResourceSnapshot<T> {
-        return {...super.snapshot(), key: this.settledKey};
+        return {...super.snapshot(), key: this.runtime?.answer?.key};
     }
 
     /** Own the raw state graph before adding wire metadata, retaining native links to its root.
@@ -123,14 +131,14 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         }
         const state = own(this.getData());
         Object.defineProperty(state, 'key', {
-            value: this.settledKey, configurable: true, enumerable: true, writable: true,
+            value: this.runtime?.answer?.key, configurable: true, enumerable: true, writable: true,
         });
         return state;
     }
 
     /** The settled key belongs to the wire answer, not the live slot's data. */
     public serialize(): string {
-        return JSON.stringify({...this.getData(), key: this.settledKey});
+        return JSON.stringify({...this.getData(), key: this.runtime?.answer?.key});
     }
 
     /**
@@ -141,66 +149,31 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      */
     public restore(data: IResourceSnapshot<T>): void {
         const operationVersion = ++this.operationVersion;
-
-        // A restored snapshot replaces the answer wholesale, so a request still in flight is
-        // serving a state about to stop existing: fire its handle and drop its bookkeeping,
-        // the same mechanism abort() relies on. Its settlement later fails isCurrent() and
-        // lands nowhere, which keeps the restored state from being corrupted by the stale
-        // response. Unlike abort(), nothing is published here: the restored state follows.
         this.cancelInFlight();
+        if (this.operationVersion !== operationVersion) return;
 
-        // Abort listeners run synchronously and may start a replacement or restore another
-        // snapshot. That newer operation owns the slot and must not be overwritten here.
-        if (this.operationVersion !== operationVersion) {
-            return;
-        }
-
-        // Only this installation belongs to the caller's restore. An abort listener above
-        // can publish its own replacement before reaching this point.
-        const ownedReplay = this.patchObservers?.ownRestore(data) === true;
-
-        // Identity is re-established BEFORE the state lands: super.setData() notifies
-        // subscribers synchronously, and a suspend() from such a callback must see key
-        // and data agree. The key is absent from IResourceData; a key-only change still
-        // alters the wire answer and must publish once to wildcard observers.
+        const claim: IStateRestoreClaim | undefined = this.patchObservers?.claimRestore(data);
+        const ownedReplay = claim?.adopt === true;
+        const owner = claim?.owner;
         const settled = data.status === EResourceStatus.Success || data.status === EResourceStatus.Error;
         const nextKey = settled ? data.key : undefined;
-        if (this.settledKey !== nextKey) {
-            this.markAllChanged();
-        }
-        this.settledKey = nextKey;
+        const keyChanged = this.runtime?.answer?.key !== nextKey;
 
-        // A restored Pending status has no live request behind it (R3-04): this slot's fields
-        // do not carry the arguments a fresh request would need, so restore cannot start one
-        // itself the way it could serve a settled answer. Normalizing to Idle is what abort()
-        // already leaves behind a cancelled request — a plain status reader sees no work
-        // outstanding, instead of a Pending that nothing will ever settle. Whatever `data` the
-        // snapshot carried travels through untouched, exactly as abort() also leaves it, and an
-        // explicit load()/suspend() with the right arguments fetches normally afterward.
+        // A restored Pending status has no live request behind it. Normalize it before
+        // installation while preserving held history endpoints and their native backlinks.
         const status = data.status === EResourceStatus.Pending ? EResourceStatus.Idle : data.status;
-
-        // The key rides in the snapshot, not in the state: the four state fields are installed
-        // explicitly so the live IResourceData contract stays exactly what it was.
-        // The base replacement publishes while retaining the explicit key installed above;
-        // its pre-publication hook reconstructs an Error from the wire message, even
-        // when the previous failure had the same serialized description.
+        let nextData: IResourceData<T>;
         if (ownedReplay) {
-            // History hands over a fresh graph. Only a non-configurable readonly Pending
-            // descriptor needs another complete owned graph: install its normalized value
-            // before locking the descriptor, without breaking native root backlinks.
             const statusDescriptor = data.status !== status
                 ? Object.getOwnPropertyDescriptor(data, 'status') : undefined;
             if (statusDescriptor?.writable === false && statusDescriptor.configurable === false) {
-                const normalized = cloneOwnedGraph(data, undefined, (source, key, descriptor) => {
+                nextData = cloneOwnedGraph(data, undefined, (source, key, descriptor) => {
                     if (source !== data) return descriptor;
                     if (key === 'key') return undefined;
                     if (key === 'status') descriptor.value = status;
                     return descriptor;
                 });
-                super.setData(normalized);
             } else {
-                // Writable values and configurable readonly descriptors can change in this
-                // already-owned graph, preserving its root links without another graph copy.
                 if (statusDescriptor?.writable === false) {
                     statusDescriptor.value = status;
                     Object.defineProperty(data, 'status', statusDescriptor);
@@ -208,15 +181,36 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
                     data.status = status;
                 }
                 delete data.key;
-                super.setData(data);
+                nextData = data;
             }
         } else {
-            super.setData(deepClone({
-                status,
-                data: data.data,
-                error: data.error,
-                updatedAt: data.updatedAt,
-            }));
+            nextData = deepClone({status, data: data.data, error: data.error, updatedAt: data.updatedAt});
+        }
+
+        const runtime = this.ensureRuntime();
+        const previousAnswer = runtime.answer;
+        runtime.answer = status === EResourceStatus.Success || status === EResourceStatus.Error
+            ? {
+                key: nextKey,
+                owner: nextData,
+                ...(status === EResourceStatus.Error
+                    ? {failure: {value: new Error(nextData.error || ''), message: nextData.error}}
+                    : {}),
+            }
+            : undefined;
+        const installation: IStateInstallation = {
+            origin: 'restore',
+            owner,
+            representation: claim?.representation ?? 'public',
+            wildcard: keyChanged ? true : undefined,
+        };
+        try {
+            this.commitState(nextData, installation);
+        } catch (error: unknown) {
+            if (this.operationVersion === operationVersion && this.data !== nextData) {
+                runtime.answer = previousAnswer;
+            }
+            throw error;
         }
     }
 
@@ -230,11 +224,11 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.restore(value as IResourceSnapshot<T>);
     }
 
-    /**
-     * Reconciles whole-state replacements before patch listeners or subscribers inspect
-     * the new answer. An identical state object retains its original raw rejection.
-     */
+    /** Whole-root installation reconciles failure ownership before patch observers run. */
     protected didSetData(): void {
+        if (this.runtime?.answer && this.runtime.answer.owner !== this.data) {
+            this.runtime.answer = undefined;
+        }
         this.reconcileError();
     }
 
@@ -243,64 +237,59 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this.reconcileError();
     }
 
-    /** Keeps a raw rejection only while its state root and wire message still describe it. */
+    /** Keep raw failure ownership attached only to the state and message that produced it. */
     private reconcileError(): void {
         const state = this.data;
-
+        const runtime = this.runtime;
+        const answer = runtime?.answer;
+        if (answer && answer.owner !== state) {
+            answer.failure = undefined;
+            answer.key = undefined;
+            answer.owner = state;
+        }
         if (state.status === EResourceStatus.Error) {
-            if (!this.hasLastError || this.errorOwner !== state || this.lastErrorMessage !== state.error) {
-                this.lastError = new Error(state.error || '');
-                this.lastErrorMessage = state.error;
-                this.errorOwner = state;
-                this.hasLastError = true;
+            if (!answer || !answer.failure || answer.failure.message !== state.error) {
+                this.ensureRuntime().answer = {
+                    key: answer?.key,
+                    owner: state,
+                    failure: {value: new Error(state.error || ''), message: state.error},
+                };
             }
-        } else {
-            this.lastError = undefined;
-            this.lastErrorMessage = undefined;
-            this.errorOwner = undefined;
-            this.hasLastError = false;
+        } else if (answer) {
+            answer.failure = undefined;
         }
     }
 
     /** The raw rejection value, which the serializable state cannot carry. */
     public getLastError(): unknown {
-        return this.lastError;
+        return this.runtime?.answer?.failure?.value;
     }
 
     /**
      * Reads the value, suspending while it loads and rethrowing when it failed.
      *
-     * The request is started on first read, and its "pending" notification is deferred to a
-     * microtask, because a render must not notify subscribers. A failure is rethrown so the
-     * nearest error boundary handles it.
+     * The request is started on first read, and its Pending publication is deferred to a
+     * microtask because a render must not notify subscribers.
      *
      * @param args - the loader arguments identifying the answer
      */
     public suspend(args: TArgs): T {
         const state = this.data;
         const key = this.keyOf(args);
-
-        // A stored answer is only good for the key that produced it: anything else falls
-        // through to a fresh request, exactly like a key that was never loaded.
-        if (state.status === EResourceStatus.Success && this.settledKey === key) {
-            return state.data as T;
+        const answer = this.runtime?.answer;
+        if (state.status === EResourceStatus.Success && answer?.key === key) return state.data as T;
+        if (state.status === EResourceStatus.Error && answer?.key === key) {
+            if (answer.failure) throw answer.failure.value;
+            throw new Error(state.error || 'Carburetor: resource failed');
         }
-
-        if (state.status === EResourceStatus.Error && this.settledKey === key) {
-            throw this.hasLastError ? this.lastError : new Error(state.error || 'Carburetor: resource failed');
-        }
-
-        if (this.pendingRequest && this.pendingKey === key) {
-            throw this.pendingRequest;
-        }
-
+        const request = this.runtime?.request;
+        if (request?.key === key) throw request.promise;
         throw this.start(args, true);
     }
 
-    /**
-     * Starts a load, or joins the one already in flight for the same arguments.
+    /** Starts a load, or joins the one already in flight for the same arguments.
      *
-     * @param args - the loader arguments identifying the answer
+     * @param args - loader arguments identifying the answer.
      */
     public load(args: TArgs): Promise<void> {
         return this.start(args, false);
@@ -308,286 +297,186 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
 
     /** Repeats the last load with the same arguments. */
     public reload(): Promise<void> {
-        // The replay target is the last requested start, not the in-flight key: abort() clears
-        // the key of the request it cancels, while what was requested last stays repeatable.
-        if (this.lastKey === undefined) {
-            return Promise.resolve();
-        }
-
-        const args = this.lastArgs as TArgs;
-
-        this.pendingKey = undefined;
-        this.pendingRequest = undefined;
-
-        return this.start(args, false);
+        const last = this.runtime?.last;
+        if (!last) return Promise.resolve();
+        return this.start(last.args, false, true);
     }
 
-    /** Cancels the request in flight; its result is ignored when it arrives, and the slot returns to Idle. */
+    /** Cancels the request in flight; its result is ignored when it arrives. */
     public abort(): void {
-        if (!this.controller) {
-            return;
-        }
-
+        if (!this.runtime?.request) return;
         const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
-
-        // An abort listener may have started a new request. Preserve its Pending state.
-        if (this.operationVersion !== operationVersion) {
-            return;
-        }
-
-        // A cancelled request leaves nothing on its way: Pending would claim an answer no one
-        // will ever deliver, so the slot goes back to the state it starts in.
+        if (this.operationVersion !== operationVersion) return;
+        if (this.runtime) this.runtime.answer = undefined;
         this.draft.status = EResourceStatus.Idle;
         this.emitUpdate();
     }
 
-    /**
-     * The bookkeeping half of abort(): fires the handle and drops the request, writing nothing.
-     *
-     * Shared with start(), which replaces a request rather than giving up on one — only abort()
-     * publishes the slot going idle.
-     */
+    /** Detach ownership before abort listeners run synchronously. */
     protected cancelInFlight(): void {
-        const controller = this.controller;
-
-        if (!controller) {
-            return;
-        }
-
-        // Detach before dispatch: AbortSignal listeners run synchronously and may load again.
-        this.controller = undefined;
-        this.pendingRequest = undefined;
-        this.pendingKey = undefined;
-        controller.abort();
-        // `settledKey` needs no clearing: this only runs with a request in flight, and the
-        // `start` that armed it already reset the stored answer's key.
+        const runtime = this.runtime;
+        const request = runtime?.request;
+        if (!runtime || !request) return;
+        runtime.request = undefined;
+        request.controller.abort();
     }
 
     /**
-     * The one path into a request: deduplicates, aborts the previous one, publishes pending.
+     * The one path into a request: it installs request ownership before publishing Pending.
      *
-     * `deferNotification` exists for `suspend`, which is called from render — the pending
-     * status then goes out on a microtask instead of in the middle of rendering.
-     *
-     * @param args - folded into the request key by keyOf(), so structurally equal arguments join
-     * one request; also what reload() replays
-     * @param deferNotification - true from suspend(): the pending write goes out on a microtask
-     * because the caller is mid-render
+     * @param args - loader arguments; reload() repeats these same arguments
+     * @param deferNotification - true from suspend(), where notifying during render is unsafe
+     * @param force - restart rather than join the same active key.
      */
-    protected start(args: TArgs, deferNotification: boolean): Promise<void> {
+    protected start(args: TArgs, deferNotification: boolean, force: boolean = false): Promise<void> {
         const key = this.keyOf(args);
+        const current = this.runtime?.request;
+        if (!force && current?.key === key) return current.promise;
 
-        if (this.pendingRequest && this.pendingKey === key) {
-            return this.pendingRequest;
-        }
-
+        const stateBeforeAbort = this.data;
         const operationVersion = ++this.operationVersion;
         this.cancelInFlight();
-
-        // A synchronous abort listener may have started a newer request. If it is for the
-        // same key, join it; otherwise this request never reached its loader and rejects.
-        if (this.operationVersion !== operationVersion) {
-            if (this.pendingKey === key && this.pendingRequest) {
-                return this.pendingRequest;
-            }
-
+        const replacement = this.runtime?.request;
+        if (this.operationVersion !== operationVersion || this.data !== stateBeforeAbort) {
+            if (replacement?.key === key) return replacement.promise;
             return Promise.reject(createSupersededError());
         }
 
-        // Preparation does not touch the live replay. In particular, copying a locked
-        // endpoint can fail before any controller/key or pending publication exists.
-        const nextState = prepareSlotRequest(this.data);
         const previousState = this.data;
         const previousStatus = previousState.status;
         const previousError = previousState.error;
-        const previousSettledKey = this.settledKey;
-        const previousLastArgs = this.lastArgs;
-        const previousLastKey = this.lastKey;
-        const previousLastError = this.lastError;
-        const previousLastErrorMessage = this.lastErrorMessage;
-        const previousErrorOwner = this.errorOwner;
-        const previousHasLastError = this.hasLastError;
+        const previousAnswer = this.runtime?.answer;
+        const previousLast = this.runtime?.last;
+        const nextState = prepareSlotRequest(previousState);
         const controller = createAbortHandle();
         let resolveRequest!: () => void;
         let rejectRequest!: (error: unknown) => void;
-        const request = new Promise<void>((resolve, reject) => {
+        const promise = new Promise<void>((resolve, reject) => {
             resolveRequest = resolve;
             rejectRequest = reject;
         });
+        const request: ISlotRequest<TArgs> = {key, args, controller, promise, generation: operationVersion};
+        const runtime = this.ensureRuntime();
+        runtime.request = request;
+        runtime.last = {key, args};
+        runtime.answer = undefined;
 
-        this.controller = controller;
-        this.pendingKey = key;
-        this.pendingRequest = request;
-        this.lastArgs = args;
-        this.lastKey = key;
-        this.hasLastError = false;
-
-        // Subscribers to Pending may synchronously join or replace this request, so
-        // registration precedes publication. A replacement root publishes only once.
-        this.settledKey = undefined;
         try {
             if (nextState) {
-                if (deferNotification) {
-                    // A render cannot notify subscribers synchronously. Retain the
-                    // replacement's alias checks while scheduling its publication.
-                    this.aliases?.checkState(nextState, '', this.data);
-                    nativeAliasIndex.invalidate(this.data);
-                    nativeAliasIndex.invalidate(nextState);
-                    this.data = nextState;
-                    this.draftProxy = undefined;
-                    this.reconcileError();
-                    this.markAllChanged();
-                    if (this.isCurrent(controller)) this.emitSoon();
-                } else {
-                    super.setData(nextState);
-                }
+                this.commitState(nextState, {
+                    origin: 'operational',
+                    owner: request,
+                    representation: 'owned-operational',
+                    publication: deferNotification ? 'deferred' : 'sync',
+                });
             } else {
                 this.draft.status = EResourceStatus.Pending;
-                if (this.isCurrent(controller)) {
-                    this.draft.error = undefined;
-                    if (this.isCurrent(controller)) {
-                        if (deferNotification) this.emitSoon();
-                        else this.emitUpdate();
-                    }
+                if (this.isCurrent(request)) this.draft.error = undefined;
+                if (this.isCurrent(request)) {
+                    if (deferNotification) this.emitSoon();
+                    else this.emitUpdate();
                 }
             }
         } catch (error: unknown) {
-            if (this.controller === controller) {
-                this.controller = undefined;
-                this.pendingRequest = undefined;
-                this.pendingKey = undefined;
-                this.settledKey = previousSettledKey;
-                this.lastArgs = previousLastArgs;
-                this.lastKey = previousLastKey;
-                this.lastError = previousLastError;
-                this.lastErrorMessage = previousLastErrorMessage;
-                this.errorOwner = previousErrorOwner;
-                this.hasLastError = previousHasLastError;
+            if (this.isCurrent(request)) {
+                runtime.request = undefined;
+                runtime.answer = previousAnswer;
+                runtime.last = previousLast;
                 try {
-                    if (nextState && this.data === nextState) {
-                        this.data = previousState;
-                        this.draftProxy = undefined;
-                    } else {
-                        this.data.status = previousStatus;
-                        this.data.error = previousError;
-                    }
-                    // Publication can throw after some subscribers have observed Pending.
-                    // Give those readers the restored answer, without hiding the first failure.
-                    this.markAllChanged();
-                    this.emitUpdate();
+                    controller.abort();
                 } catch {
-                    // A second failure cannot leave the cancelled controller/request live.
+                    // Keep the publication failure as the request's rejection.
+                }
+                if (this.operationVersion === operationVersion) {
+                    try {
+                        if (nextState && this.data === nextState) {
+                            this.commitState(previousState, {
+                                origin: 'operational', owner: request, representation: 'owned-operational',
+                            });
+                        } else if (this.data === previousState) {
+                            this.update((draft) => {
+                                draft.status = previousStatus;
+                                draft.error = previousError;
+                            });
+                        }
+                    } catch {
+                        // Preserve the original failure after best-effort visible-state recovery.
+                    }
                 }
             }
+            void promise.catch(() => undefined);
             rejectRequest(error);
-            return request;
+            return promise;
         }
 
-        // A synchronous subscriber may replace or abort this request during publication.
-        // Reject work that never reached its loader instead of reporting false success.
-        if (!this.isCurrent(controller)) {
+        if (!this.isCurrent(request)) {
             rejectRequest(createSupersededError());
-
-            return request;
+            return promise;
         }
 
-        // A loader may throw before returning its promise; routing the throw through the same
-        // rejection path keeps the slot from holding a Pending no request will ever settle.
         let answer: Promise<T>;
-
         try {
             answer = this.loader(args, controller.signal);
         } catch (error: unknown) {
             answer = Promise.reject(error);
         }
-
         void answer.then(
-            (data: T) => {
-                this.settleSuccess(controller, key, data);
-            },
-            (error: unknown) => {
-                this.settleError(controller, key, error);
-            }
+            (data: T) => this.settleSuccess(request, data),
+            (error: unknown) => this.settleError(request, error)
         ).then(resolveRequest, rejectRequest);
-
-        return request;
+        return promise;
     }
 
-    /**
-     * The identity of a set of arguments, for telling one request from another.
+    /** The identity of a set of arguments, for telling one request from another.
      *
-     * @param args - the loader arguments to derive the key from
+     * @param args - arguments to serialize as the request key.
      */
     protected keyOf(args: TArgs): string {
         return JSON.stringify(args === undefined ? null : args);
     }
 
-    /**
-     * Whether a settled request is still the one whose answer this resource wants.
+    /** Whether this exact request still owns the slot.
      *
-     * @param controller - the request to check
+     * @param request - request owner to compare.
      */
-    protected isCurrent(controller: AbortController): boolean {
-        return this.controller === controller && !controller.signal.aborted;
+    protected isCurrent(request: ISlotRequest<TArgs>): boolean {
+        return this.runtime?.request === request && !request.controller.signal.aborted;
     }
 
-    /**
-     * Stores a successful answer, unless a newer request has since taken over.
+    /** Store the value returned by the request that still owns this slot.
      *
-     * @param controller - the request claiming the write; one already aborted or replaced fails
-     * the check, and its answer is dropped whole
-     * @param key - recorded as the settled key, so suspend serves this answer only to a read of
-     * the same arguments
-     * @param data - the answer stored verbatim; landing it also drops any raw error an earlier
-     * failure had kept
+     * @param request - request owner reporting the value.
+     * @param data - loader value adopted verbatim.
      */
-    protected settleSuccess(controller: AbortController, key: string, data: T): void {
-        if (!this.isCurrent(controller)) {
-            return;
-        }
-
-        this.controller = undefined;
-        this.pendingRequest = undefined;
-        this.settledKey = key;
-        this.lastError = undefined;
-        this.hasLastError = false;
-
-        this.draft.status = EResourceStatus.Success;
-        this.draft.data = data;
-        this.draft.error = undefined;
-        this.draft.updatedAt = Date.now();
-        this.emitUpdate();
+    protected settleSuccess(request: ISlotRequest<TArgs>, data: T): void {
+        if (!this.isCurrent(request)) return;
+        const runtime = this.ensureRuntime();
+        runtime.request = undefined;
+        runtime.answer = {key: request.key, owner: this.data};
+        this.update((draft) => {
+            draft.status = EResourceStatus.Success;
+            draft.data = data;
+            draft.error = undefined;
+            draft.updatedAt = Date.now();
+        });
     }
 
-    /**
-     * Stores a failure, keeping the raw rejection aside for `suspend` to rethrow.
+    /** Store the raw rejection with explicit presence, even when its value is undefined.
      *
-     * @param controller - the request reporting the failure; a superseded or aborted one is
-     * ignored, leaving the newer request's outcome in charge
-     * @param key - recorded as the settled key, so the Error state is only served to a read of
-     * these arguments
-     * @param error - the rejection as thrown: lastError keeps it whole, while the state carries
-     * only the message describeError() extracts
+     * @param request - request owner reporting the failure.
+     * @param error - raw rejected value.
      */
-    protected settleError(controller: AbortController, key: string, error: unknown): void {
-        if (!this.isCurrent(controller)) {
-            return;
-        }
-
+    protected settleError(request: ISlotRequest<TArgs>, error: unknown): void {
+        if (!this.isCurrent(request)) return;
         const message = describeError(error);
-
-        this.controller = undefined;
-        this.pendingRequest = undefined;
-        this.settledKey = key;
-        this.lastError = error;
-        this.lastErrorMessage = message;
-        this.errorOwner = this.data;
-        this.hasLastError = true;
-
-        this.draft.status = EResourceStatus.Error;
-        this.draft.error = message;
-        this.draft.updatedAt = Date.now();
-        this.emitUpdate();
+        const runtime = this.ensureRuntime();
+        runtime.request = undefined;
+        runtime.answer = {key: request.key, owner: this.data, failure: {value: error, message}};
+        this.update((draft) => {
+            draft.status = EResourceStatus.Error;
+            draft.error = message;
+            draft.updatedAt = Date.now();
+        });
     }
 }

@@ -529,5 +529,67 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         history.disconnect();
         completed.push(label + ':readonly-cache-invalidate' + (bulk ? '-all' : ''));
     }
+    {
+        const calls = [];
+        const cache = new producer.ResourceCache(async key => { calls.push(key); return key + '!'; });
+        const key = cache.keyOf('a');
+        const entry = {...producer.getInitialCacheEntry()};
+        Object.defineProperty(entry, 'status', {
+            value: producer.EResourceStatus.Idle, enumerable: true, writable: false, configurable: false,
+        });
+        cache.setData({entries: {[key]: entry}});
+        let reentered = false, replacement;
+        const stop = cache.watch(view => view.entries[key]?.status, status => {
+            if (!reentered && status === producer.EResourceStatus.Pending) {
+                reentered = true;
+                cache.abort('a');
+                replacement = cache.load('b');
+            }
+        });
+        await assert.rejects(cache.load('a'), {name: 'AbortError'});
+        assert.equal(reentered, true);
+        await /** @type {Promise<void>} */ (replacement);
+        assert.deepStrictEqual(calls, ['b']);
+        assert.equal(cache.getEntry('a').status, producer.EResourceStatus.Idle);
+        assert.equal(cache.getEntry('b').data, 'b!');
+        assert.equal(entry.status, producer.EResourceStatus.Idle);
+        assert.equal(Object.getOwnPropertyDescriptor(entry, 'status').writable, false);
+        stop();
+        await cache.load('a');
+        assert.deepStrictEqual(calls, ['b', 'a']);
+        assert.equal(cache.getEntry('a').data, 'a!');
+        completed.push(label + ':transition-request-owner-reentry');
+    }
+    {
+        class ActionStore extends producer.Carburetor {
+            /** Change one field through the supported subclass action boundary.
+             *
+             * @param key - field to change.
+             * @param value - next field value.
+             */
+            put(key, value) { this.update(draft => { draft[key] = value; }); }
+        }
+        const store = new ActionStore({x: 0, y: 0});
+        const first = new recorder.CarburetorHistory(store);
+        const second = new recorder.CarburetorHistory(store);
+        store.put('x', 1);
+        let branched = false;
+        const id = store.subscribe(() => {
+            if (!branched && store.getData().x === 0) {
+                branched = true;
+                store.put('y', 1);
+            }
+        });
+        assert.equal(first.undo(), true);
+        assert.deepStrictEqual(store.getData(), {x: 0, y: 1});
+        assert.equal(first.canRedo(), false);
+        assert.equal(second.canUndo(), true);
+        store.unsubscribe(id);
+        assert.equal(first.undo(), true);
+        assert.deepStrictEqual(store.getData(), {x: 0, y: 0});
+        first.disconnect();
+        second.disconnect();
+        completed.push(label + ':transition-history-fresh-origin');
+    }
     return completed;
 };

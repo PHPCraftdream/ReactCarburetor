@@ -5,8 +5,11 @@ import {ICarburetor, TReadonly, TSubscriber} from "@/Carburetor";
 import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
+import {completeObservation} from "@/Carburetor/Store/Tracking/Observation/completeObservation";
+import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
-import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
+import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
+import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<T extends object, R> {
@@ -15,6 +18,7 @@ interface ICacheEntry<T extends object, R> {
     isEqual: TValueComparator<R> | undefined;
     version: number;
     value: R;
+    reads: TCompletedReads | undefined;
     filled: boolean;
 }
 
@@ -22,7 +26,7 @@ interface ICacheEntry<T extends object, R> {
 interface IActiveSubscription<T extends object> {
     carburetor: ICarburetor<T>;
     id: string;
-    reads: TPathSet;
+    reads: TCompletedReads;
 }
 
 /** getSnapshot's persistent root view for one hook instance, rebuilt only when it goes stale. */
@@ -33,7 +37,7 @@ interface IRootView<T extends object> {
 }
 
 /** Whether two read sets would wake their subscriber on exactly the same writes. */
-const sameReads = (a: TPathSet, b: TPathSet): boolean => {
+const sameReads = (a: TCompletedReads, b: TCompletedReads): boolean => {
     if (a.size !== b.size) {
         return false;
     }
@@ -131,12 +135,13 @@ export const useCarburetorValue = <T extends object, R>(
         isEqual: undefined,
         version: -1,
         value: undefined as unknown as R,
+        reads: undefined,
         filled: false,
     });
 
     // What the selector read last, and the subscription it produced. getSnapshot refreshes
     // the read set on every call; the commit-phase effect at the bottom acts on it.
-    const pendingReads = useRef<TPathSet>(new Set<TPath>());
+    const pendingReads = useRef<TCompletedReads>(completeReads(new Set<TPath>()));
     const active = useRef<IActiveSubscription<T> | null>(null);
     const notify = useRef<TSubscriber | null>(null);
 
@@ -168,9 +173,8 @@ export const useCarburetorValue = <T extends object, R>(
             current.carburetor.unsubscribe(current.id);
         }
 
-        // transferReads(): `reads` is this hook's own fresh Set, never touched again outside
-        // this module, so the carburetor adopts it instead of copying.
-        const id = carburetor.subscribe(onStoreChange, transferReads(reads));
+        // The subscription receives this hook's closed set by identity after selection finished.
+        const id = carburetor.subscribe(onStoreChange, transferCompletedReads(reads));
 
         active.current = {carburetor, id, reads};
     }, [carburetor]);
@@ -211,8 +215,10 @@ export const useCarburetorValue = <T extends object, R>(
 
         // An entry is valid only for the store, selector and comparator that produced it:
         // changing comparison policy must reconsider a result suppressed at this version.
-        if (entry.filled && entry.carburetor === carburetor && entry.select === select &&
+        if (entry.filled && entry.reads !== undefined && entry.carburetor === carburetor && entry.select === select &&
             entry.isEqual === isEqual && entry.version === version) {
+            // Restore the read set paired with this cached value if a nested observation moved it.
+            pendingReads.current = entry.reads;
             return entry.value;
         }
 
@@ -228,9 +234,7 @@ export const useCarburetorValue = <T extends object, R>(
         try {
             const fresh: R = select(view.current.view);
 
-            // Walking a returned live branch (the comparison or the detach) records its leaves, so
-            // the slot stays open until both are done.
-            pendingReads.current = reads;
+            // Comparison and detachment can add reads, so publish the set only after both succeed.
 
             // The default comparison walks the live result like a detach would, so a match skips
             // the copy. A custom comparator always gets detached values.
@@ -246,7 +250,11 @@ export const useCarburetorValue = <T extends object, R>(
             currentReads.current = undefined;
         }
 
-        cache.current = {carburetor, select, isEqual, version, value: result, filled: true};
+        const completed = completeObservation({
+            carburetor, select, isEqual, version, value: result, reads, filled: true,
+        });
+        pendingReads.current = completed.reads;
+        cache.current = completed;
 
         return result;
     }, [carburetor, select, isEqual, recordRead]);

@@ -1,5 +1,7 @@
 import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
 
+type TGraphOwnershipPolicy = 'history' | 'operational';
+
 type TOwnedTrait = 'exotic' | 'lockedArray' | 'restricted';
 type TDescriptorTransform = (
     source: object, key: string | symbol, descriptor: PropertyDescriptor
@@ -10,12 +12,14 @@ type TDescriptorTransform = (
  * @param value - authoritative graph to detach.
  * @param classify - records replay capability traits during ownership.
  * @param transform - normalizes or omits data descriptors before they are locked onto the copy.
- * @param opaqueByReference - retains opaque payloads and native accessor metadata; history remains strict.
+ * @param policy - history rejects opaque/accessor endpoints; operational ownership keeps opaque
+ * payloads by reference and native accessor metadata without invoking it.
  */
 export const cloneOwnedGraph = <V>(
     value: V, classify?: (trait: TOwnedTrait) => void, transform?: TDescriptorTransform,
-    opaqueByReference = false
+    policy: TGraphOwnershipPolicy = 'history'
 ): V => {
+    const operational = policy === 'operational';
     const seen = new WeakMap<object, object>();
     const copy = (source: unknown): unknown => {
         if (source === null || typeof source !== 'object') return source;
@@ -54,7 +58,7 @@ export const cloneOwnedGraph = <V>(
                 : (prototype === Object.prototype ? {} : Object.create(prototype));
             seen.set(raw, result);
         } else {
-            if (opaqueByReference) return raw;
+            if (operational) return raw;
             throw new Error('CarburetorHistory: cannot own a mutable class instance in a history endpoint');
         }
         let length: PropertyDescriptor | undefined;
@@ -62,7 +66,7 @@ export const cloneOwnedGraph = <V>(
             let descriptor = Object.getOwnPropertyDescriptor(raw, key);
             if (!descriptor) continue;
             if (!Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-                if (!native || !opaqueByReference) {
+                if (!native || !operational) {
                     throw new Error('CarburetorHistory: cannot snapshot accessor property ' + String(key));
                 }
                 // Operational ownership preserves native metadata without evaluating it.

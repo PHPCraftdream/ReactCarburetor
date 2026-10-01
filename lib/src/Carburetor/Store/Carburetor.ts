@@ -1,13 +1,14 @@
 import {IDict, TDisposer, TReadonly, TSubscriber} from "@/Carburetor/Models/Base";
 import {
-    IPatchObserver, PATCH_OPAQUE, TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
+    IPatchObserver, IStateInstallation, IStatePublication, IStateRestoreClaim,
+    PATCH_OPAQUE, STATE_MIXED_PUBLICATION, STATE_MUTATION_PUBLICATION, STATE_PUBLIC_REPLACEMENT,
+    TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
 } from "@/Carburetor/Models/Paths";
 import {
     ICarburetor, INotifiable, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector,
 } from "@/Carburetor/Models/Store";
 import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
-import {diffPaths} from "./Paths/Diff/diffPaths";
 import {sameKind} from "./Paths/Diff/sameKind";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WriteLog} from "./Paths/WriteLog";
@@ -17,12 +18,13 @@ import {updateWave} from "./Scheduling/UpdateWaveInstance";
 import {nativeStoreWriteEpoch} from "./Scheduling/nativeStoreWriteEpoch";
 import {createReadProxy} from "./Tracking/createReadProxy";
 import {createWriteProxy} from "./Tracking/createWriteProxy";
-import {watchSelection} from "./Tracking/watchSelection";
+import {watchSelection} from "./Tracking/Observation/watchSelection";
 import {createAliasLedger} from "./Tracking/Aliases/AliasLedger";
 import {nativeAliasIndex} from "./Tracking/Aliases/NativeAliasIndex";
 import {isTrackable} from "./Tracking/isTrackable";
-import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {PatchObserverRegistry} from "./Transaction/PatchObserverRegistry";
+import {installState} from "./Transaction/installState";
+import {emitStoreUpdate} from "./Transaction/emitStoreUpdate";
 import {getUid} from "./Utils/getUid";
 import {IS_DEVELOPMENT} from "./Utils/DevelopmentFlag";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
@@ -78,11 +80,20 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     declare private unpublishedDraftCheck: (() => void) | undefined;
     /** The write proxy behind draft, memoized across accesses and dropped by setData. */
     protected draftProxy: T | undefined = undefined;
-
+    /** Whether a closed state publication is waiting for delivery. */
+    private publicationPending: boolean = false;
+    /** The transition fact coalesced until notifyWrites closes the batch. */
+    private pendingPublication: IStatePublication | undefined;
+    /** Exact root installation currently being applied through restore's draft diff. */
+    private activeInstallation: IStateInstallation | undefined;
     /** Bound once; draft writes invalidate ownership before any subsequent native read. */
     private readonly writeRecorder = (path: TPath): void => {
         if (isTrackable(this.data)) nativeAliasIndex.invalidate(this.data);
         this.recordWrite(path);
+        const installation = this.activeInstallation;
+        if (installation && (!this.publicationPending || this.pendingPublication !== installation)) {
+            this.rememberPublication(installation);
+        }
     };
 
     /**
@@ -151,35 +162,20 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         return createReadProxy(data, record, '', this.aliases) as unknown as TReadonly<T>;
     }
 
-    /** Adopts `data` verbatim, publishing precise changed paths (wildcard on root kind
-     * changes). Views keyed on root identity rebuild lazily; unchanged leaf readers stay asleep.
+    /** Adopts `data` verbatim through the shared install/commit/delivery boundary. */
+    public setData(data: T): T { return this.commitState(data, STATE_PUBLIC_REPLACEMENT); }
+
+    /**
+     * Installs one prepared root, records topology and changed paths, then closes publication.
+     * Library subclasses use this instead of coordinating live data, proxies, aliases and emits.
+     *
+     * @param data - the already prepared root to install
+     * @param installation - the transition's origin, owner, representation and delivery policy
      */
-    public setData(data: T): T {
-        const previous = this.data;
-
-        this.aliases?.checkState(data, '', previous);
-        if (isTrackable(previous)) nativeAliasIndex.invalidate(previous);
-        if (isTrackable(data)) nativeAliasIndex.invalidate(data);
-        this.data = data;
-        this.draftProxy = undefined;
-        this.didSetData();
-
-        // Marks this as a confirmed operation, the same as an access to draft would: an empty
-        // diff then takes emitUpdate()'s real no-op path (nothing recorded, draft touched)
-        // instead of its no-path fallback for a write that bypassed draft, where nothing is
-        // known and everything must wake.
-        this.touchDraft();
-
-        const changed = diffPaths(previous, data);
-        changed.forEach((path: TPath) => this.recordWrite(path));
-        // The replacement has landed: publish all paths even if its snapshot signal fails.
-        try {
-            if (changed.size > 0) this.patchPort.listener?.(PATCH_OPAQUE);
-        } finally {
-            this.emitUpdate();
-        }
-
-        return data;
+    protected commitState(
+        data: T, installation: IStateInstallation = STATE_PUBLIC_REPLACEMENT
+    ): T {
+        return installState(this, data, installation);
     }
 
     /** Lets subclasses synchronize derived state before replacement notifications. */
@@ -208,23 +204,27 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
      */
     public restore(data: T): void {
         const current: unknown = this.data;
+        const claim: IStateRestoreClaim | undefined = this.patchObservers?.claimRestore(data);
+        const installation: IStateInstallation = claim
+            ? {origin: 'restore', owner: claim.owner, representation: claim.representation}
+            : {origin: 'restore', representation: 'public'};
 
         this.aliases?.checkState(data, '');
 
-        // Only history passes a newly detached graph. Adopting it whole preserves aliases
-        // between plain fields and native Map keys/descriptors; applyDiff/deepClone split them.
-        if (this.patchObservers?.ownRestore(data) === true) {
-            this.setData(data);
+        // An owned endpoint may need to keep aliases across plain/native branches intact.
+        if (claim?.adopt) {
+            this.commitState(data, installation);
             return;
         }
 
         if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data)) {
-            this.setData(deepClone(data));
-
+            this.commitState(deepClone(data), installation);
             return;
         }
 
         let applied: boolean;
+        const previousInstallation = this.activeInstallation;
+        this.activeInstallation = installation;
         try {
             applied = applyDiff(
                 this.draft as unknown as Record<string, unknown>,
@@ -232,18 +232,23 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
                 data as unknown as Record<string, unknown>
             );
         } catch (error) {
-            // A throwing observer cannot strand writes already applied through the draft.
-            this.emitUpdate();
+            this.activeInstallation = previousInstallation;
+            // Publish any already-applied writes, but preserve the mutation's original failure.
+            try {
+                this.emitUpdate(undefined, true);
+            } catch {
+                // The write observer failure is already the synchronous result of restore().
+            }
             throw error;
         }
+        this.activeInstallation = previousInstallation;
 
         if (!applied) {
-            this.setData(deepClone(data));
-
+            installState(this, deepClone(data), installation, true);
             return;
         }
 
-        this.emitUpdate();
+        this.emitUpdate(undefined, true);
     }
 
     /** The type-erased half of the snapshot bridge, for callers that do not know `T`. */
@@ -358,7 +363,12 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
             let failures: unknown[] | undefined;
             const generation = this.subscriptionGeneration;
             const matched = this.subscriberIndex.match(writes);
-            failures = this.patchObservers?.publish();
+            const fact = this.publicationPending
+                ? this.pendingPublication ?? STATE_MUTATION_PUBLICATION
+                : STATE_MUTATION_PUBLICATION;
+            this.publicationPending = false;
+            this.pendingPublication = undefined;
+            failures = this.patchObservers?.publish(fact);
             matched.forEach((id: string) => {
                 // A removed/replaced registration cannot inherit an earlier event's match.
                 const record = this.subscribers[id];
@@ -451,8 +461,15 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
         }
     }
 
-    /** Publishes on the next microtask — for writes made where notifying now is unsafe. */
-    protected emitSoon(): void {
+    /** Publishes on the next microtask when synchronous delivery is unsafe.
+     *
+     * @param installation - the root transition whose facts this deferred write closes
+     * @param deferredContinuation - whether an earlier phase already queued the fact
+     */
+    protected emitSoon(installation?: IStateInstallation, deferredContinuation: boolean = false): void {
+        if (!deferredContinuation || !this.publicationPending) {
+            this.rememberPublication(installation);
+        }
         this.pendingEmit = true;
         const scheduledAt = this.version;
 
@@ -461,10 +478,24 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
             // Keep the opaque fallback, unless a synchronous emit already published it.
             if (this.version === scheduledAt || this.draftTouched || this.writes.size > 0) {
-                this.emitUpdate();
+                this.emitUpdate(undefined, true);
             }
         });
     }
+
+    /** Records a closed operation once; coalesced operations lose any one owner's identity.
+     *
+     * @param installation - the root transition, or none for an in-place mutation
+     */
+    protected rememberPublication(installation?: IStateInstallation): void {
+        if (this.publicationPending) {
+            this.pendingPublication = STATE_MIXED_PUBLICATION;
+        } else {
+            this.publicationPending = true;
+            this.pendingPublication = installation ?? STATE_MUTATION_PUBLICATION;
+        }
+    }
+
 
     /** Marks draft as used and arms the development check for a write that never published. */
     protected touchDraft(): void {
@@ -495,10 +526,7 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
     }
 
     /** Remembers one changed path, so the emit wakes only the subscribers that read it. */
-    protected recordWrite(path: TPath): void {
-        this.writes.add(path);
-    }
-
+    protected recordWrite(path: TPath): void { this.writes.add(path); }
     /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
     protected markAllChanged(): void {
         // Always a real change, unlike emitUpdate()'s own bypass fallback below (R16-07).
@@ -511,59 +539,12 @@ export class Carburetor<T extends object> implements ICarburetor<T>, INotifiable
 
     }
 
-    /** Publishes the writes recorded so far, alone or as part of an open transaction. */
-    protected emitUpdate(): void {
-        this.preEmit();
-        // Raw writes followed by emitUpdate bypass draft traps entirely.
-        if (isTrackable(this.data) && !this.draftTouched && this.writes.size === 0) {
-            nativeAliasIndex.invalidate(this.data);
-        }
-
-        const touched = this.draftTouched;
-        // Handed off, not copied: a fresh Set takes over as this.writes, so the caller below
-        // (notifyWrites, or the update batch) owns this one exclusively and may keep it as is.
-        // An empty writes Set is never handed off anywhere, so it is reused as-is instead of
-        // being replaced on every emit, including the (common) no-op ones.
-        const changed: TPathSet | undefined = this.writes.size > 0 ? this.writes : undefined;
-
-        if (changed) {
-            this.writes = new Set<TPath>();
-        }
-
-        this.draftTouched = false;
-
-        // Draft was used, but no value actually changed — there is nobody to wake.
-        if (!changed && touched) {
-            return;
-        }
-
-        // Writes bypassed draft: unknown and opaque, same as the wildcard itself (R16-07).
-        const writes = changed || new Set<TPath>([WILDCARD_PATH]);
-        this.version++;
-        nativeStoreWriteEpoch.value++;
-        this.writeLog.record(this.version, writes);
-        let failed = false;
-        let firstError: unknown;
-        if (!changed) {
-            try {
-                this.patchPort.listener?.(PATCH_OPAQUE);
-            } catch (error: unknown) {
-                failed = true;
-                firstError = error;
-            }
-        }
-
-        if (updateBatch.isActive()) {
-            updateBatch.add(this, writes);
-        } else if (failed) {
-            try {
-                this.notifyWrites(writes);
-            } catch {
-                throw firstError;
-            }
-        } else {
-            this.notifyWrites(writes);
-        }
-        if (failed) throw firstError;
+    /** Closes the completed write set through the shared pre-subscriber publication boundary.
+     *
+     * @param installation - an explicit root transition, when this write set installs one
+     * @param deferredContinuation - whether its publication fact was already queued
+     */
+    protected emitUpdate(installation?: IStateInstallation, deferredContinuation: boolean = false): void {
+        emitStoreUpdate<T>(this, installation, deferredContinuation);
     }
 }

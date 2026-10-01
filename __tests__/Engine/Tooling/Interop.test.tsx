@@ -412,6 +412,8 @@ describe('hooks interop', () => {
         act(() => carburetor.setWhich(false));
         expect(renders).toEqual(afterMount);
         expect(container.querySelector('.value')?.textContent).toEqual('same');
+        act(() => carburetor.setA('ignored'));
+        expect(renders).toEqual(afterMount);
 
         // But the subscription must have moved to `b`, or this write goes unnoticed.
         act(() => carburetor.setB('changed'));

@@ -20,6 +20,35 @@ describe('ResourceCarburetor', () => {
         expect(typeof resource.getData().updatedAt).toEqual('number');
     });
 
+    test('a distinct public setData preserves the active request and adopts its answer later', async () => {
+        const gate = deferred<string>();
+        let calls = 0;
+        let signal!: AbortSignal;
+        const resource = new ResourceCarburetor<string, string>((_args, requestSignal) => {
+            calls++;
+            signal = requestSignal;
+            return gate.promise;
+        });
+        const request = resource.load('requested');
+        const replacement = {
+            status: EResourceStatus.Idle, data: 'manual', error: undefined, updatedAt: 7,
+        };
+
+        resource.setData(replacement);
+        expect(resource.getData()).toBe(replacement);
+        expect(resource.snapshot().key).toBeUndefined();
+        expect(signal.aborted).toBe(false);
+
+        gate.resolve('late answer');
+        await request;
+
+        expect(calls).toBe(1);
+        expect(signal.aborted).toBe(false);
+        expect(resource.getData()).toMatchObject({status: EResourceStatus.Success, data: 'late answer'});
+        expect(resource.snapshot().key).toBe(JSON.stringify('requested'));
+    });
+
+
     test('records a failure as a serializable message and keeps the raw error', async () => {
         const failure = new Error('nope');
         const resource = new ResourceCarburetor<string>(() => Promise.reject(failure));

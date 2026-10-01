@@ -15,5 +15,5 @@ export const omitLockedCacheEntries = <T>(
     }
     const omitted = new Set(keys);
     return cloneOwnedGraph(data, undefined, (source, key, descriptor) =>
-        source === entries && typeof key === 'string' && omitted.has(key) ? undefined : descriptor, true);
+        source === entries && typeof key === 'string' && omitted.has(key) ? undefined : descriptor, 'operational');
 };

@@ -1,7 +1,6 @@
 import {
     IResourceCacheData,
     IResourceCacheOptions,
-    IResourceEntry,
     IResourceResolution,
     IResourceSource,
     IResourceView,
@@ -17,6 +16,7 @@ import {escapeCacheKey} from "./escapeCacheKey";
 import {getInitialCacheEntry} from "./State/getInitialCacheEntry";
 import {ResourceCacheLifecycle} from "./ResourceCacheLifecycle";
 import {isViewCurrent} from "./State/isViewCurrent";
+import {trimCacheRuntime} from "./State/Runtime/Registry";
 
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
@@ -72,80 +72,60 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         super(loader, validateOptions(options));
     }
 
-    /** Keep replacement bookkeeping current before setData delivers synchronously. */
+    /** Keep replacement bookkeeping current before the shared boundary publishes. */
     protected didSetData(): void {
         const keys = Object.keys(this.data.entries);
-
+        this.runtimeRecords?.forEach((_runtime, key) => this.reconcileFailure(key));
         this.eviction.replace(keys);
         this.viewCache.forEach((_view: IResourceView<T>, key: string) => {
             if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) {
                 this.viewCache.delete(key);
             }
         });
-        this.failures.forEach((failure, key) => {
-            if (failure.entry !== this.data.entries[key]) {
-                this.failures.delete(key);
-            }
-        });
     }
 
-    /** Reconcile affected failures before subscribers run. */
+    /** Reconcile only live raw-answer owners affected by this completed write. */
     protected preEmit(): void {
-        if (this.failures.size === 0 || (this.writes.size === 0 && this.draftTouched)) {
-            return;
-        }
-
+        if (!this.runtimeRecords || this.runtimeRecords.size === 0 ||
+            (this.writes.size === 0 && this.draftTouched)) return;
         if (this.writes.size === 0 || this.writes.has(WILDCARD_PATH) || this.writes.has('entries')) {
-            this.failures.forEach(this.reconcileFailure, this);
+            this.runtimeRecords.forEach((_runtime, key) => this.reconcileFailure(key));
         } else {
             this.writes.forEach(this.reconcileFailureWrite, this);
         }
     }
 
-    /**
-     * Check one raw rejection against the entry that owns it and its serializable answer.
+    /** Preserve raw rejection only while its exact entry and wire answer remain authoritative.
      *
-     * @param failure - the request's recorded raw rejection and wire description
-     * @param key - the owning cache key
+     * @param key - encoded cache key whose answer is reconciled.
      */
-    private reconcileFailure(
-        failure: {value: unknown; error: string; status: EResourceStatus; entry: IResourceEntry<T>},
-        key: string
-    ): void {
+    private reconcileFailure(key: string): void {
+        const runtime = this.runtimeFor(key);
+        const answer = runtime?.answer;
+        const failure = answer?.failure;
+        if (!runtime || !answer || !failure) return;
         const entry = this.data.entries[key];
-        // A retry temporarily hides the old Error; abort can leave its raw failure available.
-        if (entry === failure.entry && failure.status === EResourceStatus.Error && entry.error === undefined
-            && ((entry.status === EResourceStatus.Pending && this.requests.has(key))
-                || (entry.status === EResourceStatus.Idle && entry.failed))) {
-            return;
-        }
-
-        if (!entry || entry !== failure.entry || entry.status !== failure.status || entry.error !== failure.error) {
-            this.failures.delete(key);
+        if (entry === answer.entry && failure.status === EResourceStatus.Error && entry.error === undefined
+            && ((entry.status === EResourceStatus.Pending && runtime.request !== undefined)
+                || (entry.status === EResourceStatus.Idle && entry.failed))) return;
+        if (!entry || entry !== answer.entry || entry.status !== failure.status || entry.error !== failure.message) {
+            answer.failure = undefined;
+            this.runtimeRecords = trimCacheRuntime(this.runtimeRecords, key, runtime);
         }
     }
 
-    /**
-     * Resolve a precise write to its owner without scanning unrelated failures.
-     * A whole-entry replacement can be diffed down to a single changed field.
+    /** Resolve one precise write to its entry without scanning unrelated runtime owners.
      *
-     * @param path - the recorded changed path
+     * @param path - changed store path.
      */
     private reconcileFailureWrite(path: TPath): void {
-        if (!path.startsWith(ENTRY_PATH_PREFIX)) {
-            return;
-        }
-
+        if (!path.startsWith(ENTRY_PATH_PREFIX)) return;
         const end = path.indexOf(PATH_SEPARATOR, ENTRY_PATH_PREFIX.length);
         const escaped = path.slice(ENTRY_PATH_PREFIX.length, end === -1 ? undefined : end);
         const key = escaped.includes('~')
             ? escaped.replace(/~1/g, PATH_SEPARATOR).replace(/~0/g, '~')
             : escaped;
-        const failure = this.failures.get(key);
-
-        if (failure) {
-            this.reconcileFailure(failure, key);
-        }
+        this.reconcileFailure(key);
     }
 
     /**
@@ -270,12 +250,13 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      */
     public getFailure(args: TArgs): unknown {
         const key = this.keyOf(args);
-        const failure = this.failures.get(key);
-        if (failure && failure.entry !== this.data.entries[key]) {
-            this.failures.delete(key);
+        const runtime = this.runtimeFor(key);
+        const answer = runtime?.answer;
+        if (answer && answer.entry !== this.data.entries[key]) {
+            runtime.answer = undefined;
+            this.runtimeRecords = trimCacheRuntime(this.runtimeRecords, key, runtime);
             return undefined;
         }
-
-        return failure?.value;
+        return answer?.failure?.value;
     }
 }

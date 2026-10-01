@@ -671,6 +671,11 @@ undo/redo subscribers or superseding abort listeners are fresh branches and inva
 only history's own restore installation is suppressed. Transactions and throttles still coalesce
 their writes into one published step. Multiple histories keep independent limits and disposers;
 attaching or replacing a patch-only observer does not disconnect those histories.
+Native producers carry explicit installation origin/owner and graph representation through a shared
+commit boundary. A deferred replay followed by a fresh write branches from the installed replay
+state; coalescing cannot turn that fresh write into the recorder's own replay.
+Watch, class selections and hook snapshots transfer completed read sets only after selection,
+comparison and required detachment finish. Live computed dependencies remain deliberately extendable.
 History owns ordinary `Map`, `Set` and `Date` endpoints independently of `snapshot()`.
 Native-containing state uses complete detached graphs, preserving Map-key aliases, native
 descriptors and backlinks through repeated undo/redo and branching. Unsupported mutable
@@ -948,6 +953,11 @@ a test pins the exported surface so one does not slip in by accident.
   Publication runs before ordinary subscribers after transaction/throttle coalescing.
   `ownRestore` runs with the exact argument after cancellation listeners can supersede it;
   it returns true only for a fresh replay-owned graph. Patch-only observers use `{patch}`.
+  History needs `getData`, `getVersion`, `restore` and `IPatchSource`, not unrelated store read APIs.
+  Existing boolean `ownRestore` handoffs and zero-argument `publication` callbacks remain supported.
+  Native sources may also deliver closed publication facts and an optional `restoreClaim` carrying
+  exact installation ownership; custom producers must not replace the exact handoff with a broad
+  replay flag that suppresses subscriber actions.
 - Overriding a lifecycle method without calling `super` silently disables effects, subscription
   cleanup or the props gate. Override `useEffects` / `unUseEffects` instead.
 

@@ -36,7 +36,7 @@ export const prepareCacheRequest = <T>(
             descriptor.configurable = true;
         }
         return descriptor;
-    }, true);
+    }, 'operational');
     const next = prepared.entries[key];
     if (entry.status === EResourceStatus.Success) next.refreshing = true;
     else {
