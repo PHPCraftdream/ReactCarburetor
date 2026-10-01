@@ -53,13 +53,14 @@ export class EvictionLedger {
     }
 
     /**
-     * Records that an entry is gone, dropping its access record too.
+     * Commit one actual removal. A reentrant replacement keeps its newer access record.
      *
      * @param key - the entry removed
+     * @param replaced - whether a newer entry now owns the same key
      */
-    public forget(key: string): void {
+    public forget(key: string, replaced = false): void {
         this.count -= 1;
-        this.lastUsed.delete(key);
+        if (!replaced) this.lastUsed.delete(key);
     }
 
     /** Clears everything for a wholesale rebuild; the caller re-touches and re-counts after. */
@@ -117,11 +118,9 @@ export class EvictionLedger {
     }
 
     /**
-     * Walks `lastUsed` oldest-first for up to "count minus maxEntries" unretained keys,
-     * stopping as soon as it has enough — no filtering or sorting of the whole entry set.
-     *
-     * Updates `count` and `lastUsed` for the keys it selects, and remembers the outcome for
-     * the next `shouldSkip` call.
+     * Selects up to `count - maxEntries` unretained victims without changing the ledger.
+     * The owner commits each removal only after its dictionary key is gone.
+     * A scan coming up short is remembered by `shouldSkip`.
      *
      * @param maxEntries - the owner's configured bound
      * @param isRetained - true when a candidate must not be evicted (in flight, or read)
@@ -145,8 +144,6 @@ export class EvictionLedger {
         }
 
         this.retainedAtCount = doomed.length < excess ? this.count : undefined;
-        this.count -= doomed.length;
-        doomed.forEach((key: string) => this.lastUsed.delete(key));
 
         return doomed;
     }
