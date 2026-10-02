@@ -1,7 +1,7 @@
 import {IDict, TSubscriber} from "@/Carburetor/Models/Base";
 import {IComputed, IComputedOptions, TComputeBody, TComputedReader} from "@/Carburetor/Models/Derived";
 import {TPath} from "@/Carburetor/Models/Paths";
-import {ICarburetor, ISubscribeOptions} from "@/Carburetor/Models/Store";
+import {IReadableCarburetor, ISubscribeOptions} from "@/Carburetor/Models/Store";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
@@ -219,7 +219,7 @@ export class Computed<R> implements IComputed<R> {
     protected recompute(wasUnobserved: boolean = this.subscribers.size === 0): void {
         const collected: IDict<IDependency> = {};
 
-        const track = (source: ICarburetor<object> | IComputed<unknown>): unknown => {
+        const track = (source: IReadableCarburetor<object> | IComputed<unknown>): unknown => {
             // Encode arbitrary public ids so __proto__ is an ordinary data key.
             const cuid = ':' + source.getUID();
             let dependency = computedDependencies.ownDependency(collected, cuid);

@@ -26,10 +26,19 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
 // so sharing it across keys and across ResourceCache instances is safe.
 const ABSENT_VIEW: IResourceView<unknown> = Object.freeze({...getInitialCacheEntry<unknown>(), stale: true});
 const ENTRY_PATH_PREFIX = `entries${PATH_SEPARATOR}`;
-const PRIMED_LIMIT = 4096;
+const DEFAULT_KEY_CACHE_SIZE = 4096;
 
 /** Arguments a key can be derived from without serialization: a primitive value encodes to itself. */
 type TPrimitiveArgs = string | number | boolean | null | undefined;
+
+/** One Map-owned key/path record with intrusive links, avoiding a separate LRU node. */
+interface IPrimedKey {
+    key: string;
+    path: TPath;
+    argument: TPrimitiveArgs;
+    previous: IPrimedKey | undefined;
+    next: IPrimedKey | undefined;
+}
 
 const validateOptions = (options: IResourceCacheOptions): IResourceCacheOptions => {
     if (options.ttl !== undefined && (Number.isNaN(options.ttl) || options.ttl < 0)) {
@@ -39,6 +48,10 @@ const validateOptions = (options: IResourceCacheOptions): IResourceCacheOptions 
     if (options.maxEntries !== undefined && options.maxEntries !== Infinity
         && (!Number.isInteger(options.maxEntries) || options.maxEntries < 0)) {
         throw new RangeError('ResourceCache maxEntries must be a non-negative integer or Infinity');
+    }
+    if (options.keyCacheSize !== undefined &&
+        (!Number.isSafeInteger(options.keyCacheSize) || options.keyCacheSize < 0)) {
+        throw new RangeError('ResourceCache keyCacheSize must be a non-negative safe integer');
     }
 
     return options;
@@ -66,16 +79,23 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
     protected lastKeyValue: string | undefined = undefined;
     /** Whether the mutable-arguments diagnostic was already reported. */
     protected keyMutationReported: boolean = false;
-    /** Key and path per primitive argument set, bounded by clearing at the limit. */
-    private primedKeys: Map<TPrimitiveArgs, {key: string; path: TPath}> | undefined = undefined;
+    /** Primitive key/path records also form the intrusive least-recently-used list. */
+    private primedKeys: Map<TPrimitiveArgs, IPrimedKey> | undefined = undefined;
+    /** Least-recent and most-recent retained records. */
+    private primedHead: IPrimedKey | undefined = undefined;
+    /** Most-recent retained record. */
+    private primedTail: IPrimedKey | undefined = undefined;
+    /** Record-count budget; each memo record also carries its two intrusive LRU links. */
+    private readonly keyCacheSize: number;
 
     /** Create a keyed cache for a resource loader.
      *
      * @param loader - Function that loads a resource.
-     * @param options - Cache and scheduler settings.
+     * @param options - Cache settings, including the primitive key memo budget.
      */
     constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
         super(loader, validateOptions(options));
+        this.keyCacheSize = options.keyCacheSize === undefined ? DEFAULT_KEY_CACHE_SIZE : options.keyCacheSize;
     }
 
     /** Keep replacement bookkeeping current before the shared boundary publishes. */
@@ -134,11 +154,12 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         this.reconcileFailure(key);
     }
 
-    /** Cached key and path for a primitive argument set, avoiding stringify, escape and concat.
+    /** Cached key and path for primitive argument sets, avoiding stringify, escape and concat.
      *
      * The first occurrence computes through the ordinary keyOf derivation, so the cached key is
-     * byte-identical to what keyOf would return; repeats answer from the map. Object arguments
-     * return undefined and keep the memoized mutation check.
+     * byte-identical to what keyOf would return; repeats answer from the map. The bounded LRU
+     * evicts only its least-recently-used record on a miss. Object arguments return undefined and
+     * keep the memoized mutation check.
      *
      * @param args - the loader arguments to derive the key from
      */
@@ -147,23 +168,60 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
             && typeof args !== 'boolean') return undefined;
 
         const primitive = args as TPrimitiveArgs;
-        let primed = this.primedKeys?.get(primitive);
+        const records = this.primedKeys;
+        const cached = records?.get(primitive);
 
-        if (primed === undefined) {
-            const key = escapeCacheKey(JSON.stringify(args === undefined ? null : args) as string);
-
-            primed = {key, path: joinPath('entries', key)};
-
-            if (this.primedKeys === undefined) {
-                this.primedKeys = new Map<TPrimitiveArgs, {key: string; path: TPath}>();
-            } else if (this.primedKeys.size >= PRIMED_LIMIT) {
-                this.primedKeys.clear();
-            }
-
-            this.primedKeys.set(primitive, primed);
+        if (cached !== undefined) {
+            if (this.primedTail !== cached) this.touchPrimed(cached);
+            return cached;
         }
 
+        const key = escapeCacheKey(JSON.stringify(args === undefined ? null : args) as string);
+        const path = joinPath('entries', key);
+        if (this.keyCacheSize === 0) {
+            return {key, path};
+        }
+
+        const retained = this.primedKeys ??= new Map<TPrimitiveArgs, IPrimedKey>();
+        if (retained.size >= this.keyCacheSize) {
+            const oldest = this.primedHead;
+            if (oldest === undefined) throw new Error('ResourceCache: primitive key LRU list is empty');
+
+            this.primedHead = oldest.next;
+            if (this.primedHead === undefined) this.primedTail = undefined;
+            else this.primedHead.previous = undefined;
+            retained.delete(oldest.argument);
+        }
+
+        const primed: IPrimedKey = {
+            key, path, argument: primitive, previous: this.primedTail, next: undefined,
+        };
+        retained.set(primitive, primed);
+        if (this.primedTail === undefined) this.primedHead = primed;
+        else this.primedTail.next = primed;
+        this.primedTail = primed;
+
         return primed;
+    }
+
+    /** Move a retained non-tail record without changing the lookup Map.
+     *
+     * @param primed - retained record to promote.
+     */
+    private touchPrimed(primed: IPrimedKey): void {
+        const tail = this.primedTail;
+
+        const previous = primed.previous;
+        const next = primed.next;
+        if (previous === undefined) this.primedHead = next;
+        else previous.next = next;
+        if (next !== undefined) next.previous = previous;
+
+        primed.previous = tail;
+        primed.next = undefined;
+        if (tail === undefined) this.primedHead = primed;
+        else tail.next = primed;
+        this.primedTail = primed;
     }
 
     /**

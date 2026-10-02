@@ -127,9 +127,36 @@ const detach = (
             seen.set(target, copy);
         }
 
-        for (let index = 0; index < length; index++) {
-            if (Object.prototype.hasOwnProperty.call(value, index)) {
-                copy[index] = detach(value[index], seen, onLiveInstance, onArraySubclass);
+        let densePrefix = 0;
+
+        for (; densePrefix < length; densePrefix++) {
+            if (!Object.prototype.hasOwnProperty.call(value, densePrefix)) {
+                break;
+            }
+
+            copy[densePrefix] = detach(value[densePrefix], seen, onLiveInstance, onArraySubclass);
+        }
+
+        if (densePrefix < length) {
+            // ownKeys uses the live view's structural read trap, so adding or deleting a slot
+            // wakes a sparse selection even when that slot previously held a hole.
+            const ownKeys = Reflect.ownKeys(value);
+
+            for (let index = 0; index < ownKeys.length; index++) {
+                const key = ownKeys[index];
+
+                if (typeof key !== 'string') {
+                    continue;
+                }
+
+                const numericIndex = Number(key);
+
+                if (!Number.isInteger(numericIndex) || numericIndex < densePrefix ||
+                    numericIndex >= 0xFFFFFFFF || String(numericIndex) !== key) {
+                    continue;
+                }
+
+                copy[numericIndex] = detach(value[numericIndex], seen, onLiveInstance, onArraySubclass);
             }
         }
 

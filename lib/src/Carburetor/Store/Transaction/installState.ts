@@ -31,11 +31,16 @@ export const installState = <T extends object>(
     if (isTrackable(data)) nativeAliasIndex.invalidate(data);
     store.data = data;
     store.draftProxy = undefined;
+    // Deferred observers may still hold a prior mutation after the store fact was closed.
+    // Mix in a value-equal installation without scheduling a publication of its own.
+    if (changed.size === 0 && !transition.wildcard) {
+        store.patchObservers?.markPendingInstall();
+    }
 
     store.touchDraft();
     changed.forEach((path: TPath) => store.recordWrite(path));
     if (transition.wildcard) store.recordWrite(WILDCARD_PATH);
-    if (changed.size > 0 || transition.wildcard) {
+    if (changed.size > 0 || transition.wildcard || store.publicationPending) {
         if (!continuation || !store.publicationPending || store.pendingPublication !== transition) {
             store.rememberPublication(transition);
         }

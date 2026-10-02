@@ -6,7 +6,7 @@ import {IComputed} from "@/Carburetor/Models/Derived";
 import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
-import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
@@ -40,7 +40,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * the same; `setData`/`restore` rebuild it. Reads outside the attempt that last called this
      * method record nothing.
      */
-    public useCarburetor<T extends object>(carburetor: ICarburetor<T>): TReadonly<T> {
+    public useCarburetor<T extends object>(carburetor: IReadableCarburetor<T>): TReadonly<T> {
         const attempt = this.renderAttempt;
         const entry = this.track(carburetor);
 
@@ -56,7 +56,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * its per-attempt source resolver and recorder.
      */
     private declareConnection<T extends object>(
-        source: ICarburetor<T> | (() => ICarburetor<T>)
+        source: IReadableCarburetor<T> | (() => IReadableCarburetor<T>)
     ): IConnectionSource<T> {
         return declareConnection(this.connections, this.getRenderAttempt, source);
     }
@@ -109,7 +109,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * @param source - the carburetor to read, or a function resolving it at each attempt's
      * first read so a prop swap re-points the connection at the new store
      */
-    public connect<T extends object>(source: ICarburetor<T> | (() => ICarburetor<T>)): TReadonly<T> {
+    public connect<T extends object>(source: IReadableCarburetor<T> | (() => IReadableCarburetor<T>)): TReadonly<T> {
         const declared = this.declareConnection(source);
 
         return buildPersistentView(declared);
@@ -155,7 +155,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * @param select - picks the part of the data this child consumes; runs on every call
      */
     public connectSelection<T extends object, R>(
-        source: ICarburetor<T> | (() => ICarburetor<T>),
+        source: IReadableCarburetor<T> | (() => IReadableCarburetor<T>),
         select: (data: TReadonly<T>) => R
     ): (() => R) {
         const declared = this.declareConnection(source);

@@ -1,7 +1,7 @@
 "use client";
 
 import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react";
-import {ICarburetor, TReadonly, TSubscriber} from "@/Carburetor";
+import {IReadableCarburetor, TReadonly, TSubscriber} from "@/Carburetor";
 import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
@@ -13,7 +13,7 @@ import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/tr
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<T extends object, R> {
-    carburetor: ICarburetor<T> | undefined;
+    carburetor: IReadableCarburetor<T> | undefined;
     select: TSelector<T, R> | undefined;
     isEqual: TValueComparator<R> | undefined;
     version: number;
@@ -24,14 +24,14 @@ interface ICacheEntry<T extends object, R> {
 
 /** The one live subscription: enough to undo it and to tell a moved read set from a stable one. */
 interface IActiveSubscription<T extends object> {
-    carburetor: ICarburetor<T>;
+    carburetor: IReadableCarburetor<T>;
     id: string;
     reads: TCompletedReads;
 }
 
 /** getSnapshot's persistent root view for one hook instance, rebuilt only when it goes stale. */
 interface IRootView<T extends object> {
-    carburetor: ICarburetor<T>;
+    carburetor: IReadableCarburetor<T>;
     data: T;
     view: TReadonly<T>;
 }
@@ -64,7 +64,7 @@ const sameReads = (a: TCompletedReads, b: TCompletedReads): boolean => {
  */
 const resolveView = <T extends object>(
     cached: IRootView<T> | null,
-    carburetor: ICarburetor<T>,
+    carburetor: IReadableCarburetor<T>,
     record: TPathRecorder
 ): IRootView<T> => {
     const data: T = carburetor.getData();
@@ -125,7 +125,7 @@ const detach = <R>(value: R): R => {
  * content when its keys are primitives; object keys and class instances always count as changed.
  */
 export const useCarburetorValue = <T extends object, R>(
-    carburetor: ICarburetor<T>,
+    carburetor: IReadableCarburetor<T>,
     select: TSelector<T, R>,
     isEqual: TValueComparator<R> = sameSelection
 ): R => {

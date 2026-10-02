@@ -23,7 +23,10 @@ export interface IStorePublicationPort<T extends object> {
 export interface IStateInstallPort<T extends object> extends IStorePublicationPort<T> {
     aliases: TAliasLedger;
     draftProxy: T | undefined;
-    patchObservers: {claimRestore(state: unknown): IStateRestoreClaim | undefined} | undefined;
+    patchObservers: {
+        claimRestore(state: unknown): IStateRestoreClaim | undefined;
+        markPendingInstall(): void;
+    } | undefined;
     didSetData(): void;
     touchDraft(): void;
     recordWrite(path: TPath): void;

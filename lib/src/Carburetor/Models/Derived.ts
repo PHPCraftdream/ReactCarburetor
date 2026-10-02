@@ -1,5 +1,5 @@
 import {TReadonly} from "./Base";
-import {ICarburetor, ICarburetorSubscription} from "./Store";
+import {IReadableCarburetor, ICarburetorSubscription} from "./Store";
 
 /** A memoized derived value that tracks its own dependencies. */
 export interface IComputed<R> extends ICarburetorSubscription {
@@ -7,13 +7,12 @@ export interface IComputed<R> extends ICarburetorSubscription {
 }
 
 /**
- * Reads a dependency with tracking, from inside a computed body. A carburetor is tracked
- * per path; another computed is tracked as a whole, because its value is the granularity
- * it notifies at. Reading a computed any other way — calling `get()` on it directly —
- * registers no dependency and leaves the outer value stale.
+ * A readable carburetor source is tracked per path; another computed is tracked as a whole,
+ * because its value is the granularity it notifies at. Reading a computed any other way —
+ * calling `get()` on it directly — registers no dependency and leaves the outer value stale.
  */
 export type TComputedReader =
-    (<T extends object>(carburetor: ICarburetor<T>) => TReadonly<T>)
+    (<T extends object>(carburetor: IReadableCarburetor<T>) => TReadonly<T>)
     & (<R>(computed: IComputed<R>) => R);
 
 /** Body of a computed: everything it reads through `read` becomes its dependency. */

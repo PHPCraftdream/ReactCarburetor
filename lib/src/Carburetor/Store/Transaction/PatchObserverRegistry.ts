@@ -160,11 +160,23 @@ export class PatchObserverRegistry {
         return claim;
     }
 
+    /** Marks only already-queued publications mixed with a value-equal root installation.
+     *
+     * This never queues or schedules a publication of its own.
+     */
+    public markPendingInstall(): void {
+        for (const registration of this.registrations.values()) {
+            if (!registration.publicationPending) continue;
+            registration.publicationAmbiguous = true;
+            registration.publicationFact = STATE_MIXED_PUBLICATION;
+        }
+    }
+
     /**
      * Queues one registration's publication; returns the scheduler failure, if any.
      *
-     * @param registration - the attachment whose callback is scheduled
-     * @param fact - the closed transition fact, mixed in when one is already pending
+     * @param registration - the attachment whose publication is scheduled
+     * @param fact - the closed transition fact, mixed when origins cannot be combined
      */
     private queuePublication(registration: IRegistration, fact: IStatePublication): unknown {
         if (!registration.deliverPublication || registration.schedulerKey === undefined) {
@@ -173,6 +185,8 @@ export class PatchObserverRegistry {
         if (!registration.publicationPending) {
             registration.publicationPending = true;
             registration.publicationFact = fact;
+        } else if (registration.publicationFact?.origin === 'mutation' && fact.origin === 'mutation') {
+            registration.publicationFact = STATE_MUTATION_PUBLICATION;
         } else {
             registration.publicationAmbiguous = true;
             registration.publicationFact = STATE_MIXED_PUBLICATION;

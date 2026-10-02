@@ -61,13 +61,19 @@ const TSCONFIG = (format) => ({
 
 const HARNESS_ESM = `import * as React from 'react';
 import {renderToString} from 'react-dom/server';
-import {App, registry} from './out/consumer.js';
+import {App, registry, publishReadable} from './out/consumer.js';
 
 const html = renderToString(React.createElement(App));
+publishReadable({count: 9}, new Set(['count']));
+const refreshed = renderToString(React.createElement(App));
 const checks = [
     ['direct output', html.includes('direct:1:1:2:idle')],
     ['scoped output', html.includes('scoped:5')],
     ['hooks output', html.includes('hooks:1:2')],
+    ['readable class output', html.includes('readable:7:7:7')],
+    ['readable hook output', html.includes('hooks:1:2:readable:7:7')],
+    ['readable class refresh', refreshed.includes('readable:9:9:9')],
+    ['readable computed freshness', refreshed.includes('hooks:1:2:readable:9:9')],
     ['instanceof this React.Component', registry.instance instanceof React.Component],
 ];
 const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
@@ -82,13 +88,19 @@ console.log('OK');
 
 const HARNESS_CJS = `const React = require('react');
 const {renderToString} = require('react-dom/server');
-const {App, registry} = require('./out/consumer.js');
+const {App, registry, publishReadable} = require('./out/consumer.js');
 
 const html = renderToString(React.createElement(App));
+publishReadable({count: 9}, new Set(['count']));
+const refreshed = renderToString(React.createElement(App));
 const checks = [
     ['direct output', html.includes('direct:1:1:2:idle')],
     ['scoped output', html.includes('scoped:5')],
     ['hooks output', html.includes('hooks:1:2')],
+    ['readable class output', html.includes('readable:7:7:7')],
+    ['readable hook output', html.includes('hooks:1:2:readable:7:7')],
+    ['readable class refresh', refreshed.includes('readable:9:9:9')],
+    ['readable computed freshness', refreshed.includes('hooks:1:2:readable:9:9')],
     ['instanceof this React.Component', registry.instance instanceof React.Component],
 ];
 const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);

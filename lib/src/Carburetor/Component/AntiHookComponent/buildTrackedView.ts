@@ -1,6 +1,6 @@
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {TPath} from "@/Carburetor/Models/Paths";
-import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {IAttemptEntry, IRenderAttempt, ITrackedView} from "@/Carburetor/Component/Models/Connection";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 
@@ -21,7 +21,7 @@ import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
  */
 export const buildTrackedView = <T extends object>(
     views: WeakMap<ICarburetorSubscription, ITrackedView<object>>,
-    carburetor: ICarburetor<T>,
+    carburetor: IReadableCarburetor<T>,
     getRenderAttempt: () => IRenderAttempt | undefined,
     attempt: IRenderAttempt | undefined,
     entry: IAttemptEntry

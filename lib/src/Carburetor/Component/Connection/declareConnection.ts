@@ -1,4 +1,4 @@
-import {ICarburetor} from "@/Carburetor/Models/Store";
+import {IReadableCarburetor} from "@/Carburetor/Models/Store";
 import {TPath, TPathRecorder} from "@/Carburetor/Models/Paths";
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
@@ -19,7 +19,7 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
     /** The connection this declaration registered. */
     public readonly connection: IConnection;
     /** The carburetor resolver this declaration was created with, normalized to a function. */
-    public readonly getCarburetor: () => ICarburetor<T>;
+    public readonly getCarburetor: () => IReadableCarburetor<T>;
     /** The read recorder every read through the persistent view reports to; bound once. */
     public readonly recorder: TPathRecorder;
 
@@ -41,7 +41,7 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
      */
     constructor(
         private readonly getAttempt: () => IRenderAttempt | undefined,
-        source: ICarburetor<T> | (() => ICarburetor<T>)
+        source: IReadableCarburetor<T> | (() => IReadableCarburetor<T>)
     ) {
         this.getCarburetor = typeof source === 'function' ? source : () => source;
         this.connection = {
@@ -79,7 +79,7 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
      * read of the same attempt reuses that instance. Outside an attempt nothing is cached, so a
      * handler read or the declaration-time shape probe always sees the resolver's current answer.
      */
-    public resolveAttemptSource(): ICarburetor<T> {
+    public resolveAttemptSource(): IReadableCarburetor<T> {
         const attempt = this.getAttempt();
 
         if (!attempt) {
@@ -91,7 +91,7 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
         const connection = this.connection;
 
         if (connection.attemptSource !== undefined) {
-            return connection.attemptSource as ICarburetor<T>;
+            return connection.attemptSource as IReadableCarburetor<T>;
         }
 
         const carburetor = this.getCarburetor();
@@ -155,7 +155,7 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
 export const declareConnection = <T extends object>(
     connections: IConnection[],
     getAttempt: () => IRenderAttempt | undefined,
-    source: ICarburetor<T> | (() => ICarburetor<T>)
+    source: IReadableCarburetor<T> | (() => IReadableCarburetor<T>)
 ): IConnectionSource<T> => {
     const state = new ConnectionSource<T>(getAttempt, source);
 

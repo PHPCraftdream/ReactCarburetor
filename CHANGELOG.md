@@ -9,6 +9,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Public `IReadableCarburetor<T>`: read/subscription capabilities accepted by hooks, class read APIs
+  and computed readers, without requiring mutation or inspectable tooling methods.
+- `ResourceCache` option `keyCacheSize`: a finite primitive key/path memo budget (default4096,
+  zero disables). The LRU evicts one record rather than clearing the working set; records include
+  link metadata, so the budget is not measured in bytes.
+
 - `persist(store, {coalesce: true})`: one `JSON.stringify` per microtask instead of one per write
   (0.94–1.44 ms per keystroke at 4000 items). Off by default, so a write still lands in storage
   before the call that caused it returns; the disposer flushes a pending write.
@@ -164,6 +170,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Dual licensing under MIT OR Apache-2.0.
 
 ### Changed
+
+- Settled readonly `ResourceCache.forgetAll()` shares one ownership/removal preparation.
+  Active-request removal retains synchronous abort-listener ordering and its conservative fallback.
+- Mutation-only primitive history cancellations avoid unrelated full-state capture. Empty-diff root
+  installations mark existing queued publications mixed, including deferred descriptor changes;
+  standalone no-value-change installation remains silent.
+- Sparse selections retain the dense-prefix path, then traverse present own indices at the first
+  hole, preserving structural tracking without a library loop over every absent slot.
 
 - Store root replacement and sync/deferred delivery share one installation/commit boundary with
   explicit origin, owner and graph representation. Ordinary replacement/mutation facts reuse frozen
@@ -441,6 +455,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   selection; `useCarburetorValue` initializers run once instead of every render.
 
 ### Fixed
+
+- Selection equality observes Map/Set insertion order, keeps equal Invalid Date snapshots stable,
+  and canonicalizes native/plain view identity without losing tracked reads or alias topology.
+- Sparse selection consumers observe hole-to-own-undefined additions and later deletions.
 
 - A scalar draft write no longer rebuilds the native-alias index: with a `Map` in the store, each
   write-then-read cycle walked the whole tree (128 rebuilds over 64 cycles, now 2). Only a

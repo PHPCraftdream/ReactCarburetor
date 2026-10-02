@@ -50,9 +50,8 @@ export interface ISubscribeOptions {
 
 /**
  * The part of the carburetor API that does not depend on the data type.
- * A component only needs the subscription surface, never the data itself, so it keeps
- * carburetors in this shape — that is how differently typed carburetors share one dictionary
- * without `any`.
+ * Tracking ledgers need only the subscription surface, never the data itself, so differently
+ * typed sources share one dictionary without `any`.
  */
 export interface ICarburetorSubscription {
     getUID: () => string;
@@ -73,8 +72,12 @@ export interface IInspectable extends ICarburetorSubscription {
     snapshot: () => unknown;
 }
 
-export interface ICarburetor<T> extends IInspectable {
-    /** Untracked data, for code outside render. */
+/**
+ * Read and subscription capabilities for consumers that do not need store writes or tooling.
+ * `getData()` remains the source's raw value; this interface does not promise deep immutability.
+ */
+export interface IReadableCarburetor<T> extends ICarburetorSubscription {
+    /** Untracked data, for code outside render. The returned value is not deeply immutable. */
     getData: () => T;
     /**
      * Tracked data: every field read is reported to `record`. Documented, alongside
@@ -82,6 +85,9 @@ export interface ICarburetor<T> extends IInspectable {
      * the path strings `record` receives is not: R16-01 changed their shape once already.
      */
     read: (record: (path: string) => void) => TReadonly<T>;
+}
+
+export interface ICarburetor<T> extends IReadableCarburetor<T>, IInspectable {
     setData: (data: T) => T;
     /** Copies plain state; native Map/Set/Date and class instances remain shared by reference. */
     snapshot: () => T;

@@ -70,11 +70,23 @@ const sameKeyedContent = (
 
     return sameOrder && sameContent;
 };
+/** Array index properties are the canonical integer keys below the array-index limit. */
+const isArrayIndex = (key: PropertyKey): key is string => {
+    if (typeof key !== 'string') {
+        return false;
+    }
 
+    const index = Number(key);
+
+    return Number.isInteger(index) && index >= 0 && index < 0xFFFFFFFF && String(index) === key;
+};
+
+/** SameValueZero is the equality used by native Map keys and Set members. */
+const sameValueZero = (a: unknown, b: unknown): boolean =>
+    a === b || (typeof a === 'number' && typeof b === 'number' && Number.isNaN(a) && Number.isNaN(b));
 /**
- * Array equality in the selection model: equal `length` and pairwise equal elements, holes
- * compared as holes. Elements are still read where they exist so a live branch stays
- * subscribed even after a mismatch.
+ * Dense prefixes keep the per-index fast path. At the first hole, ownKeys records a structural
+ * read and ordered index traversal compares the remaining sparse slots without scanning length.
  */
 const sameArrayContent = (
     snapshot: unknown[],
@@ -83,34 +95,96 @@ const sameArrayContent = (
     freshToPrevious: WeakMap<object, object>
 ): boolean => {
     let same = true;
+    let densePrefix = 0;
 
-    for (let index = 0; index < snapshot.length; index++) {
-        const hasPrevious = Object.prototype.hasOwnProperty.call(snapshot, index);
-        const hasNext = Object.prototype.hasOwnProperty.call(next, index);
+    for (; densePrefix < snapshot.length; densePrefix++) {
+        const hasPrevious = Object.prototype.hasOwnProperty.call(snapshot, densePrefix);
+        const hasNext = Object.prototype.hasOwnProperty.call(next, densePrefix);
 
-        if (hasPrevious !== hasNext) {
-            same = false;
+        if (!hasPrevious || !hasNext) {
+            if (hasPrevious !== hasNext) same = false;
 
-            continue;
+            break;
         }
 
-        if (hasPrevious && !sameValue(snapshot[index], next[index], previousToFresh, freshToPrevious)) {
+        if (!sameValue(snapshot[densePrefix], Reflect.get(next, densePrefix), previousToFresh, freshToPrevious)) {
             same = false;
         }
     }
 
-    return same;
+    if (densePrefix === snapshot.length) {
+        return same;
+    }
+
+    const previousKeys = Reflect.ownKeys(snapshot);
+    const freshKeys = Reflect.ownKeys(next);
+    let previousIndex = densePrefix;
+    let freshIndex = densePrefix;
+
+    while (true) {
+        while (previousIndex < previousKeys.length && !isArrayIndex(previousKeys[previousIndex])) {
+            previousIndex++;
+        }
+
+        while (freshIndex < freshKeys.length && !isArrayIndex(freshKeys[freshIndex])) {
+            freshIndex++;
+        }
+
+        const hasPrevious = previousIndex < previousKeys.length && isArrayIndex(previousKeys[previousIndex]);
+        const hasFresh = freshIndex < freshKeys.length && isArrayIndex(freshKeys[freshIndex]);
+
+        if (!hasPrevious && !hasFresh) {
+            return same;
+        }
+
+        if (!hasPrevious) {
+            same = false;
+            Reflect.get(next, freshKeys[freshIndex] as string);
+            freshIndex++;
+
+            continue;
+        }
+
+        if (!hasFresh) {
+            same = false;
+            previousIndex++;
+
+            continue;
+        }
+
+        const previousKey = previousKeys[previousIndex] as string;
+        const freshKey = freshKeys[freshIndex] as string;
+        const previousNumericIndex = Number(previousKey);
+        const freshNumericIndex = Number(freshKey);
+
+        if (previousKey === freshKey) {
+            if (!sameValue(
+                snapshot[previousNumericIndex],
+                Reflect.get(next, freshKey),
+                previousToFresh,
+                freshToPrevious
+            )) {
+                same = false;
+            }
+
+            previousIndex++;
+            freshIndex++;
+        } else if (previousNumericIndex < freshNumericIndex) {
+            same = false;
+            previousIndex++;
+        } else {
+            same = false;
+            Reflect.get(next, freshKey);
+            freshIndex++;
+        }
+    }
 };
-
-/** A detached Date equals the live one when the times match; own Date fields are not in the model. */
+/** A detached Date equals the live one when the timestamps are Object.is-equal. */
 const sameDateContent = (snapshot: Date, next: Date): boolean =>
-    Date.prototype.getTime.call(snapshot) === Date.prototype.getTime.call(next);
-
+    Object.is(Date.prototype.getTime.call(snapshot), Date.prototype.getTime.call(next));
 /**
- * Map/Set equality is content equality over primitive keys or members, compared pairwise in
- * iteration order; values recurse through the full comparison. Object keys are matched
- * conservatively: a detached key is a copy, so a structural key search is out of scope and the
- * pair counts as changed.
+ * Map/Set equality follows intrinsic iteration order. Primitive keys/members use SameValueZero;
+ * Map values recurse through the selection comparison. Object keys remain conservatively changed.
  */
 const sameNativeContent = (
     snapshot: Map<unknown, unknown> | Set<unknown>,
@@ -128,36 +202,68 @@ const sameNativeContent = (
         previousToFresh.set(snapshot, nextMap);
         freshToPrevious.set(nextMap, snapshot);
 
+        const freshKeys = Map.prototype.keys.call(nextMap) as IterableIterator<unknown>;
         let same = true;
 
-        Map.prototype.forEach.call(snapshot, (member: unknown, key: unknown): void => {
-            if (!isMatchableKey(key) || !nextMap.has(key) ||
-                !sameValue(member, nextMap.get(key), previousToFresh, freshToPrevious)) {
+        Map.prototype.forEach.call(snapshot, (previousValue: unknown, previousKey: unknown): void => {
+            const freshKey = freshKeys.next();
+
+            if (freshKey.done) {
+                same = false;
+
+                return;
+            }
+
+            if (!isMatchableKey(previousKey) || !isMatchableKey(freshKey.value)) {
+                same = false;
+
+                return;
+            }
+
+            if (!sameValueZero(previousKey, freshKey.value)) {
+                same = false;
+            }
+
+            if (!sameValue(
+                previousValue,
+                Map.prototype.get.call(nextMap, previousKey),
+                previousToFresh,
+                freshToPrevious
+            )) {
                 same = false;
             }
         });
 
-        return same;
+        return same && freshKeys.next().done === true;
     }
 
+    const previousSet = snapshot as Set<unknown>;
     const nextSet = next as Set<unknown>;
 
-    if ((snapshot as Set<unknown>).size !== nextSet.size) {
+    if (previousSet.size !== nextSet.size) {
         return false;
     }
 
-    previousToFresh.set(snapshot, nextSet);
-    freshToPrevious.set(nextSet, snapshot);
+    previousToFresh.set(previousSet, nextSet);
+    freshToPrevious.set(nextSet, previousSet);
 
+    const previousMembers = Set.prototype.values.call(previousSet) as IterableIterator<unknown>;
+    const freshMembers = Set.prototype.values.call(nextSet) as IterableIterator<unknown>;
     let same = true;
 
-    Set.prototype.forEach.call(snapshot, (member: unknown): void => {
-        if (!isMatchableKey(member) || !nextSet.has(member)) {
+    while (true) {
+        const previousMember = previousMembers.next();
+        const freshMember = freshMembers.next();
+
+        if (previousMember.done || freshMember.done) {
+            return same && previousMember.done === freshMember.done;
+        }
+
+        if (!isMatchableKey(previousMember.value) || !isMatchableKey(freshMember.value) ||
+            !sameValueZero(previousMember.value, freshMember.value)) {
             same = false;
         }
-    });
-
-    return same;
+    }
 };
 
 /**
@@ -190,10 +296,10 @@ const sameNativeContent = (
  *
  * @param a - the value already handed out
  * @param b - the freshly read value to compare it against
- * @param previousToFresh - `a`-side object -> the `b`-side object it is paired with on this
- * call's path, so a cycle reuses that verdict instead of recursing forever
- * @param freshToPrevious - the same pairing in the other direction, so a fresh object already
- * claimed by a different previous object fails instead of comparing by content
+ * @param previousToFresh - previous-side object -> canonical fresh graph member paired on this call,
+ * so engine facades for the same value reuse a graph pair
+ * @param freshToPrevious - canonical fresh graph member -> previous-side object, so two previous
+ * objects cannot collapse onto one fresh member without a topology mismatch
  */
 const sameValue = (
     a: unknown,
@@ -213,6 +319,10 @@ const sameValue = (
         return false;
     }
 
+    // Pair-map identity is the raw graph member, but structural reads below stay on `b` so
+    // tracked plain/array facades still record the paths they inspect.
+    const freshIdentity = liveViews.readTarget(b) ?? b;
+
     // Minted here, at the first container pair, not by sameSelection up front (R16-09): a
     // primitive comparison returns above and never pays for these. Once created, the same pair
     // threads through the whole recursion, so cycle detection still spans the call.
@@ -222,10 +332,10 @@ const sameValue = (
     const mapped = previous.get(a);
 
     if (mapped !== undefined) {
-        return mapped === b;
+        return mapped === freshIdentity;
     }
 
-    if (fresh.get(b) !== undefined) {
+    if (fresh.get(freshIdentity) !== undefined) {
         return false;
     }
 
@@ -241,9 +351,8 @@ const sameValue = (
             return false;
         }
 
-        previous.set(a, b);
-        fresh.set(b, a);
-
+        previous.set(a, freshIdentity);
+        fresh.set(freshIdentity, a);
         return sameArrayContent(a, b, previous, fresh);
     }
 
@@ -252,8 +361,8 @@ const sameValue = (
             return false;
         }
 
-        previous.set(a, b);
-        fresh.set(b, a);
+        previous.set(a, freshIdentity);
+        fresh.set(freshIdentity, a);
 
         return sameKeyedContent(a, b, previous, fresh);
     }
@@ -266,7 +375,7 @@ const sameValue = (
         // Native methods need their real internal-slot receiver, so a fresh side that is a
         // tracked facade compares through its raw target; the facade read itself was what
         // recorded the selected path.
-        const rawB = liveViews.readTarget(b) ?? b;
+        const rawB = freshIdentity;
 
         if (isPlainDate(a)) {
             previous.set(a, rawB);

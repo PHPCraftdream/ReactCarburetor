@@ -2,6 +2,7 @@ import {mkdtempSync, rmSync, writeFileSync} from 'node:fs';
 import {join} from 'node:path';
 import {run} from './matrix.mjs';
 import {checkEngineBoundaries} from './engineBoundaryChecks.mjs';
+import {runRound31Checks} from './round31Checks.mjs';
 
 /**
  * A packed CJS store's plain-object/Map-key selection and plain/array/native-root
@@ -16,6 +17,8 @@ const pkgRoot = path.join(process.cwd(), 'node_modules', 'react-carburetor');
 const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join('/');
 const checkEngineBoundaries = (${checkEngineBoundaries.toString()});
 const engineCases = [];
+const runRound31Checks = (${runRound31Checks.toString()});
+const round31Cases = [];
 
 (async () => {
     const React = require('react');
@@ -468,10 +471,13 @@ const engineCases = [];
         assert.equal(cache.getFailure('a'), undefined);
         histories.push(label + ':entry-owned-failure');
         engineCases.push(...await checkEngineBoundaries(assert, storeModule, historyModule, label));
+        round31Cases.push(...runRound31Checks({...storeModule,
+            CarburetorHistory: historyModule.CarburetorHistory, computed: historyModule.computed})
+            .map(item => label + ':' + item.kind));
     }
 
     process.stdout.write(JSON.stringify({
-        selections, nativeInitial, nativeNext, nativeDetached, roots, histories, engineCases
+        selections, nativeInitial, nativeNext, nativeDetached, roots, histories, engineCases, round31Cases
     }));
 })().catch((error) => {
     process.stderr.write(String((error && error.stack) || error));
@@ -581,5 +587,12 @@ export const runCrossFormatSelection = (installDir) => {
             + JSON.stringify(parsed.engineCases)};
     }
 
+    const round31Kinds = ['ordered-map', 'ordered-set', 'invalid-date', 'readonly-bulk',
+        'sparse-selection', 'scalar-cancellation', 'bounded-key-memo', 'readable-computed'];
+    const expectedRound31 = ['cjs-store/esm-history', 'esm-store/cjs-history']
+        .flatMap(label => round31Kinds.map(kind => label + ':' + kind));
+    if (JSON.stringify(parsed.round31Cases) !== JSON.stringify(expectedRound31)) {
+        return {ok: false, stderr: 'round31 consumers incomplete: ' + JSON.stringify(parsed.round31Cases)};
+    }
     return {ok: true};
 };

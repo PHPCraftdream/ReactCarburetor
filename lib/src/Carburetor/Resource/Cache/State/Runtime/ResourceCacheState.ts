@@ -45,7 +45,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
     /** Configure the loader and cache limits.
      *
      * @param loader - resource producer.
-     * @param options - TTL, capacity, and update scheduler.
+     * @param options - TTL, entry and primitive key capacities, and update scheduler.
      */
     protected constructor(protected loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
         super({entries: {}}, options.scheduler);
@@ -240,11 +240,35 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         this.forgetKey(this.keyOf(args));
     }
 
-    /** Forget all entries and cancel their requests in one publication. */
+    /** Forget all entries and cancel their requests in one publication.
+     *
+     * Settled entries can share one removal preparation only when the per-key forget, abort, and
+     * removal hooks are inherited unchanged. Subclasses keep the original per-key call order.
+     */
     public forgetAll(): void {
         this.bulkDepth++;
         try {
-            Object.keys(this.data.entries).forEach((key: string) => this.forgetKey(key));
+            const keys = Object.keys(this.data.entries);
+            if (keys.length === 0) return;
+
+            const base = ResourceCacheState.prototype;
+            if (this.forgetKey === base.forgetKey && this.abortKey === base.abortKey &&
+                this.removeEntries === base.removeEntries) {
+                // Batch base hooks only when no synchronous abort listener can reenter.
+                let hasActiveRequest = false;
+                for (let index = 0; index < keys.length; index++) {
+                    if (this.hasRequest(keys[index])) {
+                        hasActiveRequest = true;
+                        break;
+                    }
+                }
+                if (!hasActiveRequest) {
+                    this.removeEntries(keys, false);
+                    return;
+                }
+            }
+
+            keys.forEach((key: string) => this.forgetKey(key));
         } finally {
             this.finishBulk();
         }

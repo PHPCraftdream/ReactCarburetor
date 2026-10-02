@@ -1,5 +1,5 @@
 import {TReadonly} from "@/Carburetor/Models/Base";
-import {ICarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 
@@ -173,10 +173,10 @@ export interface IRenderAttempt {
 export interface IConnectionSource<T extends object> {
     /** The connection this declaration registered. */
     connection: IConnection;
-    /** The carburetor resolver the declaration was created with, normalized to a function. */
-    getCarburetor: () => ICarburetor<T>;
+    /** The readable source resolver the declaration was created with, normalized to a function. */
+    getCarburetor: () => IReadableCarburetor<T>;
     /** Resolves the source through the current attempt's once-per-attempt memo. */
-    resolveAttemptSource: () => ICarburetor<T>;
+    resolveAttemptSource: () => IReadableCarburetor<T>;
     /** The read recorder every read through the persistent view reports to. */
     recorder: TPathRecorder;
     /**

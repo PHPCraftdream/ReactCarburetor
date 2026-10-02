@@ -2,9 +2,9 @@
 
 ## Вывод
 
-**Шесть новых подтверждённых находок: P2 = 4, P3 = 2.** Дополнительно — одно предложение по
-сужению API read consumers, требующее решения о публичном контракте. Продуктовый код и постоянные
-тесты в этом раунде не менялись. Исправления ниже — рекомендации, не выполненная реализация.
+**Исходное ревью: шесть подтверждённых находок, P2 = 4, P3 = 2**, плюс предложение readable API.
+В фазе исследования продуктовый код и постоянные тесты не менялись. Findings ниже сохраняют исходные
+reproductions; выполненная реализация, исправления и итоговые gates описаны в разделе «Реализация раунда 31».
 
 База: наблюдённый HEAD `d77a11b03d4d8e8924bae1187f1da006ee5c19ed`.
 Проверялся текущий TypeScript source после реализации раунда 30, а не прежний dist.
@@ -351,3 +351,138 @@ console.log({roots,rows,left:Object.keys(cache.getData().entries).length});
 sparse array с length65536 и двумя slots + `sameSelection(detachOpaque(array),array)`;
 два sequential `resolve` passes для 4096/4097 keys, счётчик JSON только вокруг второго pass.
 Формы, counters и preserved outputs указаны выше; timing/byte thresholds из этих recipes не выводятся.
+
+## Реализация раунда 31
+
+Работа поручена четырём точным исполнителям `xl` в изолированных worktree на базе `72a72e2`:
+selection kernel (01/03/05), cache (02/06), history (04), readable API. Интеграция и все project gates
+выполняются основной сессией. Ни версии, ни зависимости не менялись; nested delegation и Rush не использовались.
+
+### Принятые контракты
+
+- Ordered intrinsic Map/Set equality, SameValueZero primitive keys/members и Object.is Date timestamps.
+  Канонические raw identities используются для graph pairing; сами plain reads идут через view.
+- Dense-prefix array traversal остаётся; при первой hole перечисляются present own numeric indices.
+  Это сохраняет structural tracking, own undefined, holes, prototypes и selector-result cycles.
+  Валидируемый state tree не получил разрешения на non-enumerable поля или plain cycles.
+- Settled readonly `forgetAll` с base per-key hooks делает одну подготовку. Active-request и subclass
+  override пути сохраняют per-key behavior и могут оставаться квадратичными на locked mixed sets.
+- Primitive cancellation требует mutation-only publication, existing primitive endpoints и ordinary
+  open own-data chains. Genuine root installs, arrays, exotic/restricted endpoints идут в graph fallback.
+  Pure mutations coalesce в mutation fact, а empty-diff root install помечает уже-pending store/observer
+  publications mixed. Самостоятельный metadata-only replacement не создаёт уведомление или undo.
+- `keyCacheSize` — finite record budget, default4096, zero disables primitive memo; Infinity/fractional/
+  negative/unsafe values rejected. LRU использует intrusive links в самом retained record, без
+  отдельного node wrapper и без Map delete/set на hit. Это больше metadata на record, не byte budget.
+  Cyclic working set выше capacity может полностью промахиваться; larger finite capacity выбирается явно.
+- Public `IReadableCarburetor<T>` содержит шесть read/subscription capabilities. Hook, class readers и
+  computed accept его без fake write/tooling methods. `getData` остаётся raw; type split не заявлен как speedup.
+
+### Интеграционные находки и исправления
+
+1. Первый history вариант ускорял только один update callback, но оставлял исходные два update внутри
+   transaction на full capture. Исправлена mutation fact aggregation; исходный reproduction сохранён.
+2. Empty-diff root install не учитывал queued observer после закрытия store publication.
+   Actual deferred readonly-descriptor regression дал canUndo=false; теперь учитывается pending observer
+   boundary без дополнительной publication, и регрессия проверяет оба metadata endpoints undo/redo.
+3. Native facade/raw graph-pair identities расходились при repeated Map aliases и plain/native bridges.
+   Actual comparison возвращала false для неизменённого графа; канонизация исправлена без bypass read traps.
+4. Production-only smoke пропускал ошибку test fixture: hidden/cyclic array была положена в запрещённый
+   plain state. Development regression выявила это; fixture теперь создаёт эту форму в selector result.
+   AliasLedger не ослаблен.
+5. Typed readable fixture выявил несогласованный mapped readonly return. Исправлен внутренний typed
+   tracking overload, без consumer casts или suppression. React act promises теперь awaited.
+6. Первый Map-order LRU дал measurable regression: warmed4096 second pass0.712→1.250 ms,
+   default cyclic4097 pass2.641→9.119 ms (seven paired processes). Этот вариант не принят:
+   Map hit reinsert и iterator eviction заменены intrusive LRU. Ordered Map entries tuples также удалены.
+7. Полный suite обнаружил bypass protected `forgetKey` override в settled fast lane. Исправлена
+   общая граница extensibility: override любого per-key forget/abort/remove hook сохраняет прежний
+   путь. Исходный partial-clear/throw regression и новые readonly override/recovery cases прошли27/27.
+8. Concurrent packed prepack удалял `dist` во время dual-format tests. Это ошибка orchestration,
+   не повод менять библиотеку или скрывать missing-dist checks. После устранения concurrency
+   dual-format suite прошёл3/3; итоговый полный suite запущен отдельно от rebuild.
+
+### Уже наблюдённые acceptance proofs
+
+- Три cache regressions действительно падали до source cutover: ownership32 вместо1, capacity1
+  не соблюдалась, invalid keyCacheSize не отклонялся.
+- Focused suite после fixture/typing correction: 36/36 в девяти файлах, без skips/todos/snapshot changes.
+- Built CJS↔ESM dev/prod: 32/32 checks через public API; eight cases в четырёх направлениях.
+- Sparse equal wake length65536/two slots: index checks131072→4; hole→own undefined реально уведомляет.
+- Settled readonly32: roots32→1, omitted row visits496→0, publication1, held entries32.
+- Scalar two-update cancellation: capture1→0; обычный последующий change сохраняет undo/redo.
+- Hot64 после одного cold crossing: stringify64→0. Explicit capacity8192 для4097keys:4097→0;
+  это новый явно выбранный memory budget, не доказательство default4097 warm hits.
+- Chromium: reordered Map/Set и memo child показывают `b,a` (baseline оставлял `a,b`);
+  равный Invalid Date сохраняет render1 (baseline2); sparse DOM65536:false→true;
+  readable hook/class/computed следуют selected branch до3, old branch не перерисовывает;
+  browser error entries пусты. Собственная поверхность закрыта после proof.
+
+Reproducible measurements: `scripts/benchmarks/round31/{selection,cache,history,readable}.mjs`
+принимают absolute production distribution root. `profile.mjs` измеряет V8 sampled allocation
+estimates, включая workload setup, а не точные allocated bytes или retained heap.
+
+### Итоговые парные замеры и ограничения
+
+Node24.12.0, production CJS, frozen baseline `72a72e2` и интегрированный код. Семь чередующихся
+before/after процессов на workload; script medians сведены медианой семи запусков. Timed driver
+включает реальное создание/replacement/query lookup и проверки outputs; это не bare-helper ns.
+Часть second-pass lookup также включает JIT cold path. Между сериями абсолютные timings заметно
+плавали; все отрицательные controls ниже сохранены, общего throughput speedup не заявлено.
+
+| Workload | Baseline median ms | Refactored median ms | Наблюдаемая работа |
+|---|---:|---:|---|
+| Sparse selection length256, два slots, 10 updates | 1.515 | 0.714 | kernel checks768→6 |
+| Sparse selection length4096, два slots, 10 updates | 16.923 | 1.352 | kernel checks12288→6 |
+| Sparse selection length65536, два slots, 5 updates | 188.324 | 10.877 | kernel checks196608→6 |
+| Dense selection length256, 10 updates | 6.837 | 7.316 | checks768/768, own-key arrays0/0 |
+| Dense selection length4096, 10 updates | 98.831 | 90.452 | checks12288/12288 |
+| Dense selection length65536, 5 updates | 1335.076 | 1515.317 | checks196608/196608 |
+| Settled readonly forgetAll32 | 15.250 | 0.470 | roots32→1, omitted entries/rows496→0 |
+| Settled readonly forgetAll128 | 324.355 | 0.615 | roots128→1, omitted entries/rows8128→0 |
+| Writable forgetAll32 | 0.400 | 0.429 | roots0/0, publication1/1 |
+| Writable forgetAll128 | 0.809 | 0.995 | roots0/0, publication1/1 |
+| Mixed active readonly forgetAll32 | 10.736 | 13.283 | roots31/31, visits465/465 |
+| Mixed active readonly forgetAll128 | 237.895 | 290.933 | roots127/127, visits8001/8001 |
+| Primitive memo first repeated scan4096 | 1.130 | 1.667 | stringify0/0 |
+| Default cyclic primitive scan4097 | 5.704 | 8.350 | stringify4097/4097 |
+| Explicit keyCacheSize8192 / scan8192 | 5.130 | 3.040 | stringify8192→0; baseline не поддерживает larger budget |
+| Native512 same-order selection, 12 updates | 4.578 | 4.928 | notifications0/0; reordered snapshots теперь видимы |
+| Scalar history cancellation, rows32 | 0.323 | 0.061 | capture1→0, row visits96→0 |
+| Scalar history cancellation, rows128 | 0.894 | 0.057 | capture1→0, row visits384→0 |
+| Scalar history cancellation, rows512 | 3.753 | 0.083 | capture1→0, row visits1536→0 |
+| Ordinary scalar history, rows512 | 0.078 | 0.055 | capture0/0, undo/redo сохранены |
+
+Sparse kernel counter включает copy + comparison; отдельный public equal wake proof даёт131072→4.
+На полностью omitted simple cache graph payloads не посещаются вообще. С retained native backlinks
+ownership по-прежнему проходит нужные reachable payloads один раз — это не zero-copy обещание.
+
+Hot subset benchmark: восемь reheats после одного cold crossing требуют stringify9→1.
+Readable adapter benchmark в обеих версиях: writes128, notifications64, selector evaluations65,
+component renders65, final value `s32`, subscriptions после unmount0. Type-only capability split
+не заявлен как изменение render count или performance.
+
+**Цена policy не скрыта:** intrusive LRU убирает per-hit Map churn и отдельные eviction iterators,
+но поддержание recency не бесплатное. Измеренный cyclic scan выше capacity остаётся хуже baseline;
+configured larger capacity — явный memory/performance выбор. Dense/native controls и active fallback
+тоже не дают основания обещать ускорение всех форм. Это ограничения выбранного bounded LRU/ownership
+контракта, а не молча изменённые benchmark inputs или пропущенные cases.
+
+### Allocation sampling
+
+Три чередующиеся paired V8 HeapProfiler samples с interval4096 для одного bounded built consumer
+workload (все восемь public cases). Sampled library self bytes median6123200→4246832 (~30.6% меньше),
+total including setup19723744→12039728 (~39.0% меньше). Это **оценки sampling**, не точные bytes,
+не retained heap и не обещание такого процента для любого application. Workload включает changed
+native behavior и explicitly increased memo capacity; отдельно приписывать весь delta одной задаче нельзя.
+
+### Наблюдённые итоговые gates
+
+- Full suite: **1587/1587**,154 files, без skips/todos/snapshot changes; reported631437 ms.
+- Typecheck: все четыре configs, включая relocated readable type contract.
+- Layout: <=7 entries, <=600 physical code lines, один export/file.
+- Lint: ноль ошибок,56 warnings; локальный scratch exclusion не внесён в config.
+- Production/development build:142 modules в каждой distribution.
+- Final packed matrix после subclass guard: **16/16**, без skips/failures (React18/19, npm/pnpm,
+  CJS/ESM, strict mixed formats, Next16.3.5 webpack/Turbopack);390.41 s. Выполнена отдельно от suite,
+  исходные consumer checks не ослаблены.

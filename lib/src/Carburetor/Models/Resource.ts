@@ -78,6 +78,8 @@ export interface IResourceCacheOptions {
 
     /** Non-negative integer or `Infinity`; zero keeps only retained entries, `Infinity` disables eviction. */
     maxEntries?: number;
+    /** Non-negative safe integer (default 4096); zero disables this memo, and Infinity is rejected. */
+    keyCacheSize?: number;
     scheduler?: IUpdateScheduler;
 }
 

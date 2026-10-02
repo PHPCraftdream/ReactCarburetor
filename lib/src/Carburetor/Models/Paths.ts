@@ -92,7 +92,7 @@ export type IStateInstallation =
 export const STATE_PUBLIC_REPLACEMENT: IStateInstallation =
     Object.freeze({origin: 'replacement', representation: 'public'});
 
-/** A publication fact exists for every completed operation; several coalesced operations are mixed. */
+/** Publication fact for a completed boundary; coalesced in-place mutations stay mutation-only. */
 export interface IStatePublication {
     /** Mutation is an in-place producer write; installation origins name root replacements. */
     origin: 'mutation' | 'replacement' | 'restore' | 'operational' | 'mixed';
@@ -104,8 +104,9 @@ export interface IStatePublication {
     publication?: 'sync' | 'deferred';
 }
 
-/** Shared allocation-free facts for ordinary and coalesced in-place publications. */
+/** Shared allocation-free fact for ordinary and coalesced in-place mutations. */
 export const STATE_MUTATION_PUBLICATION: IStatePublication = Object.freeze({origin: 'mutation'});
+/** Shared allocation-free marker for publications with incompatible origins or owners. */
 export const STATE_MIXED_PUBLICATION: IStatePublication = Object.freeze({origin: 'mixed'});
 
 /** Exact history graph ownership claimed before restore installs its argument. */

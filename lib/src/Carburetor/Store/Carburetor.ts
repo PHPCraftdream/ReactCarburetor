@@ -503,13 +503,17 @@ export class Carburetor<T extends object> implements
         });
     }
 
-    /** Records a closed operation once; coalesced operations lose any one owner's identity.
+    /** Coalesces ordinary mutations without losing facts from root installs or owned operations.
      *
      * @param installation - the root transition, or none for an in-place mutation
      */
     protected rememberPublication(installation?: IStateInstallation): void {
         if (this.publicationPending) {
-            this.pendingPublication = STATE_MIXED_PUBLICATION;
+            if (this.pendingPublication?.origin === 'mutation' && installation === undefined) {
+                this.pendingPublication = STATE_MUTATION_PUBLICATION;
+            } else {
+                this.pendingPublication = STATE_MIXED_PUBLICATION;
+            }
         } else {
             this.publicationPending = true;
             this.pendingPublication = installation ?? STATE_MUTATION_PUBLICATION;

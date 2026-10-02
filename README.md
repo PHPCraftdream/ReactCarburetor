@@ -218,17 +218,20 @@ class TodoList extends AntiHookComponent<ITodoProps> {
 the paths the selection touches. What the call returns is detached data in the state-model
 sense: a plain object is its own enumerable string keys, an array is its elements and
 `length` (holes stay holes), and an own key literally named `__proto__` lands as data.
-Symbol keys, non-enumerable properties and descriptor flags are not part of a selection and
-are not copied. Ordinary Maps, Sets and Dates are detached into plain copies (a Date is its
+Plain-object symbol keys, non-enumerable fields and descriptor flags are not copied. Arrays retain
+their own numeric indices, including non-enumerable ones, but normalize descriptor flags.
+Sparse selections enumerate present indices after the first hole; adding an own `undefined` slot
+or deleting one still updates the consumer. Ordinary Maps, Sets and Dates are detached (a Date is its
 time); repeated references and Map-key aliases stay shared within the copy, including a key
 selected through a tracked view. Custom instances remain live. An accessor's getter runs
 once, like any plain read, and its value is what the copy keeps. An `Array` subclass is
 rejected — its copy would lack its private state — so select `Array.from(value)` or the
 fields the child needs instead. The snapshot keeps its identity while the selected plain
 content and reference-sharing topology stay the same; a detached `Date`, `Map` or `Set`
-compares by content against the live value, so an unchanged one no longer forces a new
-snapshot. A class instance — including a `Map`, `Set` or `Date` subclass — remains the one
-conservative always-changed boundary.
+compares by content against the live value. Map/Set insertion order participates; changing only that
+order updates the snapshot. Equal Invalid Dates stay stable. Repeated native facades and plain/native
+value aliases retain their topology without bypassing tracked plain reads. Object keys remain
+conservatively changed, as do class instances — including Map, Set and Date subclasses.
 
 The selector runs on every render — that is what keeps the owner's subscription fresh — while
 the snapshot object itself is reused until the content actually changes. Tracked plain-object
@@ -547,6 +550,17 @@ class UserBadge extends AntiHookComponent<{id: string}> {
 }
 ```
 
+Primitive argument keys and paths use a bounded LRU memo, separate from the data-entry limit.
+`keyCacheSize` defaults to 4096 records; any non-negative safe integer is accepted, and `0` disables
+primitive memoization. `Infinity` is rejected. Each record also carries LRU links, so this is a record
+count, not a byte budget. A cold query evicts one record rather than flushing all hot keys.
+Sequential cyclic scans larger than the budget can still miss on every query; choose a larger finite
+budget explicitly when that tradeoff fits the application. Object arguments retain JSON mutation checks.
+
+`forgetAll()` prepares one removal for settled current entries with base per-key hooks, including
+non-configurable slots, without changing held endpoints or splitting native backlinks. Active requests
+and subclass hook overrides retain per-key behavior; locked mixed sets can still repeat graph copies.
+
 `useResource` subscribes the component to that one entry, so another user's answer arriving does not
 re-render this badge. A stale entry is refetched **after** the commit, never during render — a write
 from render would notify subscribers mid-render.
@@ -678,6 +692,13 @@ undo/redo subscribers or superseding abort listeners are fresh branches and inva
 only history's own restore installation is suppressed. Transactions and throttles still coalesce
 their writes into one published step. Multiple histories keep independent limits and disposers;
 attaching or replacing a patch-only observer does not disconnect those histories.
+
+Pure in-place scalar mutation batches can prove cancellation from existing primitive leaf paths
+without capturing unrelated state. Insertions/deletions, array paths, native/restricted state and
+mixed installations retain full graph proof. An empty-value-diff root install joins already-pending
+store or observer publications as mixed, including deferred descriptor-only replacements; a
+standalone no-value-change replacement remains silent.
+
 Native producers carry explicit installation origin/owner and graph representation through a shared
 commit boundary. A deferred replay followed by a fresh write branches from the installed replay
 state; coalescing cannot turn that fresh write into the recorder's own replay.
@@ -752,17 +773,17 @@ Selected plain objects, arrays, `Map`, `Set` and `Date` values are detached for 
 React snapshot. A class instance cannot be copied safely, so selecting one directly or
 inside another value throws an actionable error; select the fields you render instead. A
 `Map`, `Set` or `Date` subclass counts as a class instance here, not as the built-in.
-A selection is plain data in the state-model sense: own enumerable string keys, array
-elements and `length`; symbol keys, non-enumerable properties and descriptor flags are not
-part of a selection and are not copied. An accessor's getter runs once and its value is the
+A selection is plain data in the state-model sense: own enumerable string fields, array own indices
+and `length`. Array holes and non-enumerable numeric indices are retained; other non-enumerable fields,
+symbol keys and descriptor flags are not copied. An accessor's getter runs once and its value is the
 snapshot. Repeated references and cycles stay connected within one detached selection,
 including a `Date` used both as a `Map` key and elsewhere in the selected graph.
 
 The third argument is the equality check that decides whether a recomputed selection
 counts as changed. It defaults to a structural comparison — own enumerable string keys and
-`Object.is` values, recursively through plain objects and arrays, a detached `Date` by its
-time, and a detached `Map`/`Set` by size and entries over primitive keys (object keys
-count as changed) — because every selected object is detached into a fresh container, so
+`Object.is` values, recursively through plain objects and arrays, a detached Date by its timestamp
+(Invalid Dates compare equal), and detached Map/Set size, iteration order and entries over primitive
+keys (object keys count as changed) — because selected containers are detached, so
 `Object.is` itself could never call two of them equal: a selector rebuilt on every render,
 or a write that replaces an ancestor of the selected data without changing its content,
 would otherwise re-render every time. A class instance still always compares as changed,
@@ -854,6 +875,18 @@ The measurements are this repository's, taken the way [native/README.md](native/
 describes.
 
 ## API
+
+### `IReadableCarburetor<T>`
+
+Read consumers accept six capabilities: `getUID`, `getVersion`, `getData`, `read`, `subscribe` and
+`unsubscribe`. This public interface works with `useCarburetorValue`, class `useCarburetor`,
+`connect`/`connectSelection`, and the reader passed to `computed`. A custom adapter need not provide
+fake mutation, snapshot or serialization methods. Native `Carburetor` already implements it.
+
+`getData()` is raw untracked data, not a deep-immutability promise. `read(record)` and subscriptions
+must honor the source's read/version lifecycle; subscription IDs must be released. `ICarburetor<T>`
+extends this readable surface with writes and inspectable tooling. History and persistence still
+require their own write/tooling capabilities.
 
 ### `Carburetor<T>`
 

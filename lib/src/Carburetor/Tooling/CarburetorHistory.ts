@@ -330,7 +330,7 @@ export class CarburetorHistory<T extends object> {
             if (fact !== undefined) this.pendingOpaque = true;
         }
 
-        const entry = this.buildEntry();
+        const entry = this.buildEntry(fact);
         this.pendingPatches = [];
         this.pendingOpaque = false;
         this.pendingOwnedReplay = false;
@@ -340,6 +340,88 @@ export class CarburetorHistory<T extends object> {
             this.past.shift();
         }
         this.future = [];
+    }
+
+    /**
+     * Proves a mutation-only batch canceled using only its existing primitive leaf paths.
+     *
+     * Undefined means a structural or capability boundary needs the full graph proof.
+     */
+    private pendingPrimitivePatchesUnchanged(fact?: IStatePublication): boolean | undefined {
+        if (fact?.origin !== 'mutation' || this.pendingOpaque || this.pendingOwnedReplay ||
+            this.pendingPatches.length < 2 || this.baselineContainsExotic ||
+            this.baselineContainsLockedArray || this.baselineContainsRestricted) {
+            return undefined;
+        }
+
+        for (const patch of this.pendingPatches) {
+            const previousType = typeof patch.previous;
+            const nextType = typeof patch.next;
+            if (!patch.previousExists || !patch.nextExists || patch.segments.length === 0 ||
+                (patch.previous !== null && (previousType === 'object' || previousType === 'function')) ||
+                (patch.next !== null && (nextType === 'object' || nextType === 'function'))) {
+                return undefined;
+            }
+        }
+
+        const current = this.carburetor.getData();
+        let unchanged = true;
+        try {
+            for (const patch of this.pendingPatches) {
+                const equal = this.sameExistingPlainScalarPath(this.baseline, current, patch.segments);
+                if (equal === undefined) return undefined;
+                if (!equal) unchanged = false;
+            }
+        } catch {
+            return undefined;
+        }
+        return unchanged;
+    }
+
+    /** Compares ordinary open own-data chains.
+     *
+     * @param beforeRoot - owned baseline.
+     * @param afterRoot - live endpoint.
+     * @param segments - recorded own path.
+     */
+    private sameExistingPlainScalarPath(
+        beforeRoot: unknown, afterRoot: unknown, segments: readonly string[]
+    ): boolean | undefined {
+        let before = beforeRoot;
+        let after = afterRoot;
+        for (let index = 0; index < segments.length; index++) {
+            if (before === null || after === null || typeof before !== 'object' || typeof after !== 'object' ||
+                Array.isArray(before) || Array.isArray(after)) {
+                return undefined;
+            }
+            const beforePrototype = Object.getPrototypeOf(before);
+            const afterPrototype = Object.getPrototypeOf(after);
+            if (beforePrototype !== afterPrototype ||
+                (beforePrototype !== Object.prototype && beforePrototype !== null)) {
+                return undefined;
+            }
+            const beforeField = Object.getOwnPropertyDescriptor(before, segments[index]);
+            const afterField = Object.getOwnPropertyDescriptor(after, segments[index]);
+            if (beforeField === undefined || afterField === undefined ||
+                !('value' in beforeField) || !('value' in afterField) ||
+                !beforeField.enumerable || !afterField.enumerable ||
+                !beforeField.writable || !afterField.writable ||
+                !beforeField.configurable || !afterField.configurable) {
+                return undefined;
+            }
+            const beforeValue = beforeField.value;
+            const afterValue = afterField.value;
+            if (index === segments.length - 1) {
+                const beforeType = typeof beforeValue;
+                const afterType = typeof afterValue;
+                return (beforeValue === null || (beforeType !== 'object' && beforeType !== 'function')) &&
+                    (afterValue === null || (afterType !== 'object' && afterType !== 'function'))
+                    ? Object.is(beforeValue, afterValue) : undefined;
+            }
+            before = beforeValue;
+            after = afterValue;
+        }
+        return undefined;
     }
 
     /**
@@ -380,12 +462,15 @@ export class CarburetorHistory<T extends object> {
      * otherwise. The empty-patch case is defensive — every write path this class knows of reports
      * one or the other — so a gap in that coverage still falls back to a safe, larger entry.
      */
-    protected buildEntry(): THistoryEntry<T> | undefined {
-        if (this.pendingOpaque || this.pendingPatches.length === 0) {
+    protected buildEntry(fact?: IStatePublication): THistoryEntry<T> | undefined {
+        if (this.pendingOpaque || this.pendingPatches.length === 0 ||
+            (fact !== undefined && fact.origin !== 'mutation')) {
             return this.buildSnapshotEntry();
         }
 
-        if (this.pendingPatchesUnchanged()) return undefined;
+        const scalarCancellation = this.pendingPrimitivePatchesUnchanged(fact);
+        if (scalarCancellation === true ||
+            (scalarCancellation === undefined && this.pendingPatchesUnchanged())) return undefined;
         const patches = this.pendingPatches;
         let plainScalars = !this.baselineContainsRestricted && !this.baselineContainsLockedArray;
         if (plainScalars) {
