@@ -6,7 +6,7 @@ import {
 import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
-import {containsExoticValue} from "@/Carburetor/Store/Utils/Graph/containsExoticValue";
+import {foldDependentPatch} from './Graph/foldDependentPatch';
 import {preflightOwnedPatches} from "./Graph/canInstallOwnedPatch";
 import {cloneOwnedGraph as own} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
 import {sameHistoryGraph} from "./Graph/sameHistoryGraph";
@@ -258,41 +258,38 @@ export class CarburetorHistory<T extends object> {
         }
 
         if (this.baselineContainsExotic) {
-            this.pendingOpaque = true;
-            return;
+            this.pendingOpaque = true; return;
         }
 
         if ((patch.previous === null || typeof patch.previous !== 'object') &&
             (patch.next === null || typeof patch.next !== 'object')) {
-            this.pendingPatches.push(patch);
-            return;
-        }
-
-        // A native payload can point to an otherwise plain sibling (or the root itself).
-        // Installing only the leaf would split that graph, so own the complete endpoints.
-        if ((patch.previousExists && containsExoticValue(patch.previous)) ||
-            (patch.nextExists && containsExoticValue(patch.next))) {
-            this.pendingOpaque = true;
+            if (!foldDependentPatch(this.pendingPatches, patch)) this.pendingPatches.push(patch);
             return;
         }
 
         let requiresOwnedEndpoint = false;
+        let hasExoticEndpoint = false;
         const classify = (trait: 'exotic' | 'lockedArray' | 'restricted'): void => {
+            if (trait === 'exotic') hasExoticEndpoint = true;
             if (trait === 'lockedArray' || trait === 'restricted') requiresOwnedEndpoint = true;
         };
-        const ownedPatch: IWritePatch = {
-            segments: patch.segments,
-            previous: patch.previousExists ? own(patch.previous, classify) : undefined,
-            next: patch.nextExists ? own(patch.next, classify) : undefined,
-            previousExists: patch.previousExists,
-            nextExists: patch.nextExists,
-        };
-        if (requiresOwnedEndpoint) {
-            // Patches normalize payload flags; restrictive subtrees require exact owned endpoints.
+        let ownedPatch: IWritePatch;
+        try {
+            const previous = patch.previousExists ? own(patch.previous, classify) : undefined;
+            const next = patch.nextExists ? own(patch.next, classify) : undefined;
+            ownedPatch = {
+                segments: patch.segments, previous, next,
+                previousExists: patch.previousExists, nextExists: patch.nextExists,
+            };
+        } catch {
             this.pendingOpaque = true;
             return;
         }
-        this.pendingPatches.push(ownedPatch);
+        if (requiresOwnedEndpoint || hasExoticEndpoint) {
+            this.pendingOpaque = true;
+            return;
+        }
+        if (!foldDependentPatch(this.pendingPatches, ownedPatch)) this.pendingPatches.push(ownedPatch);
     }
 
     /** Advances the owned mirror to the source's installed wire representation. */

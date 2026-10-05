@@ -74,20 +74,150 @@ class BoardCarburetor extends Carburetor<IBoardData> {
     };
 }
 
-describe('CarburetorHistory undo/redo correctness (R16-07)', () => {
+describe('CarburetorHistory patch replay', () => {
+    test('dependent object patches preserve unrelated baseline identity and history ownership (R33-06)', () => {
+        const rows = Array.from({length: 8}, (_, index) => ({title: `row-${index}`}));
+        const store = new Carburetor<{docs: Record<string, IRow>; rows: IRow[]}>({docs: {}, rows});
+        const history = new CarburetorHistory(store);
+        const baselineRowsBefore = (history as unknown as {baseline: {rows: IRow[]}}).baseline.rows;
+        store.update(draft => {
+            draft.docs.entry = {title: 'first'};
+            draft.docs.entry.title = 'final';
+        });
+        expect(store.getData().rows).toBe(rows);
+        expect(store.getData().docs.entry).toEqual({title: 'final'});
+        expect((history as unknown as {baseline: {rows: IRow[]}}).baseline.rows).toBe(baselineRowsBefore);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().docs).toEqual({});
+        // Undo/redo replay rebuilds the root via own(baseline)+installPatch, so unrelated rows
+        // come back as a fresh copy with equal content.
+        expect(store.getData().rows).toEqual(rows);
+        expect(history.redo()).toBe(true);
+        expect(store.getData().docs.entry).toEqual({title: 'final'});
+        expect(store.getData().rows).toStrictEqual(rows);
+        expect((history as unknown as {baseline: {rows: IRow[]}}).baseline.rows).toStrictEqual(rows);
+        const aliasedStore = new Carburetor<{left: IRow | null; right: IRow | null}>({left: null, right: null});
+        const aliasHistory = new CarburetorHistory(aliasedStore);
+        const shared = {title: 'same'};
+        aliasedStore.update(draft => {
+            draft.left = shared;
+            draft.right = shared;
+        });
+        expect(aliasHistory.undo()).toBe(true);
+        expect(aliasHistory.redo()).toBe(true);
+        expect(aliasedStore.getData().left).not.toBe(aliasedStore.getData().right);
+        aliasHistory.disconnect();
+        history.disconnect();
+    });
+
+    test('same-path object replacement folds to the final endpoint and survives repeated undo/redo', () => {
+        const store = new BoardCarburetor(buildBoard());
+        const history = new CarburetorHistory<IBoardData>(store);
+        store.update(draft => {
+            draft.items.a = {title: 'A2'};
+            draft.items.a = {title: 'A3'};
+        });
+        expect(store.getData().items.a).toEqual({title: 'A3'});
+        for (let index = 0; index < 3; index++) {
+            expect(history.undo()).toBe(true);
+            expect(store.getData().items.a).toEqual({title: 'A1'});
+            expect(history.redo()).toBe(true);
+            expect(store.getData().items.a).toEqual({title: 'A3'});
+        }
+        history.disconnect();
+    });
+
+    test('transaction object replacement and nested mutation stay independent from caller aliases', () => {
+        const store = new BoardCarburetor(buildBoard());
+        const history = new CarburetorHistory<IBoardData>(store);
+        const external = {title: 'external'};
+        const externalCopy = {...external};
+        transaction(() => {
+            store.update(draft => { draft.items.a = externalCopy; });
+            store.update(draft => { draft.items.a.title = 'transaction-final'; });
+        });
+        external.title = 'mutated-after-publication';
+        expect(store.getData().items.a.title).toBe('transaction-final');
+        expect(history.undo()).toBe(true);
+        expect(store.getData().items.a.title).toBe('A1');
+        expect(history.redo()).toBe(true);
+        expect(store.getData().items.a.title).toBe('transaction-final');
+        expect(external.title).toBe('mutated-after-publication');
+        history.disconnect();
+    });
+
+    test('repeated undo/redo preserves aliased patch endpoint isolation', () => {
+        const store = new Carburetor<{left: IRow | null; right: IRow | null}>({left: null, right: null});
+        const history = new CarburetorHistory(store);
+        const shared = {title: 'shared'};
+        store.update(draft => { draft.left = shared; draft.right = shared; });
+        shared.title = 'caller-mutation';
+        for (let index = 0; index < 3; index++) {
+            expect(history.undo()).toBe(true);
+            expect(store.getData()).toEqual({left: null, right: null});
+            expect(history.redo()).toBe(true);
+            expect(store.getData().left).toEqual({title: 'shared'});
+            expect(store.getData().right).toEqual({title: 'shared'});
+            expect(store.getData().left).not.toBe(store.getData().right);
+        }
+        history.disconnect();
+    });
+
+    test('a class instance stays rejected by the history contract when written mid-history', () => {
+        class Point { constructor(public x: number) {} }
+        const store = new Carburetor<{holder: {p: Point | null} | null}>({holder: null});
+        const history = new CarburetorHistory(store);
+        const errorSpy = rstest.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            expect(() => store.update(draft => { draft.holder = {p: new Point(1)}; })).not.toThrow();
+            expect(errorSpy.mock.calls.some(call =>
+                /cannot own a mutable class instance/.test(String(call[0])))).toBe(true);
+        } finally {
+            errorSpy.mockRestore();
+        }
+        // The contract error surfaces through subscriber delivery, and the opaque snapshot capture
+        // cannot own state containing a class instance, so undo throws the documented rejection.
+        expect(() => history.undo()).toThrow(/cannot own a mutable class instance/);
+        expect(store.getData().holder?.p).toBeInstanceOf(Point);
+        history.disconnect();
+    });
+
+    test('Map endpoint falls back to opaque snapshot and round-trips through undo/redo', () => {
+        const store = new Carburetor<{holder: {p: Map<number, number> | null} | null}>({holder: null});
+        const history = new CarburetorHistory(store);
+        expect(() => store.update(draft => { draft.holder = {p: new Map([[1, 2]])}; })).not.toThrow();
+        expect(history.undo()).toBe(true);
+        expect(store.getData().holder).toBeNull();
+        expect(history.redo()).toBe(true);
+        expect(store.getData().holder?.p).toBeInstanceOf(Map);
+        expect(store.getData().holder?.p.get(1)).toBe(2);
+        history.disconnect();
+    });
+
+    test('a frozen nested baseline object still records undoable patch history', () => {
+        interface INoteData { note: {frozen: {readonly title: string}; plain: string}; }
+        const frozen = Object.freeze({title: 'frozen'});
+        const store = new Carburetor<INoteData>(
+            {note: {frozen, plain: 'one'}},
+        );
+        const history = new CarburetorHistory(store);
+        expect(() => store.update(draft => { draft.note.plain = 'two'; })).not.toThrow();
+        expect(history.undo()).toBe(true);
+        expect(store.getData().note.plain).toBe('one');
+        expect(history.redo()).toBe(true);
+        expect(store.getData().note.plain).toBe('two');
+        history.disconnect();
+    });
+
     test('field write: undo restores the previous value, redo the next one', () => {
         const store = new BoardCarburetor(buildBoard());
         const history = new CarburetorHistory<IBoardData>(store);
-
         store.setTitle('a', 'A2');
         expect(store.getData().items.a.title).toEqual('A2');
-
         expect(history.undo()).toBeTruthy();
         expect(store.getData().items.a.title).toEqual('A1');
-
         expect(history.redo()).toBeTruthy();
         expect(store.getData().items.a.title).toEqual('A2');
-
         history.disconnect();
     });
 
@@ -381,7 +511,6 @@ describe('history retains supported prototype topology (R13-E02)', () => {
         dictionary['__proto__'] = 7;
         let wakes = 0;
         const id = store.subscribe(() => wakes++, {reads: new Set(['branch.toString'])});
-
         store.setData({branch: dictionary, rows: [1]});
         expect(history.canUndo()).toBe(true);
         expect(Object.getPrototypeOf(store.snapshot().branch)).toBeNull();
@@ -389,7 +518,6 @@ describe('history retains supported prototype topology (R13-E02)', () => {
         expect(Object.hasOwn(store.getData().branch, '__proto__')).toBe(true);
         expect(store.getData().branch['__proto__']).toBe(7);
         expect(wakes).toBe(1);
-
         const edited: Record<string, number> = Object.create(null);
         edited.value = 2;
         edited['__proto__'] = 7;
