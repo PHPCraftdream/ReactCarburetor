@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // A/B prebuilt production distributions; each sample runs in an isolated child process.
-// BASELINE_DIST defaults to D:/dev/ReactCarburetor/worktrees/r33-baseline/dist.
-// AFTER_DIST defaults to dist. Run with NODE_ENV=production:
+// BASELINE_DIST (required) is a built dist directory of the commit to compare against, e.g. the
+// output of consumers/r34/harness/baseline.mjs. AFTER_DIST defaults to dist. Run with NODE_ENV=production:
 //   node benchmarks/state/tracking/consumers/r33/hooks-snapshot.mjs
 import {spawnSync} from 'node:child_process';
 import {resolve} from 'node:path';
@@ -70,7 +70,7 @@ if (process.env.BENCH_ROOT) {
     console.log(JSON.stringify({ms}));
 } else {
     const roots = {
-        baseline: process.env.BASELINE_DIST ?? 'D:/dev/ReactCarburetor/worktrees/r33-baseline/dist',
+        baseline: process.env.BASELINE_DIST ?? (() => { throw new Error('BASELINE_DIST is required'); })(),
         after: process.env.AFTER_DIST ?? 'dist',
     };
     const script = fileURLToPath(import.meta.url);
