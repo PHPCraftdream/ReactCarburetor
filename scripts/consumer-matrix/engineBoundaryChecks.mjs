@@ -1,3 +1,7 @@
+// Fresh idle entry: the public package no longer exports a factory for it.
+const initialEntry = producer => ({status: producer.EResourceStatus.Idle, data: undefined, error: undefined,
+    updatedAt: undefined, refreshing: false, invalidated: false, failed: false});
+
 /** Exercises supported alias subscriptions and reversible array descriptors in an installed build.
  *
  * @param assert - the consumer's strict assertion module
@@ -404,7 +408,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         const cache = new producer.ResourceCache(async value => { calls++; return value + '!'; });
         const history = new recorder.CarburetorHistory(cache);
         const key = cache.keyOf('a');
-        const row = producer.getInitialCacheEntry();
+        const row = initialEntry(producer);
         row.updatedAt = 7;
         row.data = refresh ? 'prior' : undefined;
         Object.defineProperty(row, refresh ? 'refreshing' : 'status', {
@@ -427,7 +431,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         const key = cache.keyOf('a');
         const entries = {};
         Object.defineProperty(entries, key, {
-            value: {...producer.getInitialCacheEntry(), status: producer.EResourceStatus.Success,
+            value: {...initialEntry(producer), status: producer.EResourceStatus.Success,
                 data: 'prior', updatedAt: Date.now()},
             enumerable: true, writable: false, configurable: false,
         });
@@ -466,13 +470,13 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         const getter = () => { reads++; throw new Error('surviving native getter must not run'); };
         const cache = new producer.ResourceCache(async value => { calls++; return value + '!'; });
         const a = cache.keyOf('a'), b = cache.keyOf('b');
-        const entry = {...producer.getInitialCacheEntry(), status: producer.EResourceStatus.Success,
+        const entry = {...initialEntry(producer), status: producer.EResourceStatus.Success,
             data: 'prior', updatedAt: 1};
         Object.defineProperty(entry, 'status', {
             value: producer.EResourceStatus.Success, enumerable: true, writable: false, configurable: false,
         });
         const entries = {[b]: entry};
-        Object.defineProperty(entries, a, {value: producer.getInitialCacheEntry(),
+        Object.defineProperty(entries, a, {value: initialEntry(producer),
             enumerable: true, writable: false, configurable: false});
         const state = {entries, native: new Map([['entry', entry]])};
         state.native.set('root', state);
@@ -497,9 +501,9 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         const cache = new producer.ResourceCache(async () => { calls++; return 'loaded'; }, {ttl: Infinity});
         const history = new recorder.CarburetorHistory(cache);
         const a = cache.keyOf('a'), b = cache.keyOf('b');
-        const good = {...producer.getInitialCacheEntry(), status: producer.EResourceStatus.Success,
+        const good = {...initialEntry(producer), status: producer.EResourceStatus.Success,
             data: 'a', updatedAt: 1};
-        const locked = {...producer.getInitialCacheEntry(), status: producer.EResourceStatus.Success,
+        const locked = {...initialEntry(producer), status: producer.EResourceStatus.Success,
             data: 'b', updatedAt: 1};
         for (const field of ['invalidated', 'failed']) Object.defineProperty(locked, field, {
             value: false, enumerable: true, writable: false, configurable: false,
@@ -533,7 +537,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         const calls = [];
         const cache = new producer.ResourceCache(async key => { calls.push(key); return key + '!'; });
         const key = cache.keyOf('a');
-        const entry = {...producer.getInitialCacheEntry()};
+        const entry = {...initialEntry(producer)};
         Object.defineProperty(entry, 'status', {
             value: producer.EResourceStatus.Idle, enumerable: true, writable: false, configurable: false,
         });
