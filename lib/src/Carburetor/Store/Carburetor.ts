@@ -36,10 +36,8 @@ import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
 interface ISubscriberRecord {
-    callback: TSubscriber;
-    schedulerKey: string;
-    generation: number;
-}
+    callback: TSubscriber; schedulerKey: string; generation: number;
+    matchedVersion: number; growthVersion: number; reads: TPathSet;}
 
 export class Carburetor<T extends object> implements
     ICarburetor<T>, IPatchSource, IInternalSubscriptionProtocol {
@@ -83,16 +81,17 @@ export class Carburetor<T extends object> implements
     protected uid: string = getUid();
     /** The counter getVersion() returns; bumped by every emitUpdate. */
     protected version: number = 0;
+    /** Latest store version whose subscriptions have completed matching. */
+    private notifiedVersion = 0;
+    /** Maps a transferred read-set identity to its active subscription for constant-time drift answers. */
+    private readonly subscriptionByReads = new WeakMap<TPathSet, ISubscriberRecord>();
 
     /** Paths changed since the last emitUpdate. */
     protected writes: TPathSet = new Set<TPath>();
-
     /** Which paths recent emits touched, bounded and watermarked; feeds the commit drift check (R16-05). */
     protected writeLog: WriteLog = new WriteLog();
-
     /** Whether draft was touched: it tells an empty write set from "nothing changed". */
     protected draftTouched: boolean = false;
-
     /** An emit already scheduled for a later microtask, so the dev check stays quiet. */
     protected pendingEmit: boolean = false;
     /** Minted on the first development draft write; later checks reuse the same callback. */
@@ -129,7 +128,6 @@ export class Carburetor<T extends object> implements
 
     /**
      * The store's identity, which subscriptions and dev tooling key on.
-     *
      * A method, not an arrow field: every overridable member below is, so a subclass override
      * lands on the prototype instead of an own property shadowing it.
      */
@@ -159,6 +157,14 @@ export class Carburetor<T extends object> implements
      * @param reads - the paths that read set touched
      */
     public [CARBURETOR_HAS_DRIFT](baselineVersion: number, reads: ReadonlySet<TPath>): boolean {
+        const record = this.subscriptionByReads.get(reads as TPathSet);
+
+        if (record && record.reads === reads && baselineVersion >= this.writeLog.getWatermark()
+            && this.writeLog.getWildcardVersion() <= baselineVersion && baselineVersion >= record.growthVersion
+            && record.matchedVersion <= baselineVersion && this.notifiedVersion >= this.version) {
+            return false;
+        }
+
         return this.writeLog.matches(baselineVersion, reads);
     }
 
@@ -321,12 +327,16 @@ export class Carburetor<T extends object> implements
         const previous = this.subscribers[id];
         if (previous) {
             this.scheduler.cancel(previous.schedulerKey);
+            if (this.subscriptionByReads.get(previous.reads) === previous) {
+                this.subscriptionByReads.delete(previous.reads);
+            }
         }
 
         this.subscribers[id] = {
             callback, schedulerKey: previous?.schedulerKey ?? getUid(),
-            generation: ++this.subscriptionGeneration,
+            generation: ++this.subscriptionGeneration, matchedVersion: 0, growthVersion: this.version, reads,
         };
+        this.subscriptionByReads.set(reads, this.subscribers[id]);
         this.subscriberIndex.add(id, reads);
 
         return id;
@@ -349,6 +359,11 @@ export class Carburetor<T extends object> implements
         }
 
         this.subscriberIndex.addPath(id, path);
+        const record = this.subscribers[id];
+        if (record) {
+            record.growthVersion = this.version;
+            record.reads.add(path);
+        }
     }
 
     /** Drops a subscriber, its index entries and any update already scheduled for it. */
@@ -356,6 +371,9 @@ export class Carburetor<T extends object> implements
         const record = this.subscribers[id];
         if (record) {
             this.scheduler.cancel(record.schedulerKey);
+            if (this.subscriptionByReads.get(record.reads) === record) {
+                this.subscriptionByReads.delete(record.reads);
+            }
             this.subscriberIndex.remove(id);
             delete this.subscribers[id];
         }
@@ -385,6 +403,15 @@ export class Carburetor<T extends object> implements
             let failures: unknown[] | undefined;
             const generation = this.subscriptionGeneration;
             const matched = this.subscriberIndex.match(writes);
+            const notifiedAt = this.version;
+            // A removed/replaced registration cannot inherit an earlier event's match.
+            matched.forEach((id: string) => {
+                const record = this.subscribers[id];
+                if (record && record.generation <= generation) {
+                    record.matchedVersion = notifiedAt;
+                }
+            });
+            this.notifiedVersion = Math.max(this.notifiedVersion, notifiedAt);
             const fact = this.publicationPending
                 ? this.pendingPublication ?? STATE_MUTATION_PUBLICATION
                 : STATE_MUTATION_PUBLICATION;
@@ -392,7 +419,6 @@ export class Carburetor<T extends object> implements
             this.pendingPublication = undefined;
             failures = this.patchObservers?.publish(fact);
             matched.forEach((id: string) => {
-                // A removed/replaced registration cannot inherit an earlier event's match.
                 const record = this.subscribers[id];
                 if (record && record.generation <= generation) {
                     try {
@@ -522,7 +548,6 @@ export class Carburetor<T extends object> implements
         }
     }
 
-
     /** Marks draft as used and arms the development check for a write that never published. */
     protected touchDraft(): void {
         if (this.draftTouched) {
@@ -561,9 +586,7 @@ export class Carburetor<T extends object> implements
     }
 
     /** A hook for subclasses to write derived state before an emit goes out. */
-    protected preEmit(): void {
-
-    }
+    protected preEmit(): void {}
 
     /** Closes the completed write set through the shared pre-subscriber publication boundary.
      *

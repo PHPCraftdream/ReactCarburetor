@@ -32,6 +32,22 @@ export class WriteLog {
     /** A baseline below this predates what the log still knows and must fall back. */
     private watermark = 0;
 
+    /** Current lower bound of versions for which path-level matching is unavailable.
+     *
+     * @returns The current watermark version.
+     */
+    public getWatermark(): number {
+        return this.watermark;
+    }
+
+    /** Version of the most recent wildcard write.
+     *
+     * @returns The most recent wildcard-write version.
+     */
+    public getWildcardVersion(): number {
+        return this.wildcardVersion;
+    }
+
     /**
      * Sets the log's bound.
      *
