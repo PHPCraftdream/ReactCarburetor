@@ -2,7 +2,7 @@ import {IDict, TDisposer, TReadonly, TSubscriber} from "@/Carburetor/Models/Base
 import {
     IPatchObserver, IStateInstallation, IStatePublication, IStateRestoreClaim,
     PATCH_OPAQUE, STATE_MIXED_PUBLICATION, STATE_MUTATION_PUBLICATION, STATE_PUBLIC_REPLACEMENT,
-    TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
+    IWritePatch, TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
 } from "@/Carburetor/Models/Paths";
 import {
     ICarburetor, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector,
@@ -25,11 +25,13 @@ import {PatchObserverRegistry} from "./Transaction/PatchObserverRegistry";
 import {IStateInstallPort} from "./Transaction/Models";
 import {installState} from "./Transaction/installState";
 import {emitStoreUpdate} from "./Transaction/emitStoreUpdate";
+import {replayPatchesOnPort} from "./Utils/Graph/replayPatchesOnPort";
 import {getUid} from "./Utils/getUid";
 import {IS_DEVELOPMENT} from "./Utils/DevelopmentFlag";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
 import {
-    CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, IInternalSubscriptionProtocol,
+    CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, CARBURETOR_REPLAY_PATCHES,
+    IInternalSubscriptionProtocol,
 } from "./Utils/Models";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 
@@ -46,10 +48,7 @@ export class Carburetor<T extends object> implements
         getVersion: Carburetor.prototype.getVersion,
         emitUpdate: Carburetor.prototype.emitUpdate,
     };
-    /**
-     * Never called: the build fails if a member the transaction ports read is renamed or retyped.
-     * A per-store port object would allocate on every store; this costs nothing at runtime.
-     */
+    /** Never called: the build fails if a member the transaction ports read is renamed or retyped. */
     private static checkPort<T extends object>(s: Carburetor<T>): IStateInstallPort<T> {
         return {
             data: s.data, aliases: s.aliases, draftProxy: s.draftProxy, patchPort: s.patchPort,
@@ -65,10 +64,8 @@ export class Carburetor<T extends object> implements
     protected subscribers: IDict<ISubscriberRecord> = Object.create(null);
     /** Distinguishes registrations created after an event selected its subscribers. */
     private subscriptionGeneration = 0;
-
     /** Finds the subscribers a write concerns without scanning all of them. */
     protected subscriberIndex: SubscriberIndex = new SubscriberIndex();
-
     /** Development alias ledger handed to both proxies; undefined outside development. */
     protected aliases: TAliasLedger = createAliasLedger();
 
@@ -146,12 +143,9 @@ export class Carburetor<T extends object> implements
     }
 
     /**
-     * The path-precise drift check (R16-05): whether a write since `baselineVersion` could
-     * concern `reads`, per the write log.
-     *
-     * Falls back to `true` once the log cannot answer for that baseline — see
-     * `WriteLog.matches`. Optional so a source with no such log (a computed) keeps today's
-     * coarse "the version moved" behaviour.
+     * The path-precise drift check (R16-05, R33-03): could a write since `baselineVersion` concern
+     * `reads`? O(1) for a read set this store filed; otherwise the write log, which says `true`
+     * once it cannot answer.
      *
      * @param baselineVersion - the version a render's read set was captured at
      * @param reads - the paths that read set touched
@@ -166,6 +160,19 @@ export class Carburetor<T extends object> implements
         }
 
         return this.writeLog.matches(baselineVersion, reads);
+    }
+
+    /**
+     * History's draft replay of undo/redo patches (R34-03); reached via the internal protocol.
+     *
+     * @param patches - the entry's patches, in recorded order
+     * @param inverse - true installs `previous` in reverse; false installs `next`
+     * @param installation - the replay owner's fact, kept on the closed publication
+     */
+    public [CARBURETOR_REPLAY_PATCHES](
+        patches: readonly IWritePatch[], inverse: boolean, installation: IStateInstallation
+    ): void {
+        replayPatchesOnPort(this.port, () => this.draft, patches, inverse, installation);
     }
 
     /** The state as it is, untracked: reads through it subscribe to nothing. */
@@ -190,15 +197,13 @@ export class Carburetor<T extends object> implements
     public setData(data: T): T { return this.commitState(data, STATE_PUBLIC_REPLACEMENT); }
 
     /**
-     * Installs one prepared root, records topology and changed paths, then closes publication.
-     * Library subclasses use this instead of coordinating live data, proxies, aliases and emits.
+     * Installs one prepared root, records topology and changed paths, then closes publication — the
+     * one entry library subclasses use instead of coordinating data, proxies, aliases and emits.
      *
      * @param data - the already prepared root to install
      * @param installation - the transition's origin, owner, representation and delivery policy
      */
-    protected commitState(
-        data: T, installation: IStateInstallation = STATE_PUBLIC_REPLACEMENT
-    ): T {
+    protected commitState(data: T, installation: IStateInstallation = STATE_PUBLIC_REPLACEMENT): T {
         return installState(this.port, data, installation);
     }
 
@@ -290,10 +295,8 @@ export class Carburetor<T extends object> implements
 
     /**
      * The type-erased half of `setData`: adopts `value` directly, diffed the same way (R16-02).
-     *
-     * Unlike `restore`, which copies to protect a snapshot the caller may reuse, `value` here is
-     * expected to be freshly parsed JSON the caller does not keep, so no second copy is made
-     * (R16-09).
+     * Unlike `restore`, it makes no copy: `value` is expected to be freshly parsed JSON the
+     * caller does not keep (R16-09).
      *
      * @param value - the parsed state to install; the cast is the caller's promise about the
      * shape, and the store keeps this exact object as `getData()`'s answer.
@@ -478,14 +481,12 @@ export class Carburetor<T extends object> implements
     }
 
     /**
-     * Mutates and publishes in one step. Writing to `draft` and forgetting `emitUpdate()`
-     * changes the data while nobody re-renders, which is why this is the recommended form.
+     * Mutates and publishes in one step: writing to `draft` and forgetting `emitUpdate()` changes
+     * the data while nobody re-renders, which is why this is the recommended form.
      *
-     * If mutate throws partway through, the writes it already made stay in the data —
-     * the draft applies each one the moment it executes — so they are published anyway:
-     * subscribers keep seeing the state as it is, and the error still reaches the caller.
-     * Rolling the writes back would take a full snapshot of the state before every update,
-     * too high a price on the hot path for a programming error.
+     * If mutate throws partway through, the writes it already made stay in the data (the draft
+     * applies each at once) and are published anyway; the error still reaches the caller. Rolling
+     * back would take a full snapshot before every update — too high a price on the hot path.
      */
     protected update(mutate: (draft: T) => void): void {
         let result: unknown;
