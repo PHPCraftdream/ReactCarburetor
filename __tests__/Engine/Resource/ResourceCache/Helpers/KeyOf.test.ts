@@ -1,5 +1,5 @@
 import {EResourceStatus} from "@/Carburetor";
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {TestCache} from './TestCache';
 
 interface IUser {
     id: string;
@@ -48,7 +48,7 @@ const flush = async (): Promise<void> => {
 describe('ResourceCache.keyOf (R6-05: a mutated argument object is keyed by its current values)', () => {
     test('a query object mutated between two loads is loaded and read under the new key', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+        const cache = new TestCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
 
         const query = {id: 'a'};
 
@@ -86,11 +86,11 @@ describe('ResourceCache.keyOf (R6-05: a mutated argument object is keyed by its 
 
     test('the same-reference mutation is reported once per cache, not once per call', () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+        const cache = new TestCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
 
         const query = {id: 'a'};
 
-        cache.keyOf(query);
+        cache.exposeKeyOf(query);
 
         const reports: unknown[][] = [];
         const spy = rstest.spyOn(console, 'error').mockImplementation((...args: unknown[]): void => {
@@ -98,14 +98,14 @@ describe('ResourceCache.keyOf (R6-05: a mutated argument object is keyed by its 
         });
 
         query.id = 'b';
-        expect(cache.keyOf(query)).toEqual(cache.keyOf({id: 'b'}));
+        expect(cache.exposeKeyOf(query)).toEqual(cache.exposeKeyOf({id: 'b'}));
 
         // Unchanged reads between mutations report nothing further...
-        expect(cache.keyOf(query)).toEqual(cache.keyOf({id: 'b'}));
+        expect(cache.exposeKeyOf(query)).toEqual(cache.exposeKeyOf({id: 'b'}));
 
         // ...and neither does a second mutation: one report per cache.
         query.id = 'c';
-        expect(cache.keyOf(query)).toEqual(cache.keyOf({id: 'c'}));
+        expect(cache.exposeKeyOf(query)).toEqual(cache.exposeKeyOf({id: 'c'}));
 
         spy.mockRestore();
 

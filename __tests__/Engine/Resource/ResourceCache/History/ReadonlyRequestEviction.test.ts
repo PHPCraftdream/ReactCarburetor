@@ -1,4 +1,6 @@
-import {CarburetorHistory, EResourceStatus, ResourceCache, getInitialCacheEntry} from '@/Carburetor';
+import {CarburetorHistory, EResourceStatus} from '@/Carburetor';
+import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
+import {TestCache} from '../Helpers/TestCache';
 
 const lock = (owner: object, key: string): void => {
     const value = (owner as Record<string, unknown>)[key];
@@ -7,9 +9,9 @@ const lock = (owner: object, key: string): void => {
 
 describe('cache request restart and immutable-slot removal', () => {
     test('owned readonly Pending replay starts and settles a request without changing captured history', async () => {
-        const cache = new ResourceCache<string, string>(async (key) => key + '!');
+        const cache = new TestCache<string, string>(async (key) => key + '!');
         const history = new CarburetorHistory(cache);
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         const entry = {...getInitialCacheEntry<string>(), status: EResourceStatus.Pending, updatedAt: 7};
         lock(entry, 'status');
         lock(entry, 'updatedAt');
@@ -37,12 +39,12 @@ describe('cache request restart and immutable-slot removal', () => {
     test('readonly Success refresh settles both a new answer and a raw failed refresh', async () => {
         const raw = new Error('raw refresh');
         let calls = 0;
-        const cache = new ResourceCache<string, string>(async () => {
+        const cache = new TestCache<string, string>(async () => {
             if (++calls === 1) throw raw;
             return 'new';
         });
         const history = new CarburetorHistory(cache);
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         const entry = {...getInitialCacheEntry<string>(), status: EResourceStatus.Success,
             data: 'saved', updatedAt: 1, refreshing: true};
         lock(entry, 'refreshing');
@@ -65,8 +67,8 @@ describe('cache request restart and immutable-slot removal', () => {
     });
 
     test('a throwing prepublication observer cannot leave a joinable ghost', async () => {
-        const cache = new ResourceCache<string, string>(async () => 'answer');
-        const key = cache.keyOf('a');
+        const cache = new TestCache<string, string>(async () => 'answer');
+        const key = cache.exposeKeyOf('a');
         const entry = {...getInitialCacheEntry<string>()};
         lock(entry, 'status');
         cache.setData({entries: {[key]: entry}});
@@ -83,8 +85,8 @@ describe('cache request restart and immutable-slot removal', () => {
     });
 
     test('locked eviction, forget and native backlinks remove real keys without losing retained entries', async () => {
-        const cache = new ResourceCache<unknown, string>(async (key) => key, {ttl: Infinity, maxEntries: 1});
-        const a = cache.keyOf('a');
+        const cache = new TestCache<unknown, string>(async (key) => key, {ttl: Infinity, maxEntries: 1});
+        const a = cache.exposeKeyOf('a');
         const entry = {...getInitialCacheEntry<unknown>(), status: EResourceStatus.Success,
             data: 'prior', updatedAt: Date.now()};
         const entries = {[a]: entry};
@@ -96,10 +98,10 @@ describe('cache request restart and immutable-slot removal', () => {
         const history = new CarburetorHistory(cache);
         const version = cache.getVersion();
         await cache.load('b');
-        expect(Object.keys(cache.getData().entries)).toEqual([cache.keyOf('b')]);
+        expect(Object.keys(cache.getData().entries)).toEqual([cache.exposeKeyOf('b')]);
         expect(cache.getEntry('a').status).toBe(EResourceStatus.Idle);
         expect(cache.getVersion()).toBeGreaterThan(version);
-        while (cache.getData().entries[cache.keyOf('b')] && history.canUndo()) {
+        while (cache.getData().entries[cache.exposeKeyOf('b')] && history.canUndo()) {
             expect(history.undo()).toBe(true);
         }
         expect(Object.keys(cache.getData().entries)).toEqual([a]);
@@ -115,9 +117,9 @@ describe('cache request restart and immutable-slot removal', () => {
         history.disconnect();
     });
     test('eviction retains watched siblings and their native root aliases', async () => {
-        const cache = new ResourceCache<unknown, string>(async (key) => key, {ttl: Infinity, maxEntries: 2});
-        const a = cache.keyOf('a');
-        const retained = cache.keyOf('retained');
+        const cache = new TestCache<unknown, string>(async (key) => key, {ttl: Infinity, maxEntries: 2});
+        const a = cache.exposeKeyOf('a');
+        const retained = cache.exposeKeyOf('retained');
         const entries = {
             [a]: {...getInitialCacheEntry<unknown>(), status: EResourceStatus.Success,
                 data: 'a', updatedAt: Date.now()},
@@ -132,21 +134,21 @@ describe('cache request restart and immutable-slot removal', () => {
         const notifications: string[][] = [];
         const id = cache.subscribe(() => {
             notifications.push(Object.keys(cache.getData().entries));
-        }, {reads: new Set([cache.pathOf('retained')])});
+        }, {reads: new Set([cache.exposePathOf('retained')])});
         await cache.load('b');
         const live = cache.getData();
-        expect(Object.keys(live.entries)).toEqual([retained, cache.keyOf('b')]);
+        expect(Object.keys(live.entries)).toEqual([retained, cache.exposeKeyOf('b')]);
         expect((live.entries[retained].data as Map<object, object>).get(live)).toBe(live.entries);
         expect((live.entries[retained].data as Map<object, object>).get(live.entries)).toBe(live);
-        expect(notifications).toEqual([[retained, cache.keyOf('b')]]);
+        expect(notifications).toEqual([[retained, cache.exposeKeyOf('b')]]);
         cache.unsubscribe(id);
         cache.forget('retained');
-        expect(Object.keys(cache.getData().entries)).toEqual([cache.keyOf('b')]);
+        expect(Object.keys(cache.getData().entries)).toEqual([cache.exposeKeyOf('b')]);
     });
 
     test('a deletion observer replacing its key keeps only the new ledger owner', async () => {
-        const cache = new ResourceCache<string, string>(async (key) => key, {ttl: Infinity, maxEntries: 1});
-        const a = cache.keyOf('a');
+        const cache = new TestCache<string, string>(async (key) => key, {ttl: Infinity, maxEntries: 1});
+        const a = cache.exposeKeyOf('a');
         cache.setData({entries: {[a]: {...getInitialCacheEntry<string>(), status: EResourceStatus.Success,
             data: 'old', updatedAt: Date.now()}}});
         let replacement: Promise<void> | undefined;
@@ -158,19 +160,19 @@ describe('cache request restart and immutable-slot removal', () => {
         expect(replacement).toBeDefined();
         await replacement;
         await cache.load('b');
-        expect(Object.keys(cache.getData().entries)).toEqual([cache.keyOf('b')]);
+        expect(Object.keys(cache.getData().entries)).toEqual([cache.exposeKeyOf('b')]);
         expect(cache.getEntry('b').data).toBe('b');
     });
 
     test('locked eviction retains the raw failure owner of an unrelated Error entry', async () => {
         const raw = new Error('raw identity');
-        const cache = new ResourceCache<string, string>(async (key) => {
+        const cache = new TestCache<string, string>(async (key) => {
             if (key === 'failed') throw raw;
             return key;
         }, {ttl: Infinity, maxEntries: 2});
         await cache.load('failed');
-        const failed = cache.keyOf('failed');
-        const old = cache.keyOf('old');
+        const failed = cache.exposeKeyOf('failed');
+        const old = cache.exposeKeyOf('old');
         const entries = {[failed]: cache.getData().entries[failed]};
         Object.defineProperty(entries, old, {
             value: {...getInitialCacheEntry<string>(), status: EResourceStatus.Success,
@@ -178,9 +180,9 @@ describe('cache request restart and immutable-slot removal', () => {
             enumerable: true, writable: false, configurable: false,
         });
         cache.setData({entries});
-        const id = cache.subscribe(() => undefined, {reads: new Set([cache.pathOf('failed')])});
+        const id = cache.subscribe(() => undefined, {reads: new Set([cache.exposePathOf('failed')])});
         await cache.load('new');
-        expect(Object.keys(cache.getData().entries)).toEqual([failed, cache.keyOf('new')]);
+        expect(Object.keys(cache.getData().entries)).toEqual([failed, cache.exposeKeyOf('new')]);
         let caught: unknown;
         try { cache.suspend('failed'); } catch (error) { caught = error; }
         expect(caught).toBe(raw);

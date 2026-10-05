@@ -1,4 +1,5 @@
-import {CarburetorHistory, EResourceStatus, ResourceCache} from '@/Carburetor';
+import {CarburetorHistory, EResourceStatus} from '@/Carburetor';
+import {TestCache} from '../Helpers/TestCache';
 import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
 import {normalizeOwnedCacheReplay} from '@/Carburetor/Resource/Cache/State/normalizeOwnedCacheReplay';
 
@@ -16,11 +17,11 @@ const descriptor = (owner: object, key: string): PropertyDescriptor | undefined 
 
 describe('owned cache replay of readonly transient entries', () => {
     test('mixed entries normalize only entry fields and keep a single native-linked graph', () => {
-        const cache = new ResourceCache<unknown, string>(async () => undefined);
+        const cache = new TestCache<unknown, string>(async () => undefined);
         const firstHistory = new CarburetorHistory(cache);
         const otherHistory = new CarburetorHistory(cache);
-        const a = cache.keyOf('a');
-        const b = cache.keyOf('b');
+        const a = cache.exposeKeyOf('a');
+        const b = cache.exposeKeyOf('b');
         const payload = {status: EResourceStatus.Pending, refreshing: true, tag: 'payload'};
         lock(payload, 'status', false);
         const first = entry(EResourceStatus.Pending, payload);
@@ -84,9 +85,9 @@ describe('owned cache replay of readonly transient entries', () => {
     });
 
     test.each([true, false])('readonly refreshing and status keep flags, configurable=%s', configurable => {
-        const cache = new ResourceCache<unknown, string>(async () => 'new');
+        const cache = new TestCache<unknown, string>(async () => 'new');
         const history = new CarburetorHistory(cache);
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         const saved = entry(EResourceStatus.Success, 'saved', true);
         lock(saved, 'refreshing', configurable);
         lock(saved, 'status', configurable);
@@ -105,9 +106,9 @@ describe('owned cache replay of readonly transient entries', () => {
     });
 
     test.each([true, false])('readonly Pending replays as Idle, configurable=%s', configurable => {
-        const cache = new ResourceCache<unknown, string>(async () => 'new');
+        const cache = new TestCache<unknown, string>(async () => 'new');
         const history = new CarburetorHistory(cache);
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         const saved = entry(EResourceStatus.Pending, 'saved');
         lock(saved, 'status', configurable);
         cache.setData({entries: {[key]: saved}});
@@ -125,11 +126,11 @@ describe('owned cache replay of readonly transient entries', () => {
         const newAnswer: {resolve?: (value: string) => void} = {};
         let pending: Promise<void> | undefined;
         let calls = 0;
-        const cache = new ResourceCache<unknown, string>(async (_key, signal) => {
+        const cache = new TestCache<unknown, string>(async (_key, signal) => {
             calls++;
             if (calls === 1) {
                 signal.addEventListener('abort', () => {
-                    cache.setData({entries: {[cache.keyOf('a')]: entry(EResourceStatus.Success, 'live')}});
+                    cache.setData({entries: {[cache.exposeKeyOf('a')]: entry(EResourceStatus.Success, 'live')}});
                     pending = cache.refresh('a');
                 });
                 return new Promise<string>(resolve => { oldAnswer.resolve = resolve; });
@@ -137,8 +138,8 @@ describe('owned cache replay of readonly transient entries', () => {
             return new Promise<string>(resolve => { newAnswer.resolve = resolve; });
         });
         const history = new CarburetorHistory(cache);
-        const key = cache.keyOf('a');
-        const other = cache.keyOf('b');
+        const key = cache.exposeKeyOf('a');
+        const other = cache.exposeKeyOf('b');
         const saved = entry(EResourceStatus.Success, 'saved');
         const locked = entry(EResourceStatus.Pending, 'other');
         lock(locked, 'status', false);
@@ -203,8 +204,8 @@ describe('owned cache replay of readonly transient entries', () => {
     });
 
     test('ordinary restore clones and normalizes without modifying its caller', () => {
-        const cache = new ResourceCache<unknown, string>(async () => 'new');
-        const key = cache.keyOf('a');
+        const cache = new TestCache<unknown, string>(async () => 'new');
+        const key = cache.exposeKeyOf('a');
         const saved = entry(EResourceStatus.Pending, 'saved', true);
         const snapshot = {entries: {[key]: saved}};
         cache.restore(snapshot);

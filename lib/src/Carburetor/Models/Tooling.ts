@@ -28,10 +28,10 @@ export interface IPersistOptions {
      */
     onError?: (error: unknown) => void;
     /**
-     * Batches same-microtask writes into one stringify instead of one per write (R16-09):
-     * stringifying the whole store on every keystroke measured 0.94–1.44 ms at 4000 items.
-     * Off by default, since persistence is otherwise synchronous — a write lands in storage
-     * before the call that caused it returns. The disposer flushes a write still pending.
+     * On by default: batches same-microtask writes into one stringify instead of one per write.
+     * Stringifying on every write costs 6.1–218 ms for 50 one-field updates at 10k rows (R33-07).
+     * False: synchronous, one write lands in storage before the call that caused it returns.
+     * The disposer always flushes a write still pending (coalesce true or false).
      */
     coalesce?: boolean;
 }

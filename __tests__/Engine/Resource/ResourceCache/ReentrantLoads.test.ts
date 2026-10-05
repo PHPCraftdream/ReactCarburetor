@@ -1,6 +1,6 @@
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {TestCache} from './Helpers/TestCache';
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 
 const readsOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);
 
@@ -8,7 +8,7 @@ describe('ResourceCache reentrant loads', () => {
     test('a synchronous subscriber joins the request before the loader runs', async () => {
         let resolve: (value: string) => void = () => undefined;
         let calls = 0;
-        const cache = new ResourceCache<string, string>(() => {
+        const cache = new TestCache<string, string>(() => {
             calls++;
 
             return new Promise<string>((done) => {
@@ -19,7 +19,7 @@ describe('ResourceCache reentrant loads', () => {
 
         cache.subscribe(() => {
             joined = cache.load('a');
-        }, {id: 'reentrant', reads: readsOf(cache.pathOf('a'))});
+        }, {id: 'reentrant', reads: readsOf(cache.exposePathOf('a'))});
 
         const request = cache.load('a');
 
@@ -37,7 +37,7 @@ describe('ResourceCache reentrant loads', () => {
     test('a distinct key started during notification remains independent', async () => {
         const resolvers: Record<string, (value: string) => void> = {};
         const calls: string[] = [];
-        const cache = new ResourceCache<string, string>((key) => {
+        const cache = new TestCache<string, string>((key) => {
             calls.push(key);
 
             return new Promise<string>((resolve) => {
@@ -50,7 +50,7 @@ describe('ResourceCache reentrant loads', () => {
             if (!second) {
                 second = cache.load('b');
             }
-        }, {id: 'second-key', reads: readsOf(cache.pathOf('a'))});
+        }, {id: 'second-key', reads: readsOf(cache.exposePathOf('a'))});
 
         const first = cache.load('a');
 
@@ -68,7 +68,7 @@ describe('ResourceCache reentrant loads', () => {
 
     test('abort during loading notification prevents an already-obsolete loader call', async () => {
         let calls = 0;
-        const cache = new ResourceCache<string, string>(() => {
+        const cache = new TestCache<string, string>(() => {
             calls++;
 
             return Promise.resolve('late');
@@ -80,7 +80,7 @@ describe('ResourceCache reentrant loads', () => {
                 aborted = true;
                 cache.abort('a');
             }
-        }, {id: 'abort', reads: readsOf(cache.pathOf('a'))});
+        }, {id: 'abort', reads: readsOf(cache.exposePathOf('a'))});
 
         await expect(cache.load('a')).rejects.toMatchObject({name: 'AbortError'});
 
@@ -94,7 +94,7 @@ describe('ResourceCache reentrant loads', () => {
         async (method) => {
             const calls: string[] = [];
             const pending = Promise.withResolvers<string>();
-            const cache = new ResourceCache<string, string>((key) => {
+            const cache = new TestCache<string, string>((key) => {
                 calls.push(key);
 
                 return pending.promise;
@@ -115,7 +115,7 @@ describe('ResourceCache reentrant loads', () => {
                     cache[method]('a');
                 }
                 replacement = cache.load('a');
-            }, {id: 'replace', reads: readsOf(cache.pathOf('a'))});
+            }, {id: 'replace', reads: readsOf(cache.exposePathOf('a'))});
 
             const original = cache.load('a');
 
@@ -135,7 +135,7 @@ describe('ResourceCache reentrant loads', () => {
 
     test('a pre-loader aborted refresh keeps the previous successful answer', async () => {
         let calls = 0;
-        const cache = new ResourceCache<string, string>(() => Promise.resolve(`answer-${++calls}`), {ttl: Infinity});
+        const cache = new TestCache<string, string>(() => Promise.resolve(`answer-${++calls}`), {ttl: Infinity});
 
         await cache.load('a');
         let aborted = false;
@@ -144,7 +144,7 @@ describe('ResourceCache reentrant loads', () => {
                 aborted = true;
                 cache.abort('a');
             }
-        }, {id: 'refresh-abort', reads: readsOf(cache.pathOf('a'))});
+        }, {id: 'refresh-abort', reads: readsOf(cache.exposePathOf('a'))});
 
         await expect(cache.refresh('a')).rejects.toMatchObject({name: 'AbortError'});
         expect(calls).toBe(1);
@@ -156,7 +156,7 @@ describe('ResourceCache reentrant loads', () => {
     test('a pre-loader aborted retry retains its prior raw failure', async () => {
         const failure = new Error('offline');
         let calls = 0;
-        const cache = new ResourceCache<string, string>(() => {
+        const cache = new TestCache<string, string>(() => {
             calls++;
 
             return Promise.reject(failure);
@@ -169,7 +169,7 @@ describe('ResourceCache reentrant loads', () => {
                 aborted = true;
                 cache.abort('a');
             }
-        }, {id: 'retry-abort', reads: readsOf(cache.pathOf('a'))});
+        }, {id: 'retry-abort', reads: readsOf(cache.exposePathOf('a'))});
 
         await expect(cache.refresh('a')).rejects.toMatchObject({name: 'AbortError'});
         expect(calls).toBe(1);
@@ -180,7 +180,7 @@ describe('ResourceCache reentrant loads', () => {
     test('an abort listener can retry the same key without joining the cancelled request', async () => {
         const resolvers: Array<(value: string) => void> = [];
         const signals: AbortSignal[] = [];
-        const cache = new ResourceCache<string, string>((_key, signal) => {
+        const cache = new TestCache<string, string>((_key, signal) => {
             signals.push(signal);
 
             return new Promise<string>((resolve) => {
@@ -213,7 +213,7 @@ describe('ResourceCache reentrant loads', () => {
     test('a different-key load started by an abort listener remains registered', async () => {
         const resolvers: Record<string, (value: string) => void> = {};
         const signals: Record<string, AbortSignal> = {};
-        const cache = new ResourceCache<string, string>((key, signal) => {
+        const cache = new TestCache<string, string>((key, signal) => {
             signals[key] = signal;
 
             return new Promise<string>((resolve) => {
@@ -245,7 +245,7 @@ describe('ResourceCache reentrant loads', () => {
         const resolvers: Array<(value: string) => void> = [];
         const signals: AbortSignal[] = [];
         let calls = 0;
-        const cache = new ResourceCache<string, string>((_key, signal) => {
+        const cache = new TestCache<string, string>((_key, signal) => {
             calls++;
             signals.push(signal);
 
@@ -279,7 +279,7 @@ describe('ResourceCache reentrant loads', () => {
     test('forgetAll preserves a same-key request started during cancellation', async () => {
         const resolvers: Array<(value: string) => void> = [];
         const signals: AbortSignal[] = [];
-        const cache = new ResourceCache<string, string>((_key, signal) => {
+        const cache = new TestCache<string, string>((_key, signal) => {
             signals.push(signal);
 
             return new Promise<string>((resolve) => {
@@ -309,7 +309,7 @@ describe('ResourceCache reentrant loads', () => {
     test('forgetAll aborts pending and refreshing requests and filters their late answers', async () => {
         const resolvers: Record<string, Array<(value: string) => void>> = {};
         const signals: Record<string, AbortSignal[]> = {};
-        const cache = new ResourceCache<string, string>((key, signal) => {
+        const cache = new TestCache<string, string>((key, signal) => {
             (signals[key] ??= []).push(signal);
 
             return new Promise<string>((resolve) => {
@@ -346,7 +346,7 @@ describe('ResourceCache reentrant loads', () => {
     test('forgetAll retains a new cross-key request if its key was absent initially', async () => {
         const resolvers: Record<string, (value: string) => void> = {};
         const signals: Record<string, AbortSignal> = {};
-        const cache = new ResourceCache<string, string>((key, signal) => {
+        const cache = new TestCache<string, string>((key, signal) => {
             signals[key] = signal;
 
             return new Promise<string>((resolve) => { resolvers[key] = resolve; });
@@ -371,7 +371,7 @@ describe('ResourceCache reentrant loads', () => {
     test('forgetAll still visits a cross-key replacement if that key was in the initial list', async () => {
         const resolvers: Record<string, Array<(value: string) => void>> = {};
         const signals: Record<string, AbortSignal[]> = {};
-        const cache = new ResourceCache<string, string>((key, signal) => {
+        const cache = new TestCache<string, string>((key, signal) => {
             (signals[key] ??= []).push(signal);
 
             return new Promise<string>((resolve) => { (resolvers[key] ??= []).push(resolve); });
@@ -398,7 +398,7 @@ describe('ResourceCache reentrant loads', () => {
 
     test('forgetAll consumes a deferred loading emit without a later wildcard', async () => {
         let resolve: (value: string) => void = () => undefined;
-        const cache = new ResourceCache<string, string>(() => new Promise<string>((done) => { resolve = done; }));
+        const cache = new TestCache<string, string>(() => new Promise<string>((done) => { resolve = done; }));
         let pending: Promise<void> | undefined;
 
         try {
@@ -426,7 +426,7 @@ describe('ResourceCache reentrant loads', () => {
     test('forgetAll uses fresh draft state after an abort listener replaces the root', async () => {
         const signals: Record<string, AbortSignal> = {};
         let resolve: (value: string) => void = () => undefined;
-        const cache = new ResourceCache<string, string>((key, signal) => {
+        const cache = new TestCache<string, string>((key, signal) => {
             signals[key] = signal;
 
             return new Promise<string>((done) => { resolve = done; });
@@ -435,9 +435,9 @@ describe('ResourceCache reentrant loads', () => {
 
         signals.a.addEventListener('abort', () => {
             cache.setData({entries: {
-                [cache.keyOf('a')]: {status: EResourceStatus.Success, data: 'restored-a',
+                [cache.exposeKeyOf('a')]: {status: EResourceStatus.Success, data: 'restored-a',
                     error: undefined, updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false},
-                [cache.keyOf('new')]: {status: EResourceStatus.Success, data: 'restored-new',
+                [cache.exposeKeyOf('new')]: {status: EResourceStatus.Success, data: 'restored-new',
                     error: undefined, updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false},
             }});
         });
@@ -456,7 +456,7 @@ describe('ResourceCache reentrant loads', () => {
     test('forgetAll called from an abort listener shares the outer publication', async () => {
         let resolve: (value: string) => void = () => undefined;
         let signal: AbortSignal | undefined;
-        const cache = new ResourceCache<string, string>((_key, currentSignal) => {
+        const cache = new TestCache<string, string>((_key, currentSignal) => {
             signal = currentSignal;
 
             return new Promise<string>((done) => { resolve = done; });
@@ -480,7 +480,7 @@ describe('ResourceCache reentrant loads', () => {
     });
 
     test('a subscriber reentering after forgetAll gets a separate publication', async () => {
-        const cache = new ResourceCache<string, string>((key) => key === 'a'
+        const cache = new TestCache<string, string>((key) => key === 'a'
             ? Promise.resolve('ready') : new Promise<string>(() => undefined));
 
         await cache.load('a');
@@ -506,7 +506,7 @@ describe('ResourceCache reentrant loads', () => {
     test('settling without a stored entry clears request bookkeeping', async () => {
         const resolvers: Array<(value: string) => void> = [];
         let calls = 0;
-        const cache = new ResourceCache<string, string>(() => {
+        const cache = new TestCache<string, string>(() => {
             calls++;
 
             return new Promise<string>((resolve) => {
@@ -531,7 +531,7 @@ describe('ResourceCache reentrant loads', () => {
     test('failed settlement without a stored entry also permits a fresh load', async () => {
         const rejectors: Array<(error: Error) => void> = [];
         let calls = 0;
-        const cache = new ResourceCache<string, string>(() => {
+        const cache = new TestCache<string, string>(() => {
             calls++;
 
             return new Promise<string>((_resolve, reject) => {

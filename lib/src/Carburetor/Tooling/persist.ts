@@ -67,7 +67,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     // persist() needs "every write" — subscribe with no `reads` is the engine's own way to say
     // that, cheaper than a watch(select, onChange) whose selector would have to read (and diff)
     // the whole tree to notice anything.
-    if (!coalesce) {
+    if (coalesce === false) {
         const id = carburetor.subscribe(write);
 
         return () => carburetor.unsubscribe(id);

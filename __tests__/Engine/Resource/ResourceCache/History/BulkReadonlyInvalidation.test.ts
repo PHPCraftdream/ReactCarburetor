@@ -1,4 +1,6 @@
-import {CarburetorHistory, EResourceStatus, ResourceCache, getInitialCacheEntry} from '@/Carburetor';
+import {CarburetorHistory, EResourceStatus} from '@/Carburetor';
+import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
+import {TestCache} from '../Helpers/TestCache';
 import {IResourceEntry} from '@/Carburetor/Models/Resource';
 
 const ready = (data: unknown): IResourceEntry<unknown> => ({
@@ -15,10 +17,10 @@ const lock = (owner: object, key: string): void => {
 describe('bulk invalidation across readonly cache entries', () => {
     test('publishes all stale flags together without loading, retaining readonly history and native aliases', () => {
         let loads = 0;
-        const cache = new ResourceCache<unknown, string>(async () => { loads++; return 'loaded'; }, {ttl: Infinity});
+        const cache = new TestCache<unknown, string>(async () => { loads++; return 'loaded'; }, {ttl: Infinity});
         const history = new CarburetorHistory(cache);
-        const goodKey = cache.keyOf('good');
-        const lockedKey = cache.keyOf('locked');
+        const goodKey = cache.exposeKeyOf('good');
+        const lockedKey = cache.exposeKeyOf('locked');
         const good = ready('good');
         const locked = ready(undefined);
         lock(locked, 'invalidated');
@@ -83,10 +85,10 @@ describe('bulk invalidation across readonly cache entries', () => {
 
     test('preparation failure leaves sibling state and pending request epoch unchanged', async () => {
         const deferred = Promise.withResolvers<unknown>();
-        const cache = new ResourceCache<unknown, string>(() => deferred.promise, {ttl: Infinity});
+        const cache = new TestCache<unknown, string>(() => deferred.promise, {ttl: Infinity});
         const pending = cache.load('good');
-        const goodKey = cache.keyOf('good');
-        const lockedKey = cache.keyOf('locked');
+        const goodKey = cache.exposeKeyOf('good');
+        const lockedKey = cache.exposeKeyOf('locked');
         const locked = ready('locked');
         lock(locked, 'invalidated');
         const hidden = {};
@@ -110,13 +112,13 @@ describe('bulk invalidation across readonly cache entries', () => {
         const raw = new Error('offline');
         let failedCalls = 0;
         let runningCalls = 0;
-        const cache = new ResourceCache<unknown, string>((key) => {
+        const cache = new TestCache<unknown, string>((key) => {
             if (key === 'running') { runningCalls++; return first.promise; }
             failedCalls++;
             return failedCalls === 1 ? Promise.reject(raw) : Promise.resolve('recovered');
         }, {ttl: Infinity});
         await cache.load('failed');
-        const failedKey = cache.keyOf('failed');
+        const failedKey = cache.exposeKeyOf('failed');
         let thrown: unknown;
         try { cache.suspend('failed'); } catch (error) { thrown = error; }
         expect(thrown).toBe(raw);
@@ -124,7 +126,7 @@ describe('bulk invalidation across readonly cache entries', () => {
         lock(locked, 'invalidated');
         lock(locked, 'failed');
         const old = cache.load('running');
-        const runningKey = cache.keyOf('running');
+        const runningKey = cache.exposeKeyOf('running');
         const pending = cache.getData().entries[runningKey];
         cache.setData({entries: {[runningKey]: pending, [failedKey]: locked}});
         cache.invalidateAll();

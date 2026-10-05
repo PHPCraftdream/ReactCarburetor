@@ -1,5 +1,5 @@
 import {TPath} from "@/Carburetor/Models/Paths";
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {TestCache} from '../ResourceCache/Helpers/TestCache';
 
 const flush = async (): Promise<void> => {
     await new Promise(resolve => setTimeout(resolve, 0));
@@ -8,7 +8,7 @@ const flush = async (): Promise<void> => {
 describe('ResourceCache eviction scaling (R16-04)', () => {
     test('4000 retained rows settle with a walk count proportional to N, not N^2', async () => {
         const N = 4000;
-        const cache = new ResourceCache<string, string>((id: string) => Promise.resolve(`value-${id}`));
+        const cache = new TestCache<string, string>((id: string) => Promise.resolve(`value-${id}`));
         const walks = (): number => (cache as unknown as {eviction: {walks: number}}).eviction.walks;
 
         for (let index = 0; index < N; index++) {
@@ -17,7 +17,7 @@ describe('ResourceCache eviction scaling (R16-04)', () => {
             // Mirrors useResource: a subscriber reads exactly this row's own entry, so every
             // row stays retained for as long as it is mounted — the shape that made every
             // fetch and every answer scan the whole live set before this fix.
-            cache.subscribe(() => undefined, {id: key, reads: new Set<TPath>([cache.pathOf(key)])});
+            cache.subscribe(() => undefined, {id: key, reads: new Set<TPath>([cache.exposePathOf(key)])});
             void cache.load(key);
         }
 
@@ -36,7 +36,7 @@ describe('ResourceCache eviction scaling (R16-04)', () => {
 
     test('a cache with maxEntries: Infinity never walks at all', async () => {
         const N = 500;
-        const cache = new ResourceCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
+        const cache = new TestCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
             maxEntries: Infinity,
         });
         const walks = (): number => (cache as unknown as {eviction: {walks: number}}).eviction.walks;
@@ -54,11 +54,11 @@ describe('ResourceCache eviction scaling (R16-04)', () => {
     });
 
     test('a reader leaving lets the next fetch reclaim what growth alone would not', async () => {
-        const cache = new ResourceCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
+        const cache = new TestCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
             maxEntries: 2,
         });
         const subscribeTo = (key: string): void => {
-            cache.subscribe(() => undefined, {id: key, reads: new Set<TPath>([cache.pathOf(key)])});
+            cache.subscribe(() => undefined, {id: key, reads: new Set<TPath>([cache.exposePathOf(key)])});
         };
         const walks = (): number => (cache as unknown as {eviction: {walks: number}}).eviction.walks;
 
@@ -95,9 +95,9 @@ describe('ResourceCache eviction scaling (R16-04)', () => {
         const kept = Object.keys(cache.getData().entries);
 
         // `a`, now unread and the least recently used unretained entry, is the one reclaimed.
-        expect(kept).not.toContain(cache.keyOf('a'));
-        expect(kept).toContain(cache.keyOf('b'));
-        expect(kept).toContain(cache.keyOf('c'));
-        expect(kept).toContain(cache.keyOf('d'));
+        expect(kept).not.toContain(cache.exposeKeyOf('a'));
+        expect(kept).toContain(cache.exposeKeyOf('b'));
+        expect(kept).toContain(cache.exposeKeyOf('c'));
+        expect(kept).toContain(cache.exposeKeyOf('d'));
     });
 });

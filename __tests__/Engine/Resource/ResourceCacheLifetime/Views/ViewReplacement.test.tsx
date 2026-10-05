@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {TestCache} from '../../ResourceCache/Helpers/TestCache';
 import {render} from '@testing-library/react';
 import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
@@ -13,8 +14,8 @@ const ready = (label: string): IResourceEntry<IValue> => ({
     refreshing: false, invalidated: false, failed: false,
 });
 const prepare = (ttl = Infinity) => {
-    const cache = new ResourceCache<IValue, string>(() => Promise.resolve({label: 'loaded'}), {ttl});
-    const [a, b] = ['a', 'b'].map((key) => cache.keyOf(key));
+    const cache = new TestCache<IValue, string>(() => Promise.resolve({label: 'loaded'}), {ttl});
+    const [a, b] = ['a', 'b'].map((key) => cache.exposeKeyOf(key));
     const entries = {[a]: ready('a'), [b]: ready('b')};
 
     cache.setData({entries});
@@ -235,7 +236,7 @@ describe('ResourceCache replacement views (R10-06)', () => {
     test('same-root replacement still reconciles an adopted dictionary mutated by its owner', () => {
         const {cache, entries, a, b} = prepare();
         const root = cache.getData();
-        const c = cache.keyOf('c');
+        const c = cache.exposeKeyOf('c');
         const viewB = cache.getEntry('b');
         const ledger = (cache as unknown as {eviction: {count: number; lastUsed: Map<string, number>}}).eviction;
 

@@ -1,4 +1,6 @@
-import {EResourceStatus, ResourceCache, getInitialCacheEntry} from '@/Carburetor';
+import {EResourceStatus} from '@/Carburetor';
+import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
+import {TestCache} from '../Helpers/TestCache';
 import {IResourceEntry} from '@/Carburetor/Models/Resource';
 
 const lock = (owner: object, key: string): void => {
@@ -37,12 +39,12 @@ describe('cache operations with native accessor metadata and readonly slots', ()
     test.each(['load', 'refresh'] as const)('%s preserves native metadata and held slots', async method => {
         const pending = Promise.withResolvers<unknown>();
         let calls = 0;
-        const cache = new ResourceCache<unknown, string>(() => {
+        const cache = new TestCache<unknown, string>(() => {
             calls++;
             return pending.promise;
         }, {ttl: 0});
-        const a = cache.keyOf('a');
-        const b = cache.keyOf('b');
+        const a = cache.exposeKeyOf('a');
+        const b = cache.exposeKeyOf('b');
         const target = successful('prior');
         if (method === 'load') target.status = EResourceStatus.Idle;
         lock(target, 'status');
@@ -76,9 +78,9 @@ describe('cache operations with native accessor metadata and readonly slots', ()
 
     test('failed readonly load preserves the raw rejection beside native-linked entries', async () => {
         const raw = new Error('loader failed');
-        const cache = new ResourceCache<unknown, string>(() => Promise.reject(raw));
-        const a = cache.keyOf('a');
-        const b = cache.keyOf('b');
+        const cache = new TestCache<unknown, string>(() => Promise.reject(raw));
+        const a = cache.exposeKeyOf('a');
+        const b = cache.exposeKeyOf('b');
         const target = {...getInitialCacheEntry<unknown>()};
         lock(target, 'status');
         const surviving = successful(undefined);
@@ -105,10 +107,10 @@ describe('cache operations with native accessor metadata and readonly slots', ()
         const oldAnswer = Promise.withResolvers<unknown>();
         const newAnswer = Promise.withResolvers<unknown>();
         let calls = 0;
-        const cache = new ResourceCache<unknown, string>(() =>
+        const cache = new TestCache<unknown, string>(() =>
             ++calls === 1 ? oldAnswer.promise : newAnswer.promise);
-        const a = cache.keyOf('a');
-        const b = cache.keyOf('b');
+        const a = cache.exposeKeyOf('a');
+        const b = cache.exposeKeyOf('b');
         const target = {...getInitialCacheEntry<unknown>()};
         lock(target, 'status');
         const surviving = successful(undefined);
@@ -138,9 +140,9 @@ describe('cache operations with native accessor metadata and readonly slots', ()
     });
 
     test('forget actually removes a locked key without disturbing a native-linked surviving entry', () => {
-        const cache = new ResourceCache<unknown, string>(async () => 'answer');
-        const a = cache.keyOf('a');
-        const b = cache.keyOf('b');
+        const cache = new TestCache<unknown, string>(async () => 'answer');
+        const a = cache.exposeKeyOf('a');
+        const b = cache.exposeKeyOf('b');
         const surviving = successful(undefined);
         const entries = {[a]: successful('a'), [b]: surviving};
         lock(entries, a);
@@ -159,10 +161,10 @@ describe('cache operations with native accessor metadata and readonly slots', ()
     });
 
     test('maxEntries evicts a locked key while keeping a watched native-linked sibling', async () => {
-        const cache = new ResourceCache<unknown, string>(async key => key, {ttl: Infinity, maxEntries: 2});
-        const a = cache.keyOf('a');
-        const b = cache.keyOf('b');
-        const c = cache.keyOf('c');
+        const cache = new TestCache<unknown, string>(async key => key, {ttl: Infinity, maxEntries: 2});
+        const a = cache.exposeKeyOf('a');
+        const b = cache.exposeKeyOf('b');
+        const c = cache.exposeKeyOf('c');
         const surviving = successful(undefined);
         const removed = successful('a');
         const entries = {[a]: removed, [b]: surviving};
@@ -171,7 +173,7 @@ describe('cache operations with native accessor metadata and readonly slots', ()
         const {links, get, set, reads} = nativeLinks(root, entries, surviving);
         surviving.data = links;
         cache.setData(root);
-        const watcher = cache.subscribe(() => undefined, {reads: new Set([cache.pathOf('b')])});
+        const watcher = cache.subscribe(() => undefined, {reads: new Set([cache.exposePathOf('b')])});
         try {
             await cache.load('c');
             const live = cache.getData();

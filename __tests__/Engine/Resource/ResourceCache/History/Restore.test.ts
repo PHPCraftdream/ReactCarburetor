@@ -1,5 +1,5 @@
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {TestCache} from '../Helpers/TestCache';
 
 interface IUser {
     id: string;
@@ -48,7 +48,7 @@ const flush = async (): Promise<void> => {
 describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restored snapshot)', () => {
     test('restore during a refresh discards a late success and keeps the restored data', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'initial'});
@@ -74,7 +74,7 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
 
     test('restore during a refresh discards a late failure too', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'initial'});
@@ -96,7 +96,7 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
 
     test('restore over a pending initial load discards a late success and leaves the entry idle', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         void cache.load('a');
         const snapshot = cache.snapshot();
@@ -119,7 +119,7 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
 
     test('restore over a pending initial load discards a late failure', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         void cache.load('a');
         const snapshot = cache.snapshot();
@@ -135,7 +135,7 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
 
     test('restore cancels a request for a key the new snapshot never mentions', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -149,20 +149,20 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
         cache.restore(snapshot);
 
         expect(signalForB.aborted).toBeTruthy();
-        expect(Object.keys(cache.getData().entries)).toEqual([cache.keyOf('a')]);
+        expect(Object.keys(cache.getData().entries)).toEqual([cache.exposeKeyOf('a')]);
 
         loader.pending[1].resolve({id: 'b', name: 'late-b'});
         await flush();
 
         // 'b' is gone from the restored state, and the late answer must not resurrect it.
-        expect(Object.keys(cache.getData().entries)).toEqual([cache.keyOf('a')]);
+        expect(Object.keys(cache.getData().entries)).toEqual([cache.exposeKeyOf('a')]);
         expect(cache.getEntry('b').stale).toBeTruthy();
         expect(cache.getEntry('b').data).toBeUndefined();
     });
 
     test('restore preserves a same-key request started by an abort listener', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
         const snapshot = cache.snapshot();
         const original = cache.load('a');
         let retry: Promise<void> | undefined;
@@ -188,7 +188,7 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
 
     test('a nested restore wins and keeps requests started by its abort listener', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'outer'});
@@ -196,7 +196,7 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
         const outerSnapshot = cache.snapshot();
 
         const innerLoader = makeLoader();
-        const innerCache = new ResourceCache<IUser, string>(innerLoader.load, {ttl: 60_000});
+        const innerCache = new TestCache<IUser, string>(innerLoader.load, {ttl: 60_000});
 
         void innerCache.load('a');
         innerLoader.pending[0].resolve({id: 'a', name: 'inner'});
@@ -230,7 +230,7 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
 
     test('restore cancels in-flight requests across several independent keys at once', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         void cache.load('c');
@@ -257,7 +257,7 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
 
     test('fromJSON normalizes a refreshing+invalidated entry hydrated into a fresh cache (R3-04)', async () => {
         const sourceLoader = makeLoader();
-        const source = new ResourceCache<IUser, string>(sourceLoader.load, {ttl: 60_000});
+        const source = new TestCache<IUser, string>(sourceLoader.load, {ttl: 60_000});
 
         void source.load('a');
         sourceLoader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -272,7 +272,7 @@ describe('ResourceCache.restore (R3-03: a late request cannot overwrite a restor
         const raw = JSON.stringify(source.toJSON());
 
         const freshLoader = makeLoader();
-        const fresh = new ResourceCache<IUser, string>(freshLoader.load, {ttl: 60_000});
+        const fresh = new TestCache<IUser, string>(freshLoader.load, {ttl: 60_000});
 
         fresh.fromJSON(JSON.parse(raw));
 

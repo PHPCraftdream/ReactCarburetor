@@ -9,7 +9,7 @@ import {nativeStoreWriteEpoch} from "@/Carburetor/Store/Scheduling/nativeStoreWr
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
-import {CARBURETOR_EXTEND, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
+import {CARBURETOR_EXTEND, CARBURETOR_SNAPSHOT_VERSION, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {announceIsUnchanged} from "./Freshness/announceIsUnchanged";
 import {reportComputedEscape} from "./reportComputedEscape";
 import {captureLeafVersions} from "./Freshness/captureLeafVersions";
@@ -124,7 +124,7 @@ export class Computed<R> implements IComputed<R> {
     }
 
     /** Includes unannounced changes to a previously rendered value. */
-    public getSnapshotVersion(): number {
+    public [CARBURETOR_SNAPSHOT_VERSION](): number {
         return this.version + this.snapshotRevision;
     }
 

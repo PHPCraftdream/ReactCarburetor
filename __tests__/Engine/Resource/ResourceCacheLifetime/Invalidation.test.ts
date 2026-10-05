@@ -1,4 +1,5 @@
 import {CarburetorHistory} from "@/Carburetor";
+import {TestCache} from '../ResourceCache/Helpers/TestCache';
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 
@@ -35,7 +36,7 @@ const readsOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);
 describe('ResourceCache invalidation', () => {
     test('invalidate marks one entry stale without touching its data', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
 
         await fill(cache, loader, ['a', 'b']);
 
@@ -50,7 +51,7 @@ describe('ResourceCache invalidation', () => {
 
     test('invalidate does not fetch by itself', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
 
         await fill(cache, loader, ['a']);
         cache.invalidate('a');
@@ -65,7 +66,7 @@ describe('ResourceCache invalidation', () => {
 
     test('a successful answer clears the invalidation', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
 
         await fill(cache, loader, ['a']);
         cache.invalidate('a');
@@ -80,7 +81,7 @@ describe('ResourceCache invalidation', () => {
 
     test('invalidateAll marks every entry, which is the move after a write the server took', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
 
         await fill(cache, loader, ['a', 'b', 'c']);
 
@@ -94,14 +95,14 @@ describe('ResourceCache invalidation', () => {
 
     test('invalidating one entry wakes only its readers', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
         let readerOfA = 0;
         let readerOfB = 0;
 
         await fill(cache, loader, ['a', 'b']);
 
-        cache.subscribe(() => readerOfA++, {id: 'a', reads: readsOf(`entries.${cache.keyOf('a')}`)});
-        cache.subscribe(() => readerOfB++, {id: 'b', reads: readsOf(`entries.${cache.keyOf('b')}`)});
+        cache.subscribe(() => readerOfA++, {id: 'a', reads: readsOf(`entries.${cache.exposeKeyOf('a')}`)});
+        cache.subscribe(() => readerOfB++, {id: 'b', reads: readsOf(`entries.${cache.exposeKeyOf('b')}`)});
 
         cache.invalidate('a');
 
@@ -111,7 +112,7 @@ describe('ResourceCache invalidation', () => {
 
     test('CarburetorHistory undo discards a late in-flight answer from before the undo (R3-03)', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
         const history = new CarburetorHistory(cache);
 
         void cache.load('a');

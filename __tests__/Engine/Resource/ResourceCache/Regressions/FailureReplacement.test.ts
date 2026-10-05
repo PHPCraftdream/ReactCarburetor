@@ -1,13 +1,13 @@
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceEntry} from "@/Carburetor/Models/Resource";
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {TestCache} from '../Helpers/TestCache';
 
 const replacement = (error: string): IResourceEntry<string> => ({
     status: EResourceStatus.Error, data: undefined, error, updatedAt: undefined,
     refreshing: false, invalidated: false, failed: true,
 });
 
-class EditableCache extends ResourceCache<string, string> {
+class EditableCache extends TestCache<string, string> {
     /** Exercise a subclass's publicly exposed draft mutation. */
     public rewrite(key: string, change: (entry: IResourceEntry<string>) => void): void {
         this.update((draft) => { change(draft.entries[this.keyOf(key)]); });
@@ -28,12 +28,12 @@ class EditableCache extends ResourceCache<string, string> {
 describe('cache failure ownership across replacement', () => {
     test('a new Error at the same key throws its own message, never the previous raw rejection', async () => {
         const old = new Error('old-raw');
-        const cache = new ResourceCache<string, string>(() => Promise.reject(old));
+        const cache = new TestCache<string, string>(() => Promise.reject(old));
 
         await cache.load('a');
         expect(cache.getFailure('a')).toBe(old);
 
-        cache.setData({entries: {[cache.keyOf('a')]: replacement('replacement-message')}});
+        cache.setData({entries: {[cache.exposeKeyOf('a')]: replacement('replacement-message')}});
 
         expect(cache.getEntry('a').error).toBe('replacement-message');
         expect(cache.getFailure('a')).toBeUndefined();
@@ -50,10 +50,10 @@ describe('cache failure ownership across replacement', () => {
 
     test('a Success replacement removes the old rejection and suspend serves its new value', async () => {
         const old = new Error('old-raw');
-        const cache = new ResourceCache<string, string>(() => Promise.reject(old));
+        const cache = new TestCache<string, string>(() => Promise.reject(old));
 
         await cache.load('a');
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         cache.setData({entries: {[key]: {
             ...replacement('unused'), status: EResourceStatus.Success, data: 'replacement',
             error: undefined, updatedAt: Date.now(), failed: false,
@@ -66,14 +66,14 @@ describe('cache failure ownership across replacement', () => {
 
     test('replacing another entry retains the current raw failure for an unchanged key', async () => {
         const old = new Error('first-raw');
-        const cache = new ResourceCache<string, string>((key) => key === 'a'
+        const cache = new TestCache<string, string>((key) => key === 'a'
             ? Promise.reject(old) : Promise.resolve(key));
 
         await Promise.all([cache.load('a'), cache.load('b')]);
         const {entries} = cache.getData();
         cache.setData({entries: {
             ...entries,
-            [cache.keyOf('b')]: {...entries[cache.keyOf('b')], data: 'new-b'},
+            [cache.exposeKeyOf('b')]: {...entries[cache.exposeKeyOf('b')], data: 'new-b'},
         }});
 
         expect(cache.getEntry('b').data).toBe('new-b');
@@ -92,11 +92,11 @@ describe('cache failure ownership across replacement', () => {
         const old = new Error('old-raw');
         const pending = Promise.withResolvers<string>();
         let calls = 0;
-        const cache = new ResourceCache<string, string>(() => ++calls === 1
+        const cache = new TestCache<string, string>(() => ++calls === 1
             ? Promise.reject(old) : pending.promise);
         await cache.load('a');
         const request = cache.refresh('a');
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
 
         cache.setData({entries: {[key]: {...cache.getData().entries[key]}}});
         expect(cache.getFailure('a')).toBeUndefined();
@@ -118,10 +118,10 @@ describe('cache failure ownership across replacement', () => {
 
     test.each(['restore', 'fromJSON'] as const)('%s clears raw failures and normalizes Pending', async (method) => {
         const old = new Error('old-raw');
-        const cache = new ResourceCache<string, string>(() => Promise.reject(old));
+        const cache = new TestCache<string, string>(() => Promise.reject(old));
 
         await cache.load('a');
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         const snapshot = {entries: {[key]: replacement('restored-message')}};
         cache[method](snapshot);
 
@@ -149,7 +149,7 @@ test.each(['a', 'a.b~c'])('Error rewrite for %s detaches raw rejection before ob
         }
         messages.push(`${cache.getEntry(key).error}:${cache.getFailure(key) === old}:` +
             `${thrown instanceof Error ? thrown.message : String(thrown)}`);
-    }, {reads: new Set([cache.pathOf(key)])});
+    }, {reads: new Set([cache.exposePathOf(key)])});
 
     cache.rewrite(key, (entry) => { entry.error = 'new serialized failure'; });
     expect(cache.getEntry(key).error).toBe('new serialized failure');
@@ -164,7 +164,7 @@ test.each(['a', 'a.b~c'])('entry draft replacement clears raw error before deliv
     const other = new Error('other key');
     const cache = new EditableCache((args) => Promise.reject(args === key ? old : other));
     await Promise.all([cache.load(key), cache.load('other')]);
-    const existing = cache.getData().entries[cache.keyOf(key)];
+    const existing = cache.getData().entries[cache.exposeKeyOf(key)];
     const observations: Array<{failure: unknown; thrown: unknown; timestamp: number | undefined}> = [];
     const id = cache.subscribe(() => {
         let thrown: unknown;
@@ -176,15 +176,15 @@ test.each(['a', 'a.b~c'])('entry draft replacement clears raw error before deliv
         observations.push({
             failure: cache.getFailure(key), thrown, timestamp: cache.getEntry(key).updatedAt,
         });
-    }, {reads: new Set([cache.pathOf(key)])});
+    }, {reads: new Set([cache.exposePathOf(key)])});
 
     cache.rewrite(key, (entry) => { entry.updatedAt = 3; });
-    expect(cache.getData().entries[cache.keyOf(key)]).toBe(existing);
+    expect(cache.getData().entries[cache.exposeKeyOf(key)]).toBe(existing);
     expect(cache.getFailure(key)).toBe(old);
     expect(observations).toEqual([{failure: old, thrown: old, timestamp: 3}]);
 
     cache.replaceEntry(key, {...existing, updatedAt: 5});
-    expect(cache.getData().entries[cache.keyOf(key)]).not.toBe(existing);
+    expect(cache.getData().entries[cache.exposeKeyOf(key)]).not.toBe(existing);
     expect(cache.getFailure(key)).toBeUndefined();
     expect(observations).toHaveLength(2);
     expect(observations[1].failure).toBeUndefined();
@@ -206,8 +206,8 @@ test('a distinct same-shape entry never inherits raw failure, even with no chang
     expect(cache.getFailure('a')).toBe(a);
     expect(cache.getFailure('b')).toBe(b);
 
-    cache.replaceEntry('a', {...cache.getData().entries[cache.keyOf('a')]});
-    cache.replaceEntry('b', {...cache.getData().entries[cache.keyOf('b')]});
+    cache.replaceEntry('a', {...cache.getData().entries[cache.exposeKeyOf('a')]});
+    cache.replaceEntry('b', {...cache.getData().entries[cache.exposeKeyOf('b')]});
     expect(cache.getFailure('a')).toBeUndefined();
     let thrown: unknown;
     try {
@@ -223,7 +223,7 @@ test('a distinct same-shape entry never inherits raw failure, even with no chang
 
 test.each([new Error('loader failure'), undefined, false])(
     'loader rejection %p remains raw during synchronous publication', async (raw) => {
-        const cache = new ResourceCache<string, string>(() => Promise.reject(raw));
+        const cache = new TestCache<string, string>(() => Promise.reject(raw));
         const observed: Array<{failure: unknown; thrown: unknown; caught: boolean}> = [];
         const id = cache.subscribe(() => {
             if (cache.getEntry('a').status !== EResourceStatus.Error) {
@@ -238,7 +238,7 @@ test.each([new Error('loader failure'), undefined, false])(
                 thrown = error;
             }
             observed.push({failure: cache.getFailure('a'), caught, thrown});
-        }, {reads: new Set([cache.pathOf('a')])});
+        }, {reads: new Set([cache.exposePathOf('a')])});
 
         await cache.load('a');
         expect(observed).toEqual([{failure: raw, caught: true, thrown: raw}]);
@@ -254,7 +254,7 @@ test('a published Error-to-Success rewrite clears only its own failure', async (
     let delivered: unknown;
     const id = cache.subscribe(() => {
         delivered = cache.getFailure('a');
-    }, {reads: new Set([cache.pathOf('a')])});
+    }, {reads: new Set([cache.exposePathOf('a')])});
 
     cache.rewrite('a', (entry) => {
         entry.status = EResourceStatus.Success;
@@ -290,7 +290,7 @@ test('an opaque subclass publication reconciles raw errors before its wildcard d
             thrown = error;
         }
         delivered = thrown instanceof Error ? thrown.message : String(thrown);
-    }, {reads: new Set([cache.pathOf('a')])});
+    }, {reads: new Set([cache.exposePathOf('a')])});
 
     cache.publishOpaqueError('a', 'opaque replacement');
     expect(delivered).toBe('opaque replacement');
@@ -302,7 +302,7 @@ test('a retry and its abort retain the prior raw failure until another answer ow
     const raw = new Error('prior failure');
     const pending = Promise.withResolvers<string>();
     let calls = 0;
-    const cache = new ResourceCache<string, string>(() => ++calls === 1
+    const cache = new TestCache<string, string>(() => ++calls === 1
         ? Promise.reject(raw) : pending.promise);
     await cache.load('a');
     const retry = cache.refresh('a');

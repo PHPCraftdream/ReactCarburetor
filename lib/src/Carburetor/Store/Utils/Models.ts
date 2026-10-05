@@ -15,9 +15,13 @@ export const CARBURETOR_HAS_DRIFT: unique symbol = Symbol.for('react-carburetor/
 /** Delivers one notification pass for a closed write set; the batch coordinator's entry point. */
 export const CARBURETOR_NOTIFY_WRITES: unique symbol = Symbol.for('react-carburetor/v1/store-notify-writes');
 
+/** The snapshot version a computed exposes, including changes not yet announced. */
+export const CARBURETOR_SNAPSHOT_VERSION: unique symbol = Symbol.for('react-carburetor/v1/computed-snapshot-version');
+
 /** What a store source carries beyond the public subscription surface. */
 export interface IInternalSubscriptionProtocol {
     [CARBURETOR_EXTEND]?: (id: string, path: TPath) => void;
     [CARBURETOR_HAS_DRIFT]?: (baselineVersion: number, reads: ReadonlySet<TPath>) => boolean;
     [CARBURETOR_NOTIFY_WRITES]?: (writes: TPathSet) => void;
+    [CARBURETOR_SNAPSHOT_VERSION]?: () => number;
 }

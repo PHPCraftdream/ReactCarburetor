@@ -56,7 +56,7 @@ describe('persist resource serialization (R11-04)', () => {
             calls.push(id);
             return `fresh-${id}`;
         });
-        const disconnect = persist(fresh, {key: 'slot', storage});
+        const disconnect = persist(fresh, {key: 'slot', storage, coalesce: false});
 
         expect(fresh.suspend('a')).toBe('answer-a');
         expect(calls).toEqual([]);
@@ -72,7 +72,7 @@ describe('persist resource serialization (R11-04)', () => {
     test('restored failure is rethrown only for its key; disconnect stops persistence', async () => {
         const storage = new MemoryStorage();
         const source = new ResourceCarburetor<string, string>(async () => { throw new Error('offline'); });
-        const disconnect = persist(source, {key: 'slot', storage});
+        const disconnect = persist(source, {key: 'slot', storage, coalesce: false});
         await source.load('a');
         disconnect();
 
@@ -89,7 +89,7 @@ describe('persist resource serialization (R11-04)', () => {
             calls.push(id);
             return `online-${id}`;
         });
-        const stopFresh = persist(fresh, {key: 'slot', storage});
+        const stopFresh = persist(fresh, {key: 'slot', storage, coalesce: false});
         expect(readThrown(() => fresh.suspend('a'))).toMatchObject({message: 'offline'});
         expect(calls).toEqual([]);
         const pending = readThrown(() => fresh.suspend('b'));
@@ -105,7 +105,7 @@ describe('persist resource serialization (R11-04)', () => {
         const storage = new MemoryStorage();
         let resolve!: (answer: string) => void;
         const source = new ResourceCarburetor<string, string>(() => new Promise<string>(r => { resolve = r; }));
-        const disconnect = persist(source, {key: 'slot', storage});
+        const disconnect = persist(source, {key: 'slot', storage, coalesce: false});
         const request = source.load('a');
         const saved = JSON.parse(storage.getItem('slot') as string);
         expect(saved.status).toBe(EResourceStatus.Pending);
@@ -178,12 +178,12 @@ describe('persist resource serialization (R11-04)', () => {
 
         const storage = new MemoryStorage();
         const custom = new EncodedStore({value: 1});
-        const stopCustom = persist(custom, {key: 'custom', storage});
+        const stopCustom = persist(custom, {key: 'custom', storage, coalesce: false});
         custom.setData({value: 2});
         expect(JSON.parse(storage.getItem('custom') as string)).toEqual({value: 102});
         stopCustom();
         const restored = new EncodedStore({value: 0});
-        const stopRestored = persist(restored, {key: 'custom', storage});
+        const stopRestored = persist(restored, {key: 'custom', storage, coalesce: false});
         expect(restored.getData().value).toBe(2);
         stopRestored();
 
@@ -193,7 +193,7 @@ describe('persist resource serialization (R11-04)', () => {
             }
         }
         const ordinary = new SnapshotGuard({branch: {value: 0}});
-        const stop = persist(ordinary, {key: 'ordinary', storage});
+        const stop = persist(ordinary, {key: 'ordinary', storage, coalesce: false});
         ordinary.setData({branch: {value: 1}});
         expect(JSON.parse(storage.getItem('ordinary') as string)).toEqual({branch: {value: 1}});
         stop();

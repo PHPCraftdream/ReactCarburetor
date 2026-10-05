@@ -1,11 +1,12 @@
 import * as React from 'react';
+import {TestCache} from '../Helpers/TestCache';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 
 const controlled = (ttl: number = Infinity) => {
     const pending: Array<PromiseWithResolvers<string>> = [];
-    const cache = new ResourceCache<string, string>(() => {
+    const cache = new TestCache<string, string>(() => {
         const request = Promise.withResolvers<string>();
         pending.push(request);
         return request.promise;
@@ -50,7 +51,7 @@ test('a mounted Suspense-only success reader revalidates on its next read withou
     let notifiedDuringRender = false;
     const onRender = (value: boolean) => { rendering = value; };
     const id = cache.subscribe(() => { notifiedDuringRender ||= rendering; }, {
-        reads: new Set([cache.pathOf('a')]),
+        reads: new Set([cache.exposePathOf('a')]),
     });
     const mounted = render(content(cache, 0, onRender));
     expect(mounted.container.querySelector('.waiting')).not.toBeNull();

@@ -1,6 +1,6 @@
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
+import {TestCache} from '../../ResourceCache/Helpers/TestCache';
 import {IResourceEntry} from '@/Carburetor/Models/Resource';
-import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 
 const ready = <T>(data: T): IResourceEntry<T> => ({
     status: EResourceStatus.Success,
@@ -16,8 +16,8 @@ describe('resource cache view SameValue data', () => {
     test.each([
         [-0, +0], [+0, -0],
     ])('replacement publishes and reads a signed-zero change from %s to %s', (before, after) => {
-        const cache = new ResourceCache<number, string>(() => Promise.resolve(1), {ttl: Infinity});
-        const key = cache.keyOf('a');
+        const cache = new TestCache<number, string>(() => Promise.resolve(1), {ttl: Infinity});
+        const key = cache.exposeKeyOf('a');
         cache.setData({entries: {[key]: ready(before)}});
         const first = cache.getEntry('a');
         const version = cache.getVersion();
@@ -38,8 +38,8 @@ describe('resource cache view SameValue data', () => {
     });
 
     test('unchanged NaN and ordinary primitive replacements keep views and skip publication', () => {
-        const cache = new ResourceCache<number, string>(() => Promise.resolve(NaN), {ttl: Infinity});
-        const key = cache.keyOf('a');
+        const cache = new TestCache<number, string>(() => Promise.resolve(NaN), {ttl: Infinity});
+        const key = cache.exposeKeyOf('a');
         cache.setData({entries: {[key]: ready(NaN)}});
         const first = cache.resolve('a').view;
         const notify = rstest.fn();
@@ -67,9 +67,9 @@ describe('resource cache view SameValue data', () => {
     });
 
     test('object data uses identity while equal-content replacements preserve the lazy view cache', () => {
-        const cache = new ResourceCache<{value: number}, string>(() => Promise.resolve({value: 1}), {ttl: Infinity});
-        const a = cache.keyOf('a');
-        const b = cache.keyOf('b');
+        const cache = new TestCache<{value: number}, string>(() => Promise.resolve({value: 1}), {ttl: Infinity});
+        const a = cache.exposeKeyOf('a');
+        const b = cache.exposeKeyOf('b');
         const data = {value: 1};
         const entries = {[a]: ready(data), [b]: ready({value: 2})};
         cache.setData({entries});
@@ -98,10 +98,10 @@ describe('resource cache view SameValue data', () => {
         try {
             const values = [NaN, NaN, -0, +0];
             const loader = rstest.fn(() => Promise.resolve(values.shift() as number));
-            const cache = new ResourceCache<number, string>(loader, {ttl: Infinity});
+            const cache = new TestCache<number, string>(loader, {ttl: Infinity});
             const notifications = rstest.fn();
             const id = cache.subscribe(notifications);
-            const key = cache.keyOf('a');
+            const key = cache.exposeKeyOf('a');
 
             await cache.load('a');
             const loaded = cache.resolve('a').view;

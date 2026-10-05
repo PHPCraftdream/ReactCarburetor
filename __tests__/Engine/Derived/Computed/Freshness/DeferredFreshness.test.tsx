@@ -3,7 +3,9 @@ import * as React from 'react';
 import {act, Profiler, useLayoutEffect} from 'react';
 import {render} from '@testing-library/react';
 import {AntiHookComponent, Carburetor, ComponentUpdateThrottle, computed, transaction} from '@/Carburetor';
+import type {ICarburetorSubscription} from '@/Carburetor';
 import {useComputedValue} from '@/Interop';
+import {CARBURETOR_SNAPSHOT_VERSION, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
 
 class Source extends Carburetor<{
     index: Map<string, number>; tags: Set<string>; stamp: Date; count: number; other: number;
@@ -53,6 +55,15 @@ class ControlledThrottle extends ComponentUpdateThrottle {
     public flush = (): void => this.letsUpdate();
 }
 
+/**
+ * Reads the snapshot version through the R33-08 symbol protocol instead of the removed public
+ * getter.
+ *
+ * @param source - the computed source whose snapshot version is checked
+ */
+const snapshotVersion = (source: ICarburetorSubscription): number =>
+    (source as IInternalSubscriptionProtocol)[CARBURETOR_SNAPSHOT_VERSION]!();
+
 describe('computed freshness across observation and deferred delivery', () => {
     test.each(['map', 'envelope', 'set', 'date'] as const)(
         'a %s rendered before the first subscription is rechecked after a sibling layout write', kind => {
@@ -83,7 +94,7 @@ describe('computed freshness across observation and deferred delivery', () => {
             expect(commits).toBe(2);
             expect(renders).toBe(2);
             expect(source.getVersion()).toBe(0);
-            expect(source.getSnapshotVersion()).toBe(1);
+            expect(snapshotVersion(source)).toBe(1);
             unmount();
             expect(source['subscribers'].size).toBe(0);
         }
@@ -99,7 +110,7 @@ describe('computed freshness across observation and deferred delivery', () => {
         expect(container.textContent).toBe('1');
         expect(renders).toBe(1);
         expect(source.getVersion()).toBe(0);
-        expect(source.getSnapshotVersion()).toBe(0);
+        expect(snapshotVersion(source)).toBe(0);
         unmount();
     });
 
@@ -126,7 +137,7 @@ describe('computed freshness across observation and deferred delivery', () => {
         store.changeOther();
         expect(source.get()).toBe(initial);
         expect(runs).toBe(1);
-        expect(source.getSnapshotVersion()).toBe(0);
+        expect(snapshotVersion(source)).toBe(0);
     });
 
     test.each([

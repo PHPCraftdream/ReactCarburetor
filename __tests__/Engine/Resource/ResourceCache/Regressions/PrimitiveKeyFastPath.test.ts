@@ -1,4 +1,4 @@
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {TestCache} from '../Helpers/TestCache';
 import {escapeCacheKey} from "@/Carburetor/Resource/Cache/escapeCacheKey";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 
@@ -13,7 +13,7 @@ const slowKeyOf = (args: unknown): string =>
 
 describe('ResourceCache primitive-args fast path (R30-08)', () => {
     test('fast-path keys match the slow derivation byte for byte on edge values', () => {
-        const cache = new ResourceCache<IUser, number | string | boolean | null | undefined>(
+        const cache = new TestCache<IUser, number | string | boolean | null | undefined>(
             async () => ({id: 0}),
         );
 
@@ -25,22 +25,22 @@ describe('ResourceCache primitive-args fast path (R30-08)', () => {
         ];
 
         for (const edge of edges) {
-            expect(cache.keyOf(edge)).toEqual(slowKeyOf(edge));
-            expect(cache.keyOf(edge)).toEqual(cache.keyOf(edge));
-            expect(cache.pathOf(edge)).toEqual(joinPath('entries', slowKeyOf(edge)));
+            expect(cache.exposeKeyOf(edge)).toEqual(slowKeyOf(edge));
+            expect(cache.exposeKeyOf(edge)).toEqual(cache.exposeKeyOf(edge));
+            expect(cache.exposePathOf(edge)).toEqual(joinPath('entries', slowKeyOf(edge)));
         }
     });
 
     test('object arguments keep the ordinary key derivation', () => {
-        const cache = new ResourceCache<IUser, {id: number}>(async () => ({id: 0}));
+        const cache = new TestCache<IUser, {id: number}>(async () => ({id: 0}));
 
-        expect(cache.keyOf({id: 1})).toEqual(slowKeyOf({id: 1}));
-        expect(cache.keyOf({id: 1})).toEqual(slowKeyOf({id: 1}));
-        expect(cache.keyOf({id: 2})).toEqual(slowKeyOf({id: 2}));
+        expect(cache.exposeKeyOf({id: 1})).toEqual(slowKeyOf({id: 1}));
+        expect(cache.exposeKeyOf({id: 1})).toEqual(slowKeyOf({id: 1}));
+        expect(cache.exposeKeyOf({id: 2})).toEqual(slowKeyOf({id: 2}));
     });
 
     test('resolve() answers with the same key, path and view as the slow trio', async () => {
-        const cache = new ResourceCache<IUser, number>(async id => ({id}));
+        const cache = new TestCache<IUser, number>(async id => ({id}));
 
         void cache.load(7);
         await flush();
@@ -50,7 +50,7 @@ describe('ResourceCache primitive-args fast path (R30-08)', () => {
         const second = cache.resolve(7);
 
         expect(first.key).toEqual(key);
-        expect(first.path).toEqual(cache.pathOfKey(key));
+        expect(first.path).toEqual(cache.exposePathOfKey(key));
         expect(second.key).toEqual(first.key);
         expect(second.path).toEqual(first.path);
         expect(second.view).toBe(first.view);
@@ -58,7 +58,7 @@ describe('ResourceCache primitive-args fast path (R30-08)', () => {
     });
 
     test('ttl Infinity never reads the clock on the read path', async () => {
-        const cache = new ResourceCache<IUser, number>(async id => ({id}), {ttl: Infinity});
+        const cache = new TestCache<IUser, number>(async id => ({id}), {ttl: Infinity});
 
         void cache.load(1);
         await flush();
@@ -84,7 +84,7 @@ describe('ResourceCache primitive-args fast path (R30-08)', () => {
     });
 
     test('a finite maxEntries still keeps read entries in LRU order', async () => {
-        const cache = new ResourceCache<IUser, string>(async id => ({id}), {maxEntries: 2});
+        const cache = new TestCache<IUser, string>(async id => ({id}), {maxEntries: 2});
 
         void cache.load('a');
         void cache.load('b');

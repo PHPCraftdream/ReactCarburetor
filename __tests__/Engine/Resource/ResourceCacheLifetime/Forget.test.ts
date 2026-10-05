@@ -1,6 +1,7 @@
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {persist} from "@/Carburetor/Tooling/persist";
+import {TestCache} from '../ResourceCache/Helpers/TestCache';
 import {transaction} from "@/Carburetor/Store/Transaction/transaction";
 
 const makeLoader = () => {
@@ -34,7 +35,7 @@ const fill = async (cache: ResourceCache<string, string>, loader: ReturnType<typ
 describe('ResourceCache forget', () => {
     test('forget drops an entry and its failure', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new TestCache<string, string>(loader.load);
 
         await fill(cache, loader, ['a', 'b']);
 
@@ -48,7 +49,7 @@ describe('ResourceCache forget', () => {
 
     test('forget cancels the request, so a late answer cannot resurrect the entry', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new TestCache<string, string>(loader.load);
 
         void cache.load('a');
         cache.forget('a');
@@ -62,7 +63,7 @@ describe('ResourceCache forget', () => {
 
     test('forgetAll empties the cache', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new TestCache<string, string>(loader.load);
 
         await fill(cache, loader, ['a', 'b', 'c']);
 
@@ -73,7 +74,7 @@ describe('ResourceCache forget', () => {
 
     test('forget drops the cached view along with the rest of the entry', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
         const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
 
         await fill(cache, loader, ['a', 'b']);
@@ -84,13 +85,13 @@ describe('ResourceCache forget', () => {
 
         cache.forget('a');
 
-        expect(viewCache().has(cache.keyOf('a'))).toBeFalsy();
-        expect(viewCache().has(cache.keyOf('b'))).toBeTruthy();
+        expect(viewCache().has(cache.exposeKeyOf('a'))).toBeFalsy();
+        expect(viewCache().has(cache.exposeKeyOf('b'))).toBeTruthy();
     });
 
     test('forgetAll empties the cached views', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
         const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
 
         await fill(cache, loader, ['a', 'b']);
@@ -104,7 +105,7 @@ describe('ResourceCache forget', () => {
 
     test('forget keeps entryCount in step with the entries it actually removes', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new TestCache<string, string>(loader.load);
         const entryCount = () => (cache as unknown as {eviction: {count: number}}).eviction.count;
 
         await fill(cache, loader, ['a', 'b', 'c']);
@@ -118,7 +119,7 @@ describe('ResourceCache forget', () => {
     });
 
     test('empty forgetAll is a true no-op', () => {
-        const cache = new ResourceCache<string, string>(() => Promise.resolve('unused'));
+        const cache = new TestCache<string, string>(() => Promise.resolve('unused'));
         let callbacks = 0;
 
         const id = cache.subscribe(() => { callbacks++; });
@@ -131,7 +132,7 @@ describe('ResourceCache forget', () => {
 
     test('many ready entries publish once with precise per-key paths and patch hooks', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {maxEntries: 200});
+        const cache = new TestCache<string, string>(loader.load, {maxEntries: 200});
         const keys = Array.from({length: 100}, (_, index) => `key-${index}`);
 
         await fill(cache, loader, keys);
@@ -144,9 +145,9 @@ describe('ResourceCache forget', () => {
 
         const ids = [
             cache.subscribe(() => { wildcard++; }),
-            cache.subscribe(() => { first++; }, {reads: new Set([cache.pathOf(keys[0])])}),
-            cache.subscribe(() => { last++; }, {reads: new Set([cache.pathOf(keys[99])])}),
-            cache.subscribe(() => { missing++; }, {reads: new Set([cache.pathOf('missing')])}),
+            cache.subscribe(() => { first++; }, {reads: new Set([cache.exposePathOf(keys[0])])}),
+            cache.subscribe(() => { last++; }, {reads: new Set([cache.exposePathOf(keys[99])])}),
+            cache.subscribe(() => { missing++; }, {reads: new Set([cache.exposePathOf('missing')])}),
         ];
         const detach = cache.attachPatchListener({patch: () => { patches++; }});
         const baseline = cache.getVersion();
@@ -163,7 +164,7 @@ describe('ResourceCache forget', () => {
 
     test.each([false, true])('forgetAll persists once with coalesce=%s', async (coalesce) => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new TestCache<string, string>(loader.load);
 
         await fill(cache, loader, ['a', 'b', 'c']);
 
@@ -189,7 +190,7 @@ describe('ResourceCache forget', () => {
 
     test('nested forgetAll and an outer transaction deliver one final state', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new TestCache<string, string>(loader.load);
 
         await fill(cache, loader, ['a', 'b']);
 

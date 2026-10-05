@@ -1,4 +1,4 @@
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {TestCache} from '../ResourceCache/Helpers/TestCache';
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceEntry} from "@/Carburetor/Models/Resource";
 
@@ -32,10 +32,10 @@ const makeRng = (seed: number): (() => number) => {
 
 describe('ResourceCache bookkeeping invariants (R16-04)', () => {
     test('setData reconciles additions, removals, identity and LRU before later eviction', async () => {
-        const cache = new ResourceCache<string, string>((id) => Promise.resolve(id), {
+        const cache = new TestCache<string, string>((id) => Promise.resolve(id), {
             maxEntries: 2, ttl: Infinity,
         });
-        const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((key) => cache.keyOf(key));
+        const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((key) => cache.exposeKeyOf(key));
         const ledger = (cache as unknown as {eviction: {count: number; lastUsed: Map<string, number>}}).eviction;
         const first = {entries: {[a]: ready('a'), [b]: ready('b')}};
 
@@ -63,10 +63,10 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
     });
 
     test('setData in a synchronous subscriber is reconciled before a reentrant load', async () => {
-        const cache = new ResourceCache<string, string>((id) => Promise.resolve(id), {
+        const cache = new TestCache<string, string>((id) => Promise.resolve(id), {
             maxEntries: 1, ttl: Infinity,
         });
-        const [a, b, c] = ['a', 'b', 'c'].map((key) => cache.keyOf(key));
+        const [a, b, c] = ['a', 'b', 'c'].map((key) => cache.exposeKeyOf(key));
         let started = false;
         const id = cache.subscribe(() => {
             if (!started) {
@@ -87,12 +87,12 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
     });
 
     test('setData releases an exhausted eviction scan after changing the entry set', async () => {
-        const cache = new ResourceCache<string, string>((id) => Promise.resolve(id), {
+        const cache = new TestCache<string, string>((id) => Promise.resolve(id), {
             maxEntries: 1, ttl: Infinity,
         });
-        const [a, b, c, d, e] = ['a', 'b', 'c', 'd', 'e'].map((key) => cache.keyOf(key));
+        const [a, b, c, d, e] = ['a', 'b', 'c', 'd', 'e'].map((key) => cache.exposeKeyOf(key));
         const readers = [a, b].map((key) => cache.subscribe(() => undefined, {
-            reads: new Set([cache.pathOfKey(key)]),
+            reads: new Set([cache.exposePathOfKey(key)]),
         }));
 
         await Promise.all([cache.load('a'), cache.load('b')]);
@@ -107,11 +107,11 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
 
     test('an in-flight answer settles into a replaced entry set without losing count', async () => {
         let resolve: (value: string) => void = () => undefined;
-        const cache = new ResourceCache<string, string>(() => new Promise((done) => { resolve = done; }), {
+        const cache = new TestCache<string, string>(() => new Promise((done) => { resolve = done; }), {
             maxEntries: 3,
         });
         const pending = cache.load('a');
-        const [a, b] = ['a', 'b'].map((key) => cache.keyOf(key));
+        const [a, b] = ['a', 'b'].map((key) => cache.exposeKeyOf(key));
         const replacement = {entries: {[a]: ready('provisional'), [b]: ready('b')}};
 
         cache.setData(replacement);
@@ -128,7 +128,7 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
 
     test('entryCount matches the live entry set after a random sequence of operations', async () => {
         const rng = makeRng(20260928);
-        const cache = new ResourceCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
+        const cache = new TestCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
             maxEntries: 5,
         });
         const entryCount = (): number => (cache as unknown as {eviction: {count: number}}).eviction.count;
@@ -169,7 +169,7 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
     }, 20000);
 
     test('restore/hydration keeps entryCount and LRU order consistent', async () => {
-        const seed = new ResourceCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
+        const seed = new TestCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
             ttl: 60_000,
         });
 
@@ -180,7 +180,7 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
         await flush();
 
         const snapshot = seed.snapshot();
-        const cache = new ResourceCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
+        const cache = new TestCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
             maxEntries: 3,
             ttl: 60_000,
         });
@@ -203,10 +203,10 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
 
         const kept = Object.keys(cache.getData().entries);
 
-        expect(kept).not.toContain(cache.keyOf('a'));
-        expect(kept).toContain(cache.keyOf('b'));
-        expect(kept).toContain(cache.keyOf('c'));
-        expect(kept).toContain(cache.keyOf('d'));
+        expect(kept).not.toContain(cache.exposeKeyOf('a'));
+        expect(kept).toContain(cache.exposeKeyOf('b'));
+        expect(kept).toContain(cache.exposeKeyOf('c'));
+        expect(kept).toContain(cache.exposeKeyOf('d'));
         expect(entryCount()).toEqual(Object.keys(cache.getData().entries).length);
     });
 });

@@ -1,5 +1,5 @@
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {TestCache} from '../ResourceCache/Helpers/TestCache';
 import {persist} from "@/Carburetor/Tooling/persist";
 
 const makeLoader = () => {
@@ -14,7 +14,7 @@ const makeLoader = () => {
 describe('ResourceCache abortAll', () => {
     test('pending and refreshing entries publish once with precise paths and persistence', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new TestCache<string, string>(loader.load);
         const ready = cache.load('ready');
 
         loader.pending[0].resolve('old');
@@ -26,12 +26,12 @@ describe('ResourceCache abortAll', () => {
         const seen = [0, 0, 0, 0];
         const ids = [
             cache.subscribe(() => { seen[0]++; }),
-            cache.subscribe(() => { seen[1]++; }, {reads: new Set([cache.pathOf('a')])}),
-            cache.subscribe(() => { seen[2]++; }, {reads: new Set([cache.pathOf('ready')])}),
-            cache.subscribe(() => { seen[3]++; }, {reads: new Set([cache.pathOf('missing')])}),
+            cache.subscribe(() => { seen[1]++; }, {reads: new Set([cache.exposePathOf('a')])}),
+            cache.subscribe(() => { seen[2]++; }, {reads: new Set([cache.exposePathOf('ready')])}),
+            cache.subscribe(() => { seen[3]++; }, {reads: new Set([cache.exposePathOf('missing')])}),
         ];
         const saved: string[] = [];
-        const dispose = persist(cache, {key: 'cache', storage: {
+        const dispose = persist(cache, {key: 'cache', coalesce: false, storage: {
             getItem: () => null,
             setItem: (_key, value) => { saved.push(value); },
             removeItem: () => undefined,
@@ -58,7 +58,7 @@ describe('ResourceCache abortAll', () => {
 
     test('abort listeners can replace a later snapshot request and keep its answer', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new TestCache<string, string>(loader.load);
         const first = cache.load('a');
         const second = cache.load('b');
         let replacementA: Promise<void> | undefined;
@@ -89,7 +89,7 @@ describe('ResourceCache abortAll', () => {
     });
 
     test('subscriber reentry after delivery publishes separately', () => {
-        const cache = new ResourceCache<string, string>(() => new Promise(() => undefined));
+        const cache = new TestCache<string, string>(() => new Promise(() => undefined));
 
         void cache.load('a');
         void cache.load('b');

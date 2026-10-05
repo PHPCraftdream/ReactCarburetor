@@ -1,4 +1,6 @@
-import {CarburetorHistory, EResourceStatus, ResourceCache, getInitialCacheEntry} from '@/Carburetor';
+import {CarburetorHistory, EResourceStatus, ResourceCache} from '@/Carburetor';
+import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
+import {TestCache} from '../Helpers/TestCache';
 import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
 
 const ready = (data: unknown): IResourceEntry<unknown> => ({
@@ -13,7 +15,7 @@ const makeReadonlyGraph = (cache: ResourceCache<unknown, string>, count: number)
     const entries: Record<string, IResourceEntry<unknown>> = {};
     const keys: string[] = [];
     for (let index = 0; index < count; index++) {
-        const key = cache.keyOf(`row-${index}`);
+        const key = cache.exposeKeyOf(`row-${index}`);
         keys.push(key);
         Object.defineProperty(entries, key, {
             value: ready({rowId: index, detail: {value: index}}), enumerable: true,
@@ -61,7 +63,7 @@ describe('ResourceCache settled readonly bulk forget', () => {
     test('owns a locked graph once, publishes once, and leaves the held endpoint unchanged', () => {
         const count = 32;
         let loads = 0;
-        const cache = new ResourceCache<unknown, string>(async () => { loads++; return undefined; }, {ttl: Infinity});
+        const cache = new TestCache<unknown, string>(async () => { loads++; return undefined; }, {ttl: Infinity});
         const {keys, links} = makeReadonlyGraph(cache, count);
         const held = cache.getData();
         let callbacks = 0;
@@ -101,7 +103,7 @@ describe('ResourceCache settled readonly bulk forget', () => {
     });
 
     test('readonly removal remains undoable and redoable with native backlinks and flags intact', () => {
-        const cache = new ResourceCache<unknown, string>(async () => undefined, {ttl: Infinity});
+        const cache = new TestCache<unknown, string>(async () => undefined, {ttl: Infinity});
         const history = new CarburetorHistory(cache);
         const {keys} = makeReadonlyGraph(cache, 3);
         const held = cache.getData();
@@ -125,7 +127,7 @@ describe('ResourceCache active forgetAll reentry', () => {
     test('an abort listener can restore and start a new owner without reviving the cancelled answer', async () => {
         const signals: AbortSignal[] = [];
         const answers: Array<(value: string) => void> = [];
-        const cache = new ResourceCache<string, string>((_key, signal) => {
+        const cache = new TestCache<string, string>((_key, signal) => {
             signals.push(signal);
             return new Promise<string>((resolve) => { answers.push(resolve); });
         }, {ttl: Infinity});
@@ -155,7 +157,7 @@ describe('ResourceCache active forgetAll reentry', () => {
 });
 describe('ResourceCache bulk forget extension hooks', () => {
     test('subclass abort and removal hooks still run once per locked key', () => {
-        class HookCache extends ResourceCache<unknown, string> {
+        class HookCache extends TestCache<unknown, string> {
             public abortedKeys: string[] = [];
             public removalBatches: string[][] = [];
 
@@ -187,7 +189,7 @@ describe('ResourceCache bulk forget extension hooks', () => {
     });
 
     test('a throwing per-key override leaves readonly partial state and closes the bulk phase', () => {
-        class ThrowOnceCache extends ResourceCache<unknown, string> {
+        class ThrowOnceCache extends TestCache<unknown, string> {
             public throwOnKey: string | undefined;
             private thrown: boolean = false;
 

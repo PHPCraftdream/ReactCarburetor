@@ -229,7 +229,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param args - the loader arguments to derive the key from
      */
-    public keyOf(args: TArgs): string {
+    protected keyOf(args: TArgs): string {
         const primed = this.primed(args);
 
         if (primed !== undefined) return primed.key;
@@ -266,7 +266,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param args - the loader arguments identifying the entry
      */
-    public pathOf(args: TArgs): TPath {
+    protected pathOf(args: TArgs): TPath {
         const primed = this.primed(args);
 
         return primed ? primed.path : this.pathOfKey(this.keyOf(args));
@@ -277,7 +277,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param key - the resolved cache key
      */
-    public pathOfKey(key: string): TPath {
+    protected pathOfKey(key: string): TPath {
         return joinPath('entries', key);
     }
 
@@ -297,7 +297,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param key - the resolved cache key
      */
-    public getEntryByKey(key: string): IResourceView<T> {
+    protected getEntryByKey(key: string): IResourceView<T> {
         const stored = this.data.entries[key];
 
         if (!stored) {

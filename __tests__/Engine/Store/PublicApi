@@ -1,0 +1,51 @@
+/**
+ * Compile-time contract test for R33-08: `ResourceCache`'s key-derivation members (`keyOf`,
+ * `pathOf`, `pathOfKey`, `getEntryByKey`) and `Computed#getSnapshotVersion` are protected /
+ * symbol-internal — they must not be reachable through the public typed surface.
+ *
+ * Checked by `tsc --noEmit -p tsconfig.types.json`, which `npm run typecheck` runs as a fourth
+ * pass — the main tsconfigs exclude test files by name, and rstest's SWC transform strips types
+ * without checking them, so tsc is the only real checker here. An unsatisfied `@ts-expect-error`
+ * is itself a compile error (TS2578), so if any of these members ever became public again the
+ * directives below would stop being satisfied and the run would fail.
+ */
+
+import {computed, ResourceCache} from '@/Carburetor';
+
+describe('R33-08 internal member visibility', () => {
+    test('placeholder so this file is a runtime-valid test module too', () => {
+        // rstest also runs this file (SWC strips the types without checking them), so it needs at
+        // least one runtime assertion; the real check is the compile-time one below.
+        expect(true).toBe(true);
+    });
+
+    test('ResourceCache key derivation is not publicly typed', () => {
+        const cache = new ResourceCache<string, string>(() => Promise.resolve('value'));
+
+        void (
+            // @ts-expect-error R33-08: keyOf is protected, resolve() is the public contract
+            cache.keyOf
+        );
+        void (
+            // @ts-expect-error R33-08: pathOf is protected, resolve() is the public contract
+            cache.pathOf
+        );
+        void (
+            // @ts-expect-error R33-08: pathOfKey is protected, resolve() is the public contract
+            cache.pathOfKey
+        );
+        void (
+            // @ts-expect-error R33-08: getEntryByKey is protected, resolve() is the public contract
+            cache.getEntryByKey
+        );
+    });
+
+    test('Computed#getSnapshotVersion is not publicly typed', () => {
+        const derived = computed(() => 0);
+
+        void (
+            // @ts-expect-error R33-08: the snapshot version moved behind the symbol protocol
+            derived.getSnapshotVersion
+        );
+    });
+});

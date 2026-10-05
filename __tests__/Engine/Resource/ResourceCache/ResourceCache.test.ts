@@ -1,6 +1,6 @@
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {TestCache} from './Helpers/TestCache';
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {encodeCacheKey} from "@/Carburetor/Resource/Cache/encodeCacheKey";
 
 // Hoisted above the imports, like `vi.mock`: `{spy: true}` keeps the real encoder running and
@@ -55,7 +55,7 @@ const readsOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);
 describe('ResourceCache', () => {
     test('concurrent loads with the same arguments share one request', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         const first = cache.load('a');
         const second = cache.load('a');
@@ -70,7 +70,7 @@ describe('ResourceCache', () => {
 
     test('different arguments are independent entries', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         void cache.load('a');
         void cache.load('b');
@@ -93,7 +93,7 @@ describe('ResourceCache', () => {
 
     test('a fresh entry is served without calling the loader again', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -107,7 +107,7 @@ describe('ResourceCache', () => {
 
     test('an entry past its lifetime is stale and is fetched again', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 0});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 0});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -127,7 +127,7 @@ describe('ResourceCache', () => {
 
     test('an infinite lifetime never goes stale', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: Infinity});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: Infinity});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -137,18 +137,18 @@ describe('ResourceCache', () => {
     });
 
     test.each([NaN, -1, -Infinity])('rejects ttl %s', (ttl) => {
-        expect(() => new ResourceCache(() => Promise.resolve('value'), {ttl})).toThrow(RangeError);
+        expect(() => new TestCache(() => Promise.resolve('value'), {ttl})).toThrow(RangeError);
     });
 
     test.each([NaN, -1, -Infinity, 1.5])('rejects maxEntries %s', (maxEntries) => {
-        expect(() => new ResourceCache(() => Promise.resolve('value'), {maxEntries})).toThrow(RangeError);
+        expect(() => new TestCache(() => Promise.resolve('value'), {maxEntries})).toThrow(RangeError);
     });
 
     test('accepts fractional ttl and zero or infinite capacity', async () => {
-        const zero = new ResourceCache<string, string>((key) => Promise.resolve(key), {
+        const zero = new TestCache<string, string>((key) => Promise.resolve(key), {
             ttl: 0.5, maxEntries: 0,
         });
-        const unlimited = new ResourceCache<string, string>((key) => Promise.resolve(key), {
+        const unlimited = new TestCache<string, string>((key) => Promise.resolve(key), {
             maxEntries: Infinity,
         });
 
@@ -161,7 +161,7 @@ describe('ResourceCache', () => {
 
     test('refreshing an entry that has data keeps it readable', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 0});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 0});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -179,12 +179,12 @@ describe('ResourceCache', () => {
 
     test('a component reading one entry is not woken by another entry', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
         let readerOfA = 0;
 
         cache.subscribe(() => readerOfA++, {
             id: 'a-reader',
-            reads: readsOf(`entries.${cache.keyOf('a')}.data`),
+            reads: readsOf(`entries.${cache.exposeKeyOf('a')}.data`),
         });
 
         void cache.load('b');
@@ -202,7 +202,7 @@ describe('ResourceCache', () => {
 
     test('reading an entry does not write to the store', () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
         const before = cache.getVersion();
 
         cache.getEntry('a');
@@ -214,7 +214,7 @@ describe('ResourceCache', () => {
 
     test('an unknown entry reads as idle and stale', () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
         const entry = cache.getEntry('missing');
 
         expect(entry.status).toEqual(EResourceStatus.Idle);
@@ -224,7 +224,7 @@ describe('ResourceCache', () => {
 
     test('aborting leaves no entry claiming to be pending', () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         void cache.load('a');
         expect(cache.getEntry('a').status).toEqual(EResourceStatus.Pending);
@@ -237,7 +237,7 @@ describe('ResourceCache', () => {
 
     test('a request that settles after being aborted does not overwrite the entry', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         void cache.load('a');
         cache.abort('a');
@@ -255,7 +255,7 @@ describe('ResourceCache', () => {
 
     test('abortAll cancels every request in flight', () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         void cache.load('a');
         void cache.load('b');
@@ -270,7 +270,7 @@ describe('ResourceCache', () => {
 
     test('a first load that fails becomes an error with the message and the raw rejection', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
         const failure = new Error('network down');
 
         const request = cache.load('a');
@@ -294,7 +294,7 @@ describe('ResourceCache', () => {
         const failure = new Error('thrown');
         let aCalls = 0;
 
-        const cache = new ResourceCache<IUser, string>((id) => {
+        const cache = new TestCache<IUser, string>((id) => {
             calls.push(id);
 
             if (id === 'a') {
@@ -329,7 +329,7 @@ describe('ResourceCache', () => {
 
     test('a failure leaves the entry stale, so asking again retries', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         const request = cache.load('a');
         loader.pending[0].reject(new Error('nope'));
@@ -344,18 +344,18 @@ describe('ResourceCache', () => {
 
     test('arguments are keyed by value, not by identity', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+        const cache = new TestCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
 
         void cache.load({id: 'a'});
         void cache.load({id: 'a'});
 
         expect(loader.calls).toEqual(['a']);
-        expect(cache.keyOf({id: 'a'})).toEqual(cache.keyOf({id: 'a'}));
+        expect(cache.exposeKeyOf({id: 'a'})).toEqual(cache.exposeKeyOf({id: 'a'}));
     });
 
     test('repeated reads of an unchanged entry share one view object', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -370,7 +370,7 @@ describe('ResourceCache', () => {
 
     test('a settled answer replaces the view object for its key', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -391,7 +391,7 @@ describe('ResourceCache', () => {
 
     test('an invalidation replaces the view object without touching the data', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -416,7 +416,7 @@ describe('ResourceCache', () => {
 
         try {
             const loader = makeLoader();
-            const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 50});
+            const cache = new TestCache<IUser, string>(loader.load, {ttl: 50});
 
             void cache.load('a');
             loader.pending[0].resolve({id: 'a', name: 'Ann'});
@@ -442,7 +442,7 @@ describe('ResourceCache', () => {
 
     test('reads of an absent key are never cached', () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
         const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
 
         const first = cache.getEntry('missing');
@@ -463,7 +463,7 @@ describe('ResourceCache', () => {
 
     test('one pathOf plus one getEntry serializes the arguments once per lookup, cold and warm', () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+        const cache = new TestCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
         const args = {id: 'a'};
 
         // Spying JSON.stringify itself, not encodeCacheKey: since R7-05 the cache escapes its own
@@ -479,7 +479,7 @@ describe('ResourceCache', () => {
             // Cold pass: pathOf encodes — one stringify, then the JSON string is escaped, not
             // re-stringified — and getEntry validates the memo with its own stringify (R6-05 makes
             // that one unavoidable). Two, where the R7 report measured three.
-            cache.pathOf(args);
+            cache.exposePathOf(args);
             cache.getEntry(args);
 
             expect(stringify).toHaveBeenCalledTimes(2);
@@ -488,7 +488,7 @@ describe('ResourceCache', () => {
             // Warm pass: both lookups are memo hits; each still pays its single validation stringify.
             stringify.mockClear();
 
-            cache.pathOf(args);
+            cache.exposePathOf(args);
             cache.getEntry(args);
 
             expect(stringify).toHaveBeenCalledTimes(2);
@@ -502,7 +502,7 @@ describe('ResourceCache', () => {
     // where the old pair each ran their own.
     test('resolve() serializes the arguments exactly once per lookup, cold and warm', () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
+        const cache = new TestCache<IUser, {id: string}>((args, signal) => loader.load(args.id, signal));
         const args = {id: 'a'};
 
         const stringify = rstest.spyOn(JSON, 'stringify');
@@ -513,8 +513,8 @@ describe('ResourceCache', () => {
             const cold = cache.resolve(args);
 
             expect(stringify).toHaveBeenCalledTimes(1);
-            expect(cold.key).toEqual(cache.keyOf(args));
-            expect(cold.path).toEqual(cache.pathOf(args));
+            expect(cold.key).toEqual(cache.exposeKeyOf(args));
+            expect(cold.path).toEqual(cache.exposePathOf(args));
             expect(cold.view).toEqual(cache.getEntry(args));
 
             stringify.mockClear();
@@ -529,10 +529,10 @@ describe('ResourceCache', () => {
 
     test('a reader of an entry whose key holds the separator is woken when it settles', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         let notified = 0;
-        cache.subscribe(() => notified++, {id: 'reader', reads: readsOf(cache.pathOf('a.b'))});
+        cache.subscribe(() => notified++, {id: 'reader', reads: readsOf(cache.exposePathOf('a.b'))});
 
         void cache.load('a.b');
         loader.pending[0].resolve({id: 'a.b', name: 'Ann'});
@@ -545,7 +545,7 @@ describe('ResourceCache', () => {
 
     test('settling one escaped entry wakes only its own reader', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load);
+        const cache = new TestCache<IUser, string>(loader.load);
 
         // Subscribed after both requests are in flight: each reader must not be counted
         // against the pending write its own entry legitimately sends when its load starts.
@@ -554,8 +554,8 @@ describe('ResourceCache', () => {
 
         let readerOfDot = 0;
         let readerOfTilde = 0;
-        cache.subscribe(() => readerOfDot++, {id: 'dot', reads: readsOf(cache.pathOf('a.b'))});
-        cache.subscribe(() => readerOfTilde++, {id: 'tilde', reads: readsOf(cache.pathOf('a~b'))});
+        cache.subscribe(() => readerOfDot++, {id: 'dot', reads: readsOf(cache.exposePathOf('a.b'))});
+        cache.subscribe(() => readerOfTilde++, {id: 'tilde', reads: readsOf(cache.exposePathOf('a~b'))});
 
         loader.pending[0].resolve({id: 'a.b', name: 'Ann'});
         await flush();

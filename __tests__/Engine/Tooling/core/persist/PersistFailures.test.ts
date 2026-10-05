@@ -48,7 +48,12 @@ describe('persist storage failures', () => {
             setItem: (_key, value) => { writes.push(value); },
         };
         const store = new Carburetor({count: 0});
-        const dispose = persist(store, {key: 'slot', storage, onError: error => { errors.push(error); }});
+        const dispose = persist(store, {
+            key: 'slot',
+            storage,
+            coalesce: false,
+            onError: error => { errors.push(error); },
+        });
 
         expect(errors).toHaveLength(2);
         expect(errors[0]).toBeInstanceOf(SyntaxError);
@@ -77,14 +82,24 @@ describe('persist storage failures', () => {
             public restore(): void { throw restoreError; }
         }
         const rejecting = new RejectingStore({count: 0});
-        const stopRejecting = persist(rejecting, {key: 'slot', storage, onError: error => { errors.push(error); }});
+        const stopRejecting = persist(rejecting, {
+            key: 'slot',
+            storage,
+            coalesce: false,
+            onError: error => { errors.push(error); },
+        });
         expect(errors).toEqual([restoreError]);
         expect(removed).toBe(1);
         expect(writes).toEqual([]);
         stopRejecting();
 
         const store = new Carburetor({count: 0});
-        const dispose = persist(store, {key: 'slot', storage, onError: error => { errors.push(error); }});
+        const dispose = persist(store, {
+            key: 'slot',
+            storage,
+            coalesce: false,
+            onError: error => { errors.push(error); },
+        });
         expect(store.getData().count).toBe(7);
         expect(writes).toEqual([]);
         expect(errors).toEqual([restoreError]);
@@ -106,7 +121,12 @@ describe('persist storage failures', () => {
             setItem: () => { writes++; throw writeError; },
         };
         const store = new Carburetor({count: 0});
-        const dispose = persist(store, {key: 'slot', storage, onError: error => { errors.push(error); }});
+        const dispose = persist(store, {
+            key: 'slot',
+            storage,
+            coalesce: false,
+            onError: error => { errors.push(error); },
+        });
         const downstreamId = store.subscribe(() => { downstream++; });
         store.setData({count: 1});
         expect(errors).toEqual([writeError]);

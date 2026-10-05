@@ -1,10 +1,10 @@
 import * as React from 'react';
+import {TestCache} from '../Helpers/TestCache';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {AntiHookComponent} from '@/Carburetor';
-import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 
-class ObservedCache extends ResourceCache<string, string> {
+class ObservedCache extends TestCache<string, string> {
     /** Number of mounted readers retained by this cache. */
     public readerCount(): number {
         return Object.keys(this.subscribers).length;
@@ -124,7 +124,7 @@ test.each(['setData', 'restore', 'fromJSON'] as const)(
         });
         expect(mounted.container.textContent).toBe('error:true:-');
 
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         await act(async () => {
             cache[method]({entries: {[key]: {...cache.getData().entries[key], error: 'replacement'}}});
         });

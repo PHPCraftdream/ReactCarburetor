@@ -1,4 +1,6 @@
-import {CarburetorHistory, EResourceStatus, ResourceCache, getInitialCacheEntry} from '@/Carburetor';
+import {CarburetorHistory, EResourceStatus} from '@/Carburetor';
+import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
+import {TestCache} from '../Helpers/TestCache';
 
 const locked = (owner: object, field: string, value: unknown): void => {
     Object.defineProperty(owner, field, {value, writable: false, configurable: false, enumerable: true});
@@ -12,9 +14,9 @@ const success = (data: string) => ({
 describe('single invalidation of admitted readonly entries', () => {
     test('owned history endpoint stays intact while the operational graph becomes stale without loading', () => {
         let calls = 0;
-        const cache = new ResourceCache<string, string>(async () => { calls++; return 'next'; }, {ttl: Infinity});
+        const cache = new TestCache<string, string>(async () => { calls++; return 'next'; }, {ttl: Infinity});
         const history = new CarburetorHistory(cache);
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         const saved = success('saved');
         locked(saved, 'invalidated', false);
         locked(saved, 'failed', true);
@@ -45,7 +47,7 @@ describe('single invalidation of admitted readonly entries', () => {
     });
 
     test('already-targeted readonly values need no publication, while direct draft writes still refuse changes', () => {
-        class EditableCache extends ResourceCache<string, string> {
+        class EditableCache extends TestCache<string, string> {
             /** Exercise an ordinary subclass draft action.
              *
              * @param key - encoded cache entry key.
@@ -55,7 +57,7 @@ describe('single invalidation of admitted readonly entries', () => {
             }
         }
         const cache = new EditableCache(async () => 'answer', {ttl: Infinity});
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         const entry = success('saved');
         entry.invalidated = true;
         entry.failed = false;
@@ -75,9 +77,9 @@ describe('single invalidation of admitted readonly entries', () => {
 
     test('operational ownership retains native accessor metadata and a sibling raw failure', async () => {
         const raw = new Error('sibling rejection');
-        const cache = new ResourceCache<unknown, string>(() => Promise.reject(raw), {ttl: Infinity});
-        const a = cache.keyOf('a');
-        const b = cache.keyOf('b');
+        const cache = new TestCache<unknown, string>(() => Promise.reject(raw), {ttl: Infinity});
+        const a = cache.exposeKeyOf('a');
+        const b = cache.exposeKeyOf('b');
         const target = success('saved');
         locked(target, 'invalidated', false);
         const sibling = {...getInitialCacheEntry<unknown>(), status: EResourceStatus.Success,
@@ -108,13 +110,13 @@ describe('single invalidation of admitted readonly entries', () => {
     test('raw failed retry stays owned and an in-flight old answer cannot consume a later invalidation', async () => {
         const pending: Array<PromiseWithResolvers<string>> = [];
         let calls = 0;
-        const cache = new ResourceCache<string, string>(() => {
+        const cache = new TestCache<string, string>(() => {
             calls++;
             const answer = Promise.withResolvers<string>();
             pending.push(answer);
             return answer.promise;
         }, {ttl: Infinity});
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         const original = success('saved');
         locked(original, 'invalidated', false);
         locked(original, 'failed', true);
@@ -144,9 +146,9 @@ describe('single invalidation of admitted readonly entries', () => {
     test('an older failed request does not disarm a later explicit invalidation', async () => {
         const pending = Promise.withResolvers<string>();
         let calls = 0;
-        const cache = new ResourceCache<string, string>(() => { calls++; return pending.promise; },
+        const cache = new TestCache<string, string>(() => { calls++; return pending.promise; },
             {ttl: Infinity});
-        const key = cache.keyOf('a');
+        const key = cache.exposeKeyOf('a');
         const entry = success('saved');
         locked(entry, 'invalidated', false);
         cache.setData({entries: {[key]: entry}});

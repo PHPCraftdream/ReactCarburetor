@@ -1,5 +1,5 @@
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
+import {TestCache} from '../Helpers/TestCache';
 
 interface IUser {
     id: string;
@@ -50,14 +50,14 @@ const readsOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);
 describe('ResourceCache.getEntry (R3-10: a documented mutable escape, H23 — pinned, not changed)', () => {
     test('mutating a returned view\'s data field mutates the cache with no version bump or notification', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<IUser, string>(loader.load, {ttl: 60_000});
+        const cache = new TestCache<IUser, string>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         loader.pending[0].resolve({id: 'a', name: 'Ann'});
         await flush();
 
         let notified = 0;
-        cache.subscribe(() => notified++, {id: 'watcher', reads: readsOf(cache.pathOf('a'))});
+        cache.subscribe(() => notified++, {id: 'watcher', reads: readsOf(cache.exposePathOf('a'))});
 
         const versionBefore = cache.getVersion();
         const view = cache.getEntry('a');

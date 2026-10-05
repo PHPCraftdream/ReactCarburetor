@@ -33,8 +33,6 @@ export * from './Derived/computedFactory';
 export * from './Resource/getInitialResourceData';
 export * from './Resource/ResourceCarburetor';
 export * from './Resource/Cache/ResourceCache';
-export * from './Resource/Cache/encodeCacheKey';
-export * from './Resource/Cache/State/getInitialCacheEntry';
 
 export * from './Component/AntiHookComponent/index';
 export * from './Component/bind';
