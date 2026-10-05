@@ -312,8 +312,8 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
     for (; densePrefix < live.length; densePrefix++) {
         const hasPrevious = Object.prototype.hasOwnProperty.call(previous, densePrefix);
         const hasNext = Object.prototype.hasOwnProperty.call(live, densePrefix);
-        if (hasPrevious !== hasNext) {
-            changed = true;
+        if (!hasPrevious || !hasNext) { // a hole ends the dense prefix; the sparse walk is O(own keys)
+            if (hasPrevious !== hasNext) changed = true;
             break;
         }
         const childPrevious = previous[densePrefix];
