@@ -1,7 +1,3 @@
-// Fresh idle entry: the public package no longer exports a factory for it.
-const initialEntry = producer => ({status: producer.EResourceStatus.Idle, data: undefined, error: undefined,
-    updatedAt: undefined, refreshing: false, invalidated: false, failed: false});
-
 /** Exercises supported alias subscriptions and reversible array descriptors in an installed build.
  *
  * @param assert - the consumer's strict assertion module
@@ -11,6 +7,9 @@ const initialEntry = producer => ({status: producer.EResourceStatus.Idle, data: 
  */
 export const checkEngineBoundaries = async (assert, producer, recorder, label) => {
     const completed = [];
+    // Fresh idle entry: the public package no longer exports a factory for it.
+    const initialEntry = producer => ({status: producer.EResourceStatus.Idle, data: undefined, error: undefined,
+        updatedAt: undefined, refreshing: false, invalidated: false, failed: false});
     const selectors = [
         ['map-value', view => view.map.get('row').n],
         ['set-member', view => view.set.values().next().value.n],
