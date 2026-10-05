@@ -7,7 +7,9 @@ import {
     CarburetorProvider,
     CarburetorScope,
     carburetorToken,
+    EResourceStatus,
     ICarburetorToken,
+    ResourceCarburetor,
     ScopedAntiHookComponent
 } from "@/Carburetor";
 
@@ -326,5 +328,89 @@ describe('CarburetorScope', () => {
             expect(calls).toEqual([1]);
             expect(client.get(counterToken).getData().value).toEqual(2);
         });
+    });
+});
+
+describe('CarburetorScope.toJSON (R34-05)', () => {
+    test('JSON.stringify(scope) equals JSON.stringify(scope.dehydrate()) for a plain store', () => {
+        const scope = new CarburetorScope();
+        scope.get(counterToken).inc();
+
+        expect(JSON.stringify(scope)).toEqual(JSON.stringify(scope.dehydrate()));
+    });
+
+    test('JSON.stringify(scope) equals the snapshot path for a ResourceCarburetor', async () => {
+        let resolve!: (value: string) => void;
+        const token = carburetorToken(
+            () => new ResourceCarburetor<string>(() => new Promise<string>((res) => {
+                resolve = res;
+            })),
+            'scope-test/tojson-resource'
+        );
+        const scope = new CarburetorScope();
+        const resource = scope.get(token);
+        const loading = resource.load('args');
+        resolve('value');
+        await loading;
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
+
+        expect(JSON.stringify(scope)).toEqual(JSON.stringify(scope.dehydrate()));
+    });
+
+    test('toJSON is live, dehydrate is detached', () => {
+        const scope = new CarburetorScope();
+        const store = scope.get(counterToken);
+        store.inc();
+
+        const detached = scope.dehydrate();
+        store.inc();
+
+        expect(JSON.parse(JSON.stringify(detached))[counterToken.id].value).toEqual(1);
+        expect(JSON.parse(JSON.stringify(scope))[counterToken.id].value).toEqual(2);
+    });
+
+    test('JSON.stringify(scope) never calls snapshot()', () => {
+        const scope = new CarburetorScope();
+        const store = scope.get(counterToken);
+        const spy = rstest.spyOn(store, 'snapshot');
+
+        JSON.stringify(scope);
+
+        expect(spy).not.toHaveBeenCalled();
+    });
+
+    test('a token id of "__proto__" stays an own key and survives the JSON roundtrip', () => {
+        const token = carburetorToken<CounterCarburetor>(
+            () => new CounterCarburetor({value: 7}),
+            '__proto__'
+        );
+        const server = new CarburetorScope();
+        server.get(token);
+
+        const payload = JSON.parse(JSON.stringify(server));
+        expect(Object.prototype.hasOwnProperty.call(payload, '__proto__')).toBeTruthy();
+        expect(Object.getPrototypeOf(payload)).toBe(Object.prototype);
+
+        const client = new CarburetorScope();
+        client.hydrate(payload, [token]);
+        expect(client.get(token).getData().value).toEqual(7);
+    });
+
+    test('instances that are not inspectable are skipped', () => {
+        const scope = new CarburetorScope();
+        scope.set(counterToken, {} as unknown as CounterCarburetor);
+
+        expect(JSON.stringify(scope)).toEqual('{}');
+    });
+
+    test('hydrate round-trips a JSON.stringify(scope) payload', () => {
+        const server = new CarburetorScope();
+        server.get(counterToken).inc();
+        server.get(counterToken).inc();
+
+        const client = new CarburetorScope();
+        client.hydrate(JSON.parse(JSON.stringify(server)), [counterToken]);
+
+        expect(client.get(counterToken).getData().value).toEqual(2);
     });
 });

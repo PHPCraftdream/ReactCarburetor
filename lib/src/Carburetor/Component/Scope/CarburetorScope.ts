@@ -51,7 +51,7 @@ export class CarburetorScope {
      * Take this after rendering on the server and send it to the client.
      *
      * A detached copy per instance, not its live wire form: the payload must survive the server
-     * rendering that produced it.
+     * rendering that produced it. For a one-pass serialize of the live state use `toJSON()`.
      */
     public dehydrate(): IDict<unknown> {
         // Object.fromEntries creates own data properties (CreateDataPropertyOrThrow), unlike
@@ -62,6 +62,27 @@ export class CarburetorScope {
         this.instances.forEach((instance: unknown, id: string) => {
             if (this.isInspectable(instance)) {
                 entries.push([id, instance.snapshot()]);
+            }
+        });
+
+        return Object.fromEntries(entries);
+    }
+
+    /**
+     * The wire form of every inspected carburetor, keyed by token id: what `JSON.stringify(scope)`
+     * serializes, in one pass and without the per-instance copy `dehydrate()` makes. Unlike
+     * `dehydrate()` the payload is live — a write after it was taken shows up in it.
+     *
+     * The same JSON as `JSON.stringify(dehydrate())` for classes whose wire form matches their
+     * snapshot (the persist contract: `JSON.stringify(carburetor)`).
+     */
+    public toJSON(): IDict<unknown> {
+        // Object.fromEntries as in dehydrate(): an id named "__proto__" stays an own key.
+        const entries: Array<[string, unknown]> = [];
+
+        this.instances.forEach((instance: unknown, id: string) => {
+            if (this.isInspectable(instance)) {
+                entries.push([id, instance.toJSON()]);
             }
         });
 

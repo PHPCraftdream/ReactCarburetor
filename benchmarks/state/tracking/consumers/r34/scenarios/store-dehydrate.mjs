@@ -16,6 +16,7 @@ const store = scope.get(token);
 global.gc?.();
 const viaDehydrate = [];
 const viaWire = [];
+const viaScope = typeof scope.toJSON === 'function' ? [] : null;
 let same = true;
 for (let i = 0; i < samples; i++) {
     let start = performance.now();
@@ -25,5 +26,16 @@ for (let i = 0; i < samples; i++) {
     const wire = JSON.stringify({[token.id]: store});
     viaWire.push(performance.now() - start);
     same &&= copied === wire;
+    if (viaScope !== null) {
+        start = performance.now();
+        const viaToJson = JSON.stringify(scope);
+        viaScope.push(performance.now() - start);
+        same &&= viaToJson === copied;
+    }
 }
-emit({dehydrateStringifyMs: median(viaDehydrate), wireStringifyMs: median(viaWire), samePayload: same});
+emit({
+    dehydrateStringifyMs: median(viaDehydrate),
+    wireStringifyMs: median(viaWire),
+    scopeStringifyMs: viaScope === null ? null : median(viaScope),
+    samePayload: same,
+});
