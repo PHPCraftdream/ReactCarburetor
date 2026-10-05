@@ -1,5 +1,5 @@
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {INotifiable} from "@/Carburetor/Models/Store";
+import {CARBURETOR_NOTIFY_WRITES, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 
@@ -16,7 +16,8 @@ export class UpdateBatch {
     /** How many transactions are open; flush runs only when the outermost one closes. */
     protected depth: number = 0;
     /** Writes collected per carburetor while the transaction is open, delivered once at flush. */
-    protected pending: Map<INotifiable, TPathSet> = new Map<INotifiable, TPathSet>();
+    protected pending: Map<IInternalSubscriptionProtocol, TPathSet> =
+        new Map<IInternalSubscriptionProtocol, TPathSet>();
 
     /**
      * Whether a transaction is open, so writes are collected rather than delivered.
@@ -54,7 +55,7 @@ export class UpdateBatch {
      * must be handing over ownership (emitUpdate always does) rather than keeping it around to
      * mutate further
      */
-    public add(target: INotifiable, writes: TPathSet): void {
+    public add(target: IInternalSubscriptionProtocol, writes: TPathSet): void {
         const merged = this.pending.get(target);
 
         if (!merged) {
@@ -84,9 +85,9 @@ export class UpdateBatch {
                 const batch = Array.from(this.pending.entries());
                 this.pending.clear();
 
-                batch.forEach(([target, writes]: [INotifiable, TPathSet]) => {
+                batch.forEach(([target, writes]: [IInternalSubscriptionProtocol, TPathSet]) => {
                     try {
-                        target.notifyWrites(writes);
+                        target[CARBURETOR_NOTIFY_WRITES]!(writes);
                     } catch (error: unknown) {
                         failures.push(error);
                     }

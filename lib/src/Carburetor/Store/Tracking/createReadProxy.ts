@@ -96,7 +96,7 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
     /**
      * Stores the branch identity this instance's traps answer for.
      *
-     * @param basePath - the dotted path this instance's proxy answers for; the default '' is
+     * @param path - the dotted path this instance's proxy answers for; the default '' is
      * the store root, where `ownKeys` records the bare key-set marker instead of one qualified
      * by a path.
      * @param record - where each touched path is reported; a branch read reports the branch
@@ -107,59 +107,106 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * @param root - current plain store root, used to find ordinary paths to native raw members.
      */
     constructor(
-        private readonly basePath: TPath,
+        public readonly path: TPath,
         private readonly record: TPathRecorder,
         private readonly aliases: TAliasLedger | undefined,
         private readonly cache: IProxyCache,
         private readonly root: object,
     ) {}
 
-    /** The first string key this instance resolved: the whole memo of most branches. */
-    private firstKey: string | undefined = undefined;
-    /** The path `firstKey` resolved to. */
-    private firstPath: TPath = '';
+    /** The wrapper this handler fronts; `createReadProxy` sets it once the `Proxy` exists. */
+    public proxy: object | undefined = undefined;
 
-    /** Every later key's path; created only once a second distinct key is read. */
-    private childPaths: Map<string, TPath> | undefined = undefined;
+    /** The branch's path memos; absent until this branch resolves its first path. */
+    private memos: HandlerMemos | undefined = undefined;
 
-    /** The first branch path this instance built a marker for, as `firstKey` does. */
-    private firstBranch: TPath | undefined = undefined;
-    /** The marker `firstBranch` resolved to. */
-    private firstMarker: TPath = '';
-
-    /** Every later branch marker; created only once a second distinct branch is read. */
-    private branchMarkers: Map<TPath, TPath> | undefined = undefined;
-
-    /** `keysPath(basePath)`, memoized: this instance's own key-set marker never changes. */
-    private keysMarkerPath: TPath | undefined = undefined;
+    /** The memo size at which the memos are next audited against the source's live key count. */
+    private memoLimit = 128;
 
     /**
-     * `joinPath(basePath, key)`, memoized: a persistent view reads the same keys every render,
+     * Drops the memos once more than half of what they hold is no longer the source's own
+     * keys (dead entries a rolling key window left behind); a pure string cache, so
+     * clearing changes no answer.
+     *
+     * Checked only when a memo map crosses the doubling threshold, so the audit stays
+     * amortized O(1) per memoized key.
+     *
+     * @param source - the raw object this proxy fronts.
+     */
+    private auditMemos(source: object): void {
+        const memo = this.memos;
+
+        if (memo === undefined) return;
+
+        const childPaths = memo.childPaths;
+        const size = (childPaths?.size ?? 0) + (memo.branchMarkers?.size ?? 0);
+
+        if (size < this.memoLimit) return;
+
+        // Deterministic insertion-order sample, capped at 128 keys: the first entries are the
+        // oldest, exactly the ones a rolling key window kills first, so the sampled liveness
+        // prices the whole memo without a full scan per audit.
+        let live = 0;
+
+        if (childPaths !== undefined && childPaths.size > 0) {
+            const keys = childPaths.keys();
+            const checked = Math.min(childPaths.size, 128);
+
+            for (let index = 0; index < checked; index++) {
+                const key: string = keys.next().value as string;
+
+                if (Object.prototype.hasOwnProperty.call(source, key)) live++;
+            }
+
+            live = Math.max(1, Math.round((live / checked) * childPaths.size));
+        }
+
+        if (size > 2 * live) {
+            memo.firstKey = undefined;
+            memo.firstPath = '';
+            memo.childPaths = undefined;
+            memo.firstBranch = undefined;
+            memo.firstMarker = '';
+            memo.branchMarkers = undefined;
+            this.memoLimit = 128;
+
+            return;
+        }
+
+        this.memoLimit *= 2;
+    }
+
+    /**
+     * `joinPath(path, key)`, memoized: a persistent view reads the same keys every render,
      * and a fresh string is re-hashed by every `Set`/index lookup downstream.
      *
      * One slot covers a branch read through a single key — a row's own tree mostly — without
-     * allocating; a Map appears only for a branch read through several keys.
+     * allocating a Map; a Map appears only for a branch read through several keys.
      *
      * @param key - the own or absent string key being read.
+     * @param source - the raw object this proxy fronts, for the memo bound.
      */
-    private childPath(key: string): TPath {
-        if (key === this.firstKey) {
-            return this.firstPath;
+    private childPath(key: string, source: object): TPath {
+        const memo = this.memos ?? (this.memos = new HandlerMemos());
+
+        if (key === memo.firstKey) {
+            return memo.firstPath;
         }
 
-        if (this.firstKey === undefined) {
-            this.firstKey = key;
-            this.firstPath = joinPath(this.basePath, key);
+        if (memo.firstKey === undefined) {
+            memo.firstKey = key;
 
-            return this.firstPath;
+            return (memo.firstPath = joinPath(this.path, key));
         }
 
-        const memo = this.childPaths ?? (this.childPaths = new Map<string, TPath>());
-        let path = memo.get(key);
+        const childPaths = memo.childPaths ?? (memo.childPaths = new Map<string, TPath>());
+        let path = childPaths.get(key);
 
         if (path === undefined) {
-            path = joinPath(this.basePath, key);
-            memo.set(key, path);
+            path = joinPath(this.path, key);
+            childPaths.set(key, path);
+
+            if (childPaths.size >= this.memoLimit) this.auditMemos(source);
         }
 
         return path;
@@ -171,34 +218,37 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
      * @param path - the branch's own path, already resolved through `childPath`.
      */
     private branchMarker(path: TPath): TPath {
-        if (path === this.firstBranch) {
-            return this.firstMarker;
+        const memo = this.memos ?? (this.memos = new HandlerMemos());
+
+        if (path === memo.firstBranch) {
+            return memo.firstMarker;
         }
 
-        if (this.firstBranch === undefined) {
-            this.firstBranch = path;
-            this.firstMarker = branchPath(path);
+        if (memo.firstBranch === undefined) {
+            memo.firstBranch = path;
 
-            return this.firstMarker;
+            return (memo.firstMarker = branchPath(path));
         }
 
-        const memo = this.branchMarkers ?? (this.branchMarkers = new Map<TPath, TPath>());
-        let marker = memo.get(path);
+        const markers = memo.branchMarkers ?? (memo.branchMarkers = new Map<TPath, TPath>());
+        let marker = markers.get(path);
 
         if (marker === undefined) {
             marker = branchPath(path);
-            memo.set(path, marker);
+            markers.set(path, marker);
         }
 
         return marker;
     }
 
     /**
-     * `keysPath(basePath)`, memoized like `childPath`/`branchMarker`: `ownKeys` reads no other
+     * `keysPath(path)`, memoized like `childPath`/`branchMarker`: `ownKeys` reads no other
      * path, so one computation per instance covers every call.
      */
     private keysMarker(): TPath {
-        return this.keysMarkerPath ?? (this.keysMarkerPath = keysPath(this.basePath));
+        const memo = this.memos ?? (this.memos = new HandlerMemos());
+
+        return memo.keysMarkerPath ?? (memo.keysMarkerPath = keysPath(this.path));
     }
 
     /**
@@ -212,15 +262,11 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
     private wrap(path: TPath, source: object): object {
         const cached = this.cache.get(path, source);
 
-        if (cached !== undefined) {
-            return cached;
-        }
-
-        const proxy = createReadProxy(source, this.record, path, this.aliases, this.cache, this.root);
-
-        this.cache.set(path, source, proxy);
-
-        return proxy;
+        // A miss self-registers: `createReadProxy` files this handler (which carries its own
+        // path and wrapper) as the cache entry, saving the wrapper object per branch.
+        return cached !== undefined
+            ? cached
+            : createReadProxy(source, this.record, path, this.aliases, this.cache, this.root);
     }
 
     /**
@@ -255,13 +301,13 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
             // Only own state values may be wrapped. A plain-object inherited name can be
             // shadowed by an own data key, whereas array prototype methods stay untracked.
             if (!Array.isArray(source)) {
-                this.record(this.childPath(key));
+                this.record(this.childPath(key, source));
             }
 
             return value;
         }
 
-        const path = this.childPath(key);
+        const path = this.childPath(key, source);
 
         if (isTrackable(value)) {
             // Reaching into a branch is traversal, not a read: subscribing to `items` here
@@ -318,13 +364,13 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
         if (typeof key === 'string') {
             if (present && !Object.prototype.hasOwnProperty.call(source, key)) {
                 if (!Array.isArray(source)) {
-                    this.record(this.childPath(key));
+                    this.record(this.childPath(key, source));
                 }
 
                 return present;
             }
 
-            const path = this.childPath(key);
+            const path = this.childPath(key, source);
             const value: unknown = Reflect.get(source, key);
 
             this.record(isTrackable(value) ? this.branchMarker(path) : path);
@@ -367,7 +413,10 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
             return descriptor;
         }
 
-        const path = this.childPath(key);
+        // The path is not memoized here: `Object.keys`/`for...in` pass through for the
+        // enumeration check and drop the wrapped value, so memoizing a key they touched is
+        // pure retention — the next true read of the key recomputes the same string.
+        const path = joinPath(this.path, key);
         const value: unknown = descriptor.value;
 
         if (isTrackable(value)) {
@@ -415,6 +464,27 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
 }
 
 /**
+ * The per-branch path memos, moved off the handler: a wrapper built by enumeration and never
+ * read (the engine wraps each enumerated value, the reader discards it) never allocates this.
+ */
+class HandlerMemos {
+    /** The first string key this instance resolved. */
+    public firstKey: string | undefined = undefined;
+    /** The path `firstKey` resolved to. */
+    public firstPath: TPath = '';
+    /** Every later key's path; created only once a second distinct key is read. */
+    public childPaths: Map<string, TPath> | undefined = undefined;
+    /** The first branch path this instance built a marker for. */
+    public firstBranch: TPath | undefined = undefined;
+    /** The marker `firstBranch` resolved to. */
+    public firstMarker: TPath = '';
+    /** Every later branch marker; created only once a second distinct branch is read. */
+    public branchMarkers: Map<TPath, TPath> | undefined = undefined;
+    /** `keysPath(basePath)`, computed once per instance. */
+    public keysMarkerPath: TPath | undefined = undefined;
+}
+
+/**
  * Builds a read proxy over `target`: every field access is recorded as a path, and writing,
  * defining or restructuring through it is refused. The root call mints its own cache; every
  * nested branch call receives the same one back, so one proxy tree caches as one unit.
@@ -440,7 +510,24 @@ export const createReadProxy = <T extends object>(
     cache?: IProxyCache,
     root: object = target
 ): T => {
-    const cached: IProxyCache = cache ?? createProxyCache();
+    const proxyCache: IProxyCache = cache ?? createProxyCache();
+    const handler = new ReadProxyHandler<T>(basePath, record, aliases, proxyCache, root);
+    const proxy = new Proxy(target, handler) as T;
 
-    return new Proxy(target, new ReadProxyHandler<T>(basePath, record, aliases, cached, root)) as T;
+    handler.proxy = proxy;
+
+    // The handler doubles as its own cache entry — it carries `path` and `proxy` — so a
+    // wrapped branch costs no separate `{path, proxy}` record. A cache without the internal
+    // handle (a test double) is fed through its public `set`.
+    const filer = (proxyCache as IProxyCache & {
+        fileHandler?: (handler: ReadProxyHandler<T>, source: object) => void;
+    }).fileHandler;
+
+    if (filer !== undefined) {
+        filer.call(proxyCache, handler, target);
+    } else {
+        proxyCache.set(basePath, target, proxy);
+    }
+
+    return proxy;
 };

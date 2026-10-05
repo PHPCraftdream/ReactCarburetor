@@ -357,3 +357,39 @@ Each recipe runs against the built package (`dist/esm-prod/Carburetor/index.mjs`
   one view.
 - R32-07: `s.notifyWrites(new Set(['count']))` with a `count` subscriber.
 - R32-08: `deepClone` from `Store/Utils/deepClone.mjs` against the same walk using `{}`.
+
+## Resolution
+
+Decisions taken for the user under the standing "best solution, breaking the API is fine": positional
+array methods record index-level paths (R32-03); no new public `keysOf` helper (R32-06); `notifyWrites`
+moves behind the symbol protocol (R32-07). Four `/wrush` agents worked in isolated worktrees; every
+diff was reviewed and every number below comes from the integrating session's own runs against a
+production build of `1d377b9` (each side in its own process, one benchmark at a time). A gate that did
+not pass is recorded as not passed.
+
+| Finding | Change | Gate | Result |
+| --- | --- | --- | --- |
+| R32-01 | assigned containers exchange engine views for raw targets (diff walk, direct walk, root install; development ledger throws on a view in state) | no `Proxy` reachable from `getData()` for every pattern; raw assignment ≤ 1.3× | 11 development tests and the same in `dist/cjs` and `dist/cjs-prod` child processes; raw assignment 0.41× — pass |
+| R32-02 | one capture-owned combined Set per shared leaf | K = 1600 ≤ 15 ms per write | 468 → 14.6 ms (0.03×); K = 800 112 → 7.1 ms — pass, close to the limit |
+| R32-03 | positional methods run natively on the raw array, index-level paths; `WriteLog` stops indexing past capacity | `splice(0,1)` ≤ 15 ms, ≤ 50 ms with 10k readers; others ≤ 25 / ≤ 50 ms | 143 → 6.7 ms, 135 → 10.6 ms with readers; `shift` 7.1, `unshift` 6.4, `reverse` 6.1, `sort` 6.5 ms — all pass. With a history attached 242 → 114 ms (patch clones dominate), undo/redo unchanged and verified |
+| R32-04 | memos dropped on delete and bounded by the live key set (draft and read trees) | rolling-window heap drift ≤ 1 MB | draft/write benchmark 19.0 → 0.64 MB — pass; the read-view benchmark reports 2.36 MB — **not passed as defined**: the series is flat at 2.4–2.8 MB from 100k to 400k keys (baseline +13.8 MB per 50k, 102 MB at 400k); the 50k sample sits below the plateau |
+| R32-05 | reference-equal children skipped before any path/segment; index loop for arrays; sparse arrays by own index | one row of 10k ≤ 0.5 ms and ≤ 100 KB | `setData` 2.44 → 0.305 ms, `diffPaths` 2.84 → 0.149 ms, 85.5 → 1.46 KB — pass |
+| R32-06 | handler doubles as the cache entry; rarely used memos in a lazy side object; no path memo from enumeration | retained ≤ 0.75×; fresh `Object.keys` ≤ 1.0× | 2891 → 1740 KB (0.60×); 20.7 → 17.7 ms (0.86×) — pass; warm pass unchanged (16.6 → 17.1 ms) |
+| R32-07 | `notifyWrites` behind `Symbol.for('react-carburetor/v1/store-notify-writes')`; `INotifiable` unexported | none (API) | type and runtime surface tests, dual-copy transaction test |
+| R32-08 | `{}` for `Object.prototype` | `snapshot()` ≥ 1.25× | 4.20 → 4.07 ms (0.97×) — **not passed** cross-process; the same walk measured in one process was 1.24–1.27× |
+
+Changes made while closing the round: the agent's index loop in `diffPaths` made long sparse arrays
+O(length) (35.8 ms at length 10⁶ against 5.3 ms, and unbounded at length near 2³²); a first fix sent
+every long array to the own-index walk and moved the 10k-row gate from 0.3 to 1.7 ms, so the own-index
+walk now starts only when an even spread of probes finds a hole. An aborted `diffPaths` (path threshold)
+left the unvisited part of the value unnormalized; it is normalized after the abort. A cache without the
+internal handler hook is fed through its public `set`.
+
+Read-path cost of the R32-06 wrappers was checked directly (current build against the same build without
+the read-proxy change, `readTreeRegistry` and `derivedPersistentTree`, three runs each): ratios between 0.87×
+and 1.31× in both directions, no consistent direction — within machine noise, not attributable.
+
+Known limits. Assigning a large fresh container to a new key walks it once to find views (not gated).
+A `sort` comparator and a `fill` value no longer receive write proxies. Moving a hole to an own
+`undefined` through a positional method is recorded as no change. The R30-02 read-tree gates remain
+unconfirmed on a busy machine.

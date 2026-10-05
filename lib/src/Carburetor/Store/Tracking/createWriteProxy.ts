@@ -13,8 +13,9 @@ import {isOpaqueDescriptor} from "./Proxy/isOpaqueDescriptor";
 import {forbidSymbolKey} from "./Proxy/forbidSymbolKey";
 import {nativeAliasIndex} from "./Aliases/NativeAliasIndex";
 import {liveViews} from "./Proxy/liveViews";
+import {runPositional} from "./Proxy/Positional/positionalArrayMethods";
+import {writeArrayLength} from "./Proxy/Positional/writeArrayLength";
 import {deliverPatches} from "./Proxy/deliverPatches";
-import {writeArrayLength} from "./Proxy/writeArrayLength";
 
 /**
  * Write-proxy trap handler: one instance per proxy, but one set of trap functions for all of
@@ -31,6 +32,15 @@ import {writeArrayLength} from "./Proxy/writeArrayLength";
  * takes its cache entry with it once nothing else references it.
  *
  */
+/**
+ * The reordering/positional array methods the write proxy intercepts on draft arrays: run
+ * natively on the raw array, then attributed as index-level writes, so one `splice` records
+ * one path per changed index instead of a field diff per shifted element.
+ */
+const POSITIONAL_METHODS = new Set<string>([
+    'sort', 'reverse', 'splice', 'shift', 'unshift', 'copyWithin', 'fill',
+]);
+
 class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
     /**
      * Stores the branch identity this instance's traps answer for.
@@ -70,6 +80,12 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
     /** `keysPath(basePath)`, memoized: this instance's own key-set marker never changes. */
     private keysMarkerPath?: TPath;
 
+    /** The memo size at which the memos are next audited against the source's live key count. */
+    private memoLimit = 128;
+
+    /** One intercepted positional-method dispatcher per method name, built on first read. */
+    private positionalMethods?: Map<string, (...args: unknown[]) => unknown>;
+
     /**
      * This instance's own key-set marker (R16-01): a key appearing, disappearing, or an array
      * truncation removing indices wakes a reader that enumerated this container.
@@ -81,18 +97,53 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
     }
 
     /**
+     * Drops the key-path memo once more than half of it names keys the source no longer owns
+     * (a rolling key window's dead entries); a pure string cache, so clearing changes no
+     * answer. Checked only when the memo crosses the doubling threshold, amortized O(1).
+     *
+     * @param source - the raw object this proxy fronts.
+     */
+    private auditMemos(source: object): void {
+        const memo = this.childPaths;
+
+        if (memo === undefined || memo.size === 0) return;
+
+        const keys = memo.keys();
+        const checked = Math.min(memo.size, 128);
+        let live = 0;
+
+        for (let index = 0; index < checked; index++) {
+            const key: string = keys.next().value as string;
+
+            if (Object.prototype.hasOwnProperty.call(source, key)) live++;
+        }
+
+        if (memo.size > 2 * Math.max(1, Math.round((live / checked) * memo.size))) {
+            memo.clear();
+            this.memoLimit = 128;
+
+            return;
+        }
+
+        this.memoLimit *= 2;
+    }
+
+    /**
      * `joinPath(basePath, key)`, memoized: every key is named exactly like any other, index and
      * `length` included; a repeat write to the same key does not concatenate the path again.
      *
      * @param key - the property being written.
+     * @param source - the raw object this proxy fronts, for the memo bound.
      */
-    private writtenPath(key: string): TPath {
+    private writtenPath(key: string, source?: object): TPath {
         const memo = this.childPaths ?? (this.childPaths = new Map<string, TPath>());
         let path = memo.get(key);
 
         if (path === undefined) {
             path = joinPath(this.basePath, key);
             memo.set(key, path);
+
+            if (source !== undefined && memo.size >= this.memoLimit) this.auditMemos(source);
         }
 
         return path;
@@ -164,6 +215,26 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         );
     }
 
+    /** Builds or returns the memoized dispatcher for one intercepted positional method.
+     *
+     * @param key - the intercepted method name.
+     * @param source - the raw array the method runs on.
+     */
+    private positional(key: string, source: object): (...args: unknown[]) => unknown {
+        let fn = this.positionalMethods?.get(key);
+
+        if (fn === undefined) {
+            const host = this as unknown as Parameters<typeof runPositional>[0];
+
+            fn = function (this: unknown, ...args: unknown[]): unknown {
+                return runPositional(host, key, this, source as unknown[], args);
+            };
+            (this.positionalMethods ?? (this.positionalMethods = new Map())).set(key, fn);
+        }
+
+        return fn;
+    }
+
     /**
      * Answers the introspection hatch, hands back a function unwrapped, wraps a trackable
      * value writable, or — for an unwrappable object like a Map — records the path it came
@@ -190,11 +261,20 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const value: unknown = Reflect.get(source, key);
 
         if (typeof value === 'function') {
+            // Native positional methods run on the raw array and are attributed at index
+            // level, instead of field-diffing every shifted element through the set trap.
+            // Own overrides and subclass methods keep running through the proxy, unchanged.
+            if (this.isArray && POSITIONAL_METHODS.has(key as string)
+                && (value as unknown)
+                    === (Array.prototype as unknown as Record<string, unknown>)[key as string]) {
+                return this.positional(key as string, source);
+            }
+
             return value;
         }
 
         if (isTrackable(value)) {
-            return this.wrap(this.writtenPath(key), key, value);
+            return this.wrap(this.writtenPath(key, source), key, value);
         }
 
         // Map/Set can adapt their native methods but cannot be tracked as plain branches;
@@ -208,7 +288,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             if (this.cache.nativeAliasRoot !== undefined) {
                 nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
             }
-            this.record(this.writtenPath(key));
+            this.record(this.writtenPath(key, source));
             return liveViews.adaptNativeCollection(value, this.cache, source, key);
         }
 
@@ -250,7 +330,15 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return true;
         }
 
-        const path = this.writtenPath(key);
+        const path = this.writtenPath(key, source);
+
+        // Views inside a caller-built container never become state (R32-01): a same-kind
+        // replacement normalizes inside the diff walk below, every other shape — here.
+        const diffBranch = wasOwn && isTrackable(previous) && isTrackable(raw)
+            && Array.isArray(previous) === Array.isArray(raw);
+        if (!diffBranch || this.aliases !== undefined) {
+            liveViews.normalizeAssigned(raw, diffBranch ? previous : undefined);
+        }
 
         this.aliases?.checkKey(source, key, path);
         this.aliases?.checkState(raw, path, wasOwn ? previous : undefined);
@@ -295,13 +383,13 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const nextLength = previousLength !== undefined
             ? (source as unknown as {length: number}).length : undefined;
         const grew = nextLength !== undefined && nextLength !== previousLength;
-        if (wasOwn && isTrackable(previous) && isTrackable(raw) && Array.isArray(previous) === Array.isArray(raw)) {
+        if (diffBranch) {
             const concrete = listener && !this.patchPort?.opaque ? listener : undefined;
             const patches: Parameters<TPatchRecorder>[0][] | undefined = concrete ? [] : undefined;
             const segments = concrete ? [...this.basePathSegments, key] : [];
             const changed = diffPaths(previous, raw, path, segments, patches);
             changed.forEach((written: TPath) => this.record(written));
-            if (grew) this.record(this.writtenPath('length'));
+            if (grew) this.record(this.writtenPath('length', source));
             if (concrete && patches) {
                 if (grew) this.reportPatch(patch => { patches.push(patch); },
                     'length', previousLength, nextLength, true, true);
@@ -318,7 +406,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             }
         } else {
             this.record(path);
-            if (grew) this.record(this.writtenPath('length'));
+            if (grew) this.record(this.writtenPath('length', source));
             if (listener && grew) {
                 const patches: Parameters<TPatchRecorder>[0][] = [];
                 const queue: TPatchRecorder = patch => { patches.push(patch); };
@@ -375,7 +463,10 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             && typeof descriptor.value === 'object'
             ? (liveViews.readTarget(descriptor.value) ?? descriptor.value)
             : 'value' in descriptor ? descriptor.value : wasOwn ? previous : undefined;
-        const path = this.writtenPath(key);
+        if (isTrackable(raw) && !Object.is(raw, previous)) {
+            liveViews.normalizeAssigned(raw, previous);
+        }
+        const path = this.writtenPath(key, source);
 
         this.aliases?.checkKey(source, key, path);
         this.aliases?.checkState(raw, path, wasOwn ? previous : undefined);
@@ -407,7 +498,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             ? (source as unknown as unknown[]).length : undefined;
         const grew = nextLength !== undefined && nextLength !== previousLength;
         this.record(path);
-        if (grew) this.record(this.writtenPath('length'));
+        if (grew) this.record(this.writtenPath('length', source));
         if (listener) {
             if (grew) {
                 const patches: Parameters<TPatchRecorder>[0][] = [];
@@ -458,7 +549,10 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
         }
         this.record(this.keysMarker());
-        const path = this.writtenPath(key);
+        const path = this.writtenPath(key, source);
+        // The key is gone: its memo entry names a path to nothing and a rolling key window
+        // would otherwise keep every key ever written memoized.
+        this.childPaths?.delete(key);
         this.record(path);
         if (listener) {
             if (changesOrderOnInverse) {

@@ -4,8 +4,8 @@ import {
 } from '@/Carburetor/Models/Paths';
 import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
 import {keysPath} from '@/Carburetor/Store/Paths/Markers/KeysMarker';
-import {clonePatchValue} from './clonePatchValue';
-import {deliverPatches} from './deliverPatches';
+import {clonePatchValue} from '@/Carburetor/Store/Tracking/Proxy/clonePatchValue';
+import {deliverPatches} from '@/Carburetor/Store/Tracking/Proxy/deliverPatches';
 
 /** Native ArraySetLength can delete a suffix even when it ultimately refuses the request.
  *

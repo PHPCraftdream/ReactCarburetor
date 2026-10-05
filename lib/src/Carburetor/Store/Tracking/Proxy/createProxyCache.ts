@@ -1,10 +1,13 @@
 import {TPath} from "@/Carburetor/Models/Paths";
 import {IProxyCache} from "@/Carburetor/Store/Tracking/Models";
 
-/** One cached branch: the path it was minted for, and the wrapper built for it. */
+/**
+ * One cached branch. A read handler carries its own `path`/`proxy` and doubles as the entry;
+ * a plain wrapper handed to `set` is filed as-is behind this shape.
+ */
 interface IProxyCacheEntry {
     path: TPath;
-    proxy: object;
+    proxy?: object;
 }
 
 /**
@@ -42,6 +45,17 @@ class ProxyCache implements IProxyCache {
     private readonly entries: WeakMap<object, IProxyCacheEntry> = new WeakMap();
 
     /**
+     * Files a read handler as its own entry — it carries `path` and `proxy`, so no separate
+     * record is needed. Called by `createReadProxy` right after it builds handler and proxy.
+     *
+     * @param handler - the read handler doubling as the entry.
+     * @param source - the raw branch the handler's proxy fronts.
+     */
+    public fileHandler(handler: IProxyCacheEntry, source: object): void {
+        this.entries.set(source, handler);
+    }
+
+    /**
      * The cached proxy for (path, source), or undefined on a miss.
      *
      * @param path - the full path the branch was read at.
@@ -50,7 +64,7 @@ class ProxyCache implements IProxyCache {
     public get(path: TPath, source: object): object | undefined {
         const entry = this.entries.get(source);
 
-        return entry !== undefined && entry.path === path ? entry.proxy : undefined;
+        return entry !== undefined && entry.path === path ? entry.proxy ?? entry : undefined;
     }
 
     /**

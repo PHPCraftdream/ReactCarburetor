@@ -1,6 +1,6 @@
 import {diagnostics} from "@/Carburetor";
 import {TPath} from "@/Carburetor/Models/Paths";
-import {CARBURETOR_EXTEND, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
+import {CARBURETOR_EXTEND, CARBURETOR_NOTIFY_WRITES, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
@@ -11,6 +11,10 @@ import {
 // extend() lives on the internal symbol protocol now (R30-06a): call it through the symbol.
 const extendSubscription = (store: unknown, id: string, path: TPath): void =>
     (store as IInternalSubscriptionProtocol)[CARBURETOR_EXTEND]!(id, path);
+
+// notifyWrites lives on the internal symbol protocol now (R32-07): call it through the symbol.
+const notifyWrites = (store: unknown, writes: Set<TPath>): void =>
+    (store as IInternalSubscriptionProtocol)[CARBURETOR_NOTIFY_WRITES]!(writes);
 
 describe('Carburetor', () => {    test('notifies subscribers synchronously by default', () => {
         const carburetor = new TestCarburetor(getTestData());
@@ -139,21 +143,21 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
         expect(store.subscribe(protoCallback, {id: '__proto__', reads: readsOf('a')})).toBe('__proto__');
         expect(store.subscribe(constructorCallback, {id: 'constructor', reads: readsOf('b')})).toBe('constructor');
 
-        store.notifyWrites(readsOf('a'));
+        notifyWrites(store, readsOf('a'));
         expect(calls).toEqual(['__proto__']);
 
         extendSubscription(store, '__proto__', 'b');
-        store.notifyWrites(readsOf('b'));
+        notifyWrites(store, readsOf('b'));
         expect(calls).toEqual(['__proto__', 'constructor', '__proto__']);
 
         store.unsubscribe('__proto__');
         store.unsubscribe('constructor');
 
-        store.notifyWrites(readsOf('a', 'b'));
+        notifyWrites(store, readsOf('a', 'b'));
         expect(calls).toEqual(['__proto__', 'constructor', '__proto__']);
 
         store.subscribe(() => { calls.push('new'); }, {id: '__proto__', reads: readsOf('a')});
-        store.notifyWrites(readsOf('a'));
+        notifyWrites(store, readsOf('a'));
         expect(calls[calls.length - 1]).toBe('new');
     });
 

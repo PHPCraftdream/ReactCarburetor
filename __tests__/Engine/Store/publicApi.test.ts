@@ -1,8 +1,11 @@
 import {rstest} from "@rstest/core";
+import {spawnSync} from "node:child_process";
+import {existsSync} from "node:fs";
+import path from "node:path";
 import * as api from "@/Carburetor";
 import {Carburetor, CarburetorHistory, Diagnostics} from "@/Carburetor";
 import type {ICarburetor, ICarburetorSubscription, IInspectable} from "@/Carburetor";
-import {CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT} from "@/Carburetor/Store/Utils/Models";
+import {CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES} from "@/Carburetor/Store/Utils/Models";
 
 /**
  * Snapshot of the runtime surface of the package. Type-only exports do not appear here,
@@ -114,6 +117,96 @@ describe('surface after the internal subscription protocol (R30-06)', () => {
         expect('hasDriftSince' in store).toBe(false);
         expect(typeof protocol[CARBURETOR_EXTEND]).toBe('function');
         expect(typeof protocol[CARBURETOR_HAS_DRIFT]).toBe('function');
+    });
+});
+
+// R32-07: the batch coordinator's entry point moved to the internal symbol protocol; neither
+// the method nor the INotifiable interface may appear on the public surface again.
+describe('surface after notifyWrites moved behind the symbol protocol (R32-07)', () => {
+    test('Carburetor has no named notifyWrites member in its type or at runtime', () => {
+        type HasNotifyWrites = 'notifyWrites' extends keyof Carburetor<object> ? true : false;
+        const withoutNotifyWrites: HasNotifyWrites = false;
+
+        expect(withoutNotifyWrites).toBe(false);
+
+        const store = new Carburetor({value: 1}) as unknown as Record<string, unknown>;
+
+        expect('notifyWrites' in store).toBe(false);
+        expect(store.notifyWrites).toBeUndefined();
+        expect(typeof (Carburetor.prototype as Record<string, unknown>).notifyWrites).toBe('undefined');
+        expect(typeof (store as unknown as Record<symbol, unknown>)[CARBURETOR_NOTIFY_WRITES]).toBe('function');
+    });
+
+    test('the barrel does not export INotifiable or the notifyWrites symbol', () => {
+        const pkg = api as Record<string, unknown>;
+
+        expect(pkg.INotifiable).toBeUndefined();
+        expect(pkg.CARBURETOR_NOTIFY_WRITES).toBeUndefined();
+
+        type BarrelHasINotifiable = 'INotifiable' extends keyof typeof api ? true : false;
+        const withoutINotifiable: BarrelHasINotifiable = false;
+
+        expect(withoutINotifiable).toBe(false);
+    });
+});
+
+// The symbol keys are what make the protocol work across two copies of the package in one
+// process: the batch from one copy must reach the store of the other through Symbol.for.
+const DUAL_COPY_SCRIPT = `
+const path = require('path');
+const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join('/');
+const cjsRoot = process.env.CJS_ROOT;
+const esmRoot = process.env.ESM_ROOT;
+
+(async () => {
+    const cjs = require(path.join(cjsRoot, 'Carburetor', 'index.js'));
+    const esm = await import(toFileUrl(path.join(esmRoot, 'Carburetor', 'index.mjs')));
+
+    const storeCjs = new cjs.Carburetor({n: 0});
+    const storeEsm = new esm.Carburetor({n: 0});
+    const order = [];
+    storeCjs.subscribe(() => order.push('cjs'));
+    storeEsm.subscribe(() => order.push('esm'));
+
+    let midBody = null;
+    cjs.transaction(() => {
+        storeCjs.setData({n: 1});
+        storeEsm.setData({n: 1});
+        midBody = order.slice();
+    });
+
+    process.stdout.write(JSON.stringify({midBody, afterBody: order.slice().sort()}));
+})().catch((error) => {
+    process.stderr.write(String((error && error.stack) || error));
+    process.exit(1);
+});
+`;
+
+describe('notifyWrites across two package copies (R32-07)', () => {
+    test('a transaction over stores from dist/cjs and dist/esm delivers once per store', () => {
+        const cjsEntry = path.resolve(process.cwd(), 'dist', 'cjs', 'Carburetor', 'index.js');
+        const esmEntry = path.resolve(process.cwd(), 'dist', 'esm', 'Carburetor', 'index.mjs');
+
+        if (!existsSync(cjsEntry) || !existsSync(esmEntry)) {
+            throw new Error('the compiled package is missing: run npm run build first, this regression needs both dist/cjs and dist/esm');
+        }
+
+        const result = spawnSync(process.execPath, ['-e', DUAL_COPY_SCRIPT], {
+            encoding: 'utf8',
+            env: {...process.env,
+                CJS_ROOT: path.dirname(path.dirname(cjsEntry)), ESM_ROOT: path.dirname(path.dirname(esmEntry))},
+        });
+
+        if (result.error) {
+            throw result.error;
+        }
+
+        expect(result.status, result.stderr).toEqual(0);
+
+        const parsed = JSON.parse(result.stdout);
+
+        expect(parsed.midBody).toEqual([]);
+        expect(parsed.afterBody).toEqual(['cjs', 'esm']);
     });
 });
 

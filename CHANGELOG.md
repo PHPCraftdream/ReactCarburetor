@@ -453,6 +453,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   when `ttl`/`maxEntries` are finite); subscriber filing 525 → 410 ns per path (0.74×, no per-path
   array/closure); selection compare 2.77 → 0.93 µs and detach 3.05 → 0.59 µs for a two-field
   selection; `useCarburetorValue` initializers run once instead of every render.
+- **Breaking:** `Carburetor.notifyWrites()` and the `INotifiable` interface are gone from the public
+  surface; the batch coordinator reaches a store through the internal
+  `Symbol.for('react-carburetor/v1/store-notify-writes')` protocol, like `extend`/`hasDriftSince`.
+- A container built from draft branches (`d.rows = d.rows.map(...)`, `filter`, spread, `concat`,
+  `{...d.meta, extra: d.rows[0]}`) no longer leaves write proxies inside state: assigned values are
+  exchanged for their raw targets, `getData()` never returns a `Proxy`, row identities survive
+  `map(r => r)`, and a leaked view can no longer publish phantom writes. In development a view found
+  in state throws.
+- **Breaking:** on a draft array, `sort`, `reverse`, `splice`, `shift`, `unshift`, `copyWithin` and
+  `fill` run natively on the raw array and record one path per changed index plus `length` and the
+  key set, instead of field-diffing every shifted row: a `sort` comparator and a `fill` value see raw
+  elements, `splice`/`shift` return raw removed elements, and a reader of a field that happens to be
+  equal between neighbouring rows is woken like any reader of a moved row. `splice(0, 1)` on 10 000
+  six-field rows 143 → 6.7 ms (135 → 10.6 ms with 10 000 row subscribers); the same call with a
+  `CarburetorHistory` attached 242 → 114 ms, undo and redo unchanged.
+- `computed` over many computeds that read one store merges their read sets in linear time: 1600
+  per-row computeds under one observed total 468 → 14.6 ms per write (800: 112 → 7.1 ms).
+- `diffPaths` skips reference-equal children before building any path, segment or key list, and walks
+  arrays by index (long sparse arrays by own index): `setData` with one changed row of 10 000
+  2.44 → 0.31 ms and 85.5 KB → 1.5 KB allocated.
+- Path memos of the draft and read proxy trees follow the live key set instead of every key ever
+  touched: a 100-key rolling window over 400 000 keys stays within a 2.4–2.8 MB band (baseline grows
+  ≈ 13.8 MB per 50 000 keys); key enumeration through a view retains 2891 → 1740 KB per 10 000 keys.
+- `WriteLog` stops indexing an oversized emit as soon as it passes its capacity.
 
 ### Fixed
 

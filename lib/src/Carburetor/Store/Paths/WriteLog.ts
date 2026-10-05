@@ -63,13 +63,18 @@ export class WriteLog {
                 this.under.set(path.slice(0, cut), version);
                 cut = path.lastIndexOf(PATH_SEPARATOR, cut - 1);
             }
-        }
 
-        if (this.last.size + this.under.size > this.capacity) {
-            // Forgetting drops this emit too: only a baseline at or after it can still be answered.
-            this.last.clear();
-            this.under.clear();
-            this.watermark = version;
+            // Oversized emit: index nothing further. Raising the watermark answers every
+            // baseline below it coarsely, exactly like the old index-then-forget, and a
+            // wildcard later in this same emit is covered by that watermark too — any
+            // baseline it could matter for is already below the watermark.
+            if (this.last.size + this.under.size > this.capacity) {
+                this.last.clear();
+                this.under.clear();
+                this.watermark = version;
+
+                return;
+            }
         }
     }
 

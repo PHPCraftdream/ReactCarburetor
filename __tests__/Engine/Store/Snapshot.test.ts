@@ -1,5 +1,6 @@
 import {Carburetor, deepClone, transaction} from "@/Carburetor";
 import {TPath} from "@/Carburetor/Models/Paths";
+import {CARBURETOR_NOTIFY_WRITES} from "@/Carburetor/Store/Utils/Models";
 
 interface ITestData {
     a: number;
@@ -279,9 +280,10 @@ describe('transaction', () => {
         const reported: string[] = [];
         let notified = 0;
 
-        // notifyWrites is replaced whole so the failure happens at the batch level, above
-        // the per-subscriber isolation a throwing subscriber would already be caught by.
-        first.notifyWrites = () => {
+        // The batch-level delivery entry is replaced whole (via its internal symbol, R32-07)
+        // so the failure happens at the batch level, above the per-subscriber isolation a
+        // throwing subscriber would already be caught by.
+        (first as unknown as Record<symbol, unknown>)[CARBURETOR_NOTIFY_WRITES] = () => {
             throw new Error('first store failed to deliver');
         };
 

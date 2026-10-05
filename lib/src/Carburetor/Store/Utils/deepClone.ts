@@ -46,9 +46,11 @@ export const deepClone = <T>(value: T): T => {
     }
 
     const source = value as Record<string, unknown>;
-    // Object.create(getPrototypeOf(source)) keeps a null-prototype dictionary null-prototype
-    // instead of always landing on Object.prototype the way `{}` would.
-    const result: Record<string, unknown> = Object.create(Object.getPrototypeOf(source));
+    const prototype = Object.getPrototypeOf(source);
+    // `{}` for the common plain object; Object.create keeps a null-prototype dictionary
+    // null-prototype and preserves any other supported prototype.
+    const result: Record<string, unknown>
+        = prototype === Object.prototype ? {} as Record<string, unknown> : Object.create(prototype);
     const keys: string[] = Object.keys(source);
 
     for (let i = 0; i < keys.length; i++) {

@@ -5,7 +5,7 @@ import {
     TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
 } from "@/Carburetor/Models/Paths";
 import {
-    ICarburetor, INotifiable, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector,
+    ICarburetor, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector,
 } from "@/Carburetor/Models/Store";
 import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
@@ -29,7 +29,7 @@ import {getUid} from "./Utils/getUid";
 import {IS_DEVELOPMENT} from "./Utils/DevelopmentFlag";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
 import {
-    CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol,
+    CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, IInternalSubscriptionProtocol,
 } from "./Utils/Models";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 
@@ -42,7 +42,7 @@ interface ISubscriberRecord {
 }
 
 export class Carburetor<T extends object> implements
-    ICarburetor<T>, INotifiable, IPatchSource, IInternalSubscriptionProtocol {
+    ICarburetor<T>, IPatchSource, IInternalSubscriptionProtocol {
     /** Shared base-method identities; no registration record allocated per store. */
     private static readonly nativeStoreMethods = {
         getVersion: Carburetor.prototype.getVersion,
@@ -59,7 +59,8 @@ export class Carburetor<T extends object> implements
             publicationPending: s.publicationPending, pendingPublication: s.pendingPublication,
             patchObservers: s.patchObservers, preEmit: s.preEmit, didSetData: s.didSetData,
             touchDraft: s.touchDraft, recordWrite: s.recordWrite, rememberPublication: s.rememberPublication,
-            notifyWrites: s.notifyWrites, emitSoon: s.emitSoon, emitUpdate: s.emitUpdate,
+            [CARBURETOR_NOTIFY_WRITES]: s[CARBURETOR_NOTIFY_WRITES],
+            emitSoon: s.emitSoon, emitUpdate: s.emitUpdate,
         };
     }
     /** Registered callbacks and their stable scheduler keys, indexed by public local id. */
@@ -375,8 +376,9 @@ export class Carburetor<T extends object> implements
         return watchSelection(this, select, onChange);
     }
 
-    /** Called by the batch coordinator when a transaction closes. */
-    public notifyWrites(writes: TPathSet): void {
+    /** Delivers one notification pass for a closed write set; called only via the internal
+     * symbol protocol (R32-07), never as a public method. */
+    public [CARBURETOR_NOTIFY_WRITES](writes: TPathSet): void {
         updateWave.begin();
 
         try {

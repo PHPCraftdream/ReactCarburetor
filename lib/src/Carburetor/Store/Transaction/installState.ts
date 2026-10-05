@@ -6,6 +6,7 @@ import {IStateInstallPort} from '@/Carburetor/Store/Transaction/Models';
 import {diffPaths} from '@/Carburetor/Store/Paths/Diff/diffPaths';
 import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
 import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
+import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
 import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
 
 /** Installs a prepared root, closes its metadata, and publishes even when delivery fails.
@@ -25,11 +26,18 @@ export const installState = <T extends object>(
     }
 
     const previous = store.data;
-    store.aliases?.checkState(data, '', previous);
-    const changed = diffPaths(previous, data);
+    // A caller-assembled root never stores a view (R32-01): the top level is unwrapped here,
+    // development normalizes the whole root before the state check, and production relies on
+    // the diff walk exchanging every leaked view for its raw target in place.
+    const root = (liveViews.readTarget(data) ?? data) as T;
+    if (store.aliases !== undefined) {
+        liveViews.normalizeAssigned(root, previous);
+    }
+    store.aliases?.checkState(root, '', previous);
+    const changed = diffPaths(previous, root);
     if (isTrackable(previous)) nativeAliasIndex.invalidate(previous);
-    if (isTrackable(data)) nativeAliasIndex.invalidate(data);
-    store.data = data;
+    if (isTrackable(root)) nativeAliasIndex.invalidate(root);
+    store.data = root;
     store.draftProxy = undefined;
     // Deferred observers may still hold a prior mutation after the store fact was closed.
     // Mix in a value-equal installation without scheduling a publication of its own.
@@ -79,5 +87,5 @@ export const installState = <T extends object>(
         }
     }
     if (failed) throw firstError;
-    return data;
+    return root;
 };

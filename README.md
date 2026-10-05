@@ -132,6 +132,12 @@ fields that already hold the value, so only real changes are recorded. Replacing
 (`draft.items[id] = next`) is precise too — it is diffed against the object it replaces and
 records only the fields that differ — but pays a walk over the replaced object to find them.
 
+Containers built from draft branches are fine to assign back: `draft.rows = draft.rows.filter(...)`,
+`map`, spread or `concat` store the raw rows, never the proxies the draft handed out. The array
+methods `sort`, `reverse`, `splice`, `shift`, `unshift`, `copyWithin` and `fill` run natively on the
+draft's array and are recorded per changed index, so reordering 10 000 rows costs milliseconds; a
+`sort` comparator and a `fill` value see raw elements, and `splice`/`shift` return raw removed ones.
+
 `update` mutates through `draft` and publishes in one step. You can also write to `this.draft`
 directly and call `this.emitUpdate()` yourself, but forgetting the second half changes the data
 while nobody re-renders — so in development the carburetor reports that mistake rather than

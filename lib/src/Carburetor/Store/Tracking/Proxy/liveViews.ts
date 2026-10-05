@@ -3,6 +3,7 @@ import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {IProxyCache, RAW_TARGET} from "@/Carburetor/Store/Tracking/Models";
 import {recordNativeAliasReads} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasReads";
 import {nativeAliasIndex} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex";
+import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 
 /**
  * Read proxies, draft proxies and native collection facades answer RAW_TARGET with their raw
@@ -188,6 +189,78 @@ const adaptNativeCollection = (
     return facade;
 };
 
+const sameKind = (a: object, b: object): boolean =>
+    Array.isArray(a) === Array.isArray(b) && Object.getPrototypeOf(a) === Object.getPrototypeOf(b);
+
+const normalizeInto = (value: object, previous: unknown, stack: Set<object>): void => {
+    if (stack.has(value)) {
+        return;
+    }
+
+    stack.add(value);
+
+    const record = value as Record<string, unknown>;
+    const prior = isTrackable(previous) && sameKind(value, previous)
+        ? previous as Record<string, unknown>
+        : undefined;
+
+    if (Array.isArray(value)) {
+        const priorArray = prior ? (previous as unknown as unknown[]) : undefined;
+
+        for (let index = 0; index < value.length; index++) {
+            const child: unknown = value[index];
+
+            if (child === null || typeof child !== 'object') {
+                continue;
+            }
+
+            const previousChild = priorArray && index < priorArray.length ? priorArray[index] : undefined;
+
+            if (Object.is(child, previousChild)) {
+                continue;
+            }
+
+            const target = liveViews.readTarget(child);
+
+            if (target !== undefined) {
+                value[index] = target;
+                continue;
+            }
+
+            if (isTrackable(child)) {
+                normalizeInto(child, previousChild, stack);
+            }
+        }
+    } else {
+        for (const key of Object.keys(record)) {
+            const child: unknown = record[key];
+
+            if (child === null || typeof child !== 'object') {
+                continue;
+            }
+
+            const previousChild = prior ? prior[key] : undefined;
+
+            if (Object.is(child, previousChild)) {
+                continue;
+            }
+
+            const target = liveViews.readTarget(child);
+
+            if (target !== undefined) {
+                record[key] = target;
+                continue;
+            }
+
+            if (isTrackable(child)) {
+                normalizeInto(child, previousChild, stack);
+            }
+        }
+    }
+
+    stack.delete(value);
+};
+
 export const liveViews = {
     /** Adapts a draft Map/Set without recording read dependencies. */
     adaptNativeCollection: (value: object, cache: IProxyCache, source: object, key: string): object =>
@@ -259,5 +332,25 @@ export const liveViews = {
         }
 
         return readHatch(value) !== undefined || knownViews.has(value);
+    },
+
+    /**
+     * Replaces every engine view inside a freshly assigned value with its raw target, mutating
+     * the caller's container in place so no tracked view ever becomes state (R32-01).
+     *
+     * A view is exchanged for the graph member it fronts and not walked into — state-owned raw
+     * data is never modified. Subtrees already reference-equal to their `previous` counterpart
+     * are skipped entirely, so an unrelated engine proxy kept by the caller is never walked.
+     *
+     * @param value - the value about to be stored into state.
+     * @param previous - the value it replaces, for the reference-equal skip; undefined when the
+     * shape changed or there is nothing to compare against.
+     */
+    normalizeAssigned: (value: unknown, previous?: unknown): void => {
+        if (!isTrackable(value) || liveViews.has(value)) {
+            return;
+        }
+
+        normalizeInto(value, previous, new Set<object>());
     },
 };

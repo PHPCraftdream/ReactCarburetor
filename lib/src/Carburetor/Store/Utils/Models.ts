@@ -1,4 +1,4 @@
-import {TPath} from '@/Carburetor/Models/Paths';
+import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
 
 /**
  * Internal subscription protocol, keyed by shared symbols so two copies of the package in one
@@ -12,8 +12,12 @@ export const CARBURETOR_EXTEND: unique symbol = Symbol.for('react-carburetor/v1/
 /** Path-precise drift check: whether a write since `baselineVersion` could concern `reads`. */
 export const CARBURETOR_HAS_DRIFT: unique symbol = Symbol.for('react-carburetor/v1/subscription-has-drift');
 
+/** Delivers one notification pass for a closed write set; the batch coordinator's entry point. */
+export const CARBURETOR_NOTIFY_WRITES: unique symbol = Symbol.for('react-carburetor/v1/store-notify-writes');
+
 /** What a store source carries beyond the public subscription surface. */
 export interface IInternalSubscriptionProtocol {
     [CARBURETOR_EXTEND]?: (id: string, path: TPath) => void;
     [CARBURETOR_HAS_DRIFT]?: (baselineVersion: number, reads: ReadonlySet<TPath>) => boolean;
+    [CARBURETOR_NOTIFY_WRITES]?: (writes: TPathSet) => void;
 }

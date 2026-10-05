@@ -3,6 +3,7 @@ import {
     TAliasLedger, TPath, TPathSet, TPatchPort,
 } from '@/Carburetor/Models/Paths';
 import {WriteLog} from '@/Carburetor/Store/Paths/WriteLog';
+import {CARBURETOR_NOTIFY_WRITES} from '@/Carburetor/Store/Utils/Models';
 
 /** Store boundary consumed by the shared mutation commit implementation. */
 export interface IStorePublicationPort<T extends object> {
@@ -16,7 +17,7 @@ export interface IStorePublicationPort<T extends object> {
     patchPort: TPatchPort;
     preEmit(): void;
     rememberPublication(installation?: IStateInstallation): void;
-    notifyWrites(writes: TPathSet): void;
+    [CARBURETOR_NOTIFY_WRITES](writes: TPathSet): void;
 }
 
 /** Core fields and boundaries required to install a root without duplicating store orchestration. */

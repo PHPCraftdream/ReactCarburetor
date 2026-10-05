@@ -1,5 +1,5 @@
 import {TDisposer, TReadonly, TSubscriber, TUpdater} from "./Base";
-import {IPatchObserver, TPathSet} from "./Paths";
+import {IPatchObserver} from "./Paths";
 
 /**
  * Picks the part of a carburetor's data one subscription cares about, run against a tracked
@@ -114,11 +114,6 @@ export interface ICarburetor<T> extends IReadableCarburetor<T>, IInspectable {
      * @param onChange - called with the fresh and previous selection when they differ
      */
     watch: <R>(select: TSelector<T, R>, onChange: (next: R, previous: R) => void) => TDisposer;
-}
-
-/** A carburetor as seen by the batch coordinator. */
-export interface INotifiable {
-    notifyWrites: (writes: TPathSet) => void;
 }
 
 /**

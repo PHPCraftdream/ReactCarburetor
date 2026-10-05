@@ -1,6 +1,6 @@
-import {
-    IStateInstallation, PATCH_OPAQUE, TPath, TPathSet,
+import {IStateInstallation, PATCH_OPAQUE, TPath, TPathSet,
 } from '@/Carburetor/Models/Paths';
+import {CARBURETOR_NOTIFY_WRITES} from '@/Carburetor/Store/Utils/Models';
 import {IStorePublicationPort} from '@/Carburetor/Store/Transaction/Models';
 import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
 import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
@@ -74,7 +74,7 @@ export const emitStoreUpdate = <T extends object>(
         updateBatch.add(store, writes);
     } else {
         try {
-            store.notifyWrites(writes);
+            store[CARBURETOR_NOTIFY_WRITES](writes);
         } catch (error: unknown) {
             if (!failed) {
                 failed = true;
