@@ -10,6 +10,7 @@ import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeRea
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
+import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {TSelector, TValueComparator} from "./Models";
 
 interface ICacheEntry<T extends object, R> {
@@ -18,6 +19,7 @@ interface ICacheEntry<T extends object, R> {
     isEqual: TValueComparator<R> | undefined;
     version: number;
     value: R;
+    liveSelection: unknown;
     reads: TCompletedReads | undefined;
     filled: boolean;
 }
@@ -206,14 +208,30 @@ export const useCarburetorValue = <T extends object, R>(
     const getSnapshot = useCallback((): R => {
         const entry = cache.current;
         const version = carburetor.getVersion();
+        const sameCarburetor = entry !== null && entry.carburetor === carburetor;
+        const driftEntry = entry !== null && entry.filled && entry.reads !== undefined &&
+            sameCarburetor && entry.isEqual === isEqual;
+        // The write-log probe runs only when the store moved since the entry; an equal version needs none.
+        const drift = driftEntry && entry!.version !== version
+            ? (carburetor as IInternalSubscriptionProtocol)[CARBURETOR_HAS_DRIFT] : undefined;
+        const canUseDrift = drift !== undefined && !drift.call(carburetor, entry!.version, entry!.reads!);
+        const noReadDrift = entry !== null && entry.filled && entry.reads !== undefined &&
+            sameCarburetor && entry.isEqual === isEqual &&
+            (canUseDrift || entry.version === version);
 
         // An entry is valid only for the store, selector and comparator that produced it:
         // changing comparison policy must reconsider a result suppressed at this version.
+        if (noReadDrift && entry !== null && entry.select === select) {
+            entry.version = version;
+            pendingReads.current = entry.reads!;
+            return entry.value;
+        }
+
         if (entry !== null && entry.filled && entry.reads !== undefined &&
             entry.carburetor === carburetor && entry.select === select &&
             entry.isEqual === isEqual && entry.version === version) {
             // Restore the read set paired with this cached value if a nested observation moved it.
-            pendingReads.current = entry.reads;
+            pendingReads.current = entry.reads!;
             return entry.value;
         }
 
@@ -224,10 +242,24 @@ export const useCarburetorValue = <T extends object, R>(
         currentReads.current = reads;
 
         let result: R;
+        let liveSelection: R | undefined;
 
         // Closed however the walk ends: detach() throws for a class instance by design.
         try {
             const fresh: R = select(view.current.view);
+            liveSelection = fresh;
+
+            const readsCoverSelection = noReadDrift && entry !== null &&
+                Array.from(reads).every((path) => entry.reads!.has(path));
+            const canReuseInlineSelection = noReadDrift && sameCarburetor && entry !== null &&
+                entry.isEqual === isEqual && isEqual === sameSelection &&
+                fresh === entry.liveSelection && readsCoverSelection;
+
+            if (canReuseInlineSelection) {
+                pendingReads.current = entry.reads!;
+                cache.current = {...entry, select, version, liveSelection};
+                return entry.value;
+            }
 
             // Comparison and detachment can add reads, so publish the set only after both succeed.
 
@@ -249,7 +281,7 @@ export const useCarburetorValue = <T extends object, R>(
             carburetor, select, isEqual, version, value: result, reads, filled: true,
         });
         pendingReads.current = completed.reads;
-        cache.current = completed;
+        cache.current = {...completed, liveSelection};
 
         return result;
     }, [carburetor, select, isEqual, recordRead]);

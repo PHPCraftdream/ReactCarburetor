@@ -97,6 +97,28 @@ describe('useCarburetorValue default comparator', () => {
         unmount();
     });
 
+    test('inline default selector skips walking its unchanged selected branch', () => {
+        const store = new Carburetor<{profile: {name: string}; other: number}>({profile: {name: 'ann'}, other: 0});
+        let keyWalks = 0;
+        const keys = rstest.spyOn(Object, 'keys').mockImplementation((value: object) => {
+            keyWalks++;
+            return Reflect.ownKeys(value).filter((key): key is string => typeof key === 'string');
+        });
+        const View = ({tick}: {tick: number}) => {
+            const value = useCarburetorValue(store, data => data.profile);
+            return <div>{value.name}:{tick}</div>;
+        };
+        const view = render(<View tick={0}/>);
+        const afterMount = keyWalks;
+
+        act(() => { store.update(draft => { draft.other++; }); });
+        view.rerender(<View tick={1}/>);
+
+        expect(keyWalks).toBeLessThanOrEqual(afterMount + 1);
+        keys.mockRestore();
+        view.unmount();
+    });
+
     test('a custom comparator receives detached values, never the live branch', () => {
         const carburetor = new TodoCarburetor({todo: {title: 'shopping', done: false}});
         const compared: Array<{title: string}> = [];
