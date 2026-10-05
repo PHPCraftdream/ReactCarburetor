@@ -240,7 +240,10 @@ value aliases retain their topology without bypassing tracked plain reads. Objec
 conservatively changed, as do class instances — including Map, Set and Date subclasses.
 
 The selector runs on every render — that is what keeps the owner's subscription fresh — while
-the snapshot object itself is reused until the content actually changes. Tracked plain-object
+the snapshot object itself is reused until the content actually changes. When it does change, only
+the changed spine is copied: unchanged nested objects and arrays keep the references they had, so a
+`React.memo` row handed one of them re-renders only if its own content changed. Members are
+matched by position, so a reordered list copies the rows that moved. Tracked plain-object
 and array branches are copied safely. An opaque live facade that cannot be detached is reported
 once in development; project its plain fields instead of handing the facade to a gated child.
 
@@ -648,6 +651,11 @@ id would not survive the trip. Two tokens in one process may not share a name, a
 no token claims is reported in development. A single store can also be seeded directly with
 `scope.set(token, carburetor)`.
 
+`dehydrate()` returns a detached copy that survives later writes. When the payload is serialized
+right away — the usual server case — `JSON.stringify(scope)` does the same in one pass without the
+copy: `scope.toJSON()` returns each store's wire form, at about half the cost, and reflects the
+state as it is at the time of the call.
+
 ## Tooling
 
 ```ts
@@ -797,6 +805,8 @@ since its fields can mutate in place. Pass `Object.is` explicitly for the old,
 reference-only behavior.
 A different comparator re-evaluates the current selection even if the previous comparator
 suppressed the latest write. Values truly equal under the new policy keep their snapshot identity.
+With the default comparison a changed selection keeps the previous references of its unchanged
+nested objects and arrays, so rows of a selected list can be `React.memo` children.
 
 ## Lint rules
 

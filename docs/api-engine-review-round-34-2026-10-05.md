@@ -330,3 +330,49 @@ Each recipe runs against `dist/esm-prod` with `NODE_ENV=production`;
 - R34-04: `snap = s.snapshot(); snap.rows[5].done = !snap.rows[5].done;` time `s.restore(snap)`.
 - R34-05: `scope.get(token)` for a 10 000-row store; time `JSON.stringify(scope.dehydrate())` against
   `JSON.stringify({[token.id]: scope.get(token)})`.
+
+## Resolution
+
+Implemented one commit per group: `d807126` (R34-05, R34-06 persist), `7dc8d83` (R34-03, R34-06 history),
+`caec36d` (R34-01, R34-06 hook), `52bc7d4` (R34-04), `95932b7` (R34-02). The measurement tooling landed first as
+`d300b9a` (`benchmarks/state/tracking/consumers/r34/`: `harness/` and `scenarios/`), together with removal of a
+machine-specific path from the r33 hooks benchmark.
+
+Numbers below are my own re-measurement of the integrated tree against a build of `d300b9a` (the pre-fix source),
+through the committed A/B runner, 5 samples per build, median [min–max]; agent-reported figures agreed within noise
+except where stated.
+
+| ID | Status | Before → after (own run) | Gate |
+|---|---|---|---|
+| R34-01 | fixed | computed `get()` after a retained recompute (10k): 8.4 → 0.0012 ms, write-log consultations 200 → 0; fan-in 5.9 → 0.0015 ms, 200 → 0; hook re-render after a related edit (10k, stable / inline): 26.0 / 18.0 → 0.067 / 0.072 ms, 15 → 0; before it: 3.6 / 3.8 → 0.17 / 0.21 ms; renders (35) and text identical | passed (≤0.01 ms, 0, ≤0.5 ms) |
+| R34-02 | fixed | memo row renders per one-row edit 1 000 / 10 000 → 1 / 1; edit 13.1 → 10.8 ms (1k), 238 → 163 ms (10k, 0.69×); text identical | passed (1 render; ≤ today) |
+| R34-03 | fixed | one-field undo / redo at 10k: 89 / 91 → 0.024 / 0.020 ms; at 50k: 636 / 624 → 0.030 / 0.033 ms; wakes (28) and final state identical | passed (≤1 ms, ≤5 ms) |
+| R34-04 | partly | one-leaf restore at 10k: 34.9 → 9.2 ms (3.8×), snapshot 4.9 ms; at 1k: 3.8 → 1.2 ms | **not strictly met**: restore / snapshot is 1.9× at 10k in my run but 2.04–2.06× in the agent's runs, and 2.1× at 1k — within noise of the 2× gate, so recorded as borderline, not passed |
+| R34-05 | fixed | `JSON.stringify(scope)` 3.2 ms against `dehydrate()` 6.3 ms (10k): 0.50×; identical payload | at the limit of ≤0.5× |
+| R34-06 | fixed | three doc comments corrected (persist, `CarburetorHistory`, `useCarburetorValue`) | — |
+
+What review of the agents' work changed:
+
+- R34-04: the first version kept equal branches in a `Set` keyed by the previous-side object, so a raw object shared by
+  two paths and equal at one of them hid a real difference at the other. Replaced by a pair map (previous → next); a test
+  for the shared reference was added and fails on the `Set` version. A replacement of an object by `undefined` was
+  skipped by the naive pair check and is guarded.
+- R34-02: a differential fuzz test (random plain/null-prototype objects, sparse arrays, Date, Map, Set, random
+  mutations, compared with `sameSelection(prev, view) ? prev : detachOpaque(view)`) found that deleting every key of a
+  plain object turned the selection into `undefined` — silent data loss the agent's own tests and gates did not reach.
+  The fuzz also exposed holes materialized as own `undefined` and a wrong key order after a key-set change; all three
+  fixed, and the fuzz (5 400 steps plus direct topology tests) is kept as a permanent test.
+- R34-01: the first retained-recompute test was vacuous (a same-value write invalidates nothing); rewritten, it fails
+  without the fix. A third fan-in dependency dropped earlier constituents; fixed and tested.
+
+Decisions and limits:
+
+- R34-03: `replayPatchesOnDraft.ts` installs the protocol member on `Carburetor.prototype` when the history module
+  loads, because `Carburetor.ts` is at the 600-line limit; a store from another package copy, a subclass overriding
+  `restore()` and snapshot entries fall back to the previous path.
+- R34-02 deliberately keeps one consequence of the state model: a class instance in a selection makes its container
+  count as changed; unchanged siblings keep their references. Members are matched by position, so a reordered list
+  copies the rows that moved.
+- The two round 33 benchmarks that did not reproduce their cost (`derived-liveBranch`, `drift-getAfterWrite`) are
+  still in the repository; the r34 scenarios cover the same paths and should replace them.
+- Full suite on the integrated tree: 173 files, 1719 tests, 0 failures; typecheck, layout and lint clean. Not run locally: the React 18 projection and the consumer matrix (they install packages); CI runs both.

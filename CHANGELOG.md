@@ -171,6 +171,28 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Consumers of the store's drift answer keep the read set the store filed for their subscription
+  (round 34): a computed after a recompute that keeps its read set, a computed reading one store both
+  directly and through another computed, and a `useCarburetorValue` list after a related edit no longer
+  fall back to the O(read set) write-log walk. Reading an observed computed after an unrelated write
+  at 10 000 rows: 6–12 ms → ~0.001 ms; a hook list re-render after a related edit: 18–26 ms →
+  ~0.07 ms. One shared `sameReads` replaces three copies; a merged fan-in leaf keeps its constituent
+  filed sets (internal `ILeafVersion.parts`).
+- Undo/redo of a plain patches entry on the base store replays through the draft in O(patches)
+  instead of copying the baseline and diffing the whole state (round 34): one-field undo at 10 000 rows
+  ~90–125 ms → ~0.02–0.04 ms, at 50 000 rows ~0.6–0.8 s → ~0.03 ms. Snapshot entries and stores that
+  override `restore()` (`ResourceCache`, `ResourceCarburetor`) keep the previous path. Internal
+  `Symbol.for('react-carburetor/v1/store-replay-patches')` protocol; no public API.
+- `restore()` proves unchanged branches equal in one raw pass and wraps only the path to a real
+  difference in the draft (round 34): a one-leaf restore at 10 000 rows ~35–86 ms → ~9–20 ms.
+- A changed selection is reconciled against the previous snapshot in one walk (round 34): unchanged
+  subtrees keep their identity in `useCarburetorValue`, `connectSelection` and `watch`, so one edited
+  row re-renders one `React.memo` row instead of all (10 000 rows: 10 000 renders → 1; the edit
+  ~240 → ~165 ms). A class instance in a selection still makes its container count as changed.
+- `CarburetorScope.toJSON()` serializes the stores' wire forms in one pass without `dehydrate()`'s
+  copy, so `JSON.stringify(scope)` equals `JSON.stringify(scope.dehydrate())` at about half the cost;
+  `dehydrate()` stays the detached form. The `persist` and `CarburetorHistory` doc comments now
+  describe the behaviour.
 - **Breaking (round 33):** `persist()` coalesces writes by default — one `JSON.stringify` per
   microtask instead of one per write (50 one-field writes on 10 000 rows: 218 → ~3–6 ms). Pass
   `coalesce: false` for the previous behaviour, where a write lands in storage before the call that
