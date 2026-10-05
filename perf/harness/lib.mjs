@@ -11,6 +11,12 @@ const root = resolve(process.env.DIST_ROOT ?? 'dist/esm-prod');
 export const load = async (entry = 'Carburetor') =>
     import(pathToFileURL(resolve(root, entry, 'index.mjs')).href);
 
+/** Imports any module of the build under test by its path inside the build, e.g. 'Carburetor/Store/Carburetor.mjs'. */
+export const loadPath = async relative => import(pathToFileURL(resolve(root, relative)).href);
+
+/** The directory of the build under test, for scenarios that spawn their own children or read files. */
+export const distRoot = root;
+
 export const median = values => {
     const sorted = [...values].sort((a, b) => a - b);
     return sorted[sorted.length >> 1];
