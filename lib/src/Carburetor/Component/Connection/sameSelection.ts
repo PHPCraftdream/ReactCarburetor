@@ -1,3 +1,4 @@
+import {viewKeys} from "@/Carburetor/Store/Tracking/Models";
 import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 import {isPlainObject} from "./isPlainObject";
 
@@ -40,8 +41,8 @@ const sameKeyedContent = (
     previousToFresh: WeakMap<object, object>,
     freshToPrevious: WeakMap<object, object>
 ): boolean => {
-    const previousKeys = Object.keys(snapshot);
-    const freshKeys = Object.keys(next);
+    const previousKeys = viewKeys(snapshot);
+    const freshKeys = viewKeys(next);
 
     if (previousKeys.length !== freshKeys.length) {
         return false;

@@ -1,3 +1,4 @@
+import {viewKeys} from "@/Carburetor/Store/Tracking/Models";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 
@@ -36,7 +37,7 @@ const detach = (
             seen.set(value, known);
 
             if (!Array.isArray(value)) {
-                const keys = Object.keys(value);
+                const keys = viewKeys(value);
 
                 const branch = value as Record<string, unknown>;
 
@@ -188,7 +189,7 @@ const detach = (
 
     // Own enumerable string keys only — the state model (R6-02). Reads go through the value
     // itself so a live view records every selected path.
-    const keys = Object.keys(source);
+    const keys = viewKeys(source);
 
     for (let index = 0; index < keys.length; index++) {
         const child: unknown = source[keys[index]];

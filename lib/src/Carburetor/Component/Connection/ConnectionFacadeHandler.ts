@@ -123,6 +123,8 @@ export class ConnectionFacadeHandler<T extends object> implements ProxyHandler<T
             return cachedView === undefined ? undefined : Reflect.get(cachedView as object, PROXY_CACHE);
         }
 
+        // The engine's internal keys hatch (`KEYS_HATCH`) rides this same forward: the resolved
+        // view's get trap records the key-set marker into this connection's recorder.
         return Reflect.get(this.resolveView() as object, key);
     }
 

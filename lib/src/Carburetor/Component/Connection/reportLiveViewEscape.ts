@@ -1,4 +1,5 @@
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {KEYS_HATCH} from "@/Carburetor/Store/Tracking/Models";
 import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 import {isPlainObject} from "./isPlainObject";
 
@@ -46,6 +47,23 @@ const findLiveView = (
     }
 
     visited.add(value);
+
+    // An engine view serves the keys hatch: the same key-set marker `ownKeys` records, with no
+    // descriptor trap per key and no discarded wrapper. Views are data-only (R6-02), so the
+    // accessor skip below has nothing to skip on this branch.
+    const served: string[] | undefined = (value as {[KEYS_HATCH]?: string[]})[KEYS_HATCH];
+
+    if (served !== undefined) {
+        for (let index = 0; index < served.length; index++) {
+            const found = findLiveView(Reflect.get(value, served[index]), visited, [...path, served[index]]);
+
+            if (found !== undefined) {
+                return found;
+            }
+        }
+
+        return undefined;
+    }
 
     // Binding narrowed ahead of the callback: a `for...of` body over a computed key list runs
     // outside the guards' narrowing reach.

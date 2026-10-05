@@ -4,7 +4,7 @@ import {branchPath} from "@/Carburetor/Store/Paths/Markers/BranchMarker";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {createProxyCache} from "./Proxy/createProxyCache";
-import {IProxyCache, PROXY_CACHE, RAW_TARGET} from "./Models";
+import {IProxyCache, KEYS_HATCH, PROXY_CACHE, RAW_TARGET} from "./Models";
 import {liveViews} from "./Proxy/liveViews";
 import {isTrackable} from "./isTrackable";
 import {recordNativeAliasReads} from "./Aliases/NativeAliasReads";
@@ -290,6 +290,14 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
         if (typeof key === 'symbol') {
             if (key === RAW_TARGET) {
                 return source;
+            }
+
+            // The engine's internal keys hatch: the key-set read `Object.keys` would make,
+            // without the descriptor trap per key whose wrapped branch is discarded.
+            if (key === KEYS_HATCH) {
+                this.record(this.keysMarker());
+
+                return Object.keys(source);
             }
 
             return key === PROXY_CACHE ? this.cache : Reflect.get(source, key, receiver);

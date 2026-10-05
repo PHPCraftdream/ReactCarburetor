@@ -67,3 +67,31 @@ export interface IProxyCache {
      */
     owns: (path: TPath, source: object) => boolean;
 }
+
+/**
+ * The key an engine read view answers with its own enumerable string keys, so the engine's
+ * internal walks (`sameSelection`, `detachOpaque`, the development escape report) enumerate a
+ * live view without `Object.keys`, which through a proxy is the `ownKeys` trap plus one
+ * `getOwnPropertyDescriptor` trap per key whose wrapped branches are immediately discarded.
+ *
+ * The read proxy's get trap answers it by recording the same key-set marker `ownKeys` records
+ * and returning the raw keys; a connect facade forwards the read to its resolved view, so the
+ * marker lands in that connection's recorder. Shared through `Symbol.for` like `RAW_TARGET`
+ * (two package copies in one process); internal to the engine, deliberately absent from the
+ * package's public surface.
+ */
+export const KEYS_HATCH: unique symbol = Symbol.for('react-carburetor/v1/keys');
+
+/**
+ * Own enumerable string keys of a value, served by the keys hatch when the value is an engine
+ * view and by `Object.keys` otherwise — a raw container or a foreign proxy keeps its exact
+ * previous behavior.
+ *
+ * @param value - the container whose keys a walk needs; may be a live view.
+ * @returns the keys in `Object.keys` order, without wrapping any branch.
+ */
+export const viewKeys = (value: object): string[] => {
+    const served: string[] | undefined = (value as {[KEYS_HATCH]?: string[]})[KEYS_HATCH];
+
+    return served ?? Object.keys(value);
+};
