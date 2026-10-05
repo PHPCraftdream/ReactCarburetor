@@ -1,3 +1,4 @@
+import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 import {isExoticValue} from "./isExoticValue";
 
 /**
@@ -30,6 +31,8 @@ export const containsExoticValue = (value: unknown): boolean => {
             }
 
             visited.add(candidate);
+            const raw = liveViews.readTarget(candidate);
+            if (raw !== undefined) return walk(raw);
 
             return Reflect.ownKeys(candidate).some((key: string | symbol): boolean => {
                 const descriptor = Object.getOwnPropertyDescriptor(candidate, key);

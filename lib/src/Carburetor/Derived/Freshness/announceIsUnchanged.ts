@@ -42,9 +42,9 @@ export const announceIsUnchanged = <R>(
     // a live result counts as a change, like the exotic-mutation carve-out below.
     const liveChanged = sameRawReference && dependenciesMoved
         && next !== null && typeof next === 'object' && liveViews.readTarget(next) !== undefined;
-    const opaqueChanged = sameRawReference && dependenciesMoved && containsExoticValue(next);
-    const contentSame = !sameReference && !opaqueChanged && !liveChanged && announced !== undefined
-        && equals !== undefined && equals(announced.value, next);
+    const opaqueChanged = sameRawReference && dependenciesMoved && !liveChanged && containsExoticValue(next);
+    const contentSame = !sameReference && !opaqueChanged && !liveChanged && baseline !== undefined
+        && equals !== undefined && equals(baseline, next);
 
     return (sameReference && !liveChanged && !opaqueChanged) || contentSame;
 };

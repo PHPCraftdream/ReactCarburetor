@@ -170,7 +170,7 @@ describe('computed', () => {
         }
 
         interface IRowListData {
-            items: IRow[];
+            items: Record<number, IRow>;
         }
 
         class RowListCarburetor extends Carburetor<IRowListData> {
@@ -184,10 +184,28 @@ describe('computed', () => {
         const ROWS = 2000;
 
         const getRowListData = (): IRowListData => ({
-            items: Array.from({length: ROWS}, (_, index: number): IRow => ({title: 'row-' + index})),
+            items: Object.fromEntries(
+                Array.from({length: ROWS}, (_, index: number) => [index, {title: 'row-' + index}])
+            ),
         });
 
-        test('one edit through a 2000-row computed subscribes a bounded number of times', () => {
+        test('adding a key beneath an unread row does not wake a live computed (R33-01)', () => {
+            const carburetor = new RowListCarburetor(getRowListData());
+            const rows = computed(read => read(carburetor).items);
+            let notified = 0;
+            rows.subscribe(() => {
+                void rows.get()[5].title;
+                notified++;
+            }, {id: 'listener'});
+
+            carburetor.update((draft) => {
+                (draft.items[6] as IRow & {extra?: string}).extra = 'new';
+            });
+
+            expect(notified).toEqual(0);
+        });
+
+        test('one edit through a 2000-row computed subscribes a bounded number of times (R16-08)', () => {
             const carburetor = new RowListCarburetor(getRowListData());
             const rows = computed((read) => read(carburetor).items);
             const subscribeSpy = rstest.spyOn(carburetor, 'subscribe');
@@ -201,8 +219,8 @@ describe('computed', () => {
                     const items = this.useComputed(rows);
                     let text = '';
 
-                    for (let i = 0; i < items.length; i++) {
-                        text += items[i].title + '|';
+                    for (const row of Object.values(items)) {
+                        text += row.title + '|';
                     }
 
                     return <div>{text}</div>;

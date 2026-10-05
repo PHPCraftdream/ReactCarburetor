@@ -273,9 +273,13 @@ export class Computed<R> implements IComputed<R> {
 
         // Before observation no dependency can announce a change to an already-rendered
         // value. A stable exotic result may have changed in place.
-        if (wasUnobserved && hadValue && driftedSince(oldVersions, this.versions)
-            && !announceIsUnchanged(undefined, previous, value, true, this.options.equals)) {
-            this.snapshotRevision++;
+        const dependenciesMoved = wasUnobserved && hadValue && driftedSince(oldVersions, this.versions);
+        if (dependenciesMoved) {
+            if (announceIsUnchanged(undefined, previous, value, true, this.options.equals)) {
+                this.value = previous as R;
+            } else {
+                this.snapshotRevision++;
+            }
         }
     }
 
@@ -524,6 +528,7 @@ export class Computed<R> implements IComputed<R> {
         const unchanged = announceIsUnchanged(this.announced, previous, this.value as R, moved, this.options.equals);
 
         if (unchanged) {
+            this.value = this.announced !== undefined ? this.announced.value : previous;
             return;
         }
 

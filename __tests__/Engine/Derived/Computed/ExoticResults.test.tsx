@@ -447,7 +447,7 @@ describe('computed', () => {
             expect(notified).toEqual(0);
             expect(doneIds.getVersion()).toEqual(0);
             expect(doneIds.get()).toEqual(['b']);
-            expect(doneIds.get()).not.toBe(before);
+            expect(doneIds.get()).toBe(before);
         });
 
         test('equals is not consulted when the reference is unchanged', () => {

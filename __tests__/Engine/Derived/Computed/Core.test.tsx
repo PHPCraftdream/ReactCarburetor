@@ -1,10 +1,34 @@
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
-import {AntiHookComponent, computed, transaction} from '@/Carburetor';
+import {AntiHookComponent, computed, shallowEqual, transaction} from '@/Carburetor';
 import {ListCarburetor, getData} from './fixtures';
 
 describe('computed', () => {
+    test('equals preserves the previous plain cache reference when observed and unobserved', () => {
+        for (const observed of [false, true]) {
+            const carburetor = new ListCarburetor(getData());
+            const value = computed((read) => {
+                const {items} = read(carburetor);
+                const ids = Object.keys(items);
+                const title = items.a.title;
+                void title;
+                return ids;
+            }, {equals: shallowEqual});
+            const initial = value.get();
+            let notified = 0;
+            if (observed) value.subscribe(() => notified++, {id: 'listener'});
+
+            carburetor.setTitle('a', 'renamed');
+            value.get();
+            const equalReplacement = value.get();
+
+            expect(equalReplacement).toBe(initial);
+            expect(notified).toEqual(0);
+            if (observed) value.unsubscribe('listener');
+        }
+    });
+
     test('computes lazily and memoizes the result', () => {
         const carburetor = new ListCarburetor(getData());
         let runs = 0;
