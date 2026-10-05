@@ -1,4 +1,6 @@
-import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
+import {
+    IStateInstallation, IWritePatch, TPath, TPathSet,
+} from '@/Carburetor/Models/Paths';
 
 /**
  * Internal subscription protocol, keyed by shared symbols so two copies of the package in one
@@ -15,6 +17,9 @@ export const CARBURETOR_HAS_DRIFT: unique symbol = Symbol.for('react-carburetor/
 /** Delivers one notification pass for a closed write set; the batch coordinator's entry point. */
 export const CARBURETOR_NOTIFY_WRITES: unique symbol = Symbol.for('react-carburetor/v1/store-notify-writes');
 
+/** History's draft replay: installs undo/redo patches through the draft, keeping the owner's fact. */
+export const CARBURETOR_REPLAY_PATCHES: unique symbol = Symbol.for('react-carburetor/v1/store-replay-patches');
+
 /** The snapshot version a computed exposes, including changes not yet announced. */
 export const CARBURETOR_SNAPSHOT_VERSION: unique symbol = Symbol.for('react-carburetor/v1/computed-snapshot-version');
 
@@ -23,5 +28,8 @@ export interface IInternalSubscriptionProtocol {
     [CARBURETOR_EXTEND]?: (id: string, path: TPath) => void;
     [CARBURETOR_HAS_DRIFT]?: (baselineVersion: number, reads: ReadonlySet<TPath>) => boolean;
     [CARBURETOR_NOTIFY_WRITES]?: (writes: TPathSet) => void;
+    [CARBURETOR_REPLAY_PATCHES]?: (
+        patches: readonly IWritePatch[], inverse: boolean, installation: IStateInstallation
+    ) => void;
     [CARBURETOR_SNAPSHOT_VERSION]?: () => number;
 }

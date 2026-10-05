@@ -6,6 +6,8 @@ import {
 import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
+import {IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
+import {applyPatchesEntryOnDraft} from "./Graph/replayPatchesOnDraft";
 import {foldDependentPatch} from './Graph/foldDependentPatch';
 import {preflightOwnedPatches} from "./Graph/canInstallOwnedPatch";
 import {cloneOwnedGraph as own} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
@@ -34,13 +36,17 @@ interface ISnapshotEntry<T> {
 
 type THistoryEntry<T> = IPatchesEntry | ISnapshotEntry<T>;
 
+/** The private state the draft replay drives; structurally this class's own fields. */
+type THistoryReplayHost<T extends object> = Parameters<typeof applyPatchesEntryOnDraft<T>>[0];
+
 /**
  * Undo/redo for a carburetor, built on patches (R16-07). Every change is recorded, except the
  * ones this class applies itself — otherwise undo would keep re-recording its own work.
  *
- * Cost: O(changed values) per describable change, not O(state) — the write proxy already knows
- * each written path and endpoint. Opaque changes require privately owned full before/after
- * states so native in-place mutations cannot rewrite an older history endpoint.
+ * Cost: O(changed values) per describable change and O(patches) per undo/redo of a describable
+ * entry — a plain patches entry on the base store replays through the draft, not whole-state
+ * copies; snapshot entries and `restore()`-overriding stores still replay at O(state). Opaque
+ * changes need owned before/after states so native mutations cannot rewrite history.
  */
 export class CarburetorHistory<T extends object> {
     /** Entries to step back to; the oldest is dropped once `limit` is exceeded. */
@@ -70,6 +76,8 @@ export class CarburetorHistory<T extends object> {
     private pendingReplayOwner: object | undefined;
     /** Deferred facts retain the token; weak identity recognizes only this history's replays. */
     private readonly replayOwners: WeakSet<object> = new WeakSet<object>();
+    /** Set while a draft replay's baseline is advanced by this class, not by reconcileBaseline. */
+    private fastReplayOwner: object | undefined;
     /** The selected replay endpoint's graph classification. */
     private replayContainsExotic: boolean = false;
     /** Structural replay adopts its owned plain graph to preserve key order and locked descriptors. */
@@ -110,7 +118,8 @@ export class CarburetorHistory<T extends object> {
      * @param options - `limit` caps how far back undo reaches; defaults to 50 entries when omitted
      */
     constructor(
-        protected carburetor: Pick<ICarburetor<T>, 'getData' | 'getVersion' | 'restore'> & IPatchSource,
+        protected carburetor: Pick<ICarburetor<T>, 'getData' | 'getVersion' | 'restore'> & IPatchSource &
+            IInternalSubscriptionProtocol,
         options: IHistoryOptions = {}
     ) {
         if (options.limit !== undefined && (!Number.isSafeInteger(options.limit) || options.limit <= 0)) {
@@ -236,6 +245,7 @@ export class CarburetorHistory<T extends object> {
         this.pendingPatches = [];
         this.pendingOpaque = false;
         this.pendingOwnedReplay = false;
+        this.fastReplayOwner = undefined;
     }
 
     /** Stops watching the carburetor: nothing is recorded after this. */
@@ -245,7 +255,8 @@ export class CarburetorHistory<T extends object> {
 
     /** Collects a patch or opaque fallback until its publication boundary. */
     protected onPatch(patch: Parameters<TPatchRecorder>[0]): void {
-        if (this.pendingReplayOwner !== undefined && this.replayTarget !== undefined) return;
+        if (this.pendingReplayOwner !== undefined &&
+            (this.replayTarget !== undefined || this.pendingReplayOwner === this.fastReplayOwner)) return;
 
         if (patch === PATCH_ARRAY_LENGTH_LOCK || patch === PATCH_KEY_ORDER_CHANGE) {
             this.pendingOpaque = true;
@@ -307,7 +318,9 @@ export class CarburetorHistory<T extends object> {
         if (fact?.origin === 'restore' && fact.representation === 'history-owned'
             && fact.owner !== undefined && this.replayOwners.has(fact.owner)) {
             this.pendingReplayOwner = undefined;
-            this.reconcileBaseline();
+            // The draft replay already advanced the baseline by the same patches.
+            if (fact.owner === this.fastReplayOwner) this.fastReplayOwner = undefined;
+            else this.reconcileBaseline();
             this.pendingPatches = [];
             this.pendingOpaque = false;
             this.pendingOwnedReplay = false;
@@ -317,6 +330,7 @@ export class CarburetorHistory<T extends object> {
             const customReplay = fact === undefined
                 && !this.pendingOpaque && this.pendingPatches.length === 0;
             this.pendingReplayOwner = undefined;
+            this.fastReplayOwner = undefined;
             if (customReplay) {
                 this.reconcileBaseline();
                 this.pendingPatches = [];
@@ -523,17 +537,21 @@ export class CarburetorHistory<T extends object> {
     }
 
     /**
-     * Installs `entry` through `restore()` without recording the installation itself, keeping
-     * `baseline` in step so a later opaque entry still gets an exact "before".
+     * Installs `entry` without recording the installation itself, keeping `baseline` in step so
+     * a later opaque entry still gets an exact "before".
      *
-     * Always `restore()`, never a patch-specific apply: a store that overrides it (a
-     * `ResourceCache` aborting in-flight requests on time travel, for one) must see undo and
-     * redo the same way it always has, patches entry or not.
+     * A plain patches entry on the base store replays through the draft at O(patches)
+     * (R34-03); snapshot entries, restricted baselines and stores overriding `restore()` (a
+     * `ResourceCache`, for one) go through `restore()` as they always have.
      *
      * @param entry - the entry to install.
      * @param inverse - true undoes `entry` (patches in reverse, or its `before`); false redoes it.
      */
     protected apply(entry: THistoryEntry<T>, inverse: boolean): void {
+        if (entry.kind === 'patches' &&
+            applyPatchesEntryOnDraft(this as unknown as THistoryReplayHost<T>, entry.patches, inverse)) {
+            return;
+        }
         const state = entry.kind === 'snapshot'
             ? own(inverse ? entry.before : entry.after)
             : this.reconstruct(entry.patches, inverse);
@@ -573,7 +591,6 @@ export class CarburetorHistory<T extends object> {
     private reconstruct(patches: readonly IWritePatch[], inverse: boolean): T {
         const target = own(this.baseline) as unknown as Record<string, unknown>;
         const ordered = inverse ? [...patches].reverse() : patches;
-
         for (const patch of ordered) {
             installPatch(target, patch, inverse);
         }
