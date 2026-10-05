@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // A/B prebuilt production distributions; each sample runs in an isolated child process.
 // BASELINE_DIST (required) is a built dist directory of the commit to compare against, e.g. the
-// output of consumers/r34/harness/baseline.mjs. AFTER_DIST defaults to dist. Run with NODE_ENV=production:
+// output of perf/harness/baseline.mjs. AFTER_DIST defaults to dist. Run with NODE_ENV=production:
 //   node benchmarks/state/tracking/consumers/r33/hooks-snapshot.mjs
 import {spawnSync} from 'node:child_process';
 import {resolve} from 'node:path';

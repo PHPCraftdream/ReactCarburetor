@@ -64,6 +64,7 @@
     "check:layout": "node scripts/checkLayout.mjs",
     "test": "rstest run",
     "test:rules": "rstest run __tests__/Plugin",
+    "bench": "node perf/run.mjs",
     "test:consumers": "node scripts/consumerMatrix.mjs"
   },
   "repository": {

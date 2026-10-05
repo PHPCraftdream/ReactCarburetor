@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R34-04: restore() of a snapshot that differs from the live state in one leaf, next to the
 // cost of taking that snapshot. Args: [rows=10000] [samples=9]
-import {emit, load, median} from '../harness/lib.mjs';
+import {emit, load, median} from '../../harness/lib.mjs';
 
 const {Carburetor} = await load();
 class S extends Carburetor { run(fn) { this.update(fn); } }

@@ -335,7 +335,7 @@ Each recipe runs against `dist/esm-prod` with `NODE_ENV=production`;
 
 Implemented one commit per group: `d807126` (R34-05, R34-06 persist), `7dc8d83` (R34-03, R34-06 history),
 `caec36d` (R34-01, R34-06 hook), `52bc7d4` (R34-04), `95932b7` (R34-02). The measurement tooling landed first as
-`d300b9a` (`benchmarks/state/tracking/consumers/r34/`: `harness/` and `scenarios/`), together with removal of a
+`d300b9a` (first under `benchmarks/state/tracking/consumers/r34/`, since moved to `perf/`: `harness/`, `scenarios/`, `gates/`), together with removal of a
 machine-specific path from the r33 hooks benchmark.
 
 Numbers below are my own re-measurement of the integrated tree against a build of `d300b9a` (the pre-fix source),

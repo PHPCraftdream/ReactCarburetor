@@ -2,7 +2,7 @@
 // R34-01: a `useCarburetorValue` list component re-rendered by its own state after an unrelated
 // write, before and after one related write re-ran its selector with the same read set.
 // Args: [rows=10000] [stable|inline] [samples=15]
-import {countWriteLogMatches, emit, load, median, setupReact} from '../harness/lib.mjs';
+import {countWriteLogMatches, emit, load, median, setupReact} from '../../harness/lib.mjs';
 
 const {Carburetor} = await load();
 const {useCarburetorValue} = await load('Interop');

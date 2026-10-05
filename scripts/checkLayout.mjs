@@ -16,7 +16,7 @@ import {join, relative, sep} from 'node:path';
  */
 const ROOTS = [
     'lib/src', 'plugin/src', 'plugin/internal', 'plugin/__fixtures__',
-    '__tests__', 'native/src', 'native/tests', 'scripts', 'benchmarks', 'npm',
+    '__tests__', 'native/src', 'native/tests', 'scripts', 'benchmarks', 'perf', 'npm',
 ];
 const STANDALONE_CODE_FILES = [
     'rslib.config.ts', 'rstest.config.ts', 'lib/rsbuild.config.ts', 'plugin/lint.d.ts',

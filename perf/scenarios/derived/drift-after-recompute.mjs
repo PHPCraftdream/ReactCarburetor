@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R34-01: `get()` on an observed computed after an unrelated write, before and after one
 // recompute that keeps the same read set. Args: [rows=10000] [samples=200]
-import {countWriteLogMatches, emit, load, median} from '../harness/lib.mjs';
+import {countWriteLogMatches, emit, load, median} from '../../harness/lib.mjs';
 
 const {Carburetor, computed} = await load();
 class S extends Carburetor { run(fn) { this.update(fn); } }

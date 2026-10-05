@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R34-02: one row edited under `useCarburetorValue(s, d => d.rows)` rendered as React.memo rows:
 // how many rows re-render, and what the edit costs. Args: [rows=1000] [samples=9]
-import {emit, load, median, setupReact} from '../harness/lib.mjs';
+import {emit, load, median, setupReact} from '../../harness/lib.mjs';
 
 const {Carburetor} = await load();
 const {useCarburetorValue} = await load('Interop');

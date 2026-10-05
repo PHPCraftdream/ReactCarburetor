@@ -1,6 +1,6 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R34-03: undo/redo of a one-field history entry as the state grows. Args: [rows=10000] [samples=9]
-import {emit, load, median} from '../harness/lib.mjs';
+import {emit, load, median} from '../../harness/lib.mjs';
 
 const {Carburetor, CarburetorHistory} = await load();
 class S extends Carburetor { run(fn) { this.update(fn); } }
