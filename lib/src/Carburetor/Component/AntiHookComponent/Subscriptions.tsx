@@ -1,8 +1,8 @@
 "use client";
 
-import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
+import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
@@ -15,19 +15,6 @@ import {
 } from "@/Carburetor/Component/Models/Connection";
 import {AntiHookComponentEffects} from "./Effects";
 
-const sameReads = (a: TCompletedReads, b: TCompletedReads): boolean => {
-    if (a.size !== b.size) {
-        return false;
-    }
-
-    for (const path of a) {
-        if (!b.has(path)) {
-            return false;
-        }
-    }
-
-    return true;
-};
 export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends AntiHookComponentEffects<P, S> {
     /**
      * What a carburetor calls when a path this component read was written.
@@ -273,6 +260,9 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             // subscriber index; the selection/comparison/detachment work finished before render closed.
             committed.carburetor.subscribe(this.onCarburetorUpdate, transferCompletedReads(committed.reads, uid));
             slot.installed = {carburetor: committed.carburetor, reads: committed.reads};
+        } else if (slot.installed.reads !== committed.reads) {
+            // Adopt the filed set: the drift answer below is O(1) only for that identity.
+            committed.reads = slot.installed.reads;
         }
 
         const {carburetor, baselineVersion, reads} = committed;

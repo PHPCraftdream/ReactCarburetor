@@ -4,27 +4,13 @@ import {ICarburetorSubscription, TSelector} from '@/Carburetor/Models/Store';
 import {sameSelection} from '@/Carburetor/Component/Connection/sameSelection';
 import {completeObservation} from '@/Carburetor/Store/Tracking/Observation/completeObservation';
 import {transferCompletedReads} from '@/Carburetor/Store/Tracking/Observation/transferCompletedReads';
+import {sameReads} from '@/Carburetor/Store/Tracking/Observation/sameReads';
 import {TCompletedReads} from '@/Carburetor/Store/Tracking/Observation/Models';
 import {PersistentViews} from '@/Carburetor/Store/Tracking/Observation/PersistentViewCache';
 import {detachWatchSelection} from '@/Carburetor/Store/Utils/Selection/detachWatchSelection';
 import {getUid} from '@/Carburetor/Store/Utils/getUid';
 
 type TPathRecorder = (path: TPath) => void;
-
-/** Whether two closed read sets hold the same paths. */
-const sameReads = (a: TCompletedReads, b: TCompletedReads): boolean => {
-    if (a.size !== b.size) {
-        return false;
-    }
-
-    for (const path of a) {
-        if (!b.has(path)) {
-            return false;
-        }
-    }
-
-    return true;
-};
 
 /** Collects the selector's value and tracked reads without a per-watch runner closure. */
 const runSelector = <T, R>(

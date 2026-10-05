@@ -315,6 +315,15 @@ export class Computed<R> implements IComputed<R> {
     /** Swaps in a fresh dependency set, keeping every edge the body still reads. */
     protected attachDependencies(collected: IDict<IDependency>): void {
         const fresh = this.diffDependencies(collected);
+        // A retained edge keeps the read set its store subscription filed: the drift answer
+        // is O(1) only for that identity, and late reads extend the same set through
+        // CARBURETOR_EXTEND.
+        for (const cuid of Object.keys(collected)) {
+            if (fresh?.includes(cuid)) {
+                continue;
+            }
+            collected[cuid].reads = this.dependencies[cuid].reads;
+        }
         const previousVersions = this.versions;
         const previousAllNative = this.allNativeSources;
         const previousEpoch = this.validatedEpoch;

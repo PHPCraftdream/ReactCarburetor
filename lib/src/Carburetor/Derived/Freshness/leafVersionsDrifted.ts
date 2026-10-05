@@ -3,6 +3,35 @@ import {isNativeStoreSource} from '@/Carburetor/Store/Scheduling/isNativeStoreSo
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
 import {ILeafVersion, IReadSet} from './Models';
 
+/** Whether one moved leaf really concerns the paths it read; the store answers per filed pair.
+ *
+ * @param recorded - the leaf version snapshot to probe
+ * @param dependency - fallback direct read set, used when the leaf filed no reads itself
+ */
+const leafDrifted = (recorded: ILeafVersion, dependency?: IReadSet): boolean => {
+    if (!isNativeStoreSource(recorded.source)) {
+        return true;
+    }
+
+    const probe = (recorded.source as IInternalSubscriptionProtocol)[CARBURETOR_HAS_DRIFT];
+    if (!probe) {
+        return true;
+    }
+
+    if (recorded.parts) {
+        for (const part of recorded.parts) {
+            if (probe.call(recorded.source, part.version, part.reads) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    const reads = recorded.reads ?? (dependency?.source === recorded.source ? dependency.reads : undefined);
+    return !reads || probe.call(recorded.source, recorded.version, reads) !== false;
+};
+
 /** Checks leaf drift without allocating a key array.
  *
  * @param versions - the evaluation's leaf snapshot
@@ -20,15 +49,9 @@ export const leafVersionsDrifted = (
         if (recorded.source.getVersion() !== recorded.version) {
             const dependency = Object.prototype.hasOwnProperty.call(dependencies, cuid)
                 ? dependencies[cuid] : undefined;
-            const reads = recorded.reads ?? (dependency?.source === recorded.source
-                ? dependency.reads : undefined);
-            if (reads && isNativeStoreSource(recorded.source)
-                && (recorded.source as IInternalSubscriptionProtocol)[CARBURETOR_HAS_DRIFT]?.(
-                    recorded.version, reads) === false) {
-                continue;
+            if (leafDrifted(recorded, dependency)) {
+                return true;
             }
-
-            return true;
         }
     }
 

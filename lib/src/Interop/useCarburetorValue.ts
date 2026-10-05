@@ -10,6 +10,7 @@ import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeRea
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
+import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {TSelector, TValueComparator} from "./Models";
 
@@ -37,21 +38,6 @@ interface IRootView<T extends object> {
     data: T;
     view: TReadonly<T>;
 }
-
-/** Whether two read sets would wake their subscriber on exactly the same writes. */
-const sameReads = (a: TCompletedReads, b: TCompletedReads): boolean => {
-    if (a.size !== b.size) {
-        return false;
-    }
-
-    for (const path of a) {
-        if (!b.has(path)) {
-            return false;
-        }
-    }
-
-    return true;
-};
 
 /**
  * The tracked root view getSnapshot reads through: one read proxy tree reused across calls while
@@ -105,8 +91,12 @@ const detach = <R>(value: R): R => {
 
 /**
  * Subscribes to exactly the paths the selector reads, the same precision the class API
- * gets. The selector result is cached per store version, so useSyncExternalStore sees a
- * stable snapshot even when the selector builds a new object.
+ * gets. The selector result is reused across store versions: a cached result is kept while no
+ * write has touched any path the selector read, so useSyncExternalStore sees a stable snapshot.
+ *
+ * The staleness check goes through the store's path-precise drift answer, which keys on the
+ * exact read set the subscription filed; the result cache and the install step both adopt that
+ * filed set back on content-equal re-subscription, so the O(1) identity path survives.
  *
  * A selected class instance cannot be detached safely and throws; select its rendered
  * fields as plain values instead.
@@ -162,6 +152,15 @@ export const useCarburetorValue = <T extends object, R>(
 
         // The common case — the read set did not move — leaves the subscriber index alone.
         if (current && current.carburetor === carburetor && sameReads(current.reads, reads)) {
+            // Equal content: adopt the set the subscriber index filed, so the drift probe of
+            // the next getSnapshot takes the O(1) identity path.
+            if (current.reads !== reads) {
+                pendingReads.current = current.reads;
+                const entry = cache.current;
+                if (entry !== null && entry.reads === reads) {
+                    cache.current = {...entry, reads: current.reads};
+                }
+            }
             return;
         }
 

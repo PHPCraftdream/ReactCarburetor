@@ -5,6 +5,8 @@ export interface ILeafVersion {
     version: number;
     /** Paths tracked by native store leaves, including paths flattened through a native chain. */
     reads?: ReadonlySet<string>;
+    /** Constituent filed pairs of a fan-in merged leaf; drift is asked per part. */
+    parts?: ReadonlyArray<{version: number; reads: ReadonlySet<string>}>;
 }
 
 export interface IReadSet {

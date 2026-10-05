@@ -54,13 +54,20 @@ describe('captureLeafVersions fan-in merge (R32-02)', () => {
             d2: {source: second as unknown as IReadSet['source'], reads: new Set<TPath>(['c2'])}}, versions);
 
         const key = ':store-1';
-        expect(versions[key].reads.size).toEqual(5);
-        expect([...(versions[key].reads as Set<string>)].sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
-        // The inner computeds' own read sets must survive untouched.
+        // Merged leaves carry their constituent filed pairs instead of one copied set.
+        expect(versions[key].reads).toBeUndefined();
+        expect(versions[key].parts).toBeDefined();
+        expect(versions[key].parts!.length).toEqual(2);
+        expect([...(versions[key].parts![0].reads as Set<string>)].sort()).toEqual(['a', 'b', 'c']);
+        expect(versions[key].parts![1].reads!.size).toEqual(2);
+        // The inner computeds' own read sets survive untouched and by reference: the parts
+        // wrap them, they are never copied.
         expect(firstReads.size).toEqual(3);
         expect(secondReads.size).toEqual(2);
-        expect(versions[key].reads).not.toBe(firstReads);
-        expect(versions[key].reads).not.toBe(secondReads);
+        // Equal contents; the capture keeps the captured sets by reference, and this getter
+        // builds fresh sets per call, so compare by value.
+        expect(versions[key].parts![0].reads).toEqual(firstReads);
+        expect(versions[key].parts![1].reads).toEqual(secondReads);
     });
 
     test('a second capture never appends into the sets a previous capture produced', () => {
@@ -72,14 +79,19 @@ describe('captureLeafVersions fan-in merge (R32-02)', () => {
         const announced = {};
 
         captureLeafVersions(deps, announced);
-        const announcedReads = announced[':store-2'].reads as Set<string>;
+        const announcedParts = announced[':store-2'].parts as ReadonlyArray<unknown>;
+        const announcedReads = (announcedParts[0] as {reads: Set<string>}).reads;
         const announcedSize = announcedReads.size;
 
         const again = {};
         captureLeafVersions(deps, again);
 
         expect(announcedReads.size).toEqual(announcedSize);
-        expect(again[':store-2'].reads).not.toBe(announcedReads);
+        // Each capture produces its own parts array; the inner sets are never appended into.
+        expect(again[':store-2'].parts).not.toBe(announcedParts);
+        expect(again[':store-2'].parts!.length).toEqual(2);
+        expect((again[':store-2'].parts![0].reads as Set<string>).size).toEqual(2);
+        expect((again[':store-2'].parts![1].reads as Set<string>).size).toEqual(2);
     });
 });
 

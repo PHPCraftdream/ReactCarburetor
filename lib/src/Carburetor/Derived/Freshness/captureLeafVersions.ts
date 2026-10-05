@@ -3,7 +3,8 @@ import {isNativeStoreSource} from '@/Carburetor/Store/Scheduling/isNativeStoreSo
 import {computedDependencies} from '@/Carburetor/Derived/computedDependencies';
 import {ILeafVersion, IReadSet} from './Models';
 
-/** Fills a version snapshot and classifies native epoch coverage.
+/** Fills a version snapshot and classifies native epoch coverage. Merged leaves keep their
+ * constituent filed pairs, so drift can be asked per part.
  *
  * @param dependencies - direct read sets to flatten
  * @param versions - destination leaf snapshot
@@ -12,23 +13,23 @@ export const captureLeafVersions = (
     dependencies: IDict<IReadSet>, versions: IDict<ILeafVersion>
 ): boolean => {
     let allNative = true;
-    // This capture's merged sets, one per shared leaf: created on the first merge, appended
-    // after that, so a K-dependency fan-in costs O(K·M) insertions instead of O(K²·M).
-    let combined: Map<string, Set<string>> | undefined;
+
+    const partsOf = (recorded: ILeafVersion): ReadonlyArray<{version: number; reads: ReadonlySet<string>}> =>
+        recorded.parts ?? [{version: recorded.version, reads: recorded.reads as ReadonlySet<string>}];
 
     const addLeafVersion = (id: string, recorded: ILeafVersion): void => {
         const previous = versions[id];
-        if (previous?.source === recorded.source && previous.reads && recorded.reads
+        // A merged leaf (parts, no reads) must merge further: a later dependency fanning
+        // into the same leaf, or a nested fan-in, would otherwise drop previous.parts.
+        // reads may be undefined on either side; `undefined !== Set` still merges, and
+        // identity-equal sets fall through to the else branch, which is correct.
+        if (previous?.source === recorded.source
+            && (previous.reads !== undefined || previous.parts !== undefined)
             && previous.reads !== recorded.reads) {
-            let merged = combined?.get(id);
-            if (merged === undefined) {
-                merged = new Set(previous.reads);
-                (combined ??= new Map<string, Set<string>>()).set(id, merged);
-            }
-            for (const path of recorded.reads) {
-                merged.add(path);
-            }
-            versions[id] = {source: recorded.source, version: recorded.version, reads: merged};
+            versions[id] = {
+                source: recorded.source, version: recorded.version,
+                parts: [...partsOf(previous), ...partsOf(recorded)],
+            };
         } else {
             versions[id] = recorded;
         }
