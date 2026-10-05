@@ -21,7 +21,8 @@ import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersis
 import {declareConnection} from "@/Carburetor/Component/Connection/declareConnection";
 import {detachSelection} from "@/Carburetor/Component/Connection/detachSelection";
 import {reportLiveViewEscape} from "@/Carburetor/Component/Connection/reportLiveViewEscape";
-import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
+import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
+import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
 import {AntiHookComponentFoundation} from "./Foundation";
 
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
@@ -171,11 +172,13 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 escapeReported = reportLiveViewEscape(next);
             }
 
-            if (snapshot !== undefined && sameSelection(snapshot.value, next)) {
-                return snapshot.value;
-            }
+            const previous = snapshot === undefined ? undefined : snapshot.value;
 
-            snapshot = {value: detachSelection(next) as R};
+            snapshot = {
+                value: (previous === undefined
+                    ? detachSelection(next)
+                    : reconcileSelection(previous, next, undefined, rejectArraySubclass)) as R,
+            };
 
             return snapshot.value;
         };

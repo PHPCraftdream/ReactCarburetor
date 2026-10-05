@@ -4,6 +4,7 @@ import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react"
 import {IReadableCarburetor, TReadonly, TSubscriber} from "@/Carburetor";
 import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
+import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {completeObservation} from "@/Carburetor/Store/Tracking/Observation/completeObservation";
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
@@ -75,18 +76,20 @@ const describeInstance = (instance: object): string =>
  *
  * @param value - the selector's result, possibly a live branch
  */
+const rejectLiveInstance = (instance: object): never => {
+    throw new Error(
+        'useCarburetorValue() cannot select a live ' + describeInstance(instance) +
+        ' instance because in-place changes cannot produce a safe React snapshot. ' +
+        'Select the fields the component renders or return a plain object of those fields.'
+    );
+};
+
 const detach = <R>(value: R): R => {
     if (value === null || typeof value !== 'object') {
         return value;
     }
 
-    return detachOpaque(value, (instance: object): void => {
-        throw new Error(
-            'useCarburetorValue() cannot select a live ' + describeInstance(instance) +
-            ' instance because in-place changes cannot produce a safe React snapshot. ' +
-            'Select the fields the component renders or return a plain object of those fields.'
-        );
-    });
+    return detachOpaque(value, rejectLiveInstance);
 };
 
 /**
@@ -262,16 +265,21 @@ export const useCarburetorValue = <T extends object, R>(
 
             // Comparison and detachment can add reads, so publish the set only after both succeed.
 
-            // The default comparison walks the live result like a detach would, so a match skips
-            // the copy. A custom comparator always gets detached values.
+            // The default comparison is fused with detachment: reconcile keeps every unchanged
+            // subtree at its previous reference. A custom comparator always gets detached values.
             const liveCompare = isEqual === sameSelection;
-            const candidate: R = liveCompare ? fresh : detach(fresh);
 
-            // Same value from a new pairing keeps the old reference; otherwise a fresh detach (or
-            // the already-detached candidate) becomes the entry's value.
-            result = entry !== null && entry.filled && isEqual(entry.value, candidate)
-                ? entry.value
-                : (liveCompare ? detach(fresh) : candidate);
+            if (liveCompare) {
+                result = entry !== null && entry.filled
+                    ? (reconcileSelection(entry.value, fresh, rejectLiveInstance) as R)
+                    : detach(fresh);
+            } else {
+                const candidate: R = detach(fresh);
+
+                result = entry !== null && entry.filled && isEqual(entry.value, candidate)
+                    ? entry.value
+                    : candidate;
+            }
         } finally {
             currentReads.current = undefined;
         }

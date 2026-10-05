@@ -1,16 +1,26 @@
 import {TDisposer, TReadonly} from '@/Carburetor/Models/Base';
 import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
 import {ICarburetorSubscription, TSelector} from '@/Carburetor/Models/Store';
-import {sameSelection} from '@/Carburetor/Component/Connection/sameSelection';
 import {completeObservation} from '@/Carburetor/Store/Tracking/Observation/completeObservation';
 import {transferCompletedReads} from '@/Carburetor/Store/Tracking/Observation/transferCompletedReads';
 import {sameReads} from '@/Carburetor/Store/Tracking/Observation/sameReads';
 import {TCompletedReads} from '@/Carburetor/Store/Tracking/Observation/Models';
 import {PersistentViews} from '@/Carburetor/Store/Tracking/Observation/PersistentViewCache';
 import {detachWatchSelection} from '@/Carburetor/Store/Utils/Selection/detachWatchSelection';
+import {reconcileSelection} from '@/Carburetor/Store/Utils/Selection/reconcileSelection';
 import {getUid} from '@/Carburetor/Store/Utils/getUid';
 
 type TPathRecorder = (path: TPath) => void;
+
+/** Same policy as detachWatchSelection, reused by the fused reconcile on changed branches. */
+const rejectWatchInstance = (instance: object): never => {
+    throw new Error(
+        'watch() cannot select a live ' +
+        (Object.getPrototypeOf(instance)?.constructor?.name || 'class') +
+        ' instance because in-place changes cannot produce a safe comparison. Select the ' +
+        'fields the callback needs, or return a plain object of those fields.'
+    );
+};
 
 /** Collects the selector's value and tracked reads without a per-watch runner closure. */
 const runSelector = <T, R>(
@@ -47,9 +57,10 @@ export const watchSelection = <T, R>(
 
     const callback = (): void => {
         const fresh = runSelector(source, select, reads, views);
-        const changed = !sameSelection(previous, fresh.value);
+        const next = reconcileSelection(previous, fresh.value, rejectWatchInstance) as R;
+        const changed = next !== previous;
         const last = previous;
-        if (changed) previous = detachWatchSelection(fresh.value);
+        if (changed) previous = next;
         fresh.value = previous;
         // The read set closes only after selection comparison and detachment finish.
         const completed = completeObservation(fresh);
