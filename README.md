@@ -654,8 +654,8 @@ no token claims is reported in development. A single store can also be seeded di
 // Redux DevTools: state inspection plus time travel back onto the carburetors.
 connectDevTools({todos: todoCarburetor, filter: filterCarburetor});
 
-// Mirror a store in a storage; loads what was stored on connect. Writes are synchronous;
-// `coalesce: true` stringifies once per microtask instead of once per write.
+// Mirror a store in a storage; loads what was stored on connect. Writes are coalesced into one
+// stringify per microtask; `coalesce: false` makes each write land before the writing call returns.
 persist(settingsCarburetor, {key: 'settings', storage: localStorage});
 
 // React to a selection outside React; onChange runs only when it changes.

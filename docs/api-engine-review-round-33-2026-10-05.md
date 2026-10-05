@@ -353,3 +353,29 @@ Each recipe runs against `dist/esm-prod` with `NODE_ENV=production`;
   then `await Promise.resolve()`; again with `coalesce: true`.
 - R33-08: `import {encodeCacheKey, getInitialCacheEntry} from 'react-carburetor'` resolves;
   `new ResourceCache(loader).pathOf(1)` returns `'entries.1'`.
+
+## Resolution
+
+Implemented one commit per group: `e856cd6` (R33-01, R33-05), `ab9424b` (R33-03), `51ed6d1` (R33-02),
+`3e5fa69` (R33-06), `fe5754c` (R33-04), `4da99c4` (R33-07, R33-08; breaking).
+
+Full suite on the committed tree: 166 files, 1660 tests. One failure, `__tests__/Demo/ToolingFeatures.test.tsx`
+("the filter is restored from storage and written back on change"): it read storage synchronously after a click,
+which R33-07 deliberately changed. The test now awaits a flush; the file passes. Typecheck and layout checks pass.
+
+| ID | Status | Evidence |
+| --- | --- | --- |
+| R33-01 | fixed | The live computed result is no longer walked per settle. Agent benchmark 1802 ms -> 0.098 ms at 10k; its first version was invalid (baseline == after) and the figure comes from the corrected run. |
+| R33-02 | fixed | Own probe: inline-selector render 417-476 ms -> 6-15 ms; with a write 244-527 ms -> 31-37 ms; identical output and 6 renders. |
+| R33-03 | fixed | Own probe: 7.49 ms -> 0.0015 ms per get after an unrelated write. The agent's benchmark showed baseline == after and does not demonstrate this. |
+| R33-04 | fixed | Agent-reported 2.19x / 2.94x on selection compare / detach; not re-measured by me. |
+| R33-05 | fixed | Behaviour covered by tests (`equals` keeps the announced reference). |
+| R33-06 | partly | Dependent patches: 50-72 ms -> 0.05-0.10 ms, undo/redo checked. The subtree-write-with-history gate was **not met**: 0.67x against the 0.6x target. The remaining copies are in `createWriteProxy` / `clonePatchValue`; an agent rewrite of those was rejected (public export, R32-08 regression, aliasing risk). |
+| R33-07 | fixed (breaking) | `persist` coalesces by default; `coalesce: false` keeps the synchronous path. 2.98 ms vs 218 ms for the 50-write recipe. |
+| R33-08 | fixed (breaking) | `keyOf`/`pathOf`/`pathOfKey`/`getEntryByKey` protected; `encodeCacheKey`, `getInitialCacheEntry`, `Computed.getSnapshotVersion` left the public surface (snapshot version behind a `Symbol.for` protocol). |
+
+Decisions taken for the user under the standing "best solution, breaking the API is fine": R33-07 default flip and
+R33-08 surface reduction.
+
+Not verified in this round: React 18 projection, consumer matrix, and a baseline-vs-after rerun of the derived and
+drift agent benchmarks (both showed baseline == after and should be fixed or removed).

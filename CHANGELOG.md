@@ -16,8 +16,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   link metadata, so the budget is not measured in bytes.
 
 - `persist(store, {coalesce: true})`: one `JSON.stringify` per microtask instead of one per write
-  (0.94–1.44 ms per keystroke at 4000 items). Off by default, so a write still lands in storage
-  before the call that caused it returns; the disposer flushes a pending write.
+  (0.94–1.44 ms per keystroke at 4000 items). On by default since round 33; `coalesce: false`
+  lands a write in storage before the call that caused it returns. The disposer flushes a pending write.
 
 - `computed(body, {equals})`: a comparator that judges a recomputed result by content, so a
   body that builds a new array or object (`filter`, `map`, a literal) re-renders nobody when the
@@ -171,6 +171,39 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Breaking (round 33):** `persist()` coalesces writes by default — one `JSON.stringify` per
+  microtask instead of one per write (50 one-field writes on 10 000 rows: 218 → ~3–6 ms). Pass
+  `coalesce: false` for the previous behaviour, where a write lands in storage before the call that
+  caused it returns; the disposer flushes a pending write either way.
+- **Breaking (round 33):** `ResourceCache.keyOf`, `pathOf`, `pathOfKey` and `getEntryByKey` are
+  `protected`; read entries through `resolve(args)` or `getEntry(args)`. `encodeCacheKey` and
+  `getInitialCacheEntry` are no longer exported (`getInitialResourceData` stays). `Computed` no longer has a
+  public `getSnapshotVersion()`: the render-to-subscription token moved behind the internal
+  `Symbol.for('react-carburetor/v1/computed-snapshot-version')` protocol, which stays compatible
+  across package copies.
+- A computed that returns a live branch (`read(store).rows`) is no longer walked through its read
+  proxies on every settle: an edit of a consumed field at 10 000 rows costs ~0.1 ms instead of
+  hundreds of milliseconds, and the walk no longer subscribes the computed to every row's key set.
+  `containsExoticValue` reads engine views through their raw targets.
+- `computed(body, {equals})` keeps the previously announced reference when `equals` judges a
+  recompute content-equal, for observed and unobserved computeds, so `get()` no longer hands out a
+  fresh equal object that re-renders memo children. Live and exotic results still announce.
+- `useCarburetorValue` reuses its snapshot when no write since the last one concerned what the
+  selector read, and — with an inline selector — when the selector returns the same live view. A
+  10 000-row selection re-renders its parent in ~6–15 ms instead of 400+ ms (with an unrelated
+  write: ~31–37 ms against 244–527 ms).
+- A store answers the commit-time drift check in O(1) for a subscription whose read set it holds,
+  from the version at which the last notification matched that subscription; the write-log walk
+  remains the fallback (open transaction, wildcard or watermark, grown read set). Reading an
+  observed computed after an unrelated write: 7.5 ms → ~0.002 ms at 10 000 paths.
+- `sameSelection`, `detachOpaque` and the development escape report enumerate engine views through an
+  internal keys hatch (the key-set marker `Object.keys` recorded, without a descriptor trap and a
+  discarded wrapper per key): 2.2–2.9× faster at 10 000 rows with identical read sets and verdicts.
+  No public API.
+- `CarburetorHistory` folds a later patch at or under an earlier object patch of the same entry into
+  that patch, so an object written and then edited (or replaced) in one update or transaction no
+  longer clones the whole baseline: 50–70 ms → ~0.1 ms at 10 000 rows. A patch whose endpoint holds a
+  class instance records an opaque entry instead of throwing from the patch listener.
 - Settled readonly `ResourceCache.forgetAll()` shares one ownership/removal preparation.
   Active-request removal retains synchronous abort-listener ordering and its conservative fallback.
 - Mutation-only primitive history cancellations avoid unrelated full-state capture. Empty-diff root

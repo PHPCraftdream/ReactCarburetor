@@ -140,6 +140,7 @@ describe('demo: writes and tooling', () => {
         expect(byTestId(container, 'filter-done').getAttribute('aria-pressed')).toEqual('true');
 
         fireEvent.click(byTestId(container, 'filter-active'));
+        await flush();
 
         expect(JSON.parse(storage.items['todo-demo:filter'])).toEqual({filter: ETodoFilter.Active});
 
