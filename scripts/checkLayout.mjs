@@ -23,6 +23,8 @@ const STANDALONE_CODE_FILES = [
 ];
 const EXPORT_ROOTS = new Set(['lib/src', 'plugin/src', 'plugin/internal', '__tests__']);
 const MAX_ENTRIES = 7;
+// Registries of the perf suite: one flat entry per benchmarked area, unbounded by design.
+const FLAT_REGISTRIES = new Set(['perf/gates', 'perf/scenarios']);
 const MAX_LINES = 600;
 const TYPE_FILES = /^Models\.(ts|mts)$/;
 const BARREL_FILES = /^index\.(ts|tsx|mts)$/;
@@ -69,8 +71,9 @@ const countExports = (file) => {
 const walk = (directory, root) => {
     const entries = readdirSync(directory).filter((entry) => entry !== 'node_modules');
 
-    if (entries.length > MAX_ENTRIES) {
-        const where = relative('.', directory).split(sep).join('/');
+    const where = relative('.', directory).split(sep).join('/');
+
+    if (entries.length > MAX_ENTRIES && !FLAT_REGISTRIES.has(where)) {
 
         problems.push(`${where}: ${entries.length} entries, at most ${MAX_ENTRIES} allowed`);
     }

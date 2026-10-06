@@ -59,7 +59,13 @@ export const setupReact = async () => {
  * path the per-subscription matched version is meant to spare. Reads the protected field.
  */
 export const countWriteLogMatches = store => {
-    const log = store.writeLog;
+    const log = store?.writeLog;
+    if (!log || typeof log.matches !== 'function') {
+        throw new Error(
+            'countWriteLogMatches: store.writeLog.matches is missing on this build'
+            + ` (store ${store?.constructor?.name}); the counter would silently stay 0 and blind`
+            + ' every gate on it — port the scenario to the renamed engine API');
+    }
     const original = log.matches.bind(log);
     const counter = {calls: 0};
     log.matches = (version, reads) => {

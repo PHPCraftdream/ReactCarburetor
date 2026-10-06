@@ -288,7 +288,7 @@ Matching is indexed rather than scanned: read paths and their ancestors are kept
 write looks up the subscribers it concerns instead of comparing itself against all of them. On
 1000 subscribers one changed path costs 0.0009 ms, and a transaction touching 500 paths costs
 0.47 ms — the same cases took 0.39 ms and 110 ms before the index
-(`benchmarks/pathsIntersect.mjs`).
+(`perf/scenarios/subscribe/match-precision.mjs`, `npm run bench -- --only match-precision`).
 
 ### A parent re-render does not cascade
 
@@ -1045,11 +1045,11 @@ npm run typecheck   # TypeScript 7
 npm run lint        # oxlint with type-aware rules
 npm test            # Rstest + @testing-library/react
 
-node benchmarks/pathsIntersect.mjs   # path matching, against the built output
+npm run bench -- --only match-precision   # path matching, against the built output
 ```
 
-Benchmarks live outside the test suite on purpose: the test run has to stay fast enough to
-be run on every change.
+The perf gate suite lives outside the test suite on purpose: the test run has to stay fast
+enough to be run on every change. Its manifest and rules are described in `perf/README.md`.
 
 ## License
 

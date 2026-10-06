@@ -35,8 +35,8 @@ export const registerNoParentImportCases = (): void => {
             },
             {
                 name: 'an import that leaves the source tree has no aliased form',
-                filename: 'benchmarks/pathsIntersect.mjs',
-                code: `import {pathsIntersect} from "../dist/esm/Carburetor/index.mjs";`,
+                filename: 'perf/scenarios/subscribe/match-precision.mjs',
+                code: `import {load} from "../../harness/lib.mjs";`,
             },
         ],
         invalid: [

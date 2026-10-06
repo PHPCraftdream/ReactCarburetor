@@ -9,6 +9,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `npm run bench`: a performance gate suite (`perf/`). Every performance improvement of rounds 6-35 is a
+  scenario measured on the built output with gates on the mechanism it removed (exact counters, same-run
+  ratios, size scale, generous ceilings), each validated to fail on the build before its fix.
+  `--against <ref>` also compares timings with a build of that ref; `--lint-gates` checks the manifest.
+  See `perf/README.md`. The legacy benchmarks under `benchmarks/` and `scripts/benchmarks/` were migrated
+  into it and removed, except `benchmarks/state/unpublishedDraftCheck.mjs` (needs a development build).
 - Public `IReadableCarburetor<T>`: read/subscription capabilities accepted by hooks, class read APIs
   and computed readers, without requiring mutation or inspectable tooling methods.
 - `ResourceCache` option `keyCacheSize`: a finite primitive key/path memo budget (default4096,
@@ -132,7 +138,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   why it is silent at runtime, the supported form, what the rule matches on, and where it can produce
   a false positive.
 - `diagnostics` / `Diagnostics`: development-only warnings with an explicit on/off switch.
-- `benchmarks/pathsIntersect.mjs`, run against the built output and kept out of the test suite.
+- `perf/scenarios/subscribe/match-precision.mjs`, run against the built output and kept out of the test suite.
 - Pre-stripped production outputs (`dist/esm-prod`, `dist/cjs-prod`) selected by the `production`
   condition in `exports`, for toolchains that do not substitute `NODE_ENV` themselves.
 
@@ -386,7 +392,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   different carburetor; a non-trackable root (`isTrackable` false) is unaffected, since `read()`
   never builds a proxy for one anyway. The per-carburetor cache is a `WeakMap`, created lazily on
   a component's first `useCarburetor` call, so a `connect()`-only component pays nothing for it.
-  Measured with `benchmarks/useCarburetorProxy.mjs`: a cache hit reading one field costs ~0.0003
+  Measured with `perf/scenarios/components/proxy-reads.mjs`: a cache hit reading one field costs ~0.0003
   ms/op against ~0.0010-0.0011 ms/op for a fresh proxy — roughly 3-4x faster in the common
   few-fields-per-render case; the gain narrows as the number of fields read per render grows,
   since the read work itself then dominates the one avoided allocation.
@@ -535,6 +541,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- A `computed` whose result holds store data (`read(store).items`) no longer keeps handing out a view of
+  the old data object after `setData` or `fromJSON`: both swap the data object while recording only the
+  leaves that differ, which a result that read none of those leaves never matched. A non-primitive
+  result is now stale once the store's data object changed; primitive results are unaffected. Pinned
+  by `__tests__/Engine/Derived/Computed/Freshness/ReplacedData.test.ts` and the `liveresult/replace-data`
+  gate.
 - Selection equality observes Map/Set insertion order, keeps equal Invalid Date snapshots stable,
   and canonicalizes native/plain view identity without losing tracked reads or alias topology.
 - Sparse selection consumers observe hole-to-own-undefined additions and later deletions.

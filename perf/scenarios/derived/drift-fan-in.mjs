@@ -14,7 +14,11 @@ const open = computed(read => {
     for (const item of read(s).items) if (!item.done) count++;
     return count;
 });
-const share = computed(read => read(open) / read(s).items.length);
+let recomputes = 0;
+const share = computed(read => {
+    recomputes++;
+    return read(open) / read(s).items.length;
+});
 share.subscribe(() => {});
 share.get();
 const matches = countWriteLogMatches(s);
@@ -27,4 +31,13 @@ for (let i = 0; i < samples; i++) {
     share.get();
     times.push(performance.now() - start);
 }
-emit({getMs: median(times), writeLogMatches: matches.calls, value: share.get()});
+const unrelatedRecomputes = recomputes - 1;
+const unrelatedMatches = matches.calls;
+const value = share.get();
+// A related write must still invalidate exactly once and change the observed value.
+s.run(d => { d.items[4].done = !d.items[4].done; });
+const valueAfterRelated = share.get();
+emit({
+    getMs: median(times), writeLogMatches: unrelatedMatches, recomputes: unrelatedRecomputes,
+    relatedRecomputes: recomputes - 1 - unrelatedRecomputes, value, valueAfterRelated,
+});

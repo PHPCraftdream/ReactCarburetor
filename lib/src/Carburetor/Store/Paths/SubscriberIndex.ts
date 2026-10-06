@@ -16,7 +16,7 @@ type TBranchBucket = string | {id: string; count: number} | Map<string, number>;
  * Comparing each write against each subscriber's read paths is fine for one changed path,
  * but a transaction touching hundreds of paths with hundreds of subscribers turns into a
  * frozen frame: measured at 110 ms for 500 paths over 1000 subscribers, and 357 ms when
- * nothing matches (see benchmarks/pathsIntersect.mjs).
+ * nothing matches (see perf/scenarios/subscribe/match-precision.mjs).
  *
  * The index keeps two maps, both filled when a subscriber registers:
  *   exact  — read path -> subscribers that read exactly it;

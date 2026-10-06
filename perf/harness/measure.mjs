@@ -4,15 +4,26 @@
 import {spawnSync} from 'node:child_process';
 import {resolve} from 'node:path';
 
+/** The first line mentioning an error (a thrown message), else the first non-empty lines, kept short. */
+const brief = (text, limit = 240) => {
+    const lines = String(text).split('\n').map(line => line.trim()).filter(Boolean);
+    const cause = lines.find(line => /\berror\b/i.test(line)) ?? lines.slice(0, 3).join(' | ');
+    return (cause || 'no output').length > limit ? cause.slice(0, limit - 3) + '...' : cause;
+};
+
 /** Runs a scenario once on one build and returns its metrics object. */
 export const runOnce = (scenario, args, distRoot) => {
     const child = spawnSync(process.execPath, ['--expose-gc', resolve(scenario), ...args.map(String)], {
         env: {...process.env, NODE_ENV: 'production', DIST_ROOT: resolve(distRoot)},
         encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
     });
+    if (child.error) throw child.error;
     const line = child.stdout.split('\n').reverse().find(text => text.startsWith('@@ '));
     if (child.status !== 0 || !line) {
-        throw new Error(`${scenario} failed on ${distRoot} (${child.status}):\n${child.stdout}\n${child.stderr}`);
+        // The full child output rides on error.output for the runner's verbose mode; the message stays one line.
+        const error = new Error(`exited ${child.status}: ${brief(child.stderr || child.stdout || 'no output')}`);
+        error.output = child;
+        throw error;
     }
 
     return JSON.parse(line.slice(3));

@@ -6,6 +6,19 @@
 //                                 (machine-independent: restore against snapshot, toJSON against dehydrate)
 //   {metric, scale: {from}, max}  median(metric) / median(from.metric of another entry) <= max
 //                                 (machine-independent: cost at 50k rows against 10k rows)
+//
+// What a gate is expected to catch, so a manifest can be reviewed against its intent:
+// - An `equals` gate over a correctness metric (a rendered verdict, a final state) is legitimately
+//   green on a pre-improvement baseline: it pins behaviour, not speed. The gates that must fail on
+//   the "before" build are the mechanism ones — the counter charging the removed work, an over/
+//   scale ratio, a ceiling below the old value. Validate every entry both ways before trusting it.
+// - `improvement` names the review-round item an entry guards ('R34-03'); 'control' marks a
+//   correctness control that is not claiming to guard a speedup.
+// - A counter gate is only as good as its positive control: a companion metric (or a min/equals on
+//   the same probe) must prove the instrumentation still sees the mechanism, or a rename silently
+//   turns the gate into "equals 0 passed".
+// - A timing ceiling is the last resort: at least 10x above the current median and still below the
+//   pre-improvement value, so it trips on regressions rather than on machine noise.
 
 /**
  * Evaluates one entry's gates.
@@ -45,8 +58,11 @@ export const evaluate = (entry, summary, summaries) => entry.gates.map(gate => {
     if ('max' in gate) {
         return {ok: item.median <= gate.max, label, detail: `${item.median.toFixed(4)} <= ${gate.max}`};
     }
+    if ('min' in gate) {
+        return {ok: item.median >= gate.min, label, detail: `${item.median.toFixed(4)} >= ${gate.min}`};
+    }
 
-    return {ok: item.median >= gate.min, label, detail: `${item.median.toFixed(4)} >= ${gate.min}`};
+    return {ok: false, label, detail: 'gate has none of equals/over/scale/max/min'};
 });
 
 /**

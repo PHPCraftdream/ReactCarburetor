@@ -24,9 +24,11 @@ vulnerabilities privately using the [security policy](SECURITY.md), not a public
   prototype, which breaks `super` and has silently disabled effects before. `typescript/unbound-method`
   cannot see the decorator and is therefore off in `.oxlintrc.json`; `require-bind-for-passed-method`
   in the lint plugin replaces it (see `docs/hazards.md`, H22).
-- **Optimize on measurements.** Performance work starts with a benchmark under
-  `benchmarks/`, run against the built output, and the numbers go into the code comment or the
-  README. Benchmarks stay out of the test suite so the test run stays fast.
+- **Optimize on measurements.** Performance work starts with a scenario in `perf/`, measured
+  with `npm run bench` against the built output, and the numbers go into the code comment or the
+  README. Every improvement keeps an entry in `perf/gates/`, validated both ways — failing on the
+  pre-improvement build, passing on the current one (see `perf/README.md`). Benchmarks stay out of
+  the test suite so the test run stays fast.
 
 ## Project layout
 
