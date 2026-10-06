@@ -35,12 +35,14 @@ const assign = (result: Record<string, unknown>, key: string, cloned: unknown): 
  * @param seen - the external cycle ledger, shared across the whole walk
  * @param onLiveInstance - live-instance report
  * @param onArraySubclass - array-subclass guard
+ * @param onSharing - fired when a raw value is reached a second time (sharing or cycle)
  */
 const detach = (
     value: unknown,
     seen: WeakMap<object, unknown>,
     onLiveInstance: TReportLiveInstance | undefined,
-    onArraySubclass: TArraySubclassGuard | undefined
+    onArraySubclass: TArraySubclassGuard | undefined,
+    onSharing?: () => void
 ): unknown => {
     if (value === null || typeof value !== 'object') {
         return value;
@@ -51,6 +53,8 @@ const detach = (
     const known = seen.get(value) ?? (target !== undefined ? seen.get(target) : undefined);
 
     if (known !== undefined) {
+        // Reached twice: the detached graph is not a tree (R37-01).
+        onSharing?.();
         if (target !== undefined && !seen.has(value)) {
             // The raw branch may have been copied first through an opaque container. Still
             // visit this recognized read proxy once: its field reads subscribe to the selected
@@ -95,8 +99,8 @@ const detach = (
         }
 
         Map.prototype.forEach.call(native, (member: unknown, key: unknown): void => {
-            copy.set(detach(key, seen, onLiveInstance, onArraySubclass),
-                detach(member, seen, onLiveInstance, onArraySubclass));
+            copy.set(detach(key, seen, onLiveInstance, onArraySubclass, onSharing),
+                detach(member, seen, onLiveInstance, onArraySubclass, onSharing));
         });
 
         return copy;
@@ -112,7 +116,7 @@ const detach = (
         }
 
         Set.prototype.forEach.call(native, (member: unknown): void => {
-            copy.add(detach(member, seen, onLiveInstance, onArraySubclass));
+            copy.add(detach(member, seen, onLiveInstance, onArraySubclass, onSharing));
         });
 
         return copy;
@@ -156,7 +160,7 @@ const detach = (
                 break;
             }
 
-            copy[densePrefix] = detach(value[densePrefix], seen, onLiveInstance, onArraySubclass);
+            copy[densePrefix] = detach(value[densePrefix], seen, onLiveInstance, onArraySubclass, onSharing);
         }
 
         if (densePrefix < length) {
@@ -179,7 +183,7 @@ const detach = (
                 }
 
                 const descriptor = target === undefined ? undefined : Object.getOwnPropertyDescriptor(target, key);
-                const cloned = detach(value[numericIndex], seen, onLiveInstance, onArraySubclass);
+                const cloned = detach(value[numericIndex], seen, onLiveInstance, onArraySubclass, onSharing);
                 if (descriptor?.enumerable === false) {
                     Object.defineProperty(copy, key, {
                         value: cloned, writable: descriptor.writable, configurable: descriptor.configurable,
@@ -225,7 +229,7 @@ const detach = (
         const child: unknown = source[keys[index]];
 
         assign(result, keys[index], child !== null && typeof child === 'object'
-            ? detach(child, seen, onLiveInstance, onArraySubclass)
+            ? detach(child, seen, onLiveInstance, onArraySubclass, onSharing)
             : child);
     }
 
@@ -245,7 +249,8 @@ const detach = (
 const tryFastPrimitiveCopy = (
     value: object,
     onLiveInstance: TReportLiveInstance | undefined,
-    onArraySubclass: TArraySubclassGuard | undefined
+    onArraySubclass: TArraySubclassGuard | undefined,
+    onSharing?: () => void
 ): Record<string, unknown> | undefined => {
     if (Array.isArray(value) ||
         liveViews.readTarget(value) !== undefined ||
@@ -267,7 +272,7 @@ const tryFastPrimitiveCopy = (
                 seen.set(value, copy);
             }
 
-            assign(copy, keys[index], detach(child, seen, onLiveInstance, onArraySubclass));
+            assign(copy, keys[index], detach(child, seen, onLiveInstance, onArraySubclass, onSharing));
         } else {
             assign(copy, keys[index], child);
         }
@@ -288,24 +293,28 @@ const tryFastPrimitiveCopy = (
  * @param onLiveInstance - optional report fired for each live class instance the copy has to hand
  * over, at any depth
  * @param onArraySubclass - optional rejection policy for class selections
+ * @param onSharing - fired when the detached graph turns out not to be a tree: a raw value reached
+ * twice, through any container kind, including Map keys/members and Set members (R37-01)
  * @returns the detached copy
  */
 export const detachOpaqueInto = (
     value: unknown,
     seen: WeakMap<object, unknown>,
     onLiveInstance?: TReportLiveInstance,
-    onArraySubclass?: TArraySubclassGuard
+    onArraySubclass?: TArraySubclassGuard,
+    onSharing?: () => void
 ): unknown => {
     if (value !== null && typeof value === 'object') {
         // One raw value, one copy: the shared ledger may already hold one from an earlier
-        // branch of a fused reconcile walk.
+        // branch of a fused reconcile walk. That second reach is sharing.
         const known = seen.get(value);
 
         if (known !== undefined) {
+            onSharing?.();
             return known;
         }
 
-        const fast = tryFastPrimitiveCopy(value, onLiveInstance, onArraySubclass);
+        const fast = tryFastPrimitiveCopy(value, onLiveInstance, onArraySubclass, onSharing);
 
         if (fast !== undefined) {
             seen.set(value, fast);
@@ -314,5 +323,5 @@ export const detachOpaqueInto = (
         }
     }
 
-    return detach(value, seen, onLiveInstance, onArraySubclass);
+    return detach(value, seen, onLiveInstance, onArraySubclass, onSharing);
 };

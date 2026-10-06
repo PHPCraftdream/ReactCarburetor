@@ -2,6 +2,9 @@ import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {AntiHookComponent, Carburetor} from '@/Carburetor';
+import {useCarburetorValue} from '@/Interop';
+import type {TReadonly} from '@/Carburetor/Models/Base';
+import {rstest} from '@rstest/core';
 
 interface IData {
     selectedId: number;
@@ -166,5 +169,340 @@ describe('connectSelection gates a derived value at notification time (R36-02)',
         expect(view.container.textContent).toBe('5');
         expect(seen).toHaveLength(2);
         expect(seen[1]).not.toBe(seen[0]);
+    });
+});
+
+interface IBranchData {
+    useLeft: boolean;
+    left: number;
+    right: number;
+    boom: boolean;
+}
+
+class BranchStore extends Carburetor<IBranchData> {
+    public edit = (fn: (draft: IBranchData) => void): void => {
+        this.update(fn);
+    };
+}
+
+const makeBranchStore = (): BranchStore =>
+    new BranchStore({useLeft: true, left: 1, right: 1, boom: false});
+
+const selectBranch = (data: TReadonly<IBranchData>): number => (data.useLeft ? data.left : data.right);
+
+describe('connectSelection migrates an equal-valued branch switch without a render (R37-06)', () => {
+    test('useLeft true->false with left===right keeps the class owner at one render, like the hook', () => {
+        const store = makeBranchStore();
+        let hookRenders = 0;
+        let classRenders = 0;
+
+        const Hook = (): React.ReactElement => {
+            hookRenders++;
+
+            return <p>{useCarburetorValue(store, selectBranch)}</p>;
+        };
+
+        class Owner extends AntiHookComponent {
+            private readonly branch = this.connectSelection(() => store, selectBranch);
+
+            render() {
+                classRenders++;
+
+                return <p>{this.branch()}</p>;
+            }
+        }
+
+        const hookView = render(<Hook />);
+        const classView = render(<Owner />);
+
+        expect(hookRenders).toBe(1);
+        expect(classRenders).toBe(1);
+        expect(hookView.container.textContent).toBe('1');
+        expect(classView.container.textContent).toBe('1');
+
+        // Equal-valued branch switch: read-set migration only, no owner render.
+        act(() => { store.edit((draft) => { draft.useLeft = false; }); });
+
+        expect(hookRenders).toBe(1);
+        expect(classRenders).toBe(1);
+        expect(hookView.container.textContent).toBe('1');
+        expect(classView.container.textContent).toBe('1');
+
+        // The migrated subscription no longer covers the old branch.
+        act(() => { store.edit((draft) => { draft.left = 2; }); });
+
+        expect(hookRenders).toBe(1);
+        expect(classRenders).toBe(1);
+        expect(hookView.container.textContent).toBe('1');
+        expect(classView.container.textContent).toBe('1');
+    });
+
+    test('a real value change on the migrated branch renders the owner and updates the DOM', () => {
+        const store = makeBranchStore();
+        let renders = 0;
+
+        class Owner extends AntiHookComponent {
+            private readonly branch = this.connectSelection(() => store, selectBranch);
+
+            render() {
+                renders++;
+
+                return <p>{this.branch()}</p>;
+            }
+        }
+
+        const view = render(<Owner />);
+
+        act(() => { store.edit((draft) => { draft.useLeft = false; }); });
+        expect(renders).toBe(1);
+        expect(view.container.textContent).toBe('1');
+
+        act(() => { store.edit((draft) => { draft.right = 3; }); });
+        expect(renders).toBe(2);
+        expect(view.container.textContent).toBe('3');
+    });
+
+    test('a real value change without a branch switch still renders and updates the DOM', () => {
+        const store = makeBranchStore();
+        let renders = 0;
+
+        class Owner extends AntiHookComponent {
+            private readonly branch = this.connectSelection(() => store, selectBranch);
+
+            render() {
+                renders++;
+
+                return <p>{this.branch()}</p>;
+            }
+        }
+
+        const view = render(<Owner />);
+
+        act(() => { store.edit((draft) => { draft.left = 3; }); });
+
+        expect(renders).toBe(2);
+        expect(view.container.textContent).toBe('3');
+    });
+
+    test('a notification while a render attempt is open takes the plain re-render path', () => {
+        const store = makeBranchStore();
+        let renders = 0;
+        let switchDuringRender = false;
+        const errorSpy = rstest.spyOn(console, 'error').mockImplementation(() => {});
+
+        class Owner extends AntiHookComponent<{tick: number}> {
+            private readonly branch = this.connectSelection(() => store, selectBranch);
+
+            render() {
+                renders++;
+
+                if (switchDuringRender) {
+                    switchDuringRender = false;
+                    // Equal-valued branch switch fired while this render attempt is open: the
+                    // guard must keep this on the re-render path, not re-file mid-render.
+                    store.edit((draft) => { draft.useLeft = false; });
+                }
+
+                return <p>{this.branch()}</p>;
+            }
+        }
+
+        const view = render(<Owner tick={0} />);
+        expect(renders).toBe(1);
+
+        act(() => { switchDuringRender = true; view.rerender(<Owner tick={1} />); });
+
+        errorSpy.mockRestore();
+
+        // The re-render from the render-phase update, at most one extra pass — never a loop.
+        expect(renders).toBeGreaterThan(1);
+        expect(renders).toBeLessThan(5);
+        expect(view.container.textContent).toBe('1');
+
+        // The commit after the guarded render filed the new branch: the old one is silent.
+        const afterSwitch = renders;
+        act(() => { store.edit((draft) => { draft.left = 2; }); });
+        expect(renders).toBe(afterSwitch);
+        expect(view.container.textContent).toBe('1');
+    });
+
+    test('a selector throw during the notification re-run still takes the plain re-render', () => {
+        const store = makeBranchStore();
+        let renders = 0;
+
+        class Owner extends AntiHookComponent {
+            private inRender = false;
+            private readonly branch = this.connectSelection(() => store, (data) => {
+                if (data.boom && !this.inRender) {
+                    throw new Error('notification-only failure');
+                }
+
+                return data.useLeft ? data.left : data.right;
+            });
+
+            render() {
+                renders++;
+                this.inRender = true;
+
+                try {
+                    return <p>{this.branch()}</p>;
+                } finally {
+                    this.inRender = false;
+                }
+            }
+        }
+
+        const view = render(<Owner />);
+        expect(renders).toBe(1);
+
+        act(() => {
+            store.edit((draft) => {
+                draft.boom = true;
+                draft.useLeft = false;
+            });
+        });
+
+        // The throw forces the owner render; that render re-files the new branch.
+        expect(renders).toBe(2);
+        expect(view.container.textContent).toBe('1');
+
+        // And after the failed attempt, the migrated branch is the subscribed one.
+        act(() => { store.edit((draft) => { draft.left = 2; }); });
+        expect(renders).toBe(2);
+    });
+
+    test('a source swap takes the plain re-render and re-arms migration on the new source', () => {
+        const storeA = makeBranchStore();
+        const storeB = makeBranchStore();
+        let renders = 0;
+
+        class Owner extends AntiHookComponent<{store: BranchStore}> {
+            private readonly branch = this.connectSelection(() => this.props.store, selectBranch);
+
+            render() {
+                renders++;
+
+                return <p>{this.branch()}</p>;
+            }
+        }
+
+        const view = render(<Owner store={storeA} />);
+        expect(renders).toBe(1);
+
+        view.rerender(<Owner store={storeB} />);
+        const afterSwap = renders;
+        expect(afterSwap).toBeGreaterThan(1);
+
+        // The old source is no longer subscribed; the new one drives the owner.
+        act(() => { storeA.edit((draft) => { draft.left = 2; }); });
+        expect(renders).toBe(afterSwap);
+
+        // Equal-valued branch switch on the new source migrates without a render.
+        act(() => { storeB.edit((draft) => { draft.useLeft = false; }); });
+        expect(renders).toBe(afterSwap);
+        expect(view.container.textContent).toBe('1');
+
+        act(() => { storeB.edit((draft) => { draft.right = 3; }); });
+        expect(renders).toBe(afterSwap + 1);
+        expect(view.container.textContent).toBe('3');
+    });
+
+    test('StrictMode runs the selector once per write and never renders from an equal branch switch', () => {
+        const store = makeBranchStore();
+        let renders = 0;
+        let selectorRuns = 0;
+        const counted = (data: TReadonly<IBranchData>): number => {
+            selectorRuns++;
+
+            return selectBranch(data);
+        };
+
+        class Owner extends AntiHookComponent {
+            private readonly branch = this.connectSelection(() => store, counted);
+
+            render() {
+                renders++;
+
+                return <p>{this.branch()}</p>;
+            }
+        }
+
+        const view = render(<React.StrictMode><Owner /></React.StrictMode>);
+        const mountedRuns = selectorRuns;
+        const mountedRenders = renders;
+
+        // Equal-valued branch switch: the selector re-runs once at notification time to
+        // discover the moved read set, but the owner does not render.
+        act(() => { store.edit((draft) => { draft.useLeft = false; }); });
+        expect(selectorRuns).toBe(mountedRuns + 1);
+        expect(renders).toBe(mountedRenders);
+        expect(view.container.textContent).toBe('1');
+
+        act(() => { store.edit((draft) => { draft.left = 2; }); });
+        expect(selectorRuns).toBe(mountedRuns + 1);
+        expect(renders).toBe(mountedRenders);
+
+        // React may replay render work; the notification-only switch above runs the selector once.
+        const beforeChange = selectorRuns;
+        const rendersBeforeChange = renders;
+        act(() => { store.edit((draft) => { draft.right = 2; }); });
+        expect(selectorRuns).toBeGreaterThan(beforeChange);
+        expect(renders).toBeGreaterThan(rendersBeforeChange);
+        expect(view.container.textContent).toBe('2');
+    });
+});
+
+interface ILiveRow {
+    id: string;
+    n: number;
+    peer: Map<string, ILiveRow> | null;
+}
+
+class LiveListStore extends Carburetor<{rows: ILiveRow[]}> {
+    public edit = (fn: (draft: {rows: ILiveRow[]}) => void): void => {
+        this.update(fn);
+    };
+}
+
+describe('connectSelection keeps a shared live-list alias across edits (R37-01 regression)', () => {
+    test('a class selection over an initially shared list keeps the alias, both values, and held snapshots', () => {
+        const rows: ILiveRow[] = [
+            {id: 'a', n: 1, peer: null},
+            {id: 'b', n: 1, peer: null},
+        ];
+        rows[0].peer = new Map([['peer', rows[1]]]);
+        const store = new LiveListStore({rows});
+        const seen: Array<TReadonly<ILiveRow[]>> = [];
+
+        class Owner extends AntiHookComponent {
+            private readonly list = this.connectSelection(() => store, (data) => data.rows);
+
+            render() {
+                seen.push(this.list());
+
+                return <p>{String(this.list()[1].n)}</p>;
+            }
+        }
+
+        const view = render(<Owner />);
+        expect(view.container.textContent).toBe('1');
+
+        act(() => { store.edit((draft) => { draft.rows[1].n = 2; }); });
+        act(() => { store.edit((draft) => { draft.rows[1].n = 3; }); });
+
+        expect(view.container.textContent).toBe('3');
+        expect(seen).toHaveLength(3);
+        for (const [index, n] of [1, 2, 3].entries()) {
+            const snapshot = seen[index];
+            const peer = (snapshot[0].peer as Map<string, ILiveRow>).get('peer');
+            // The alias identity holds inside every snapshot, pointing at its own member.
+            expect(peer).toBe(snapshot[1]);
+            expect(snapshot[1].n).toBe(n);
+        }
+        // Held snapshots are immutable: each edit produced a fresh snapshot.
+        expect(seen[1]).not.toBe(seen[0]);
+        expect(seen[2]).not.toBe(seen[1]);
+        expect(seen[0][1].n).toBe(1);
+        expect(seen[1][1].n).toBe(2);
     });
 });

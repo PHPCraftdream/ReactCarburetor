@@ -14,6 +14,7 @@ import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {
     IAttemptEntry,
+    IConnection,
     IConnectionSource,
     IRenderAttempt,
     ITrackedView,
@@ -25,9 +26,16 @@ import {reportLiveViewEscape} from "@/Carburetor/Component/Connection/reportLive
 import {reuseSelection} from "@/Carburetor/Store/Utils/Selection/Patch/reuseSelection";
 import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
 import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
+import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {AntiHookComponentFoundation} from "./Foundation";
 
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
+    /**
+     * Resolved via the prototype chain on `AntiHookComponentSubscriptions`, the fragment that
+     * owns connection re-filing; declared here because the equal-value wake path below calls it.
+     */
+    protected abstract migrateConnectionReads(connection: IConnection, reads: TCompletedReads, version: number): void;
+
     /** `useCarburetor`'s per-carburetor root views, created on first use; see buildTrackedView. */
     private trackedViews: WeakMap<ICarburetorSubscription, ITrackedView<object>> | undefined;
 
@@ -173,8 +181,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
 
         // R36-02: a write to a path the selection read wakes this connection, not the owner. The
         // selector re-runs here, outside any render attempt, against the committed props and state;
-        // the owner re-renders only when the snapshot or the read set would move. Anything else
-        // (a render in flight, a throw, no committed description) takes the plain re-render.
+        // the owner re-renders only when the snapshot moves; equal snapshots migrate closed reads.
+        // A render in flight, a throw or no committed description takes the plain re-render.
         const connection = declared.connection;
         const selectionUnchanged = (): boolean => {
             const committed = connection.committed;
@@ -201,12 +209,30 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 declared.scratch = undefined;
             }
 
-            if (!unchanged || !sameReads(committed.reads, completeReads(scratch))) {
+            if (!unchanged) {
                 return false;
             }
 
-            // Verified at `version`: the next commit's drift check starts from here.
-            committed.baselineVersion = version;
+            const reads = completeReads(scratch);
+
+            if (sameReads(committed.reads, reads)) {
+                // Verified at `version`: the next commit's drift check starts from here.
+                committed.baselineVersion = version;
+
+                return true;
+            }
+
+            // R37-06: an equal-valued branch switch — the selection reconciled to the same
+            // snapshot, only the read set moved. Migrate read ownership here, the way `watch`
+            // re-files on an equal-value wake, instead of forceUpdating the owner just to
+            // re-file at the next commit. A source swap (the resolver now names another
+            // carburetor than the one committed) still takes the plain re-render: moving the
+            // subscription across sources here would have to guess at the new baseline.
+            if (declared.getCarburetor() !== committed.carburetor) {
+                return false;
+            }
+
+            this.migrateConnectionReads(connection, reads, version);
 
             return true;
         };

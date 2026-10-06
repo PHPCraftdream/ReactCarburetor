@@ -29,4 +29,14 @@ export default [
             {metric: 'rowsUnchanged', equals: true}, {metric: 'subtreeRedoneOk', equals: true},
         ],
     },
+    {
+        id: 'history/r37-02-delivery@4-fields', improvement: 'R37-02', scenario: 'history/r37-02-delivery', args: [],
+        gates: [
+            {metric: 'delivered', equals: 4}, {metric: 'threwOriginalError', equals: true},
+            {metric: 'installedOk', equals: true}, {metric: 'undoneOk', equals: true},
+            {metric: 'redoneOk', equals: true},
+            {metric: 'controlDelivered', equals: 4}, {metric: 'controlThrew', equals: false},
+            {metric: 'controlUndoneOk', equals: true},
+        ],
+    },
 ];

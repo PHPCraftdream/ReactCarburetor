@@ -36,4 +36,17 @@ export default [
             {metric: 'text', equals: '7'}, {metric: 'sinkPositive', equals: true},
         ],
     },
+    {
+        // R37-06: equal branch switch migrates read ownership at notification time —
+        // no owner render, hook control parity, real value change still renders.
+        id: 'components/branch-migration@1', improvement: 'R37-06', scenario: 'components/branch-migration', args: [1],
+        gates: [
+            {metric: 'classAfterEqualSwitch', equals: 1},
+            {metric: 'hookAfterEqualSwitch', equals: 1},
+            {metric: 'classAfterRealChange', min: 2},
+            {metric: 'oldBranchSilent', equals: true},
+            {metric: 'text', equals: '3'},
+            {metric: 'done', equals: true},
+        ],
+    },
 ]

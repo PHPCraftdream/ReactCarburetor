@@ -25,7 +25,8 @@ interface ICacheEntry<T extends object, R> {
     liveSelection: unknown;
     reads: TCompletedReads | undefined;
     filled: boolean;
-    copies: WeakMap<object, unknown>;
+    /** Undefined for primitive selections, which need no copy ledger (R37-05). */
+    copies: WeakMap<object, unknown> | undefined;
     /** The snapshot mirrors one tree of the store without shared references, so write-log patching is exact. */
     patchable: boolean;
 }
@@ -260,7 +261,8 @@ export const useCarburetorValue = <T extends object, R>(
 
         let result: R;
         let liveSelection: R | undefined;
-        let copies = new WeakMap<object, unknown>();
+        // R37-05: allocated on the first object-shaped need; a primitive verdict keeps zero ledgers.
+        let copies: WeakMap<object, unknown> | undefined;
         const trace = {shared: false};
         let patched = false;
 
@@ -290,6 +292,7 @@ export const useCarburetorValue = <T extends object, R>(
             // R36-01: the same live view as last time, so the write log names what changed and only
             // those subtrees are reconciled; every other shape takes the full walk below.
             const viaLog = liveCompare && !noReadDrift && entry !== null && entry.filled && entry.patchable &&
+                entry.copies !== undefined &&
                 sameCarburetor && entry.isEqual === isEqual && fresh === entry.liveSelection
                 ? patchFromWriteLog(carburetor, entry.version, entry.value, fresh, entry.copies, rejectLiveInstance)
                 : undefined;
@@ -299,6 +302,9 @@ export const useCarburetorValue = <T extends object, R>(
                 copies = entry!.copies;
                 patched = true;
             } else if (liveCompare) {
+                if (fresh !== null && typeof fresh === 'object') {
+                    copies ??= new WeakMap<object, unknown>();
+                }
                 result = entry !== null && entry.filled
                     ? (reconcileSelection(
                         entry.value, fresh, rejectLiveInstance, undefined, entry.copies, copies, trace
@@ -325,7 +331,10 @@ export const useCarburetorValue = <T extends object, R>(
             carburetor, select, isEqual, version, value: result, reads: patchedReads, filled: true,
         });
         pendingReads.current = completed.reads;
-        cache.current = {...completed, liveSelection, copies, patchable: patched || !trace.shared};
+        // R37-01: patchability always describes the latest full reconcile's graph verdict. A patch
+        // cannot introduce sharing (container leaves fall back to the full walk), so a patched pass
+        // keeps the tree verdict it was granted.
+        cache.current = {...completed, liveSelection, copies, patchable: !trace.shared};
 
         return result;
     }, [carburetor, select, isEqual, recordRead]);

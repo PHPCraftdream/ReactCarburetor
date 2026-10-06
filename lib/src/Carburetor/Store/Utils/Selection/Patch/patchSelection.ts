@@ -25,7 +25,9 @@ const cloneSpine = (value: Record<string, unknown>): Record<string, unknown> =>
  * its previous reference. Each changed subtree goes through `reconcileSelection`, so what it
  * returns is exactly what the full walk returns for that subtree. The ledger gains the new spine
  * copies only when the whole patch succeeds. Reads through `live` are recorded by the caller's
- * recorder, so a leaf new to the selection joins the read set.
+ * recorder, so a leaf new to the selection joins the read set. A leaf whose fresh value is a
+ * container asks for the full reconcile (R37-01): one subtree's ledger cannot verify the whole
+ * snapshot's alias topology.
  *
  * @param previous - the previous snapshot of this selection
  * @param live - the live view the snapshot mirrors, the same object as last time
@@ -44,11 +46,13 @@ export const patchSelection = <R>(
     const filed: Array<[object, unknown]> = [];
     const apply = (before: unknown, now: unknown, node: IPatchNode): unknown => {
         if (node.leaf) {
-            const result = reconcileSelection(before, now, onLiveInstance, onArraySubclass, ledger);
-            if (now !== null && typeof now === 'object' && result !== null && typeof result === 'object') {
-                filed.push([now, result]);
-            }
-            return result;
+            // R37-01: a replaced container can alias any other selection node (e.g. a Map backlink
+            // to a sibling row). One subtree's ledger cannot verify whole-snapshot topology, so a
+            // container-valued leaf asks for the full reconcile. Primitive writes cannot introduce
+            // sharing, so the tree-only fast path keeps covering them.
+            if (now !== null && typeof now === 'object') throw new PatchFallback();
+            // Primitive leaves cannot introduce graph sharing.
+            return reconcileSelection(before, now, onLiveInstance, onArraySubclass, ledger);
         }
         if (node.children === undefined) return before;
         if (!isPlainSpine(before) || now === null || typeof now !== 'object') throw new PatchFallback();

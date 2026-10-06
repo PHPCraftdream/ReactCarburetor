@@ -24,6 +24,8 @@ interface IReconcileContext {
     isMatchableKey: (key: unknown) => boolean;
     reconcile: (previous: unknown, live: unknown, raw: object, ctx: IReconcileContext) => unknown;
     register: (ctx: IReconcileContext, live: object, raw: object, copy: unknown) => void;
+    /** Fired when the detached graph turns out not to be a tree (R37-01). */
+    onSharing: () => void;
 }
 
 const hasPrototype = (value: object, prototype: object): boolean => Object.getPrototypeOf(value) === prototype;
@@ -70,8 +72,14 @@ const reconcile = (previous: unknown, live: unknown, raw: object, ctx: IReconcil
     if (ctx.previousToFresh.get(previous as object) === raw) {
         ctx.cycleCount++;
         ctx.shared = true;
-        if (ctx.open.has(raw)) return previous;
-        return ctx.copies.get(live) ?? ctx.copies.get(raw) ?? previous;
+        if (ctx.open.has(raw)) {
+            // An in-progress ancestor: returning `previous` keeps a content-equal visit
+            // unchanged; the caller's cycleEntries remap installs the final copy and
+            // flags changed only when the back edge points at a DIFFERENT node's copy
+            // (a self back edge resolves to the copy being built, which is not a change).
+            return previous;
+        }
+        return known ?? previous;
     }
     if (known !== undefined) {
         ctx.shared = true;
@@ -83,15 +91,15 @@ const reconcile = (previous: unknown, live: unknown, raw: object, ctx: IReconcil
         return known;
     }
     if (previous === null || typeof previous !== 'object' || isClassInstance(previous)) {
-        return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass);
+        return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing);
     }
     const mapped = ctx.previousToFresh.get(previous);
     if (mapped !== undefined && mapped !== raw) {
-        return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass);
+        return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing);
     }
     const claimed = ctx.freshToPrevious.get(raw);
     if (claimed !== undefined && claimed !== previous) {
-        return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass);
+        return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing);
     }
     ctx.previousToFresh.set(previous, raw);
     ctx.freshToPrevious.set(raw, previous);
@@ -107,7 +115,7 @@ const reconcile = (previous: unknown, live: unknown, raw: object, ctx: IReconcil
                 return live;
             }
             if (!Array.isArray(previous) || previousPrototype !== livePrototype) {
-                return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass);
+                return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing);
             }
             return reconcileArray(previous, live, raw, ctx);
         }
@@ -126,7 +134,7 @@ const reconcile = (previous: unknown, live: unknown, raw: object, ctx: IReconcil
         if (isPlainObject(live) && isPlainObject(previous) && previousPrototype === livePrototype) {
             return reconcileKeyed(previous as Record<string, unknown>, live, raw, ctx);
         }
-        return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass);
+        return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing);
     } finally {
         ctx.open.delete(raw);
     }
@@ -174,18 +182,34 @@ const reconcileKeyed = (
         const found = mismatched ? lookup(key) : {present: true, value: previous[key]};
         if (!found.present) {
             changed = true;
-            assign(ensure(), key, detachOpaqueInto(childLive, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass));
+            assign(ensure(), key, detachOpaqueInto(childLive, ctx.copies,
+                ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing));
             continue;
         }
         if (childLive !== null && typeof childLive === 'object') ensure();
         const childRaw = rawOf(childLive);
         const cycleBefore = ctx.cycleCount;
         const childResult = reconcile(found.value, childLive, childRaw, ctx);
-        if (ctx.cycleCount !== cycleBefore) cycleEntries.push({key, value: found.value, raw: childRaw});
-        if (childResult !== found.value || isClassInstance(childLive)) {
+        const cycled = ctx.cycleCount !== cycleBefore;
+        if (cycled) cycleEntries.push({key, value: found.value, raw: childRaw});
+        if (cycled && childResult !== found.value && childResult === result) {
+            // A back edge to this very in-progress copy is not a change by itself: an otherwise
+            // unchanged cyclic tree must still reuse the previous snapshot. The equality above
+            // also proves `result` is the defined copy to write into.
+            const copy = result;
+            if (copy !== undefined) assign(copy, key, childResult);
+        } else if (childResult !== found.value || isClassInstance(childLive)) {
             changed = true;
             assign(ensure(), key, childResult);
         } else if (result !== undefined) assign(result, key, childResult);
+    }
+    for (let index = 0; index < cycleEntries.length; index++) {
+        const entry = cycleEntries[index];
+        const fixed = ctx.copies.get(entry.raw);
+        if (fixed !== undefined && fixed !== entry.value) {
+            assign(result !== undefined ? result : ensure(), entry.key, fixed);
+            if (entry.raw !== raw) changed = true;
+        }
     }
     if (!changed) {
         register(ctx, live, raw, previous);
@@ -193,20 +217,25 @@ const reconcileKeyed = (
     }
     ensure();
     if (mismatched && result !== undefined) {
-        const prototype = Object.getPrototypeOf(live);
-        const ordered: Record<string, unknown> = prototype === Object.prototype ? {} : Object.create(prototype);
+        // R37: the copy is already registered under its raw, and a detached subtree of this same
+        // walk (an introduced back edge) may hold the registered object. Keep one identity: drop
+        // vanished keys and move each fresh key into place instead of building a second object
+        // the back edge would miss.
+        const fresh = new Set<string>(freshKeys);
+        for (const key of Object.keys(result)) {
+            if (!fresh.has(key)) delete result[key];
+        }
         for (let index = 0; index < freshKeys.length; index++) {
             const key = freshKeys[index];
-            if (Object.prototype.hasOwnProperty.call(result, key)) assign(ordered, key, result[key]);
+            // An own `__proto__` data key participates in the fresh order too: the own property
+            // shadows the prototype accessor, so read it, delete it, and re-install it in place.
+            if (!Object.prototype.hasOwnProperty.call(result, key)) continue;
+            const value = result[key];
+            delete result[key];
+            assign(result, key, value);
         }
-        result = ordered;
     }
     register(ctx, live, raw, result);
-    for (let index = 0; index < cycleEntries.length; index++) {
-        const entry = cycleEntries[index];
-        const fixed = ctx.copies.get(entry.raw);
-        if (fixed !== undefined && fixed !== entry.value) assign(result as Record<string, unknown>, entry.key, fixed);
-    }
     return result as Record<string, unknown>;
 };
 
@@ -252,7 +281,7 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
         const own = childLive !== null && typeof childLive === 'object'
             ? ctx.previousCopies?.get(rawOf(childLive)) : undefined;
         return own === undefined
-            ? detachOpaqueInto(childLive, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass)
+            ? detachOpaqueInto(childLive, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing)
             : reconcile(own, childLive, rawOf(childLive), ctx);
     };
     const ensure = (): unknown[] => {
@@ -293,8 +322,9 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
     }
     if (densePrefix >= live.length) {
         if (changed) {
-            ensure(); remapArrayCycles(ctx, result, cycleEntries); register(ctx, live, raw, result); return result;
+            ensure(); remapArrayCycles(ctx, raw, result, cycleEntries); register(ctx, live, raw, result); return result;
         }
+        if (remapArrayCycles(ctx, raw, result, cycleEntries)) { register(ctx, live, raw, result); return result; }
         register(ctx, live, raw, previous); return previous;
     }
     if (changed && result === undefined) ensure();
@@ -348,21 +378,29 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
             freshIndex++;
         }
     }
-    if (!changed) { register(ctx, live, raw, previous); return previous; }
-    ensure(); remapArrayCycles(ctx, result, cycleEntries); register(ctx, live, raw, result); return result;
+    if (!changed) {
+        if (remapArrayCycles(ctx, raw, result, cycleEntries)) { register(ctx, live, raw, result); return result; }
+        register(ctx, live, raw, previous); return previous;
+    }
+    ensure(); remapArrayCycles(ctx, raw, result, cycleEntries); register(ctx, live, raw, result); return result;
 };
 
 /** Points array cycle back edges at their changed ancestor copy. */
 const remapArrayCycles = (
-    ctx: IReconcileContext, result: unknown[] | undefined,
+    ctx: IReconcileContext, raw: object, result: unknown[] | undefined,
     cycleEntries: Array<{index: number; value: unknown; raw: object}>
-): void => {
-    if (result === undefined) return;
+): boolean => {
+    if (result === undefined) return false;
+    let remappedChanged = false;
     for (let index = 0; index < cycleEntries.length; index++) {
         const entry = cycleEntries[index];
         const fixed = ctx.copies.get(entry.raw);
-        if (fixed !== undefined && fixed !== entry.value) result[entry.index] = fixed;
+        if (fixed !== undefined && fixed !== entry.value) {
+            result[entry.index] = fixed;
+            if (entry.raw !== raw) remappedChanged = true;
+        }
     }
+    return remappedChanged;
 };
 
 /** True for canonical integer array-index property names. */
@@ -382,6 +420,7 @@ const isArrayIndex = (key: PropertyKey): key is string => {
  * @param previousCopies - Prior reconciliation copy ledger.
  * @param copies - Current reconciliation copy ledger.
  * @param trace - Receives `shared`: a raw object reached twice or a cycle, so the snapshot is not a tree.
+ * The verdict describes the actual detached graph, including the initial-detach path (R37-01).
  */
 export const reconcileSelection = <T>(
     previous: unknown,
@@ -392,6 +431,14 @@ export const reconcileSelection = <T>(
     copies?: WeakMap<object, unknown>,
     trace?: {shared: boolean}
 ): T => {
+    // R37-05: a primitive verdict needs no graph ledgers — decide it before any collection
+    // is allocated. Matches `reconcile`'s own non-object branch exactly (`Object.is`).
+    if (live === null || typeof live !== 'object') {
+        if (trace !== undefined) trace.shared = false;
+        return (Object.is(previous, live) ? previous : live) as T;
+    }
+    // A previous primitive under a live object is handled inside `reconcile` (opaque detach);
+    // everything object-shaped still gets the full topology treatment below.
     copies ??= new WeakMap<object, unknown>();
     const ctx = {
         copies, previousCopies, previousToFresh: new WeakMap<object, object>(),
@@ -400,6 +447,9 @@ export const reconcileSelection = <T>(
         reconcile,
         rawOf, register, isClassInstance, isMatchableKey,
     } as IReconcileContext;
+    ctx.onSharing = () => {
+        ctx.shared = true;
+    };
     const result = reconcile(previous, live, rawOf(live), ctx) as T;
     if (trace !== undefined) trace.shared = ctx.shared;
     return result;

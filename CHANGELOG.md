@@ -921,6 +921,33 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   probe's error is now kept and attached as the `cause` of that boundary error instead of
   discarded, while a resolver that is legitimately not ready yet still declares exactly as before.
 
+- Incremental selection snapshots (R37-01) no longer break native/plain alias topology: the initial
+  detach now reports graph sharing into the reconcile's `shared` verdict through an `onSharing`
+  callback (`detachCore`, collection reconcilers), so `useCarburetorValue`'s patchable flag always
+  reflects the latest full walk, and `patchSelection` sends any container-valued changed leaf to the
+  full reconcile instead of trusting a single subtree's ledger. Primitive leaf writes keep the
+  tree-only fast path.
+- A throwing patch observer no longer truncates the detailed patch batch during state installation
+  (R37-02): delivery goes through the existing `deliverPatches` helper, so every already-applied patch
+  is delivered and only the first error is rethrown — undo/redo restore all changed fields even when
+  one observer throws.
+- Patched read sets no longer grow with schema history (R37-03): with the R37-01 container-leaf
+  fallback, a type-changing subtree replacement takes the full reconcile, which refiles the read set
+  from scratch instead of unioning every descendant ever seen. No pruning policy was added; completed
+  and deliberately extendable computed reads are untouched. Pinned by a regression test and a gate.
+- The absolute 64-path cap in the selection patch planner is gone (R37-04): the patch/full decision
+  is now relative — estimated work (path segments plus spine nodes) against the previous snapshot's
+  shallow size (with a floor of 16) — so a 65-leaf batch on a large list patches like a 64-leaf one
+  and a genuinely dense batch honestly takes the full walk.
+- A primitive selection wake no longer allocates graph ledgers (R37-05): the `Object.is` verdict is
+  decided in `reconcileSelection` before any WeakMap/WeakSet is created, and the hook/watch copy
+  ledgers are allocated lazily, only for object-shaped selections.
+- An equal-valued conditional branch switch no longer renders a `connectSelection` owner just to move
+  its read set (R37-06): the connection migrates read ownership at notification time via
+  `migrateConnectionReads` (re-registering the subscription and refreshing the baseline), the way
+  `watch` already re-files on an equal-value wake. A source swap, a render in flight, or a selector
+  throw still takes the plain re-render.
+
 ### Removed
 
 - The global `componentUpdateThrottle` singleton, superseded by per-carburetor schedulers.

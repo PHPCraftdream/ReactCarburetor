@@ -242,8 +242,10 @@ conservatively changed, as do class instances — including Map, Set and Date su
 The selector runs on every render — that is what keeps the owner's subscription fresh — while
 the snapshot object itself is reused until the content actually changes. A write to what it read
 runs the selector again at notification time, against the committed props and state, and the owner
-re-renders only if the snapshot or the read set moved: a row asking `selectedId === this.props.id`
-re-renders when its own answer flips, not when the shared selection moves. When it does change, only
+re-renders only when the snapshot moved. An equal-valued branch switch, such as selecting `left`
+instead of an equal `right`, re-files the moved read set at notification time without a render.
+Writes to the old branch stay quiet; a value change on the new branch wakes the owner.
+When the snapshot does change, only
 the changed spine is copied: unchanged nested objects and arrays keep the references they had, so a
 `React.memo` row handed one of them re-renders only if its own content changed. Members are
 matched by their own object where the owner keeps the previous pass (`useCarburetorValue`, `watch`,

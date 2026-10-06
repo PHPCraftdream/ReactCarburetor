@@ -4,6 +4,7 @@ import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeRea
 import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
 import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
 import {
@@ -210,6 +211,39 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         } else {
             slot.committed = this.buildDescription(entry);
         }
+    }
+
+    /**
+     * Migrates closed reads for an equal snapshot without rendering (R37-06).
+     * The notify pass's generation guard prevents redelivery of the current write.
+     *
+     * @param connection - the selection connection being migrated
+     * @param reads - the closed read set the notification-time selector run collected
+     * @param version - the source version the equal snapshot was verified at
+     */
+    protected migrateConnectionReads(connection: IConnection, reads: TCompletedReads, version: number): void {
+        const committed = connection.committed;
+
+        if (!committed) {
+            return;
+        }
+
+        if (connection.installed && connection.installed.carburetor !== committed.carburetor) {
+            connection.installed.carburetor.unsubscribe(connection.uid);
+            connection.installed = undefined;
+        }
+
+        if (connection.installed === undefined || !sameReads(connection.installed.reads, reads)) {
+            committed.carburetor.subscribe(
+                connection.wake ?? this.onCarburetorUpdate, transferCompletedReads(reads, connection.uid)
+            );
+            connection.installed = {carburetor: committed.carburetor, reads};
+        } else if (connection.installed.reads !== reads) {
+            reads = connection.installed.reads as TCompletedReads;
+        }
+
+        committed.reads = reads;
+        committed.baselineVersion = version;
     }
 
     /**

@@ -344,3 +344,60 @@ API-review conclusion: новый public knob не нужен ни для одн
 
 Отчёт фиксирует observed defects/costs, не выполненную реализацию. Все throwaway probes и собственная
 browser поверхность удалены/закрыты после получения evidence. Коммит включает только этот файл; push не запрошен.
+
+## Резолюция раунда 37 — 2026-10-06
+
+Все шесть исправлений проверены независимыми consumers собранных CJS-production exports,
+ReactDOM/JSDOM и Chromium. Каждый R37 perf-гейт прошёл три запуска; исходные результаты
+ревью выше сохранены отдельно от измерений исправленной реализации.
+
+- **R37-01.** Detach-путь сообщает graph sharing из initial detach: `detachCore.ts`/`reconcileCollections.ts`
+  прокидывают `onSharing` в `ctx.shared`, когда raw-значение достигнуто второй раз (в т.ч. через Map keys,
+  Set members, back edges). `useCarburetorValue` считает patchable = `!trace.shared` от последнего полного
+  reconcile. `patchSelection` для любого container-valued changed leaf бросает fallback к полному reconcile —
+  один локальный ledger не доказывает topology всего snapshot; primitive leaf writes сохраняют tree-only fast path.
+  Fallback консервативный: cross-branch native sharing всегда идёт через whole-selection reconcile.
+- **R37-02.** `installState.ts` доставляет detailed patch batch через существующий `deliverPatches`:
+  доставляются все уже-applied patches, сохраняется и перебрасывается первый error. Бросающий observer
+  больше не обрезает batch, история получает полные endpoints; error-контракт и порядок публикации не изменены.
+- **R37-03.** Bounded read ownership достигается консервативно через R37-01: заменённый container-leaf
+  уходит в full reconcile, который пере-filing read set заново, снимая накопление descendants.
+  Добавлены regression-тесты и гейт; pruning policy не вводилась — completed и extendable computed reads
+  не тронуты.
+- **R37-04.** Абсолютный `PATCH_PATH_LIMIT=64` удалён. `planSelectionPatch` берёт относительный бюджет
+  `max(shallowSize(previous), 16)`; работа оценивается как сегменты + spine nodes; `patchFromWriteLog`
+  передаёт `fullCost` из snapshot. Плотные batch честно выбирают full walk — cliff не переносится, а исчезает.
+- **R37-05.** В `reconcileSelection` primitive verdict (`Object.is`) выносится до любого выделения
+  WeakMap/WeakSet; копия-леджеры в `useCarburetorValue`/`watchSelection` создаются лениво, только для
+  object selections. Измерено: 0 WeakMap и 0 WeakSet constructors на equivalent scalar wake
+  после инициализации draft; object positive control по-прежнему обнаруживает graph ledgers.
+- **R37-06.** `connectSelection` переносит read set равнозначного branch switch на notification time:
+  новый `migrateConnectionReads` (`Subscriptions.tsx`) пере-регистрирует subscription и refreshes baseline
+  без owner render. Source swap, render-in-flight и throw в selector по-прежнему идут через обычный re-render.
+
+### Проверенные результаты
+
+- Native/plain alias сохраняется при initial и introduced sharing после обеих записей: `2/2/true`,
+  затем `3/3/true`. Root backlink и projected `rows.map` доставляют второе изменение; held snapshots
+  сохраняют прежнее содержимое. Own `__proto__` остаётся data property в свежем порядке ключей.
+- Ошибка observer сохраняется при обоих порядках подключения history; undo/redo восстанавливают оба поля.
+  Отдельный history-гейт получает четыре replacement patches до replay, а не сумму replacement/undo/redo.
+- После 64 schema cycles: 128 callbacks, filed read set — 23 пути. После 65 фактических изменений
+  в списке из 4000 элементов: один callback, 65 обновлённых rows, 131 recorded read.
+- Chromium: hook/class render counts остаются `1/1` после equal branch switch и записи в старую ветку;
+  запись в новую ветку даёт `2/2` и DOM `3`. Native alias DOM — `3/3/true`; browser errors отсутствуют.
+- Focused runtime: 54 tests passed; усиленный replacement/history/transaction replay набор — 10 passed.
+  Rules project: 119 tests passed. `typecheck`, `check:layout`, `build` прошли; lint завершился
+  с 96 warnings без errors.
+- Measured patch paths для 64/65/128 фактических leaf writes: `129/131/257`;
+  dense full-walk positive control — `28007`. Bounded reads для 16/64 cycles — `23/23`,
+  genuinely growing shape control — `38`; object allocation control — `3 WeakMap / 1 WeakSet`.
+- Все шесть R37 mechanism gates и четыре существующих selection36 gates прошли по три запуска.
+  Gate registry lint прошёл без нарушений.
+- Packed consumer matrix: 16 passed, 0 skipped, 0 failed — React 18/19 × npm/pnpm × ESM/CJS,
+  cross-format selection и Next.js 16.3.5 с Turbopack/Webpack.
+- Полный regression-прогон: 192 test files, 1832 passed; два native conformance случая сначала
+  упали из-за отсутствовавшего worktree `native/target/release/carburetor-lint.exe`.
+  После подключения существующего native build оба случая прошли: 2 passed, 0 failed.
+  Итого все 1834 теста исполнены успешно; это полный прогон плюс целевой повтор двух исправленных failures,
+  не заявление об одном полностью зелёном запуске.

@@ -4,6 +4,7 @@ import {
 } from '@/Carburetor/Models/Paths';
 import {IStateInstallPort} from '@/Carburetor/Store/Transaction/Models';
 import {diffPaths} from '@/Carburetor/Store/Paths/Diff/diffPaths';
+import {deliverPatches} from '@/Carburetor/Store/Tracking/Proxy/deliverPatches';
 import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
 import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
 import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
@@ -91,8 +92,12 @@ export const installState = <T extends object>(
         try {
             const listener = store.patchPort.listener;
             if (listener !== undefined) {
-                if (transition.wildcard || collected?.exceeded() || collected?.patches.some(patch => typeof patch === 'symbol')) listener(PATCH_OPAQUE);
-                else for (const patch of collected?.patches ?? []) listener(patch);
+                if (transition.wildcard || collected?.exceeded() || collected?.patches.some(patch => typeof patch === 'symbol')) {
+                    listener(PATCH_OPAQUE);
+                }
+                // R37-02: a throwing observer must not abort the rest of the already-applied
+                // batch; deliverPatches delivers every patch and rethrows only the first error.
+                else deliverPatches(listener, collected?.patches ?? []);
             }
         } catch (error: unknown) {
             if (!failed) {

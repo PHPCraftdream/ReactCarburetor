@@ -334,6 +334,30 @@ describe('reconcileSelection (R34-02 fused reconcile with structural sharing)', 
         expect(Object.getPrototypeOf(reprototyped)).toBe(null);
     });
 
+    test('an own `__proto__` key takes its fresh-order position when a mismatch reorders keys', () => {
+        const defineProto = (keyed: Record<string, unknown>, v: number): void => {
+            Object.defineProperty(keyed, '__proto__',
+                {value: {v}, enumerable: true, writable: true, configurable: true});
+        };
+        // Previous order: x, tail, __proto__. Live order: tail, __proto__, x (with a changed x so
+        // a copy is produced). The key-set order mismatch exercises the reorder block.
+        const previous: Record<string, unknown> = {x: 1, tail: 1};
+        defineProto(previous, 1);
+        const live: Record<string, unknown> = {tail: 1};
+        defineProto(live, 1);
+        live.x = 2;
+
+        const result = reconcileSelection<Record<string, unknown>>(previous, live);
+
+        expect(result).not.toBe(previous);
+        expect(Object.keys(result)).toEqual(['tail', '__proto__', 'x']);
+        expect(Object.getOwnPropertyDescriptor(result, '__proto__')).toBeDefined();
+        expect(ownProtoKey(result)).toEqual({v: 1});
+        expect(Object.getPrototypeOf(result)).toBe(Object.prototype);
+        expect(result.tail).toBe(1);
+        expect(result.x).toBe(2);
+    });
+
     test('pair maps: one previous behind two fresh raws yields distinct result members', () => {
         const x = {v: 1};
         const previous = {a: x, b: x};

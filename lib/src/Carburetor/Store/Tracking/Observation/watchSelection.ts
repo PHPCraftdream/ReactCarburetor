@@ -61,9 +61,13 @@ export const watchSelection = <T, R>(
     const versionOf = (source as {getVersion?: () => number}).getVersion;
     const initial = runSelector(source, select, reads, views);
     let liveSelection: unknown = initial.value;
-    let copies = new WeakMap<object, unknown>();
+    // R37-05: allocated only for an object selection; a primitive verdict needs no ledger.
+    let copies: WeakMap<object, unknown> | undefined;
     let version = versionOf?.call(source);
     const trace = {shared: false};
+    if (initial.value !== null && typeof initial.value === 'object') {
+        copies = new WeakMap<object, unknown>();
+    }
     initial.value = reconcileSelection(
         undefined, initial.value, rejectWatchInstance, undefined, undefined, copies, trace
     );
@@ -78,13 +82,17 @@ export const watchSelection = <T, R>(
         const fresh = runSelector(source, select, reads, views);
         const nowVersion = versionOf?.call(source);
         // R36-01: the same live view as last time, so the write log names what changed.
-        const viaLog = patchable && version !== undefined && fresh.value === liveSelection
+        const viaLog = patchable && version !== undefined && fresh.value === liveSelection && copies !== undefined
             ? patchFromWriteLog(source, version, previous, fresh.value, copies, rejectWatchInstance)
             : undefined;
         let next: R;
         if (viaLog !== undefined) {
             next = viaLog;
             fresh.reads = coverReads(installed, fresh.reads);
+        } else if (fresh.value === null || typeof fresh.value !== 'object') {
+            // R37-05: a primitive selection reconciles with no graph ledgers at all; a primitive
+            // snapshot can never be shared, so patchability stands.
+            next = (Object.is(previous, fresh.value) ? previous : fresh.value) as R;
         } else {
             const nextCopies = new WeakMap<object, unknown>();
             next = reconcileSelection(
