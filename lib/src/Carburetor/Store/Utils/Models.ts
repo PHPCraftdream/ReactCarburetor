@@ -1,3 +1,4 @@
+import {TSubscriber} from '@/Carburetor/Models/Base';
 import {
     IStateInstallation, IWritePatch, TPath, TPathSet,
 } from '@/Carburetor/Models/Paths';
@@ -14,6 +15,9 @@ export const CARBURETOR_EXTEND: unique symbol = Symbol.for('react-carburetor/v1/
 /** Path-precise drift check: whether a write since `baselineVersion` could concern `reads`. */
 export const CARBURETOR_HAS_DRIFT: unique symbol = Symbol.for('react-carburetor/v1/subscription-has-drift');
 
+/** The paths written after a version, or undefined once the write log cannot enumerate them. */
+export const CARBURETOR_PATHS_SINCE: unique symbol = Symbol.for('react-carburetor/v1/store-paths-since');
+
 /** Delivers one notification pass for a closed write set; the batch coordinator's entry point. */
 export const CARBURETOR_NOTIFY_WRITES: unique symbol = Symbol.for('react-carburetor/v1/store-notify-writes');
 
@@ -28,8 +32,15 @@ export interface IInternalSubscriptionProtocol {
     [CARBURETOR_EXTEND]?: (id: string, path: TPath) => void;
     [CARBURETOR_HAS_DRIFT]?: (baselineVersion: number, reads: ReadonlySet<TPath>) => boolean;
     [CARBURETOR_NOTIFY_WRITES]?: (writes: TPathSet) => void;
+    [CARBURETOR_PATHS_SINCE]?: (baselineVersion: number) => ReadonlyArray<TPath> | undefined;
     [CARBURETOR_REPLAY_PATCHES]?: (
         patches: readonly IWritePatch[], inverse: boolean, installation: IStateInstallation
     ) => void;
     [CARBURETOR_SNAPSHOT_VERSION]?: () => number;
+}
+
+/** One registered subscription: its callback, scheduling key and the read set it is filed under. */
+export interface ISubscriberRecord {
+    callback: TSubscriber; schedulerKey: string; generation: number;
+    matchedVersion: number; growthVersion: number; reads: TPathSet;
 }

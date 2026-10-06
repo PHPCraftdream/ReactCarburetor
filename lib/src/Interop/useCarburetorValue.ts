@@ -6,6 +6,7 @@ import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
 import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
+import {patchFromWriteLog} from "@/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog";
 import {completeObservation} from "@/Carburetor/Store/Tracking/Observation/completeObservation";
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
@@ -24,6 +25,9 @@ interface ICacheEntry<T extends object, R> {
     liveSelection: unknown;
     reads: TCompletedReads | undefined;
     filled: boolean;
+    copies: WeakMap<object, unknown>;
+    /** The snapshot mirrors one tree of the store without shared references, so write-log patching is exact. */
+    patchable: boolean;
 }
 
 /** The one live subscription: enough to undo it and to tell a moved read set from a stable one. */
@@ -63,6 +67,17 @@ const resolveView = <T extends object>(
     }
 
     return {carburetor, data, view: carburetor.read(record)};
+};
+
+/** The filed read set when `reads` adds nothing to it, else a new set holding both. */
+const coverReads = (filed: TCompletedReads, reads: TPathSet): TPathSet => {
+    let grown: Set<TPath> | undefined;
+    for (const path of reads) {
+        if (filed.has(path)) continue;
+        grown ??= new Set<TPath>(filed);
+        grown.add(path);
+    }
+    return grown ?? (filed as unknown as TPathSet);
 };
 
 /** Names a class value in the selector error when its class name is available. */
@@ -245,6 +260,9 @@ export const useCarburetorValue = <T extends object, R>(
 
         let result: R;
         let liveSelection: R | undefined;
+        let copies = new WeakMap<object, unknown>();
+        const trace = {shared: false};
+        let patched = false;
 
         // Closed however the walk ends: detach() throws for a class instance by design.
         try {
@@ -259,7 +277,7 @@ export const useCarburetorValue = <T extends object, R>(
 
             if (canReuseInlineSelection) {
                 pendingReads.current = entry.reads!;
-                cache.current = {...entry, select, version, liveSelection};
+                cache.current = {...entry, select, version, liveSelection, copies: entry.copies};
                 return entry.value;
             }
 
@@ -269,10 +287,25 @@ export const useCarburetorValue = <T extends object, R>(
             // subtree at its previous reference. A custom comparator always gets detached values.
             const liveCompare = isEqual === sameSelection;
 
-            if (liveCompare) {
+            // R36-01: the same live view as last time, so the write log names what changed and only
+            // those subtrees are reconciled; every other shape takes the full walk below.
+            const viaLog = liveCompare && !noReadDrift && entry !== null && entry.filled && entry.patchable &&
+                sameCarburetor && entry.isEqual === isEqual && fresh === entry.liveSelection
+                ? patchFromWriteLog(carburetor, entry.version, entry.value, fresh, entry.copies, rejectLiveInstance)
+                : undefined;
+
+            if (viaLog !== undefined) {
+                result = viaLog;
+                copies = entry!.copies;
+                patched = true;
+            } else if (liveCompare) {
                 result = entry !== null && entry.filled
-                    ? (reconcileSelection(entry.value, fresh, rejectLiveInstance) as R)
-                    : detach(fresh);
+                    ? (reconcileSelection(
+                        entry.value, fresh, rejectLiveInstance, undefined, entry.copies, copies, trace
+                    ) as R)
+                    : (reconcileSelection(
+                        undefined, fresh, rejectLiveInstance, undefined, undefined, copies, trace
+                    ) as R);
             } else {
                 const candidate: R = detach(fresh);
 
@@ -284,11 +317,15 @@ export const useCarburetorValue = <T extends object, R>(
             currentReads.current = undefined;
         }
 
+        // A patched pass keeps the filed read set by identity unless the patch read a path it lacks
+        // (a branch replaced by new leaves): then the set grows, and the subscription re-files.
+        // Paths of branches the patch replaced stay in the set; a superset only wakes more.
+        const patchedReads = patched ? coverReads(entry!.reads!, reads) : reads;
         const completed = completeObservation({
-            carburetor, select, isEqual, version, value: result, reads, filled: true,
+            carburetor, select, isEqual, version, value: result, reads: patchedReads, filled: true,
         });
         pendingReads.current = completed.reads;
-        cache.current = {...completed, liveSelection};
+        cache.current = {...completed, liveSelection, copies, patchable: patched || !trace.shared};
 
         return result;
     }, [carburetor, select, isEqual, recordRead]);

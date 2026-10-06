@@ -1,5 +1,5 @@
 import {Carburetor} from '@/Carburetor';
-import {DIFF_PATH_THRESHOLD} from '@/Carburetor/Store/Paths/Diff/DiffThreshold';
+import {DIFF_PATH_THRESHOLD} from '@/Carburetor/Store/Paths/Diff/Threshold/DIFF_PATH_THRESHOLD';
 import {IProxyCache, PROXY_CACHE} from '@/Carburetor/Store/Tracking/Models';
 
 interface IRowsData {

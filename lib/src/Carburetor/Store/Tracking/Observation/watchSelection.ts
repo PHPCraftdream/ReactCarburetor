@@ -6,13 +6,13 @@ import {transferCompletedReads} from '@/Carburetor/Store/Tracking/Observation/tr
 import {sameReads} from '@/Carburetor/Store/Tracking/Observation/sameReads';
 import {TCompletedReads} from '@/Carburetor/Store/Tracking/Observation/Models';
 import {PersistentViews} from '@/Carburetor/Store/Tracking/Observation/PersistentViewCache';
-import {detachWatchSelection} from '@/Carburetor/Store/Utils/Selection/detachWatchSelection';
 import {reconcileSelection} from '@/Carburetor/Store/Utils/Selection/reconcileSelection';
+import {patchFromWriteLog} from '@/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog';
 import {getUid} from '@/Carburetor/Store/Utils/getUid';
 
 type TPathRecorder = (path: TPath) => void;
 
-/** Same policy as detachWatchSelection, reused by the fused reconcile on changed branches. */
+/** The watch policy for a live class instance met by the fused reconcile. */
 const rejectWatchInstance = (instance: object): never => {
     throw new Error(
         'watch() cannot select a live ' +
@@ -34,6 +34,17 @@ const runSelector = <T, R>(
     return {value: select(view), reads: reads.current};
 };
 
+/** The filed read set when `reads` adds nothing to it, else a new set holding both. */
+const coverReads = (filed: TCompletedReads, reads: TPathSet): TPathSet => {
+    let grown: Set<TPath> | undefined;
+    for (const path of reads) {
+        if (filed.has(path)) continue;
+        grown ??= new Set<TPath>(filed);
+        grown.add(path);
+    }
+    return grown ?? (filed as unknown as TPathSet);
+};
+
 /** A watch's read set follows the selector even when its selected value stays unchanged.
  *
  * @param source - the tracked read and subscription source.
@@ -47,8 +58,16 @@ export const watchSelection = <T, R>(
     const id = getUid();
     const views = new PersistentViews();
     const reads: {current: TPathSet} = {current: new Set<TPath>()};
+    const versionOf = (source as {getVersion?: () => number}).getVersion;
     const initial = runSelector(source, select, reads, views);
-    initial.value = detachWatchSelection(initial.value);
+    let liveSelection: unknown = initial.value;
+    let copies = new WeakMap<object, unknown>();
+    let version = versionOf?.call(source);
+    const trace = {shared: false};
+    initial.value = reconcileSelection(
+        undefined, initial.value, rejectWatchInstance, undefined, undefined, copies, trace
+    );
+    let patchable = !trace.shared;
     const completedInitial = completeObservation(initial);
     let previous: R = completedInitial.value;
     let installed: TCompletedReads = transferCompletedReads(
@@ -57,7 +76,25 @@ export const watchSelection = <T, R>(
 
     const callback = (): void => {
         const fresh = runSelector(source, select, reads, views);
-        const next = reconcileSelection(previous, fresh.value, rejectWatchInstance) as R;
+        const nowVersion = versionOf?.call(source);
+        // R36-01: the same live view as last time, so the write log names what changed.
+        const viaLog = patchable && version !== undefined && fresh.value === liveSelection
+            ? patchFromWriteLog(source, version, previous, fresh.value, copies, rejectWatchInstance)
+            : undefined;
+        let next: R;
+        if (viaLog !== undefined) {
+            next = viaLog;
+            fresh.reads = coverReads(installed, fresh.reads);
+        } else {
+            const nextCopies = new WeakMap<object, unknown>();
+            next = reconcileSelection(
+                previous, fresh.value, rejectWatchInstance, undefined, copies, nextCopies, trace
+            ) as R;
+            copies = nextCopies;
+            patchable = !trace.shared;
+        }
+        liveSelection = fresh.value;
+        version = nowVersion;
         const changed = next !== previous;
         const last = previous;
         if (changed) previous = next;

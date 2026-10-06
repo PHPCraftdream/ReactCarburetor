@@ -2,6 +2,8 @@
 
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {TPath} from "@/Carburetor/Models/Paths";
+import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
+import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {IComputed} from "@/Carburetor/Models/Derived";
 import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
@@ -19,8 +21,8 @@ import {
 import {buildTrackedView} from "@/Carburetor/Component/AntiHookComponent/buildTrackedView";
 import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersistentView";
 import {declareConnection} from "@/Carburetor/Component/Connection/declareConnection";
-import {detachSelection} from "@/Carburetor/Component/Connection/detachSelection";
 import {reportLiveViewEscape} from "@/Carburetor/Component/Connection/reportLiveViewEscape";
+import {reuseSelection} from "@/Carburetor/Store/Utils/Selection/Patch/reuseSelection";
 import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
 import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
 import {AntiHookComponentFoundation} from "./Foundation";
@@ -164,21 +166,91 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
 
         let snapshot: {value: R} | undefined = undefined;
         let escapeReported = false;
+        // What the snapshot mirrors, for R36-01's reuse: the live result, its ledger, and whether it is a tree.
+        let live: unknown = undefined;
+        let ledger = new WeakMap<object, unknown>();
+        let patchable = false;
+
+        // R36-02: a write to a path the selection read wakes this connection, not the owner. The
+        // selector re-runs here, outside any render attempt, against the committed props and state;
+        // the owner re-renders only when the snapshot or the read set would move. Anything else
+        // (a render in flight, a throw, no committed description) takes the plain re-render.
+        const connection = declared.connection;
+        const selectionUnchanged = (): boolean => {
+            const committed = connection.committed;
+
+            if (snapshot === undefined || committed === undefined || this.renderAttempt !== undefined) {
+                return false;
+            }
+
+            const version = committed.carburetor.getVersion();
+            const scratch = new Set<TPath>();
+            let unchanged = false;
+
+            declared.scratch = scratch;
+
+            try {
+                const next = select(view);
+
+                // The same live view with a write under it has changed: no walk needed to say so.
+                unchanged = !(next === live && next !== null && typeof next === 'object') &&
+                    reconcileSelection(snapshot.value, next, undefined, rejectArraySubclass) === snapshot.value;
+            } catch {
+                unchanged = false;
+            } finally {
+                declared.scratch = undefined;
+            }
+
+            if (!unchanged || !sameReads(committed.reads, completeReads(scratch))) {
+                return false;
+            }
+
+            // Verified at `version`: the next commit's drift check starts from here.
+            committed.baselineVersion = version;
+
+            return true;
+        };
+
+        connection.wake = (): void => {
+            if (!selectionUnchanged()) {
+                this.forceUpdate();
+            }
+        };
 
         return (): R => {
             const next: R = select(view);
 
+            const previous = snapshot === undefined ? undefined : snapshot.value;
+
+            // R36-01: the same live view as last render: no related write keeps the snapshot as is,
+            // a related one is patched from the write log, and the filed read set is adopted.
+            if (previous !== undefined && next === live && next !== null && typeof next === 'object') {
+                const reused = reuseSelection(connection, previous, next, ledger, patchable);
+
+                if (reused !== undefined) {
+                    snapshot = {value: reused};
+
+                    return reused;
+                }
+            }
+
+            // The development escape search walks the selection, so a reused snapshot skips it.
             if (IS_DEVELOPMENT && !escapeReported) {
                 escapeReported = reportLiveViewEscape(next);
             }
 
-            const previous = snapshot === undefined ? undefined : snapshot.value;
+            const trace = {shared: false};
+            const nextLedger = new WeakMap<object, unknown>();
 
             snapshot = {
-                value: (previous === undefined
-                    ? detachSelection(next)
-                    : reconcileSelection(previous, next, undefined, rejectArraySubclass)) as R,
+                value: reconcileSelection(
+                    previous, next, undefined, rejectArraySubclass, previous === undefined ? undefined : ledger,
+                    nextLedger, trace
+                ) as R,
             };
+            live = next;
+            ledger = nextLedger;
+            patchable = !trace.shared;
 
             return snapshot.value;
         };

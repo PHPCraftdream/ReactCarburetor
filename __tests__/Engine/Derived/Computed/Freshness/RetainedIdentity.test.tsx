@@ -82,9 +82,9 @@ describe('retained recompute identity (R34)', () => {
         const before = store.matchesCalls;
         store.update(d => { d.noise++; });
         expect(share.get()).toBe(6);
-        // The direct noise read is genuinely concerned: exactly one precise consultation,
-        // answered by the write log itself.
-        expect(store.matchesCalls).toBe(before + 1);
+        // The direct noise read is genuinely concerned: the filed record answers true from its
+        // notification match, with no write-log consultation (R36-03).
+        expect(store.matchesCalls).toBe(before);
         // THE COUNTER ASSERTION: the retained per-constituent inner set must answer its part
         // without ever falling back to the write log.
         expect(store.innerSetCalls).toBe(0);

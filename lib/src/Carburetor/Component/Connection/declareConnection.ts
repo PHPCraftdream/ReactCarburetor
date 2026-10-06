@@ -23,6 +23,8 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
     /** The read recorder every read through the persistent view reports to; bound once. */
     public readonly recorder: TPathRecorder;
 
+    /** Reads record here instead of into an attempt while a notification-time run owns the view. */
+    public scratch: Set<TPath> | undefined = undefined;
     /** Whether the facade is array-shaped; set once by buildPersistentView's shape probe. */
     public arrayFacade = false;
     /** The shape probe's own error, when it threw; kept as a later kind-mismatch's cause. */
@@ -111,6 +113,12 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
      * @param path - the path a read through the persistent view touched
      */
     private recordPath(path: TPath): void {
+        if (this.scratch !== undefined) {
+            this.scratch.add(path);
+
+            return;
+        }
+
         const attempt = this.getAttempt();
 
         if (!attempt) {
@@ -138,6 +146,11 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
             }
 
             attempt.connections.push(connection);
+        }
+
+        if (entry.sharedReads === true && !entry.reads.has(path)) {
+            entry.reads = new Set<TPath>(entry.reads);
+            entry.sharedReads = false;
         }
 
         entry.reads.add(path);

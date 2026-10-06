@@ -40,13 +40,23 @@ export const shallowEqual = (left: unknown, right: unknown): boolean => {
 
     const leftRecord = left as Record<string, unknown>;
     const rightRecord = right as Record<string, unknown>;
-    const leftKeys = Object.keys(leftRecord);
+    let leftKeyCount = 0;
+    let rightKeyCount = 0;
 
-    if (leftKeys.length !== Object.keys(rightRecord).length) {
-        return false;
+    for (const key in leftRecord) {
+        if (Object.prototype.hasOwnProperty.call(leftRecord, key)) {
+            leftKeyCount++;
+            if (!(key in rightRecord) || !Object.is(leftRecord[key], rightRecord[key])) {
+                return false;
+            }
+        }
     }
 
-    return leftKeys.every((key: string) => {
-        return key in rightRecord && Object.is(leftRecord[key], rightRecord[key]);
-    });
+    for (const key in rightRecord) {
+        if (Object.prototype.hasOwnProperty.call(rightRecord, key)) {
+            rightKeyCount++;
+        }
+    }
+
+    return leftKeyCount === rightKeyCount;
 };

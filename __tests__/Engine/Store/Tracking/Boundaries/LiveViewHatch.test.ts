@@ -1,6 +1,6 @@
 import {Carburetor} from '@/Carburetor';
 import {TPath} from '@/Carburetor/Models/Paths';
-import {IProxyCache, PROXY_CACHE, RAW_TARGET} from '@/Carburetor/Store/Tracking/Models';
+import {IProxyCache, PROXY_CACHE, RAW_TARGET, VIEW_PATH} from '@/Carburetor/Store/Tracking/Models';
 import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
 
 interface IRow {
@@ -98,5 +98,23 @@ describe('liveViews RAW_TARGET hatch', () => {
 
         expect(liveViews.readTarget(hostile)).toBeUndefined();
         expect(liveViews.has(hostile)).toBe(false);
+    });
+});
+
+describe('VIEW_PATH hatch (R36-01)', () => {
+    test('a read view answers with its own path and records no read', () => {
+        const store = new Carburetor({items: [{title: 'a'}]});
+        const reads = new Set<TPath>();
+        const view = store.read((path: TPath) => reads.add(path));
+        const items = view.items;
+        const before = new Set(reads);
+
+        expect((items as unknown as {[VIEW_PATH]: string})[VIEW_PATH]).toBe('items');
+        expect((view as unknown as {[VIEW_PATH]: string})[VIEW_PATH]).toBe('');
+        expect(reads).toEqual(before);
+    });
+
+    test('a plain object answers nothing', () => {
+        expect(({a: 1} as unknown as {[VIEW_PATH]?: string})[VIEW_PATH]).toBeUndefined();
     });
 });

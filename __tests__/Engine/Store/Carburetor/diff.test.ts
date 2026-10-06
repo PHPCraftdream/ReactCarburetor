@@ -101,7 +101,7 @@ describe('setData (R16-02)', () => {
         expect(calls).toEqual(1);
     });
 
-    test('past DIFF_PATH_THRESHOLD differing leaves, the write falls back to the wildcard', () => {
+    test('past DIFF_PATH_THRESHOLD differing leaves, the write records precise root keys', () => {
         const makeBig = (offset: number): Record<string, number> => {
             const result: Record<string, number> = {};
 
@@ -118,9 +118,8 @@ describe('setData (R16-02)', () => {
         carburetor.subscribe(() => unrelatedWakes++, {id: 'unrelated', reads: readsOf('never-written')});
         carburetor.setData(makeBig(1));
 
-        // Every one of 2500 keys differs: the threshold gives up on individual leaves and
-        // wildcards, which is the only way an unrelated reader would be woken here.
-        expect(unrelatedWakes).toEqual(1);
+        // Every root key differs: fallback remains precise at the same-kind root's top-level keys.
+        expect(unrelatedWakes).toEqual(0);
     });
 });
 

@@ -258,7 +258,9 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         if (slot.installed === undefined || !sameReads(slot.installed.reads, committed.reads)) {
             // Reuses the slot's id and transfers the attempt's now-closed Set directly into the
             // subscriber index; the selection/comparison/detachment work finished before render closed.
-            committed.carburetor.subscribe(this.onCarburetorUpdate, transferCompletedReads(committed.reads, uid));
+            committed.carburetor.subscribe(
+                slot.wake ?? this.onCarburetorUpdate, transferCompletedReads(committed.reads, uid)
+            );
             slot.installed = {carburetor: committed.carburetor, reads: committed.reads};
         } else if (slot.installed.reads !== committed.reads) {
             // Adopt the filed set: the drift answer below is O(1) only for that identity.

@@ -9,6 +9,31 @@ import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
 import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
 import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
 
+/** Maximum detailed history patches retained for one public replacement. */
+const PATCH_HISTORY_CAP = 1_000;
+
+type Patch = Parameters<NonNullable<IStateInstallPort<object>['patchPort']['listener']>>[0];
+
+const createPatchCollector = (): {
+    patches: Patch[];
+    exceeded: () => boolean;
+} => {
+    const patches: Patch[] = [];
+    let exceeded = false;
+    const push = patches.push.bind(patches);
+    patches.push = (...items) => {
+        if (exceeded) return patches.length;
+        if (patches.length + items.length > PATCH_HISTORY_CAP) {
+            exceeded = true;
+            patches.length = 0;
+            push(PATCH_OPAQUE);
+            return patches.length;
+        }
+        return push(...items);
+    };
+    return {patches, exceeded: () => exceeded};
+};
+
 /** Installs a prepared root, closes its metadata, and publishes even when delivery fails.
  *
  * @param receiver - the typed install port over the store's protected transition state
@@ -34,7 +59,8 @@ export const installState = <T extends object>(
         liveViews.normalizeAssigned(root, previous);
     }
     store.aliases?.checkState(root, '', previous);
-    const changed = diffPaths(previous, root);
+    const collected = store.patchPort.listener === undefined ? undefined : createPatchCollector();
+    const changed = diffPaths(previous, root, '', [], collected?.patches);
     if (isTrackable(previous)) nativeAliasIndex.invalidate(previous);
     if (isTrackable(root)) nativeAliasIndex.invalidate(root);
     store.data = root;
@@ -63,7 +89,11 @@ export const installState = <T extends object>(
     }
     if (changed.size > 0 || transition.wildcard) {
         try {
-            store.patchPort.listener?.(PATCH_OPAQUE);
+            const listener = store.patchPort.listener;
+            if (listener !== undefined) {
+                if (transition.wildcard || collected?.exceeded() || collected?.patches.some(patch => typeof patch === 'symbol')) listener(PATCH_OPAQUE);
+                else for (const patch of collected?.patches ?? []) listener(patch);
+            }
         } catch (error: unknown) {
             if (!failed) {
                 failed = true;

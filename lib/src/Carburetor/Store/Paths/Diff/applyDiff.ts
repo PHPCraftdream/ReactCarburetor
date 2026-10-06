@@ -1,26 +1,66 @@
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
-import {DIFF_PATH_THRESHOLD} from "./DiffThreshold";
+import {DIFF_PATH_THRESHOLD} from "./Threshold/DIFF_PATH_THRESHOLD";
+import {shouldCollapseDiff} from "./Threshold/shouldCollapseDiff";
 import {scanBranch} from "./Order/scanBranch";
-import {sameKind} from "./sameKind";
-
-/** Unwinds the walk once the threshold trips; caught inside applyDiff, never escapes it. */
-class ApplyDiffOverflow extends Error {}
+import {sameKind} from "./Kinds/sameKind";
 
 const hasOwn = Object.prototype.hasOwnProperty;
 
+class ApplyDiffOverflow extends Error {}
 /** How many draft writes this call has made so far; threaded through, not module state. */
 interface IBudget {
     spent: number;
     unchanged: Map<object, object>;
 }
 
+/** Counts differing leaves, stopping once `stopAfter` is passed (the count is then only a lower bound). */
+const countChanges = (previous: unknown, next: unknown, stopAfter: number): number => {
+    if (Object.is(previous, next)) return 0;
+    if (!isTrackable(previous) || !isTrackable(next) || !sameKind(previous, next)) return 1;
+    let count = 0;
+    if (Array.isArray(previous)) {
+        const oldArray = previous as unknown[];
+        const newArray = next as unknown[];
+        for (let index = 0; index < Math.max(oldArray.length, newArray.length); index++) {
+            const oldOwn = hasOwn.call(oldArray, index);
+            const newOwn = hasOwn.call(newArray, index);
+            if (oldOwn === newOwn && Object.is(oldArray[index], newArray[index])) continue;
+            count += oldOwn && newOwn ? countChanges(oldArray[index], newArray[index], stopAfter - count) : 1;
+            if (count > stopAfter) return count;
+        }
+        return count;
+    }
+    const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+    for (const key of keys) {
+        if (!hasOwn.call(previous, key) || !hasOwn.call(next, key)) { count++; continue; }
+        count += countChanges(
+            (previous as Record<string, unknown>)[key], (next as Record<string, unknown>)[key], stopAfter - count
+        );
+        if (count > stopAfter) return count;
+    }
+    return count;
+};
+
+const countLeaves = (value: unknown): number => {
+    if (!isTrackable(value)) return 1;
+    let count = 0;
+    if (Array.isArray(value)) {
+        for (let index = 0; index < value.length; index++) {
+            if (!Object.prototype.hasOwnProperty.call(value, index)) continue;
+            const child = value[index];
+            count += isTrackable(child) ? countLeaves(child) : 1;
+        }
+        return count || 1;
+    }
+    for (const key of Object.keys(value)) {
+        const child = (value as Record<string, unknown>)[key];
+        count += isTrackable(child) ? countLeaves(child) : 1;
+    }
+    return count || 1;
+};
 const spend = (budget: IBudget): void => {
     budget.spent++;
-
-    if (budget.spent > DIFF_PATH_THRESHOLD) {
-        throw new ApplyDiffOverflow();
-    }
 };
 
 /**
@@ -194,7 +234,7 @@ const applyBranch = (
  * branches in a draft proxy. Every assigned value is deep-cloned first, so `next`'s own
  * object graph is never adopted into the store. A key order that native deletion/append
  * cannot install is rejected before any draft mutation; `restore` then falls back to an owned
- * root copy. Oversized diffs also return `false` after `DIFF_PATH_THRESHOLD` draft writes,
+ * root copy. Oversized diffs also return `false` when `shouldCollapseDiff` reports collapse,
  * preserving the existing threshold fallback.
  *
  * Caller's responsibility: `previous` and `next` must already share a kind and supported
@@ -210,11 +250,18 @@ export const applyDiff = (
     previous: Record<string, unknown>,
     next: Record<string, unknown>
 ): boolean => {
-    const budget: IBudget = {spent: 0, unchanged: new Map<object, object>()};
-    const scan = scanBranch(previous, next, budget);
+    const scanBudget: IBudget = {spent: 0, unchanged: new Map<object, object>()};
+    const scan = scanBranch(previous, next, scanBudget);
     if (scan === 'blocked') return false;
     if (scan === 'equal') return true;
+    // Only past the floor does the answer depend on the branch's size, so the common restore pays
+    // for the changed region alone.
+    if (countChanges(previous, next, DIFF_PATH_THRESHOLD) > DIFF_PATH_THRESHOLD
+        && shouldCollapseDiff(countChanges(previous, next, Infinity), countLeaves(previous))) return false;
 
+    // No fixed mid-apply cutoff: preflight above decides eligibility atomically. Bound writes by
+    // the relative limit so the draft walk cannot partially mutate and then overflow.
+    const budget: IBudget = {spent: 0, unchanged: scanBudget.unchanged};
     try {
         applyBranch(target, previous, next, budget);
     } catch (error) {

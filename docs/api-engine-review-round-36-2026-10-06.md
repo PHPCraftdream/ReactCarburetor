@@ -486,3 +486,31 @@ Every recipe runs against `dist/esm-prod` with `NODE_ENV=production`, using
 - **R36-07.** `shallowEqual(a, b)` on 10 000 pairs of `{id, store, index}` against an allocation-free loop.
 - **R36-08.** The README's `activeCount`. Count body runs after `d.items.a1.title = …` and after
   `d.items.a1.done = true`.
+
+## Resolution
+
+All eight findings are implemented in the working tree (not committed). Each has a gate in `perf/`
+(`drift36`, `replace36`, `selection36`) that fails on the build before R36 by its mechanism and passes
+on the current one, and tests that fail without the change. Numbers are from the same probes as above, the
+current build against `bf6af47`; timings were taken on a shared machine and are medians of single runs, the
+counters are exact.
+
+| Finding | Done | Before → after |
+|---|---|---|
+| R36-01 | Hook, `watch` and class `connectSelection` patch a live-list selection from the write log (`CARBURETOR_PATHS_SINCE`, `VIEW_PATH` hatch, `Store/Utils/Selection/Patch/`); a class render with the same live view keeps its snapshot and adopts the filed read set. | Hook, one related write at 10k rows: 67 ms → 0.75 ms; at 50k: 412 ms → 0.9 ms (target ≤ 1 / ≤ 3 ms). Paths read per write: 60 005 → 3. Class parent render without a write: 10 005 → 1 path; related write: 10 005 → 4. |
+| R36-02 | `connectSelection` registers its own wake callback; it re-runs the selector at notification time against the committed props and state through a scratch recorder and wakes the owner only if the snapshot or the read set moved. | 2 000 rows, one selection move: 2 000 → 2 row renders. A branch-switching selector re-subscribes; StrictMode and unmount keep the subscription. |
+| R36-03 | A filed read set answers the drift question from its record in both directions (`matchedVersion` is the answer when the store has notified up to its version). | Write-log consultations over 21 related writes at 10k rows: 21 → 0; recomputes after a log reset: 1 → 0. |
+| R36-04 | `setData`, `restore` and `fromJSON` collect their leaf patches (cap 1 000, then one opaque patch) and history records a patches entry for a public replacement. | One-leaf `setData`, 10k rows, history on: 18.6 → 6.6 ms; 638 → 13 KB per entry; undo 56 → 1.5 ms. `restore`: 19.6 → 9.6 ms, 649 → 18 KB, undo 45 → 0.44 ms. |
+| R36-05 | The threshold is `changed > 2000 && changed > half of the branch's leaves`, decided only after the walk overflowed (the common walk is unchanged); a same-kind root reports its differing top-level keys and `~k`, never the wildcard; `applyDiff` preflights with the same rule. | K = 2 010 / 5 000 changed of 10 000 rows: row renders 10 000 → 2 010 / 5 000, other renders 2 → 0, recomputes 1 → 0. Fully changed branches still collapse. |
+| R36-06 | The owner passes the previous pass's raw → copy ledger to `reconcileSelection`; a member follows its own raw object's previous copy, and a positional copy is a base only when no other member claims it. | `React.memo` rows, 2 000: insert at the top 2 001 → 1 render; move one row 2 000 → 0. |
+| R36-07 | `shallowEqual` counts own keys and checks `in` plus `Object.is` per key. | No allocation per comparison; verdicts equal to the old implementation (differential test). |
+| R36-08 | README: derived values, undo/redo caveat, "Replacements are diffed", member matching and the notification-time gate. | — |
+
+Deviations from the recommendations, all falling back to the previous behaviour:
+
+- A `~k` or `length` path (push, delete, key added) is not patched in place; it takes the full walk. The
+  one-field edit, which the acceptance targets, is the patched case.
+- In development the class selection's live-view escape search runs only when the selection is reconciled in
+  full, not on a reused snapshot.
+- The relative diff threshold counts the leaves of the replaced branch once, after an overflow, so a walk that
+  stays under 2 000 paths pays nothing extra.

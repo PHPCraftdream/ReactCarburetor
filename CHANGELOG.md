@@ -177,6 +177,30 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Round 36 performance work, each item a gated scenario under `perf/` (`drift36`, `replace36`,
+  `selection36`) that fails on the build before it:
+  - A selection that returns a live list is patched from the write log instead of walked whole
+    (`useCarburetorValue`, `watch`, class `connectSelection`). One related one-field write under a hook at
+    10 000 rows: 67 ms → 0.75 ms; at 50 000 rows: 412 ms → 0.9 ms; tracked paths read per write: 60 005 → 3.
+    A class parent render with no write reads 1 path instead of 10 005 and keeps its filed read set.
+    The full walk remains the fallback (key-set or length change, a write to the list itself or an ancestor,
+    a write-log reset, shared references).
+  - `connectSelection` gates at notification time: a write to what it read re-runs the selector against the
+    committed props and state, and the owner re-renders only if the snapshot or its read set moved. Moving a
+    shared selection over 2 000 rows re-renders 2 rows instead of 2 000.
+  - List members are matched by their own object where the owner keeps the previous pass, so inserting at the
+    top of a `React.memo` list re-renders the new row (1 instead of 2 001) and moving a row re-renders none.
+  - The drift answer is exact in both directions for a filed read set: a related write and a write-log reset no
+    longer fall back to the O(read set) walk (21 consultations → 0 at 10 000 rows; 1 recompute → 0 after a reset).
+  - With history attached, `setData`, `restore` and `fromJSON` record leaf patches (up to 1 000, then one
+    opaque entry) instead of a whole-state snapshot: 638 KB → 13 KB per entry and undo 56 ms → 1.5 ms for a
+    one-leaf `setData` at 10 000 rows.
+  - The 2 000-path diff threshold is relative: it collapses only when more than 2 000 leaves, and more than half
+    of the leaves of the replaced branch, changed, and a root never collapses to the wildcard. Changing 2 010 of
+    10 000 rows re-renders 2 010 rows (was 10 000, plus two unrelated renders and a recompute).
+  - The default props gate (`shallowEqual`) allocates nothing per comparison.
+- README: the derived-values paragraph, the undo/redo caveat and "Replacements are diffed" describe the above.
+
 - Consumers of the store's drift answer keep the read set the store filed for their subscription
   (round 34): a computed after a recompute that keeps its read set, a computed reading one store both
   directly and through another computed, and a `useCarburetorValue` list after a related edit no longer

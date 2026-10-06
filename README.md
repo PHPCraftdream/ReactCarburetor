@@ -240,10 +240,15 @@ value aliases retain their topology without bypassing tracked plain reads. Objec
 conservatively changed, as do class instances — including Map, Set and Date subclasses.
 
 The selector runs on every render — that is what keeps the owner's subscription fresh — while
-the snapshot object itself is reused until the content actually changes. When it does change, only
+the snapshot object itself is reused until the content actually changes. A write to what it read
+runs the selector again at notification time, against the committed props and state, and the owner
+re-renders only if the snapshot or the read set moved: a row asking `selectedId === this.props.id`
+re-renders when its own answer flips, not when the shared selection moves. When it does change, only
 the changed spine is copied: unchanged nested objects and arrays keep the references they had, so a
 `React.memo` row handed one of them re-renders only if its own content changed. Members are
-matched by position, so a reordered list copies the rows that moved. Tracked plain-object
+matched by their own object where the owner keeps the previous pass (`useCarburetorValue`, `watch`,
+`connectSelection`), so a row that moved keeps the copy it had and a `React.memo` row re-renders only for
+a content change; elsewhere they are matched by position. Tracked plain-object
 and array branches are copied safely. An opaque live facade that cannot be detached is reported
 once in development; project its plain fields instead of handing the facade to a gated child.
 
@@ -276,7 +281,9 @@ Two properties keep this honest:
   through `draft`, `setData`, `restore`, `fromJSON`, or an undo — records only the leaves that
   differ, plus the key set where keys were added or removed. A kind change (array ↔ object, plain
   ↔ `Map`/class instance), or a supported object/array prototype change, records the replaced
-  path itself, and so does a replacement that changes more than 2000 leaves. Snapshots and
+  path itself. So does a replacement that changes more than 2000 leaves and more than half of the
+  leaves of the replaced branch; at the root the top-level keys that differ are recorded instead of the
+  wildcard, so unrelated subscribers stay asleep. A partial change stays leaf-precise at any size. Snapshots and
   history preserve supported null-prototype containers. A branch that is the same object
   on both sides is skipped without a look, so never mutate what `getData()` returns and hand it
   back: those edits are invisible to the diff.
@@ -355,8 +362,8 @@ render() {
 }
 ```
 
-Editing a todo's title invalidates `items.<id>`, so the computed recomputes — but the count
-comes out the same, so nothing re-renders. A computed stops observing its dependencies once
+Editing a todo's title invalidates nothing `activeCount` read, so it does not recompute. Toggling
+`done` does recompute it, and if the count comes out the same, nothing re-renders. A computed stops observing its dependencies once
 its last subscriber leaves.
 
 Computeds compose, as long as you read them through `read` as well:
@@ -1002,7 +1009,8 @@ a test pins the exported surface so one does not slip in by accident.
   concurrent render pass; don't write to stores from render.
 - The props gate means a component that relied on its parent re-rendering to pick up data it
   never read will stop updating. Read what you render, through `useCarburetor`.
-- Ordinary plain-tree undo/redo records patches — O(changed values), not O(state). Native-containing
+- Ordinary plain-tree undo/redo records patches — O(changed values), not O(state); `setData`, `restore`
+  and `fromJSON` record their leaf patches too (up to 1000, then one opaque entry). Native-containing
   state, opaque writes, positional string-key changes and resource wire identity use owned graphs.
   Undo and redo install through `restore`, waking changed-path readers; key-only resource restores
   invalidate the slot. `CarburetorHistory` requires the full `IPatchSource` contract:

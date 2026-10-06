@@ -178,7 +178,16 @@ const detach = (
                     continue;
                 }
 
-                copy[numericIndex] = detach(value[numericIndex], seen, onLiveInstance, onArraySubclass);
+                const descriptor = target === undefined ? undefined : Object.getOwnPropertyDescriptor(target, key);
+                const cloned = detach(value[numericIndex], seen, onLiveInstance, onArraySubclass);
+                if (descriptor?.enumerable === false) {
+                    Object.defineProperty(copy, key, {
+                        value: cloned, writable: descriptor.writable, configurable: descriptor.configurable,
+                        enumerable: false,
+                    });
+                } else {
+                    copy[numericIndex] = cloned;
+                }
             }
         }
 

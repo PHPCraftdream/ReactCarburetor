@@ -54,26 +54,50 @@ describe('reconcileSelection (R34-02 fused reconcile with structural sharing)', 
         expect(result[2]).toEqual({id: 5});
     });
 
-    test('a reorder of content-equal rows: the conscious positional behavior', () => {
+    test('the previous ledger follows rows across a reorder before reconciling edits', () => {
+        const previous = [{id: 'a', value: 1}, {id: 'b', value: 1}, {id: 'c', value: 1}];
+        const initialCopies = new WeakMap<object, unknown>();
+        const initial = reconcileSelection<typeof previous>(
+            [], previous, undefined, undefined, undefined, initialCopies
+        );
+        const movedLive = [previous[2], previous[0], previous[1]];
+        const movedCopies = new WeakMap<object, unknown>();
+        const afterMove = reconcileSelection<typeof previous>(
+            initial, movedLive, undefined, undefined, initialCopies, movedCopies
+        );
+        expect(afterMove.map((row) => row.id)).toEqual(['c', 'a', 'b']);
+        expect(afterMove[0]).toBe(initial[2]);
+        expect(afterMove[1]).toBe(initial[0]);
+        expect(afterMove[2]).toBe(initial[1]);
+
+        const edited = [{id: 'c', value: 2}, movedLive[1], movedLive[2]];
+        const editedCopies = new WeakMap<object, unknown>();
+        const afterEdit = reconcileSelection<typeof previous>(
+            afterMove, edited, undefined, undefined, movedCopies, editedCopies
+        );
+        expect(afterEdit.map((row) => [row.id, row.value])).toEqual([['c', 2], ['a', 1], ['b', 1]]);
+        expect(afterEdit[0]).not.toBe(afterMove[0]);
+        expect(afterEdit[1]).toBe(afterMove[1]);
+        expect(afterEdit[2]).toBe(afterMove[2]);
+    });
+    test('a reorder of content-equal rows reuses members through the prior raw ledger', () => {
         const previous = [{id: 'a'}, {id: 'b'}, {id: 'c'}];
-        // Content-equal copies in reversed order, like a detached live read of a sorted store.
-        const live = [{id: 'c'}, {id: 'b'}, {id: 'a'}];
+        // Reorder the same raw row objects that seeded the prior ledger.
+        const live = [previous[2], previous[1], previous[0]];
+        const copies = new WeakMap<object, unknown>();
+        const detached = reconcileSelection<typeof previous>([], previous, undefined, undefined, undefined, copies);
+        const nextCopies = new WeakMap<object, unknown>();
+        const result = reconcileSelection<typeof previous>(detached, live, undefined, undefined, copies, nextCopies);
 
-        const result = reconcileSelection<typeof previous>(previous, live);
-
-        // The positional comparator has no notion of "moved": content differs at every index,
-        // so the array counts as changed and the result carries the LIVE order.
-        expect(result).not.toBe(previous);
+        // A content-equal reorder matches each row by raw identity in the previous ledger.
+        expect(result).not.toBe(detached);
         expect(result).toEqual([{id: 'c'}, {id: 'b'}, {id: 'a'}]);
         expect(result).toHaveLength(3);
-        // Nothing is moved: the untouched middle slot is reused, the displaced slots are
-        // fresh copies, never the previous-side object at either its old or new index.
-        expect(result[0]).not.toBe(previous[0]);
-        expect(result[0]).not.toBe(previous[2]);
-        expect(result[1]).toBe(previous[1]);
-        expect(result[2]).not.toBe(previous[2]);
-        expect(result[2]).not.toBe(previous[0]);
+        expect(result[0]).toBe(detached[2]);
+        expect(result[1]).toBe(detached[1]);
+        expect(result[2]).toBe(detached[0]);
     });
+
 
     test('an alias introduced between two previous branches collapses onto one result member', () => {
         const x = {v: 1};

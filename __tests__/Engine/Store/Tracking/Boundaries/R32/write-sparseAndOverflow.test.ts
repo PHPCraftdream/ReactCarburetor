@@ -64,7 +64,8 @@ describe('diffPaths past the path threshold still stores no engine view (R32-01)
 
         const changed = diffPaths(before, after);
 
-        expect([...changed]).toEqual(['*']);
+        // R36-05: a same-kind root never collapses to the wildcard; only the differing top-level key wakes.
+        expect([...changed]).toEqual(['a']);
         expect(types.isProxy(after.z)).toBe(false);
     });
 });

@@ -5,6 +5,21 @@ import {WriteLog} from "@/Carburetor/Store/Paths/WriteLog";
 const setOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);
 
 describe('WriteLog (R16-05)', () => {
+    test('enumerates recent concrete paths and declines incomplete history', () => {
+        const log = new WriteLog();
+        log.record(1, setOf('items.a.title'));
+        expect(log.pathsSince(1)).toEqual([]);
+        expect(log.pathsSince(0)).toEqual(['items.a.title']);
+        log.record(2, setOf(WILDCARD_PATH));
+        expect(log.pathsSince(1)).toBeUndefined();
+    });
+
+    test('declines paths older than the watermark', () => {
+        const log = new WriteLog(1);
+        log.record(1, setOf('items.a.title'));
+        expect(log.pathsSince(0)).toBeUndefined();
+    });
+
     test('reports no drift when nothing was written since the baseline', () => {
         const log = new WriteLog();
 

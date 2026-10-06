@@ -1,6 +1,6 @@
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
+import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 
 /**
@@ -47,6 +47,12 @@ export interface IDependencySlot {
     committed: IDependencyDescription | undefined;
     /** The registration actually in the stores right now; undefined while none is registered. */
     installed: ISubscriptionHandle | undefined;
+    /**
+     * What the stores call for this slot instead of the owner's re-render callback (R36-02): a
+     * selection connection answers there whether its selection really changed. Absent for every
+     * other slot, which simply re-render.
+     */
+    wake?: () => void;
 }
 
 /**
@@ -126,6 +132,11 @@ export interface IAttemptEntry {
     baselineVersion: number;
     /** The paths read during this attempt; grows monotonically until the attempt closes. */
     reads: TPathSet;
+    /**
+     * `reads` is the committed description's own set, adopted instead of re-recorded (R36-01): the
+     * recorder copies it before adding a path it lacks, so the filed set is never written.
+     */
+    sharedReads?: boolean;
 }
 
 /**
@@ -179,6 +190,11 @@ export interface IConnectionSource<T extends object> {
     resolveAttemptSource: () => IReadableCarburetor<T>;
     /** The read recorder every read through the persistent view reports to. */
     recorder: TPathRecorder;
+    /**
+     * While set, reads through the view record here and nowhere else: a notification-time
+     * selector run that must not touch any render attempt (R36-02).
+     */
+    scratch: Set<TPath> | undefined;
     /**
      * Whether the facade is array-shaped; fixed once by buildPersistentView's declaration-time
      * probe and never changed afterward — a Proxy's target kind cannot change after creation.

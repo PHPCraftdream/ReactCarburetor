@@ -12,14 +12,12 @@ import {foldDependentPatch} from './Graph/foldDependentPatch';
 import {preflightOwnedPatches} from "./Graph/canInstallOwnedPatch";
 import {cloneOwnedGraph as own} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
 import {sameHistoryGraph} from "./Graph/sameHistoryGraph";
-
 /** One change recorded as the patches to invert it — the fast path (R16-07). */
 interface IPatchesEntry {
     kind: 'patches';
     /** The patches, in the order originally recorded; redo replays them forward. */
     patches: IWritePatch[];
 }
-
 /** One change the proxy could not describe, recorded as a full state either side of it. */
 interface ISnapshotEntry<T> {
     kind: 'snapshot';
@@ -475,7 +473,9 @@ export class CarburetorHistory<T extends object> {
      */
     protected buildEntry(fact?: IStatePublication): THistoryEntry<T> | undefined {
         if (this.pendingOpaque || this.pendingPatches.length === 0 ||
-            (fact !== undefined && fact.origin !== 'mutation')) {
+            (fact !== undefined && fact.origin !== 'mutation' &&
+                !((fact.origin === 'replacement' || fact.origin === 'restore') &&
+                    fact.representation === 'public'))) {
             return this.buildSnapshotEntry();
         }
 

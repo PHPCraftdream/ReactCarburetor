@@ -68,6 +68,9 @@ export interface IProxyCache {
     owns: (path: TPath, source: object) => boolean;
 }
 
+/** Internal hatch: a read view answers with its own path, recording no read. */
+export const VIEW_PATH: unique symbol = Symbol.for('react-carburetor/v1/viewPath');
+
 /**
  * The key an engine read view answers with its own enumerable string keys, so the engine's
  * internal walks (`sameSelection`, `detachOpaque`, the development escape report) enumerate a

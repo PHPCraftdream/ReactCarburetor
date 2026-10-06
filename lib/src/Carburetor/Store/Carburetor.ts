@@ -9,7 +9,7 @@ import {
 } from "@/Carburetor/Models/Store";
 import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
-import {sameKind} from "./Paths/Diff/sameKind";
+import {sameKind} from "./Paths/Diff/Kinds/sameKind";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WriteLog} from "./Paths/WriteLog";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
@@ -30,23 +30,18 @@ import {getUid} from "./Utils/getUid";
 import {IS_DEVELOPMENT} from "./Utils/DevelopmentFlag";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
 import {
-    CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, CARBURETOR_REPLAY_PATCHES,
-    IInternalSubscriptionProtocol,
+    CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, CARBURETOR_PATHS_SINCE,
+    CARBURETOR_REPLAY_PATCHES, IInternalSubscriptionProtocol, ISubscriberRecord,
 } from "./Utils/Models";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
-interface ISubscriberRecord {
-    callback: TSubscriber; schedulerKey: string; generation: number;
-    matchedVersion: number; growthVersion: number; reads: TPathSet;}
-
 export class Carburetor<T extends object> implements
     ICarburetor<T>, IPatchSource, IInternalSubscriptionProtocol {
     /** Shared base-method identities; no registration record allocated per store. */
     private static readonly nativeStoreMethods = {
-        getVersion: Carburetor.prototype.getVersion,
-        emitUpdate: Carburetor.prototype.emitUpdate,
+        getVersion: Carburetor.prototype.getVersion, emitUpdate: Carburetor.prototype.emitUpdate,
     };
     /** Never called: the build fails if a member the transaction ports read is renamed or retyped. */
     private static checkPort<T extends object>(s: Carburetor<T>): IStateInstallPort<T> {
@@ -142,6 +137,11 @@ export class Carburetor<T extends object> implements
         return this.version;
     }
 
+    /** The paths written after `baselineVersion` (R36-01); undefined once the write log cannot enumerate them. */
+    public [CARBURETOR_PATHS_SINCE](baselineVersion: number): ReadonlyArray<TPath> | undefined {
+        return this.writeLog.pathsSince(baselineVersion);
+    }
+
     /**
      * The path-precise drift check (R16-05, R33-03): could a write since `baselineVersion` concern
      * `reads`? O(1) for a read set this store filed; otherwise the write log, which says `true`
@@ -153,10 +153,9 @@ export class Carburetor<T extends object> implements
     public [CARBURETOR_HAS_DRIFT](baselineVersion: number, reads: ReadonlySet<TPath>): boolean {
         const record = this.subscriptionByReads.get(reads as TPathSet);
 
-        if (record && record.reads === reads && baselineVersion >= this.writeLog.getWatermark()
-            && this.writeLog.getWildcardVersion() <= baselineVersion && baselineVersion >= record.growthVersion
-            && record.matchedVersion <= baselineVersion && this.notifiedVersion >= this.version) {
-            return false;
+        if (record && record.reads === reads && baselineVersion >= record.growthVersion
+            && this.notifiedVersion >= this.version) {
+            return record.matchedVersion > baselineVersion;
         }
 
         return this.writeLog.matches(baselineVersion, reads);

@@ -95,6 +95,21 @@ export class WriteLog {
     }
 
     /**
+     * Enumerates the paths written after a baseline: O(log entries), never O(a selection).
+     *
+     * @param baselineVersion - the version the caller's snapshot was valid at
+     * @returns the paths, or undefined once the log cannot answer (watermark or wildcard past the baseline)
+     */
+    public pathsSince(baselineVersion: number): ReadonlyArray<TPath> | undefined {
+        if (baselineVersion < this.watermark || this.wildcardVersion > baselineVersion) return undefined;
+        const paths: TPath[] = [];
+        for (const [path, version] of this.last) {
+            if (version > baselineVersion) paths.push(path);
+        }
+        return paths;
+    }
+
+    /**
      * Whether a write since `baselineVersion` could concern `reads`, mirroring
      * `SubscriberIndex.match`'s three cases: the same path, a written ancestor of a read path,
      * and a written descendant of a read path.

@@ -4,7 +4,7 @@ import {branchPath} from "@/Carburetor/Store/Paths/Markers/BranchMarker";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {createProxyCache} from "./Proxy/createProxyCache";
-import {IProxyCache, KEYS_HATCH, PROXY_CACHE, RAW_TARGET} from "./Models";
+import {IProxyCache, KEYS_HATCH, PROXY_CACHE, RAW_TARGET, VIEW_PATH} from "./Models";
 import {liveViews} from "./Proxy/liveViews";
 import {isTrackable} from "./isTrackable";
 import {recordNativeAliasReads} from "./Aliases/NativeAliasReads";
@@ -300,6 +300,7 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
                 return Object.keys(source);
             }
 
+            if (key === VIEW_PATH) return this.path;
             return key === PROXY_CACHE ? this.cache : Reflect.get(source, key, receiver);
         }
 

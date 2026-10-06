@@ -1,0 +1,1 @@
+export const DIFF_PATH_THRESHOLD = 2000;
