@@ -2,6 +2,7 @@ import {IDict} from '@/Carburetor/Models/Base';
 import {isNativeStoreSource} from '@/Carburetor/Store/Scheduling/isNativeStoreSource';
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
 import {ILeafVersion, IReadSet} from './Models';
+import {readStoreData} from './readStoreData';
 
 /** Whether one moved leaf really concerns the paths it read; the store answers per filed pair.
  *
@@ -36,9 +37,10 @@ const leafDrifted = (recorded: ILeafVersion, dependency?: IReadSet): boolean => 
  *
  * @param versions - the evaluation's leaf snapshot
  * @param dependencies - fallback direct read sets
+ * @param liveResult - the value may hold views of a store's data: a replaced data object drifts it
  */
 export const leafVersionsDrifted = (
-    versions: IDict<ILeafVersion>, dependencies: IDict<IReadSet>
+    versions: IDict<ILeafVersion>, dependencies: IDict<IReadSet>, liveResult: boolean
 ): boolean => {
     for (const cuid in versions) {
         if (!Object.prototype.hasOwnProperty.call(versions, cuid)) {
@@ -49,7 +51,8 @@ export const leafVersionsDrifted = (
         if (recorded.source.getVersion() !== recorded.version) {
             const dependency = Object.prototype.hasOwnProperty.call(dependencies, cuid)
                 ? dependencies[cuid] : undefined;
-            if (leafDrifted(recorded, dependency)) {
+            if (leafDrifted(recorded, dependency)
+                || (liveResult && recorded.data !== undefined && readStoreData(recorded.source) !== recorded.data)) {
                 return true;
             }
         }

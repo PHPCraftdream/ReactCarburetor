@@ -2,6 +2,7 @@ import {IDict} from '@/Carburetor/Models/Base';
 import {isNativeStoreSource} from '@/Carburetor/Store/Scheduling/isNativeStoreSource';
 import {computedDependencies} from '@/Carburetor/Derived/computedDependencies';
 import {ILeafVersion, IReadSet} from './Models';
+import {readStoreData} from './readStoreData';
 
 /** Fills a version snapshot and classifies native epoch coverage. Merged leaves keep their
  * constituent filed pairs, so drift can be asked per part.
@@ -27,7 +28,7 @@ export const captureLeafVersions = (
             && (previous.reads !== undefined || previous.parts !== undefined)
             && previous.reads !== recorded.reads) {
             versions[id] = {
-                source: recorded.source, version: recorded.version,
+                source: recorded.source, version: recorded.version, data: recorded.data,
                 parts: [...partsOf(previous), ...partsOf(recorded)],
             };
         } else {
@@ -43,6 +44,7 @@ export const captureLeafVersions = (
         if (!inner) {
             addLeafVersion(cuid, {
                 source: dependency.source, version: dependency.source.getVersion(), reads: dependency.reads,
+                data: readStoreData(dependency.source),
             });
             if (!isNativeStoreSource(dependency.source)) {
                 allNative = false;

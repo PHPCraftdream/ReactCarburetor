@@ -206,7 +206,8 @@ export class Computed<R> implements IComputed<R> {
             return false;
         }
 
-        if (leafVersionsDrifted(this.versions, this.dependencies)) {
+        const live = typeof this.value === 'object' && this.value !== null || typeof this.value === 'function';
+        if (leafVersionsDrifted(this.versions, this.dependencies, live)) {
             return true;
         }
 
