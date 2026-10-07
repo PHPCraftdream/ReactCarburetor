@@ -1,10 +1,12 @@
 import {
-    PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathRecorder, TAliasLedger, TPatchPort, TPatchRecorder,
+    PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, RAW_EXPOSURE, TPath, TAliasLedger, TPatchRecorder,
+    TPatchPort, TWriteRecorder,
 } from "@/Carburetor/Models/Paths";
 import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
 import {keyDeletionRequiresReplay} from "@/Carburetor/Store/Paths/Diff/Order/keyDeletionRequiresReplay";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
+import {branchPath} from "@/Carburetor/Store/Paths/Markers/BranchMarker";
 import {clonePatchValue} from "./Proxy/clonePatchValue";
 import {createProxyCache} from "./Proxy/createProxyCache";
 import {IProxyCache, PROXY_CACHE, RAW_TARGET} from "./Models";
@@ -47,8 +49,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      *
      * @param basePath - the dotted path this instance's proxy answers for, '' being the store
      * root; an index or `length` write on an array is named like any other key.
-     * @param record - the store's write sink, feeding the paths the next emitUpdate announces;
-     * `get` also reports unwrappable objects handed out raw, imprecise but never a lost update.
+     * @param record - the store's write sink, feeding the paths the next emitUpdate announces
+     * together with the raw object each mutation landed on; `get` also reports unwrappable
+     * objects handed out raw, imprecise but never a lost update.
      * @param aliases - consulted on every write to complain when it lands in an object another
      * path was read from, and to validate the state model (R6-02/R6-03); undefined outside
      * development, so both are no-ops in production.
@@ -62,7 +65,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
      */
     constructor(
         private readonly basePath: TPath,
-        private readonly record: TPathRecorder,
+        private readonly record: TWriteRecorder,
         private readonly aliases: TAliasLedger | undefined,
         private readonly cache: IProxyCache,
         private readonly isArray: boolean,
@@ -285,10 +288,12 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             // Whatever changes inside it, if anything, cannot be described as a patch: a
             // history attached to this store falls back to a full snapshot for this change.
             this.patchPort?.listener?.(PATCH_OPAQUE);
-            if (this.cache.nativeAliasRoot !== undefined) {
-                nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
-            }
-            this.record(this.writtenPath(key, source));
+            // Any handout of an opaque/native draft field marks its effects unknown: methods,
+            // returns, locked values and unseen descendants cannot be attributed exactly.
+            if (this.cache.nativeAliasRoot !== undefined) nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
+            const path = this.writtenPath(key, source);
+            this.record(path, value);
+            this.record(branchPath(path), RAW_EXPOSURE);
             return liveViews.adaptNativeCollection(value, this.cache, source, key);
         }
 
@@ -360,9 +365,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
         // Topology refresh: only a container added, replaced or removed shifts raw ownership.
         if ((isTrackable(previous) || isTrackable(raw)) && previous !== raw
-            && this.cache.nativeAliasRoot !== undefined) {
-            nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
-        }
+            && this.cache.nativeAliasRoot !== undefined) nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
 
         // A branch replaced or deleted takes its old object's recorded path with it, and a
         // write into an object last read under a different path is the aliasing the ledger
@@ -374,7 +377,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         // A key that did not already exist changes the key set itself (R16-01): an index write
         // past the array's own end is exactly such a case, alongside an ordinary new object key.
         if (!wasOwn) {
-            this.record(this.keysMarker());
+            this.record(this.keysMarker(), source);
         }
 
         // A replaced branch's diff is walked once. Its bounded patches are collected during
@@ -388,8 +391,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             const patches: Parameters<TPatchRecorder>[0][] | undefined = concrete ? [] : undefined;
             const segments = concrete ? [...this.basePathSegments, key] : [];
             const changed = diffPaths(previous, raw, path, segments, patches);
-            changed.forEach((written: TPath) => this.record(written));
-            if (grew) this.record(this.writtenPath('length', source));
+            changed.forEach((written: TPath) => this.record(written, raw));
+            if (grew) this.record(this.writtenPath('length', source), source);
             if (concrete && patches) {
                 if (grew) this.reportPatch(patch => { patches.push(patch); },
                     'length', previousLength, nextLength, true, true);
@@ -405,8 +408,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
                 this.reportPatch(listener, 'length', previousLength, nextLength, true, true);
             }
         } else {
-            this.record(path);
-            if (grew) this.record(this.writtenPath('length', source));
+            this.record(path, source);
+            if (grew) this.record(this.writtenPath('length', source), source);
             if (listener && grew) {
                 const patches: Parameters<TPatchRecorder>[0][] = [];
                 const queue: TPatchRecorder = patch => { patches.push(patch); };
@@ -479,9 +482,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return false;
         }
         if ((isTrackable(previous) || isTrackable(raw)) && previous !== raw
-            && this.cache.nativeAliasRoot !== undefined) {
-            nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
-        }
+            && this.cache.nativeAliasRoot !== undefined) nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
 
         if (wasOwn && Object.is(previous, raw)) {
             return true;
@@ -490,15 +491,15 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         this.aliases?.forget(previous);
 
         if (!wasOwn) {
-            this.record(this.keysMarker());
+            this.record(this.keysMarker(), source);
         }
 
         const listener = this.patchPort?.listener;
         const nextLength = previousLength !== undefined
             ? (source as unknown as unknown[]).length : undefined;
         const grew = nextLength !== undefined && nextLength !== previousLength;
-        this.record(path);
-        if (grew) this.record(this.writtenPath('length', source));
+        this.record(path, source);
+        if (grew) this.record(this.writtenPath('length', source), source);
         if (listener) {
             if (grew) {
                 const patches: Parameters<TPatchRecorder>[0][] = [];
@@ -548,12 +549,12 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (isTrackable(previous) && this.cache.nativeAliasRoot !== undefined) {
             nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
         }
-        this.record(this.keysMarker());
+        this.record(this.keysMarker(), source);
         const path = this.writtenPath(key, source);
         // The key is gone: its memo entry names a path to nothing and a rolling key window
         // would otherwise keep every key ever written memoized.
         this.childPaths?.delete(key);
-        this.record(path);
+        this.record(path, source);
         if (listener) {
             if (changesOrderOnInverse) {
                 const patches: Parameters<TPatchRecorder>[0][] = [];
@@ -574,7 +575,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
  * Builds a path-recording write proxy with one shared branch cache.
  *
  * @param target - raw state, answered raw through the RAW_TARGET hatch for unwrapping
- * @param record - write-path sink; unwrappable leaves invalidate their owner
+ * @param record - write-path sink carrying the raw mutation target; unwrappable leaves invalidate their owner
  * @param basePath - escaped dotted path, empty at the root
  * @param aliases - development alias and state-model validation
  * @param cache - shared branch-wrapper cache, created by the root call
@@ -583,7 +584,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
  */
 export const createWriteProxy = <T extends object>(
     target: T,
-    record: TPathRecorder,
+    record: TWriteRecorder,
     basePath: TPath = '',
     aliases?: TAliasLedger,
     cache?: IProxyCache,

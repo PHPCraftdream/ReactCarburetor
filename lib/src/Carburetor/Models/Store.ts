@@ -113,7 +113,7 @@ export interface ICarburetor<T> extends IReadableCarburetor<T>, IInspectable {
      * @param select - reads the part of the data this subscription cares about
      * @param onChange - called with the fresh and previous selection when they differ
      */
-    watch: <R>(select: TSelector<T, R>, onChange: (next: R, previous: R) => void) => TDisposer;
+    watch: <R>(select: TSelector<T, R>, onChange: (next: TReadonly<R>, previous: TReadonly<R>) => void) => TDisposer;
 }
 
 /**

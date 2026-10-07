@@ -1,6 +1,7 @@
 import {viewKeys} from "@/Carburetor/Store/Tracking/Models";
 import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 import {isPlainObject} from "@/Carburetor/Component/Connection/isPlainObject";
+import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {detachOpaqueInto} from "./detachCore";
 import {createCollectionReconciler} from "./reconcileCollections";
 const {reconcileMap, reconcileSet} = createCollectionReconciler();
@@ -14,11 +15,14 @@ interface IReconcileContext {
     previousCopies: WeakMap<object, unknown> | undefined;
     cycleCount: number;
     shared: boolean;
+    topologyChanged: boolean;
     open: WeakSet<object>;
     onLiveInstance: TReportLiveInstance | undefined;
     onArraySubclass: TArraySubclassGuard | undefined;
     previousToFresh: WeakMap<object, object>;
     freshToPrevious: WeakMap<object, object>;
+    registeredLive: Array<object>;
+    registeredRaw: Array<object>;
     rawOf: (value: unknown) => object;
     isClassInstance: (value: unknown) => boolean;
     isMatchableKey: (key: unknown) => boolean;
@@ -55,6 +59,8 @@ const rawOf = (value: unknown): object =>
 const register = (ctx: IReconcileContext, live: object, raw: object, copy: unknown): void => {
     ctx.copies.set(live, copy);
     ctx.copies.set(raw, copy);
+    ctx.registeredLive.push(live);
+    ctx.registeredRaw.push(raw);
 };
 
 const isMatchableKey = (key: unknown): boolean => key === null || typeof key !== 'object';
@@ -69,6 +75,8 @@ const reconcile = (previous: unknown, live: unknown, raw: object, ctx: IReconcil
     }
     if (live === null || typeof live !== 'object') return Object.is(previous, live) ? previous : live;
     const known = ctx.copies.get(live) ?? ctx.copies.get(raw);
+    const priorForRaw = ctx.freshToPrevious.get(raw);
+    if (priorForRaw !== undefined && priorForRaw !== previous) ctx.topologyChanged = true;
     if (ctx.previousToFresh.get(previous as object) === raw) {
         ctx.cycleCount++;
         ctx.shared = true;
@@ -83,6 +91,7 @@ const reconcile = (previous: unknown, live: unknown, raw: object, ctx: IReconcil
     }
     if (known !== undefined) {
         ctx.shared = true;
+        if (isPlainMap(live) || isPlainSet(live)) liveViews.recordGraphReads(live);
         if (liveViews.readTarget(live) !== undefined && !ctx.copies.has(live) && !Array.isArray(live)) {
             const keys = viewKeys(live);
             const branch = live as Record<string, unknown>;
@@ -95,10 +104,12 @@ const reconcile = (previous: unknown, live: unknown, raw: object, ctx: IReconcil
     }
     const mapped = ctx.previousToFresh.get(previous);
     if (mapped !== undefined && mapped !== raw) {
+        ctx.topologyChanged = true;
         return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing);
     }
     const claimed = ctx.freshToPrevious.get(raw);
     if (claimed !== undefined && claimed !== previous) {
+        ctx.topologyChanged = true;
         return detachOpaqueInto(live, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing);
     }
     ctx.previousToFresh.set(previous, raw);
@@ -126,9 +137,11 @@ const reconcile = (previous: unknown, live: unknown, raw: object, ctx: IReconcil
             return result;
         }
         if (isPlainMap(live) && isPlainMap(previous)) {
+            liveViews.recordGraphReads(live);
             return reconcileMap(previous as Map<unknown, unknown>, live, raw, ctx as never);
         }
         if (isPlainSet(live) && isPlainSet(previous)) {
+            liveViews.recordGraphReads(live);
             return reconcileSet(previous as Set<unknown>, live, raw, ctx as never);
         }
         if (isPlainObject(live) && isPlainObject(previous) && previousPrototype === livePrototype) {
@@ -391,16 +404,16 @@ const remapArrayCycles = (
     cycleEntries: Array<{index: number; value: unknown; raw: object}>
 ): boolean => {
     if (result === undefined) return false;
-    let remappedChanged = false;
+    let remapped = false;
     for (let index = 0; index < cycleEntries.length; index++) {
         const entry = cycleEntries[index];
         const fixed = ctx.copies.get(entry.raw);
         if (fixed !== undefined && fixed !== entry.value) {
             result[entry.index] = fixed;
-            if (entry.raw !== raw) remappedChanged = true;
+            if (entry.raw !== raw) remapped = true;
         }
     }
-    return remappedChanged;
+    return remapped;
 };
 
 /** True for canonical integer array-index property names. */
@@ -440,17 +453,33 @@ export const reconcileSelection = <T>(
     // A previous primitive under a live object is handled inside `reconcile` (opaque detach);
     // everything object-shaped still gets the full topology treatment below.
     copies ??= new WeakMap<object, unknown>();
-    const ctx = {
+    const ctx: IReconcileContext = {
         copies, previousCopies, previousToFresh: new WeakMap<object, object>(),
-        freshToPrevious: new WeakMap<object, object>(),
+        freshToPrevious: new WeakMap<object, object>(), registeredLive: [], registeredRaw: [],
+        topologyChanged: false,
         onLiveInstance, onArraySubclass, cycleCount: 0, shared: false, open: new WeakSet<object>(),
-        reconcile,
-        rawOf, register, isClassInstance, isMatchableKey,
-    } as IReconcileContext;
-    ctx.onSharing = () => {
-        ctx.shared = true;
+        reconcile, rawOf, register, isClassInstance, isMatchableKey,
+        onSharing: () => {ctx.shared = true;},
     };
     const result = reconcile(previous, live, rawOf(live), ctx) as T;
+    if (ctx.shared && !ctx.topologyChanged && result !== previous && sameSelection(previous, result)) {
+        const remapPrior: Array<object> = [];
+        for (let index = 0; index < ctx.registeredLive.length; index++) {
+            const raw = ctx.registeredRaw[index];
+            const prior = ctx.freshToPrevious.get(raw);
+            if (prior === undefined) {
+                if (trace !== undefined) trace.shared = ctx.shared;
+                return result;
+            }
+            remapPrior.push(prior);
+        }
+        for (let index = 0; index < ctx.registeredLive.length; index++) {
+            copies.set(ctx.registeredLive[index], remapPrior[index]);
+            copies.set(ctx.registeredRaw[index], remapPrior[index]);
+        }
+        if (trace !== undefined) trace.shared = true;
+        return previous as T;
+    }
     if (trace !== undefined) trace.shared = ctx.shared;
     return result;
 };

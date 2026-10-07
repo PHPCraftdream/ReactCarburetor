@@ -25,6 +25,7 @@ import {declareConnection} from "@/Carburetor/Component/Connection/declareConnec
 import {reportLiveViewEscape} from "@/Carburetor/Component/Connection/reportLiveViewEscape";
 import {reuseSelection} from "@/Carburetor/Store/Utils/Selection/Patch/reuseSelection";
 import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
+import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconcileFlatSelection";
 import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {AntiHookComponentFoundation} from "./Foundation";
@@ -168,7 +169,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
     public connectSelection<T extends object, R>(
         source: IReadableCarburetor<T> | (() => IReadableCarburetor<T>),
         select: (data: TReadonly<T>) => R
-    ): (() => R) {
+    ): (() => TReadonly<R>) {
         const declared = this.declareConnection(source);
         const view = buildPersistentView(declared);
 
@@ -176,7 +177,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         let escapeReported = false;
         // What the snapshot mirrors, for R36-01's reuse: the live result, its ledger, and whether it is a tree.
         let live: unknown = undefined;
-        let ledger = new WeakMap<object, unknown>();
+        let ledger: WeakMap<object, unknown> | undefined;
         let patchable = false;
 
         // R36-02: a write to a path the selection read wakes this connection, not the owner. The
@@ -243,20 +244,21 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             }
         };
 
-        return (): R => {
+        return (): TReadonly<R> => {
             const next: R = select(view);
 
             const previous = snapshot === undefined ? undefined : snapshot.value;
 
             // R36-01: the same live view as last render: no related write keeps the snapshot as is,
             // a related one is patched from the write log, and the filed read set is adopted.
-            if (previous !== undefined && next === live && next !== null && typeof next === 'object') {
+            if (previous !== undefined && next === live && next !== null && typeof next === 'object'
+                && ledger !== undefined) {
                 const reused = reuseSelection(connection, previous, next, ledger, patchable);
 
                 if (reused !== undefined) {
                     snapshot = {value: reused};
 
-                    return reused;
+                    return reused as TReadonly<R>;
                 }
             }
 
@@ -266,19 +268,23 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             }
 
             const trace = {shared: false};
-            const nextLedger = new WeakMap<object, unknown>();
+            const objectResult = next !== null && typeof next === 'object';
+            const flat = reconcileFlatSelection(previous, next);
+            const nextLedger = flat !== undefined
+                ? undefined
+                : objectResult ? new WeakMap<object, unknown>() : undefined;
 
             snapshot = {
-                value: reconcileSelection(
+                value: flat !== undefined ? flat.value as R : reconcileSelection(
                     previous, next, undefined, rejectArraySubclass, previous === undefined ? undefined : ledger,
                     nextLedger, trace
                 ) as R,
             };
             live = next;
             ledger = nextLedger;
-            patchable = !trace.shared;
+            patchable = flat !== undefined || !trace.shared;
 
-            return snapshot.value;
+            return snapshot.value as TReadonly<R>;
         };
     }
 

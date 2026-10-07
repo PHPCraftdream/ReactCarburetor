@@ -12,6 +12,7 @@ import {applyDiff} from "./Paths/Diff/applyDiff";
 import {sameKind} from "./Paths/Diff/Kinds/sameKind";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WriteLog} from "./Paths/WriteLog";
+import {WriteTargetLedger} from "./Utils/Graph/WriteTargetLedger";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
 import {syncUpdateScheduler} from "./Scheduling/SyncUpdateSchedulerInstance";
 import {updateWave} from "./Scheduling/UpdateWaveInstance";
@@ -29,9 +30,11 @@ import {replayPatchesOnPort} from "./Utils/Graph/replayPatchesOnPort";
 import {getUid} from "./Utils/getUid";
 import {IS_DEVELOPMENT} from "./Utils/DevelopmentFlag";
 import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
+import {reportDeliveryFailure} from "./Diagnostics/reportDeliveryFailure";
+import {warnIfAsyncMutate} from "./Diagnostics/warnIfAsyncMutate";
 import {
     CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, CARBURETOR_PATHS_SINCE,
-    CARBURETOR_REPLAY_PATCHES, IInternalSubscriptionProtocol, ISubscriberRecord,
+    CARBURETOR_REPLAY_PATCHES, CARBURETOR_TARGETS_SINCE, IInternalSubscriptionProtocol, ISubscriberRecord,
 } from "./Utils/Models";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 
@@ -48,11 +51,11 @@ export class Carburetor<T extends object> implements
         return {
             data: s.data, aliases: s.aliases, draftProxy: s.draftProxy, patchPort: s.patchPort,
             draftTouched: s.draftTouched, writes: s.writes, writeLog: s.writeLog, version: s.version,
-            publicationPending: s.publicationPending, pendingPublication: s.pendingPublication,
-            patchObservers: s.patchObservers, preEmit: s.preEmit, didSetData: s.didSetData,
+            writeTargets: s.writeTargets, publicationPending: s.publicationPending,
+            pendingPublication: s.pendingPublication, patchObservers: s.patchObservers,
+            preEmit: s.preEmit, didSetData: s.didSetData, emitSoon: s.emitSoon, emitUpdate: s.emitUpdate,
             touchDraft: s.touchDraft, recordWrite: s.recordWrite, rememberPublication: s.rememberPublication,
             [CARBURETOR_NOTIFY_WRITES]: s[CARBURETOR_NOTIFY_WRITES],
-            emitSoon: s.emitSoon, emitUpdate: s.emitUpdate,
         };
     }
     /** Registered callbacks and their stable scheduler keys, indexed by public local id. */
@@ -80,6 +83,8 @@ export class Carburetor<T extends object> implements
 
     /** Paths changed since the last emitUpdate. */
     protected writes: TPathSet = new Set<TPath>();
+    /** The raw objects each pending write mutated, handed to the write log at emit. */
+    protected writeTargets = new WriteTargetLedger();
     /** Which paths recent emits touched, bounded and watermarked; feeds the commit drift check (R16-05). */
     protected writeLog: WriteLog = new WriteLog();
     /** Whether draft was touched: it tells an empty write set from "nothing changed". */
@@ -96,9 +101,12 @@ export class Carburetor<T extends object> implements
     private pendingPublication: IStatePublication | undefined;
     /** Exact root installation currently being applied through restore's draft diff. */
     private activeInstallation: IStateInstallation | undefined;
-    /** Bound once; draft writes announce paths, and topological ones refresh ownership (createWriteProxy). */
-    private readonly writeRecorder = (path: TPath): void => {
-        this.recordWrite(path);
+    /** Bound once: draft writes announce paths and their raw targets (createWriteProxy).
+     *
+     * @param path - the written path.
+     * @param target - the raw object the mutation landed on, when known. */
+    private readonly writeRecorder = (path: TPath, target?: object): void => {
+        this.recordWrite(path); if (target !== undefined) this.writeTargets.add(path, target);
         const installation = this.activeInstallation;
         if (installation && (!this.publicationPending || this.pendingPublication !== installation)) {
             this.rememberPublication(installation);
@@ -140,6 +148,10 @@ export class Carburetor<T extends object> implements
     /** The paths written after `baselineVersion` (R36-01); undefined once the write log cannot enumerate them. */
     public [CARBURETOR_PATHS_SINCE](baselineVersion: number): ReadonlyArray<TPath> | undefined {
         return this.writeLog.pathsSince(baselineVersion);
+    }
+    /** The raw mutation targets behind the paths written after `baselineVersion`. */
+    public [CARBURETOR_TARGETS_SINCE](baselineVersion: number): ReadonlyMap<TPath, ReadonlySet<object>> | undefined {
+        return this.writeLog.targetsSince(baselineVersion);
     }
 
     /**
@@ -283,6 +295,14 @@ export class Carburetor<T extends object> implements
         this.emitUpdate(undefined, true);
     }
 
+    /** Cancels one registration's scheduled updates and drops its read-set filing.
+     *
+     * @param record - the registration being replaced or removed. */
+    private retract(record: ISubscriberRecord): void {
+        this.scheduler.cancel(record.schedulerKey);
+        if (this.subscriptionByReads.get(record.reads) === record) this.subscriptionByReads.delete(record.reads);
+    }
+
     /** The store's wire form: the live data as it stands, without a copy.
      *
      * Ordinary stores expose live data; classes with another wire form override it. A detached
@@ -328,10 +348,7 @@ export class Carburetor<T extends object> implements
         // Keep the same private queue slot when replacing this store's local id.
         const previous = this.subscribers[id];
         if (previous) {
-            this.scheduler.cancel(previous.schedulerKey);
-            if (this.subscriptionByReads.get(previous.reads) === previous) {
-                this.subscriptionByReads.delete(previous.reads);
-            }
+            this.retract(previous);
         }
 
         this.subscribers[id] = {
@@ -372,10 +389,7 @@ export class Carburetor<T extends object> implements
     public unsubscribe(id: string): void {
         const record = this.subscribers[id];
         if (record) {
-            this.scheduler.cancel(record.schedulerKey);
-            if (this.subscriptionByReads.get(record.reads) === record) {
-                this.subscriptionByReads.delete(record.reads);
-            }
+            this.retract(record);
             this.subscriberIndex.remove(id);
             delete this.subscribers[id];
         }
@@ -392,7 +406,8 @@ export class Carburetor<T extends object> implements
      * @param select - computes the tracked selection.
      * @param onChange - receives changed detached selections.
      */
-    public watch<R>(select: TSelector<T, R>, onChange: (next: R, previous: R) => void): TDisposer {
+    public watch<R>(select: TSelector<T, R>,
+        onChange: (next: TReadonly<R>, previous: TReadonly<R>) => void): TDisposer {
         return watchSelection(this, select, onChange);
     }
 
@@ -430,15 +445,7 @@ export class Carburetor<T extends object> implements
                     }
                 }
             });
-            failures?.forEach((error: unknown) => {
-                if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-                    diagnostics.report(
-                        'a subscriber threw while a write was delivered: ' +
-                        (error instanceof Error ? error.message : String(error)) +
-                        '. The write had already landed, so the remaining subscribers were notified anyway.'
-                    );
-                }
-            });
+            failures?.forEach(reportDeliveryFailure);
         } finally {
             updateWave.end();
         }
@@ -496,17 +503,7 @@ export class Carburetor<T extends object> implements
             this.emitUpdate();
         }
 
-        // An async callback is accepted by a void-returning signature, and then everything it
-        // writes after the first await lands in the data long after this emitUpdate has run.
-        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-            if (result instanceof Promise) {
-                diagnostics.report(
-                    'update(mutate) published before the mutation finished: the callback returned ' +
-                    'a promise, so writes made after its first await wake nobody. Keep the ' +
-                    'callback synchronous and publish after the await instead.'
-                );
-            }
-        }
+        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') warnIfAsyncMutate(result);
     }
 
     /** Publishes on the next microtask when synchronous delivery is unsafe.

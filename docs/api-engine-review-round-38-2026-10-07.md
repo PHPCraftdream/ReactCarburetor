@@ -316,3 +316,72 @@ object-keyed native collection conservative equality, cyclic key-cache capacity,
 Отчёт содержит current-base evidence и предложения, не projected implementation и не готовый fix.
 Managed browser tab и собственный server закрыты; throwaway source/type/browser probes удалены после фиксации evidence.
 Коммит ограничен этим файлом; push не запрошен.
+
+## Исправления и независимая проверка
+
+Все пять находок исправлены в отдельном worktree. Первоначальные 318 строк отчёта сохранены без изменений.
+
+| Находка | Реализация |
+|---|---|
+| R38-01 | Равные cyclic snapshots сохраняют прежнюю ссылку; disjoint writes проверяются по mutation targets без обхода графа |
+| R38-02 | Scalar/flat переход освобождает прежний copy ledger до unsubscribe |
+| R38-03 | Watch, hook, class getter и comparator используют borrowed readonly types; tooling snapshot остаётся editable |
+| R38-04 | Flat primitive objects/tuples/sparse arrays не создают graph WeakMap/WeakSet |
+| R38-05 | Primitive class getter не создаёт copy ledger; selector продолжает выполняться на каждом render |
+
+Raw-target proof хранит максимум две покрытые публикации, с отдельными cardinality/version bounds.
+Лимиты — 1024 target entries на сохранённую публикацию и 4096 на pending публикацию; это не byte bounds.
+Overflow, неполная атрибуция и слишком старый baseline делают proof недоступным, но не стирают обычную path history.
+Missing target текущей публикации не может подменяться target предыдущей публикации того же path.
+Opaque draft access пишет branch invalidation: она сохраняется после замены объекта на `null`/primitive,
+а planner проверяет invalidation даже под уже выбранным leaf.
+Все native aliases регистрируются при capture целого selection, не при обычном `Map.size`/key read.
+Дублирующие target-copy maps и remap arrays удалены; двухпубликационный union переиспользуется потребителями.
+
+Readonly — compile-time контракт, без runtime freeze. Map/Set mutators и Date setters исключены;
+дополнительные Date fields сохраняют recursive readonly. JavaScript/unsafe casts не получают mutation guard.
+Strict watch/hook сохраняют отказ от unsupported live classes; class getter сохраняет прежнюю live-reference policy.
+
+### Замеры
+
+Каждый timing — медиана трёх процессов, в каждом пять посторонних writes. Frozen baseline — код `c703dbd`.
+
+| Cyclic rows | Reads/write до → после | Ложные callbacks на пять writes | ms/write до → после |
+|---:|---:|---:|---:|
+| 1000 | 9009 → 2 | 5 → 0 | 15.10276 → 0.46326 |
+| 4000 | 36009 → 2 | 5 → 0 | 64.69432 → 0.18454 |
+| 16000 | 144009 → 2 | 5 → 0 | 314.26980 → 0.04448 |
+
+Timing диагностический: последовательность размеров прогревает JIT, поэтому меньший fixed timing при большем N
+не является scaling claim. Регрессионные gates проверяют reads, allocations, renders и values, не эти времена.
+Real edits доставляются; backlinks и held previous snapshots сохраняются.
+
+- Flat object/tuple: 0 graph WeakMap/WeakSet вместо 3/1 на watcher; 64/128 watchers также дают нули.
+- Primitive class: 0 copy WeakMap на три parent renders вместо 3; object graph — положительный контроль.
+- Inactive 10k-row copy collectible до unsubscribe, raw rows остаются живы; object transition — контроль.
+- Sparse N4000, K1023/1025/1100: 2047/2051/2201 reads; N16000, K2500: 5001 reads.
+- 5000 публикаций: 10 000 reads и 0 equal callbacks; early/late окна по 2000 reads, covered transaction — 2 reads.
+- Native size/key consumers: 0 unrelated renders; собственное изменение key и изменение размера отображаются.
+
+### Постоянные бенчмарки и проверки
+
+`perf/gates/selection38.mjs` содержит восемь автоматически включённых записей:
+cyclic equality, inactive-copy release, flat primitives, class primitive ledger, два sparse raw-cap размера,
+native-read precision и footprint lifecycle. R38-03 — type-only контракт, проверяемый compiler consumers.
+
+- Общий `npm run bench -- --runs 3`: **111 entries, 0 failed, 0 violations** — все 103 старые и 8 новые.
+- Полный `npm test`: **194 files, 1855 tests, 0 failures/skips**.
+- Build, четыре typechecks, layout, lint и gate lint прошли; lint сохраняет предупреждения существующих правил.
+- Packed consumer matrix: **16/16**, React 18/19, npm/pnpm, ESM/CJS, cross-format selection,
+  Next 16.3.5 Turbopack/Webpack.
+- Реальный Chromium: два equal writes оставляют cyclic/projected renders на 1;
+  real edit поднимает их до 2 с DOM `2/true`, class parent render показывает `1/1`; browser errors отсутствуют.
+- Независимые runtime/type probes прошли: external/plain/native aliases, raw members, historical owners,
+  transaction coverage, omitted current targets, opaque→primitive replacement, budget reset/overflow,
+  sparse holes/descriptors, GC retention, normal watch/hook/class consumers и readonly Date fields.
+
+Отрицательные controls проходят без crash и отвергают механизм:
+pre-R38 cyclic/lifecycle costs и false callbacks; pre-R37 `ba80fcb70719` sparse reads 28007/112007 и ratio 1;
+сохранённый overbroad-read build — лишние native renders; saved missing-target build — пропущенную доставку.
+Первый полный прогон обнаружил два native-read precision regressions: исправлен producer, тесты не ослаблялись.
+Проверка large-batch контролирует все значения и считает full-walk baseline отдельно от initial selection.

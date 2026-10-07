@@ -18,6 +18,9 @@ export const CARBURETOR_HAS_DRIFT: unique symbol = Symbol.for('react-carburetor/
 /** The paths written after a version, or undefined once the write log cannot enumerate them. */
 export const CARBURETOR_PATHS_SINCE: unique symbol = Symbol.for('react-carburetor/v1/store-paths-since');
 
+/** The raw objects each path written after a version mutated, or undefined when unanswerable. */
+export const CARBURETOR_TARGETS_SINCE: unique symbol = Symbol.for('react-carburetor/v1/store-targets-since');
+
 /** Delivers one notification pass for a closed write set; the batch coordinator's entry point. */
 export const CARBURETOR_NOTIFY_WRITES: unique symbol = Symbol.for('react-carburetor/v1/store-notify-writes');
 
@@ -33,6 +36,7 @@ export interface IInternalSubscriptionProtocol {
     [CARBURETOR_HAS_DRIFT]?: (baselineVersion: number, reads: ReadonlySet<TPath>) => boolean;
     [CARBURETOR_NOTIFY_WRITES]?: (writes: TPathSet) => void;
     [CARBURETOR_PATHS_SINCE]?: (baselineVersion: number) => ReadonlyArray<TPath> | undefined;
+    [CARBURETOR_TARGETS_SINCE]?: (baselineVersion: number) => ReadonlyMap<TPath, ReadonlySet<object>> | undefined;
     [CARBURETOR_REPLAY_PATCHES]?: (
         patches: readonly IWritePatch[], inverse: boolean, installation: IStateInstallation
     ) => void;

@@ -25,6 +25,9 @@ export const PROXY_CACHE: unique symbol = Symbol('carburetor.proxyCache');
  */
 export const RAW_TARGET: unique symbol = Symbol.for('react-carburetor.rawTarget');
 
+/** Internal native-facade hatch: records whole-graph aliases only while capturing a selection. */
+export const GRAPH_READS: unique symbol = Symbol.for('react-carburetor/v1/native-graph-reads');
+
 /**
  * The ownership contract of the branch cache: one cache belongs to one proxy tree, and an
  * entry survives only while its source is still the live value at its path. Keying by raw

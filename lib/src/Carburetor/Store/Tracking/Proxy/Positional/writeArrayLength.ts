@@ -1,6 +1,6 @@
 import {
-    PATCH_ARRAY_LENGTH_LOCK, PATCH_OPAQUE, TAliasLedger, TPath, TPathRecorder, TPatchPort,
-    TPatchRecorder,
+    PATCH_ARRAY_LENGTH_LOCK, PATCH_OPAQUE, TAliasLedger, TPath, TPatchPort, TPatchRecorder,
+    TWriteRecorder,
 } from '@/Carburetor/Models/Paths';
 import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
 import {keysPath} from '@/Carburetor/Store/Paths/Markers/KeysMarker';
@@ -14,13 +14,13 @@ import {deliverPatches} from '@/Carburetor/Store/Tracking/Proxy/deliverPatches';
  * @param descriptor - optional native definition.
  * @param basePath - the array's tracked path.
  * @param basePathSegments - its unescaped path keys.
- * @param record - effective write attribution.
+ * @param record - effective write attribution, carrying the raw mutated array.
  * @param aliases - development alias validation.
  * @param patchPort - current mutation observers.
  */
 export const writeArrayLength = (
     array: unknown[], value: unknown, descriptor: PropertyDescriptor | undefined,
-    basePath: TPath, basePathSegments: readonly string[], record: TPathRecorder,
+    basePath: TPath, basePathSegments: readonly string[], record: TWriteRecorder,
     aliases: TAliasLedger | undefined, patchPort: TPatchPort | undefined
 ): boolean => {
     const validNumber = typeof value === 'number' && Number.isInteger(value)
@@ -85,7 +85,7 @@ export const writeArrayLength = (
         for (let index = denseStart; index < previousLength; index++) {
             if (wrote || !Object.prototype.hasOwnProperty.call(array, index)) {
                 removedAny = true;
-                record(joinPath(basePath, String(index)));
+                record(joinPath(basePath, String(index)), array);
             }
         }
     }
@@ -95,7 +95,7 @@ export const writeArrayLength = (
             if (!wrote && Object.prototype.hasOwnProperty.call(array, entry)) continue;
             removedAny = true;
             const key = String(entry);
-            record(joinPath(basePath, key));
+            record(joinPath(basePath, key), array);
             if (queue) {
                 const previous = removedValues?.[i];
                 queue({segments: [...basePathSegments, key], previousExists: true,
@@ -106,11 +106,11 @@ export const writeArrayLength = (
     }
     if (removedAny) {
         aliases?.checkWrite(array, basePath);
-        record(keysPath(basePath));
+        record(keysPath(basePath), array);
     }
     if (nextLength !== previousLength || writableChanged) {
         aliases?.checkWrite(array, basePath);
-        record(joinPath(basePath, 'length'));
+        record(joinPath(basePath, 'length'), array);
         if (queue && nextLength !== previousLength) {
             queue({segments: [...basePathSegments, 'length'], previousExists: true,
                 previous: previousLength, nextExists: true, next: nextLength});

@@ -37,9 +37,12 @@ export const emitStoreUpdate = <T extends object>(
     // An empty writes Set is never handed off anywhere, so it is reused as-is instead of
     // being replaced on every emit, including the (common) no-op ones.
     const changed: TPathSet | undefined = store.writes.size > 0 ? store.writes : undefined;
+    const writeTargets = changed !== undefined ? store.writeTargets.entries : undefined;
+    const targetsIncomplete = changed !== undefined ? store.writeTargets.isIncomplete : false;
 
     if (changed) {
         store.writes = new Set<TPath>();
+        store.writeTargets.reset();
     }
 
     store.draftTouched = false;
@@ -58,7 +61,7 @@ export const emitStoreUpdate = <T extends object>(
     const writes: TPathSet = changed || new Set<TPath>([WILDCARD_PATH]);
     store.version++;
     nativeStoreWriteEpoch.value++;
-    store.writeLog.record(store.version, writes);
+    store.writeLog.record(store.version, writes, writeTargets, targetsIncomplete);
     if (!changed) {
         try {
             store.patchPort.listener?.(PATCH_OPAQUE);

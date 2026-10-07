@@ -46,11 +46,12 @@ export const planSelectionPatch = (
         work += segments.length;
         if (work > budget) return undefined;
         let node = root;
-        for (let depth = 0; depth < segments.length && !node.leaf; depth++) {
+        for (let depth = 0; depth < segments.length; depth++) {
             const segment = segments[depth];
             if (segment === '~k' || segment === '~p' || segment === 'length') return undefined;
             const key = unescapeSegment(segment);
             if (key === '__proto__') return undefined;
+            if (node.leaf) continue;
             if (node.children === undefined) {
                 node.children = new Map<string, IPatchNode>();
                 work++;

@@ -1,5 +1,5 @@
 import {
-    PATCH_OPAQUE, TAliasLedger, TPath, TPathRecorder, TPatchPort, TPatchRecorder,
+    PATCH_OPAQUE, TAliasLedger, TPath, TPatchPort, TPatchRecorder, TWriteRecorder,
 } from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {clonePatchValue} from "@/Carburetor/Store/Tracking/Proxy/clonePatchValue";
@@ -14,8 +14,8 @@ interface IPositionalHost {
     readonly basePath: TPath;
     /** The array's unescaped path keys, for patch segments. */
     readonly basePathSegments: readonly string[];
-    /** The write sink. */
-    readonly record: TPathRecorder;
+    /** The write sink, carrying the raw mutated array. */
+    readonly record: TWriteRecorder;
     /** Development alias and state-model validation; undefined in production. */
     readonly aliases: TAliasLedger | undefined;
     /** The branch-wrapper cache this tree shares. */
@@ -91,10 +91,10 @@ const attributePositional = (host: IPositionalHost, before: unknown[], source: u
         host.aliases?.checkKey(source, key, path);
         host.aliases?.checkState(next, path, wasOwn ? previous : undefined);
         host.aliases?.forget(previous);
-        host.record(path);
+        host.record(path, source);
 
         if (wasOwn !== isOwn) {
-            host.record(host.keysMarker());
+            host.record(host.keysMarker(), source);
         }
 
         if ((isTrackableItem(previous) || isTrackableItem(next))
@@ -116,7 +116,7 @@ const attributePositional = (host: IPositionalHost, before: unknown[], source: u
     }
 
     if (afterLength !== beforeLength) {
-        host.record(host.writtenPath('length', source));
+        host.record(host.writtenPath('length', source), source);
 
         if (patches !== undefined) {
             patches.push({

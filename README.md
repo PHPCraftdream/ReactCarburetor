@@ -113,8 +113,9 @@ const {orderIds, activeCount} = this.useCarburetor(todoCarburetor);
 ```
 
 Data returned from `useCarburetor` is deeply read-only where it is plain data: the compiler
-rejects a write, and the proxy throws if you force one past it. A `Map`, `Date`, `Set` or class
-instance passes through unwrapped, so its own mutating methods sit outside that guard. Writes
+rejects a write, and the proxy throws if you force one past it. Standard native Map/Set mutators
+and Date setters are excluded from the TypeScript view, but native objects are not frozen; writes
+through JavaScript or unsafe casts remain possible. Writes
 belong to the carburetor, through `update`:
 
 ```ts
@@ -126,6 +127,24 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
     };
 }
 ```
+
+### Selection results and ownership
+
+`watch`, `useCarburetorValue`, and `connectSelection` return **borrowed readonly selections**.
+Plain object and array projections are detached for comparison and cached internally; mutating
+one can corrupt that comparison baseline. TypeScript marks plain fields and tuple/array elements
+readonly, but JavaScript callers and unsafe casts are not protected by a runtime mutation guard.
+
+Standard `Map`/`Set` mutators and `Date` setters are excluded from the readonly type surface;
+read methods remain available. This is compile-time only: the underlying native values are not
+frozen and JavaScript callers or unsafe casts can still mutate them. `watch` and the hook reject
+unsupported live class instances; class connection selections retain their existing live-reference
+policy and development diagnostics. Readonly typing does not promise runtime isolation.
+
+When an editable projection is needed, copy the plain branch to edit, for example
+`const editable = {...selected}`. Copy nested branches too before editing them.
+`store.snapshot()` remains an editable plain-data copy for tooling; native Map/Set/Date values
+and class instances still have its existing shared-reference limits.
 
 Write the fields that change, or `Object.assign(draft.items[id], patch)`: the no-op check skips
 fields that already hold the value, so only real changes are recorded. Replacing a whole object

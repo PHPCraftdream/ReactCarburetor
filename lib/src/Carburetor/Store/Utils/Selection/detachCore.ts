@@ -50,6 +50,7 @@ const detach = (
 
     const target = liveViews.readTarget(value);
     const native = target ?? value;
+    if (native instanceof Map || native instanceof Set) liveViews.recordGraphReads(value);
     const known = seen.get(value) ?? (target !== undefined ? seen.get(target) : undefined);
 
     if (known !== undefined) {

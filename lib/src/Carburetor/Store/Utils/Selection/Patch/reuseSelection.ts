@@ -47,11 +47,9 @@ export const reuseSelection = <R>(
     let sharedReads = true;
 
     if (hasDrift.call(store, committed.baselineVersion, committed.reads)) {
-        const patched = patchable
-            ? patchFromWriteLog(
-                store, committed.baselineVersion, previous, live, ledger, undefined, rejectArraySubclass
-            )
-            : undefined;
+        const patched = patchFromWriteLog(
+            store, committed.baselineVersion, previous, live, ledger, undefined, rejectArraySubclass, patchable
+        );
 
         if (patched === undefined) {
             return undefined;

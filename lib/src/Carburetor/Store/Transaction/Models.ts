@@ -3,6 +3,7 @@ import {
     TAliasLedger, TPath, TPathSet, TPatchPort,
 } from '@/Carburetor/Models/Paths';
 import {WriteLog} from '@/Carburetor/Store/Paths/WriteLog';
+import {WriteTargetLedger} from '@/Carburetor/Store/Utils/Graph/WriteTargetLedger';
 import {CARBURETOR_NOTIFY_WRITES} from '@/Carburetor/Store/Utils/Models';
 
 /** Store boundary consumed by the shared mutation commit implementation. */
@@ -10,6 +11,7 @@ export interface IStorePublicationPort<T extends object> {
     data: T;
     draftTouched: boolean;
     writes: TPathSet;
+    writeTargets: WriteTargetLedger;
     writeLog: WriteLog;
     version: number;
     publicationPending: boolean;

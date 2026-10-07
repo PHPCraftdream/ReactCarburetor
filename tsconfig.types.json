@@ -9,6 +9,7 @@
     "__tests__/Engine/Derived/Readable/ReadableCarburetor.types.test.tsx",
     "__tests__/Engine/Store/Paths/TAliasLedger.types.test.ts",
     "__tests__/Engine/Store/Paths/PathGrammar.types.test.ts",
+    "__tests__/Engine/Derived/Readable/selection-ownership.types.ts",
     "__tests__/Engine/Store/PublicApi/R3308Visibility.types.test.ts"
   ],
   "exclude": ["node_modules", "dist"]

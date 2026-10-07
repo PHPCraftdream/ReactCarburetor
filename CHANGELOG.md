@@ -7,6 +7,21 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- R38 cyclic selections retain equal snapshots without false callbacks or renders. Version-covered,
+  bounded mutation-target proofs skip disjoint graph walks without hiding external aliases,
+  transaction history, or opaque effects; expired proofs preserve ordinary sparse patch history.
+- Scalar and flat selection transitions release obsolete copy ledgers. Flat primitive objects,
+  tuples and sparse arrays avoid graph collections; primitive class getters allocate no copy ledger.
+- **Type contract:** `watch`, `useCarburetorValue`, `connectSelection`, and comparator arguments are
+  borrowed readonly values. Standard Map/Set mutators and Date setters are excluded; Date fields
+  remain recursively readonly. No runtime freeze is added; editable tooling snapshots are unchanged.
+- Native reads remain precise: size/key consumers do not subscribe to every member. Whole-graph
+  selection capture records the aliases it needs separately.
+- Eight R38 performance/control entries are part of the unfiltered `npm run bench` suite, including
+  large sparse batches, 5000-publication lifecycle cost and actual native-read render precision.
+
 ### Added
 
 - `npm run bench`: a performance gate suite (`perf/`). Every performance improvement of rounds 6-37 is a

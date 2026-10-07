@@ -6,6 +6,17 @@ export type TPathSet = Set<TPath>;
 /** Records a path that has been read or written. */
 export type TPathRecorder = (path: TPath) => void;
 
+/** Records a written path together with the raw object the mutation landed on, if known. */
+export type TWriteRecorder = (path: TPath, target?: object) => void;
+
+/**
+ * Marks that a draft handed out a raw native member (or anything reached through one), so
+ * in-place effects on it cannot be attributed to recorded targets. Its presence in a write's
+ * target set invalidates the reuse proof for that write.
+ */
+export const RAW_EXPOSURE: {readonly kind: 'raw-member-exposure'} =
+    Object.freeze({kind: 'raw-member-exposure'} as const);
+
 /**
  * Where each branch object was last seen by the read proxy, for the development alias report:
  * tracking is keyed by path, so an object reachable under two paths cannot be tracked.

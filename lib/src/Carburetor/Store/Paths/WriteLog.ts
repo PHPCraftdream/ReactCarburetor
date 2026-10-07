@@ -8,6 +8,9 @@ import {WILDCARD_PATH} from "./WildcardPath";
  */
 const DEFAULT_CAPACITY = 8192;
 
+/** Raw mutation targets retained per publication before its raw proof is dropped (R38 round 5). */
+const TARGET_CAPACITY = 1024;
+
 /**
  * The version each recently written path, and each ancestor of one, was last written at.
  *
@@ -19,6 +22,11 @@ const DEFAULT_CAPACITY = 8192;
  * Indexed by path rather than kept as a list of writes, so a commit costs O(read paths × depth)
  * however many writes landed since its render: a list scanned per commit made N rows that each
  * write on mount O(N²).
+ *
+ * Raw-target proofs are bounded independently of ordinary path history: per-publication
+ * cardinality, a two-publication coverage ring and a separate `targetsWatermark`. Raw
+ * cardinality overflow or an incomplete publication clears only raw ownership — never the
+ * ordinary `last`/`under` history, so large plain batches keep the relative R37 patch cost.
  */
 export class WriteLog {
     /** How many entries `last` and `under` may hold together before the log resets. */
@@ -29,6 +37,18 @@ export class WriteLog {
     private readonly under: Map<TPath, number> = new Map<TPath, number>();
     /** The version of the latest wildcard write. */
     private wildcardVersion = 0;
+    /** Immutable target maps for the latest two publications. */
+    private latestTargets: ReadonlyMap<TPath, ReadonlySet<object>> | undefined;
+    /** Immutable targets from the immediately preceding publication. */
+    private previousTargets: ReadonlyMap<TPath, ReadonlySet<object>> | undefined;
+    /** Version represented by latestTargets. */
+    private latestTargetsVersion = 0;
+    /** Version represented by previousTargets. */
+    private previousTargetsVersion = 0;
+    /** Lazily shared by consumers spanning both retained publications. */
+    private combinedTargets: ReadonlyMap<TPath, ReadonlySet<object>> | undefined;
+    /** A baseline below this predates every retained raw-target proof. */
+    private targetsWatermark = 0;
     /** A baseline below this predates what the log still knows and must fall back. */
     private watermark = 0;
 
@@ -60,15 +80,55 @@ export class WriteLog {
     /**
      * Indexes one emit's touched paths and their ancestors under `version`.
      *
+     * Raw-target proofs are bounded independently of ordinary path history. An incomplete
+     * publication or a publication without targets clears only raw ownership; cardinality
+     * beyond `TARGET_CAPACITY` does the same — ordinary `last`/`under` history and the ordinary
+     * watermark are untouched, so `pathsSince` and `matches` keep answering. After a successful
+     * merge the publication joins the two-entry coverage ring, keeping the two most recent
+     * proofs; a baseline older than both falls back. The ordinary capacity reset inside the
+     * writes loop also clears raw ownership, since lost history makes everything conservative.
+     *
      * @param version - the version this emit bumped to, already incremented by the caller
      * @param writes - the paths this emit published
+     * @param targets - the raw objects each written path mutated, when the write proxy knew them
+     * @param targetsIncomplete - whether the publication dropped targets to its budget
      */
-    public record(version: number, writes: TPathSet): void {
+    public record(
+        version: number, writes: TPathSet,
+        targets?: ReadonlyMap<TPath, ReadonlySet<object>>, targetsIncomplete?: boolean
+    ): void {
+        this.combinedTargets = undefined;
+        if (targetsIncomplete === true) {
+            // The paths themselves are complete; only the raw proof is unavailable.
+            this.resetTargets(version);
+        } else if (targets !== undefined) {
+            let count = 0;
+            for (const set of targets.values()) {
+                count += set.size;
+                if (count > TARGET_CAPACITY) break;
+            }
+            if (count > TARGET_CAPACITY) {
+                this.resetTargets(version);
+            } else {
+                this.previousTargets = this.latestTargets;
+                this.previousTargetsVersion = this.latestTargetsVersion;
+                this.latestTargets = targets;
+                this.latestTargetsVersion = version;
+            }
+        } else {
+            this.resetTargets(version);
+        }
+
         for (const path of writes) {
             if (path === WILDCARD_PATH) {
                 this.wildcardVersion = version;
 
                 continue;
+            }
+
+            // Earlier targets cannot fill a missing current-publication attribution.
+            if (this.latestTargets !== undefined && (this.latestTargets.get(path)?.size ?? 0) === 0) {
+                this.resetTargets(version);
             }
 
             this.last.set(path, version);
@@ -83,15 +143,28 @@ export class WriteLog {
             // Oversized emit: index nothing further. Raising the watermark answers every
             // baseline below it coarsely, exactly like the old index-then-forget, and a
             // wildcard later in this same emit is covered by that watermark too — any
-            // baseline it could matter for is already below the watermark.
+            // baseline it could matter for is already below the watermark. Lost ordinary
+            // history makes everything conservative, so raw ownership is cleared too.
             if (this.last.size + this.under.size > this.capacity) {
                 this.last.clear();
                 this.under.clear();
                 this.watermark = version;
+                this.resetTargets(version);
 
                 return;
             }
         }
+    }
+
+    /** Clears only raw-target ownership; ordinary `last`/`under`/`watermark` are untouched.
+     *
+     * @param version - the version this raw reset is anchored at.
+     */
+    private resetTargets(version: number): void {
+        this.latestTargets = undefined;
+        this.previousTargets = undefined;
+        this.combinedTargets = undefined;
+        this.targetsWatermark = version;
     }
 
     /**
@@ -107,6 +180,36 @@ export class WriteLog {
             if (version > baselineVersion) paths.push(path);
         }
         return paths;
+    }
+
+    /**
+     * The raw objects each recently written path mutated, covering every publication since
+     * `baselineVersion`.
+     *
+     * @param baselineVersion - the version the caller's snapshot was valid at
+     * @returns the version-covered targets, or undefined when unavailable: ordinary watermark,
+     * raw watermark, a wildcard past the baseline, no retained publications, or a ring too
+     * short to cover the baseline.
+     */
+    public targetsSince(baselineVersion: number): ReadonlyMap<TPath, ReadonlySet<object>> | undefined {
+        if (baselineVersion < this.watermark || baselineVersion < this.targetsWatermark
+            || this.wildcardVersion > baselineVersion || this.latestTargets === undefined) return undefined;
+        if (baselineVersion >= this.latestTargetsVersion - 1) return this.latestTargets;
+        if (this.previousTargets !== undefined && baselineVersion >= this.previousTargetsVersion - 1) {
+            if (this.combinedTargets === undefined) {
+                const merged = new Map<TPath, Set<object>>();
+                for (const [path, set] of this.previousTargets) merged.set(path, new Set<object>(set));
+                for (const [path, set] of this.latestTargets) {
+                    const mergedSet = merged.get(path);
+                    if (mergedSet === undefined) merged.set(path, new Set<object>(set));
+                    else for (const raw of set) mergedSet.add(raw);
+                }
+                this.combinedTargets = merged;
+            }
+            return this.combinedTargets;
+        }
+        // Three or more publications since the baseline: the retained ring cannot prove them.
+        return undefined;
     }
 
     /**

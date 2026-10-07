@@ -5,6 +5,7 @@ import {IReadableCarburetor, TReadonly, TSubscriber} from "@/Carburetor";
 import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
 import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
+import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconcileFlatSelection";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {patchFromWriteLog} from "@/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog";
 import {completeObservation} from "@/Carburetor/Store/Tracking/Observation/completeObservation";
@@ -139,7 +140,7 @@ export const useCarburetorValue = <T extends object, R>(
     carburetor: IReadableCarburetor<T>,
     select: TSelector<T, R>,
     isEqual: TValueComparator<R> = sameSelection
-): R => {
+): TReadonly<R> => {
     // Initialized lazily: the initializers below are per-render arguments otherwise, evaluated
     // and discarded after the first render (R30-10).
     const cache = useRef<ICacheEntry<T, R> | null>(null);
@@ -263,6 +264,7 @@ export const useCarburetorValue = <T extends object, R>(
         let liveSelection: R | undefined;
         // R37-05: allocated on the first object-shaped need; a primitive verdict keeps zero ledgers.
         let copies: WeakMap<object, unknown> | undefined;
+        let flat: {value: unknown} | undefined;
         const trace = {shared: false};
         let patched = false;
 
@@ -291,16 +293,24 @@ export const useCarburetorValue = <T extends object, R>(
 
             // R36-01: the same live view as last time, so the write log names what changed and only
             // those subtrees are reconciled; every other shape takes the full walk below.
-            const viaLog = liveCompare && !noReadDrift && entry !== null && entry.filled && entry.patchable &&
+            const viaLog = liveCompare && !noReadDrift && entry !== null && entry.filled &&
                 entry.copies !== undefined &&
                 sameCarburetor && entry.isEqual === isEqual && fresh === entry.liveSelection
-                ? patchFromWriteLog(carburetor, entry.version, entry.value, fresh, entry.copies, rejectLiveInstance)
+                ? patchFromWriteLog(
+                    carburetor, entry.version, entry.value, fresh, entry.copies, rejectLiveInstance,
+                    undefined, entry.patchable
+                )
+                : undefined;
+            flat = viaLog === undefined && liveCompare
+                ? reconcileFlatSelection(entry?.filled ? entry.value : undefined, fresh)
                 : undefined;
 
             if (viaLog !== undefined) {
                 result = viaLog;
                 copies = entry!.copies;
                 patched = true;
+            } else if (flat !== undefined) {
+                result = flat.value as R;
             } else if (liveCompare) {
                 if (fresh !== null && typeof fresh === 'object') {
                     copies ??= new WeakMap<object, unknown>();
@@ -315,7 +325,8 @@ export const useCarburetorValue = <T extends object, R>(
             } else {
                 const candidate: R = detach(fresh);
 
-                result = entry !== null && entry.filled && isEqual(entry.value, candidate)
+                result = entry !== null && entry.filled &&
+                    isEqual(entry.value as TReadonly<R>, candidate as TReadonly<R>)
                     ? entry.value
                     : candidate;
             }
@@ -334,7 +345,7 @@ export const useCarburetorValue = <T extends object, R>(
         // R37-01: patchability always describes the latest full reconcile's graph verdict. A patch
         // cannot introduce sharing (container leaves fall back to the full walk), so a patched pass
         // keeps the tree verdict it was granted.
-        cache.current = {...completed, liveSelection, copies, patchable: !trace.shared};
+        cache.current = {...completed, liveSelection, copies, patchable: patched ? entry!.patchable : !trace.shared};
 
         return result;
     }, [carburetor, select, isEqual, recordRead]);
@@ -347,5 +358,5 @@ export const useCarburetorValue = <T extends object, R>(
         install();
     });
 
-    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot) as TReadonly<R>;
 };

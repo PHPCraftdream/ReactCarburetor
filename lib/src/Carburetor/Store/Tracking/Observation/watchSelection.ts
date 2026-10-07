@@ -6,6 +6,7 @@ import {transferCompletedReads} from '@/Carburetor/Store/Tracking/Observation/tr
 import {sameReads} from '@/Carburetor/Store/Tracking/Observation/sameReads';
 import {TCompletedReads} from '@/Carburetor/Store/Tracking/Observation/Models';
 import {PersistentViews} from '@/Carburetor/Store/Tracking/Observation/PersistentViewCache';
+import {reconcileFlatSelection} from '@/Carburetor/Store/Utils/Selection/reconcileFlatSelection';
 import {reconcileSelection} from '@/Carburetor/Store/Utils/Selection/reconcileSelection';
 import {patchFromWriteLog} from '@/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog';
 import {getUid} from '@/Carburetor/Store/Utils/getUid';
@@ -53,7 +54,8 @@ const coverReads = (filed: TCompletedReads, reads: TPathSet): TPathSet => {
  */
 export const watchSelection = <T, R>(
     source: ICarburetorSubscription & {read: (record: TPathRecorder) => TReadonly<T>},
-    select: TSelector<T, R>, onChange: (next: R, previous: R) => void
+    select: TSelector<T, R>,
+    onChange: (next: TReadonly<R>, previous: TReadonly<R>) => void
 ): TDisposer => {
     const id = getUid();
     const views = new PersistentViews();
@@ -65,12 +67,16 @@ export const watchSelection = <T, R>(
     let copies: WeakMap<object, unknown> | undefined;
     let version = versionOf?.call(source);
     const trace = {shared: false};
-    if (initial.value !== null && typeof initial.value === 'object') {
-        copies = new WeakMap<object, unknown>();
+    const flatInitial = reconcileFlatSelection(undefined, initial.value);
+    if (flatInitial !== undefined) initial.value = flatInitial.value as R;
+    else {
+        if (initial.value !== null && typeof initial.value === 'object') {
+            copies = new WeakMap<object, unknown>();
+        }
+        initial.value = reconcileSelection(
+            undefined, initial.value, rejectWatchInstance, undefined, undefined, copies, trace
+        );
     }
-    initial.value = reconcileSelection(
-        undefined, initial.value, rejectWatchInstance, undefined, undefined, copies, trace
-    );
     let patchable = !trace.shared;
     const completedInitial = completeObservation(initial);
     let previous: R = completedInitial.value;
@@ -82,17 +88,27 @@ export const watchSelection = <T, R>(
         const fresh = runSelector(source, select, reads, views);
         const nowVersion = versionOf?.call(source);
         // R36-01: the same live view as last time, so the write log names what changed.
-        const viaLog = patchable && version !== undefined && fresh.value === liveSelection && copies !== undefined
-            ? patchFromWriteLog(source, version, previous, fresh.value, copies, rejectWatchInstance)
+        const viaLog = version !== undefined && fresh.value === liveSelection && copies !== undefined
+            ? patchFromWriteLog(
+                source, version, previous, fresh.value, copies, rejectWatchInstance, undefined, patchable
+            )
+            : undefined;
+        const flat = viaLog === undefined
+            ? reconcileFlatSelection(previous, fresh.value)
             : undefined;
         let next: R;
         if (viaLog !== undefined) {
             next = viaLog;
             fresh.reads = coverReads(installed, fresh.reads);
+        } else if (flat !== undefined) {
+            next = flat.value as R;
+            copies = undefined;
+            patchable = true;
         } else if (fresh.value === null || typeof fresh.value !== 'object') {
-            // R37-05: a primitive selection reconciles with no graph ledgers at all; a primitive
-            // snapshot can never be shared, so patchability stands.
+            // Primitive verdicts cannot be shared, so no graph ledger is retained.
             next = (Object.is(previous, fresh.value) ? previous : fresh.value) as R;
+            copies = undefined;
+            patchable = true;
         } else {
             const nextCopies = new WeakMap<object, unknown>();
             next = reconcileSelection(
@@ -115,7 +131,7 @@ export const watchSelection = <T, R>(
             source.subscribe(callback, transferCompletedReads(completed.reads, id));
             installed = completed.reads as unknown as TCompletedReads;
         }
-        if (changed) onChange(completed.value, last);
+        if (changed) onChange(completed.value as TReadonly<R>, last as TReadonly<R>);
     };
     source.subscribe(callback, transferCompletedReads(completedInitial.reads, id));
     return () => { source.unsubscribe(id); };

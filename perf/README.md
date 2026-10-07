@@ -132,6 +132,40 @@ timer/JIT noise without changing the `viewIterateMs / rawIterateMs <= 1.5` gate;
 Integration verification: the unfiltered suite passed all 103 entries with three samples per build
 and no violations. Run `npm run build && npm run bench` to include R37 with every existing round.
 
+### Round 38
+
+Eight automatically discovered entries in `perf/gates/selection38.mjs` join the unfiltered
+`npm run bench` suite. Four mechanism gates share one scenario/sample set; they do not repeat
+its work. Focused command: `npm run bench -- --only selection38 --runs 3`.
+
+| Entry | Guards |
+|---|---|
+| `selection38/cyclic-equality@production` | Two reads at 1k/4k/16k, no false callbacks, real edits/backlinks/held snapshots |
+| `selection38/inactive-copy-release@10k` | Detached copies collectible before unsubscribe while raw rows remain alive |
+| `selection38/flat-primitive@128` | Zero graph collections at 1/64/128 watchers; sparse holes, own-undefined and non-enumerable indices |
+| `selection38/class-primitive-ledger@3` | Three real parent renders/selector calls with zero primitive copy ledgers; object positive control |
+| `selection38/sparse-raw-cap@4k` | 1023/1025/1100 leaf changes cost 2047/2051/2201 reads, not a full-list cliff |
+| `selection38/sparse-raw-cap@16k` | 2500 leaf changes cost 5001 reads; dense-walk positive control and exact complete values |
+| `selection38/native-read-precision@1k` | No unrelated size/key renders; actual selected changes and whole-Map alias delivery |
+| `selection38/footprint-lifecycle@5000` | Stable 2-read cost after 5000 publications, covered transactions, unknown/overflow safety and expired-owner GC |
+
+R38-03 changes the compile-time borrowed-readonly contract, not runtime performance; its
+negative/positive consumer assertions are included in `npm run typecheck`.
+
+Three samples pass all eight entries. The frozen pre-R38 build rejects cyclic/ledger/flat
+mechanisms; lifecycle reads are 2,925,000 instead of 10,000, with 5000 false callbacks.
+The pre-R37 build `ba80fcb70719` rejects both enlarged sparse guards: 28,007/112,007 reads and
+a sparse/dense ratio of 1, not at most 0.25. A preserved overbroad native-read build rejects the
+precision control with extra renders; a preserved incomplete-attribution build rejects
+`unknownPublicationCorrect`. Negative runs fail on mechanisms, not crashes.
+
+Raw-target proofs have separate cardinality/version bounds; losing them never discards
+complete ordinary path history. Missing current-publication targets cannot borrow old owners.
+Opaque draft exposure writes a branch invalidation that survives object-to-primitive replacement.
+Whole-graph alias reads occur during selection capture, not on ordinary `Map.size` or key access.
+Counters are graph-collection constructors and recorded reads; GC checks are reachability,
+not byte bounds. Timing reports remain diagnostic. See the R38 review report for final receipts.
+
 ## Baseline builds
 
 `node perf/harness/baseline.mjs <ref>` builds any commit's distribution into

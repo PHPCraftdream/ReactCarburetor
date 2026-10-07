@@ -1,6 +1,6 @@
 import {TPathRecorder} from "@/Carburetor/Models/Paths";
 import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
-import {IProxyCache, RAW_TARGET} from "@/Carburetor/Store/Tracking/Models";
+import {GRAPH_READS, IProxyCache, RAW_TARGET} from "@/Carburetor/Store/Tracking/Models";
 import {recordNativeAliasReads} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasReads";
 import {nativeAliasIndex} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
@@ -88,6 +88,10 @@ const adaptNativeCollection = (
         get(target, key): unknown {
             if (key === RAW_TARGET) {
                 return target;
+            }
+            if (key === GRAPH_READS) {
+                if (root !== undefined && record !== undefined) recordNativeAliasReads(root, target, record);
+                return undefined;
             }
 
             // Native getters (notably size) require a receiver with the collection's slots.
@@ -270,6 +274,12 @@ export const liveViews = {
         value: object, cache: IProxyCache, source: object, key: string,
         root: object, record: TPathRecorder
     ): object => adaptNativeCollection(value, cache, source, key, root, record),
+    /** Records all native aliases when a selection captures the whole graph.
+     *
+     * @param view - native read facade or untracked native value. */
+    recordGraphReads: (view: object): void => {
+        void Reflect.get(view, GRAPH_READS);
+    },
     /** Notes a diagnostic-only facade without erasing an existing target or resolver. */
     note: (view: object): void => {
         if (!knownViews.has(view)) {

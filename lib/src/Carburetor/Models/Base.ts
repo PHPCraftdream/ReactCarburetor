@@ -24,11 +24,17 @@ export type TDisposer = () => void;
 export type TTimerHandle = ReturnType<typeof setTimeout> | undefined;
 
 /**
- * Deeply immutable view of the data. Data read through a carburetor is read-only:
- * the proxy throws on a write at runtime, and this type makes the compiler say so first.
+ * Deeply immutable view of data, including detached selection results. Selection projections are
+ * borrowed from internal comparison caches: copy plain data before editing it. Standard Map/Set
+ * mutators and Date setters are excluded from the type surface; this is compile-time only, not a
+ * runtime guard. Native values and class instances are not frozen, so JavaScript or unsafe casts
+ * can still mutate them; those escapes are unsupported.
  */
 export type TReadonly<T> =
     T extends (...args: never[]) => unknown ? T :
-    T extends ReadonlyArray<infer TItem> ? ReadonlyArray<TReadonly<TItem>> :
+    T extends ReadonlyMap<infer K, infer V> ? ReadonlyMap<TReadonly<K>, TReadonly<V>> :
+    T extends ReadonlySet<infer V> ? ReadonlySet<TReadonly<V>> :
+    T extends Date ? TReadonly<Omit<T, Extract<keyof Date, `set${string}`>>> :
+    T extends ReadonlyArray<unknown> ? {readonly [TKey in keyof T]: TReadonly<T[TKey]>} :
     T extends object ? {readonly [TKey in keyof T]: TReadonly<T[TKey]>} :
     T;
