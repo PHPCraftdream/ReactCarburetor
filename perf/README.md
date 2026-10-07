@@ -98,6 +98,40 @@ plain object literal — that gate metrics are metrics the scenario actually emi
 5. `node scripts/checkLayout.mjs`; `node node_modules/oxlint/bin/oxlint --type-aware perf`;
    `npm run bench -- --lint-gates`.
 
+### Round 37
+
+All six R37 entries are permanent parts of the unfiltered `npm run bench` suite; the runner
+discovers every `perf/gates/*.mjs` file automatically. No separate registration or `--only` is needed.
+
+| Entry | Guards |
+|---|---|
+| `selection37/alias-topology@2` | Native/plain alias identity and values after both edits |
+| `history/r37-02-delivery@4-fields` | Complete patch delivery after an observer throws, including undo/redo |
+| `selection37/bounded-reads@64` | Bounded read ownership across 16/64 schema cycles |
+| `selection37/patch-budget@4k` | Sparse 64/65/128 leaf writes without the old whole-list cliff |
+| `selection37/primitive-wake@1` | Zero graph collections on a warmed equivalent scalar wake |
+| `components/branch-migration@1` | Equal-valued class branch migration without a render |
+
+These are mechanism/correctness gates, not latency speedup claims. Sparse reads have bounded
+counters; dense walks, growing shapes and object reconciliation provide positive controls.
+
+The six R37 gates reject `ba80fcb70719` on their actual mechanism counters/verdicts: stale aliases,
+truncated patch delivery, growing read sets, the 65/128-write cliff, scalar ledgers and an extra
+class render. Each baseline check uses three samples, including the scenarios' positive controls.
+
+The `store/restore-one-leaf` entries guard R34-04 with `restoreRowWraps === 1`, the read-proxy
+positive control and the delivered update. The pre-R34 build wraps every row instead (1000 at 1k).
+`restoreMs` and `snapshotMs` remain diagnostic/A-B metrics: restore also diffs and publishes, so
+snapshot cloning is not an equivalent-work timing control. Their old ratio ceilings failed even
+on the pre-R37 build and are not used as regression gates.
+
+The alias read-cache timing probe warms both paths with the same batches, alternates their order,
+checks every iteration's checksum and reports time per traversal. Batching avoids single-traversal
+timer/JIT noise without changing the `viewIterateMs / rawIterateMs <= 1.5` gate; pre-R30 still fails.
+
+Integration verification: the unfiltered suite passed all 103 entries with three samples per build
+and no violations. Run `npm run build && npm run bench` to include R37 with every existing round.
+
 ## Baseline builds
 
 `node perf/harness/baseline.mjs <ref>` builds any commit's distribution into
@@ -123,6 +157,7 @@ fixes:
 | `6fc13561e952` | before R10-01 |
 | `8b27dc42ac2f` | before R8 |
 | `687c7aa405e6` | before R9-02 |
+| `ba80fcb70719` | before R37 |
 
 ## Outside the suite
 

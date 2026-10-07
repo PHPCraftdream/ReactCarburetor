@@ -9,12 +9,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `npm run bench`: a performance gate suite (`perf/`). Every performance improvement of rounds 6-35 is a
+- `npm run bench`: a performance gate suite (`perf/`). Every performance improvement of rounds 6-37 is a
   scenario measured on the built output with gates on the mechanism it removed (exact counters, same-run
   ratios, size scale, generous ceilings), each validated to fail on the build before its fix.
   `--against <ref>` also compares timings with a build of that ref; `--lint-gates` checks the manifest.
   See `perf/README.md`. The legacy benchmarks under `benchmarks/` and `scripts/benchmarks/` were migrated
   into it and removed, except `benchmarks/state/unpublishedDraftCheck.mjs` (needs a development build).
+  Restore-one-leaf gates use exact changed-row wrapping with a positive control and correctness
+  checks; restore/snapshot timings remain reports, without unrelated-operation ratio ceilings.
+  Alias iteration timings warm and alternate checksum-checked batches, normalized per traversal,
+  instead of sampling single cold traversals; the existing ratio limit is unchanged.
 - Public `IReadableCarburetor<T>`: read/subscription capabilities accepted by hooks, class read APIs
   and computed readers, without requiring mutation or inspectable tooling methods.
 - `ResourceCache` option `keyCacheSize`: a finite primitive key/path memo budget (default4096,

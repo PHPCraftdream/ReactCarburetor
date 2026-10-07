@@ -13,8 +13,9 @@ const s = new S({rows: Array.from({length: rows}, (_, id) => ({id, title: `Row $
 let wakes = 0;
 s.subscribe(() => { wakes++; }, {reads: ['rows.5.done']});
 
-// Mechanism counter: Proxy creations wrapping row objects. Restore of one changed leaf is
-// O(changed): the cold restore wraps exactly one row (pre-R34 wrapped every row); later samples reuse the cached draft proxies, so the maximum across samples is the count.
+// Count Proxy creations that wrap row objects.
+// Changed-row wrapping is O(changed), not total restore traversal. Count the cold maximum;
+// pre-R34 wrapped every row, while later samples reuse cached draft proxies.
 const OriginalProxy = globalThis.Proxy;
 let rowWraps = 0;
 globalThis.Proxy = function (target, handler) {

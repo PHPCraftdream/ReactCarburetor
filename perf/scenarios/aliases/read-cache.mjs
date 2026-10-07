@@ -1,6 +1,6 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R30-01: a repeated opaque read answers from the per-read cache, and a warmed Map view iterates
-// at raw speed — median of alternating view/raw samples, so order and JIT warmup cannot skew it.
+// at raw speed. Warm both paths and alternate batched samples to amortize timer/JIT effects.
 // freshMs (first read after a topological write) is informational: its run-to-run spread is too
 // wide for a stable gate. Args: [rows=10000]
 import {emit, load, median} from '../../harness/lib.mjs';
@@ -36,30 +36,35 @@ while (performance.now() - readStart < 200 && reads < 100000) {
 }
 const cachedReadMs = (((performance.now() - readStart) * 1e6) / reads / 1e3) / 1000;
 
-// Map iteration through a view against raw: alternating order, warmed both, median per side.
+// Warm the same measured batches, then alternate their order.
 const mapView = s.read(() => undefined);
 void mapView.byId;
 const rawMap = s.getData().byId;
 const expectedTotal = iterate(rawMap);
-const iterateOk = iterate(mapView.byId) === expectedTotal;
+let iterateOk = iterate(mapView.byId) === expectedTotal;
 const viewTimes = [];
 const rawTimes = [];
+const batchSize = 32;
+const viewMap = () => mapView.byId;
+const raw = () => rawMap;
+const measureBatch = readMap => {
+    const start = performance.now();
+    for (let iteration = 0; iteration < batchSize; iteration++) {
+        if (iterate(readMap()) !== expectedTotal) iterateOk = false;
+    }
+    return (performance.now() - start) / batchSize;
+};
+for (let warmup = 0; warmup < 4; warmup++) {
+    measureBatch(viewMap);
+    measureBatch(raw);
+}
 for (let round = 0; round < 9; round++) {
-    let start;
     if (round % 2 === 0) {
-        start = performance.now();
-        iterate(mapView.byId);
-        viewTimes.push(performance.now() - start);
-        start = performance.now();
-        iterate(rawMap);
-        rawTimes.push(performance.now() - start);
+        viewTimes.push(measureBatch(viewMap));
+        rawTimes.push(measureBatch(raw));
     } else {
-        start = performance.now();
-        iterate(rawMap);
-        rawTimes.push(performance.now() - start);
-        start = performance.now();
-        iterate(mapView.byId);
-        viewTimes.push(performance.now() - start);
+        rawTimes.push(measureBatch(raw));
+        viewTimes.push(measureBatch(viewMap));
     }
 }
 const viewIterateMs = median(viewTimes);

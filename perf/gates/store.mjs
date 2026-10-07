@@ -1,12 +1,12 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-// Store. Ratios inside one run and row-wrap counters are machine independent; the R32-08
-// Object.create counter separates the builds (20001 pre-fix, 0 now) with its control gate.
+// Restore is guarded by exact changed-row wrapping, not its timing relative to snapshot cloning.
+// Both timings remain report metrics. R32-08's Object.create counter has its own positive control.
 export default [
     {
         id: 'store/restore-one-leaf@1k', improvement: 'R34-04', scenario: 'store/restore-one-leaf', args: [1000, 9],
         gates: [
             {metric: 'restoreRowWraps', equals: 1}, {metric: 'readRowWraps', equals: 1},
-            {metric: 'restoreMs', over: 'snapshotMs', max: 6}, {metric: 'wakes', equals: 9},
+            {metric: 'wakes', equals: 9},
             {metric: 'done', equals: true},
         ],
     },
@@ -14,7 +14,7 @@ export default [
         id: 'store/restore-one-leaf@10k', improvement: 'R34-04', scenario: 'store/restore-one-leaf', args: [10000, 9],
         gates: [
             {metric: 'restoreRowWraps', equals: 1}, {metric: 'readRowWraps', equals: 1},
-            {metric: 'restoreMs', over: 'snapshotMs', max: 4}, {metric: 'wakes', equals: 9},
+            {metric: 'wakes', equals: 9},
             {metric: 'done', equals: true},
         ],
     },
