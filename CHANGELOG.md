@@ -9,6 +9,51 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Round 39 performance work, each item a gated scenario under `perf/` (`writelog39`, `history39`, `alias39`,
+  `diff39`, `resource39`; correctness controls are marked `improvement: 'control'`) that fails on the build
+  before it:
+  - A live-list selection stays patched from the write log after unrelated publications (R39-01): the
+    raw-target proof accumulates per write instead of over a two-publication window (1024 unique pairs per
+    publication, 2048 accumulated, held by strong reference until the next full walk; an overflow, an
+    unattributed write or a wildcard costs one full walk, then patching resumes), and `pathsSince` no longer
+    scans the whole history. One field edit at 10 000 rows after two or more unrelated publications: 80 009 → 3
+    tracked paths read (`watch`, hook), 80 010 → 4 (class `connectSelection`); about 200 ms → 0.06–0.19 ms.
+  - Proofs are recorded only while a `watch`, `useCarburetorValue` or `connectSelection` with an object
+    selection owns them (R39-04). The last release clears pending and accumulated targets and recent paths; a
+    later owner starts at the current version, so an older baseline falls back to one full walk. The
+    `trackrelease39` gates cover all three routes: after disposal, 1000 writes construct 0 Maps and 2000 Sets
+    versus 1000 Maps and 3000 Sets on the baseline. A store that never had a consumer constructs 3 Maps instead
+    of 1002 and 1998 Sets instead of 2997 per 1000 updates; scalar write 1496 → 1219 ns, precise-subscriber
+    write 3510 → 3459 ns.
+  - One `Date`, `Map` or `Set` anywhere in the state no longer turns every history step into a full snapshot
+    (R39-02): a primitive write on a plain path stays a patch entry, and undo/redo apply O(patches) through
+    the draft. Steps that replace, mutate or read a native through `draft` still use owned graphs. 10 000
+    rows with one `Date`: write 25–27 ms → 0.02 ms, undo 48–61 ms → 0.02 ms, 627 KB → 2 KB retained per entry.
+    An undo/redo attempt belongs to its own history, so a nested undo from a subscriber leaves the outer
+    cursor intact; the baseline advances before subscribers are notified.
+  - A native leaf read after a topology write (a `Date`, or a class instance holding a plain object, as
+    dayjs does) updates the native-alias ownership index for the changed subtree instead of rebuilding it for
+    the whole store (R39-03); ambiguous cases still invalidate it whole. `getOwnPropertyDescriptor` calls for
+    one read: 3007 / 30 007 / 150 007 → 3 at 1k / 10k / 50k rows. The README's "refreshed only by a
+    topological write" contract is unchanged.
+  - `draft.rows = draft.rows.filter(...)` and similar reassignments align by element identity (R39-05): a row
+    that is the same raw object at another index records the index path, as `splice` does, instead of
+    diffing shifted rows field by field and collapsing to `rows`. Removing the middle row of 10 000 records
+    5002 index paths instead of 1 and wakes 64 of 200 subscribers instead of 200; inserts, moves and swaps
+    likewise. Genuinely new row objects stay leaf-precise and round 36's thresholds are unchanged. Repeated or
+    cyclic references in an array become an opaque history snapshot; restore keeps the array's prototype.
+    Plain aliases across branches (`{rows: [a, b], selected: a}`) remain outside the contract: undo can
+    still separate them, as before.
+  - `useResource` subscribes to the entry fields a reader actually reads instead of the whole entry
+    (R39-07). A reader showing only `data.name` renders 2 times on mount and on an equal refresh after
+    `invalidateAll()` (was 3 and 3); all 50 of 50 mounted readers still refetch after `invalidate`/
+    `invalidateAll`, and a pending entry removed under a mounted reader (`forget`, `restore`) is reloaded. `refreshing`/`status` readers keep their indicator renders; a custom `IResourceSource`
+    without a field view keeps the whole-entry subscription; `getEntry()` and `resolve().view` remain plain
+    copies.
+- **Documentation (R39-06):** history supports the `Carburetor` family (`Carburetor`, `ResourceCarburetor`,
+  `ResourceCache` and their subclasses); a store with a different wire form overrides `captureHistory(own)`.
+  `attachPatchListener`, `IPatchSource` and `IPatchObserver` are documented as the engine's internal
+  protocol with no stability guarantee; custom history sources are not supported. No code or types changed.
 - R38 cyclic selections retain equal snapshots without false callbacks or renders. Version-covered,
   bounded mutation-target proofs skip disjoint graph walks without hiding external aliases,
   transaction history, or opaque effects; expired proofs preserve ordinary sparse patch history.
@@ -24,9 +69,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `npm run bench`: a performance gate suite (`perf/`). Every performance improvement of rounds 6-37 is a
+- Expanded `perf/` coverage for rounds 6–38 with mechanism counters and baseline builds;
+  [the coverage audit](docs/perf-coverage-audit-2026-10-08.md#resolution--protection-plan-2026-10-08)
+  records the few optimizations that no counter can separate on the available builds rather than claiming every optimization is covered.
+- `npm run bench`: a performance gate suite (`perf/`). Most performance improvements of rounds 6-37 are a
   scenario measured on the built output with gates on the mechanism it removed (exact counters, same-run
-  ratios, size scale, generous ceilings), each validated to fail on the build before its fix.
+  ratios, size scale, generous ceilings), validated to fail on the build before its fix. The ones guarded
+  only by unit tests, time ratios or heap ceilings are listed in `docs/perf-coverage-audit-2026-10-08.md`.
   `--against <ref>` also compares timings with a build of that ref; `--lint-gates` checks the manifest.
   See `perf/README.md`. The legacy benchmarks under `benchmarks/` and `scripts/benchmarks/` were migrated
   into it and removed, except `benchmarks/state/unpublishedDraftCheck.mjs` (needs a development build).
@@ -584,6 +633,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Truncating an array through `draft` (`draft.rows.length = n`) now invalidates the native-alias ownership
+  index; previously it did not (found while fixing R39-03).
 - A `computed` whose result holds store data (`read(store).items`) no longer keeps handing out a view of
   the old data object after `setData` or `fromJSON`: both swap the data object while recording only the
   leaves that differ, which a result that read none of those leaves never matched. A non-primitive

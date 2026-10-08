@@ -8,6 +8,7 @@ import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSe
 import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconcileFlatSelection";
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {patchFromWriteLog} from "@/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog";
+import {TargetsHold} from "@/Carburetor/Store/Utils/Selection/Patch/TargetsHold";
 import {completeObservation} from "@/Carburetor/Store/Tracking/Observation/completeObservation";
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
@@ -150,6 +151,8 @@ export const useCarburetorValue = <T extends object, R>(
     const pendingReads = useRef<TCompletedReads | null>(null);
     const active = useRef<IActiveSubscription<T> | null>(null);
     const notify = useRef<TSubscriber | null>(null);
+    // R39-04: one owner of the store's write proofs per mounted hook, created with the first object selection.
+    const targets = useRef<TargetsHold | null>(null);
 
     // The persistent root view getSnapshot reads through, and the slot its recorder reports
     // into. The slot holds a Set only while a getSnapshot call is walking the view — a read
@@ -208,6 +211,8 @@ export const useCarburetorValue = <T extends object, R>(
             install();
 
             return () => {
+                notify.current = null;
+
                 const current = active.current;
 
                 if (current) {
@@ -354,9 +359,19 @@ export const useCarburetorValue = <T extends object, R>(
     // stays pure, so reconciliation lives in the commit: every commit compares what the
     // selector last read against what is subscribed, and a stable read set costs nothing but
     // that comparison.
+    const result = useSyncExternalStore(subscribe, getSnapshot, getSnapshot) as TReadonly<R>;
+    // Engine snapshot metadata, filled synchronously by getSnapshot above; not a UI ref dependency.
+    // Capture now rather than in the effect, where a later abandoned attempt could overwrite the cache.
+    // oxlint-disable-next-line react/refs
+    const wantsTargets = cache.current?.copies !== undefined;
     useLayoutEffect(() => {
+        // Capture this render's verdict: notifications cannot publish an abandoned render's ledger.
+        if (wantsTargets) (targets.current ??= new TargetsHold()).sync(carburetor);
+        else targets.current?.sync(undefined);
         install();
-    });
+        return () => { targets.current?.sync(undefined); };
+    }, [carburetor, wantsTargets, install]);
+    useLayoutEffect(() => { install(); });
 
-    return useSyncExternalStore(subscribe, getSnapshot, getSnapshot) as TReadonly<R>;
+    return result;
 };

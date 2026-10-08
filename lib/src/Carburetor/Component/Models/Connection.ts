@@ -2,6 +2,7 @@ import {TReadonly} from "@/Carburetor/Models/Base";
 import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
+import {TargetsHold} from "@/Carburetor/Store/Utils/Selection/Patch/TargetsHold";
 
 /**
  * What one commit established about a dependency: the carburetor a render attempt resolved,
@@ -18,6 +19,8 @@ export interface IDependencyDescription {
     baselineVersion: number;
     /** The closed paths this commit established; no render attempt still collects into them. */
     reads: TCompletedReads;
+    /** Whether this committed selection needs raw-target proofs. */
+    targetsWanted?: boolean;
 }
 
 /**
@@ -53,6 +56,8 @@ export interface IDependencySlot {
      * other slot, which simply re-render.
      */
     wake?: () => void;
+    /** The slot's one ownership of its store's write proofs (R39-04); present only for a patching selection. */
+    targets?: TargetsHold;
 }
 
 /**
@@ -137,6 +142,8 @@ export interface IAttemptEntry {
      * recorder copies it before adding a path it lacks, so the filed set is never written.
      */
     sharedReads?: boolean;
+    /** Tentative proof ownership, published only when this attempt commits. */
+    targetsWanted?: boolean;
 }
 
 /**

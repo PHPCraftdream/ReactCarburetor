@@ -496,3 +496,64 @@ Probes (git-ignored, kept for the fixes): `worktrees/r39-probes/lag.mjs`, `lag-c
 `array-remove.mjs`, `resource-renders.mjs`, `persist-cost.mjs`. Each prints one `@@ {json}` line. Run
 them with `NODE_ENV=production node <probe>`, and set `DIST_ROOT=<build>/esm-prod` to measure another
 build.
+
+## Resolution
+
+Findings R39-01..05 and R39-07 are implemented in the working tree (not committed); R39-06 is resolved by
+documentation only. Each implemented finding has a gate in `perf/` (`writelog39`, `history39`, `alias39`,
+`diff39`, `resource39`) that fails on the build before R39 (`e8c3b34`: 8 of 9, 6 of 6, 5 of 5, 4 of 6 and
+1 of 2 entries fail; the remaining entries are correctness controls) and passes on the current one, plus
+tests that fail without the change. Numbers are medians of three processes of the probes above, the current
+build against `e8c3b34`; timings come from a shared machine, counters are exact.
+
+| Finding | Done | Before → after |
+|---|---|---|
+| R39-01 | The raw-target proof accumulates per write (1 024 unique pairs per publication, 2 048 accumulated) instead of a two-publication window; `pathsSince` no longer scans the history. An overflow, an unattributed write or a wildcard costs one full walk, then patching resumes. | One related write after two or more unrelated publications, 10k rows: paths read 80 009 → 3 (`watch`, hook), class 80 010 → 4; about 200 ms → 0.06 (`watch`) / 0.18 (hook) / 0.19 (class) ms. At 1k rows: 8 009 → 3, 12.5 → 0.07 ms. |
+| R39-04 | Proofs are recorded only once a `watch`, `useCarburetorValue` or `connectSelection` with an object selection asks for them (`CARBURETOR_TRACK_TARGETS`); the ledger reuses one pairs buffer. | Per 1 000 updates without a consumer: Maps 1 002 → 3, Sets 2 997 → 1 998. Scalar write 1 496 → 1 219 ns; nested write with one precise subscriber 3 510 → 3 459 ns (unchanged). |
+| R39-02 | A scalar write on a plain path stays a patches entry when the state holds a `Date`/`Map`/`Set`; the replay attempt is owner-scoped and the baseline advances before subscribers run. | 10k rows with one `Date`: write 26.6 → 0.019 ms, undo 58 → 0.023 ms, retained 627 → 2 KB per entry. A plain state is unchanged (0.020 → 0.024 ms, within noise). |
+| R39-03 | `noteChange` repairs the ownership index incrementally for the changed subtree; a scalar-leaf read answers from the descriptor chain. Ambiguous cases invalidate the index whole. Also fixed: an array `length` truncation did not invalidate the index. | Descriptor lookups for one dayjs-like leaf read after a topology write: 3 007 / 30 007 → 3 at 1k / 10k rows. Time: 0.93 / 11.0 / 61.7 ms → 0.009 / 0.006 / 0.008 ms at 1k / 10k / 50k rows. |
+| R39-05 | `walkIdentityArray` aligns rows by raw identity; a row that is the same object at another index records the index path, as `splice` does. Genuinely new rows stay leaf-precise; round 36's thresholds are unchanged. | `filter` removing the middle row of 10k: paths 1 → 5 002, subscribers woken 200 → 64 of 200. Removing the first row: paths 1 → 10 002, wakes 200 → 200 (every row shifts). Time is not the claim: 42.6 → 38.9 ms (middle), 70 → 45 ms (first). |
+| R39-06 | Documentation only: README and TSDoc say `attachPatchListener`, `IPatchSource` and `IPatchObserver` are the engine's internal protocol, history supports the `Carburetor` family, and a store with another wire form overrides `captureHistory(own)`. | No code or type change. The report's d.ts criterion could not be met as written (protected members of exported classes already name unexported types), so the symbol-keyed protocol was not built. |
+| R39-07 | `useResource` subscribes to the entry fields the reader reads (`fieldView`, `present`); a custom source without a field view keeps the whole-entry subscription. | A reader showing only `data.name`: renders 3 → 2 on mount and 3 → 2 on an equal refresh after `invalidateAll()`; 50 of 50 mounted readers still refetch. |
+
+Found after the first integration and fixed (independent read-only review of the integrated tree):
+
+- A data-only `useResource` reader whose pending entry was removed inside the throttle window (`forget`,
+  `restore`) was never reloaded. `ResourceCacheState` now counts removals (`removalEpoch`) and only the
+  first default-only creation is suppressed; tests `FieldReaderRemoval` pin it.
+- A custom source's `load` rejection became invisible once the call was chained; sources without a field
+  view keep the fire-and-forget call.
+- The accumulated proof held up to 4 096 raw targets strongly; the cap is now 2 048. A weak-reference design
+  was rejected because the build targets ES2020.
+
+Deviations and limits:
+
+- R39-04 follow-up: the internal tracking protocol returns an idempotent release. The first owner enables
+  proofs; the last disables the ledger and clears pending targets, accumulated targets and recent paths. Watches
+  release through their disposer; hooks and class selections acquire at commit and release on teardown or source
+  change, including StrictMode replay. Patch reads no longer acquire owners. Reacquisition starts at the current
+  version, so an older baseline conservatively falls back. While a consumer lives, at most 2 048 accumulated
+  pairs are held until the next full walk. `trackrelease39` measures all three routes: after disposal, baseline
+  1 000 Maps / 3 000 Sets become 0 Maps / 2 000 Sets per 1 000 writes; live related writes keep the 3/3/4-path
+  fast route.
+- Write cost (follow-up). The first integration measured a list-watch write about 11–13 % above round 38. Three
+  changes removed it: the pending ledger is cleared by popping instead of assigning `length` (that assignment cost
+  8 % of an untracked scalar write), a repeat of the previous single (path, target) pair skips the accumulated
+  merge and the recent-path relink, and `targetsSince` returns the live accumulated map instead of copying it
+  per query. Tracking-on allocation fell from 904 to 696 B per write (untracked 627 B). In-process interleaved
+  A/B on a loaded machine (41 rounds, medians; round 36 / round 38 / now, ns): scalar 3530 / 4227 / 3522, nested
+  write with a precise subscriber 7685 / 9165 / 7091, list-watch 15982 / 16631 / 16007 — at round-36 level and
+  below round 38 in all three; p10 values agree within about 10 %. Timing on a shared machine is noisy, so the
+  guarded quantity is bytes (`writelog39/write-bytes`: untracked ≤ 900 B per write, tracking adds ≤ 60 B).
+- The `diff39` timing gates were removed as unstable on a shared CPU (filter/splice ratio 1.84–2.84 against
+  a limit of 2.0; the 10×-row `filterMs` scale gate once measured 26× against 20×); the exact path and wake
+  counters stay.
+- Aliases of one plain object across branches (`{rows: [a, b], selected: a}`) remain outside the contract, as
+  recorded for earlier rounds.
+
+Verification on the final tree: `npm run build`, the four typechecks, oxlint (warnings only), `check:layout`
+and the gate lint (153 entries) are clean; the full suite passes (2 108 tests, 0 failed) and the full
+`npm run bench -- --runs 3` passes all 153 entries with no violations. The first full bench after the integration
+had caught one regression, `write/one-row@10k` (1 302 KB allocated per diff, round 32's ceiling 64 KB): the
+identity alignment of R39-05 built two Sets over all rows for one replaced row. It scans while at most eight
+positions differ and builds the Sets only beyond that (3.0 KB now, `diff/copy` 1.0 against 12.6).

@@ -130,7 +130,10 @@ export interface IStateRestoreClaim {
     adopt: boolean;
 }
 
-/** Mutation and publication stream from one patch source; fields are stable for the attachment. */
+/**
+ * Mutation and publication stream from one patch source; fields are stable for the attachment.
+ * Internal engine protocol: no stability guarantee, not an extension point.
+ */
 export interface IPatchObserver {
     /** Called at mutation time for each field patch, opaque write, or owned-replay transition. */
     patch: TPatchRecorder;

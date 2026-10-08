@@ -13,6 +13,7 @@ import {sameKind} from "./Paths/Diff/Kinds/sameKind";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
 import {WriteLog} from "./Paths/WriteLog";
 import {WriteTargetLedger} from "./Utils/Graph/WriteTargetLedger";
+import {TargetOwners} from "./Utils/Graph/TargetOwners";
 import {WILDCARD_PATH} from "./Paths/WildcardPath";
 import {syncUpdateScheduler} from "./Scheduling/SyncUpdateSchedulerInstance";
 import {updateWave} from "./Scheduling/UpdateWaveInstance";
@@ -34,7 +35,8 @@ import {reportDeliveryFailure} from "./Diagnostics/reportDeliveryFailure";
 import {warnIfAsyncMutate} from "./Diagnostics/warnIfAsyncMutate";
 import {
     CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, CARBURETOR_PATHS_SINCE,
-    CARBURETOR_REPLAY_PATCHES, CARBURETOR_TARGETS_SINCE, IInternalSubscriptionProtocol, ISubscriberRecord,
+    CARBURETOR_REPLAY_PATCHES, CARBURETOR_TARGETS_SINCE, CARBURETOR_TRACK_TARGETS, IInternalSubscriptionProtocol,
+    ISubscriberRecord,
 } from "./Utils/Models";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 
@@ -84,9 +86,11 @@ export class Carburetor<T extends object> implements
     /** Paths changed since the last emitUpdate. */
     protected writes: TPathSet = new Set<TPath>();
     /** The raw objects each pending write mutated, handed to the write log at emit. */
-    protected writeTargets = new WriteTargetLedger();
+    protected writeTargets = new WriteTargetLedger(false);
     /** Which paths recent emits touched, bounded and watermarked; feeds the commit drift check (R16-05). */
-    protected writeLog: WriteLog = new WriteLog();
+    protected writeLog: WriteLog = new WriteLog(undefined, false);
+    /** Counts selection consumers that need write proofs (R39-04). */
+    private readonly targetOwners = new TargetOwners(this.writeTargets, this.writeLog, () => this.version);
     /** Whether draft was touched: it tells an empty write set from "nothing changed". */
     protected draftTouched: boolean = false;
     /** An emit already scheduled for a later microtask, so the dev check stays quiet. */
@@ -118,8 +122,7 @@ export class Carburetor<T extends object> implements
      *
      * @param data - the state the store wraps; reads go through read(), writes through
      * draft, and setData() swaps it wholesale.
-     * @param scheduler - decides when a matched subscriber's callback actually runs;
-     * defaults to immediate, synchronous delivery.
+     * @param scheduler - decides when a matched subscriber's callback runs; defaults to immediate delivery.
      */
     constructor(protected data: T, protected scheduler: IUpdateScheduler = syncUpdateScheduler) {
         this.aliases?.checkState(data, '');
@@ -128,8 +131,7 @@ export class Carburetor<T extends object> implements
 
     /**
      * The store's identity, which subscriptions and dev tooling key on.
-     * A method, not an arrow field: every overridable member below is, so a subclass override
-     * lands on the prototype instead of an own property shadowing it.
+     * A method, not an arrow field: a subclass override then lands on the prototype.
      */
     public getUID(): string {
         return this.uid;
@@ -149,6 +151,8 @@ export class Carburetor<T extends object> implements
     public [CARBURETOR_PATHS_SINCE](baselineVersion: number): ReadonlyArray<TPath> | undefined {
         return this.writeLog.pathsSince(baselineVersion);
     }
+    /** A selection consumer asks for write proofs until it calls the returned release (R39-04). */
+    public [CARBURETOR_TRACK_TARGETS](): () => void { return this.targetOwners.acquire(); }
     /** The raw mutation targets behind the paths written after `baselineVersion`. */
     public [CARBURETOR_TARGETS_SINCE](baselineVersion: number): ReadonlyMap<TPath, ReadonlySet<object>> | undefined {
         return this.writeLog.targetsSince(baselineVersion);

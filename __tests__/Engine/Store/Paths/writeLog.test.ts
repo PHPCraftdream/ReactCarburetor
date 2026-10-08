@@ -2,6 +2,31 @@ import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {WriteLog} from "@/Carburetor/Store/Paths/WriteLog";
 
+describe('WriteLog accumulated attribution (R39-01)', () => {
+    test('a newer baseline accepts the retained superset, not just the latest publication', () => {
+        const log = new WriteLog();
+        const older = {};
+        const current = {};
+        log.record(1, setOf('old'), new Map([['old', new Set([older])]]));
+        log.record(2, setOf('new'), new Map([['new', new Set([current])]]));
+        log.record(3, setOf('new'), new Map([['new', new Set([current])]]));
+        expect(log.targetsSince(0)?.get('old')?.has(older)).toBe(true);
+        expect(log.targetsSince(2)?.get('old')?.has(older)).toBe(true);
+        expect(log.targetsSince(2)?.get('new')?.has(current)).toBe(true);
+    });
+
+    test('a current publication missing one path cannot use its older attribution', () => {
+        const log = new WriteLog();
+        const older = {};
+        log.record(1, setOf('old'), new Map([['old', new Set([older])]]));
+        log.record(2, setOf('old', 'new'), new Map([['new', new Set([{}])]]));
+        expect(log.targetsSince(1)).toBeUndefined();
+        expect(log.pathsSince(1)).toEqual(['old', 'new']);
+        log.record(3, setOf('new'), new Map([['new', new Set([{}])]]));
+        expect(log.targetsSince(2)?.has('old')).toBe(false);
+    });
+});
+
 const setOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);
 
 describe('WriteLog (R16-05)', () => {

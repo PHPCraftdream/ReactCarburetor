@@ -13,6 +13,22 @@ interface IAliasAnswer {
 
 const answers = new WeakMap<object, IAliasAnswer>();
 
+/** Inspect own data only: never invoke getters, including non-enumerable/symbol fields. */
+const hasObjectData = (value: object, keys: readonly (string | symbol)[]): boolean => {
+    for (const key of keys) {
+        const descriptor = Reflect.getOwnPropertyDescriptor(value, key);
+        if (descriptor && 'value' in descriptor &&
+            descriptor.value !== null && typeof descriptor.value === 'object') return true;
+    }
+    return false;
+};
+
+/** No Sets or per-read closures; the reflection APIs still allocate key arrays. */
+const isScalarLeaf = (value: object): boolean =>
+    !(value instanceof Map) && !(value instanceof Set) && !isTrackable(value) &&
+    !hasObjectData(value, Object.getOwnPropertyNames(value)) &&
+    !hasObjectData(value, Object.getOwnPropertySymbols(value));
+
 /**
  * Subscribes to the ordinary aliases a coarse native read exposes, cached per root generation.
  *
@@ -32,6 +48,17 @@ export const recordNativeAliasReads = (
     if (cached !== undefined && cached.root === root && cached.generation === generation) {
         if (cached.wildcard) record(WILDCARD_PATH);
         else for (const path of cached.paths) record(path);
+        return;
+    }
+
+    // A negative answer is generation-scoped, not permanent: in-place object additions
+    // must become visible after topology changes. Dates are not unconditionally leaves.
+    if (isScalarLeaf(native)) {
+        if (cached !== undefined && cached.root === root && !cached.wildcard && cached.paths.length === 0) {
+            cached.generation = generation;
+        } else {
+            answers.set(native, {root, generation, wildcard: false, paths: []});
+        }
         return;
     }
 

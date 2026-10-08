@@ -97,6 +97,13 @@ export interface IResourceResolution<T> {
     path: string;
     /** The entry's current view, with the freshness verdict computed at resolve time. */
     view: IResourceView<T>;
+    /** Whether the resolved entry exists in the cache. */
+    present?: boolean;
+    /** Optional field-level snapshot factory; omitted sources retain whole-entry subscriptions.
+     *
+     * @param record - records a real state-field path, not the synthetic stale field.
+     */
+    fieldView?: (record: (path: string) => void) => IResourceView<T>;
 }
 
 /**

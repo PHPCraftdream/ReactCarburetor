@@ -21,6 +21,9 @@ export const CARBURETOR_PATHS_SINCE: unique symbol = Symbol.for('react-carbureto
 /** The raw objects each path written after a version mutated, or undefined when unanswerable. */
 export const CARBURETOR_TARGETS_SINCE: unique symbol = Symbol.for('react-carburetor/v1/store-targets-since');
 
+/** A selection consumer needs raw-target proofs: the store retains them until the returned release runs. */
+export const CARBURETOR_TRACK_TARGETS: unique symbol = Symbol.for('react-carburetor/v1/store-track-targets');
+
 /** Delivers one notification pass for a closed write set; the batch coordinator's entry point. */
 export const CARBURETOR_NOTIFY_WRITES: unique symbol = Symbol.for('react-carburetor/v1/store-notify-writes');
 
@@ -34,6 +37,7 @@ export const CARBURETOR_SNAPSHOT_VERSION: unique symbol = Symbol.for('react-carb
 export interface IInternalSubscriptionProtocol {
     [CARBURETOR_EXTEND]?: (id: string, path: TPath) => void;
     [CARBURETOR_HAS_DRIFT]?: (baselineVersion: number, reads: ReadonlySet<TPath>) => boolean;
+    [CARBURETOR_TRACK_TARGETS]?: () => () => void;
     [CARBURETOR_NOTIFY_WRITES]?: (writes: TPathSet) => void;
     [CARBURETOR_PATHS_SINCE]?: (baselineVersion: number) => ReadonlyArray<TPath> | undefined;
     [CARBURETOR_TARGETS_SINCE]?: (baselineVersion: number) => ReadonlyMap<TPath, ReadonlySet<object>> | undefined;

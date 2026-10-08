@@ -24,6 +24,7 @@ import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersis
 import {declareConnection} from "@/Carburetor/Component/Connection/declareConnection";
 import {reportLiveViewEscape} from "@/Carburetor/Component/Connection/reportLiveViewEscape";
 import {reuseSelection} from "@/Carburetor/Store/Utils/Selection/Patch/reuseSelection";
+import {TargetsHold} from "@/Carburetor/Store/Utils/Selection/Patch/TargetsHold";
 import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
 import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconcileFlatSelection";
 import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
@@ -256,6 +257,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 const reused = reuseSelection(connection, previous, next, ledger, patchable);
 
                 if (reused !== undefined) {
+                    if (connection.attemptEntry !== undefined) connection.attemptEntry.targetsWanted = true;
                     snapshot = {value: reused};
 
                     return reused as TReadonly<R>;
@@ -273,6 +275,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             const nextLedger = flat !== undefined
                 ? undefined
                 : objectResult ? new WeakMap<object, unknown>() : undefined;
+            // Tentative until the render attempt commits; abandoned renders cannot change the holder.
+            if (nextLedger !== undefined) connection.targets ??= new TargetsHold();
 
             snapshot = {
                 value: flat !== undefined ? flat.value as R : reconcileSelection(
@@ -280,6 +284,9 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                     nextLedger, trace
                 ) as R,
             };
+            if (connection.attemptEntry !== undefined) {
+                connection.attemptEntry.targetsWanted = nextLedger !== undefined;
+            }
             live = next;
             ledger = nextLedger;
             patchable = flat !== undefined || !trace.shared;
@@ -325,9 +332,34 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
     ): IResourceView<T> {
         // One call: resolve() serializes args once and hands back the key, the read path and
         // the current view together (R16-10(4)), where this used to be three separate calls.
-        const {path, view} = source.resolve(args);
+        const {path, view, fieldView, present} = source.resolve(args);
+        const attempt = this.renderAttempt;
+        const entry = this.track(source);
+        let readerView = view;
 
-        this.track(source).reads.add(path);
+        if (fieldView === undefined) {
+            // Custom sources keep the original whole-path contract.
+            entry.reads.add(path);
+        } else {
+            readerView = fieldView((fieldPath) => {
+                // An escaped snapshot must never widen a later (or already committed) attempt.
+                if (attempt !== undefined && this.renderAttempt === attempt && !attempt.abandoned) {
+                    entry.reads.add(fieldPath);
+                }
+            });
+            // Automatic retry/rearming dependencies only; an absent entry skips Pending bookkeeping.
+            void readerView.invalidated;
+            void readerView.failed;
+            // Invalidation during a request can remain true at settlement. Follow that
+            // request's completion too, so an equal answer still re-arms the deferred load.
+            if (view.invalidated && view.refreshing) {
+                void readerView.refreshing;
+            }
+            if ((present !== false && view.status !== EResourceStatus.Success)
+                || (view.invalidated && view.status === EResourceStatus.Pending)) {
+                void readerView.status;
+            }
+        }
 
         const worthFetching = view.stale && !view.refreshing && !view.failed
             && (view.status !== EResourceStatus.Error || view.invalidated);
@@ -337,8 +369,6 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         // attempt whose render threw. Every call site runs inside render, where an attempt is
         // always open; outside one there is nothing to attribute the load to, so the view is
         // still returned but the load is skipped — and reported, once per call, in development.
-        const attempt = this.renderAttempt;
-
         if (worthFetching) {
             if (attempt) {
                 if (attempt.deferredLoads === undefined) {
@@ -346,7 +376,23 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 }
 
                 attempt.deferredLoads.push(() => {
-                    void source.load(args);
+                    const loading = source.load(args);
+                    // A custom source keeps the original fire-and-forget load, errors included.
+                    if (fieldView === undefined) {
+                        void loading;
+                        return;
+                    }
+                    void loading.then(() => {
+                        // An invalidation arriving after this load began can survive an equal
+                        // answer without changing any read field. Re-arm after settlement, not
+                        // on loading bookkeeping, and never wake a released subscription.
+                        if (this.tracked?.get(source)?.installed !== undefined) {
+                            const settled = source.resolve(args).view;
+                            if (settled.invalidated && settled.stale && !settled.refreshing && !settled.failed) {
+                                this.forceUpdate();
+                            }
+                        }
+                    });
                 });
             } else if (IS_DEVELOPMENT) {
                 diagnostics.report(
@@ -358,7 +404,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             }
         }
 
-        return view;
+        return readerView;
     }
 
     /**

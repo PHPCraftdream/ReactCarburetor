@@ -214,7 +214,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
     private setArrayLength(source: T, value: unknown, descriptor?: PropertyDescriptor): boolean {
         return writeArrayLength(
             source as unknown as unknown[], value, descriptor, this.basePath,
-            this.basePathSegments, this.record, this.aliases, this.patchPort
+            this.basePathSegments, this.record, this.aliases, this.patchPort, this.cache.nativeAliasRoot
         );
     }
 
@@ -290,13 +290,16 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             this.patchPort?.listener?.(PATCH_OPAQUE);
             // Any handout of an opaque/native draft field marks its effects unknown: methods,
             // returns, locked values and unseen descendants cannot be attributed exactly.
-            if (this.cache.nativeAliasRoot !== undefined) nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
+            if (this.cache.nativeAliasRoot !== undefined) {
+                nativeAliasIndex.noteChange(
+                    this.cache.nativeAliasRoot, source, key, value, value, this.writtenPath(key, source)
+                );
+            }
             const path = this.writtenPath(key, source);
             this.record(path, value);
             this.record(branchPath(path), RAW_EXPOSURE);
             return liveViews.adaptNativeCollection(value, this.cache, source, key);
         }
-
         return value;
     }
 
@@ -336,7 +339,6 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
 
         const path = this.writtenPath(key, source);
-
         // Views inside a caller-built container never become state (R32-01): a same-kind
         // replacement normalizes inside the diff walk below, every other shape — here.
         const diffBranch = wasOwn && isTrackable(previous) && isTrackable(raw)
@@ -344,11 +346,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (!diffBranch || this.aliases !== undefined) {
             liveViews.normalizeAssigned(raw, diffBranch ? previous : undefined);
         }
-
         this.aliases?.checkKey(source, key, path);
         this.aliases?.checkState(raw, path, wasOwn ? previous : undefined);
         this.aliases?.checkWrite(source, this.basePath);
-
         // Define the literal data key without invoking an inherited setter. A refused write
         // must not forget aliases, announce a path or put a phantom value into history.
         const protoWrite = key === '__proto__';
@@ -365,15 +365,16 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
         // Topology refresh: only a container added, replaced or removed shifts raw ownership.
         if ((isTrackable(previous) || isTrackable(raw)) && previous !== raw
-            && this.cache.nativeAliasRoot !== undefined) nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
-
+            && this.cache.nativeAliasRoot !== undefined) {
+            nativeAliasIndex.noteChange(
+                this.cache.nativeAliasRoot, source, key, previous, raw, path
+            );
+        }
         // A branch replaced or deleted takes its old object's recorded path with it, and a
         // write into an object last read under a different path is the aliasing the ledger
         // exists to report.
         this.aliases?.forget(previous);
-
         const listener = this.patchPort?.listener;
-
         // A key that did not already exist changes the key set itself (R16-01): an index write
         // past the array's own end is exactly such a case, alongside an ordinary new object key.
         if (!wasOwn) {
@@ -470,11 +471,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             liveViews.normalizeAssigned(raw, previous);
         }
         const path = this.writtenPath(key, source);
-
         this.aliases?.checkKey(source, key, path);
         this.aliases?.checkState(raw, path, wasOwn ? previous : undefined);
         this.aliases?.checkWrite(source, this.basePath);
-
         const effective = 'value' in descriptor ? {...descriptor, value: raw} : descriptor;
         const previousLength = this.isArray ? (source as unknown as unknown[]).length : undefined;
         const wrote = Reflect.defineProperty(source, key, effective);
@@ -482,12 +481,14 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             return false;
         }
         if ((isTrackable(previous) || isTrackable(raw)) && previous !== raw
-            && this.cache.nativeAliasRoot !== undefined) nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
-
+            && this.cache.nativeAliasRoot !== undefined) {
+            nativeAliasIndex.noteChange(
+                this.cache.nativeAliasRoot, source, key, previous, raw, path
+            );
+        }
         if (wasOwn && Object.is(previous, raw)) {
             return true;
         }
-
         this.aliases?.forget(previous);
 
         if (!wasOwn) {
@@ -534,20 +535,19 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (typeof key === 'symbol') {
             return forbidSymbolKey(this.basePath);
         }
-
         const previous = Reflect.get(source, key);
         const listener = this.patchPort?.listener;
         const changesOrderOnInverse = listener && !this.isArray
             && keyDeletionRequiresReplay(source, key);
-
         this.aliases?.checkWrite(source, this.basePath);
         if (!Reflect.deleteProperty(source, key)) {
             return false;
         }
-
         this.aliases?.forget(previous);
         if (isTrackable(previous) && this.cache.nativeAliasRoot !== undefined) {
-            nativeAliasIndex.invalidate(this.cache.nativeAliasRoot);
+            nativeAliasIndex.noteChange(
+                this.cache.nativeAliasRoot, source, key, previous, undefined, this.writtenPath(key, source)
+            );
         }
         this.record(this.keysMarker(), source);
         const path = this.writtenPath(key, source);

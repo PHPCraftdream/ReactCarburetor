@@ -186,6 +186,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      */
     private buildDescription(entry: IAttemptEntry): IDependencyDescription {
         return {
+            targetsWanted: entry.targetsWanted,
             carburetor: entry.source, baselineVersion: entry.baselineVersion, reads: completeReads(entry.reads),
         };
     }
@@ -205,6 +206,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         const description = slot.committed;
 
         if (description) {
+            description.targetsWanted = entry.targetsWanted;
             description.carburetor = entry.source;
             description.baselineVersion = entry.baselineVersion;
             description.reads = completeReads(entry.reads);
@@ -277,6 +279,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
                 installed.carburetor.unsubscribe(uid);
                 slot.installed = undefined;
             }
+            slot.targets?.sync(undefined);
 
             return false;
         }
@@ -299,6 +302,11 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
         } else if (slot.installed.reads !== committed.reads) {
             // Adopt the filed set: the drift answer below is O(1) only for that identity.
             committed.reads = slot.installed.reads;
+        }
+
+        // R39-04: one owner per slot and source, held while the slot is committed and subscribed.
+        if (slot.targets !== undefined) {
+            slot.targets.sync(committed.targetsWanted ? committed.carburetor : undefined);
         }
 
         const {carburetor, baselineVersion, reads} = committed;
@@ -329,6 +337,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             slot.installed.carburetor.unsubscribe(uid);
             slot.installed = undefined;
         }
+        slot.targets?.sync(undefined);
     }
 
     /**

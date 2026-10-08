@@ -1,4 +1,4 @@
-import {PATCH_ARRAY_LENGTH_LOCK, PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
+import {PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
@@ -9,88 +9,22 @@ import {DIFF_PATH_THRESHOLD} from "./Threshold/DIFF_PATH_THRESHOLD";
 import {shouldCollapseDiff} from "./Threshold/shouldCollapseDiff";
 import {keyOrderRequiresReplay} from "./Order/keyOrderRequiresReplay";
 import {sameKind} from "./Kinds/sameKind";
+import {walkIdentityArray} from "./Kinds/walkIdentityArray";
+import {countDiffLeaves} from "./Threshold/countDiffLeaves";
 
 class DiffOverflow extends Error {}
 
 /** The recorded-path ceiling of one walk; lifted for the precise re-walk of a partial change. */
 interface IDiffBudget {
     limit: number;
+    spent: number;
 }
-
-const countLeaves = (oldValue: unknown, newValue: unknown): number => {
-    if (!isTrackable(newValue)) return 1;
-    if (Object.is(oldValue, newValue)) return 1;
-    if (!isTrackable(oldValue) || !isTrackable(newValue) || !sameKind(oldValue, newValue)) return 1;
-    let count = 0;
-    if (Array.isArray(newValue)) {
-        const previous = oldValue as unknown[];
-        if (Math.max(previous.length, newValue.length) > SPARSE_LIMIT
-            && (probesSparse(previous) || probesSparse(newValue))) {
-            const keys = Object.keys(newValue);
-            for (const key of keys) {
-                if (/^(0|[1-9]\d*)$/.test(key)) {
-                    count += countLeaves(previous[Number(key)], newValue[Number(key)]);
-                }
-            }
-        } else {
-            for (let index = 0; index < Math.max(previous.length, newValue.length); index++) {
-                count += countLeaves(previous[index], newValue[index]);
-            }
-        }
-    } else {
-        const previous = oldValue as Record<string, unknown>;
-        const next = newValue as Record<string, unknown>;
-        for (const key of new Set([...Object.keys(previous), ...Object.keys(next)])) {
-            count += countLeaves(previous[key], next[key]);
-        }
-    }
-    return count || 1;
-};
-
-const countVisitedLeaves = (oldValue: unknown, newValue: unknown): number => {
-    if (Object.is(oldValue, newValue)) return 0;
-    if (!isTrackable(oldValue) || !isTrackable(newValue) || !sameKind(oldValue, newValue)) return 1;
-    let count = 0;
-    if (Array.isArray(newValue)) {
-        const previous = oldValue as unknown[];
-        const limit = Math.max(previous.length, newValue.length);
-        if (limit > SPARSE_LIMIT && (probesSparse(previous) || probesSparse(newValue))) {
-            const keys = new Set([...Object.keys(previous), ...Object.keys(newValue)]);
-            for (const key of keys) {
-                if (!/^(0|[1-9]\\d*)$/.test(key)) continue;
-                const index = Number(key);
-                if (
-                    Object.is(previous[index], newValue[index])
-                    && Object.prototype.hasOwnProperty.call(previous, key)
-                        === Object.prototype.hasOwnProperty.call(newValue, key)
-                ) continue;
-                count += countVisitedLeaves(previous[index], newValue[index]);
-            }
-        } else {
-            for (let index = 0; index < limit; index++) {
-                const oldOwn = Object.prototype.hasOwnProperty.call(previous, index);
-                const newOwn = Object.prototype.hasOwnProperty.call(newValue, index);
-                if (oldOwn === newOwn && Object.is(previous[index], newValue[index])) continue;
-                count += countVisitedLeaves(previous[index], newValue[index]);
-            }
-        }
-    } else {
-        const previous = oldValue as Record<string, unknown>;
-        const next = newValue as Record<string, unknown>;
-        for (const key of new Set([...Object.keys(previous), ...Object.keys(next)])) {
-            const inOld = Object.prototype.hasOwnProperty.call(previous, key);
-            const inNew = Object.prototype.hasOwnProperty.call(next, key);
-            if (inOld && inNew && Object.is(previous[key], next[key])) continue;
-            count += inOld && inNew ? countVisitedLeaves(previous[key], next[key]) : 1;
-        }
-    }
-    return count;
-};
 
 
 const add = (into: TPathSet, path: TPath, budget: IDiffBudget): void => {
+    if (!into.has(path)) budget.spent++;
     into.add(path);
-    if (into.size > budget.limit) throw new DiffOverflow();
+    if (budget.spent > budget.limit) throw new DiffOverflow();
 };
 
 /** Reports one leaf-level patch, when a caller asked diffPaths for patches at all. */
@@ -150,187 +84,6 @@ const walkChild = (
     budget: IDiffBudget
 ): void => {
     walk(oldValue, newValue, joinPath(path, key), onPatch ? [...segments, key] : segments, into, onPatch, budget);
-};
-
-/** Past this length an array is probed for sparseness before the index loop commits to it. */
-const SPARSE_LIMIT = 4096;
-/** Evenly spread own-ness probes; a miss at any of them marks the array sparse. */
-const SPARSE_PROBES = 16;
-
-/**
- * Whether a long array looks sparse: any of a few evenly spread indices is a hole. A cheap
- * heuristic — a sparse array hiding all probes behind stored elements only loses the speedup,
- * never correctness.
- *
- * @param array - the array to probe, with `length > SPARSE_LIMIT`.
- */
-const probesSparse = (array: unknown[]): boolean => {
-    const last = array.length - 1;
-
-    for (let probe = 0; probe < SPARSE_PROBES; probe++) {
-        const index = Math.floor((probe * last) / (SPARSE_PROBES - 1));
-
-        if (array[index] === undefined && !Object.prototype.hasOwnProperty.call(array, index)) {
-            return true;
-        }
-    }
-
-    return false;
-};
-
-/**
- * The own-index walk for a long array: only stored elements are visited, whatever `length` says.
- * Returns whether a restrictive endpoint (readonly or locked slot) was found among the new ones.
- *
- * @param oldValue - the previous array.
- * @param newValue - the next array.
- * @param path - the array's path.
- * @param segments - the array's unescaped path keys.
- * @param into - the changed-path set.
- * @param onPatch - the patch receiver, when patches were requested.
- */
-const walkSparse = (
-    oldValue: unknown[],
-    newValue: unknown[],
-    path: TPath,
-    segments: readonly string[],
-    into: TPathSet,
-    onPatch: TPatchRecorder | undefined,
-    budget: IDiffBudget
-): boolean => {
-    const oldKeys = Object.keys(oldValue);
-    const newKeys = Object.keys(newValue);
-    const seen = new Set<string>(oldKeys);
-    let keysChanged = false;
-    let restricted = false;
-
-    for (const key of oldKeys) {
-        const previous = oldValue[key as unknown as number];
-
-        if (!Object.prototype.hasOwnProperty.call(newValue, key)) {
-            keysChanged = true;
-            add(into, joinPath(path, key), budget);
-            if (onPatch) addPatch(onPatch, [...segments, key], previous, undefined, true, false);
-
-            continue;
-        }
-
-        const raw = normalizeChild(newValue, key, newValue[key as unknown as number]);
-
-        if (!Object.is(previous, raw)) {
-            walkChild(previous, raw, path, key, segments, into, onPatch, budget);
-        }
-    }
-
-    for (const key of newKeys) {
-        if (onPatch && !restricted) {
-            const descriptor = Object.getOwnPropertyDescriptor(newValue, key);
-            restricted = descriptor?.writable === false || descriptor?.configurable === false;
-        }
-
-        if (seen.has(key)) {
-            continue;
-        }
-
-        keysChanged = true;
-        const raw = normalizeChild(newValue, key, newValue[key as unknown as number]);
-        add(into, joinPath(path, key), budget);
-        if (onPatch) addPatch(onPatch, [...segments, key], undefined, raw, false, true);
-    }
-
-    if (keysChanged) {
-        add(into, keysPath(path), budget);
-    }
-
-    return restricted;
-};
-
-const walkArray = (
-    oldValue: unknown[],
-    newValue: unknown[],
-    path: TPath,
-    segments: readonly string[],
-    into: TPathSet,
-    onPatch: TPatchRecorder | undefined,
-    budget: IDiffBudget
-): void => {
-    const changedBefore = into.size;
-    let restrictedEndpoint = false;
-    const oldLength = Object.getOwnPropertyDescriptor(oldValue, 'length')!;
-    const newLength = Object.getOwnPropertyDescriptor(newValue, 'length')!;
-    if (oldLength.value !== newLength.value || oldLength.writable !== newLength.writable) {
-        // Descriptor-only locking changes the ability to write, even without changing the
-        // length value. The same tracked length path announces that transition.
-        add(into, joinPath(path, 'length'), budget);
-        if (oldLength.value !== newLength.value && onPatch) {
-            addPatch(onPatch, [...segments, 'length'], oldLength.value, newLength.value);
-        }
-        if (oldLength.writable !== newLength.writable) {
-            onPatch?.(PATCH_ARRAY_LENGTH_LOCK);
-        }
-    }
-
-    const previousLength = oldValue.length;
-    const nextLength = newValue.length;
-    const limit = previousLength > nextLength ? previousLength : nextLength;
-
-    // A long array that probes sparse is walked by own index, never by length; a dense one
-    // keeps the allocation-free index loop below.
-    if (limit > SPARSE_LIMIT && (probesSparse(oldValue) || probesSparse(newValue))) {
-        restrictedEndpoint = walkSparse(oldValue, newValue, path, segments, into, onPatch, budget);
-
-        if (restrictedEndpoint && into.size > changedBefore) onPatch?.(PATCH_OPAQUE);
-
-        return;
-    }
-
-    // Index loop: no `Object.keys` arrays, and reference-equal elements cost one `Object.is`.
-    // Own-ness is only consulted where a value is `undefined` (an own `undefined` element or a
-    // hole), since an array holds every defined element below `length` as an own index.
-    let keysChanged = false;
-
-    for (let index = 0; index < limit; index++) {
-        const previous = oldValue[index];
-        const inOld = index < previousLength
-            && (previous !== undefined || Object.prototype.hasOwnProperty.call(oldValue, index));
-        const next = index < nextLength ? newValue[index] : undefined;
-        const inNew = index < nextLength
-            && (next !== undefined || Object.prototype.hasOwnProperty.call(newValue, index));
-        const name = String(index);
-
-        if (inOld && inNew) {
-            if (Object.is(previous, next)) {
-                continue;
-            }
-
-            const raw = normalizeChild(newValue, name, next);
-
-            if (Object.is(previous, raw)) {
-                continue;
-            }
-
-            walkChild(previous, raw, path, name, segments, into, onPatch, budget);
-        } else if (inOld) {
-            keysChanged = true;
-            add(into, joinPath(path, name), budget);
-            if (onPatch) addPatch(onPatch, [...segments, name], previous, undefined, true, false);
-        } else if (inNew) {
-            keysChanged = true;
-            if (onPatch && !restrictedEndpoint) {
-                const descriptor = Object.getOwnPropertyDescriptor(newValue, index);
-                restrictedEndpoint = descriptor?.writable === false || descriptor?.configurable === false;
-            }
-            const raw = normalizeChild(newValue, name, next);
-            add(into, joinPath(path, name), budget);
-            if (onPatch) addPatch(onPatch, [...segments, name], undefined, raw, false, true);
-        }
-    }
-
-    if (keysChanged) {
-        add(into, keysPath(path), budget);
-    }
-    // Flags alone are not state changes; a changed restrictive endpoint needs exact replay.
-    if (restrictedEndpoint && into.size > changedBefore) onPatch?.(PATCH_OPAQUE);
 };
 
 const walkObject = (
@@ -464,9 +217,11 @@ const walk = (
     }
 
     if (Array.isArray(oldValue)) {
-        walkArray(
-            oldValue as unknown as unknown[], newValue as unknown as unknown[], path, segments, into, onPatch, budget
-        );
+        walkIdentityArray(oldValue as unknown[], newValue as unknown[], path, segments, into, onPatch, {
+            add: written => add(into, written, budget),
+            child: (previous, next, key, recorder) =>
+                walkChild(previous, next, path, key, segments, into, recorder, budget),
+        });
     } else {
         walkObject(
             oldValue as Record<string, unknown>, newValue as Record<string, unknown>,
@@ -514,11 +269,11 @@ export const diffPaths = (
     onPatch?: TPatchRecorder | Array<Parameters<TPatchRecorder>[0]>
 ): TPathSet => {
     const changed: TPathSet = new Set<TPath>();
-    const budget: IDiffBudget = {limit: DIFF_PATH_THRESHOLD};
-    const pending = Array.isArray(onPatch) ? onPatch : undefined;
+    const budget: IDiffBudget = {limit: DIFF_PATH_THRESHOLD, spent: 0};
+    const pending = onPatch === undefined ? undefined : Array.isArray(onPatch) ? onPatch : [];
     const deliver: TPatchRecorder | undefined = pending
         ? patch => { pending.push(patch); }
-        : onPatch as TPatchRecorder | undefined;
+        : undefined;
 
     // A caller-asigned root is unwrapped like any assigned value (R32-01): a view is never
     // equal to the state member it fronts, so the walk below sees the raw branch from here on.
@@ -543,11 +298,14 @@ export const diffPaths = (
 
         // R36-05: past the floor the answer is relative. A partial change of a large branch stays
         // precise (nothing is delivered yet that the re-walk would repeat); a near-total one collapses.
-        if ((deliver === undefined || pending !== undefined)
-            && !shouldCollapseDiff(countVisitedLeaves(oldValue, newValue), countLeaves(oldValue, newValue))) {
+        if (!shouldCollapseDiff(
+            countDiffLeaves.changed(oldValue, newValue), countDiffLeaves.total(oldValue, newValue)
+        )) {
             budget.limit = Infinity;
+            budget.spent = 0;
             walk(oldValue, newValue, basePath, baseSegments, changed, deliver, budget);
 
+            if (typeof onPatch === 'function') pending?.forEach(onPatch);
             return changed;
         }
 
@@ -560,16 +318,18 @@ export const diffPaths = (
             const keysChanged = oldKeys.length !== newKeys.length
                 || oldKeys.some((key, index) => key !== newKeys[index]);
             for (const key of new Set([...oldKeys, ...newKeys])) {
-                if (countVisitedLeaves(oldRoot[key], newRoot[key]) > 0) changed.add(joinPath('', key));
+                if (countDiffLeaves.changed(oldRoot[key], newRoot[key], true) > 0) changed.add(joinPath('', key));
             }
             if (keysChanged) changed.add(keysPath(''));
             addPatch(deliver, baseSegments, oldValue, newValue);
 
+            if (typeof onPatch === 'function') pending?.forEach(onPatch);
             return changed;
         }
         changed.add(basePath || WILDCARD_PATH);
         addPatch(deliver, baseSegments, oldValue, newValue);
     }
 
+    if (typeof onPatch === 'function') pending?.forEach(onPatch);
     return changed;
 };

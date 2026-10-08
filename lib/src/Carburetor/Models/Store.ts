@@ -121,6 +121,7 @@ export interface ICarburetor<T> extends IReadableCarburetor<T>, IInspectable {
  * both: another subscriber may publish again before a later callback runs. Producers MUST honor
  * `publication` before ordinary subscribers, through the same scheduler (and its transaction/
  * throttle coalescing), and `restoreClaim` only when installing that exact restore argument.
+ * Internal engine protocol: no stability guarantee, not an extension point.
  */
 export interface IPatchSource {
     /**

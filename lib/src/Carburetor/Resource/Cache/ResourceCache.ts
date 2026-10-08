@@ -346,15 +346,41 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
     public resolve(args: TArgs): IResourceResolution<T> {
         const primed = this.primed(args);
 
-        if (primed !== undefined) {
-            // A fresh record: resolve() is public, and a shared scratch object would alias results.
-            return {key: primed.key, path: primed.path, view: this.getEntryByKey(primed.key)};
-        }
+        const key = primed !== undefined ? primed.key : this.keyOf(args);
+        const path = primed !== undefined ? primed.path : this.pathOfKey(key);
+        const view = this.getEntryByKey(key);
 
-        const key = this.keyOf(args);
-
-        // A fresh record: resolve() is public, and a shared scratch object would alias results.
-        return {key, path: this.pathOfKey(key), view: this.getEntryByKey(key)};
+        // Only component readers request this facade. Public resolve().view/getEntry stay plain,
+        // and each facade captures this resolution's snapshot rather than becoming a live view.
+        return {
+            key, path, view, present: this.data.entries[key] !== undefined,
+            fieldView: (record): IResourceView<T> => {
+                const fields = {...view};
+                for (const field of Object.keys(fields) as Array<keyof IResourceView<T>>) {
+                    Object.defineProperty(fields, field, {
+                        enumerable: true,
+                        configurable: true,
+                        get: () => {
+                            if (field === 'stale') {
+                                // isStale depends on these fields; time itself has no write path.
+                                record(joinPath(path, 'invalidated'));
+                                record(joinPath(path, 'updatedAt'));
+                            } else {
+                                record(joinPath(path, field));
+                                if (field === 'refreshing') record(joinPath(path, 'updatedAt'));
+                            }
+                            return view[field];
+                        },
+                        set: (value: IResourceView<T>[keyof IResourceView<T>]) => {
+                            Object.defineProperty(fields, field, {
+                                value, writable: true, enumerable: true, configurable: true,
+                            });
+                        },
+                    });
+                }
+                return fields;
+            },
+        };
     }
 
     /**

@@ -1,5 +1,5 @@
-// Scalar draft writes must not trigger a whole-graph ownership rebuild on the next native
-// read; only topological writes (a container added, replaced or deleted) may.
+// Scalar writes rebuild nothing; uniquely owned topology is repaired locally. Opaque
+// facade mutations still discard the index and rebuild on the next native read.
 /* oxlint-disable carburetor/no-untrackable-store-data */
 import {Carburetor} from "@/Carburetor";
 
@@ -54,7 +54,7 @@ const withRootVisits = async (root: IState, run: () => Promise<void> | void): Pr
 };
 
 describe('native alias index freshness', () => {
-    test('scalar writes and Map reads rebuild nothing; topological writes rebuild once', async () => {
+    test('scalar reads and uniquely owned topology avoid rebuilds; opaque facade writes rebuild', async () => {
         const {store, root} = makeStore();
         expect(store.readNative().get(0)).toBeDefined();
 
@@ -70,13 +70,14 @@ describe('native alias index freshness', () => {
             store.replaceRow(2, {n: -2});
             expect(store.readNative().get(2)).toBeDefined();
         });
-        expect(topologyVisits).toBeGreaterThan(0);
+        // Replacement and deletion touch only the changed row, never the root.
+        expect(topologyVisits).toBe(0);
 
         const deleteVisits = await withRootVisits(root, () => {
             store.deleteRow(3);
             expect(store.readNative().get(3)).toBeDefined();
         });
-        expect(deleteVisits).toBeGreaterThan(0);
+        expect(deleteVisits).toBe(0);
 
         const facadeVisits = await withRootVisits(root, () => {
             store.writeMapMember(4, {n: -4});

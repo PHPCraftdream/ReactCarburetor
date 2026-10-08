@@ -42,7 +42,6 @@ export const emitStoreUpdate = <T extends object>(
 
     if (changed) {
         store.writes = new Set<TPath>();
-        store.writeTargets.reset();
     }
 
     store.draftTouched = false;
@@ -61,7 +60,11 @@ export const emitStoreUpdate = <T extends object>(
     const writes: TPathSet = changed || new Set<TPath>([WILDCARD_PATH]);
     store.version++;
     nativeStoreWriteEpoch.value++;
-    store.writeLog.record(store.version, writes, writeTargets, targetsIncomplete);
+    try {
+        store.writeLog.record(store.version, writes, writeTargets, targetsIncomplete);
+    } finally {
+        store.writeTargets.reset();
+    }
     if (!changed) {
         try {
             store.patchPort.listener?.(PATCH_OPAQUE);

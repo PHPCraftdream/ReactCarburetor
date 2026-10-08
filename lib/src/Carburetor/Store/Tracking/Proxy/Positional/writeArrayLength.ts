@@ -4,6 +4,7 @@ import {
 } from '@/Carburetor/Models/Paths';
 import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
 import {keysPath} from '@/Carburetor/Store/Paths/Markers/KeysMarker';
+import {invalidateTruncatedOwnership} from '@/Carburetor/Store/Tracking/Aliases/invalidateTruncatedOwnership';
 import {clonePatchValue} from '@/Carburetor/Store/Tracking/Proxy/clonePatchValue';
 import {deliverPatches} from '@/Carburetor/Store/Tracking/Proxy/deliverPatches';
 
@@ -17,11 +18,12 @@ import {deliverPatches} from '@/Carburetor/Store/Tracking/Proxy/deliverPatches';
  * @param record - effective write attribution, carrying the raw mutated array.
  * @param aliases - development alias validation.
  * @param patchPort - current mutation observers.
+ * @param root - optional raw draft root for native ownership invalidation.
  */
 export const writeArrayLength = (
     array: unknown[], value: unknown, descriptor: PropertyDescriptor | undefined,
     basePath: TPath, basePathSegments: readonly string[], record: TWriteRecorder,
-    aliases: TAliasLedger | undefined, patchPort: TPatchPort | undefined
+    aliases: TAliasLedger | undefined, patchPort: TPatchPort | undefined, root?: object
 ): boolean => {
     const validNumber = typeof value === 'number' && Number.isInteger(value)
         && value >= 0 && value <= 0xFFFFFFFF;
@@ -80,6 +82,7 @@ export const writeArrayLength = (
             ? {...descriptor, value: uint32} : descriptor)
         : Reflect.set(array, 'length', uint32);
     const nextLength = array.length;
+    invalidateTruncatedOwnership(root, previousLength, nextLength);
     const writableChanged = Object.getOwnPropertyDescriptor(array, 'length')!.writable !== previousWritable;
     if (denseStart !== undefined) {
         for (let index = denseStart; index < previousLength; index++) {

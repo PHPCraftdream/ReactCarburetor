@@ -11,7 +11,10 @@ import {applyPatchesEntryOnDraft} from "./Graph/replayPatchesOnDraft";
 import {foldDependentPatch} from './Graph/foldDependentPatch';
 import {preflightOwnedPatches} from "./Graph/canInstallOwnedPatch";
 import {cloneOwnedGraph as own} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
+import {IReplayAttempt} from './Graph/IReplayAttempt';
 import {sameHistoryGraph} from "./Graph/sameHistoryGraph";
+import {isSafeScalarPatch} from './Graph/isSafeScalarPatch';
+import {sameExistingScalarPath} from './Graph/sameExistingScalarPath';
 /** One change recorded as the patches to invert it — the fast path (R16-07). */
 interface IPatchesEntry {
     kind: 'patches';
@@ -56,7 +59,7 @@ export class CarburetorHistory<T extends object> {
      * taking a fresh snapshot on every describable write. Native values are detached too.
      */
     protected baseline: T;
-    /** Plain-only histories retain their patch fast path; native graphs require whole-state ownership. */
+    /** Native baselines admit only proven open scalar patches. */
     private baselineContainsExotic: boolean;
     /** Locks in the owned baseline persist unless a patch actually replaces a locked subtree. */
     private baselineContainsLockedArray: boolean;
@@ -74,8 +77,10 @@ export class CarburetorHistory<T extends object> {
     private pendingReplayOwner: object | undefined;
     /** Deferred facts retain the token; weak identity recognizes only this history's replays. */
     private readonly replayOwners: WeakSet<object> = new WeakSet<object>();
-    /** Set while a draft replay's baseline is advanced by this class, not by reconcileBaseline. */
-    private fastReplayOwner: object | undefined;
+    /** Scoped call context; undo/redo retain their own reference across nested calls. */
+    private replayAttempt: IReplayAttempt | undefined;
+    /** Publication ownership survives deferred delivery after the initiating call returns. */
+    private readonly replayAttempts: WeakMap<object, IReplayAttempt> = new WeakMap();
     /** The selected replay endpoint's graph classification. */
     private replayContainsExotic: boolean = false;
     /** Structural replay adopts its owned plain graph to preserve key order and locked descriptors. */
@@ -179,13 +184,14 @@ export class CarburetorHistory<T extends object> {
         const beforeVersion = this.carburetor.getVersion();
         const beforeState = this.carburetor.getData();
         this.future.push(entry);
+        const attempt: IReplayAttempt = {owner: {}, started: false, refused: false, reconcile: undefined};
         try {
-            this.apply(entry, true);
+            this.applyAttempt(entry, true, attempt);
         } catch (error) {
             // Restore may fail before installation (e.g. a custom restore guard). A subscriber
             // that published a fresh branch during replay already owns the cursor instead.
-            if (this.carburetor.getVersion() === beforeVersion
-                && this.carburetor.getData() === beforeState
+            if ((this.carburetor.getVersion() === beforeVersion || attempt.refused)
+                && (this.carburetor.getData() === beforeState || attempt.refused)
                 && !this.pendingOpaque && this.pendingPatches.length === 0
                 && this.future[this.future.length - 1] === entry
                 && sameHistoryGraph(this.baseline, this.capture().state)) {
@@ -213,11 +219,12 @@ export class CarburetorHistory<T extends object> {
         const beforeVersion = this.carburetor.getVersion();
         const beforeState = this.carburetor.getData();
         this.past.push(entry);
+        const attempt: IReplayAttempt = {owner: {}, started: false, refused: false, reconcile: undefined};
         try {
-            this.apply(entry, false);
+            this.applyAttempt(entry, false, attempt);
         } catch (error) {
-            if (this.carburetor.getVersion() === beforeVersion
-                && this.carburetor.getData() === beforeState
+            if ((this.carburetor.getVersion() === beforeVersion || attempt.refused)
+                && (this.carburetor.getData() === beforeState || attempt.refused)
                 && !this.pendingOpaque && this.pendingPatches.length === 0
                 && this.past[this.past.length - 1] === entry
                 && sameHistoryGraph(this.baseline, this.capture().state)) {
@@ -243,7 +250,8 @@ export class CarburetorHistory<T extends object> {
         this.pendingPatches = [];
         this.pendingOpaque = false;
         this.pendingOwnedReplay = false;
-        this.fastReplayOwner = undefined;
+        if (this.pendingReplayOwner !== undefined) this.replayAttempts.delete(this.pendingReplayOwner);
+        this.pendingReplayOwner = undefined;
     }
 
     /** Stops watching the carburetor: nothing is recorded after this. */
@@ -253,8 +261,11 @@ export class CarburetorHistory<T extends object> {
 
     /** Collects a patch or opaque fallback until its publication boundary. */
     protected onPatch(patch: Parameters<TPatchRecorder>[0]): void {
+        const attempt = this.pendingReplayOwner === undefined
+            ? undefined : this.replayAttempts.get(this.pendingReplayOwner);
+        if (typeof patch !== 'symbol' && attempt !== undefined) attempt.started = true;
         if (this.pendingReplayOwner !== undefined &&
-            (this.replayTarget !== undefined || this.pendingReplayOwner === this.fastReplayOwner)) return;
+            (this.replayTarget !== undefined || attempt !== undefined)) return;
 
         if (patch === PATCH_ARRAY_LENGTH_LOCK || patch === PATCH_KEY_ORDER_CHANGE) {
             this.pendingOpaque = true;
@@ -266,7 +277,8 @@ export class CarburetorHistory<T extends object> {
             return;
         }
 
-        if (this.baselineContainsExotic) {
+        if (this.baselineContainsExotic && (this.baselineContainsLockedArray ||
+            this.baselineContainsRestricted || !isSafeScalarPatch(this.baseline, patch))) {
             this.pendingOpaque = true; return;
         }
 
@@ -315,10 +327,14 @@ export class CarburetorHistory<T extends object> {
     protected record(fact?: IStatePublication): void {
         if (fact?.origin === 'restore' && fact.representation === 'history-owned'
             && fact.owner !== undefined && this.replayOwners.has(fact.owner)) {
-            this.pendingReplayOwner = undefined;
+            if (this.pendingReplayOwner === fact.owner) this.pendingReplayOwner = undefined;
+            const attempt = this.replayAttempts.get(fact.owner);
             // The draft replay already advanced the baseline by the same patches.
-            if (fact.owner === this.fastReplayOwner) this.fastReplayOwner = undefined;
-            else this.reconcileBaseline();
+            if (attempt !== undefined) {
+                attempt.reconcile?.();
+                attempt.reconcile = undefined;
+                this.replayAttempts.delete(fact.owner);
+            } else this.reconcileBaseline();
             this.pendingPatches = [];
             this.pendingOpaque = false;
             this.pendingOwnedReplay = false;
@@ -327,8 +343,11 @@ export class CarburetorHistory<T extends object> {
         if (this.pendingReplayOwner !== undefined) {
             const customReplay = fact === undefined
                 && !this.pendingOpaque && this.pendingPatches.length === 0;
+            const attempt = this.replayAttempts.get(this.pendingReplayOwner);
+            if (attempt !== undefined && !attempt.started) attempt.reconcile?.();
+            this.replayAttempts.delete(this.pendingReplayOwner);
+            if (attempt !== undefined) attempt.reconcile = undefined;
             this.pendingReplayOwner = undefined;
-            this.fastReplayOwner = undefined;
             if (customReplay) {
                 this.reconcileBaseline();
                 this.pendingPatches = [];
@@ -358,7 +377,7 @@ export class CarburetorHistory<T extends object> {
      */
     private pendingPrimitivePatchesUnchanged(fact?: IStatePublication): boolean | undefined {
         if (fact?.origin !== 'mutation' || this.pendingOpaque || this.pendingOwnedReplay ||
-            this.pendingPatches.length < 2 || this.baselineContainsExotic ||
+            this.pendingPatches.length < 2 ||
             this.baselineContainsLockedArray || this.baselineContainsRestricted) {
             return undefined;
         }
@@ -377,7 +396,8 @@ export class CarburetorHistory<T extends object> {
         let unchanged = true;
         try {
             for (const patch of this.pendingPatches) {
-                const equal = this.sameExistingPlainScalarPath(this.baseline, current, patch.segments);
+                const equal = sameExistingScalarPath(
+                    this.baseline, current, patch.segments, this.baselineContainsExotic);
                 if (equal === undefined) return undefined;
                 if (!equal) unchanged = false;
             }
@@ -385,52 +405,6 @@ export class CarburetorHistory<T extends object> {
             return undefined;
         }
         return unchanged;
-    }
-
-    /** Compares ordinary open own-data chains.
-     *
-     * @param beforeRoot - owned baseline.
-     * @param afterRoot - live endpoint.
-     * @param segments - recorded own path.
-     */
-    private sameExistingPlainScalarPath(
-        beforeRoot: unknown, afterRoot: unknown, segments: readonly string[]
-    ): boolean | undefined {
-        let before = beforeRoot;
-        let after = afterRoot;
-        for (let index = 0; index < segments.length; index++) {
-            if (before === null || after === null || typeof before !== 'object' || typeof after !== 'object' ||
-                Array.isArray(before) || Array.isArray(after)) {
-                return undefined;
-            }
-            const beforePrototype = Object.getPrototypeOf(before);
-            const afterPrototype = Object.getPrototypeOf(after);
-            if (beforePrototype !== afterPrototype ||
-                (beforePrototype !== Object.prototype && beforePrototype !== null)) {
-                return undefined;
-            }
-            const beforeField = Object.getOwnPropertyDescriptor(before, segments[index]);
-            const afterField = Object.getOwnPropertyDescriptor(after, segments[index]);
-            if (beforeField === undefined || afterField === undefined ||
-                !('value' in beforeField) || !('value' in afterField) ||
-                !beforeField.enumerable || !afterField.enumerable ||
-                !beforeField.writable || !afterField.writable ||
-                !beforeField.configurable || !afterField.configurable) {
-                return undefined;
-            }
-            const beforeValue = beforeField.value;
-            const afterValue = afterField.value;
-            if (index === segments.length - 1) {
-                const beforeType = typeof beforeValue;
-                const afterType = typeof afterValue;
-                return (beforeValue === null || (beforeType !== 'object' && beforeType !== 'function')) &&
-                    (afterValue === null || (afterType !== 'object' && afterType !== 'function'))
-                    ? Object.is(beforeValue, afterValue) : undefined;
-            }
-            before = beforeValue;
-            after = afterValue;
-        }
-        return undefined;
     }
 
     /**
@@ -473,6 +447,7 @@ export class CarburetorHistory<T extends object> {
      */
     protected buildEntry(fact?: IStatePublication): THistoryEntry<T> | undefined {
         if (this.pendingOpaque || this.pendingPatches.length === 0 ||
+            (this.baselineContainsExotic && fact !== undefined && fact.origin !== 'mutation') ||
             (fact !== undefined && fact.origin !== 'mutation' &&
                 !((fact.origin === 'replacement' || fact.origin === 'restore') &&
                     fact.representation === 'public'))) {
@@ -526,7 +501,8 @@ export class CarburetorHistory<T extends object> {
             this.baselineShared = false;
             return undefined;
         }
-        this.baselineShared = true;
+        this.baselineShared = !capture.exotic;
+        if (capture.exotic) this.baseline = own(capture.state);
         return {
             kind: 'snapshot', before, after: capture.state,
             beforeExotic, afterExotic: capture.exotic,
@@ -534,6 +510,19 @@ export class CarburetorHistory<T extends object> {
                 (!beforeExotic && !capture.exotic &&
                     (beforeLockedArray || capture.lockedArray)),
         };
+    }
+
+    /** Keeps protected apply overrides intact while isolating each call's rollback verdict.
+     *
+     * @param entry - the selected history entry.
+     * @param inverse - whether this call undoes the entry.
+     * @param attempt - this call's retained installation verdict.
+     */
+    private applyAttempt(entry: THistoryEntry<T>, inverse: boolean, attempt: IReplayAttempt): void {
+        const previous = this.replayAttempt;
+        this.replayAttempt = attempt;
+        try { this.apply(entry, inverse); }
+        finally { this.replayAttempt = previous; }
     }
 
     /**
@@ -548,8 +537,9 @@ export class CarburetorHistory<T extends object> {
      * @param inverse - true undoes `entry` (patches in reverse, or its `before`); false redoes it.
      */
     protected apply(entry: THistoryEntry<T>, inverse: boolean): void {
+        const attempt = this.replayAttempt ?? {owner: {}, started: false, refused: false, reconcile: undefined};
         if (entry.kind === 'patches' &&
-            applyPatchesEntryOnDraft(this as unknown as THistoryReplayHost<T>, entry.patches, inverse)) {
+            applyPatchesEntryOnDraft(this as unknown as THistoryReplayHost<T>, entry.patches, inverse, attempt)) {
             return;
         }
         const state = entry.kind === 'snapshot'
@@ -557,11 +547,11 @@ export class CarburetorHistory<T extends object> {
             : this.reconstruct(entry.patches, inverse);
         this.replayContainsExotic = entry.kind === 'snapshot'
             ? (inverse ? entry.beforeExotic : entry.afterExotic)
-            : false;
+            : this.baselineContainsExotic;
         this.replayReplaceOnReplay = entry.kind === 'snapshot'
             ? entry.replaceOnReplay : this.baselineContainsRestricted;
         this.replayTarget = state;
-        const owner = {};
+        const owner = attempt.owner;
         this.replayOwner = owner;
         this.replayOwners.add(owner);
 

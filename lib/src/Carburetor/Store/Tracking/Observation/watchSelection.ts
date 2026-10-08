@@ -9,6 +9,7 @@ import {PersistentViews} from '@/Carburetor/Store/Tracking/Observation/Persisten
 import {reconcileFlatSelection} from '@/Carburetor/Store/Utils/Selection/reconcileFlatSelection';
 import {reconcileSelection} from '@/Carburetor/Store/Utils/Selection/reconcileSelection';
 import {patchFromWriteLog} from '@/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog';
+import {TargetsHold} from '@/Carburetor/Store/Utils/Selection/Patch/TargetsHold';
 import {getUid} from '@/Carburetor/Store/Utils/getUid';
 
 type TPathRecorder = (path: TPath) => void;
@@ -66,6 +67,14 @@ export const watchSelection = <T, R>(
     // R37-05: allocated only for an object selection; a primitive verdict needs no ledger.
     let copies: WeakMap<object, unknown> | undefined;
     let version = versionOf?.call(source);
+    // R39-04: owns write proofs while a patch ledger exists, and never after the disposer ran.
+    let hold: TargetsHold | undefined;
+    let stopped = false;
+    const own = (on: boolean): void => {
+        if (stopped) return;
+        if (on) (hold ??= new TargetsHold()).sync(source);
+        else hold?.sync(undefined);
+    };
     const trace = {shared: false};
     const flatInitial = reconcileFlatSelection(undefined, initial.value);
     if (flatInitial !== undefined) initial.value = flatInitial.value as R;
@@ -103,14 +112,17 @@ export const watchSelection = <T, R>(
         } else if (flat !== undefined) {
             next = flat.value as R;
             copies = undefined;
+            own(false);
             patchable = true;
         } else if (fresh.value === null || typeof fresh.value !== 'object') {
             // Primitive verdicts cannot be shared, so no graph ledger is retained.
             next = (Object.is(previous, fresh.value) ? previous : fresh.value) as R;
             copies = undefined;
+            own(false);
             patchable = true;
         } else {
             const nextCopies = new WeakMap<object, unknown>();
+            own(true);
             next = reconcileSelection(
                 previous, fresh.value, rejectWatchInstance, undefined, copies, nextCopies, trace
             ) as R;
@@ -134,5 +146,11 @@ export const watchSelection = <T, R>(
         if (changed) onChange(completed.value as TReadonly<R>, last as TReadonly<R>);
     };
     source.subscribe(callback, transferCompletedReads(completedInitial.reads, id));
-    return () => { source.unsubscribe(id); };
+    // Owned only once the disposer exists: a throwing initial walk must not leak an owner.
+    if (copies !== undefined) own(true);
+    return () => {
+        stopped = true;
+        hold?.sync(undefined);
+        source.unsubscribe(id);
+    };
 };

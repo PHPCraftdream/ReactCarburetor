@@ -1,3 +1,5 @@
+import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
+import {PATH_SEPARATOR} from '@/Carburetor/Store/Paths/PathSeparator';
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {
     IResourceCacheData,
@@ -23,6 +25,8 @@ import {trimCacheRuntime} from "./Registry";
 export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
     /** Changes when an abort listener starts a newer restore or replacement. */
     private restoreGeneration: number = 0;
+    /** Bumped when entries may vanish: tells a removal from a not-yet-created entry. */
+    private removalEpoch: number = 0;
     /** Defers ordinary delivery until a bulk request/removal operation closes. */
     private bulkDepth: number = 0;
     /** Age limit after which successful entries need refresh. */
@@ -80,6 +84,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param data - replacement root adopted verbatim.
      */
     public setData(data: IResourceCacheData<T>): IResourceCacheData<T> {
+        this.removalEpoch++;
         return this.installState(data, STATE_PUBLIC_REPLACEMENT);
     }
 
@@ -88,6 +93,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param data - snapshot or exact history endpoint.
      */
     public restore(data: IResourceCacheData<T>): void {
+        this.removalEpoch++;
         const generation = ++this.restoreGeneration;
         const active: ICacheRequest[] = [];
         this.runtimeRecords?.forEach((runtime) => {
@@ -162,7 +168,51 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         if (options.id !== undefined && Object.prototype.hasOwnProperty.call(this.subscribers, options.id)) {
             this.eviction.release();
         }
-        return super.subscribe(callback, options);
+        // Creating a Pending entry changes its ancestor path, but data-only readers still
+        // see exactly the absent defaults. Suppress only that first default-only creation;
+        // all subsequent notifications (especially invalidated true/false) remain untouched.
+        const absent = new Set<string>();
+        const defaults = getInitialCacheEntry<T>();
+        const reads = options.reads;
+        if (reads !== undefined && reads.size > 0) {
+            for (const path of reads) {
+                const end = path.lastIndexOf(PATH_SEPARATOR);
+                const parent = path.slice(0, end);
+                const field = path.slice(end + 1);
+                if (!parent.startsWith(`entries${PATH_SEPARATOR}`) || field === 'status' ||
+                    !Object.prototype.hasOwnProperty.call(defaults, field)) {
+                    absent.clear();
+                    break;
+                }
+                const escaped = parent.slice('entries'.length + PATH_SEPARATOR.length);
+                const key = escaped.replace(/~1/g, PATH_SEPARATOR).replace(/~0/g, '~');
+                if (this.data.entries[key]) {
+                    absent.clear();
+                    break;
+                }
+                absent.add(key);
+            }
+        }
+        if (absent.size === 0) return super.subscribe(callback, options);
+        let epoch = this.removalEpoch;
+        return super.subscribe(() => {
+            // A removal since the last delivery (even one collapsed with the creation) must render: the
+            // reader has to reload what vanished.
+            const removed = epoch !== this.removalEpoch;
+            epoch = this.removalEpoch;
+            const defaultCreation = !removed && absent.size > 0 && Array.from(absent).every((key) => {
+                const entry = this.data.entries[key];
+                return entry === undefined || (entry.status === EResourceStatus.Pending && entry.data === undefined &&
+                    entry.error === undefined && entry.updatedAt === undefined &&
+                    !entry.refreshing && !entry.invalidated && !entry.failed);
+            });
+            if (defaultCreation) {
+                if (Array.from(absent).every(key => this.data.entries[key] !== undefined)) absent.clear();
+            } else {
+                absent.clear();
+                callback();
+            }
+        }, options);
     }
 
     /** Unsubscribe and release any entry the reader retained.
@@ -350,6 +400,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
             draft: () => this.draft,
             current: () => this.data,
             forgot: (key, replaced) => {
+                this.removalEpoch++;
                 this.eviction.forget(key, replaced);
                 if (!replaced) {
                     const runtime = this.runtimeFor(key);

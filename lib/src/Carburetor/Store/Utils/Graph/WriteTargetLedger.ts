@@ -1,57 +1,59 @@
-import {TPath} from "@/Carburetor/Models/Paths";
+import {TPath} from '@/Carburetor/Models/Paths';
 
-/** How many mutation targets one publication may record before it is flagged incomplete. */
-const WRITE_TARGET_BUDGET = 4096;
-
-/**
- * The raw mutation targets one pending publication records, under a fixed within-update budget.
- *
- * A path starved of budget keeps no target and the ledger flags the publication unknown, which
- * makes the write log drop its raw proof instead of silently trusting partial targets.
- */
+/** Reusable pending pairs; a bounded recording budget makes oversized drafts conservative. */
 export class WriteTargetLedger {
-    /** Recordings still allowed before the publication is flagged unknown. */
-    private budget: number = WRITE_TARGET_BUDGET;
-    /** The pending publication's targets, handed to the write log at emit; `reset` swaps in a
-     * fresh map so a captured reference keeps its contents for the write log. */
-    private map = new Map<TPath, Set<object>>();
-    /** Whether targets were dropped because the budget ran out. */
+    /** Whether any consumer asked for raw-target proofs; until then nothing is retained. */
+    private enabled: boolean;
+    /** Reusable bounded pending recordings. */
+    private readonly pairs: Array<readonly [TPath, object]> = [];
+    /** Whether pending recordings exceeded the budget. */
     private incomplete = false;
+    /** Whether a write since the last reset was not recorded because the ledger was off. */
+    private missed = false;
 
-    /** Records one mutation target under the budget; exhaustion flags the publication unknown.
+    /** Creates a ledger that records from the start unless a store defers it to the first consumer.
      *
-     * @param path - the written path.
-     * @param target - the raw object the mutation landed on.
+     * @param enabled - record from the start (direct use); a store enables on demand
+     */
+    constructor(enabled = true) { this.enabled = enabled; }
+
+    /** Starts retaining pairs for the publications that follow; a publication already part-written is incomplete. */
+    public enable(): void {
+        if (!this.enabled && this.missed) this.incomplete = true;
+        this.enabled = true;
+    }
+
+    /** Stops retaining and releases pending pairs; a still-open publication stays incomplete if re-enabled. */
+    public disable(): void {
+        if (this.enabled && (this.pairs.length > 0 || this.incomplete)) this.missed = true;
+        this.enabled = false;
+        this.pairs.length = 0;
+        this.incomplete = false;
+    }
+
+    /** Records a raw mutation without allocating a target Map or Set.
+     *
+     * @param path - written path
+     * @param target - raw mutation target
      */
     public add(path: TPath, target: object): void {
-        if (this.budget === 0) {
-            this.incomplete = true;
-            return;
-        }
-        let written = this.map.get(path);
-        if (written === undefined) {
-            this.budget--;
-            this.map.set(path, written = new Set<object>([target]));
-        } else if (!written.has(target)) {
-            this.budget--;
-            written.add(target);
-        }
+        if (!this.enabled) { this.missed = true; return; }
+        const last = this.pairs[this.pairs.length - 1];
+        if (last?.[0] === path && last[1] === target) return;
+        if (this.pairs.length === 4096) { this.incomplete = true; return; }
+        this.pairs.push([path, target]);
     }
 
-    /** The pending publication's target map, handed to the write log at emit. */
-    public get entries(): ReadonlyMap<TPath, Set<object>> {
-        return this.map;
-    }
-
-    /** Whether the pending publication dropped targets because its budget ran out. */
-    public get isIncomplete(): boolean {
-        return this.incomplete;
-    }
-
-    /** Closes one publication's pending target state: fresh budget, no incomplete flag. */
+    /** Pending pairs, consumed synchronously before reset. */
+    public get entries(): ReadonlyArray<readonly [TPath, object]> { return this.pairs; }
+    /** Whether the recording budget was exhausted. */
+    public get isIncomplete(): boolean { return this.incomplete; }
+    /** Releases every pending target reference while retaining the buffer identity. */
     public reset(): void {
-        this.map = new Map<TPath, Set<object>>();
+        // Assigning length is a runtime call; popping stays inline for the usual one or two pairs.
+        const pairs = this.pairs;
+        while (pairs.length !== 0) pairs.pop();
         this.incomplete = false;
-        this.budget = WRITE_TARGET_BUDGET;
+        this.missed = false;
     }
 }

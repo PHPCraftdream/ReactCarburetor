@@ -4,6 +4,8 @@ import {DIFF_PATH_THRESHOLD} from "./Threshold/DIFF_PATH_THRESHOLD";
 import {shouldCollapseDiff} from "./Threshold/shouldCollapseDiff";
 import {scanBranch} from "./Order/scanBranch";
 import {sameKind} from "./Kinds/sameKind";
+import {requiresArrayGraphRestore} from "./Kinds/requiresArrayGraphRestore";
+import {ownArrayRestore} from "./Kinds/ownArrayRestore";
 
 const hasOwn = Object.prototype.hasOwnProperty;
 
@@ -254,6 +256,18 @@ export const applyDiff = (
     const scan = scanBranch(previous, next, scanBudget);
     if (scan === 'blocked') return false;
     if (scan === 'equal') return true;
+    // R39-05: per-leaf installation cannot restore shared occupants after a permutation.
+    if (requiresArrayGraphRestore(previous, next)) {
+        const owned = ownArrayRestore(previous, next, scanBudget.unchanged);
+        for (const key of Object.keys(previous)) {
+            if (!hasOwn.call(owned, key)) delete target[key];
+        }
+        for (const key of Object.keys(owned)) {
+            if (!Object.is(previous[key], owned[key])) assign(target, key, owned[key]);
+        }
+        if (Array.isArray(next)) (target as unknown as unknown[]).length = next.length;
+        return true;
+    }
     // Only past the floor does the answer depend on the branch's size, so the common restore pays
     // for the changed region alone.
     if (countChanges(previous, next, DIFF_PATH_THRESHOLD) > DIFF_PATH_THRESHOLD

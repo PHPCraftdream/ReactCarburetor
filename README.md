@@ -156,6 +156,9 @@ Containers built from draft branches are fine to assign back: `draft.rows = draf
 methods `sort`, `reverse`, `splice`, `shift`, `unshift`, `copyWithin` and `fill` run natively on the
 draft's array and are recorded per changed index, so reordering 10 000 rows costs milliseconds; a
 `sort` comparator and a `fill` value see raw elements, and `splice`/`shift` return raw removed ones.
+An assigned array is aligned by element identity: a row that is the same raw object at another index
+records that index path, as `splice` does, so readers before the first changed index stay asleep; a
+genuinely new row object is still diffed field by field.
 
 `update` mutates through `draft` and publishes in one step. You can also write to `this.draft`
 directly and call `this.emitUpdate()` yourself, but forgetting the second half changes the data
@@ -269,8 +272,10 @@ the changed spine is copied: unchanged nested objects and arrays keep the refere
 `React.memo` row handed one of them re-renders only if its own content changed. Members are
 matched by their own object where the owner keeps the previous pass (`useCarburetorValue`, `watch`,
 `connectSelection`), so a row that moved keeps the copy it had and a `React.memo` row re-renders only for
-a content change; elsewhere they are matched by position. Tracked plain-object
-and array branches are copied safely. An opaque live facade that cannot be detached is reported
+a content change; elsewhere they are matched by position. A related edit inside a selected live list
+is applied from the store's write log instead of re-walking the list, regardless of unrelated writes
+to the same store in between; a write the log cannot attribute costs one full walk. Tracked
+plain-object and array branches are copied safely. An opaque live facade that cannot be detached is reported
 once in development; project its plain fields instead of handing the facade to a gated child.
 
 ### Precise invalidation
@@ -304,8 +309,10 @@ Two properties keep this honest:
   ↔ `Map`/class instance), or a supported object/array prototype change, records the replaced
   path itself. So does a replacement that changes more than 2000 leaves and more than half of the
   leaves of the replaced branch; at the root the top-level keys that differ are recorded instead of the
-  wildcard, so unrelated subscribers stay asleep. A partial change stays leaf-precise at any size. Snapshots and
-  history preserve supported null-prototype containers. A branch that is the same object
+  wildcard, so unrelated subscribers stay asleep. A partial change stays leaf-precise at any size.
+  An array element that is the same raw object at a different index (moved, or shifted by `filter` or
+  a spread insert) records its index path instead of diffing two different rows, as `splice` does.
+  Snapshots and history preserve supported null-prototype containers. A branch that is the same object
   on both sides is skipped without a look, so never mutate what `getData()` returns and hand it
   back: those edits are invisible to the diff.
 
@@ -598,9 +605,11 @@ budget explicitly when that tradeoff fits the application. Object arguments reta
 non-configurable slots, without changing held endpoints or splitting native backlinks. Active requests
 and subclass hook overrides retain per-key behavior; locked mixed sets can still repeat graph copies.
 
-`useResource` subscribes the component to that one entry, so another user's answer arriving does not
-re-render this badge. A stale entry is refetched **after** the commit, never during render — a write
-from render would notify subscribers mid-render.
+`useResource` subscribes the component to the fields of that one entry it actually reads — `data`,
+`status`, `refreshing` and so on — so another user's answer arriving does not re-render this badge, and
+a reader that shows only `data` is not re-rendered for every bookkeeping field the cache updates beside
+it. A stale entry is refetched **after** the commit, never during render — a write from render would
+notify subscribers mid-render.
 
 Three decisions are worth knowing because they differ from the hooks libraries:
 
@@ -747,9 +756,10 @@ state; coalescing cannot turn that fresh write into the recorder's own replay.
 Watch, class selections and hook snapshots transfer completed read sets only after selection,
 comparison and required detachment finish. Live computed dependencies remain deliberately extendable.
 History owns ordinary `Map`, `Set` and `Date` endpoints independently of `snapshot()`.
-Native-containing state uses complete detached graphs, preserving Map-key aliases, native
-descriptors and backlinks through repeated undo/redo and branching. Unsupported mutable
-instances and accessor-bearing native values are rejected instead of promising a false undo.
+Steps that replace, mutate or read a native value through `draft` use complete detached graphs,
+preserving Map-key aliases, native descriptors and backlinks through repeated undo/redo and
+branching. Unsupported mutable instances and accessor-bearing native values are rejected instead
+of promising a false undo.
 `history.clear()` captures the current baseline and discards pre-clear deferred writes;
 later coalesced writes remain undoable from that baseline, and other histories stay independent.
 Undo and redo first reconcile collected writes awaiting a coalesced publication, so time travel
@@ -1006,7 +1016,8 @@ a test pins the exported surface so one does not slip in by accident.
   leaf reads; reaching one through `draft` conservatively marks its path, not fields inside it.
   Alias answers for such a value are cached and refreshed only by a topological write, so an
   in-place mutation of the value — or of a `Map` behind the facade — keeps its stale alias set
-  until then; that is the same invisibility an opaque leaf's contents already have.
+  until then; that is the same invisibility an opaque leaf's contents already have. A topological
+  write refreshes the ownership index for the changed subtree, not the whole store.
   A publication after bypassing `draft` invalidates the whole store. Replace values or use plain
   data for finer precision; an untrackable root has no narrower path to invalidate.
 - **What counts as state.** A container's state is its own enumerable string-keyed data — what
@@ -1031,22 +1042,20 @@ a test pins the exported surface so one does not slip in by accident.
 - The props gate means a component that relied on its parent re-rendering to pick up data it
   never read will stop updating. Read what you render, through `useCarburetor`.
 - Ordinary plain-tree undo/redo records patches — O(changed values), not O(state); `setData`, `restore`
-  and `fromJSON` record their leaf patches too (up to 1000, then one opaque entry). Native-containing
-  state, opaque writes, positional string-key changes and resource wire identity use owned graphs.
-  Undo and redo install through `restore`, waking changed-path readers; key-only resource restores
-  invalidate the slot. `CarburetorHistory` requires the full `IPatchSource` contract:
-  `attachPatchListener({patch, publication?, restoreClaim?})` and `captureHistory(own)`.
-  The default `captureHistory` owns the live graph, so a subclass that overrides `snapshot()`
-  for its own view still attaches a history; only classes whose wire form differs from their
-  live data override it, passing their authoritative raw graph to `own` and including private
-  wire metadata without splitting that graph.
-  Publication runs before ordinary subscribers after transaction/throttle coalescing.
-  `restoreClaim(state)` runs with the exact argument after cancellation listeners can supersede
-  it, returning `{owner, representation, adopt}`; `adopt` is true only for a fresh replay-owned
-  graph the producer may adopt as-is. Patch-only observers use `{patch}`.
-  History needs `getData`, `getVersion`, `restore` and `IPatchSource`, not unrelated store read APIs.
-  Native sources may also deliver closed publication facts; custom producers must not replace the
-  exact handoff with a broad replay flag that suppresses subscriber actions.
+  and `fromJSON` record their leaf patches too (up to 1000, then one opaque entry). A native value
+  elsewhere in the state does not change that: only steps that replace, mutate or read a native
+  through `draft`, opaque writes, positional string-key changes and resource wire identity use owned
+  graphs. Undo and redo install through `restore`, waking changed-path readers; key-only resource
+  restores invalidate the slot. `CarburetorHistory` works with the `Carburetor` family — `Carburetor`,
+  `ResourceCarburetor`, `ResourceCache` and their subclasses. The default `captureHistory` owns the
+  live graph, so a subclass that overrides `snapshot()` for its own view still attaches a history;
+  only classes whose wire form differs from their live data override `captureHistory(own)`, passing
+  their authoritative raw graph to `own` and including private wire metadata without splitting that
+  graph. The built-in stores publish to history before ordinary subscribers, after transaction/throttle
+  coalescing, and claim a restore only for its exact argument, after cancellation listeners can
+  supersede it, adopting a fresh replay-owned graph as-is. `attachPatchListener`, `IPatchSource` and
+  `IPatchObserver` are the engine's internal protocol: they change between versions, are not part of
+  the stable public contract, and custom history sources are not supported.
 - Overriding a lifecycle method without calling `super` silently disables effects, subscription
   cleanup or the props gate. Override `useEffects` / `unUseEffects` instead.
 
