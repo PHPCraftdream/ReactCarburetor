@@ -40,3 +40,16 @@ oxlint are clean. Full unit suite passes.
   deterministic counter gate; the counter is the guard, the timing is a sanity bound.
 - CI: counter gates are deterministic and candidates for a required job; timings stay a separate optional job.
   Not wired yet.
+
+## PG-DOC validation note — 2026-10-08
+
+The original R19 limit above is superseded by measured checks (three samples per invocation).
+Git proves `ce08c7f2041a` contains R19-ENGINE-02 and is the direct parent of
+R19-ENGINE-01 fix `b33be10`; it is not a pre-R19-ENGINE-02 build. On that build,
+`aliases/selection-visits@128` fails on 384 root / 16512 row visits (current 130 / 256).
+`e41828a41747`, verified parent of scalar-index fix `470a912`, fails `aliases/write-read@4k`
+on 192 root / 256064 row visits (current 66 / 4001). Correctness tails and row-positive
+controls pass. Six sequential current invocations with `--only aliases --runs 3` pass
+all five matched entries, including incidental `state/date-aliases`. The root cap is now 160.
+Read-cache and repeat-selection R30 entries fail on both older builds and on the proper
+pre-R30 build `1a02d29eec30`. See the PG-DOC stage receipt in `perf/README.md`.
