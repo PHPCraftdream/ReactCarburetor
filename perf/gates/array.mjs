@@ -44,4 +44,30 @@ export default [
             {metric: 'spotOk', equals: true}, {metric: 'viewSeesWindow', equals: true},
         ],
     },
+    // PG-HEAP
+    // 523d6a04a5f5 object probe: plain child/branch/total 200000/0/200000;
+    // view 399999/199999/599998. Candidate: 100/0/100 and 149/50/199; real controls pass.
+    // Object-reading 100-key fixture; both childPaths and branchMarkers are counted separately.
+    // Oldest-128 sample falls below half-live by 512 after 128/256 doubling; read size also
+    // includes markers. <=2048 across handlers is conservative for THIS fixture, not a global cap.
+    ...[0, 1].flatMap(view => [{
+        id: `array/memo-window@200k-${view ? 'view' : 'plain'}-live`, improvement: 'R32-04',
+        scenario: 'array/pg-heap/live-memos', args: [view],
+        gates: [{metric: 'liveMemoEntries', max: 2048},
+            {metric: 'liveChildPathEntries', max: 2048}, {metric: 'liveBranchMarkerEntries', max: 2048}],
+    }, {
+        id: `array/memo-window@200k-${view ? 'view' : 'plain'}-live-control`, improvement: 'control',
+        scenario: 'array/pg-heap/live-memos', args: [view],
+        gates: [{metric: 'positiveEntries', min: 62},
+            {metric: 'positiveChildPathEntries', min: 31}, {metric: 'positiveBranchMarkerEntries', min: 31},
+            {metric: 'positiveCorrect', equals: true}, {metric: 'idleEvents', equals: 0},
+            {metric: 'childPathEvents', min: 200000},
+            // Each audit reset uses a first-branch inline slot (no Map.set); allow those misses.
+            {metric: 'branchMarkerEvents', min: view ? 190000 : 0},
+            {metric: 'liveBranchMarkerEntries', min: view ? 1 : 0},
+            {metric: 'liveChildPathEntries', min: 1},
+            {metric: 'memoEvents', min: 200000}, {metric: 'liveMemoMaps', min: 1},
+            {metric: 'windowHeld', equals: true}, {metric: 'spotOk', equals: true},
+            {metric: 'viewSeesWindow', equals: true}, {metric: 'done', equals: true}],
+    }]),
 ];

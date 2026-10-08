@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-// History mechanism: ordinary draft writes stay patch-based (one baseline capture), actual
-// ResourceCarburetor loads record every pending/settled transition, a populated cache
-// replacement walks no owned endpoints, and native aliases survive undo/redo.
+// R19-ENGINE-02: cache replacement walks no owned endpoints during lock classification.
+// Ordinary draft writes stay patch-based; resource loads record pending/settled transitions.
+// Native aliases survive undo/redo. This does not probe R19-API-02 pre-loader cancellation.
 // Args: [writes=128] [samples=7]
 import {emit, load, loadPath, median} from '../../harness/lib.mjs';
 

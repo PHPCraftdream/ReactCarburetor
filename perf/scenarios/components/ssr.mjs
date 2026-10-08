@@ -1,8 +1,9 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // Server render of an AntiHookComponent list: rows carry no per-instance proxy or hook method
-// fields (R13-06) and the render cost scales linearly from rows/4 to rows — both fixtures
-// measured in one process with alternating samples, so machine drift moves both sides.
+// fields (JS-R13-06). Timing remains diagnostic; Map/WeakMap methods and size accessor calls
+// count cache retirement work per row in a separate cold-render window.
 // Args: [rows=4000] [samples=3]
+import {countCollections} from './pg/b1/collections.mjs';
 import {emit, load, median} from '../../harness/lib.mjs';
 
 const {AntiHookComponent, Carburetor} = await load();
@@ -63,10 +64,26 @@ for (let i = 0; i < samples; i++) {
     largeTimes.push(result.ms);
     largeHtml = result.html;
 }
-// R13-06 mechanism: the hook methods are prototype members, not per-instance fields.
+// JS-R13-06 mechanism: the hook methods are prototype members, not per-instance fields.
+const cold = buildFixture(rows);
+const empty = countCollections(() => {});
+const positive = countCollections(() => {
+    const map = new Map();
+    const weak = new WeakMap();
+    const key = {};
+    map.set(key, 1);
+    map.get(key);
+    weak.set(key, 1);
+    weak.get(key);
+    return map.size;
+});
+const counted = countCollections(() => renderToString(cold.element()));
 const instance = large.instance();
 const instanceMethodFields = METHODS.filter(name =>
     Object.hasOwn(instance, name) && typeof instance[name] === 'function').length;
 emit({ssrSmallMs: median(smallTimes), ssrLargeMs: median(largeTimes),
     htmlChars: largeHtml.length, hasLastRow: largeHtml.includes('Row ' + (rows - 1)),
-    instanceMethodFields});
+    instanceMethodFields, mapWeakCalls: counted.calls, mapSizeReads: counted.sizeReads,
+    mapWeakCallsPerRow: (counted.calls + counted.sizeReads) / rows,
+    emptyCalls: empty.calls + empty.sizeReads, positiveCalls: positive.calls,
+    positiveSizeReads: positive.sizeReads, countedHtmlCorrect: counted.result === largeHtml});

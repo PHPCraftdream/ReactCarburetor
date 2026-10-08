@@ -1,5 +1,5 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-// R13-10: `useCarburetor` keeps one root view per carburetor per component — re-renders that read
+// JS-R13-10: `useCarburetor` keeps one root view per carburetor per component — re-renders that read
 // unchanged data reuse the one read proxy through the public hook path instead of allocating a
 // fresh tracked view per render, a data change rebuilds it exactly once, and a field no render
 // ever read wakes nobody. Args: [renders=200]

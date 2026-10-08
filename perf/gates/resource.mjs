@@ -12,4 +12,24 @@ export default [
             {metric: 'goldenSeen', equals: '0|entries.0|""|entries.""|"a~1b"|entries."a~01b"|"x~0y"|entries."x~00y"|true|entries.true|null|entries.null'},
         ],
     },
+    // PG-HARNESS
+    {
+        // JS-R13-09: parent/current counts 200/100 serializations, 100/0 new absent views.
+        // Object arguments isolate serialization from later primitive-key memoization.
+        id: 'resource/serialization@100', improvement: 'JS-R13-09',
+        scenario: 'resource/pg-harness/serialization', args: [100],
+        gates: [
+            {metric: 'stringifyCalls', equals: 100}, {metric: 'newAbsentViews', equals: 0},
+        ],
+    },
+    {
+        id: 'resource/serialization@100-controls', improvement: 'control',
+        scenario: 'resource/pg-harness/serialization', args: [100],
+        gates: [
+            {metric: 'idleStringifies', equals: 0}, {metric: 'controlStringifies', equals: 1},
+            {metric: 'identityControl', equals: 1}, {metric: 'renders', equals: 101},
+            {metric: 'loaderCalls', equals: 1}, {metric: 'text', equals: 'loaded'},
+            {metric: 'done', equals: true},
+        ],
+    },
 ];

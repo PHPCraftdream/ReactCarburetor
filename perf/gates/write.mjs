@@ -23,4 +23,22 @@ export default [
             {metric: 'allocKb', max: 64},
         ],
     },
+    // PG-C2
+    // Observed --runs 3: 1c100299e00c: replacementBodies 1 -> 0; titlePathOnly false -> true; changed bodies/renders 1/1.
+    {
+        id: 'write/object-replace-filter@4k', improvement: 'JS-R16-03',
+        scenario: 'write/pg-c2/object-replace-filter',
+        gates: [
+            {metric: 'mountBodies', equals: 1},
+            {metric: 'mountRenders', equals: 1},
+            {metric: 'recordedPaths', equals: 1},
+            {metric: 'titlePathOnly', equals: true},
+            {metric: 'replacementBodies', equals: 0},
+            {metric: 'replacementRenders', equals: 0},
+            {metric: 'changedBodies', equals: 1},
+            {metric: 'changedRenders', equals: 1},
+            {metric: 'text', equals: '3999'},
+            {metric: 'done', equals: true},
+        ],
+    },
 ];

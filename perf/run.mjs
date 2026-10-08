@@ -14,7 +14,7 @@
 // A failing entry does not abort the run: a crashed scenario, a non-zero child or a missing metrics
 // line is that entry's FAIL (counted as a violation) and the remaining entries still run. The same
 // holds for a baseline build that lacks an API a scenario needs, so a whole --against sweep over
-// old builds still ends with a per-entry summary. Entries sharing (scenario, args) are measured
+// old builds still ends with a per-entry summary. Entries sharing (scenario, args, nodeArgs) are measured
 // once per build and share their samples.
 import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
@@ -105,9 +105,14 @@ const emittedMetrics = scenarioPath => {
     return sawEmit ? names : null;
 };
 
-/** 'control', a round item (R34-03, R19-ENGINE-01, R6-02/03, R31-01+R31-05) or a commit sha. */
+/** Labels distinguish js-review items from api-engine items; bare R15 remains api attribution. */
 const isLabel = label => label === 'control' || /^[0-9a-f]{7,12}$/.test(label)
-    || /^R\d+(?:[-/][A-Za-z0-9.]+)*(?:\+R\d+(?:[-/][A-Za-z0-9.]+)*)?$/.test(label);
+    || /^(?:JS-)?R\d+(?:[-/][A-Za-z0-9.]+)*(?:\+(?:JS-)?R\d+(?:[-/][A-Za-z0-9.]+)*)*$/.test(label);
+
+// js-review rounds registered in docs/perf-coverage-audit-2026-10-08.md.
+const jsRounds = new Set([13, 14, 15, 16]);
+const collidesWithJs = label => [...label.matchAll(/(?:^|\+)(JS-)?R(\d+)-(\d{2})(?=$|[/+])/g)]
+    .some(match => !match[1] && jsRounds.has(Number(match[2])));
 
 if (argv.includes('--lint-gates')) {
     const problems = [];
@@ -115,9 +120,17 @@ if (argv.includes('--lint-gates')) {
     for (const entry of entries) {
         const where = `${entry.id} [${entry.improvement}]`;
         if (!isLabel(entry.improvement)) {
-            problems.push(`${where}: improvement "${entry.improvement}" is not R<n>-<nn>, 'control' or a commit sha`);
+            problems.push(`${where}: improvement "${entry.improvement}" is not a round label, 'control' or a commit sha`);
+        }
+        if (collidesWithJs(entry.improvement)) {
+            problems.push(`${where}: unprefixed js-review round item; use JS-R<n>-<nn> or an explicitly scoped api-engine label`);
         }
         const scenarioPath = join(here, 'scenarios', entry.scenario + '.mjs');
+        if (entry.nodeArgs !== undefined && (!Array.isArray(entry.nodeArgs)
+            || entry.nodeArgs.some(arg => typeof arg !== 'string'
+                || !/^(?:--allow-natives-syntax|--(?:min|max)-semi-space-size=[1-9]\d*)(?![\s\S])/.test(arg)))) {
+            problems.push(`${where}: nodeArgs must be an array of --allow-natives-syntax or --min/--max-semi-space-size=N flags (positive integer N)`);
+        }
         if (!existsSync(scenarioPath)) problems.push(`${where}: no scenario at perf/scenarios/${entry.scenario}.mjs`);
         const metrics = emittedMetrics(scenarioPath);
         const gates = Array.isArray(entry.gates) ? entry.gates : [];
@@ -194,15 +207,15 @@ if (against) roots.push({name: 'base', dir: join(baselineDist(against), 'esm-pro
 const runs = Number(option('runs', '3'));
 const verbose = argv.includes('--verbose');
 
-// One measurement per (scenario, args) per build, shared by every entry that uses it; a failed
+// One measurement per (scenario, args, nodeArgs) per build, shared by every entry that uses it; a failed
 // measurement is cached too, so each entry pointing at the same broken scenario fails with the
 // same cause instead of re-running it.
 const samplesByKey = new Map();
 const samplesFor = entry => {
-    const key = entry.scenario + ' ' + JSON.stringify(entry.args ?? []);
+    const key = JSON.stringify([entry.scenario, entry.args ?? [], entry.nodeArgs ?? []]);
     if (!samplesByKey.has(key)) {
         try {
-            samplesByKey.set(key, sampleScenario(join(here, 'scenarios', entry.scenario + '.mjs'), entry.args ?? [], roots, runs));
+            samplesByKey.set(key, sampleScenario(join(here, 'scenarios', entry.scenario + '.mjs'), entry.args ?? [], roots, runs, entry.nodeArgs ?? []));
         } catch (error) {
             samplesByKey.set(key, error);
         }

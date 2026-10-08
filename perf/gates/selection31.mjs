@@ -27,7 +27,7 @@ export default [
         gates: [
             {metric: 'kernelHasOwnChecks', equals: 768}, {metric: 'detachOwnKeyCalls', equals: 0},
             {metric: 'presentIndexKeys', equals: 0}, {metric: 'notifications', equals: 0},
-            {metric: 'notifications', equals: 0}, {metric: 'sameContent', equals: true},
+            {metric: 'sameContent', equals: true},
             {metric: 'parityWakes', equals: 1},
         ],
     },

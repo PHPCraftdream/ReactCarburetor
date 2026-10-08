@@ -1,0 +1,50 @@
+export default [
+    {
+        id: 'resource39/data-only-readers@50', improvement: 'R39-07',
+        scenario: 'resource39/data-only-readers', args: [],
+        gates: [
+            {metric: 'rendersPerReaderOnMount', equals: 2},
+            {metric: 'rendersPerReaderOnEqualRefresh', equals: 2},
+            {metric: 'textUnchanged', equals: true},
+            {metric: 'refetchesAfterInvalidateAll', equals: 50},
+            {metric: 'refreshingMountRenders', equals: 2},
+            {metric: 'refreshingRefreshRenders', equals: 3},
+            {metric: 'refreshingMountValues', equals: 'false,false'},
+            {metric: 'refreshingRefreshValues', equals: 'false,true,false'},
+            {metric: 'statusMountRenders', equals: 3},
+            {metric: 'statusRefreshRenders', equals: 2},
+            {metric: 'statusMountValues', equals: 'idle,pending,success'},
+            {metric: 'statusRefreshValues', equals: 'success,success'},
+            {metric: 'done', equals: true},
+        ],
+    },
+    {
+        id: 'resource39/status-replacements', improvement: 'control',
+        scenario: 'resource39/status-replacements', args: [],
+        gates: [
+            {metric: 'setDataretryCalls', equals: 1},
+            {metric: 'setDataretryRenders', equals: 3},
+            {metric: 'setDatasuccessCalls', equals: 0},
+            {metric: 'setDatasuccessRenders', equals: 2},
+            {metric: 'restoreretryCalls', equals: 1},
+            {metric: 'restoreretryRenders', equals: 3},
+            {metric: 'restoresuccessCalls', equals: 0},
+            {metric: 'restoresuccessRenders', equals: 2},
+            {metric: 'done', equals: true},
+        ],
+    },
+    {
+        // Removal of a pending entry reloads it (calls 2); the bare creation is no render (control: 0).
+        id: 'resource39/forget-reload', improvement: 'R39-07',
+        scenario: 'resource39/forget-reload', args: [],
+        gates: [
+            {metric: 'mountCalls', equals: '1,1,1,1,1'},
+            {metric: 'forgetCalls', equals: 2}, {metric: 'forgetExtraRenders', min: 1},
+            {metric: 'forgetThrottledCalls', equals: 2}, {metric: 'forgetThrottledExtraRenders', min: 1},
+            {metric: 'restoreCalls', equals: 2}, {metric: 'restoreExtraRenders', min: 1},
+            {metric: 'restoreThrottledCalls', equals: 2}, {metric: 'restoreThrottledExtraRenders', min: 1},
+            {metric: 'controlCalls', equals: 1}, {metric: 'controlExtraRenders', equals: 0},
+            {metric: 'done', equals: true},
+        ],
+    },
+];

@@ -4,6 +4,7 @@
 // hook hands every consumer the same value identity across all publications.
 // Args: [consumers=100] [writes=10]
 import {emit, load, median, setupReact} from '../../harness/lib.mjs';
+import {countPullKeys} from './pg-b1/pull-keys.mjs';
 
 const consumers = Number(process.argv[2] ?? 100);
 const writes = Number(process.argv[3] ?? 10);
@@ -62,7 +63,10 @@ for (const kind of ['primitive', 'map', 'envelope']) {
     root.unmount();
     host.remove();
 }
+const pulls = countPullKeys(Carburetor, computed, consumers);
 emit({
+    pullKeys: pulls.calls, emptyPullKeys: pulls.empty,
+    controlPullKeys: pulls.control, pullValue: pulls.value,
     primitiveRenders: results.primitive.renders, primitiveText: results.primitive.text,
     primitiveMs: results.primitive.ms,
     mapAnnouncements: results.map.announcements,

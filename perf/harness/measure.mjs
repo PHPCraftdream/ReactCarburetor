@@ -12,8 +12,8 @@ const brief = (text, limit = 240) => {
 };
 
 /** Runs a scenario once on one build and returns its metrics object. */
-export const runOnce = (scenario, args, distRoot) => {
-    const child = spawnSync(process.execPath, ['--expose-gc', resolve(scenario), ...args.map(String)], {
+export const runOnce = (scenario, args, distRoot, nodeArgs = []) => {
+    const child = spawnSync(process.execPath, ['--expose-gc', ...nodeArgs, resolve(scenario), ...args.map(String)], {
         env: {...process.env, NODE_ENV: 'production', DIST_ROOT: resolve(distRoot)},
         encoding: 'utf8', maxBuffer: 64 * 1024 * 1024,
     });
@@ -37,14 +37,15 @@ export const runOnce = (scenario, args, distRoot) => {
  * @param args - the scenario's arguments
  * @param roots - [{name, dir}] builds to measure
  * @param runs - samples per build
+ * @param nodeArgs - optional Node flags for each child
  * @returns Map name -> array of metrics objects
  */
-export const sampleScenario = (scenario, args, roots, runs) => {
+export const sampleScenario = (scenario, args, roots, runs, nodeArgs = []) => {
     const samples = new Map(roots.map(root => [root.name, []]));
     for (let run = 0; run < runs; run++) {
         for (let offset = 0; offset < roots.length; offset++) {
             const root = roots[(run + offset) % roots.length];
-            samples.get(root.name).push(runOnce(scenario, args, root.dir));
+            samples.get(root.name).push(runOnce(scenario, args, root.dir, nodeArgs));
         }
     }
 

@@ -1,5 +1,5 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-// R19-E01/R30-01: one keyed selection reflects each row a bounded number of times through EITHER
+// R19-ENGINE-01/R30-01: one keyed selection reflects each row a bounded number of times through EITHER
 // descriptor primitive (Reflect or Object — counting one would go blind if the engine switched),
 // and a repeat selection re-walks nothing. Args: [rows=128]
 import {emit, load} from '../../harness/lib.mjs';

@@ -1,12 +1,11 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R31-02: settled readonly `forgetAll` prepares one bulk removal instead of N whole-graph clones;
-// 'controls' carries the writable/mixed fallbacks and the pending `abortAll` contract.
+// Controls carry only the writable/mixed removal fallbacks.
 // Args: [count=32] [op=settled|writable|mixed|controls]
 import {emit, loadPath, median} from '../../harness/lib.mjs';
 
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');
 const {EResourceStatus} = await loadPath('Carburetor/Models/Enums/EResourceStatus.mjs');
-const {persist} = await loadPath('Carburetor/Tooling/persist.mjs');
 
 const count = Number(process.argv[2] ?? 32);
 const op = process.argv[3] ?? 'settled';
@@ -91,52 +90,11 @@ if (op === 'controls') {
     const forgetMsWritable = timed('writable', 3);
     const mixed = instrumented('mixed');
     const forgetMsMixed = timed('mixed', 3);
-    const pending = new ResourceCache(() => new Promise(() => undefined), {maxEntries: count + 1});
-    Array.from({length: count}, (_, index) => `key-${index}`).forEach(key => { void pending.load(key); });
-    let callbacks = 0;
-    const subscription = pending.subscribe(() => { callbacks++; });
-    let storageWrites = 0;
-    const storage = {getItem: () => null, setItem: () => { storageWrites++; }, removeItem: () => undefined};
-    const dispose = persist(pending, {key: 'perf-cache-abort', storage, coalesce: true});
-    const version = pending.getVersion();
-    const started = performance.now();
-    pending.abortAll();
-    await Promise.resolve();
-    const abortMs = performance.now() - started;
-    dispose();
-    pending.unsubscribe(subscription);
-    // forgetAll with persist attached and no coalescing: one storage write, everything removed.
-    const persisted = new ResourceCache(() => Promise.resolve({key: 0}), {ttl: Infinity, maxEntries: Infinity});
-    const persistedEntries = Object.create(null);
-    for (let index = 0; index < count; index++) {
-        const key = persisted.keyOf(`row-${index}`);
-        Object.defineProperty(persistedEntries, key, {
-            value: ready(index), enumerable: true, writable: true, configurable: true,
-        });
-    }
-    persisted.setData({entries: persistedEntries});
-    let persistWrites = 0;
-    const persistStorage = {
-        getItem: () => null,
-        setItem: () => { persistWrites++; },
-        removeItem: () => undefined,
-    };
-    const stopPersist = persist(persisted, {key: 'perf-cache-forget-persist', storage: persistStorage, coalesce: false});
-    const persistedVersion = persisted.getVersion();
-    persisted.forgetAll();
-    await Promise.resolve();
-    stopPersist();
     emit({
         publicationWritable: writable.publicationDelta, remainingWritable: writable.remainingEntries,
         rootsWritable: writable.roots, forgetMsWritable,
         publicationMixed: mixed.publicationDelta, remainingMixed: mixed.remainingEntries,
         rootsMixed: mixed.roots, visitsMixed: mixed.entryVisits, forgetMsMixed,
-        versionDeltaAbort: pending.getVersion() - version, callbacksAbort: callbacks,
-        storageWritesAbort: storageWrites, remainingAbort: Object.keys(pending.getData().entries).length,
-        abortMs,
-        persistForgetWrites: persistWrites,
-        persistForgetVersionDelta: persisted.getVersion() - persistedVersion,
-        persistForgetRemaining: Object.keys(persisted.getData().entries).length,
     });
 } else {
     const metrics = instrumented(op);

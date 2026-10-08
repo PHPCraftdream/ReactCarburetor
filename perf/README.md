@@ -24,7 +24,7 @@ npm run bench -- --json report.json       # machine-readable results
 A failing entry — a crash, a non-zero child, no `@@` metrics line, including a baseline build that
 lacks an API the scenario needs — is reported as `FAIL <id>` with a short cause, counted as a
 violation, and the run continues; the summary and exit code reflect every violation. Entries
-sharing the same (scenario, args) are measured once and share their samples. `--only` still
+sharing the same (scenario, args, nodeArgs) are measured once and share their samples. `--only` still
 measures the `scale.from` source entries a selected entry needs, without printing them as selected.
 
 Ad-hoc A/B of one scenario across builds, no gates: `node perf/harness/ab.mjs <scenario.mjs>
@@ -56,7 +56,16 @@ A gate entry is one element of the array in `perf/gates/<area>.mjs`:
 }
 ```
 
-`improvement` names the review-round item the entry guards (`R34-03`); `'control'` marks a
+Optional `nodeArgs` is an array of Node flags, for example `nodeArgs: ['--allow-natives-syntax']`
+or `nodeArgs: ['--min-semi-space-size=64', '--max-semi-space-size=64']`. The runner passes them
+before the scenario path, alongside `--expose-gc`, without changing scenario `args`; omitted
+`nodeArgs` defaults to `[]`. `--lint-gates` accepts only `--allow-natives-syntax` and
+`--min-semi-space-size=N` / `--max-semi-space-size=N` with a positive integer `N`. Entries share
+samples only when their scenario, `args` and `nodeArgs` match.
+
+`improvement` names the review-round item the entry guards (`R34-03`); js-review rounds
+13–16 use `JS-R<n>-<nn>`, while api-engine labels keep `R<n>-` (explicit scope for collisions,
+for example `R16-PERF-01`; bare `R15` is api-engine attribution). `'control'` marks a
 correctness control that is not claiming to guard a speedup.
 
 ## Which gate when
@@ -75,14 +84,14 @@ Rules, so a gate actually guards something:
   the ratio — not only by a timing ceiling.
 - **Positive control for counters.** A counter that can silently stay 0 (a renamed internal
   method) needs a companion gate proving the instrumentation still sees the mechanism.
-- **Ceilings are the last resort.** An absolute `max` on a timing only when it is at least 10x
-  above the current median and still below the pre-improvement value; otherwise guard the mechanism
-  with a counter or a ratio.
+- **Ceilings are the last resort.** An absolute timing `max` needs at least 10x margin
+  above both the current median and the pre-fix median; otherwise keep the emitted timing
+  diagnostic only. The adjacent mechanism counter, not the timing cap, guards the old cost.
 - Gates on counters, ratios and scale are deterministic and quiet-machine friendly; absolute
   timings are not.
 
 `npm run bench -- --lint-gates` checks the manifest without running anything: unique ids, the
-improvement label format, an existing scenario file behind every entry, at least one gate per
+improvement label format and unprefixed js-review round collisions, an existing scenario file behind every entry, at least one gate per
 entry, `scale.from` pointing at a real id, gate shape, and — where the `emit({...})` call is a
 plain object literal — that gate metrics are metrics the scenario actually emits.
 
@@ -166,6 +175,53 @@ Whole-graph alias reads occur during selection capture, not on ordinary `Map.siz
 Counters are graph-collection constructors and recorded reads; GC checks are reachability,
 not byte bounds. Timing reports remain diagnostic. See the R38 review report for final receipts.
 
+### Round 39
+
+Forty-two entries in six files (`writelog39`, `history39`, `alias39`, `diff39`, `resource39`, `trackrelease39`) join the
+unfiltered `npm run bench` suite. Most are counter or correctness gates; the exceptions are the generous 6× time-scale checks
+on `history39/scale@10k` and the absolute ceilings of the headline entries listed last in the table. Focused command:
+`npm run bench -- --only <area> --runs 3`.
+
+| Entry | Guards |
+|---|---|
+| `writelog39/interleaved-{watch,hook,class}@{1000,10000}` | R39-01: a related write after two or more unrelated publications reads at most 4 paths, size-independent; overflow and unattributed writes cost one full walk, then patching resumes |
+| `writelog39/paths-since@{0,4000}` | R39-01: `pathsSince` visits at most 2 recent records however old the baseline; a control scan visits all of them. `@0` is a `control` (the scale source) |
+| `writelog39/write-allocs@1000` | R39-04: at most 3 Maps and 2000 Sets per 1000 writes without a consumer; a consumer still gets proofs |
+| `history39/native-scalar-{write,undo}@{1k,10k}`, `history39/scale@{1k,10k}` | R39-02: scalar writes next to a `Date`/`Map`/`Set` stay patches; undo/redo restore exactly |
+| `alias39/instance-leaf@{1k,10k,50k}`, `alias39/date@10k`, `alias39/flat-instance@10k` | R39-03: one native leaf read costs 3 descriptor lookups after a topology write; controls keep Date and flat-instance behaviour |
+| `diff39/filter-assign-{middle,first}@{1000,10000}` | R39-05: `rows = rows.filter(...)` records the same index paths as `splice` and wakes the same rows; the filter-only control records none |
+| `diff39/map-replace-one@10k`, `diff39/genuine-leaves@5k` | control: one replaced member stays one leaf; genuinely new rows stay leaf-precise and collapse past round 36's threshold |
+| `diff39/external-alias-history@2` | R39-05: one object under two branches (`{rows: [a, b], selected: a}`, outside the contract) swapped by index; `selected` keeps its value through undo and redo (identity is not gated) |
+| `resource39/data-only-readers@50`, `resource39/status-replacements` | R39-07: data-only readers render 2 times on mount and on an equal refresh and still refetch; `status` readers keep every render (control) |
+| `resource39/forget-reload` | R39-07: a data-only reader whose pending entry is removed (`forget`, `restore`, also inside a manual throttle window) reloads — exactly 2 loader calls, more renders; bare creation renders nothing (`controlExtraRenders` = 0) |
+| `writelog39/bound-write-{watch,hook,class}@10000` | R39-01: median of 21 related writes after two unrelated publications, 10k rows, ≤ 10 ms |
+| `writelog39/write-bytes@6000` | R39-04: heap bytes per write (`used_heap_size` delta) in a child with a 64 MB semi-space (`monotone` proves no scavenge), a fresh store per measurement; a store without a consumer allocates ≤ 900 B per write (pre-R39: 1082 B), turning the proofs on costs ≤ 60 B more, and the opt-in toggle must exist |
+| `trackrelease39/release-{watch,hook,class}@1000` | R39-04: after the last consumer disposes (watch disposer, hook unmount, class unmount), 1000 writes construct ≤ 3 Maps and ≤ 2000 Sets (pre-R39: 1000 and 3000); while a consumer lives, and after it is created again, a related write reads ≤ 4 paths |
+| `writelog39/raw-retention@10000` | control: 10 000 add/write/remove rows leave ≤ 2112 of their raw objects reachable (cap 2048 + slack) and `writeLog.targets.count` ≤ 2048; manually held store rows survive, unreferenced objects do not |
+| `history39/date-heap@10k` | R39-02: retained heap per history entry with one `Date`, 10k rows, ≤ 50 KB; plain-state control, genuine-snapshot positive control ≥ 100 KB |
+| `history39/date-timing@10k` | R39-02: median leaf write ≤ 2 ms, undo ≤ 3 ms with one `Date`, 10k rows |
+| `alias39/instance-leaf-time@50k` | R39-03: median dayjs-like leaf read after a topology write ≤ 5 ms at 50k rows; shares the `instance-leaf@50k` samples |
+| `alias39/truncate-invalidates@64` | R39-03: `rows.length = n` drops the owner path; the answer equals a freshly built store's, no stale wake |
+
+Measured on the current build (medians of three processes, six repeated runs all green): related write 0.11–0.14 ms (`watch`),
+0.23–0.34 ms (hook), 0.28–0.44 ms (class); `write-bytes` off 732 B per write, proofs-on minus proofs-off about 0 B;
+`date-heap` 1.6 KB per entry; `date-timing` write 0.08 ms, undo 0.06 ms; `instance-leaf-time@50k` 0.02 ms;
+`raw-retention` 1866 reachable raw rows, 1869 retained pairs.
+
+Run against the pre-R39 build `e8c3b34337f8` (`--dist worktrees/bench-dist/e8c3b34337f8/esm-prod`), three samples:
+12 of 14 `writelog39`, 8 of 8 `history39`, 7 of 7 `alias39`, 5 of 7 `diff39` and 2 of 3 `resource39` entries fail. Those
+that pass there are controls: `writelog39/paths-since@0`, `writelog39/raw-retention@10000`, `diff39/map-replace-one@10k`,
+`diff39/genuine-leaves@5k`, `resource39/status-replacements`. Failures by mechanism: path-read counters (interleaved), Map/Set
+counts (`write-allocs`), the missing track toggle and 1082 B instead of 732 B per write (`write-bytes`), snapshot entries and clone
+counters (`history39`), descriptor/Set counters (`alias39`), stale owner path `rows.63` after truncation, index-path counts
+(`diff39`), `undoSelected` b instead of a, extra render counts (`resource39`); and the ceilings: related write 298–412 ms,
+`date-timing` write 40.6 ms and undo 96.3 ms, `instance-leaf-time` 115 ms. On the pre-R39 build `forget-reload` fails only on
+`controlExtraRenders` (1), its reload gates pass there, and `raw-retention` reports `trackedPairs` -1 (no such field), so
+its `≤ 2048` gate holds trivially there. The round-39 report's Resolution section lists the before/after numbers.
+Wall-clock fields the scenarios emit (for example `filterMs`) are diagnostics only: the timing ratios tried on `diff39` flaked
+on a shared CPU and were removed. `write-bytes` spawns its own child with `--min-semi-space-size=64 --max-semi-space-size=64`;
+`date-heap` and `raw-retention` rely on the runner's `--expose-gc`.
+
 ## Baseline builds
 
 `node perf/harness/baseline.mjs <ref>` builds any commit's distribution into
@@ -180,7 +236,8 @@ fixes:
 | `523d6a04a5f5` | before R32 |
 | `829c3ea9c8bf` | before R33 |
 | `d300b9a44c84` | before R34 |
-| `ce08c7f2041a` | before R19-01 / R19-ENGINE-01 |
+| `ce08c7f2041a` | R19-ENGINE-02 fix itself; verified parent of R19-ENGINE-01 fix `b33be10` |
+| `e41828a41747` | verified parent of scalar-alias-index fix `470a912` |
 | `b5d41aefbae1` | before R15 |
 | `171c1fa781f3` | before R6-02/03 |
 | `1c100299e00c` | before the precise setData/restore wake (`b443f8f`) |
@@ -192,6 +249,118 @@ fixes:
 | `8b27dc42ac2f` | before R8 |
 | `687c7aa405e6` | before R9-02 |
 | `ba80fcb70719` | before R37 |
+| `e8c3b34337f8` | before R39 |
+| `9e4ef94c9188` | before JS-R16-04 (EvictionLedger, `3394b26`) |
+| `ed6263a5aa6c` | before JS-R16-06 (markStale, `9e4ef94`) |
+| `90f16f9f54fe` | before JS-R14-01 (computed extend, `ec98a4b`) |
+| `e52def010a10` | before JS-R16-05 (commit drift, `dc7eb03`) |
+| `759c94d8aa71` | before JS-R13-02/03/05 (proxy branch WeakMap, `a5cf42c`) |
+| `25e3dcc45fca` | before JS-R16-01 (key-set marker, `e52def0`) |
+| `c793167d0a48` | before JS-R14-02/03/04 (array writes, `89a5af7`) |
+| `b443f8f35d2e` | before JS-R16-07 (history patches, `2aa36c7`) |
+| `f19f6f074877` | before JS-R13-04 (computed subscribers Map, `9386cd9`) |
+| `a5ca525ec156` | before R17-ENGINE-04 (`15748fc`) |
+| `868a74f30925` | before JS-R15-04/05 (`d006c59`) |
+| `9c81aeec7297` | before JS-R14-07 (handler classes, `57277e2`) |
+| `a6be80b0d25e` | before JS-R15-06 (connect facade, `650ae81`) |
+| `5fd73a1e30ae` | before JS-R13-07 (deepClone, `f19f6f0`) |
+| `a67911e6c23b` | before R9-04 (`687c7aa`) |
+| `e45f466ce88e` | before R10-06 (`52a4a61`) |
+| `ec98a4bb7fd1` | before JS-R14-05 (fast properties, `c793167`) |
+| `fabde0984e9c` | before R16-PERF-01 (`984ad79`) |
+| `9386cd9a073c` | before JS-R13-08 (structural selection compare, `759c94d`) |
+| `d006c59494d5` | before JS-R15-01 / JS-R15-08 (`2768ed6`) |
+| `2768ed631237` | before JS-R15-03 (computed equals, `868617c`) |
+| `587587820608` | before JS-R13-09 (`a819e9f`) |
+| `728d5c8c5f3b` | before R19-ENGINE-02 (`ce08c7f`) |
+| `c703dbd93be1` | before R38 |
+
+## Ceiling audit (2026-10-08)
+
+Retain an absolute timing cap only when cap/current >= 10 and cap/pre-fix <= 0.1,
+with an adjacent mechanism counter; this audit uses three samples per build.
+Removed timings remain emitted diagnostics; counters, ratios, scales and caps are not loosened.
+
+| Entry | Absolute ceiling decision | Reason / pre-fix build |
+|---|---|---|
+| aliases/read-cache@10k | cachedReadMs remains diagnostic | Existing removal preserved; warmed iteration ratio remains; 1a02d29eec30 |
+| derived/drift-after-recompute@10k | Remove getBeforeRecomputeMs 0.05; retain getAfterRecomputeMs 0.05 | Before: pre-fix 0.0012 ms, insufficient separation; after: 8.9999 vs current 0.0016 ms; d300b9a44c84 |
+| derived/drift-fan-in@10k | Retain getMs 0.05 | Current 0.0022, pre-fix 8.7435 ms; d300b9a44c84 |
+| derived/r33-live-branch@10k | Retain settleMs 6 | Current 0.4608, pre-fix 370.6227 ms; 829c3ea9c8bf |
+| derived/r33-drift-get-after-write@10k | Retain getMs 0.5 | Current 0.0017, pre-fix 9.0821 ms; 829c3ea9c8bf |
+| computed/pulls@128 | Retain pullsMs 10 | Current 0.2426, pre-fix 169.2049 ms; b5d41aefbae1; pulls@1 scale source also measured |
+| cache/forget-all@128-settled | Remove removeMs 30 | Current 0.6887, pre-fix 78.7028 ms: insufficient separation; d77a11b03d4d |
+| cache/forget-all@1000-settled | Retain removeMs 100 | Current 3.1022, pre-fix 6902.7995 ms; d77a11b03d4d |
+| cache/forget-all@4000-settled | Retain removeMs 400 | Current 11.0209, pre-fix 147349.3129 ms; d77a11b03d4d |
+| hooks/drift-after-related@10k-stable | Remove renderBeforeMs 6 / renderAfterMs 4 | Pre-fix 7.5352 / 33.7276 ms: insufficient separation; d300b9a44c84 |
+| hooks/drift-after-related@10k-inline | Remove renderBeforeMs 6 / renderAfterMs 4 | Pre-fix 10.5441 / 33.3302 ms: insufficient separation; d300b9a44c84 |
+| hooks/r33-snapshot@10k | Remove stableWriteMs 20; retain inlineRenderMs 20 | Pre-fix 193.3313 / 346.3084, current 0.7973 / 0.7607 ms; 829c3ea9c8bf |
+| history/r33-patches@10k | Remove dep10kMs 8 | Current 0.2917, pre-fix 29.7790 ms: insufficient separation; 829c3ea9c8bf |
+
+Git provenance: ce08c7f2041a contains R19-ENGINE-02 and is the direct parent of
+b33be1037187 (R19-ENGINE-01); e41828a41747 is the direct parent of scalar-index fix 470a912b2f1a.
+The alias selection root bound remains 160 (current 130; ce08c7f baseline 384);
+scalar-write attribution remains 470a912. No API cancellation protection is claimed.
+
+## Coverage of earlier optimizations
+
+Protection-plan additions for rounds 6–38 are indexed below by step. Sizes are collapsed;
+companion positive/idle/correctness controls remain in the manifests. Bounds are current
+mechanism guards, not timing claims. Baseline sha12 values identify builds, not fresh reruns;
+see [Baseline builds](#baseline-builds) and the [audit resolution](../docs/perf-coverage-audit-2026-10-08.md#resolution--protection-plan-2026-10-08).
+
+| Entry | Finding | Mechanism metric | Baseline build |
+|---|---|---|---|
+| **PG-C1** | | | |
+| `cache/eviction-scaling@{1k,4k}` | JS-R16-04 | `coldDictionaryCalls = 0`; `coldWorkPerLoad ≤ 3`; hit dictionary calls/visits, ledger visits/work = 0; cold-work scale ≤ 4.4 | `9e4ef94c9188` |
+| `computed/diamond-ladder@26` | JS-R16-06 | `marks ≤ 120`; `bodyRuns = 26` | `ed6263a5aa6c` |
+| `computed/live-list@{1k,4k}` | JS-R14-01 | `subscribeCalls = 1`; `1 ≤ extendCalls ≤ rows` | `90f16f9f54fe` |
+| `subscribe/refile-delta@{1k,4k}` | JS-R15-04 only | `exactFiles = 1`; `ancestorFiles = 2`; unfiles/unchanged touches = 0; `filingWork = 3`; all filing scales ≤ 1.1 | `868a74f30925` |
+| **PG-C2** | | | |
+| `components/mount-sibling-writer@4k` | JS-R16-05 | `mountRowRenders = 4000`; relevant row renders/writes = 1 | `e52def010a10` |
+| `components/keys-parent@4k` | JS-R16-01 | `editParentRenders = 0`; edit row/relevant parent/new row renders = 1 | `25e3dcc45fca` |
+| `components/list-precision@1k` | JS-R14-02/03/04 | map/replace/splice parent renders = 0; their row renders = 1; push parent/row = 1; for-of parent/row = 0; relevant renders = 1 | `c793167d0a48` |
+| `write/object-replace-filter@4k` | JS-R16-03 | `recordedPaths = 1`; `titlePathOnly = true`; replacement bodies/renders = 0; changed bodies/renders = 1 | `1c100299e00c` |
+| `hooks/lazy-watch@100` | R30-10 | `warmInitializers = 0`; `unchangedSubscriptions = 0`; cold/switched subscriptions = 1; changed renders = 100 | `1a02d29eec30` |
+| `hooks/equals-reference@100` | R33-05 | equal announcements/renders = 0; equal bodies/comparisons = 1; changed renders = 100 | `829c3ea9c8bf` |
+| `hooks/default-equal@100` | JS-R13-08 | `equalRenders = 0`; equal/changed calls = 100; changed renders = 100 | `9386cd9a073c` |
+| `components/symbol-reads@1` | JS-R15-01 | concat/toString/string unrelated renders = 0; relevant renders = 1 | `d006c59494d5` |
+| `computed/equals-list@20` | JS-R15-03 | `equalsEqualRenders = 0`; equal bodies = 1; changed and no-equals equal renders = 20 | `2768ed631237` |
+| **PG-B1** | | | |
+| `history/undo-one-field@{10k,50k}` | R34-03 | undo/redo/empty row walks = 0; snapshot undo row walks ≥ rows | `d300b9a44c84` |
+| `history39/scale@10k-plain` | JS-R16-07 | plain owned clones/cloned nodes = 0; construction/snapshot clones ≥ 1, nodes ≥ 10000 | `b443f8f35d2e` |
+| `computed/hook-publication-keys@1000` | JS-R13-04 | `pullKeys = 0`; `pullValue = 5` | `f19f6f074877` |
+| `derived/r32-fan-in@1600` | R32-02 | `setWork1600 / setWork100 ≤ 20` | `523d6a04a5f5` |
+| `store/r32-deep-clone@10k-ownkeys` | R6-02 | `cloneOwnKeys = 0`; `cloneCopied = true` | `171c1fa781f3` |
+| `store/r32-deep-clone@10k-define` | JS-R13-07 | `cloneDefineProperties = 0`; `cloneCopied = true` | `5fd73a1e30ae` |
+| `components/ssr-count@4k` (companion `@1k`) | JS-R13-02 | `mapWeakCallsPerRow` scale ≤ 1.2; empty calls = 0; positive calls/size reads = 4/1 | `759c94d8aa71` |
+| `store/dehydrate@10k`, `store/dehydrate@10k-controls` | R34-05 / #14 remains B | `scopeSnapshots = 0` on both builds; dehydrate/synthetic-negative snapshots ≥ 1, empty = 0, equal counter payloads; not historical separation | `d300b9a44c84` |
+| **PG-D1** | | | |
+| `reads/live-readers@1000` (companion `@0`) | JS-R13-02/03; #6 guards JS-R13-03 | `methodCalls` scale ≤ 1.1; idle calls = 0; control calls = 6 | `759c94d8aa71` |
+| `components/props-gate@10k` | R36-07 | `keyCopies = 0`; `allocatedKB ≤ 16`; `monotone = true` | `bf6af47e7990` |
+| `history/mixed-capture@128` | R17-ENGINE-04 | `rowVisits = rowCopies = 128`; `intermediateCopies = 0` | `a5ca525ec156` |
+| `reads/proxy-alloc@4k` | JS-R14-07 | `freshOwnTraps = 0`; `freshProxies = 4000`; `bytesPerProxy ≤ 512`; monotone | `9c81aeec7297` |
+| `components/connect-retention@4k` | JS-R15-06 | `connectedOwnTraps = 0`; `connectedProxies ≥ 8000`; connected/plain bytes ≤ 1.9 (ratio passes both builds) | `a6be80b0d25e` |
+| `state/resource-history@plain-10k` | R16-PERF-01 / #25 partial | construction/capture defines = 0; `captureCopies = 10000`; intermediate copies = 0; original duplicate-construction attribution pending | `fabde0984e9c` |
+| **PG-HARNESS** | | | |
+| `components/fast-properties@2` | JS-R14-05 | `secondFast = true` with `--allow-natives-syntax` | `ec98a4bb7fd1` |
+| `resource/serialization@100` | JS-R13-09 | `stringifyCalls = 100`; `newAbsentViews = 0` | `587587820608` |
+| **PG-RESID** | | | |
+| `components/live-view-notes@4k` | JS-R13-05 (#20b grouped with #20) | `renderNotes = 0`; `rowsRendered = 4000`; direct seam control = 1, not development mode | `759c94d8aa71` |
+| **PG-DOC alias guards** | | | |
+| `aliases/selection-visits@128` | R19-ENGINE-01 | `firstRootVisits ≤ 160`; `128 ≤ firstRowVisits ≤ 320` | `ce08c7f2041a` |
+| `aliases/write-read@4k` | `470a912` scalar-index fix | `rootVisits ≤ 150`; `4000 ≤ rowVisits ≤ 12000` | `e41828a41747` |
+| **PG-HEAP-CTRL** | | | |
+| `cache/forget-all@4000-persist` | R8-03 | `persistForgetWrites = 1`; `publicationDelta = 1`; `subscriberCalls = 1` | `8b27dc42ac2f` |
+| `cache/abort-all@4000` | R9-04 | `versionDeltaAbort = 1`; `storageWritesAbort = 1`; `publicationDelta = 1` | `a67911e6c23b` |
+| `views/set-data-identity@4000` | R10-06 | `newViews = 0`; single replacement: `singleNewViews = 1`, `singleSameViews = 3999` | `e45f466ce88e` |
+| `state/restore-array-length@sparse` | R7-03 | snapshot and truncation index visits ≤ 10 on a 10⁶-length array with 3 own indices (validation is development-only) | `c15fb04c0472` |
+| `state/resource-history@unlocked` | R19-ENGINE-02 | root / dictionary / entry `Object.keys` = 0 / 0 / 0 | `728d5c8c5f3b` |
+| `array/memo-window@200k-*-live` | R32-04 | live child-path and branch-marker memo entries ≤ 2048 (fixture-specific) | `523d6a04a5f5` |
+| `subscribe/three-path-buckets@4k` | JS-R15-05 | exact and ancestor bucket objects = 0; cache records per subscriber = 0 | `868a74f30925` |
+| `subscribe/reads-copy@4k-copy-control` | R6-04 (`control`) | internal copies 0; public and intentional copies detected; no historical separation | — |
+
+Remaining exceptions: #14 and #21b/#21d stay B (no mechanism separates the builds, or the guard is a control); #25 is partial and stays D; #27b stays D (time/model only). #17 closes JS-R15-04 only; JS-R15-05 is guarded by `subscribe/three-path-buckets@4k`. Class counts and per-claim evidence are in the Resolution of `docs/perf-coverage-audit-2026-10-08.md`.
 
 ## Outside the suite
 
