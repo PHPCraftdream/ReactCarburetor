@@ -1,5 +1,5 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-import {emit, load, loadPath, setupReact} from '../../../harness/lib.mjs';
+import {emit, load, loadPath, setupReact, call} from '../../../harness/lib.mjs';
 
 const {AntiHookComponent} = await load();
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');
@@ -22,7 +22,7 @@ const measure = fn => {
     return calls;
 };
 const idleStringifies = measure(() => {});
-const controlStringifies = measure(() => cache.keyOf(query));
+const controlStringifies = measure(() => call(cache, 'keyOf', query));
 let renders = 0;
 let previousAbsent;
 let newAbsentViews = 0;
@@ -48,7 +48,7 @@ for (let wave = 1; wave <= count; wave++) {
 }
 measuring = false;
 const before = cache.getEntry(query);
-cache.setData({entries: {[cache.keyOf(query)]: {...before, data: 'changed'}}});
+cache.setData({entries: {[call(cache, 'keyOf', query)]: {...before, data: 'changed'}}});
 const identityControl = Number(before !== cache.getEntry(query));
 const text = container.textContent;
 const done = renders === count + 1 && loaderCalls === 1 && text === 'loaded'

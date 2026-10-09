@@ -459,7 +459,7 @@ const round31Cases = [];
         cache.subscribe(() => {
             try { cache.suspend('a'); } catch (value) { replacementFailure = value; }
         });
-        const cacheKey = cache.keyOf('a');
+        const cacheKey = cache.resolve('a').key;
         cache.update((draft) => {
             const previous = draft.entries[cacheKey];
             draft.entries[cacheKey] = {...previous, updatedAt: (previous.updatedAt ?? 0) + 1};

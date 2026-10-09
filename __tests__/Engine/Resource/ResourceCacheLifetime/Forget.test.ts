@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 import {persist} from "@/Carburetor/Tooling/persist";
@@ -75,7 +76,7 @@ describe('ResourceCache forget', () => {
     test('forget drops the cached view along with the rest of the entry', async () => {
         const loader = makeLoader();
         const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
-        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
+        const viewCache = () => (cache as unknown as {[R.viewCache]: Map<string, unknown>})[R.viewCache];
 
         await fill(cache, loader, ['a', 'b']);
         cache.getEntry('a');
@@ -92,7 +93,7 @@ describe('ResourceCache forget', () => {
     test('forgetAll empties the cached views', async () => {
         const loader = makeLoader();
         const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
-        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
+        const viewCache = () => (cache as unknown as {[R.viewCache]: Map<string, unknown>})[R.viewCache];
 
         await fill(cache, loader, ['a', 'b']);
         cache.getEntry('a');
@@ -106,7 +107,7 @@ describe('ResourceCache forget', () => {
     test('forget keeps entryCount in step with the entries it actually removes', async () => {
         const loader = makeLoader();
         const cache = new TestCache<string, string>(loader.load);
-        const entryCount = () => (cache as unknown as {eviction: {count: number}}).eviction.count;
+        const entryCount = () => (cache as unknown as {[R.eviction]: {count: number}})[R.eviction].count;
 
         await fill(cache, loader, ['a', 'b', 'c']);
         expect(entryCount()).toEqual(3);
@@ -213,12 +214,12 @@ describe('ResourceCache forget', () => {
         class ThrowingCache extends ResourceCache<string, string> {
             public fail = true;
 
-            protected forgetKey(key: string): void {
-                if (this.fail && key === this.keyOf('b')) {
+            public [R.forgetKey](key: string): void {
+                if (this.fail && key === this[R.keyOf]('b')) {
                     throw new Error('stop');
                 }
 
-                super.forgetKey(key);
+                super[R.forgetKey](key);
             }
         }
 

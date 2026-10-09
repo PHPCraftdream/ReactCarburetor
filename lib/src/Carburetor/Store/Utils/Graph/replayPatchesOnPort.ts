@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {IStateInstallation, IWritePatch} from '@/Carburetor/Models/Paths';
 import {installPatch} from '@/Carburetor/Store/Paths/Diff/installPatch';
 import {IStateInstallPort} from '@/Carburetor/Store/Transaction/Models';
@@ -29,8 +30,8 @@ export const replayPatchesOnPort = (
         error = caught;
     }
 
-    if (store.writes.size > 0 || store.publicationPending) {
-        store.rememberPublication(installation);
+    if (store[S.writes].size > 0 || store[S.publicationPending]) {
+        store[S.rememberPublication](installation);
     }
     store.emitUpdate(undefined, true);
 

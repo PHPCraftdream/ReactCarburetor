@@ -1,5 +1,7 @@
 "use client";
 
+import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
+
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
 import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
@@ -32,7 +34,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * `uid`, not by this function's identity, but the identity still has to exist somewhere to
      * be callable at all.
      */
-    protected onCarburetorUpdate = (): void => {
+    public [C.onCarburetorUpdate] = (): void => {
         this.forceUpdate();
     };
 
@@ -54,18 +56,18 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * because every description carries the baseline version its attempt captured at first
      * read — a write landing in the gap is still detected, and force-updated away.
      */
-    protected commitSubscriptions(): void {
-        const attempt = this.pendingAttempt;
+    public [C.commitSubscriptions](): void {
+        const attempt = this[C.pendingAttempt];
 
         // A commit consumes a render attempt exactly once, and only a fresh one: StrictMode's
         // replayed mount and a Suspense hide/reveal commit again with NO new render behind
         // them — identity with the last consumed attempt is what tells those apart from a
         // real render, so a replay restores the last committed description instead of being
         // mistaken for an empty render.
-        const fresh = attempt !== undefined && !attempt.abandoned && attempt !== this.committedAttempt;
+        const fresh = attempt !== undefined && !attempt.abandoned && attempt !== this[C.committedAttempt];
 
         if (fresh) {
-            this.committedAttempt = attempt;
+            this[C.committedAttempt] = attempt;
 
             const trackedEntries = attempt.tracked;
             const touchedConnections = attempt.connections;
@@ -75,18 +77,18 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             // its declaration but loses its committed description — and with it, below, the
             // subscription: an unused connection must have no active read subscription. An
             // absent collection reads exactly like an empty one: nothing was touched.
-            if (this.tracked !== undefined) {
-                for (const [source, slot] of this.tracked) {
+            if (this[C.tracked] !== undefined) {
+                for (const [source, slot] of this[C.tracked]!) {
                     if (trackedEntries !== undefined && trackedEntries.has(source)) {
                         continue;
                     }
 
-                    this.releaseSlot(this.uid, slot);
-                    this.tracked.delete(source);
+                    this[C.releaseSlot](this[C.uid], slot);
+                    this[C.tracked]!.delete(source);
                 }
             }
 
-            for (const connection of this.connections) {
+            for (const connection of this[C.connections]) {
                 // Touched this attempt only when the tag matches AND an entry was actually
                 // recorded: resolving the source alone (an `ownKeys`/`has` probe with no path
                 // read) tags the connection but never builds an entry, exactly like the old
@@ -110,13 +112,13 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             // replaced, since nothing outside this method holds either past a single commit.
             if (trackedEntries !== undefined) {
                 for (const [source, entry] of trackedEntries) {
-                    const existing = this.tracked?.get(source);
+                    const existing = this[C.tracked]?.get(source);
 
                     if (existing) {
-                        this.applyDescription(existing, entry);
+                        this[C.applyDescription](existing, entry);
                     } else {
-                        this.ensureTracked().set(source, {
-                            committed: this.buildDescription(entry),
+                        this[C.ensureTracked]().set(source, {
+                            committed: this[C.buildDescription](entry),
                             installed: undefined,
                         });
                     }
@@ -128,7 +130,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
                     const entry = connection.attemptEntry;
 
                     if (entry !== undefined) {
-                        this.applyDescription(connection, entry);
+                        this[C.applyDescription](connection, entry);
                     }
                 }
             }
@@ -145,16 +147,16 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
 
         let changedDuringRender = false;
 
-        if (this.tracked !== undefined) {
-            for (const slot of this.tracked.values()) {
-                if (this.alignSubscription(this.uid, slot)) {
+        if (this[C.tracked] !== undefined) {
+            for (const slot of this[C.tracked]!.values()) {
+                if (this[C.alignSubscription](this[C.uid], slot)) {
                     changedDuringRender = true;
                 }
             }
         }
 
-        for (const connection of this.connections) {
-            if (this.alignSubscription(connection.uid, connection)) {
+        for (const connection of this[C.connections]) {
+            if (this[C.alignSubscription](connection.uid, connection)) {
                 changedDuringRender = true;
             }
         }
@@ -171,12 +173,12 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * it never needs this map; allocating it here, rather than as a class field default, keeps
      * that component from paying for a collection it will never fill.
      */
-    private ensureTracked(): Map<ICarburetorSubscription, ITrackedCarburetor> {
-        if (this.tracked === undefined) {
-            this.tracked = new Map();
+    private [C.ensureTracked](): Map<ICarburetorSubscription, ITrackedCarburetor> {
+        if (this[C.tracked] === undefined) {
+            this[C.tracked] = new Map();
         }
 
-        return this.tracked;
+        return this[C.tracked]!;
     }
 
     /**
@@ -184,10 +186,11 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      *
      * @param entry - the attempt's record for the source being committed
      */
-    private buildDescription(entry: IAttemptEntry): IDependencyDescription {
+    private [C.buildDescription](entry: IAttemptEntry): IDependencyDescription {
         return {
             targetsWanted: entry.targetsWanted,
-            carburetor: entry.source, baselineVersion: entry.baselineVersion, reads: completeReads(entry.reads),
+            carburetor: entry.source, baselineVersion: entry.baselineVersion,
+            reads: entry.sharedReads ? entry.reads as unknown as TCompletedReads : completeReads(entry.reads),
         };
     }
 
@@ -202,16 +205,17 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * @param slot - the tracked slot or connection being committed
      * @param entry - the attempt's record for the source being committed
      */
-    private applyDescription(slot: IDependencySlot, entry: IAttemptEntry): void {
+    private [C.applyDescription](slot: IDependencySlot, entry: IAttemptEntry): void {
         const description = slot.committed;
 
         if (description) {
             description.targetsWanted = entry.targetsWanted;
             description.carburetor = entry.source;
             description.baselineVersion = entry.baselineVersion;
-            description.reads = completeReads(entry.reads);
+            description.reads = entry.sharedReads
+                ? entry.reads as unknown as TCompletedReads : completeReads(entry.reads);
         } else {
-            slot.committed = this.buildDescription(entry);
+            slot.committed = this[C.buildDescription](entry);
         }
     }
 
@@ -223,7 +227,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * @param reads - the closed read set the notification-time selector run collected
      * @param version - the source version the equal snapshot was verified at
      */
-    protected migrateConnectionReads(connection: IConnection, reads: TCompletedReads, version: number): void {
+    public [C.migrateConnectionReads](connection: IConnection, reads: TCompletedReads, version: number): void {
         const committed = connection.committed;
 
         if (!committed) {
@@ -237,7 +241,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
 
         if (connection.installed === undefined || !sameReads(connection.installed.reads, reads)) {
             committed.carburetor.subscribe(
-                connection.wake ?? this.onCarburetorUpdate, transferCompletedReads(reads, connection.uid)
+                connection.wake ?? this[C.onCarburetorUpdate], transferCompletedReads(reads, connection.uid)
             );
             connection.installed = {carburetor: committed.carburetor, reads};
         } else if (connection.installed.reads !== reads) {
@@ -270,7 +274,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * `tracked` records, the connection's own for connections
      * @param slot - the slot to align
      */
-    private alignSubscription(uid: string, slot: IDependencySlot): boolean {
+    private [C.alignSubscription](uid: string, slot: IDependencySlot): boolean {
         const committed = slot.committed;
         const installed = slot.installed;
 
@@ -296,7 +300,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             // Reuses the slot's id and transfers the attempt's now-closed Set directly into the
             // subscriber index; the selection/comparison/detachment work finished before render closed.
             committed.carburetor.subscribe(
-                slot.wake ?? this.onCarburetorUpdate, transferCompletedReads(committed.reads, uid)
+                slot.wake ?? this[C.onCarburetorUpdate], transferCompletedReads(committed.reads, uid)
             );
             slot.installed = {carburetor: committed.carburetor, reads: committed.reads};
         } else if (slot.installed.reads !== committed.reads) {
@@ -332,7 +336,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * `tracked` records, the connection's own for connections
      * @param slot - the slot whose handle to clear
      */
-    private releaseSlot(uid: string, slot: IDependencySlot): void {
+    private [C.releaseSlot](uid: string, slot: IDependencySlot): void {
         if (slot.installed) {
             slot.installed.carburetor.unsubscribe(uid);
             slot.installed = undefined;
@@ -351,15 +355,15 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * every dependency as unread. A render still drops what it stops reading: that runs
      * through a fresh attempt, which clears descriptions wholesale, not through this method.
      */
-    protected releaseSubscriptions(): void {
-        this.tracked?.forEach((slot: ITrackedCarburetor) => {
-            this.releaseSlot(this.uid, slot);
+    public [C.releaseSubscriptions](): void {
+        this[C.tracked]?.forEach((slot: ITrackedCarburetor) => {
+            this[C.releaseSlot](this[C.uid], slot);
         });
 
-        this.connections.forEach((connection: IConnection) => {
-            this.releaseSlot(connection.uid, connection);
+        this[C.connections].forEach((connection: IConnection) => {
+            this[C.releaseSlot](connection.uid, connection);
         });
 
-        this.renderAttempt = undefined;
+        this[C.renderAttempt] = undefined;
     }
 }

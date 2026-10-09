@@ -1,6 +1,8 @@
 import {TDisposer, TReadonly} from '@/Carburetor/Models/Base';
 import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
 import {ICarburetorSubscription, TSelector} from '@/Carburetor/Models/Store';
+import {readCoverage} from '@/Carburetor/Store/Paths/Markers/readCoverage';
+import {completeReads} from '@/Carburetor/Store/Tracking/Observation/completeReads';
 import {completeObservation} from '@/Carburetor/Store/Tracking/Observation/completeObservation';
 import {transferCompletedReads} from '@/Carburetor/Store/Tracking/Observation/transferCompletedReads';
 import {sameReads} from '@/Carburetor/Store/Tracking/Observation/sameReads';
@@ -34,17 +36,6 @@ const runSelector = <T, R>(
         reads.current.add(path);
     });
     return {value: select(view), reads: reads.current};
-};
-
-/** The filed read set when `reads` adds nothing to it, else a new set holding both. */
-const coverReads = (filed: TCompletedReads, reads: TPathSet): TPathSet => {
-    let grown: Set<TPath> | undefined;
-    for (const path of reads) {
-        if (filed.has(path)) continue;
-        grown ??= new Set<TPath>(filed);
-        grown.add(path);
-    }
-    return grown ?? (filed as unknown as TPathSet);
 };
 
 /** A watch's read set follows the selector even when its selected value stays unchanged.
@@ -108,7 +99,6 @@ export const watchSelection = <T, R>(
         let next: R;
         if (viaLog !== undefined) {
             next = viaLog;
-            fresh.reads = coverReads(installed, fresh.reads);
         } else if (flat !== undefined) {
             next = flat.value as R;
             copies = undefined;
@@ -136,7 +126,8 @@ export const watchSelection = <T, R>(
         if (changed) previous = next;
         fresh.value = previous;
         // The read set closes only after selection comparison and detachment finish.
-        const completed = completeObservation(fresh);
+        const completed = {value: fresh.value, reads: viaLog !== undefined
+            ? readCoverage.extend(installed, fresh.reads) : completeReads(fresh.reads)};
         // Re-filed only when the read set actually moved: an unchanged set keeps the
         // subscriber index's record and skips the whole diff.
         if (!sameReads(installed, completed.reads as unknown as TCompletedReads)) {

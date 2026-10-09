@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceEntry} from "@/Carburetor/Models/Resource";
 import {TestCache} from '../Helpers/TestCache';
@@ -10,17 +11,17 @@ const replacement = (error: string): IResourceEntry<string> => ({
 class EditableCache extends TestCache<string, string> {
     /** Exercise a subclass's publicly exposed draft mutation. */
     public rewrite(key: string, change: (entry: IResourceEntry<string>) => void): void {
-        this.update((draft) => { change(draft.entries[this.keyOf(key)]); });
+        this.update((draft) => { change(draft.entries[this[R.keyOf](key)]); });
     }
 
     /** Exercise a whole-entry draft replacement rather than a field write. */
     public replaceEntry(key: string, entry: IResourceEntry<string>): void {
-        this.update((draft) => { draft.entries[this.keyOf(key)] = entry; });
+        this.update((draft) => { draft.entries[this[R.keyOf](key)] = entry; });
     }
 
     /** Exercise a subclass's opaque publication when a write bypasses draft tracking. */
     public publishOpaqueError(key: string, message: string): void {
-        this.data.entries[this.keyOf(key)].error = message;
+        this.data.entries[this[R.keyOf](key)].error = message;
         this.emitUpdate();
     }
 }

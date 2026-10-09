@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
@@ -11,7 +12,7 @@ class ControlledThrottle extends ComponentUpdateThrottle {
 }
 
 class InspectableStore extends Carburetor<{n: number}> {
-    public subscriberCount(): number { return Object.keys(this.subscribers).length; }
+    public subscriberCount(): number { return Object.keys(this[S.subscribers]).length; }
 }
 
 describe('throttle delivery cancellation', () => {

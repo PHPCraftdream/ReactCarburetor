@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {act} from 'react';
 import {Carburetor, computed} from '@/Carburetor';
 import {SubscriberIndex} from '@/Carburetor/Store/Paths/SubscriberIndex';
@@ -25,10 +26,10 @@ describe('computed live plain envelopes (R33-01)', () => {
     }
 
     class InspectableRowListCarburetor extends RowListCarburetor {
-        protected override subscriberIndex = new InspectableIndex();
+        public override [S.subscriberIndex] = new InspectableIndex();
 
         public readsForComputed(id: string): Set<string> | undefined {
-            return this.subscriberIndex.readsById.get(id);
+            return this[S.subscriberIndex].readsById.get(id);
         }
     }
 

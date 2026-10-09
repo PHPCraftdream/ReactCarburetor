@@ -1,5 +1,5 @@
 /* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-import {emit, load} from '../../harness/lib.mjs';
+import {emit, load, engineKey} from '../../harness/lib.mjs';
 const {Carburetor, transaction} = await load();
 class Store extends Carburetor {
     reads = 0;
@@ -7,7 +7,7 @@ class Store extends Carburetor {
     read(record) { return super.read(path => { this.reads++; record(path); }); }
     rawPublish(other, paths) {
         this.data.other = other; other.n = 3; this.data.tick = 2;
-        for (const path of paths) this.recordWrite(path);
+        for (const path of paths) this[engineKey('recordWrite', this)](path);
         this.emitUpdate();
     }
 }

@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import * as React from 'react';
 import {act} from 'react';
 import {rstest} from '@rstest/core';
@@ -53,7 +54,7 @@ export interface ICounterData {
 export const getCounterData = (): ICounterData => ({value: 0, other: 0});
 
 export class CounterCarburetor extends Carburetor<ICounterData> {
-    public subscriberCount = (): number => Object.keys(this.subscribers).length;
+    public subscriberCount = (): number => Object.keys(this[S.subscribers]).length;
 
     public incValue = (): void => {
         this.draft.value++;

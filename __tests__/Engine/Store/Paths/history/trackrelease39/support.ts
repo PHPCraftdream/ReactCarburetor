@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {Carburetor} from '@/Carburetor';
 import {
     CARBURETOR_PATHS_SINCE, CARBURETOR_TARGETS_SINCE, CARBURETOR_TRACK_TARGETS, IInternalSubscriptionProtocol,
@@ -25,9 +26,9 @@ export const acquire = (store: object): (() => void) =>
     protocol(store)[CARBURETOR_TRACK_TARGETS]!.call(store) as unknown as () => void;
 
 interface IInternals {
-    writeLog: {trackedSince: number; targets: {paths: Map<string, Set<object>>; count: number; cached: unknown};
+    [S.writeLog]: {trackedSince: number; targets: {paths: Map<string, Set<object>>; count: number; cached: unknown};
         recent: {entries: Map<string, unknown>}};
-    writeTargets: {enabled: boolean; pairs: unknown[]};
+    [S.writeTargets]: {enabled: boolean; pairs: unknown[]};
 }
 
 /** Private structures of a store, for retention probes. */

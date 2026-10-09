@@ -9,6 +9,36 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Round 40, each item a gated scenario under `perf/` (`subclass40`, `readset40`, `iterate40`, `cache40`,
+  `resource40`) that fails on the build before it:
+  - Engine state no longer sits in subclass-visible fields (R40-01). `Carburetor`, `ResourceCache`,
+    `ResourceCarburetor` and `AntiHookComponent` keep it under module-private symbol keys, so a subclass that
+    declares `version`, `uid`, `writes`, `scheduler` and the like (a server document version, a domain id, a
+    component's `uid = this.props.userId`) no longer corrupts delivery: a computed over such a store stopped
+    updating after the second save, two stores with one `uid` merged into one dependency, and the first of two
+    components with one `uid` stopped re-rendering. The protected surface is the documented contract
+    (`update`, `draft`, `emitUpdate`, `emitSoon`, `preEmit`, `didSetData`, `markAllChanged`, and a read-only
+    `data` getter); instances list none of the engine's former 23 + 17 + 3 + 11 own names. `preEmit` now
+    receives the paths the emit recorded, so a subclass no longer reads `this.writes`; an override that
+    declares no parameter keeps working. Cost: a bare scalar write with no consumer measured about 5–9 % slower
+    (30–60 ns on 0.65–0.75 µs, ranges overlap), one with a precise subscriber 1–5 %.
+  - A read set no longer files branch markers that its own deeper reads already imply (R40-02): a hook row
+    files 1 path instead of 3, a class row 2 instead of 5, the README's `activeCount` over 1 000 items 1 001
+    instead of 2 002. Which writes wake a reader is unchanged (differential test: 0 mismatches). Subscribing
+    and releasing 5 000 hook rows: `exact` index entries 10 001 → 5 000, index map operations 80 000 → 30 000,
+    28.5 → 21.1 ms.
+  - `map`, `filter`, `forEach`, `some`, `every`, `find`, `findIndex` and `reduce` on a plain array read
+    through a view make one handler call per element instead of two and record the same paths (R40-03).
+    Per element over 5 000: `ids.map` 0.48 → 0.20 µs, `rows.filter` 0.83 → 0.59 µs, `rows.map(r => r.title)`
+    0.79 → 0.50 µs; the render-time part of a parent re-render 3.7 → 2.2 ms. Subclasses of `Array`, own
+    overrides and `indexOf`/`includes` stay on the trap path.
+  - A resource-cache settle writes its entry fields through one entry reference (R40-05): write-proxy traps
+    per publication 21 → 9 (success) and 12 → 6 (failure), same paths in the same order. The whole settle
+    publication is dominated by other work and measured within noise (about 60 µs).
+  - Native history distinguishes a branch replacement's scalar diff from an in-place scalar edit:
+    undo/redo of a replaced plain Map key preserves the before/after alias topology instead of replaying
+    an incomplete leaf diff. Packed mixed-format consumer helpers use public `resolve(args).key`.
+
 - Round 39 performance work, each item a gated scenario under `perf/` (`writelog39`, `history39`, `alias39`,
   `diff39`, `resource39`; correctness controls are marked `improvement: 'control'`) that fails on the build
   before it:
@@ -69,6 +99,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `useResourceValue(source, args)` in `react-carburetor/interop` (R40-04): the hooks counterpart of the class
+  `useResource`, with the same entry view, a subscription to only the fields the component reads, a stale
+  entry loaded after commit (never during render), and re-arming after an invalidated refresh. A local
+  replacement of a snapshot field (`view.data = …`) is read back, as with the class reader. Both readers share
+  one decision module.
 - Expanded `perf/` coverage for rounds 6–38 with mechanism counters and baseline builds;
   [the coverage audit](docs/perf-coverage-audit-2026-10-08.md#resolution--protection-plan-2026-10-08)
   records the few optimizations that no counter can separate on the available builds rather than claiming every optimization is covered.

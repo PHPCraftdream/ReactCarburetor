@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import * as React from 'react';
 import {TestCache} from '../../ResourceCache/Helpers/TestCache';
 import {render} from '@testing-library/react';
@@ -23,7 +24,7 @@ const prepare = (ttl = Infinity) => {
     return {cache, a, b, entries};
 };
 const viewCount = (cache: ResourceCache<IValue, string>): number =>
-    (cache as unknown as {viewCache: Map<string, IResourceView<IValue>>}).viewCache.size;
+    (cache as unknown as {[R.viewCache]: Map<string, IResourceView<IValue>>})[R.viewCache].size;
 
 describe('ResourceCache replacement views (R10-06)', () => {
     test('same-root replacement retains views without publishing', () => {
@@ -238,7 +239,7 @@ describe('ResourceCache replacement views (R10-06)', () => {
         const root = cache.getData();
         const c = cache.exposeKeyOf('c');
         const viewB = cache.getEntry('b');
-        const ledger = (cache as unknown as {eviction: {count: number; lastUsed: Map<string, number>}}).eviction;
+        const ledger = (cache as unknown as {[R.eviction]: {count: number; lastUsed: Map<string, number>}})[R.eviction];
 
         cache.getEntry('a');
         delete entries[a];

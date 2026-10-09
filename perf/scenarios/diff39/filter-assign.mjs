@@ -1,5 +1,5 @@
 /* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-import {emit, load, median} from '../../harness/lib.mjs';
+import {emit, load, median, engine} from '../../harness/lib.mjs';
 import {types} from 'node:util';
 const {Carburetor} = await load();
 const count = Number(process.argv[2] ?? 10000);
@@ -9,7 +9,7 @@ class Store extends Carburetor {
     paths = [];
     run(fn) { this.update(fn); }
     emitUpdate(installation, deferred) {
-        this.paths = [...this.writes];
+        this.paths = [...engine(this, 'writes')];
         super.emitUpdate(installation, deferred);
     }
 }

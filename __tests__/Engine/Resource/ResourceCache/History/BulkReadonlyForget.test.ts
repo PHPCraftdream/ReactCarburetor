@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {CarburetorHistory, EResourceStatus, ResourceCache} from '@/Carburetor';
 import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
 import {TestCache} from '../Helpers/TestCache';
@@ -161,14 +162,14 @@ describe('ResourceCache bulk forget extension hooks', () => {
             public abortedKeys: string[] = [];
             public removalBatches: string[][] = [];
 
-            protected abortKey(key: string): void {
+            public [R.abortKey](key: string): void {
                 this.abortedKeys.push(key);
-                super.abortKey(key);
+                super[R.abortKey](key);
             }
 
-            protected removeEntries(keys: string[], deferNotification: boolean): void {
+            public [R.removeEntries](keys: string[], deferNotification: boolean): void {
                 this.removalBatches.push([...keys]);
-                super.removeEntries(keys, deferNotification);
+                super[R.removeEntries](keys, deferNotification);
             }
         }
 
@@ -193,12 +194,12 @@ describe('ResourceCache bulk forget extension hooks', () => {
             public throwOnKey: string | undefined;
             private thrown: boolean = false;
 
-            protected forgetKey(key: string): void {
+            public [R.forgetKey](key: string): void {
                 if (!this.thrown && key === this.throwOnKey) {
                     this.thrown = true;
                     throw new Error('stop');
                 }
-                super.forgetKey(key);
+                super[R.forgetKey](key);
             }
         }
 

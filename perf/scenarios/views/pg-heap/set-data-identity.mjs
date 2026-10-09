@@ -1,6 +1,6 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R10-06: count public view identities for root and single-answer replacements; no private cache fields.
-import {emit, loadPath} from '../../../harness/lib.mjs';
+import {emit, loadPath, call} from '../../../harness/lib.mjs';
 
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');
 const {EResourceStatus} = await loadPath('Carburetor/Models/Enums/EResourceStatus.mjs');
@@ -10,10 +10,10 @@ const ready = index => ({
     refreshing: false, invalidated: false, failed: false,
 });
 const cache = new ResourceCache(() => Promise.resolve(undefined), {ttl: Infinity, maxEntries: Infinity});
-const keys = Array.from({length: count}, (_, index) => cache.keyOf(index));
+const keys = Array.from({length: count}, (_, index) => call(cache, 'keyOf', index));
 const entries = Object.fromEntries(keys.map((key, index) => [key, ready(index)]));
 cache.setData({entries});
-const read = () => keys.map(key => cache.getEntryByKey(key));
+const read = () => keys.map(key => call(cache, 'getEntryByKey', key));
 const changed = (before, after) => after.filter((view, index) => view !== before[index]).length;
 const initial = read();
 const idleNewViews = changed(initial, read());

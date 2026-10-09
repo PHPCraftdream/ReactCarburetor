@@ -1,3 +1,4 @@
+import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
 import {
     REACT_MAJOR, getCounterData, CounterCarburetor, ObservedCarburetor,
     React, act, rstest, render, AntiHookComponent,
@@ -241,7 +242,7 @@ import {
 
             void (instance as unknown as {render: () => React.ReactNode}).render();
 
-            const attempt = (instance as unknown as {pendingAttempt: Record<string, unknown>}).pendingAttempt;
+            const attempt = (instance as unknown as {[C.pendingAttempt]: Record<string, unknown>})[C.pendingAttempt];
 
             expect(attempt.tracked).toBeUndefined();
             expect(attempt.connections).toBeUndefined();
@@ -264,7 +265,7 @@ import {
 
             void (instance as unknown as {render: () => React.ReactNode}).render();
 
-            const attempt = (instance as unknown as {pendingAttempt: Record<string, unknown>}).pendingAttempt;
+            const attempt = (instance as unknown as {[C.pendingAttempt]: Record<string, unknown>})[C.pendingAttempt];
 
             expect(attempt.tracked).toBeInstanceOf(Map);
             expect((attempt.tracked as Map<unknown, unknown>).size).toEqual(1);
@@ -293,7 +294,7 @@ import {
 
             void (instance as unknown as {render: () => React.ReactNode}).render();
 
-            const attempt = (instance as unknown as {pendingAttempt: Record<string, unknown>}).pendingAttempt;
+            const attempt = (instance as unknown as {[C.pendingAttempt]: Record<string, unknown>})[C.pendingAttempt];
 
             expect(attempt.connections).toBeUndefined();
             expect(attempt.sources).toBeUndefined();
@@ -317,7 +318,8 @@ import {
 
             void (instance as unknown as {render: () => React.ReactNode}).render();
 
-            const attempt = (instance as unknown as {pendingAttempt: {tracked: Map<unknown, unknown>}}).pendingAttempt;
+            const attempt = (instance as unknown as {[C.pendingAttempt]: {tracked: Map<unknown, unknown>}})
+                [C.pendingAttempt];
 
             // One entry for three reads of the same source: the map is keyed by the source
             // object itself, so repeated reads of it never grow the map.
@@ -363,8 +365,8 @@ import {
             const {unmount} = render(<Reader ref={(r: Reader | null) => { instance = r; }} />);
 
             const tracked = (instance as unknown as {
-                tracked: Map<unknown, {committed: {baselineVersion: number} | undefined}>;
-            }).tracked;
+                [C.tracked]: Map<unknown, {committed: {baselineVersion: number} | undefined}>;
+            })[C.tracked];
 
             const slotBefore = tracked.get(store);
             const descriptionBefore = slotBefore?.committed;

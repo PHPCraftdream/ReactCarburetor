@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R11-07: a cache view keeps identity while nothing read changed (Object.is on data — NaN
 // included) and a signed-zero change is still visible. Args: [reads=30000] [samples=7]
-import {emit, loadPath, median} from '../../harness/lib.mjs';
+import {emit, loadPath, median, call} from '../../harness/lib.mjs';
 
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');
 const {EResourceStatus} = await loadPath('Carburetor/Models/Enums/EResourceStatus.mjs');
@@ -18,7 +18,7 @@ let identities = 0;
 let nanPreserved = false;
 for (let round = 0; round < samples; round++) {
     const cache = new ResourceCache(async () => NaN, {ttl: Infinity});
-    const key = cache.keyOf('a');
+    const key = call(cache, 'keyOf', 'a');
     cache.setData({entries: {[key]: entry(NaN)}});
     let previous = cache.getEntry('a');
     let count = 1;
@@ -39,7 +39,7 @@ for (let round = 0; round < samples; round++) {
 
 // A signed-zero change must replace the view (an == comparator would keep it).
 const zero = new ResourceCache(async () => 0, {ttl: Infinity});
-const zeroKey = zero.keyOf('z');
+const zeroKey = call(zero, 'keyOf', 'z');
 zero.setData({entries: {[zeroKey]: entry(0)}});
 const plusView = zero.getEntry('z');
 zero.setData({entries: {[zeroKey]: entry(-0)}});

@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import * as React from 'react';
 import {TestCache} from '../Helpers/TestCache';
 import {act} from 'react';
@@ -7,7 +8,7 @@ import {AntiHookComponent} from '@/Carburetor';
 class ObservedCache extends TestCache<string, string> {
     /** Number of mounted readers retained by this cache. */
     public readerCount(): number {
-        return Object.keys(this.subscribers).length;
+        return Object.keys(this[S.subscribers]).length;
     }
 }
 

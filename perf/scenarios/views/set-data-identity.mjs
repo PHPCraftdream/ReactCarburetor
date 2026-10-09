@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // Resource views contract: `setData` keeps unchanged entry views identical, publishes once for a
 // real change and nothing for the same root (round 10 measurement plan). Args: [count=100]
-import {emit, loadPath, median} from '../../harness/lib.mjs';
+import {emit, loadPath, median, call} from '../../harness/lib.mjs';
 
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');
 const {EResourceStatus} = await loadPath('Carburetor/Models/Enums/EResourceStatus.mjs');
@@ -19,10 +19,10 @@ const ready = index => ({
 
 const measure = mode => {
     const cache = new ResourceCache(() => Promise.resolve(undefined), {ttl: Infinity, maxEntries: Infinity});
-    const keys = Array.from({length: count}, (_, index) => cache.keyOf(index));
+    const keys = Array.from({length: count}, (_, index) => call(cache, 'keyOf', index));
     const entries = Object.fromEntries(keys.map((key, index) => [key, ready(index)]));
     cache.setData({entries});
-    const previous = keys.map(key => cache.getEntryByKey(key));
+    const previous = keys.map(key => call(cache, 'getEntryByKey', key));
     const replacement = () => mode === 'same-root'
         ? cache.getData()
         : mode === 'new-root'
@@ -39,7 +39,7 @@ const measure = mode => {
         const started = performance.now();
         cache.setData(next);
         const afterReplacement = performance.now();
-        const views = keys.map(key => cache.getEntryByKey(key));
+        const views = keys.map(key => call(cache, 'getEntryByKey', key));
         readTimes.push(performance.now() - afterReplacement);
         replacementTimes.push(afterReplacement - started);
         if (sample === 0) {

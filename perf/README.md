@@ -222,6 +222,38 @@ Wall-clock fields the scenarios emit (for example `filterMs`) are diagnostics on
 on a shared CPU and were removed. `write-bytes` spawns its own child with `--min-semi-space-size=64 --max-semi-space-size=64`;
 `date-heap` and `raw-retention` rely on the runner's `--expose-gc`.
 
+### Round 40
+
+Twenty-one entries in five files (`subclass40`, `readset40`, `iterate40`, `cache40`, `resource40`) join the unfiltered
+`npm run bench` suite. All gate counters or delivered values; wall-clock fields are diagnostics, and the only time gates are wide
+ceilings (`readset40/index-entries` ≤ 0.85× of its control, `subclass40/write-cost` ≤ 30×). Focused command: `npm run bench -- --only <area> --runs 3`.
+
+| Entry | Guards |
+|---|---|
+| `subclass40/store-identities` | R40-01: a store subclass declaring `version`/`uid` (a server document version, a domain id) still delivers `A,B,C,D`; two stores sharing a domain `uid` deliver one `me & friend2` |
+| `subclass40/store-names`, `subclass40/resource-names` | R40-01: no engine name is an own property of a `Carburetor`, `ResourceCache` or `ResourceCarburetor` instance, and a subclass field named like a former engine member (28 store cases, 7 cache and 5 resource-slot cases) leaves delivery correct, each against a control |
+| `subclass40/component-delivery` | R40-01: two components declaring `uid = this.props.userId` both re-render (`GraceGr`); no engine name is an own property of the instance |
+| `subclass40/write-cost` | control: 1 000 writes with a consumer deliver 1 000 times, and the write time stays within 30× of a control loop |
+| `readset40/filed-paths@1000` | R40-02: a hook row files 1 path, a class row 2, a `watch` 1, a computed 2, the README `activeCount` 1001 of 1000 items; single markers (`!!data.user`, `'a1' in items`, a returned branch) are kept; replacing a row, a parent or the list, and a delete, still wake exactly the readers they did |
+| `readset40/index-entries@5000` | R40-02: 5 000 hook-row subscribers hold 5 000 `exact` entries (10 001 before) and the index is empty after release; Map operations of subscribe + release ≤ 0.5× of an unpruned control (80 000 → 30 000); time ratio ≤ 0.85 |
+| `readset40/prune-work` | R40-02: completing a read set of up to 8 paths constructs no Set, the 2 002-path `activeCount` set constructs one and ends at 1 001 paths |
+| `readset40/bound-class-work` | control: after two unrelated publications a related class write reads ≤ 4 paths, refiles nothing and checks ≤ 500 paths for coverage |
+| `iterate40/traps-{map,filter,forEach}@5000` | R40-03: one handler `get` per element and no `has` for present indices (2 per element before), the same read set and result as the native method |
+| `iterate40/parent-render@5000`, `iterate40/computed-filter@1000` | R40-03: parent render and computed filter record the same paths with no `has` calls; one append wakes the parent once |
+| `iterate40/delivery-index-length`, `iterate40/own-reads` | controls: delivery on index/length writes is unchanged, and reading own keys pays no method-table lookup (0 of 1000 lookups) |
+| `cache40/settle-{success,failure}` | R40-05: write-proxy traps per settle publication 9 / 6 (21 / 12 through repeated `draft.entries[key]`), at most 0.5× of a control that writes the same fields the old way |
+| `resource40/hook-renders@50` | R40-04: `useResourceValue` renders 2 on mount and 2 for an equal refresh after `invalidateAll()`, as the class `useResource` does, and reloads after `invalidate` |
+| `resource40/field-precision`, `resource40/no-load-in-render` | R40-04: an unread field re-renders 0 times, a read one once; a load starts after commit, never in render |
+
+Run against the pre-R40 build `ef78d4186ba5` (`--dist worktrees/bench-dist/ef78d4186ba5/esm-prod`), three samples: 4 of 5
+`subclass40`, 3 of 4 `readset40`, 5 of 7 `iterate40`, 2 of 2 `cache40` and 3 of 3 `resource40` entries fail; the passing
+ones are controls. Failures by mechanism: delivered values and own-name counts (`subclass40`), filed paths, `exact` size and Map
+operations (`readset40`), handler `has` counts (`iterate40`), trap counts (`cache40`), and `hookAvailable: false` (`resource40`,
+which sentinel-fills instead of crashing). Scenarios that read engine internals (`subscriberIndex`, `writeLog`, `writes`, `eviction`, `keyOf`,
+`getEntryByKey`, `recordWrite`) cannot use plain names any more: those members sit under symbol keys, so the scenarios reach
+them through `engine`/`call`/`engineKey` in `perf/harness/lib.mjs`, which resolve the plain name on older builds and the
+symbol on newer ones. Every older scenario that did so was moved to those helpers and runs on both builds.
+
 ## Baseline builds
 
 `node perf/harness/baseline.mjs <ref>` builds any commit's distribution into
@@ -250,6 +282,7 @@ fixes:
 | `687c7aa405e6` | before R9-02 |
 | `ba80fcb70719` | before R37 |
 | `e8c3b34337f8` | before R39 |
+| `ef78d4186ba5` | before R40 |
 | `9e4ef94c9188` | before JS-R16-04 (EvictionLedger, `3394b26`) |
 | `ed6263a5aa6c` | before JS-R16-06 (markStale, `9e4ef94`) |
 | `90f16f9f54fe` | before JS-R14-01 (computed extend, `ec98a4b`) |

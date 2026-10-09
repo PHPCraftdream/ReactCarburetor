@@ -356,7 +356,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
     for (const kind of ['pending', 'refreshing', 'both']) {
         const cache = new producer.ResourceCache(async () => new Map());
         const history = new recorder.CarburetorHistory(cache);
-        const key = cache.keyOf('k');
+        const key = cache.resolve('k').key;
         const pending = kind !== 'refreshing';
         const entry = {status: pending ? producer.EResourceStatus.Pending : producer.EResourceStatus.Success,
             refreshing: kind !== 'pending', data: new Map(), updatedAt: 9,
@@ -406,7 +406,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         let calls = 0;
         const cache = new producer.ResourceCache(async value => { calls++; return value + '!'; });
         const history = new recorder.CarburetorHistory(cache);
-        const key = cache.keyOf('a');
+        const key = cache.resolve('a').key;
         const row = initialEntry(producer);
         row.updatedAt = 7;
         row.data = refresh ? 'prior' : undefined;
@@ -427,7 +427,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
     }
     for (const forget of [false, true]) {
         const cache = new producer.ResourceCache(async value => value + '!', {maxEntries: 1, ttl: Infinity});
-        const key = cache.keyOf('a');
+        const key = cache.resolve('a').key;
         const entries = {};
         Object.defineProperty(entries, key, {
             value: {...initialEntry(producer), status: producer.EResourceStatus.Success,
@@ -468,7 +468,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         let reads = 0, calls = 0;
         const getter = () => { reads++; throw new Error('surviving native getter must not run'); };
         const cache = new producer.ResourceCache(async value => { calls++; return value + '!'; });
-        const a = cache.keyOf('a'), b = cache.keyOf('b');
+        const a = cache.resolve('a').key, b = cache.resolve('b').key;
         const entry = {...initialEntry(producer), status: producer.EResourceStatus.Success,
             data: 'prior', updatedAt: 1};
         Object.defineProperty(entry, 'status', {
@@ -499,7 +499,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
         let calls = 0;
         const cache = new producer.ResourceCache(async () => { calls++; return 'loaded'; }, {ttl: Infinity});
         const history = new recorder.CarburetorHistory(cache);
-        const a = cache.keyOf('a'), b = cache.keyOf('b');
+        const a = cache.resolve('a').key, b = cache.resolve('b').key;
         const good = {...initialEntry(producer), status: producer.EResourceStatus.Success,
             data: 'a', updatedAt: 1};
         const locked = {...initialEntry(producer), status: producer.EResourceStatus.Success,
@@ -535,7 +535,7 @@ export const checkEngineBoundaries = async (assert, producer, recorder, label) =
     {
         const calls = [];
         const cache = new producer.ResourceCache(async key => { calls.push(key); return key + '!'; });
-        const key = cache.keyOf('a');
+        const key = cache.resolve('a').key;
         const entry = {...initialEntry(producer)};
         Object.defineProperty(entry, 'status', {
             value: producer.EResourceStatus.Idle, enumerable: true, writable: false, configurable: false,

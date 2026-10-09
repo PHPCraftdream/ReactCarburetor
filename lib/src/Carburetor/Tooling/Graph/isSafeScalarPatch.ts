@@ -15,7 +15,7 @@ export const isSafeScalarPatch = (root: unknown, patch: IWritePatch, inverse = f
     const value = inverse ? patch.previous : patch.next;
     const source = inverse ? patch.next : patch.previous;
     if (!exists || !sourceExists || !primitive(value) || !primitive(source) ||
-        patch.segments.length === 0) return false;
+        patch.replacesBranch || patch.segments.length === 0) return false;
     let node = root;
     for (let index = 0; index < patch.segments.length; index++) {
         if (node === null || typeof node !== 'object') return false;

@@ -1,6 +1,6 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // JS-R16-03: a title-only object replacement must not invalidate a done-only filter.
-import {emit, load, setupReact} from '../../../harness/lib.mjs';
+import {emit, load, setupReact, engine} from '../../../harness/lib.mjs';
 const {Carburetor, computed, AntiHookComponent} = await load();
 const {React, flushSync, root, container} = await setupReact();
 const store = new Carburetor({items: Array.from({length: 4000}, (_, id) => ({id, title: `row ${id}`, done: false}))});
@@ -21,8 +21,8 @@ const mountBodies = bodies;
 const mountRenders = renders;
 bodies = renders = 0;
 store.draft.items[5] = {...store.draft.items[5], title: 'edited'};
-const recordedPaths = store.writes.size;
-const titlePathOnly = [...store.writes].join(',') === 'items.5.title';
+const recordedPaths = engine(store, 'writes').size;
+const titlePathOnly = [...engine(store, 'writes')].join(',') === 'items.5.title';
 flushSync(() => store.emitUpdate());
 const replacementBodies = bodies;
 const replacementRenders = renders;

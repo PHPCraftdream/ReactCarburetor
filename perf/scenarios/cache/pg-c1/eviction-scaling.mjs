@@ -1,6 +1,6 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // JS-R16-04: retained cold loads amortize eviction; fresh hits do no eviction work.
-import {emit, loadPath} from '../../../harness/lib.mjs';
+import {emit, loadPath, call, engine} from '../../../harness/lib.mjs';
 
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');
 const {EResourceStatus} = await loadPath('Carburetor/Models/Enums/EResourceStatus.mjs');
@@ -13,10 +13,10 @@ const cache = new ResourceCache(key => {
 const args = Array.from({length: count}, (_, index) => String(index));
 // Subscribe outside the windows, exactly as the retained-row fixture does.
 for (const key of args) {
-    cache.subscribe(() => undefined, {id: key, reads: new Set([cache.pathOf(key)])});
+    cache.subscribe(() => undefined, {id: key, reads: new Set([call(cache, 'pathOf', key)])});
 }
 // The pre-fix lifecycle owns lastUsed directly; no baseline-only module import.
-const ledger = cache.eviction?.lastUsed ?? cache.lastUsed;
+const ledger = engine(cache, 'eviction')?.lastUsed ?? cache.lastUsed;
 if (!(ledger instanceof Map)) throw new Error('Missing eviction access-order map');
 
 const measure = async operation => {
@@ -67,7 +67,7 @@ const probe = await measure(() => {
 });
 const entries = cache.getData().entries;
 const done = args.every(key => {
-    const entry = entries[cache.keyOf(key)];
+    const entry = entries[call(cache, 'keyOf', key)];
     return entry?.status === EResourceStatus.Success && entry.data === `value-${key}`;
 });
 emit({count, coldDictionaryCalls: cold.dictionaryCalls, coldDictionaryVisits: cold.dictionaryVisits,

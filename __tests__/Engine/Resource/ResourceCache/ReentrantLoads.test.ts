@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {TestCache} from './Helpers/TestCache';
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
@@ -446,7 +447,7 @@ describe('ResourceCache reentrant loads', () => {
 
         expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
         expect(cache.getEntry('new').data).toEqual('restored-new');
-        expect((cache as unknown as {eviction: {count: number}}).eviction.count)
+        expect((cache as unknown as {[R.eviction]: {count: number}})[R.eviction].count)
             .toBe(Object.keys(cache.getData().entries).length);
 
         resolve('late');
@@ -516,7 +517,7 @@ describe('ResourceCache reentrant loads', () => {
         const first = cache.load('a');
 
         cache.setData({entries: {}});
-        expect((cache as unknown as {eviction: {count: number}}).eviction.count).toBe(0);
+        expect((cache as unknown as {[R.eviction]: {count: number}})[R.eviction].count).toBe(0);
         resolvers[0]('discarded');
         await first;
 

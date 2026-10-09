@@ -2,7 +2,7 @@
 // R39-01: raw write targets stay strongly held only up to the proof cap (2048 pairs), not per write.
 // Needs --expose-gc. WeakRef targets live until the end of the creating job, so every phase
 // yields to a macrotask before collecting.
-import {emit, load} from '../../harness/lib.mjs';
+import {emit, load, engine} from '../../harness/lib.mjs';
 
 const {Carburetor} = await load();
 const count = Number(process.argv[2] ?? 10000);
@@ -47,7 +47,7 @@ const survivors = alive(refs);
 const storeHeldSurvivors = alive(heldRefs);
 const plainHeldSurvivors = alive(plainHeldRefs);
 const freeSurvivors = alive(freeRefs);
-const trackedPairs = store.writeLog?.targets?.count ?? -1;
+const trackedPairs = engine(store, 'writeLog')?.targets?.count ?? -1;
 const rowsLeft = store.getData().rows.length;
 stop();
 emit({

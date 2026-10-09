@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {TestCache} from '../ResourceCache/Helpers/TestCache';
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceEntry} from "@/Carburetor/Models/Resource";
@@ -36,7 +37,7 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
             maxEntries: 2, ttl: Infinity,
         });
         const [a, b, c, d] = ['a', 'b', 'c', 'd'].map((key) => cache.exposeKeyOf(key));
-        const ledger = (cache as unknown as {eviction: {count: number; lastUsed: Map<string, number>}}).eviction;
+        const ledger = (cache as unknown as {[R.eviction]: {count: number; lastUsed: Map<string, number>}})[R.eviction];
         const first = {entries: {[a]: ready('a'), [b]: ready('b')}};
 
         expect(cache.setData(first)).toBe(first);
@@ -79,7 +80,7 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
         cache.setData({entries: {[a]: ready('a'), [b]: ready('b')}});
         await flush();
 
-        const ledger = (cache as unknown as {eviction: {count: number}}).eviction;
+        const ledger = (cache as unknown as {[R.eviction]: {count: number}})[R.eviction];
 
         expect(cache.getData().entries[c]?.data).toBe('c');
         expect(ledger.count).toBe(Object.keys(cache.getData().entries).length);
@@ -116,14 +117,14 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
 
         cache.setData(replacement);
         expect(cache.getData()).toBe(replacement);
-        expect((cache as unknown as {eviction: {count: number}}).eviction.count).toBe(2);
+        expect((cache as unknown as {[R.eviction]: {count: number}})[R.eviction].count).toBe(2);
 
         resolve('answer');
         await pending;
 
         expect(cache.getEntry('a').data).toBe('answer');
         expect(cache.getEntry('b').data).toBe('b');
-        expect((cache as unknown as {eviction: {count: number}}).eviction.count).toBe(2);
+        expect((cache as unknown as {[R.eviction]: {count: number}})[R.eviction].count).toBe(2);
     });
 
     test('entryCount matches the live entry set after a random sequence of operations', async () => {
@@ -131,7 +132,7 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
         const cache = new TestCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
             maxEntries: 5,
         });
-        const entryCount = (): number => (cache as unknown as {eviction: {count: number}}).eviction.count;
+        const entryCount = (): number => (cache as unknown as {[R.eviction]: {count: number}})[R.eviction].count;
         const keys = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
         for (let step = 0; step < 300; step++) {
@@ -184,9 +185,9 @@ describe('ResourceCache bookkeeping invariants (R16-04)', () => {
             maxEntries: 3,
             ttl: 60_000,
         });
-        const entryCount = (): number => (cache as unknown as {eviction: {count: number}}).eviction.count;
+        const entryCount = (): number => (cache as unknown as {[R.eviction]: {count: number}})[R.eviction].count;
         const lastUsed = (): Map<string, number> =>
-            (cache as unknown as {eviction: {lastUsed: Map<string, number>}}).eviction.lastUsed;
+            (cache as unknown as {[R.eviction]: {lastUsed: Map<string, number>}})[R.eviction].lastUsed;
 
         cache.restore(snapshot);
 

@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {IResourceView} from '@/Carburetor/Models/Resource';
 import {TPath} from '@/Carburetor/Models/Paths';
 import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
@@ -16,7 +17,7 @@ export class TestCache<T, TArgs = void> extends ResourceCache<T, TArgs> {
      * @param args - the loader arguments identifying the entry
      */
     public exposeKeyOf(args: TArgs): string {
-        return this.keyOf(args);
+        return this[R.keyOf](args);
     }
 
     /** The read path for one argument set.
@@ -24,7 +25,7 @@ export class TestCache<T, TArgs = void> extends ResourceCache<T, TArgs> {
      * @param args - the loader arguments identifying the entry
      */
     public exposePathOf(args: TArgs): TPath {
-        return this.pathOf(args);
+        return this[R.pathOf](args);
     }
 
     /** The read path for an already-derived cache key.
@@ -32,7 +33,7 @@ export class TestCache<T, TArgs = void> extends ResourceCache<T, TArgs> {
      * @param key - the cache key the path is built from
      */
     public exposePathOfKey(key: string): TPath {
-        return this.pathOfKey(key);
+        return this[R.pathOfKey](key);
     }
 
     /** The entry view for an already-derived cache key, bypassing key derivation.
@@ -40,6 +41,6 @@ export class TestCache<T, TArgs = void> extends ResourceCache<T, TArgs> {
      * @param key - the cache key of the entry
      */
     public exposeGetEntryByKey(key: string): IResourceView<T> {
-        return this.getEntryByKey(key);
+        return this[R.getEntryByKey](key);
     }
 }

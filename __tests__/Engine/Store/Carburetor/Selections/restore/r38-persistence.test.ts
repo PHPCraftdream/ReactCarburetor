@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {Carburetor, transaction} from '@/Carburetor';
 import {TReadonly} from '@/Carburetor/Models/Base';
 import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
@@ -35,7 +36,7 @@ class TestStore<T extends object> extends Carburetor<T> {
     }
 
     /** Test bridge: the write log's current watermark. */
-    public proofWatermark(): number { return this.writeLog.getWatermark(); }
+    public proofWatermark(): number { return this[S.writeLog].getWatermark(); }
 }
 
 /** Counts the paths one update makes the selection re-read, mirroring the perf scenario. */
@@ -221,7 +222,7 @@ describe('R38 cyclic selection persistence', () => {
                 this.data.other = other;
                 other.n = 3;
                 this.data.tick = 2;
-                for (const path of paths) this.recordWrite(path);
+                for (const path of paths) this[S.recordWrite](path);
                 this.emitUpdate();
             }
         }

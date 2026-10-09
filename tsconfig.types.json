@@ -10,7 +10,8 @@
     "__tests__/Engine/Store/Paths/TAliasLedger.types.test.ts",
     "__tests__/Engine/Store/Paths/PathGrammar.types.test.ts",
     "__tests__/Engine/Derived/Readable/selection-ownership.types.ts",
-    "__tests__/Engine/Store/PublicApi/R3308Visibility.types.test.ts"
+    "__tests__/Engine/Store/PublicApi/R3308Visibility.types.test.ts",
+    "__tests__/Engine/Resource/ResourceCache/Views/resource40/Surface.test.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,12 +1,15 @@
 "use client";
 
+import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
+
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
+import {readCoverage} from "@/Carburetor/Store/Paths/Markers/readCoverage";
 import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {IComputed} from "@/Carburetor/Models/Derived";
 import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
-import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {resourceReader} from "@/Carburetor/Resource/Cache/Reader/resourceReader";
 import {IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
 import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
@@ -36,13 +39,13 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * Resolved via the prototype chain on `AntiHookComponentSubscriptions`, the fragment that
      * owns connection re-filing; declared here because the equal-value wake path below calls it.
      */
-    protected abstract migrateConnectionReads(connection: IConnection, reads: TCompletedReads, version: number): void;
+    public abstract [C.migrateConnectionReads](connection: IConnection, reads: TCompletedReads, version: number): void;
 
     /** `useCarburetor`'s per-carburetor root views, created on first use; see buildTrackedView. */
-    private trackedViews: WeakMap<ICarburetorSubscription, ITrackedView<object>> | undefined;
+    private [C.trackedViews]: WeakMap<ICarburetorSubscription, ITrackedView<object>> | undefined;
 
     /** Live accessor for the recorder built into a cached view, whose call site is long gone. */
-    private readonly getRenderAttempt = (): IRenderAttempt | undefined => this.renderAttempt;
+    private readonly [C.getRenderAttempt] = (): IRenderAttempt | undefined => this[C.renderAttempt];
 
     /**
      * The only way to read state in render: returns tracked data. The component
@@ -54,24 +57,24 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * method record nothing.
      */
     public useCarburetor<T extends object>(carburetor: IReadableCarburetor<T>): TReadonly<T> {
-        const attempt = this.renderAttempt;
-        const entry = this.track(carburetor);
+        const attempt = this[C.renderAttempt];
+        const entry = this[C.track](carburetor);
 
-        if (this.trackedViews === undefined) {
-            this.trackedViews = new WeakMap();
+        if (this[C.trackedViews] === undefined) {
+            this[C.trackedViews] = new WeakMap();
         }
 
-        return buildTrackedView(this.trackedViews, carburetor, this.getRenderAttempt, attempt, entry);
+        return buildTrackedView(this[C.trackedViews]!, carburetor, this[C.getRenderAttempt], attempt, entry);
     }
 
     /**
      * Declares one connect()-family connection into this component's persistent list and builds
      * its per-attempt source resolver and recorder.
      */
-    private declareConnection<T extends object>(
+    private [C.declareConnection]<T extends object>(
         source: IReadableCarburetor<T> | (() => IReadableCarburetor<T>)
     ): IConnectionSource<T> {
-        return declareConnection(this.connections, this.getRenderAttempt, source);
+        return declareConnection(this[C.connections], this[C.getRenderAttempt], source);
     }
 
     /**
@@ -123,7 +126,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * first read so a prop swap re-points the connection at the new store
      */
     public connect<T extends object>(source: IReadableCarburetor<T> | (() => IReadableCarburetor<T>)): TReadonly<T> {
-        const declared = this.declareConnection(source);
+        const declared = this[C.declareConnection](source);
 
         return buildPersistentView(declared);
     }
@@ -171,7 +174,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         source: IReadableCarburetor<T> | (() => IReadableCarburetor<T>),
         select: (data: TReadonly<T>) => R
     ): (() => TReadonly<R>) {
-        const declared = this.declareConnection(source);
+        const declared = this[C.declareConnection](source);
         const view = buildPersistentView(declared);
 
         let snapshot: {value: R} | undefined = undefined;
@@ -189,7 +192,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const selectionUnchanged = (): boolean => {
             const committed = connection.committed;
 
-            if (snapshot === undefined || committed === undefined || this.renderAttempt !== undefined) {
+            if (snapshot === undefined || committed === undefined || this[C.renderAttempt] !== undefined) {
                 return false;
             }
 
@@ -234,7 +237,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 return false;
             }
 
-            this.migrateConnectionReads(connection, reads, version);
+            this[C.migrateConnectionReads](connection, reads, version);
 
             return true;
         };
@@ -254,9 +257,47 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             // a related one is patched from the write log, and the filed read set is adopted.
             if (previous !== undefined && next === live && next !== null && typeof next === 'object'
                 && ledger !== undefined) {
-                const reused = reuseSelection(connection, previous, next, ledger, patchable);
+                const committed = connection.committed;
+                const entry = connection.attemptEntry;
+                const ownReads = entry?.reads;
+                let candidate: Set<TPath> | undefined;
+                if (committed !== undefined && entry !== undefined && !entry.sharedReads
+                    && committed.carburetor === entry.source) {
+                    for (const path of entry.reads) {
+                        if (!committed.reads.has(path) && readCoverage.covers(committed.reads, path)) {
+                            candidate ??= new Set(entry.reads);
+                            candidate.delete(path);
+                        }
+                    }
+                    if (candidate !== undefined) {
+                        entry.reads = candidate;
+                        candidate.add = (path: TPath): Set<TPath> => {
+                            ownReads!.add(path);
+                            if (!readCoverage.covers(committed.reads, path)) Set.prototype.add.call(candidate, path);
+                            return candidate!;
+                        };
+                    }
+                }
+                const selectionReads = entry?.reads;
+                let reused: R | undefined;
+                try {
+                    reused = reuseSelection(connection, previous, next, ledger, patchable);
+                } finally {
+                    // Rejected reuse must not retire dependencies using somebody else's coverage.
+                    if (candidate !== undefined && entry !== undefined && entry.reads === candidate) {
+                        for (const path of candidate) ownReads!.add(path);
+                        entry.reads = ownReads!;
+                    }
+                }
 
                 if (reused !== undefined) {
+                    if (entry !== undefined && committed !== undefined && !entry.sharedReads) {
+                        completeReads(selectionReads!);
+                        if (Array.from(selectionReads!).every(path => readCoverage.covers(committed.reads, path))) {
+                            entry.reads = committed.reads as unknown as Set<TPath>;
+                            entry.sharedReads = true;
+                        }
+                    }
                     if (connection.attemptEntry !== undefined) connection.attemptEntry.targetsWanted = true;
                     snapshot = {value: reused};
 
@@ -300,7 +341,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * not to its inputs, so it re-renders only when the derived value changes.
      */
     public useComputed<R extends unknown>(computed: IComputed<R>): R {
-        const entry = this.track(computed);
+        const entry = this[C.track](computed);
         entry.reads.add(WILDCARD_PATH);
         const value = computed.get();
         // A lazy first read can move the pre-observation token during render.
@@ -332,37 +373,17 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
     ): IResourceView<T> {
         // One call: resolve() serializes args once and hands back the key, the read path and
         // the current view together (R16-10(4)), where this used to be three separate calls.
-        const {path, view, fieldView, present} = source.resolve(args);
-        const attempt = this.renderAttempt;
-        const entry = this.track(source);
-        let readerView = view;
-
-        if (fieldView === undefined) {
-            // Custom sources keep the original whole-path contract.
-            entry.reads.add(path);
-        } else {
-            readerView = fieldView((fieldPath) => {
-                // An escaped snapshot must never widen a later (or already committed) attempt.
-                if (attempt !== undefined && this.renderAttempt === attempt && !attempt.abandoned) {
-                    entry.reads.add(fieldPath);
-                }
-            });
-            // Automatic retry/rearming dependencies only; an absent entry skips Pending bookkeeping.
-            void readerView.invalidated;
-            void readerView.failed;
-            // Invalidation during a request can remain true at settlement. Follow that
-            // request's completion too, so an equal answer still re-arms the deferred load.
-            if (view.invalidated && view.refreshing) {
-                void readerView.refreshing;
+        const resolution = source.resolve(args);
+        const {path, view, fieldView} = resolution;
+        const attempt = this[C.renderAttempt];
+        const entry = this[C.track](source);
+        const readerView = resourceReader.view(resolution, (fieldPath) => {
+            if (fieldView === undefined
+                || (attempt !== undefined && this[C.renderAttempt] === attempt && !attempt.abandoned)) {
+                entry.reads.add(fieldPath);
             }
-            if ((present !== false && view.status !== EResourceStatus.Success)
-                || (view.invalidated && view.status === EResourceStatus.Pending)) {
-                void readerView.status;
-            }
-        }
-
-        const worthFetching = view.stale && !view.refreshing && !view.failed
-            && (view.status !== EResourceStatus.Error || view.invalidated);
+        });
+        const worthFetching = resourceReader.worthFetching(view);
 
         // The deferred load belongs to the render attempt that queued it, exactly like the reads
         // do: tentative until the commit that consumes the attempt runs it, discarded with an
@@ -386,9 +407,9 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                         // An invalidation arriving after this load began can survive an equal
                         // answer without changing any read field. Re-arm after settlement, not
                         // on loading bookkeeping, and never wake a released subscription.
-                        if (this.tracked?.get(source)?.installed !== undefined) {
+                        if (this[C.tracked]?.get(source)?.installed !== undefined) {
                             const settled = source.resolve(args).view;
-                            if (settled.invalidated && settled.stale && !settled.refreshing && !settled.failed) {
+                            if (resourceReader.rearm(settled)) {
                                 this.forceUpdate();
                             }
                         }
@@ -422,10 +443,10 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * the first `componentDidMount`), and the drain above clears the queue before invoking its
      * loads anyway — every queue is consumed exactly once, so the replay finds it absent.
      */
-    protected loadStaleResources(): void {
-        const attempt = this.pendingAttempt;
+    public [C.loadStaleResources](): void {
+        const attempt = this[C.pendingAttempt];
 
-        if (attempt === undefined || attempt.abandoned || attempt !== this.committedAttempt) {
+        if (attempt === undefined || attempt.abandoned || attempt !== this[C.committedAttempt]) {
             return;
         }
 
@@ -451,8 +472,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      *
      * @param source - the subscription-shaped source to record this render's reads for
      */
-    protected track(source: ICarburetorSubscription): IAttemptEntry {
-        const attempt = this.renderAttempt;
+    public [C.track](source: ICarburetorSubscription): IAttemptEntry {
+        const attempt = this[C.renderAttempt];
 
         if (!attempt) {
             return {source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};

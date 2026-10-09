@@ -34,6 +34,7 @@ const EXPECTED: string[] = [
     'Carburetor/Component/ScopedAntiHookComponent',
     'Interop/useCarburetorValue',
     'Interop/useComputedValue',
+    'Interop/useResourceValue',
 ];
 
 const walk = (dir: string): string[] => {

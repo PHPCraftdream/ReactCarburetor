@@ -8,6 +8,8 @@ import {IProxyCache, KEYS_HATCH, PROXY_CACHE, RAW_TARGET, VIEW_PATH} from "./Mod
 import {liveViews} from "./Proxy/liveViews";
 import {isTrackable} from "./isTrackable";
 import {recordNativeAliasReads} from "./Aliases/NativeAliasReads";
+import {HandlerMemos} from './Proxy/Positional/HandlerMemos';
+import {ArrayCallbackMethods} from './Proxy/Positional/ArrayCallbackMethods';
 
 /**
  * Inherited values are never state branches: in particular `__proto__` must not wrap or
@@ -122,6 +124,9 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
 
     /** The memo size at which the memos are next audited against the source's live key count. */
     private memoLimit = 128;
+
+    /** Lazily cached callback methods for this array view. */
+    private arrayMethods: ArrayCallbackMethods | undefined = undefined;
 
     /**
      * Drops the memos once more than half of what they hold is no longer the source's own
@@ -311,6 +316,9 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
             // shadowed by an own data key, whereas array prototype methods stay untracked.
             if (!Array.isArray(source)) {
                 this.record(this.childPath(key, source));
+            } else if (ArrayCallbackMethods.supports(source, key, value)) {
+                return (this.arrayMethods ?? (this.arrayMethods = new ArrayCallbackMethods()))
+                    .get(source, key, this);
             }
 
             return value;
@@ -470,27 +478,6 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
     deleteProperty(): never {
         return forbidWrite();
     }
-}
-
-/**
- * The per-branch path memos, moved off the handler: a wrapper built by enumeration and never
- * read (the engine wraps each enumerated value, the reader discards it) never allocates this.
- */
-class HandlerMemos {
-    /** The first string key this instance resolved. */
-    public firstKey: string | undefined = undefined;
-    /** The path `firstKey` resolved to. */
-    public firstPath: TPath = '';
-    /** Every later key's path; created only once a second distinct key is read. */
-    public childPaths: Map<string, TPath> | undefined = undefined;
-    /** The first branch path this instance built a marker for. */
-    public firstBranch: TPath | undefined = undefined;
-    /** The marker `firstBranch` resolved to. */
-    public firstMarker: TPath = '';
-    /** Every later branch marker; created only once a second distinct branch is read. */
-    public branchMarkers: Map<TPath, TPath> | undefined = undefined;
-    /** `keysPath(basePath)`, computed once per instance. */
-    public keysMarkerPath: TPath | undefined = undefined;
 }
 
 /**

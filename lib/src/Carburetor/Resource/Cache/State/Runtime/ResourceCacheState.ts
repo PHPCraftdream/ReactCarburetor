@@ -1,3 +1,5 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
 import {PATH_SEPARATOR} from '@/Carburetor/Store/Paths/PathSeparator';
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
@@ -23,38 +25,41 @@ import {trimCacheRuntime} from "./Registry";
 
 /** Owns cache root installation, cancellation, invalidation and eviction. */
 export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
+    /** Loader retained independently of subclass names. */
+    public [R.loader]!: TResourceLoader<T, TArgs>;
     /** Changes when an abort listener starts a newer restore or replacement. */
-    private restoreGeneration: number = 0;
+    private [R.restoreGeneration]: number = 0;
     /** Bumped when entries may vanish: tells a removal from a not-yet-created entry. */
-    private removalEpoch: number = 0;
+    private [R.removalEpoch]: number = 0;
     /** Defers ordinary delivery until a bulk request/removal operation closes. */
-    private bulkDepth: number = 0;
+    private [R.bulkDepth]: number = 0;
     /** Age limit after which successful entries need refresh. */
-    protected ttl: number;
+    public [R.ttl]!: number;
     /** Maximum count of unretained entries. */
-    protected maxEntries: number;
+    public [R.maxEntries]!: number;
     /** Lazy per-key request and raw-answer ownership. */
-    protected runtimeRecords: Map<string, ICacheRuntime<T>> | undefined;
+    public [R.runtimeRecords]: Map<string, ICacheRuntime<T>> | undefined;
     /** Stable caller-facing views for unchanged entries. */
-    protected viewCache: Map<string, IResourceView<T>> = new Map<string, IResourceView<T>>();
+    public [R.viewCache]: Map<string, IResourceView<T>> = new Map<string, IResourceView<T>>();
     /** Entry count, LRU order, and eviction hysteresis. */
-    protected eviction: EvictionLedger = new EvictionLedger();
+    public [R.eviction]: EvictionLedger = new EvictionLedger();
 
     /** Resolve arguments to their encoded cache key.
      *
      * @param args - arguments serialized for key lookup.
      */
-    protected abstract keyOf(args: TArgs): string;
+    public abstract [R.keyOf](args: TArgs): string;
 
     /** Configure the loader and cache limits.
      *
      * @param loader - resource producer.
      * @param options - TTL, entry and primitive key capacities, and update scheduler.
      */
-    protected constructor(protected loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
+    protected constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
         super({entries: {}}, options.scheduler);
-        this.ttl = options.ttl === undefined ? DEFAULT_TTL : options.ttl;
-        this.maxEntries = options.maxEntries === undefined ? DEFAULT_MAX_ENTRIES : options.maxEntries;
+        this[R.loader] = loader;
+        this[R.ttl] = options.ttl === undefined ? DEFAULT_TTL : options.ttl;
+        this[R.maxEntries] = options.maxEntries === undefined ? DEFAULT_MAX_ENTRIES : options.maxEntries;
     }
 
     /** Lazily obtains the coherent request/answer record for a key.
@@ -62,11 +67,11 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param key - encoded cache key.
      * @param create - allocate a record when starting a request.
      */
-    protected runtimeFor(key: string, create: boolean = false): ICacheRuntime<T> | undefined {
-        let runtime = this.runtimeRecords?.get(key);
+    public [R.runtimeFor](key: string, create: boolean = false): ICacheRuntime<T> | undefined {
+        let runtime = this[R.runtimeRecords]?.get(key);
         if (!runtime && create) {
             runtime = {generation: 0, invalidationEpoch: 0};
-            (this.runtimeRecords ??= new Map()).set(key, runtime);
+            (this[R.runtimeRecords] ??= new Map()).set(key, runtime);
         }
         return runtime;
     }
@@ -75,8 +80,8 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      *
      * @param key - encoded cache key.
      */
-    protected hasRequest(key: string): boolean {
-        return this.runtimeRecords?.get(key)?.request !== undefined;
+    public [R.hasRequest](key: string): boolean {
+        return this[R.runtimeRecords]?.get(key)?.request !== undefined;
     }
 
     /** Install a public cache replacement through Core's commit boundary.
@@ -84,8 +89,8 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param data - replacement root adopted verbatim.
      */
     public setData(data: IResourceCacheData<T>): IResourceCacheData<T> {
-        this.removalEpoch++;
-        return this.installState(data, STATE_PUBLIC_REPLACEMENT);
+        this[R.removalEpoch]++;
+        return this[R.installState](data, STATE_PUBLIC_REPLACEMENT);
     }
 
     /** Restore a cache snapshot without reviving replaced requests.
@@ -93,30 +98,30 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param data - snapshot or exact history endpoint.
      */
     public restore(data: IResourceCacheData<T>): void {
-        this.removalEpoch++;
-        const generation = ++this.restoreGeneration;
+        this[R.removalEpoch]++;
+        const generation = ++this[R.restoreGeneration];
         const active: ICacheRequest[] = [];
-        this.runtimeRecords?.forEach((runtime) => {
+        this[R.runtimeRecords]?.forEach((runtime) => {
             if (runtime.request) active.push(runtime.request);
         });
-        this.runtimeRecords = undefined;
-        this.viewCache.clear();
-        this.eviction.reset();
+        this[R.runtimeRecords] = undefined;
+        this[R.viewCache].clear();
+        this[R.eviction].reset();
         active.forEach((request) => request.controller.abort());
-        if (generation !== this.restoreGeneration) return;
+        if (generation !== this[R.restoreGeneration]) return;
 
-        const claim: IStateRestoreClaim | undefined = this.patchObservers?.claimRestore(data);
+        const claim: IStateRestoreClaim | undefined = this[S.patchObservers]?.claimRestore(data);
         const ownedReplay = claim?.adopt === true;
-        const liveRuntimeRecords = this.runtimeRecords as Map<string, ICacheRuntime<T>> | undefined;
+        const liveRuntimeRecords = this[R.runtimeRecords] as Map<string, ICacheRuntime<T>> | undefined;
         const liveKeys: string[] = [];
         liveRuntimeRecords?.forEach((runtime, key) => {
             if (runtime.request) liveKeys.push(key);
         });
         const next = buildCacheRestore(
             data, ownedReplay, this.data, liveKeys,
-            (key) => this.touch(key), (key) => this.eviction.lastUsed.has(key)
+            (key) => this[R.touch](key), (key) => this[R.eviction].lastUsed.has(key)
         );
-        this.installState(next, {
+        this[R.installState](next, {
             origin: 'restore', owner: claim?.owner, representation: claim?.representation ?? 'public',
         });
     }
@@ -126,10 +131,10 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param next - prepared resource graph.
      * @param installation - origin, owner, and graph representation.
      */
-    protected installState(next: IResourceCacheData<T>, installation: IStateInstallation): IResourceCacheData<T> {
+    public [R.installState](next: IResourceCacheData<T>, installation: IStateInstallation): IResourceCacheData<T> {
         const previous = this.data;
         if (installation.origin === 'operational') {
-            this.runtimeRecords?.forEach((runtime, key) => {
+            this[R.runtimeRecords]?.forEach((runtime, key) => {
                 const answer = runtime.answer;
                 if (answer && answer.entry === previous.entries[key] && next.entries[key]) {
                     answer.entry = next.entries[key];
@@ -137,10 +142,10 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
             });
         }
         try {
-            return this.commitState(next, installation);
+            return this[S.commitState](next, installation);
         } catch (error: unknown) {
             if (this.data === previous && installation.origin === 'operational') {
-                this.runtimeRecords?.forEach((runtime, key) => {
+                this[R.runtimeRecords]?.forEach((runtime, key) => {
                     const answer = runtime.answer;
                     if (answer && answer.entry === next.entries[key] && previous.entries[key]) {
                         answer.entry = previous.entries[key];
@@ -155,8 +160,8 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      *
      * @param key - encoded cache key.
      */
-    protected touch(key: string): void {
-        this.eviction.touch(key);
+    public [R.touch](key: string): void {
+        this[R.eviction].touch(key);
     }
 
     /** Subscribe and release eviction hysteresis when replacing a registration ID.
@@ -165,8 +170,8 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param options - subscription identity and read paths.
      */
     public subscribe(callback: TSubscriber, options: ISubscribeOptions = {}): string {
-        if (options.id !== undefined && Object.prototype.hasOwnProperty.call(this.subscribers, options.id)) {
-            this.eviction.release();
+        if (options.id !== undefined && Object.prototype.hasOwnProperty.call(this[S.subscribers], options.id)) {
+            this[R.eviction].release();
         }
         // Creating a Pending entry changes its ancestor path, but data-only readers still
         // see exactly the absent defaults. Suppress only that first default-only creation;
@@ -194,12 +199,12 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
             }
         }
         if (absent.size === 0) return super.subscribe(callback, options);
-        let epoch = this.removalEpoch;
+        let epoch = this[R.removalEpoch];
         return super.subscribe(() => {
             // A removal since the last delivery (even one collapsed with the creation) must render: the
             // reader has to reload what vanished.
-            const removed = epoch !== this.removalEpoch;
-            epoch = this.removalEpoch;
+            const removed = epoch !== this[R.removalEpoch];
+            epoch = this[R.removalEpoch];
             const defaultCreation = !removed && absent.size > 0 && Array.from(absent).every((key) => {
                 const entry = this.data.entries[key];
                 return entry === undefined || (entry.status === EResourceStatus.Pending && entry.data === undefined &&
@@ -220,7 +225,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param id - subscription identity.
      */
     public unsubscribe(id: string): void {
-        if (Object.prototype.hasOwnProperty.call(this.subscribers, id)) this.eviction.release();
+        if (Object.prototype.hasOwnProperty.call(this[S.subscribers], id)) this[R.eviction].release();
         super.unsubscribe(id);
     }
 
@@ -229,22 +234,22 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param args - arguments identifying the cache key.
      */
     public abort(args: TArgs): void {
-        this.abortKey(this.keyOf(args));
+        this[R.abortKey](this[R.keyOf](args));
     }
 
     /** Abort every in-flight request with one delivered publication. */
     public abortAll(): void {
-        this.bulkDepth++;
+        this[R.bulkDepth]++;
         try {
             const requests: Array<[string, ICacheRequest]> = [];
-            this.runtimeRecords?.forEach((runtime, key) => {
+            this[R.runtimeRecords]?.forEach((runtime, key) => {
                 if (runtime.request) requests.push([key, runtime.request]);
             });
             requests.forEach(([key, request]) => {
-                if (this.runtimeFor(key)?.request === request) this.abortKey(key);
+                if (this[R.runtimeFor](key)?.request === request) this[R.abortKey](key);
             });
         } finally {
-            this.finishBulk();
+            this[R.finishBulk]();
         }
     }
 
@@ -253,14 +258,14 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param args - arguments identifying the cache key.
      */
     public invalidate(args: TArgs): void {
-        const key = this.keyOf(args);
+        const key = this[R.keyOf](args);
         const entry = this.data.entries[key];
         if (!entry) return;
         const prepared = prepareCacheInvalidation(this.data, key);
-        const runtime = this.runtimeFor(key);
+        const runtime = this[R.runtimeFor](key);
         if (runtime?.request) runtime.invalidationEpoch++;
         if (prepared) {
-            this.installState(prepared, {origin: 'operational', owner: {}, representation: 'owned-operational'});
+            this[R.installState](prepared, {origin: 'operational', owner: {}, representation: 'owned-operational'});
         } else if (entry.invalidated !== true || entry.failed !== false) {
             this.update((draft) => applyCacheInvalidation(this.data, draft, key));
         }
@@ -272,11 +277,11 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         if (keys.length === 0) return;
         const prepared = prepareCacheInvalidation(this.data, keys);
         for (const key of keys) {
-            const runtime = this.runtimeFor(key);
+            const runtime = this[R.runtimeFor](key);
             if (runtime?.request) runtime.invalidationEpoch++;
         }
         if (prepared) {
-            this.installState(prepared, {origin: 'operational', owner: {}, representation: 'owned-operational'});
+            this[R.installState](prepared, {origin: 'operational', owner: {}, representation: 'owned-operational'});
         } else {
             this.update((draft) => applyCacheInvalidation(this.data, draft, keys));
         }
@@ -287,7 +292,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param args - arguments identifying the cache key.
      */
     public forget(args: TArgs): void {
-        this.forgetKey(this.keyOf(args));
+        this[R.forgetKey](this[R.keyOf](args));
     }
 
     /** Forget all entries and cancel their requests in one publication.
@@ -296,38 +301,38 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * removal hooks are inherited unchanged. Subclasses keep the original per-key call order.
      */
     public forgetAll(): void {
-        this.bulkDepth++;
+        this[R.bulkDepth]++;
         try {
             const keys = Object.keys(this.data.entries);
             if (keys.length === 0) return;
 
             const base = ResourceCacheState.prototype;
-            if (this.forgetKey === base.forgetKey && this.abortKey === base.abortKey &&
-                this.removeEntries === base.removeEntries) {
+            if (this[R.forgetKey] === base[R.forgetKey] && this[R.abortKey] === base[R.abortKey] &&
+                this[R.removeEntries] === base[R.removeEntries]) {
                 // Batch base hooks only when no synchronous abort listener can reenter.
                 let hasActiveRequest = false;
                 for (let index = 0; index < keys.length; index++) {
-                    if (this.hasRequest(keys[index])) {
+                    if (this[R.hasRequest](keys[index])) {
                         hasActiveRequest = true;
                         break;
                     }
                 }
                 if (!hasActiveRequest) {
-                    this.removeEntries(keys, false);
+                    this[R.removeEntries](keys, false);
                     return;
                 }
             }
 
-            keys.forEach((key: string) => this.forgetKey(key));
+            keys.forEach((key: string) => this[R.forgetKey](key));
         } finally {
-            this.finishBulk();
+            this[R.finishBulk]();
         }
     }
 
     /** Close a bulk phase without adding a second operation fact. */
-    private finishBulk(): void {
-        this.bulkDepth--;
-        if (this.bulkDepth === 0 && (this.draftTouched || this.writes.size > 0)) {
+    private [R.finishBulk](): void {
+        this[R.bulkDepth]--;
+        if (this[R.bulkDepth] === 0 && (this[S.draftTouched] || this[S.writes].size > 0)) {
             super.emitUpdate(undefined, true);
         }
     }
@@ -340,10 +345,10 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
     protected emitUpdate(
         installation?: IStateInstallation, deferredContinuation: boolean = false
     ): void {
-        if (this.bulkDepth === 0) {
+        if (this[R.bulkDepth] === 0) {
             super.emitUpdate(installation, deferredContinuation);
-        } else if (!installation && (this.writes.size > 0 || !this.draftTouched)) {
-            this.rememberPublication();
+        } else if (!installation && (this[S.writes].size > 0 || !this[S.draftTouched])) {
+            this[S.rememberPublication]();
         }
     }
 
@@ -351,39 +356,39 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      *
      * @param key - encoded cache key.
      */
-    protected forgetKey(key: string): void {
-        this.abortKey(key);
-        if (this.hasRequest(key)) return;
+    public [R.forgetKey](key: string): void {
+        this[R.abortKey](key);
+        if (this[R.hasRequest](key)) return;
         if (!this.data.entries[key]) {
-            this.runtimeRecords?.delete(key);
-            if (this.runtimeRecords?.size === 0) this.runtimeRecords = undefined;
-            this.eviction.lastUsed.delete(key);
-            this.viewCache.delete(key);
+            this[R.runtimeRecords]?.delete(key);
+            if (this[R.runtimeRecords]?.size === 0) this[R.runtimeRecords] = undefined;
+            this[R.eviction].lastUsed.delete(key);
+            this[R.viewCache].delete(key);
             return;
         }
-        this.removeEntries([key], false);
+        this[R.removeEntries]([key], false);
     }
 
     /** Check whether a successful entry requires a fresh load.
      *
      * @param entry - current cache entry.
      */
-    protected isStale(entry: IResourceEntry<T>): boolean {
+    public [R.isStale](entry: IResourceEntry<T>): boolean {
         if (entry.invalidated || entry.updatedAt === undefined) return true;
-        if (this.ttl === Infinity) return false;
-        return Date.now() - entry.updatedAt > this.ttl;
+        if (this[R.ttl] === Infinity) return false;
+        return Date.now() - entry.updatedAt > this[R.ttl];
     }
 
     /** Evict least-recently-used unretained entries.
      *
      * @param deferNotification - deliver the removal on a microtask when true.
      */
-    protected evict(deferNotification: boolean = false): void {
-        if (this.eviction.shouldSkip(this.maxEntries)) return;
-        const doomed = this.eviction.selectVictims(this.maxEntries, (key: string): boolean => {
-            return this.hasRequest(key) || this.subscriberIndex.hasReaderAt(joinPath('entries', key));
+    public [R.evict](deferNotification: boolean = false): void {
+        if (this[R.eviction].shouldSkip(this[R.maxEntries])) return;
+        const doomed = this[R.eviction].selectVictims(this[R.maxEntries], (key: string): boolean => {
+            return this[R.hasRequest](key) || this[S.subscriberIndex].hasReaderAt(joinPath('entries', key));
         });
-        if (doomed.length > 0) this.removeEntries(doomed, deferNotification);
+        if (doomed.length > 0) this[R.removeEntries](doomed, deferNotification);
     }
 
     /** Remove actual dictionary slots before reporting their eviction.
@@ -391,24 +396,24 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param keys - entries to remove.
      * @param deferNotification - defer ordinary subscriber delivery when true.
      */
-    protected removeEntries(keys: string[], deferNotification: boolean): void {
+    public [R.removeEntries](keys: string[], deferNotification: boolean): void {
         removeCacheEntries(this.data, keys, deferNotification, {
-            replace: (_previous, next) => this.installState(next, {
+            replace: (_previous, next) => this[R.installState](next, {
                 origin: 'operational', owner: {}, representation: 'owned-operational',
                 publication: deferNotification ? 'deferred' : 'sync',
             }),
             draft: () => this.draft,
             current: () => this.data,
             forgot: (key, replaced) => {
-                this.removalEpoch++;
-                this.eviction.forget(key, replaced);
+                this[R.removalEpoch]++;
+                this[R.eviction].forget(key, replaced);
                 if (!replaced) {
-                    const runtime = this.runtimeFor(key);
+                    const runtime = this[R.runtimeFor](key);
                     if (runtime) {
                         runtime.answer = undefined;
-                        this.runtimeRecords = trimCacheRuntime(this.runtimeRecords, key, runtime);
+                        this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
                     }
-                    this.viewCache.delete(key);
+                    this[R.viewCache].delete(key);
                 }
             },
             publish: (defer) => { if (defer) this.emitSoon(); else this.emitUpdate(); },
@@ -419,25 +424,25 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      *
      * @param key - encoded cache key.
      */
-    protected isRetentionFree(key: string): boolean {
-        return !this.hasRequest(key) && !this.subscriberIndex.hasReaderAt(joinPath('entries', key));
+    public [R.isRetentionFree](key: string): boolean {
+        return !this[R.hasRequest](key) && !this[S.subscriberIndex].hasReaderAt(joinPath('entries', key));
     }
 
     /** Detach a request before abort listeners and reset only its surviving cancellation.
      *
      * @param key - encoded cache key.
      */
-    protected abortKey(key: string): void {
-        const runtime = this.runtimeFor(key);
+    public [R.abortKey](key: string): void {
+        const runtime = this[R.runtimeFor](key);
         const request = runtime?.request;
         if (!runtime || !request) return;
         runtime.request = undefined;
         request.controller.abort();
-        if (this.hasRequest(key)) return;
+        if (this[R.hasRequest](key)) return;
 
         const entry = this.data.entries[key];
         if (!entry || (entry.status !== EResourceStatus.Pending && !entry.refreshing)) {
-            this.runtimeRecords = trimCacheRuntime(this.runtimeRecords, key, runtime);
+            this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
             return;
         }
         const retryFailed = request.retryingFailure || runtime.answer?.failure !== undefined;
@@ -448,7 +453,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
                 draft.entries[key].failed ||= retryFailed;
             });
         } finally {
-            this.runtimeRecords = trimCacheRuntime(this.runtimeRecords, key, runtime);
+            this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
         }
     }
 }

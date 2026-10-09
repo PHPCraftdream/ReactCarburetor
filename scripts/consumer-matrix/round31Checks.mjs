@@ -42,7 +42,7 @@ export const runRound31Checks = (runtime, {baseline = false} = {}) => {
         const cache = new ResourceCache(async rowId => ({rowId}), {ttl: Infinity, maxEntries: Infinity});
         const entries = {};
         for (let rowId = 0; rowId < count; rowId++) {
-            Object.defineProperty(entries, cache.keyOf(rowId), {
+            Object.defineProperty(entries, cache.resolve(rowId).key, {
                 value: {status: EResourceStatus.Success, data: {rowId}, error: undefined, updatedAt: 1,
                     refreshing: false, invalidated: false, failed: false},
                 enumerable: true, writable: true, configurable: false,

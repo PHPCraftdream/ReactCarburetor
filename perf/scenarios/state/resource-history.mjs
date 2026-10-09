@@ -3,7 +3,7 @@
 // Ordinary draft writes stay patch-based; resource loads record pending/settled transitions.
 // Native aliases survive undo/redo. This does not probe R19-API-02 pre-loader cancellation.
 // Args: [writes=128] [samples=7]
-import {emit, load, loadPath, median} from '../../harness/lib.mjs';
+import {emit, load, loadPath, median, call} from '../../harness/lib.mjs';
 
 const {Carburetor} = await load();
 const {CarburetorHistory} = await loadPath('Carburetor/Tooling/CarburetorHistory.mjs');
@@ -92,7 +92,7 @@ for (let round = 0; round < samples; round++) {
     for (let n = 0; n < 8; n++) {
         await cache.load(n);
     }
-    const key = cache.keyOf(0);
+    const key = call(cache, 'keyOf', 0);
     const entries = cache.getData().entries;
     const replacement = {entries: {...entries, [key]: {...entries[key], data: 17}}};
     const originalKeys = Object.keys;

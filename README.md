@@ -846,6 +846,22 @@ suppressed the latest write. Values truly equal under the new policy keep their 
 With the default comparison a changed selection keeps the previous references of its unchanged
 nested objects and arrays, so rows of a selected list can be `React.memo` children.
 
+A resource cache has a hooks reader too. `useResourceValue(source, args)` is the counterpart of the
+class `useResource`: the same entry view, the same subscription to only the fields the component
+reads, and the same rule that a stale entry is loaded **after** the commit, never during render
+(development reports a load started in render). An invalidated refresh re-arms the reader, and
+server rendering starts no load.
+
+```tsx
+import {useResourceValue} from 'react-carburetor/interop';
+
+const UserBadge = ({id}: {id: number}) => {
+    const user = useResourceValue(users, id);
+
+    return <span>{user.data?.name ?? '…'}</span>;
+};
+```
+
 ## Lint rules
 
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
@@ -960,12 +976,23 @@ require their own write/tooling capabilities.
 | `update(mutate)` *(protected)*  | Mutates through `draft` and publishes — the recommended write form. |
 | `draft: T` *(protected)*        | Write proxy that records changed paths.                            |
 | `emitSoon()` *(protected)*      | Publishes on the next microtask, for writes made where notifying now is unsafe. |
-| `preEmit()` *(protected)*       | Runs before notification — derive state here.                      |
+| `preEmit(changed)` *(protected)* | Runs before notification — derive state here. `changed` is the set of paths the emit being closed recorded (empty: nothing was written through `draft`); an override that declares no parameter keeps working. |
 | `emitUpdate()` *(protected)*    | Notifies subscribers whose read paths intersect the writes.        |
+| `markAllChanged()` *(protected)* | Wakes every reader, after a write that bypassed `draft`.           |
+| `didSetData()` *(protected)*    | Runs after `setData`/`restore` installed new data, before the replacement notifications — synchronize derived state here. |
+| `data: T` *(protected getter)*  | The current data, read-only: reads are untracked, writes go through `update`/`draft`. |
 
 Members are prototype methods — here and on `ComponentUpdateThrottle`, `CarburetorScope`,
 `CarburetorHistory` and `Diagnostics`: override them with method syntax and reach the base through
 `super`. Bind one before handing it out as a callback (`onClick={() => history.undo()}`).
+
+The protected members above are the whole subclass contract. The engine keeps its own state —
+the version counter, the identity, the write set, subscribers, the scheduler — behind
+module-private symbol keys, so a subclass may declare fields named `version`, `uid`, `writes`,
+`scheduler`, `subscribers` and so on for its own purposes without disturbing delivery. The same
+holds for `ResourceCache`, `ResourceCarburetor` and `AntiHookComponent` (a component may declare
+`uid = this.props.userId`). `data` is the one reserved name: it is the protected getter above, so
+do not redeclare it.
 
 ### `AntiHookComponent<P, S>`
 

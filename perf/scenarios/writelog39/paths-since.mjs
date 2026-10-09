@@ -1,5 +1,5 @@
 /* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-import {emit, load} from '../../harness/lib.mjs';
+import {emit, load, engine} from '../../harness/lib.mjs';
 const {Carburetor} = await load();
 const oldPaths = Number(process.argv[2]);
 class Store extends Carburetor { change(fn) { this.update(fn); } }
@@ -9,7 +9,7 @@ store[Symbol.for('react-carburetor/v1/store-track-targets')]?.();
 for (let i = 0; i < oldPaths; i++) store.change(d => { d.values['p' + i] = i; });
 const baseline = store.getVersion();
 store.change(d => { d.recent = 1; });
-const log = store.writeLog;
+const log = engine(store, 'writeLog');
 if (!log || typeof log.pathsSince !== 'function' || !(log.last instanceof Map)) throw new Error('write log instrumentation unavailable');
 let visits = 0;
 const originalIterator = log.last[Symbol.iterator].bind(log.last);

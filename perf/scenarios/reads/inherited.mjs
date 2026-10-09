@@ -28,7 +28,10 @@ const shadowWake = wakes;
 // Array prototype methods stay untracked: answered without a path record.
 let methodRecords = 0;
 const arrayView = createReadProxy([2, 3], () => { methodRecords++; });
-const methodIdentity = arrayView.map === Array.prototype.map && arrayView.filter === Array.prototype.filter;
+// R40-03: callback methods are stable wrappers, not the native functions; they must stay callable and unrecorded.
+const methodsUsable = typeof arrayView.map === 'function' && arrayView.map === arrayView.map
+    && arrayView.map(x => x).join() === '2,3' && arrayView.filter(x => x > 2).join() === '3';
+methodRecords = 0;
 void arrayView.map;
 void arrayView.filter;
 const methodsRecorded = methodRecords;
@@ -68,7 +71,7 @@ const constructMs = Number(process.hrtime.bigint() - start) / 1e6;
 
 emit({
     inheritedRecords, shadowWake, shadowValue, initialValue,
-    methodIdentity, methodsRecorded,
+    methodsUsable, methodsRecorded,
     ownLeafRecords, ownLeafMs, indexRecords,
     constructRecords, leafSum, constructMs,
 });

@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
@@ -10,7 +11,7 @@ interface ITodoData {
 
 class TodoCarburetor extends Carburetor<ITodoData> {
     /** Live registrations, independent of reconciliation call counts. */
-    public get observerCount(): number { return Object.keys(this.subscribers).length; }
+    public get observerCount(): number { return Object.keys(this[S.subscribers]).length; }
 
     /** Replaces the whole `todo` object — an ancestor of `title` — keeping the title as is. */
     public markDone = () => {

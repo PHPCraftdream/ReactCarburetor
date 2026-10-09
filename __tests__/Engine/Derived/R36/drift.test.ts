@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {Carburetor, computed} from '@/Carburetor';
 import {CARBURETOR_HAS_DRIFT} from '@/Carburetor/Store/Utils/Models';
 import {WriteLog} from '@/Carburetor/Store/Paths/WriteLog';
@@ -14,7 +15,7 @@ class CountingStore extends Store {
     public consultations = 0;
     constructor() {
         super({items: [{value: 1}], meta: {}});
-        const log = this.writeLog;
+        const log = this[S.writeLog];
         const proxy: WriteLog = Object.create(log);
         proxy.matches = (baseline: number, reads: ReadonlySet<TPath>): boolean => {
             this.consultations++;
@@ -23,7 +24,7 @@ class CountingStore extends Store {
         proxy.record = (version: number, writes: ReadonlySet<TPath>): void => {
             log.record(version, writes as Set<TPath>);
         };
-        this.writeLog = proxy;
+        this[S.writeLog] = proxy;
     }
     public drift(baseline: number, reads: ReadonlySet<TPath>): boolean {
         return this[CARBURETOR_HAS_DRIFT](baseline, reads);

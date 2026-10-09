@@ -2,7 +2,7 @@
 // R7-04: caller-chosen ids live in their own dictionary slot — '__proto__' files an ordinary
 // own key (never the dictionary's prototype) and unsubscribe removes it entirely, while
 // dictionary built-in names stay usable. Args: [count=1000] [samples=9]
-import {emit, load, median} from '../../harness/lib.mjs';
+import {emit, load, median, engine} from '../../harness/lib.mjs';
 
 const {Carburetor} = await load();
 class S extends Carburetor { run(fn) { this.update(fn); } }
@@ -13,13 +13,13 @@ const samples = Number(process.argv[3] ?? 9);
 const store = new S({n: 0});
 let protoWakes = 0;
 store.subscribe(() => { protoWakes++; }, {id: '__proto__'});
-const protoIdFiled = Object.hasOwn(store.subscribers, '__proto__');
-const protoSlotIsolated = Object.getPrototypeOf(store.subscribers) === null;
+const protoIdFiled = Object.hasOwn(engine(store, 'subscribers'), '__proto__');
+const protoSlotIsolated = Object.getPrototypeOf(engine(store, 'subscribers')) === null;
 store.run(draft => { draft.n = 1; });
 const protoDelivered = protoWakes;
 store.unsubscribe('__proto__');
-const protoIdGone = !('__proto__' in store.subscribers);
-const protoSlotClean = Object.getPrototypeOf(store.subscribers) === null;
+const protoIdGone = !('__proto__' in engine(store, 'subscribers'));
+const protoSlotClean = Object.getPrototypeOf(engine(store, 'subscribers')) === null;
 store.run(draft => { draft.n = 2; });
 const protoWakesAfterUnsubscribe = protoWakes - protoDelivered;
 

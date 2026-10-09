@@ -1,3 +1,5 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {
     IResourceCacheData,
     IResourceCacheOptions,
@@ -72,21 +74,21 @@ const validateOptions = (options: IResourceCacheOptions): IResourceCacheOptions 
 export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TArgs>
     implements IResourceSource<T, TArgs> {
     /** Most recently keyed arguments. */
-    protected lastKeyArgs: TArgs | undefined = undefined;
+    public [R.lastKeyArgs]: TArgs | undefined = undefined;
     /** Serialized value of the most recently keyed arguments. */
-    protected lastKeyJson: string | undefined = undefined;
+    public [R.lastKeyJson]: string | undefined = undefined;
     /** Cache key derived from the most recently keyed arguments. */
-    protected lastKeyValue: string | undefined = undefined;
+    public [R.lastKeyValue]: string | undefined = undefined;
     /** Whether the mutable-arguments diagnostic was already reported. */
-    protected keyMutationReported: boolean = false;
+    public [R.keyMutationReported]: boolean = false;
     /** Primitive key/path records also form the intrusive least-recently-used list. */
-    private primedKeys: Map<TPrimitiveArgs, IPrimedKey> | undefined = undefined;
+    private [R.primedKeys]: Map<TPrimitiveArgs, IPrimedKey> | undefined = undefined;
     /** Least-recent and most-recent retained records. */
-    private primedHead: IPrimedKey | undefined = undefined;
+    private [R.primedHead]: IPrimedKey | undefined = undefined;
     /** Most-recent retained record. */
-    private primedTail: IPrimedKey | undefined = undefined;
+    private [R.primedTail]: IPrimedKey | undefined = undefined;
     /** Record-count budget; each memo record also carries its two intrusive LRU links. */
-    private readonly keyCacheSize: number;
+    private readonly [R.keyCacheSize]!: number;
 
     /** Create a keyed cache for a resource loader.
      *
@@ -95,29 +97,29 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      */
     constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
         super(loader, validateOptions(options));
-        this.keyCacheSize = options.keyCacheSize === undefined ? DEFAULT_KEY_CACHE_SIZE : options.keyCacheSize;
+        this[R.keyCacheSize] = options.keyCacheSize === undefined ? DEFAULT_KEY_CACHE_SIZE : options.keyCacheSize;
     }
 
     /** Keep replacement bookkeeping current before the shared boundary publishes. */
     protected didSetData(): void {
         const keys = Object.keys(this.data.entries);
-        this.runtimeRecords?.forEach((_runtime, key) => this.reconcileFailure(key));
-        this.eviction.replace(keys);
-        this.viewCache.forEach((_view: IResourceView<T>, key: string) => {
+        this[R.runtimeRecords]?.forEach((_runtime, key) => this[R.reconcileFailure](key));
+        this[R.eviction].replace(keys);
+        this[R.viewCache].forEach((_view: IResourceView<T>, key: string) => {
             if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) {
-                this.viewCache.delete(key);
+                this[R.viewCache].delete(key);
             }
         });
     }
 
     /** Reconcile only live raw-answer owners affected by this completed write. */
     protected preEmit(): void {
-        if (!this.runtimeRecords || this.runtimeRecords.size === 0 ||
-            (this.writes.size === 0 && this.draftTouched)) return;
-        if (this.writes.size === 0 || this.writes.has(WILDCARD_PATH) || this.writes.has('entries')) {
-            this.runtimeRecords.forEach((_runtime, key) => this.reconcileFailure(key));
+        if (!this[R.runtimeRecords] || this[R.runtimeRecords]!.size === 0 ||
+            (this[S.writes].size === 0 && this[S.draftTouched])) return;
+        if (this[S.writes].size === 0 || this[S.writes].has(WILDCARD_PATH) || this[S.writes].has('entries')) {
+            this[R.runtimeRecords]!.forEach((_runtime, key) => this[R.reconcileFailure](key));
         } else {
-            this.writes.forEach(this.reconcileFailureWrite, this);
+            this[S.writes].forEach(this[R.reconcileFailureWrite], this);
         }
     }
 
@@ -125,8 +127,8 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param key - encoded cache key whose answer is reconciled.
      */
-    private reconcileFailure(key: string): void {
-        const runtime = this.runtimeFor(key);
+    private [R.reconcileFailure](key: string): void {
+        const runtime = this[R.runtimeFor](key);
         const answer = runtime?.answer;
         const failure = answer?.failure;
         if (!runtime || !answer || !failure) return;
@@ -136,7 +138,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
                 || (entry.status === EResourceStatus.Idle && entry.failed))) return;
         if (!entry || entry !== answer.entry || entry.status !== failure.status || entry.error !== failure.message) {
             answer.failure = undefined;
-            this.runtimeRecords = trimCacheRuntime(this.runtimeRecords, key, runtime);
+            this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
         }
     }
 
@@ -144,14 +146,14 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param path - changed store path.
      */
-    private reconcileFailureWrite(path: TPath): void {
+    private [R.reconcileFailureWrite](path: TPath): void {
         if (!path.startsWith(ENTRY_PATH_PREFIX)) return;
         const end = path.indexOf(PATH_SEPARATOR, ENTRY_PATH_PREFIX.length);
         const escaped = path.slice(ENTRY_PATH_PREFIX.length, end === -1 ? undefined : end);
         const key = escaped.includes('~')
             ? escaped.replace(/~1/g, PATH_SEPARATOR).replace(/~0/g, '~')
             : escaped;
-        this.reconcileFailure(key);
+        this[R.reconcileFailure](key);
     }
 
     /** Cached key and path for primitive argument sets, avoiding stringify, escape and concat.
@@ -163,43 +165,43 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param args - the loader arguments to derive the key from
      */
-    private primed(args: TArgs): {key: string; path: TPath} | undefined {
+    private [R.primed](args: TArgs): {key: string; path: TPath} | undefined {
         if (args !== null && args !== undefined && typeof args !== 'string' && typeof args !== 'number'
             && typeof args !== 'boolean') return undefined;
 
         const primitive = args as TPrimitiveArgs;
-        const records = this.primedKeys;
+        const records = this[R.primedKeys];
         const cached = records?.get(primitive);
 
         if (cached !== undefined) {
-            if (this.primedTail !== cached) this.touchPrimed(cached);
+            if (this[R.primedTail] !== cached) this[R.touchPrimed](cached);
             return cached;
         }
 
         const key = escapeCacheKey(JSON.stringify(args === undefined ? null : args) as string);
         const path = joinPath('entries', key);
-        if (this.keyCacheSize === 0) {
+        if (this[R.keyCacheSize] === 0) {
             return {key, path};
         }
 
-        const retained = this.primedKeys ??= new Map<TPrimitiveArgs, IPrimedKey>();
-        if (retained.size >= this.keyCacheSize) {
-            const oldest = this.primedHead;
+        const retained = this[R.primedKeys] ??= new Map<TPrimitiveArgs, IPrimedKey>();
+        if (retained.size >= this[R.keyCacheSize]) {
+            const oldest = this[R.primedHead];
             if (oldest === undefined) throw new Error('ResourceCache: primitive key LRU list is empty');
 
-            this.primedHead = oldest.next;
-            if (this.primedHead === undefined) this.primedTail = undefined;
-            else this.primedHead.previous = undefined;
+            this[R.primedHead] = oldest.next;
+            if (this[R.primedHead] === undefined) this[R.primedTail] = undefined;
+            else this[R.primedHead]!.previous = undefined;
             retained.delete(oldest.argument);
         }
 
         const primed: IPrimedKey = {
-            key, path, argument: primitive, previous: this.primedTail, next: undefined,
+            key, path, argument: primitive, previous: this[R.primedTail], next: undefined,
         };
         retained.set(primitive, primed);
-        if (this.primedTail === undefined) this.primedHead = primed;
-        else this.primedTail.next = primed;
-        this.primedTail = primed;
+        if (this[R.primedTail] === undefined) this[R.primedHead] = primed;
+        else this[R.primedTail]!.next = primed;
+        this[R.primedTail] = primed;
 
         return primed;
     }
@@ -208,20 +210,20 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param primed - retained record to promote.
      */
-    private touchPrimed(primed: IPrimedKey): void {
-        const tail = this.primedTail;
+    private [R.touchPrimed](primed: IPrimedKey): void {
+        const tail = this[R.primedTail];
 
         const previous = primed.previous;
         const next = primed.next;
-        if (previous === undefined) this.primedHead = next;
+        if (previous === undefined) this[R.primedHead] = next;
         else previous.next = next;
         if (next !== undefined) next.previous = previous;
 
         primed.previous = tail;
         primed.next = undefined;
-        if (tail === undefined) this.primedHead = primed;
+        if (tail === undefined) this[R.primedHead] = primed;
         else tail.next = primed;
-        this.primedTail = primed;
+        this[R.primedTail] = primed;
     }
 
     /**
@@ -229,34 +231,34 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param args - the loader arguments to derive the key from
      */
-    protected keyOf(args: TArgs): string {
-        const primed = this.primed(args);
+    public [R.keyOf](args: TArgs): string {
+        const primed = this[R.primed](args);
 
         if (primed !== undefined) return primed.key;
 
         const json = JSON.stringify(args === undefined ? null : args) as string;
-        const memoized = this.lastKeyArgs === args && this.lastKeyValue !== undefined;
+        const memoized = this[R.lastKeyArgs] === args && this[R.lastKeyValue] !== undefined;
 
-        if (memoized && this.lastKeyJson === json && this.lastKeyValue !== undefined) {
-            return this.lastKeyValue;
+        if (memoized && this[R.lastKeyJson] === json && this[R.lastKeyValue] !== undefined) {
+            return this[R.lastKeyValue]!;
         }
 
         const key = escapeCacheKey(json);
         const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
 
-        if (memoized && development && !this.keyMutationReported) {
-            this.keyMutationReported = true;
+        if (memoized && development && !this[R.keyMutationReported]) {
+            this[R.keyMutationReported] = true;
 
             diagnostics.report(
                 'a resource arguments object was mutated after its key was taken: the same reference now ' +
-                `encodes to a different entry (${this.lastKeyValue} became ${key}), and the new key is the ` +
+                `encodes to a different entry (${this[R.lastKeyValue]} became ${key}), and the new key is the ` +
                 'one being used. Build a fresh object per query rather than mutating one in place.'
             );
         }
 
-        this.lastKeyArgs = args;
-        this.lastKeyJson = json;
-        this.lastKeyValue = key;
+        this[R.lastKeyArgs] = args;
+        this[R.lastKeyJson] = json;
+        this[R.lastKeyValue] = key;
 
         return key;
     }
@@ -266,10 +268,10 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param args - the loader arguments identifying the entry
      */
-    protected pathOf(args: TArgs): TPath {
-        const primed = this.primed(args);
+    public [R.pathOf](args: TArgs): TPath {
+        const primed = this[R.primed](args);
 
-        return primed ? primed.path : this.pathOfKey(this.keyOf(args));
+        return primed ? primed.path : this[R.pathOfKey](this[R.keyOf](args));
     }
 
     /**
@@ -277,7 +279,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param key - the resolved cache key
      */
-    protected pathOfKey(key: string): TPath {
+    public [R.pathOfKey](key: string): TPath {
         return joinPath('entries', key);
     }
 
@@ -287,9 +289,9 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param args - the loader arguments identifying the entry
      */
     public getEntry(args: TArgs): IResourceView<T> {
-        const primed = this.primed(args);
+        const primed = this[R.primed](args);
 
-        return this.getEntryByKey(primed ? primed.key : this.keyOf(args));
+        return this[R.getEntryByKey](primed ? primed.key : this[R.keyOf](args));
     }
 
     /**
@@ -297,7 +299,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param key - the resolved cache key
      */
-    protected getEntryByKey(key: string): IResourceView<T> {
+    public [R.getEntryByKey](key: string): IResourceView<T> {
         const stored = this.data.entries[key];
 
         if (!stored) {
@@ -305,12 +307,12 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         }
 
         // LRU bookkeeping only matters when a bound can actually evict; Infinity keeps no order.
-        if (this.maxEntries !== Infinity) {
-            this.touch(key);
+        if (this[R.maxEntries] !== Infinity) {
+            this[R.touch](key);
         }
 
-        const stale = this.isStale(stored);
-        const cached = this.viewCache.get(key);
+        const stale = this[R.isStale](stored);
+        const cached = this[R.viewCache].get(key);
 
         if (cached && isViewCurrent(cached, stored, stale)) {
             return cached;
@@ -318,7 +320,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
 
         const view: IResourceView<T> = {...stored, stale};
 
-        this.viewCache.set(key, view);
+        this[R.viewCache].set(key, view);
 
         return view;
     }
@@ -344,11 +346,11 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param args - the loader arguments identifying the entry
      */
     public resolve(args: TArgs): IResourceResolution<T> {
-        const primed = this.primed(args);
+        const primed = this[R.primed](args);
 
-        const key = primed !== undefined ? primed.key : this.keyOf(args);
-        const path = primed !== undefined ? primed.path : this.pathOfKey(key);
-        const view = this.getEntryByKey(key);
+        const key = primed !== undefined ? primed.key : this[R.keyOf](args);
+        const path = primed !== undefined ? primed.path : this[R.pathOfKey](key);
+        const view = this[R.getEntryByKey](key);
 
         // Only component readers request this facade. Public resolve().view/getEntry stay plain,
         // and each facade captures this resolution's snapshot rather than becoming a live view.
@@ -389,12 +391,12 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param args - the loader arguments identifying the entry
      */
     public getFailure(args: TArgs): unknown {
-        const key = this.keyOf(args);
-        const runtime = this.runtimeFor(key);
+        const key = this[R.keyOf](args);
+        const runtime = this[R.runtimeFor](key);
         const answer = runtime?.answer;
         if (answer && answer.entry !== this.data.entries[key]) {
             runtime.answer = undefined;
-            this.runtimeRecords = trimCacheRuntime(this.runtimeRecords, key, runtime);
+            this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
             return undefined;
         }
         return answer?.failure?.value;

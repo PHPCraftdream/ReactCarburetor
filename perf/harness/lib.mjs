@@ -55,11 +55,31 @@ export const setupReact = async () => {
 };
 
 /**
+ * Key of an engine member: the plain name before R40-01, the internal symbol after (scenarios that
+ * read or override engine internals stay runnable on both builds).
+ */
+export const engineKey = (name, holder) => {
+    for (let o = holder; o; o = Object.getPrototypeOf(o)) {
+        if (Object.hasOwn(o, name)) return name;
+        const symbol = Object.getOwnPropertySymbols(o).find(s => /^(store|resource|component)./.test(s.description ?? '')
+            && s.description.endsWith('.' + name));
+        if (symbol) return symbol;
+    }
+    return name;
+};
+
+/** Value of an engine member of `holder` (see engineKey). */
+export const engine = (holder, name) => holder?.[engineKey(name, holder)];
+
+/** Calls an engine method of `holder` (see engineKey). */
+export const call = (holder, name, ...args) => holder[engineKey(name, holder)](...args);
+
+/**
  * Counts how often a store falls back to its write log for a drift answer: the O(read set)
  * path the per-subscription matched version is meant to spare. Reads the protected field.
  */
 export const countWriteLogMatches = store => {
-    const log = store?.writeLog;
+    const log = engine(store, 'writeLog');
     if (!log || typeof log.matches !== 'function') {
         throw new Error(
             'countWriteLogMatches: store.writeLog.matches is missing on this build'

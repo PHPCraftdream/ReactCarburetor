@@ -396,3 +396,92 @@ module changed.
 
 Each probe prints one `@@ {json}` line. Run it with `NODE_ENV=production node <probe>`, and set
 `DIST_ROOT=<build dir>` to measure another build.
+
+## Resolution
+
+Findings R40-01..05 are implemented. Each has a gate in `perf/`
+(`subclass40`, `readset40`, `iterate40`, `resource40`, `cache40`) that fails on the build before round 40
+(`ef78d41`: 4 of 5, 3 of 4, 5 of 7, 3 of 3 and 2 of 2 entries fail; the others are controls) and passes on the
+current one, plus tests that fail without the change. Numbers are medians of 11 alternating processes of the
+probes above against `ef78d41`, unless a row says otherwise; timings come from a shared machine and their
+ranges overlap more than the counters, which are exact.
+
+| Finding | Done | Before → after |
+|---|---|---|
+| R40-01 | Engine state of `Carburetor`, `ResourceCache`, `ResourceCarburetor` and `AntiHookComponent` (fields and plumbing methods) sits under module-private symbol keys. The subclass contract is `update`, `draft`, `emitUpdate`, `emitSoon`, `preEmit`, `didSetData`, `markAllChanged` and a protected read-only `data` getter. `preEmit` receives the recorded paths, so the demo store no longer reads `this.writes`; an override without parameters keeps working. | Store version after four saves `0,1,1,1` → `0,1,2,3`; the two-store pair `me & friend` (stale) → one delivery of `me & friend2`; two components with one `uid` `AdaGr` → `GraceGr`. Own engine names on new instances 23 + 17 + 3 + 11 fields (+ 31 prototype methods on a component) → 0. Built `Carburetor.d.mts` protected members: 15 fields and 4 plumbing methods → the 8 contract members. |
+| R40-02 | Branch markers implied by deeper reads are dropped when a read set is completed (O(paths × depth); a set of up to 8 paths takes no Set), in `completeReads` and the paths that adopt or extend a retained set (`readCoverage`). Single markers are kept. | Filed paths: hook row 3 → 1, class row 5 → 2, `watch` 3 → 1, README `activeCount` over 1 000 items 2 002 → 1 001. 5 000 hook rows: `exact` entries 10 001 → 5 000, index map operations 80 000 → 30 000, subscribe + release 28.5 → 21.1 ms. 8 000 000 differential wake comparisons earlier: 0 mismatches (24 000 more in the new suite). |
+| R40-03 | `map`, `filter`, `forEach`, `some`, `every`, `find`, `findIndex` and `reduce` on a plain array through a view call the handler's `get` once per element (presence on the raw array first; a hole still records its path). Cached per view, off the path of own keys. | Handler calls per element 2 → 1, identical read sets (`ids.map` 5 002 paths, `rows.filter` 10 002). Per element over 5 000: `ids.map` 0.484 → 0.204 µs, `rows.filter` 0.829 → 0.589 µs, `rows.map(r => r.title)` 0.790 → 0.495 µs. Parent re-render, read-and-map part 3.73 → 2.21 ms; whole append 6.80 → 5.82 ms. |
+| R40-04 | `useResourceValue(source, args)` in `react-carburetor/interop`, on `resolve(args).fieldView` and `useSyncExternalStore`; the decision logic (worth fetching, re-arm, fields to subscribe) is one module shared with the class `useResource`. | No hooks reader → 2 renders on mount and 2 for an equal refresh after `invalidateAll()`, as the class reader; reload after `invalidate`; 0 loads in render, 1 after commit; an unread field 0 extra renders. |
+| R40-05 | `settleSuccess`, `settleFailure`, `markLoading` and the failure rollback take `draft.entries[key]` once; a patch listener could replace the entry between writes, so the cached reference is used only while the live entry is still the same object. | Write-proxy traps per settle publication 21 → 9 (success), 12 → 6 (failure); same paths in the same order. The isolated update 22.1 → 14.5 µs, but the whole settle publication 59.5 → 57.7 µs (−3 %, inside the noise of 15 runs). |
+
+Found after the first integration and fixed (zero-trust review of each diff and of the merged tree):
+
+- R40-02 first version removed a branch marker from a class selection's read set before it knew whether the
+  retained snapshot would be reused; on a fallback the dependency was lost. Markers are now removed only when
+  the retained set is adopted; tests pin the fallback and the hook route.
+- R40-02 built a prefix set of the whole retained read set on the first related write: +9–12 ms at 10 000 rows
+  (11.3 ms in `prefixes`, measured with a CPU profile). Coverage is now an early-exit scan, and the prefix
+  set is built only after the accumulated scan work exceeds eight full passes (a test with 1 000 uncovered
+  markers keeps that case linear). The first related write is back to the baseline's range (2.5–4.7 ms against
+  2.5–4.2).
+- R40-03 first checked its method table on every property read of every view; it now sits behind the
+  inherited-key branch of arrays, and a gate counts the lookups (0 of 1 000 own-key reads).
+- R40-04's hook ignored `view.data = …`, which the class reader honors; fixed, with tests. Its generic type
+  fixture was not in any `tsc` project; it is now in `tsconfig.types.json`, and a wrong call fails there.
+- After the change of engine fields, 20 existing perf scenarios and 3 test files read engine members by their
+  old names (`subscriberIndex`, `writes`, `keyOf`, …) and failed in the full run, not in the agents' scoped
+  runs; the scenarios now use `engine`/`call` from the harness (they still run on older builds), the tests
+  use the symbol holders.
+
+Deviations and limits:
+
+- **Cost of R40-01.** The acceptance said write cost is unchanged within noise. A bare scalar write without a
+  consumer measured 677 → 724–737 ns over 21 alternating processes (+7–9 %; another series +4.6 %), a write
+  with a precise subscriber 2011 → 2037–2059 ns (+1–3 %); ranges overlap. An experiment that replaced the
+  static holder (`S.writes`) with module-level constants in the four hottest files gave no consistent gain
+  (scalar +9.7 %, subscriber +1.7 %) and was reverted. Symbols only, not `#private`: the build targets
+  ES2020, which lowers `#private` to WeakMaps.
+- **`data` is a reserved name.** It is the contract getter, and the resource classes read the state through
+  it; a subclass that redeclares it is outside the contract (TypeScript rejects a field override of an
+  accessor). Every other former engine name is free for subclasses.
+- **R40-02 time target.** The acceptance asked for subscribe + release ≤ 0.6×; the measured time is 0.74×
+  (28.5 → 21.1 ms for 5 000 rows), and the deterministic index work is 0.375×. The gate holds the work ratio
+  (≤ 0.5×) and a wide time ceiling (≤ 0.85×). Mount + unmount of 5 000 rows moved 41.7 → 40.2 ms (class) and
+  44.8 → 40.7 ms (hook), inside the ranges.
+- **R40-03 targets.** `ids.map` reached 0.42× (target ≤ 0.6×). The append scenario's parent render did not
+  reach ≤ 0.8×: the read-and-map part is 0.59× but the whole append is 0.86×, because publication, reconciliation
+  and DOM work do not change. `indexOf`/`includes` stay on the trap path (they compare against wrapped
+  elements). Results of `map`/`filter` are built on a prototype-less array that gets `Array.prototype` back, so
+  a numeric setter installed on `Array.prototype` by a callback cannot intercept the stores.
+- **R40-05 time.** The target (≤ 0.7× in the probe) holds for the isolated update shape only; the load path
+  around it dominates, so the gain is a counter (traps), not a visible time.
+- Hook rows: append and remove-middle of 5 000 rows did not change (17.2 → 17.3 ms, 16.3 → 18.1 ms).
+
+Verification of the integrated tree: `rstest` 2 473 tests, 0 failed; `build`, the four `tsc` projects (`tsconfig.json`,
+`plugin`, `plugin/internal`, `tsconfig.types.json`), type-aware `oxlint` (0 errors) and `checkLayout` clean; gate lint
+241 entries, 0 problems; full `npm run bench -- --runs 3`: 241 entries, 0 failed, 0 violations (220 before this round
+plus 21). The packed consumer matrix was not run.
+
+### Prerequisite verification before round 41 — 2026-10-09
+
+The orchestrator repeated the full R40 run in an isolated worktree: 2 473 tests passed;
+all 241 benchmark entries passed three samples, with zero violations; build, four typecheck
+projects, layout and gate lint passed. Type-aware lint returned zero errors, with existing warnings.
+
+The packed matrix passed 15 of 16 checks and found a native/plain Map-key alias failure in
+mixed CJS/ESM history redo. A same-kind branch replacement's scalar diff had been mistaken
+for an in-place scalar mutation. Such patches now carry replacement provenance; native
+history uses owned graph endpoints rather than replaying that incomplete leaf diff.
+A regression with repeated undo/redo failed before the repair and passed after it; the
+in-place mutation control continues to preserve the alias.
+
+Three packed-consumer helpers also still called the removed private `cache.keyOf()`.
+They now obtain the key from public `cache.resolve(args).key`, without a compatibility shim.
+After the repair: 540 history/resource-write-shape/tracking-boundary tests passed, all 25
+history-related benchmarks passed three samples, and the corrected packed mixed-format
+consumer passed (`sha1 eb85cd3f0dca522f0ee691403e7c72f565250e0f`).
+Build, typecheck, layout and lint passed again. The other 15 packed checks were not repeated
+after this focused repair; round 41's final verification must run the complete matrix again.
+
+R40's 21 new benchmark entries remain in the common unfiltered suite. This prerequisite
+check does not claim fixes or measurements for the four findings in round 41.

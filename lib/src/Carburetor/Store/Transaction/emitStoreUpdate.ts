@@ -8,6 +8,8 @@ import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
 import {nativeStoreWriteEpoch} from '@/Carburetor/Store/Scheduling/nativeStoreWriteEpoch';
 import {updateBatch} from '@/Carburetor/Store/Transaction/UpdateBatchInstance';
 
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
+
 /** Closes writes, records their publication owner and delivers despite earlier observer failure.
  *
  * @param receiver - the typed publication port over the store's mutation and delivery state
@@ -21,30 +23,30 @@ export const emitStoreUpdate = <T extends object>(
     let failed = false;
     let firstError: unknown;
     try {
-        store.preEmit();
+        store.preEmit(store[S.writes]);
     } catch (error: unknown) {
         failed = true;
         firstError = error;
     }
     // Raw writes followed by emitUpdate bypass draft traps entirely.
-    if (isTrackable(store.data) && !store.draftTouched && store.writes.size === 0) {
-        nativeAliasIndex.invalidate(store.data);
+    if (isTrackable(store[S.data]) && !store[S.draftTouched] && store[S.writes].size === 0) {
+        nativeAliasIndex.invalidate(store[S.data]);
     }
 
-    const touched = store.draftTouched;
+    const touched = store[S.draftTouched];
     // Handed off, not copied: a fresh Set takes over as this.writes, so the caller below
     // (notifyWrites, or the update batch) owns this one exclusively and may keep it as is.
     // An empty writes Set is never handed off anywhere, so it is reused as-is instead of
     // being replaced on every emit, including the (common) no-op ones.
-    const changed: TPathSet | undefined = store.writes.size > 0 ? store.writes : undefined;
-    const writeTargets = changed !== undefined ? store.writeTargets.entries : undefined;
-    const targetsIncomplete = changed !== undefined ? store.writeTargets.isIncomplete : false;
+    const changed: TPathSet | undefined = store[S.writes].size > 0 ? store[S.writes] : undefined;
+    const writeTargets = changed !== undefined ? store[S.writeTargets].entries : undefined;
+    const targetsIncomplete = changed !== undefined ? store[S.writeTargets].isIncomplete : false;
 
     if (changed) {
-        store.writes = new Set<TPath>();
+        store[S.writes] = new Set<TPath>();
     }
 
-    store.draftTouched = false;
+    store[S.draftTouched] = false;
 
     // Draft was used, but no value actually changed — there is nobody to wake.
     if (!changed && touched) {
@@ -52,22 +54,22 @@ export const emitStoreUpdate = <T extends object>(
         return;
     }
 
-    if (!deferredContinuation || !store.publicationPending) {
-        store.rememberPublication(installation);
+    if (!deferredContinuation || !store[S.publicationPending]) {
+        store[S.rememberPublication](installation);
     }
 
     // Writes bypassed draft: unknown and opaque, same as the wildcard itself (R16-07).
     const writes: TPathSet = changed || new Set<TPath>([WILDCARD_PATH]);
-    store.version++;
+    store[S.version]++;
     nativeStoreWriteEpoch.value++;
     try {
-        store.writeLog.record(store.version, writes, writeTargets, targetsIncomplete);
+        store[S.writeLog].record(store[S.version], writes, writeTargets, targetsIncomplete);
     } finally {
-        store.writeTargets.reset();
+        store[S.writeTargets].reset();
     }
     if (!changed) {
         try {
-            store.patchPort.listener?.(PATCH_OPAQUE);
+            store[S.patchPort].listener?.(PATCH_OPAQUE);
         } catch (error: unknown) {
             if (!failed) {
                 failed = true;

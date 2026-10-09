@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {Carburetor, CarburetorHistory} from '@/Carburetor';
 
 describe('effective writes survive a throwing patch observer', () => {
@@ -190,13 +191,13 @@ describe('effective writes survive a throwing patch observer', () => {
                 this.setData({row, map: new Map([['row', row]])});
             }
             public restore(data: State): void {
-                const claim = this.patchObservers?.claimRestore(data);
+                const claim = this[S.patchObservers]?.claimRestore(data);
                 const owned = claim?.adopt === true;
                 const next = owned ? data : {row: {n: data.row.n}, map: new Map(data.map)};
 
                 // The claim names the installation: committing the adoption as a plain public
                 // replacement would read as a fresh branch and drop redo.
-                this.commitState(next, claim === undefined ? undefined : {
+                this[S.commitState](next, claim === undefined ? undefined : {
                     origin: 'restore', owner: claim.owner, representation: claim.representation,
                 });
             }

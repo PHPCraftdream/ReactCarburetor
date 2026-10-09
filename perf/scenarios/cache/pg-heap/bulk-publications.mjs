@@ -1,6 +1,6 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R8-03/R9-04: synchronous persistence exposes every publication, without microtask coalescing.
-import {emit, loadPath} from '../../../harness/lib.mjs';
+import {emit, loadPath, call} from '../../../harness/lib.mjs';
 
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');
 const {EResourceStatus} = await loadPath('Carburetor/Models/Enums/EResourceStatus.mjs');
@@ -18,7 +18,7 @@ const cache = new ResourceCache((_args, signal) => {
     signals.push(signal);
     return new Promise(() => undefined);
 }, {ttl: Infinity, maxEntries: Infinity});
-const keys = Array.from({length: count}, (_, index) => cache.keyOf(index));
+const keys = Array.from({length: count}, (_, index) => call(cache, 'keyOf', index));
 if (operation === 'abort') {
     for (let index = 0; index < count; index++) void cache.load(index).catch(() => undefined);
 } else {
@@ -56,7 +56,7 @@ try {
     if (operation === 'abort') {
         void cache.load('positive').catch(() => undefined);
     } else {
-        cache.setData({entries: {...cache.getData().entries, [cache.keyOf('positive')]: ready(-1)}});
+        cache.setData({entries: {...cache.getData().entries, [call(cache, 'keyOf', 'positive')]: ready(-1)}});
     }
     // Single-key operations exercise the same public publication and storage probes.
     positive = window(() => {

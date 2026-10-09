@@ -1,5 +1,7 @@
 "use client";
 
+import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
+
 import {IDict, TEffect, TEffectDeps} from "@/Carburetor/Models/Base";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {AntiHookComponentReads} from "./Reads";
@@ -36,7 +38,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      *
      * @param failure - the message to report, already naming what ran and what it cost
      */
-    protected reportTeardownFailure(failure: string): void {
+    public [C.reportTeardownFailure](failure: string): void {
         if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
             diagnostics.report(failure);
         }
@@ -63,7 +65,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * leaves the existing cleanup standing
      */
     protected useEffect(name: string, callBack: TEffect, deps: TEffectDeps): void {
-        const records = this.effects;
+        const records = this[C.effects];
         const known = records && Object.prototype.hasOwnProperty.call(records, name)
             ? records[name] : undefined;
 
@@ -88,14 +90,14 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
         // still points at the cleanup that already ran.
         const record: IEffectRecord = {deps, cleanup: undefined};
 
-        this.ensureEffects()[name] = record;
+        this[C.ensureEffects]()[name] = record;
 
         try {
             const cleanup = callBack();
 
             record.cleanup = typeof cleanup === 'function' ? cleanup : undefined;
         } finally {
-            failures.forEach((error: unknown) => this.reportTeardownFailure(
+            failures.forEach((error: unknown) => this[C.reportTeardownFailure](
                 'an effect cleanup threw while an effect was replaced: ' +
                 describeFailure(error) + '. The new effect ran anyway.'
             ));
@@ -108,13 +110,13 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * A component that never calls `useEffect` never needs this dictionary; allocating it here,
      * rather than as a class field default, keeps that component from paying for it.
      */
-    private ensureEffects(): IDict<IEffectRecord> {
-        if (this.effects !== undefined) {
-            return this.effects;
+    private [C.ensureEffects](): IDict<IEffectRecord> {
+        if (this[C.effects] !== undefined) {
+            return this[C.effects]!;
         }
 
         const records: IDict<IEffectRecord> = Object.create(null);
-        this.effects = records;
+        this[C.effects] = records;
 
         return records;
     }
@@ -128,14 +130,14 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      *
      * Absent effects (never allocated) skip straight past: nothing ran, nothing to release.
      */
-    protected releaseEffects(): void {
-        const records = this.effects;
+    public [C.releaseEffects](): void {
+        const records = this[C.effects];
 
         if (records === undefined) {
             return;
         }
 
-        this.effects = undefined;
+        this[C.effects] = undefined;
 
         const failures: unknown[] = [];
 
@@ -151,7 +153,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
             }
         });
 
-        failures.forEach((error: unknown) => this.reportTeardownFailure(
+        failures.forEach((error: unknown) => this[C.reportTeardownFailure](
             'an effect cleanup threw while a component unmounted: ' +
             describeFailure(error) + '. The teardown completed anyway.'
         ));

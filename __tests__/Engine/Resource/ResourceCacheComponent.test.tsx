@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
@@ -24,7 +25,7 @@ const makeLoader = () => {
 /** Exposes the subscriber count, which is protected state, to check nothing is left behind. */
 class ObservableCache extends ResourceCache<string, string> {
     public subscriberCount = (): number => {
-        return Object.keys(this.subscribers).length;
+        return Object.keys(this[S.subscribers]).length;
     };
 }
 

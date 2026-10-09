@@ -1,3 +1,4 @@
+import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
 import {
     getCounterData, CounterCarburetor, getTodoData, ListCarburetor, makeLoader, flush,
     React, act, render, AntiHookComponent, EResourceStatus, computed, ResourceCache,
@@ -191,8 +192,8 @@ import {
             );
 
             const committed = (instance as unknown as {
-                committedAttempt: {tracked: unknown; connections: unknown; sources: unknown} | undefined;
-            }).committedAttempt;
+                [C.committedAttempt]: {tracked: unknown; connections: unknown; sources: unknown} | undefined;
+            })[C.committedAttempt];
 
             expect(committed).toBeDefined();
             // Only identity survives a consumed attempt: its collections are released the

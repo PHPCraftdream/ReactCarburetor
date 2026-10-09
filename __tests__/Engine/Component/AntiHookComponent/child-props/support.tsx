@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {Carburetor, IDict} from '@/Carburetor';
 
 export interface IRow {
@@ -10,7 +11,7 @@ export interface IRowList {
 }
 
 export class RowListCarburetor extends Carburetor<IRowList> {
-    public subscriberCount = (): number => Object.keys(this.subscribers).length;
+    public subscriberCount = (): number => Object.keys(this[S.subscribers]).length;
 
     public rename = (id: string, title: string): void => {
         this.draft.items[id] = {...this.getData().items[id], title};

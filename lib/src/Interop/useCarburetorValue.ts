@@ -9,11 +9,11 @@ import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconci
 import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
 import {patchFromWriteLog} from "@/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog";
 import {TargetsHold} from "@/Carburetor/Store/Utils/Selection/Patch/TargetsHold";
-import {completeObservation} from "@/Carburetor/Store/Tracking/Observation/completeObservation";
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
+import {readCoverage} from "@/Carburetor/Store/Paths/Markers/readCoverage";
 import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {TSelector, TValueComparator} from "./Models";
@@ -70,17 +70,6 @@ const resolveView = <T extends object>(
     }
 
     return {carburetor, data, view: carburetor.read(record)};
-};
-
-/** The filed read set when `reads` adds nothing to it, else a new set holding both. */
-const coverReads = (filed: TCompletedReads, reads: TPathSet): TPathSet => {
-    let grown: Set<TPath> | undefined;
-    for (const path of reads) {
-        if (filed.has(path)) continue;
-        grown ??= new Set<TPath>(filed);
-        grown.add(path);
-    }
-    return grown ?? (filed as unknown as TPathSet);
 };
 
 /** Names a class value in the selector error when its class name is available. */
@@ -278,8 +267,9 @@ export const useCarburetorValue = <T extends object, R>(
             const fresh: R = select(view.current.view);
             liveSelection = fresh;
 
-            const readsCoverSelection = noReadDrift && entry !== null &&
-                Array.from(reads).every((path) => entry.reads!.has(path));
+            const readsCoverSelection = noReadDrift && entry !== null && Array.from(reads).every(
+                path => readCoverage.covers(entry.reads!, path)
+            );
             const canReuseInlineSelection = noReadDrift && sameCarburetor && entry !== null &&
                 entry.isEqual === isEqual && isEqual === sameSelection &&
                 fresh === entry.liveSelection && readsCoverSelection;
@@ -342,10 +332,10 @@ export const useCarburetorValue = <T extends object, R>(
         // A patched pass keeps the filed read set by identity unless the patch read a path it lacks
         // (a branch replaced by new leaves): then the set grows, and the subscription re-files.
         // Paths of branches the patch replaced stay in the set; a superset only wakes more.
-        const patchedReads = patched ? coverReads(entry!.reads!, reads) : reads;
-        const completed = completeObservation({
-            carburetor, select, isEqual, version, value: result, reads: patchedReads, filled: true,
-        });
+        const completedReads = patched ? readCoverage.extend(entry!.reads!, reads) : completeReads(reads);
+        const completed = {
+            carburetor, select, isEqual, version, value: result, reads: completedReads, filled: true,
+        };
         pendingReads.current = completed.reads;
         // R37-01: patchability always describes the latest full reconcile's graph verdict. A patch
         // cannot introduce sharing (container leaves fall back to the full walk), so a patched pass

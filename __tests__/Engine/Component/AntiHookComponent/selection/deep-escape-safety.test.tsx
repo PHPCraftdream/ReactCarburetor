@@ -1,8 +1,9 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {React, act, render, AntiHookComponent, Carburetor} from '../support';
 
     describe('connectSelection deep escape safety (R3-02)', () => {
         class ProfileCarburetor extends Carburetor<{profile: {name: string}}> {
-            public subscriberCount = (): number => Object.keys(this.subscribers).length;
+            public subscriberCount = (): number => Object.keys(this[S.subscribers]).length;
 
             /** A leaf write: the exact write shape the finding's reproduction depends on. */
             public renameProfile = (name: string): void => {

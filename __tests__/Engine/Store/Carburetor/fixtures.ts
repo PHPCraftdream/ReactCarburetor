@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {Carburetor, ISubscribeOptions} from "@/Carburetor";
 import {TSubscriber} from "@/Carburetor/Models/Base";
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
@@ -115,7 +116,7 @@ export class TestCarburetor extends Carburetor<ITestData> {
     };
 
     /** The live `writes` Set, so a test can check whether an emit reallocated it. */
-    public writesRef = (): TPathSet => this.writes;
+    public writesRef = (): TPathSet => this[S.writes];
 }
 
 export interface IItemListData {
@@ -161,11 +162,11 @@ class InspectableIndex extends SubscriberIndex {
  * `reads` or adopted it by reference (R6-04).
  */
 export class InspectableCarburetor extends TestCarburetor {
-    protected override subscriberIndex: InspectableIndex = new InspectableIndex();
+    public override [S.subscriberIndex]: InspectableIndex = new InspectableIndex();
 
     /** The Set the index actually holds for one subscriber id, or undefined if it holds none. */
     public readsFor(id: string) {
-        return this.subscriberIndex.readsFor(id);
+        return this[S.subscriberIndex].readsFor(id);
     }
 }
 

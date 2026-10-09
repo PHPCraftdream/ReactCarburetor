@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {
     IStateInstallation, PATCH_OPAQUE,
     STATE_PUBLIC_REPLACEMENT, TPath,
@@ -13,7 +14,7 @@ import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
 /** Maximum detailed history patches retained for one public replacement. */
 const PATCH_HISTORY_CAP = 1_000;
 
-type Patch = Parameters<NonNullable<IStateInstallPort<object>['patchPort']['listener']>>[0];
+type Patch = Parameters<NonNullable<IStateInstallPort<object>[typeof S.patchPort]['listener']>>[0];
 
 const createPatchCollector = (): {
     patches: Patch[];
@@ -51,33 +52,33 @@ export const installState = <T extends object>(
         throw new Error('Carburetor: operational installation requires its owner');
     }
 
-    const previous = store.data;
+    const previous = store[S.data];
     // A caller-assembled root never stores a view (R32-01): the top level is unwrapped here,
     // development normalizes the whole root before the state check, and production relies on
     // the diff walk exchanging every leaked view for its raw target in place.
     const root = (liveViews.readTarget(data) ?? data) as T;
-    if (store.aliases !== undefined) {
+    if (store[S.aliases] !== undefined) {
         liveViews.normalizeAssigned(root, previous);
     }
-    store.aliases?.checkState(root, '', previous);
-    const collected = store.patchPort.listener === undefined ? undefined : createPatchCollector();
+    store[S.aliases]?.checkState(root, '', previous);
+    const collected = store[S.patchPort].listener === undefined ? undefined : createPatchCollector();
     const changed = diffPaths(previous, root, '', [], collected?.patches);
     if (isTrackable(previous)) nativeAliasIndex.invalidate(previous);
     if (isTrackable(root)) nativeAliasIndex.invalidate(root);
-    store.data = root;
-    store.draftProxy = undefined;
+    store[S.data] = root;
+    store[S.draftProxy] = undefined;
     // Deferred observers may still hold a prior mutation after the store fact was closed.
     // Mix in a value-equal installation without scheduling a publication of its own.
     if (changed.size === 0 && !transition.wildcard) {
-        store.patchObservers?.markPendingInstall();
+        store[S.patchObservers]?.markPendingInstall();
     }
 
-    store.touchDraft();
-    changed.forEach((path: TPath) => store.recordWrite(path));
-    if (transition.wildcard) store.recordWrite(WILDCARD_PATH);
-    if (changed.size > 0 || transition.wildcard || store.publicationPending) {
-        if (!continuation || !store.publicationPending || store.pendingPublication !== transition) {
-            store.rememberPublication(transition);
+    store[S.touchDraft]();
+    changed.forEach((path: TPath) => store[S.recordWrite](path));
+    if (transition.wildcard) store[S.recordWrite](WILDCARD_PATH);
+    if (changed.size > 0 || transition.wildcard || store[S.publicationPending]) {
+        if (!continuation || !store[S.publicationPending] || store[S.pendingPublication] !== transition) {
+            store[S.rememberPublication](transition);
         }
     }
     let failed = false;
@@ -90,7 +91,7 @@ export const installState = <T extends object>(
     }
     if (changed.size > 0 || transition.wildcard) {
         try {
-            const listener = store.patchPort.listener;
+            const listener = store[S.patchPort].listener;
             if (listener !== undefined) {
                 if (transition.wildcard || collected?.exceeded() || collected?.patches.some(patch => typeof patch === 'symbol')) {
                     listener(PATCH_OPAQUE);
@@ -107,7 +108,7 @@ export const installState = <T extends object>(
         }
     }
 
-    if (store.draftTouched || store.writes.size > 0) {
+    if (store[S.draftTouched] || store[S.writes].size > 0) {
         try {
             if (transition.publication === 'deferred') {
                 store.emitSoon(undefined, true);

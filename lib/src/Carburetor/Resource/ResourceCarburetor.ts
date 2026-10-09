@@ -1,3 +1,5 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceData, IResourceSnapshot, TResourceLoader} from "@/Carburetor/Models/Resource";
 import {TDisposer} from "@/Carburetor/Models/Base";
@@ -60,14 +62,16 @@ interface ISlotRuntime<T, TArgs> {
  * the previous record's data.
  */
 export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceData<T>> {
+    /** Loader retained independently of subclass names. */
+    public [R.loader]!: TResourceLoader<T, TArgs>;
     /** Request and answer ownership stays empty until the slot is first used. */
-    private runtime: ISlotRuntime<T, TArgs> | undefined;
+    private [R.runtime]: ISlotRuntime<T, TArgs> | undefined;
     /** Changes when a newer operation takes ownership during synchronous callbacks. */
-    protected operationVersion: number = 0;
+    public [R.operationVersion]: number = 0;
 
     /** Allocates the shared runtime record only when the slot first needs one. */
-    private ensureRuntime(): ISlotRuntime<T, TArgs> {
-        return this.runtime ??= {};
+    private [R.ensureRuntime](): ISlotRuntime<T, TArgs> {
+        return this[R.runtime] ??= {};
     }
 
     /**
@@ -78,8 +82,9 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param scheduler - the policy deciding when subscribers are woken; omitted, updates publish
      * synchronously on each write
      */
-    constructor(protected loader: TResourceLoader<T, TArgs>, scheduler?: IUpdateScheduler) {
+    constructor(loader: TResourceLoader<T, TArgs>, scheduler?: IUpdateScheduler) {
         super(getInitialResourceData<T>(), scheduler);
+        this[R.loader] = loader;
     }
 
     /**
@@ -90,7 +95,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param observer - the history patch/publication observer
      */
     public attachPatchListener(observer: IPatchObserver): TDisposer {
-        this.patchPort.opaque = true;
+        this[S.patchPort].opaque = true;
 
         return super.attachPatchListener(observer);
     }
@@ -102,14 +107,14 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      */
     public setData(data: IResourceData<T>): IResourceData<T> {
         const replacing = data !== this.data;
-        const keyChanged = replacing && this.runtime?.answer?.key !== undefined;
+        const keyChanged = replacing && this[R.runtime]?.answer?.key !== undefined;
 
         if (keyChanged) {
-            return this.commitState(data, {
+            return this[S.commitState](data, {
                 origin: 'replacement', representation: 'public', wildcard: true,
             });
         }
-        return this.commitState(data, STATE_PUBLIC_REPLACEMENT);
+        return this[S.commitState](data, STATE_PUBLIC_REPLACEMENT);
     }
 
     /**
@@ -118,14 +123,14 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * belongs to.
      */
     public snapshot(): IResourceSnapshot<T> {
-        return {...super.snapshot(), key: this.runtime?.answer?.key};
+        return {...super.snapshot(), key: this[R.runtime]?.answer?.key};
     }
 
     /** Owns the raw state graph for history, including the wire key it adds. */
     public captureHistory(own: <V>(value: V) => V): IResourceSnapshot<T> {
         const state = own(this.getData());
         Object.defineProperty(state, 'key', {
-            value: this.runtime?.answer?.key, configurable: true, enumerable: true, writable: true,
+            value: this[R.runtime]?.answer?.key, configurable: true, enumerable: true, writable: true,
         });
         return state;
     }
@@ -135,7 +140,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * A detached copy is `snapshot()`.
      */
     public toJSON(): IResourceSnapshot<T> {
-        return {...this.getData(), key: this.runtime?.answer?.key};
+        return {...this.getData(), key: this[R.runtime]?.answer?.key};
     }
 
     /**
@@ -145,16 +150,16 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param data - the snapshot to restore
      */
     public restore(data: IResourceSnapshot<T>): void {
-        const operationVersion = ++this.operationVersion;
-        this.cancelInFlight();
-        if (this.operationVersion !== operationVersion) return;
+        const operationVersion = ++this[R.operationVersion];
+        this[R.cancelInFlight]();
+        if (this[R.operationVersion] !== operationVersion) return;
 
-        const claim: IStateRestoreClaim | undefined = this.patchObservers?.claimRestore(data);
+        const claim: IStateRestoreClaim | undefined = this[S.patchObservers]?.claimRestore(data);
         const ownedReplay = claim?.adopt === true;
         const owner = claim?.owner;
         const settled = data.status === EResourceStatus.Success || data.status === EResourceStatus.Error;
         const nextKey = settled ? data.key : undefined;
-        const keyChanged = this.runtime?.answer?.key !== nextKey;
+        const keyChanged = this[R.runtime]?.answer?.key !== nextKey;
 
         // A restored Pending status has no live request behind it. Normalize it before
         // installation while preserving held history endpoints and their native backlinks.
@@ -184,7 +189,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             nextData = deepClone({status, data: data.data, error: data.error, updatedAt: data.updatedAt});
         }
 
-        const runtime = this.ensureRuntime();
+        const runtime = this[R.ensureRuntime]();
         const previousAnswer = runtime.answer;
         runtime.answer = status === EResourceStatus.Success || status === EResourceStatus.Error
             ? {
@@ -202,9 +207,9 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             wildcard: keyChanged ? true : undefined,
         };
         try {
-            this.commitState(nextData, installation);
+            this[S.commitState](nextData, installation);
         } catch (error: unknown) {
-            if (this.operationVersion === operationVersion && this.data !== nextData) {
+            if (this[R.operationVersion] === operationVersion && this.data !== nextData) {
                 runtime.answer = previousAnswer;
             }
             throw error;
@@ -223,21 +228,21 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
 
     /** Whole-root installation reconciles failure ownership before patch observers run. */
     protected didSetData(): void {
-        if (this.runtime?.answer && this.runtime.answer.owner !== this.data) {
-            this.runtime.answer = undefined;
+        if (this[R.runtime]?.answer && this[R.runtime]!.answer!.owner !== this.data) {
+            this[R.runtime]!.answer = undefined;
         }
-        this.reconcileError();
+        this[R.reconcileError]();
     }
 
     /** Reconciles draft/update writes before their subscribers see the published state. */
     protected preEmit(): void {
-        this.reconcileError();
+        this[R.reconcileError]();
     }
 
     /** Keep raw failure ownership attached only to the state and message that produced it. */
-    private reconcileError(): void {
+    private [R.reconcileError](): void {
         const state = this.data;
-        const runtime = this.runtime;
+        const runtime = this[R.runtime];
         const answer = runtime?.answer;
         if (answer && answer.owner !== state) {
             answer.failure = undefined;
@@ -246,7 +251,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         }
         if (state.status === EResourceStatus.Error) {
             if (!answer || !answer.failure || answer.failure.message !== state.error) {
-                this.ensureRuntime().answer = {
+                this[R.ensureRuntime]().answer = {
                     key: answer?.key,
                     owner: state,
                     failure: {value: new Error(state.error || ''), message: state.error},
@@ -259,7 +264,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
 
     /** The raw rejection value, which the serializable state cannot carry. */
     public getLastError(): unknown {
-        return this.runtime?.answer?.failure?.value;
+        return this[R.runtime]?.answer?.failure?.value;
     }
 
     /**
@@ -272,16 +277,16 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      */
     public suspend(args: TArgs): T {
         const state = this.data;
-        const key = this.keyOf(args);
-        const answer = this.runtime?.answer;
+        const key = this[R.keyOf](args);
+        const answer = this[R.runtime]?.answer;
         if (state.status === EResourceStatus.Success && answer?.key === key) return state.data as T;
         if (state.status === EResourceStatus.Error && answer?.key === key) {
             if (answer.failure) throw answer.failure.value;
             throw new Error(state.error || 'Carburetor: resource failed');
         }
-        const request = this.runtime?.request;
+        const request = this[R.runtime]?.request;
         if (request?.key === key) throw request.promise;
-        throw this.start(args, true);
+        throw this[R.start](args, true);
     }
 
     /** Starts a load, or joins the one already in flight for the same arguments.
@@ -289,30 +294,30 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param args - loader arguments identifying the answer.
      */
     public load(args: TArgs): Promise<void> {
-        return this.start(args, false);
+        return this[R.start](args, false);
     }
 
     /** Repeats the last load with the same arguments. */
     public reload(): Promise<void> {
-        const last = this.runtime?.last;
+        const last = this[R.runtime]?.last;
         if (!last) return Promise.resolve();
-        return this.start(last.args, false, true);
+        return this[R.start](last.args, false, true);
     }
 
     /** Cancels the request in flight; its result is ignored when it arrives. */
     public abort(): void {
-        if (!this.runtime?.request) return;
-        const operationVersion = ++this.operationVersion;
-        this.cancelInFlight();
-        if (this.operationVersion !== operationVersion) return;
-        if (this.runtime) this.runtime.answer = undefined;
+        if (!this[R.runtime]?.request) return;
+        const operationVersion = ++this[R.operationVersion];
+        this[R.cancelInFlight]();
+        if (this[R.operationVersion] !== operationVersion) return;
+        if (this[R.runtime]) this[R.runtime]!.answer = undefined;
         this.draft.status = EResourceStatus.Idle;
         this.emitUpdate();
     }
 
     /** Detach ownership before abort listeners run synchronously. */
-    protected cancelInFlight(): void {
-        const runtime = this.runtime;
+    public [R.cancelInFlight](): void {
+        const runtime = this[R.runtime];
         const request = runtime?.request;
         if (!runtime || !request) return;
         runtime.request = undefined;
@@ -326,16 +331,16 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param deferNotification - true from suspend(), where notifying during render is unsafe
      * @param force - restart rather than join the same active key.
      */
-    protected start(args: TArgs, deferNotification: boolean, force: boolean = false): Promise<void> {
-        const key = this.keyOf(args);
-        const current = this.runtime?.request;
+    public [R.start](args: TArgs, deferNotification: boolean, force: boolean = false): Promise<void> {
+        const key = this[R.keyOf](args);
+        const current = this[R.runtime]?.request;
         if (!force && current?.key === key) return current.promise;
 
         const stateBeforeAbort = this.data;
-        const operationVersion = ++this.operationVersion;
-        this.cancelInFlight();
-        const replacement = this.runtime?.request;
-        if (this.operationVersion !== operationVersion || this.data !== stateBeforeAbort) {
+        const operationVersion = ++this[R.operationVersion];
+        this[R.cancelInFlight]();
+        const replacement = this[R.runtime]?.request;
+        if (this[R.operationVersion] !== operationVersion || this.data !== stateBeforeAbort) {
             if (replacement?.key === key) return replacement.promise;
             return Promise.reject(createSupersededError());
         }
@@ -343,8 +348,8 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         const previousState = this.data;
         const previousStatus = previousState.status;
         const previousError = previousState.error;
-        const previousAnswer = this.runtime?.answer;
-        const previousLast = this.runtime?.last;
+        const previousAnswer = this[R.runtime]?.answer;
+        const previousLast = this[R.runtime]?.last;
         const nextState = prepareSlotRequest(previousState);
         const controller = createAbortHandle();
         let resolveRequest!: () => void;
@@ -354,14 +359,14 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             rejectRequest = reject;
         });
         const request: ISlotRequest<TArgs> = {key, args, controller, promise, generation: operationVersion};
-        const runtime = this.ensureRuntime();
+        const runtime = this[R.ensureRuntime]();
         runtime.request = request;
         runtime.last = {key, args};
         runtime.answer = undefined;
 
         try {
             if (nextState) {
-                this.commitState(nextState, {
+                this[S.commitState](nextState, {
                     origin: 'operational',
                     owner: request,
                     representation: 'owned-operational',
@@ -369,14 +374,14 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
                 });
             } else {
                 this.draft.status = EResourceStatus.Pending;
-                if (this.isCurrent(request)) this.draft.error = undefined;
-                if (this.isCurrent(request)) {
+                if (this[R.isCurrent](request)) this.draft.error = undefined;
+                if (this[R.isCurrent](request)) {
                     if (deferNotification) this.emitSoon();
                     else this.emitUpdate();
                 }
             }
         } catch (error: unknown) {
-            if (this.isCurrent(request)) {
+            if (this[R.isCurrent](request)) {
                 runtime.request = undefined;
                 runtime.answer = previousAnswer;
                 runtime.last = previousLast;
@@ -385,10 +390,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
                 } catch {
                     // Keep the publication failure as the request's rejection.
                 }
-                if (this.operationVersion === operationVersion) {
+                if (this[R.operationVersion] === operationVersion) {
                     try {
                         if (nextState && this.data === nextState) {
-                            this.commitState(previousState, {
+                            this[S.commitState](previousState, {
                                 origin: 'operational', owner: request, representation: 'owned-operational',
                             });
                         } else if (this.data === previousState) {
@@ -407,20 +412,20 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             return promise;
         }
 
-        if (!this.isCurrent(request)) {
+        if (!this[R.isCurrent](request)) {
             rejectRequest(createSupersededError());
             return promise;
         }
 
         let answer: Promise<T>;
         try {
-            answer = this.loader(args, controller.signal);
+            answer = this[R.loader](args, controller.signal);
         } catch (error: unknown) {
             answer = Promise.reject(error);
         }
         void answer.then(
-            (data: T) => this.settleSuccess(request, data),
-            (error: unknown) => this.settleError(request, error)
+            (data: T) => this[R.settleSuccess](request, data),
+            (error: unknown) => this[R.settleError](request, error)
         ).then(resolveRequest, rejectRequest);
         return promise;
     }
@@ -429,7 +434,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      *
      * @param args - arguments to serialize as the request key.
      */
-    protected keyOf(args: TArgs): string {
+    public [R.keyOf](args: TArgs): string {
         return JSON.stringify(args === undefined ? null : args);
     }
 
@@ -437,8 +442,8 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      *
      * @param request - request owner to compare.
      */
-    protected isCurrent(request: ISlotRequest<TArgs>): boolean {
-        return this.runtime?.request === request && !request.controller.signal.aborted;
+    public [R.isCurrent](request: ISlotRequest<TArgs>): boolean {
+        return this[R.runtime]?.request === request && !request.controller.signal.aborted;
     }
 
     /** Store the value returned by the request that still owns this slot.
@@ -446,9 +451,9 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param request - request owner reporting the value.
      * @param data - loader value adopted verbatim.
      */
-    protected settleSuccess(request: ISlotRequest<TArgs>, data: T): void {
-        if (!this.isCurrent(request)) return;
-        const runtime = this.ensureRuntime();
+    public [R.settleSuccess](request: ISlotRequest<TArgs>, data: T): void {
+        if (!this[R.isCurrent](request)) return;
+        const runtime = this[R.ensureRuntime]();
         runtime.request = undefined;
         runtime.answer = {key: request.key, owner: this.data};
         this.update((draft) => {
@@ -464,10 +469,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      * @param request - request owner reporting the failure.
      * @param error - raw rejected value.
      */
-    protected settleError(request: ISlotRequest<TArgs>, error: unknown): void {
-        if (!this.isCurrent(request)) return;
+    public [R.settleError](request: ISlotRequest<TArgs>, error: unknown): void {
+        if (!this[R.isCurrent](request)) return;
         const message = describeError(error);
-        const runtime = this.ensureRuntime();
+        const runtime = this[R.ensureRuntime]();
         runtime.request = undefined;
         runtime.answer = {key: request.key, owner: this.data, failure: {value: error, message}};
         this.update((draft) => {

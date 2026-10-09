@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {TestCache} from './Helpers/TestCache';
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
@@ -443,7 +444,7 @@ describe('ResourceCache', () => {
     test('reads of an absent key are never cached', () => {
         const loader = makeLoader();
         const cache = new TestCache<IUser, string>(loader.load);
-        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
+        const viewCache = () => (cache as unknown as {[R.viewCache]: Map<string, unknown>})[R.viewCache];
 
         const first = cache.getEntry('missing');
 

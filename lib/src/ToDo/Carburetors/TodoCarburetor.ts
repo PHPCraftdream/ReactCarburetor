@@ -171,12 +171,12 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
      * the whole-list pass, so hydration never publishes stale counters. An emit that recorded
      * no path changed nothing, so it does not derive.
      */
-    protected preEmit = () => {
+    protected preEmit = (changed: ReadonlySet<string>) => {
         const keptInline: boolean = this.derivationKeptInline;
 
         this.derivationKeptInline = false;
 
-        if (this.writes.size === 0) {
+        if (changed.size === 0) {
             return;
         }
 

@@ -69,6 +69,8 @@ export interface IWritePatch {
     nextExists: boolean;
     /** The actual value after the write; `undefined` when `nextExists` is false. */
     next: unknown;
+    /** Leaf diff of a replaced branch; native aliases require whole-graph history replay. */
+    replacesBranch?: true;
 }
 
 /** Delivers a field patch, opaque write, or structural transition requiring owned replay. */

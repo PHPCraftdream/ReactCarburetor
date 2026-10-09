@@ -2,7 +2,7 @@
 // R31-02: settled readonly `forgetAll` prepares one bulk removal instead of N whole-graph clones;
 // Controls carry only the writable/mixed removal fallbacks.
 // Args: [count=32] [op=settled|writable|mixed|controls]
-import {emit, loadPath, median} from '../../harness/lib.mjs';
+import {emit, loadPath, median, call} from '../../harness/lib.mjs';
 
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');
 const {EResourceStatus} = await loadPath('Carburetor/Models/Enums/EResourceStatus.mjs');
@@ -24,7 +24,7 @@ const prepare = (operation, size) => {
     const cache = new ResourceCache(key => Promise.resolve({key}), {ttl: Infinity, maxEntries: Infinity});
     const entries = Object.create(null);
     for (let index = 0; index < size; index++) {
-        const key = cache.keyOf(`row-${index}`);
+        const key = call(cache, 'keyOf', `row-${index}`);
         const locked = operation !== 'writable' && !(operation === 'mixed' && index === 0);
         Object.defineProperty(entries, key, {
             value: ready(index), enumerable: true, writable: true, configurable: !locked,

@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {TestCache} from '../ResourceCache/Helpers/TestCache';
 
@@ -9,7 +10,7 @@ describe('ResourceCache eviction scaling (R16-04)', () => {
     test('4000 retained rows settle with a walk count proportional to N, not N^2', async () => {
         const N = 4000;
         const cache = new TestCache<string, string>((id: string) => Promise.resolve(`value-${id}`));
-        const walks = (): number => (cache as unknown as {eviction: {walks: number}}).eviction.walks;
+        const walks = (): number => (cache as unknown as {[R.eviction]: {walks: number}})[R.eviction].walks;
 
         for (let index = 0; index < N; index++) {
             const key = String(index);
@@ -39,7 +40,7 @@ describe('ResourceCache eviction scaling (R16-04)', () => {
         const cache = new TestCache<string, string>((id: string) => Promise.resolve(`value-${id}`), {
             maxEntries: Infinity,
         });
-        const walks = (): number => (cache as unknown as {eviction: {walks: number}}).eviction.walks;
+        const walks = (): number => (cache as unknown as {[R.eviction]: {walks: number}})[R.eviction].walks;
 
         for (let index = 0; index < N; index++) {
             void cache.load(String(index));
@@ -60,7 +61,7 @@ describe('ResourceCache eviction scaling (R16-04)', () => {
         const subscribeTo = (key: string): void => {
             cache.subscribe(() => undefined, {id: key, reads: new Set<TPath>([cache.exposePathOf(key)])});
         };
-        const walks = (): number => (cache as unknown as {eviction: {walks: number}}).eviction.walks;
+        const walks = (): number => (cache as unknown as {[R.eviction]: {walks: number}})[R.eviction].walks;
 
         subscribeTo('a');
         subscribeTo('b');

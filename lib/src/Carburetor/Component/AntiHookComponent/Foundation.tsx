@@ -1,5 +1,7 @@
 "use client";
 
+import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
+
 import * as React from "react";
 import {IDict, TEffectCleanup, TEffectDeps} from "@/Carburetor/Models/Base";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
@@ -31,7 +33,7 @@ const describeUnmountFailure = (error: unknown): string =>
 
 export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.Component<P, S> {
     /** This component's identity: the id its carburetor subscriptions are keyed and replaced under. */
-    protected uid: string = getUid();
+    public [C.uid]: string = getUid();
 
     /**
      * Per-effect state: the deps it last ran with, and the cleanup it returned.
@@ -39,7 +41,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      * Absent until the first `useEffect` call: a component that declares no effects never
      * allocates this dictionary.
      */
-    protected effects: IDict<{deps: TEffectDeps; cleanup: TEffectCleanup | undefined}> | undefined = undefined;
+    public [C.effects]: IDict<{deps: TEffectDeps; cleanup: TEffectCleanup | undefined}> | undefined = undefined;
 
     /**
      * Carburetors read through `useCarburetor`/`useComputed`/`useResource`: one dependency slot
@@ -54,7 +56,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      * replayed mount lifecycle can restore the subscriptions without a render to refill them.
      * The records themselves do not: a commit whose attempt never touched a record drops it.
      */
-    protected tracked: Map<ICarburetorSubscription, ITrackedCarburetor> | undefined = undefined;
+    public [C.tracked]: Map<ICarburetorSubscription, ITrackedCarburetor> | undefined = undefined;
 
     /**
      * Persistent `connect()` declarations, in declaration order.
@@ -64,19 +66,19 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      * moment a render stops touching it. What a commit clears on an untouched connection is
      * its committed description — ending the subscription; the declaration stays reusable.
      */
-    protected connections: IConnection[] = [];
+    public [C.connections]: IConnection[] = [];
 
     /** The render attempt currently open, if any; recorders write only while this is set. */
-    protected renderAttempt: IRenderAttempt | undefined = undefined;
+    public [C.renderAttempt]: IRenderAttempt | undefined = undefined;
 
     /** The last closed attempt, waiting for the commit that may consume it. */
-    protected pendingAttempt: IRenderAttempt | undefined = undefined;
+    public [C.pendingAttempt]: IRenderAttempt | undefined = undefined;
 
     /**
      * The attempt the last commit consumed: identity, not a counter, says whether this commit
      * has a new render behind it.
      */
-    protected committedAttempt: IRenderAttempt | undefined = undefined;
+    public [C.committedAttempt]: IRenderAttempt | undefined = undefined;
 
     /** The raw render last seen: the prototype's, or whatever a constructor assigned. */
     private [RENDER_RAW]: unknown = undefined;
@@ -120,7 +122,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      * functions in the hidden class, so a fresh pair per instance drops every instance after the
      * first into dictionary-mode properties. The state the pair needs lives in symbol-keyed fields.
      */
-    private installRenderBoundary(): void {
+    private [C.installRenderBoundary](): void {
         Object.defineProperty(this, RENDER_KEY, {
             configurable: false,
             enumerable: false,
@@ -147,7 +149,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
 
         if (this[RENDER_BOUNDARY] === undefined || raw !== this[RENDER_RAW]) {
             this[RENDER_RAW] = raw;
-            this[RENDER_BOUNDARY] = this.buildRenderBoundary(raw as () => React.ReactNode);
+            this[RENDER_BOUNDARY] = this[C.buildRenderBoundary](raw as () => React.ReactNode);
         }
 
         return this[RENDER_BOUNDARY];
@@ -166,7 +168,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         this[RENDER_ASSIGNED] = typeof value === 'function';
         this[RENDER_RAW] = value;
         this[RENDER_BOUNDARY] = this[RENDER_ASSIGNED]
-            ? this.buildRenderBoundary(value as () => React.ReactNode)
+            ? this[C.buildRenderBoundary](value as () => React.ReactNode)
             : undefined;
     }
 
@@ -178,7 +180,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     constructor(props: Readonly<P>) {
         super(props);
 
-        this.installRenderBoundary();
+        this[C.installRenderBoundary]();
     }
 
     /**
@@ -201,15 +203,15 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
 
     /** Establishes the subscriptions this render collected, then fetches and runs effects. */
     public componentDidMount(): void {
-        this.commitSubscriptions();
-        this.loadStaleResources();
+        this[C.commitSubscriptions]();
+        this[C.loadStaleResources]();
         this.useEffects();
     }
 
     /** The same commit work as on mount, with the previous props' effects torn down first. */
     public componentDidUpdate(prevProps: Readonly<P>): void {
-        this.commitSubscriptions();
-        this.loadStaleResources();
+        this[C.commitSubscriptions]();
+        this[C.loadStaleResources]();
         this.unUseEffects(prevProps);
         this.useEffects();
     }
@@ -239,21 +241,21 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         }
 
         try {
-            this.releaseEffects();
+            this[C.releaseEffects]();
         } catch (error: unknown) {
             failures.push('an effect cleanup threw while a component unmounted: ' +
                 describeUnmountFailure(error) + '. The teardown completed anyway.');
         }
 
         try {
-            this.releaseSubscriptions();
+            this[C.releaseSubscriptions]();
         } catch (error: unknown) {
             failures.push('releasing subscriptions threw while a component unmounted: ' +
                 describeUnmountFailure(error) + '. The teardown completed anyway.');
         }
 
         for (let i = 0; i < failures.length; i++) {
-            this.reportTeardownFailure(failures[i]);
+            this[C.reportTeardownFailure](failures[i]);
         }
     }
 
@@ -268,16 +270,16 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      *
      * @param realRender - the subclass's own render
      */
-    private buildRenderBoundary(realRender: () => React.ReactNode): () => React.ReactNode {
+    private [C.buildRenderBoundary](realRender: () => React.ReactNode): () => React.ReactNode {
         return (): React.ReactNode => {
-            const attempt = this.openRenderAttempt();
+            const attempt = this[C.openRenderAttempt]();
             // Only the development escape diagnostic reads the owner; production allocates nothing here.
             const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
             const previousOwner = development ? renderOwner.get() : undefined;
 
             if (development) {
                 renderOwner.set({
-                    uid: this.uid,
+                    uid: this[C.uid],
                     hasTracked: (source) => attempt.tracked !== undefined && attempt.tracked.has(source),
                 });
             }
@@ -293,7 +295,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
                     renderOwner.set(previousOwner);
                 }
 
-                this.closeRenderAttempt(attempt);
+                this[C.closeRenderAttempt](attempt);
             }
         };
     }
@@ -305,7 +307,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      * Any previous tentative state is discarded by replacement — it simply stops being
      * reachable — so an abandoned collection can never bleed into a new attempt.
      */
-    private openRenderAttempt(): IRenderAttempt {
+    private [C.openRenderAttempt](): IRenderAttempt {
         const attempt: IRenderAttempt = {
             tracked: undefined,
             connections: undefined,
@@ -313,7 +315,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
             abandoned: false,
         };
 
-        this.renderAttempt = attempt;
+        this[C.renderAttempt] = attempt;
 
         return attempt;
     }
@@ -327,17 +329,17 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      *
      * @param attempt - the attempt just closed; kept as pending even when the render threw
      */
-    private closeRenderAttempt(attempt: IRenderAttempt): void {
-        this.pendingAttempt = attempt;
-        this.renderAttempt = undefined;
+    private [C.closeRenderAttempt](attempt: IRenderAttempt): void {
+        this[C.pendingAttempt] = attempt;
+        this[C.renderAttempt] = undefined;
     }
 
 
-    protected abstract loadStaleResources(): void;
+    public abstract [C.loadStaleResources](): void;
     protected abstract useEffects(): void;
     protected abstract unUseEffects(prevProps: P): void;
-    protected abstract releaseEffects(): void;
-    protected abstract commitSubscriptions(): void;
-    protected abstract releaseSubscriptions(): void;
-    protected abstract reportTeardownFailure(failure: string): void;
+    public abstract [C.releaseEffects](): void;
+    public abstract [C.commitSubscriptions](): void;
+    public abstract [C.releaseSubscriptions](): void;
+    public abstract [C.reportTeardownFailure](failure: string): void;
 }

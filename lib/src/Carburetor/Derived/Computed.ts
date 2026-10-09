@@ -8,6 +8,7 @@ import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {nativeStoreWriteEpoch} from "@/Carburetor/Store/Scheduling/nativeStoreWriteEpoch";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
 import {CARBURETOR_EXTEND, CARBURETOR_SNAPSHOT_VERSION, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {announceIsUnchanged} from "./Freshness/announceIsUnchanged";
@@ -296,13 +297,6 @@ export class Computed<R> implements IComputed<R> {
 
         dependency.reads.add(path);
 
-        // Grown past the previous set, it cannot match: stop paying a lookup per path.
-        if (dependency.previous !== undefined && dependency.reads.size > dependency.previous.reads.size) {
-            dependency.previous = undefined;
-        } else if (dependency.previous?.reads.has(path)) {
-            dependency.overlap++;
-        }
-
         if (dependency.published && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
             reportComputedEscape(this, (id: string) => this.subscribers.has(id));
         }
@@ -399,6 +393,11 @@ export class Computed<R> implements IComputed<R> {
         for (const cuid of Object.keys(collected)) {
             const next = collected[cuid];
             const previous = computedDependencies.ownDependency(this.dependencies, cuid);
+            if (!next.published) {
+                completeReads(next.reads);
+                next.overlap = 0;
+                for (const path of next.reads) if (previous?.reads.has(path)) next.overlap++;
+            }
             if (!previous?.observed || next.source !== previous.source
                 || (next !== previous && (next.overlap !== previous.reads.size
                     || next.overlap !== next.reads.size))) {

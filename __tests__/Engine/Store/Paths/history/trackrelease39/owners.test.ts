@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {acquire, internals, makeStore, pathsSince, spyPaths, targetsSince} from './support';
 
 /** Whether a write made now is enumerable from the version just before it. */
@@ -15,8 +16,8 @@ describe('protocol owners are counted (R39-04 release)', () => {
         expect(tracked(store)).toBe(true);
         release();
         expect(tracked(store)).toBe(false);
-        expect(internals(store).writeLog.trackedSince).toBe(Infinity);
-        expect(internals(store).writeTargets.enabled).toBe(false);
+        expect(internals(store)[S.writeLog].trackedSince).toBe(Infinity);
+        expect(internals(store)[S.writeTargets].enabled).toBe(false);
     });
 
     test('releasing one of two owners keeps tracking; the last release disables it', () => {
@@ -70,7 +71,7 @@ describe('protocol owners are counted (R39-04 release)', () => {
 
         const second = acquire(store);
         const fresh = store.getVersion();
-        expect(internals(store).writeLog.trackedSince).toBe(fresh);
+        expect(internals(store)[S.writeLog].trackedSince).toBe(fresh);
         store.change(d => { d.other.b = 1; });
         expect(pathsSince(store, old)).toBeUndefined();
         expect(targetsSince(store, old)).toBeUndefined();

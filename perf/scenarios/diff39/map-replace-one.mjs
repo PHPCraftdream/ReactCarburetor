@@ -1,10 +1,10 @@
 /* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-import {emit, load} from '../../harness/lib.mjs';
+import {emit, load, engine} from '../../harness/lib.mjs';
 const {Carburetor} = await load();
 class Store extends Carburetor {
     paths = [];
     run(fn) { this.update(fn); }
-    emitUpdate(installation, deferred) { this.paths = [...this.writes]; super.emitUpdate(installation, deferred); }
+    emitUpdate(installation, deferred) { this.paths = [...engine(this, 'writes')]; super.emitUpdate(installation, deferred); }
 }
 const store = new Store({rows: Array.from({length: 10000}, (_, id) => ({id, title: 'T' + id, done: false}))});
 const before = store.getData().rows.slice();

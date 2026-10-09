@@ -1,10 +1,11 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {computed, diagnostics} from '@/Carburetor';
 import {CounterCarburetor, ExternalComputed, ListCarburetor, getData} from './fixtures';
 import {ISubscribeOptions} from '@/Carburetor/Models/Store';
 
 class FallibleCounter extends CounterCarburetor {
     public failSubscribe = false;
-    public get listenerCount(): number { return Object.keys(this.subscribers).length; }
+    public get listenerCount(): number { return Object.keys(this[S.subscribers]).length; }
     public override subscribe(callback: () => void, options: ISubscribeOptions = {}): string {
         const id = super.subscribe(callback, options);
         if (this.failSubscribe) {

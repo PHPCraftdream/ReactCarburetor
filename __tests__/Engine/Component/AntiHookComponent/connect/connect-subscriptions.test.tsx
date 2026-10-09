@@ -1,3 +1,4 @@
+import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
 import {rstest} from '@rstest/core';
 import {READS_TRANSFER} from '@/Carburetor/Store/Paths/Markers/ReadsTransferBrand';
 import {getCounterData, ObservedCarburetor, act, fireEvent, render, AntiHookComponent} from '../support';
@@ -217,7 +218,7 @@ describe('connect', () => {
 
             // useCarburetor/useComputed/useResource never ran on this instance: the map they
             // share (`tracked`, distinct from `connections`) must never be allocated for it.
-            expect((instance as unknown as {tracked: unknown}).tracked).toBeUndefined();
+            expect((instance as unknown as {[C.tracked]: unknown})[C.tracked]).toBeUndefined();
 
             unmount();
         });

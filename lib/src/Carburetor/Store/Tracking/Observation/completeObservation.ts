@@ -1,3 +1,4 @@
+import {completeReads} from "./completeReads";
 import {TPathSet} from "@/Carburetor/Models/Paths";
 import {TCompletedObservation} from "./Models";
 
@@ -7,4 +8,7 @@ import {TCompletedObservation} from "./Models";
  */
 export const completeObservation = <T extends {value: unknown; reads: TPathSet}>(
     observation: T
-): TCompletedObservation<T> => observation as unknown as TCompletedObservation<T>;
+): TCompletedObservation<T> => {
+    completeReads(observation.reads);
+    return observation as unknown as TCompletedObservation<T>;
+};

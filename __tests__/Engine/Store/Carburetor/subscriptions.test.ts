@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {diagnostics} from "@/Carburetor";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {CARBURETOR_EXTEND, CARBURETOR_NOTIFY_WRITES, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
@@ -168,8 +169,8 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
             constructor() {
                 super(() => Promise.resolve('value'));
 
-                const release = this.eviction.release.bind(this.eviction);
-                this.eviction.release = () => {
+                const release = this[R.eviction].release.bind(this[R.eviction]);
+                this[R.eviction].release = () => {
                     this.releases++;
                     release();
                 };

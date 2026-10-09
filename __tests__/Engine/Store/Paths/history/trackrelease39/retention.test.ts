@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {WriteLog} from '@/Carburetor/Store/Paths/WriteLog';
 import {WriteTargetLedger} from '@/Carburetor/Store/Utils/Graph/WriteTargetLedger';
 import {acquire, internals, makeStore, targetsSince} from './support';
@@ -8,15 +9,15 @@ describe('nothing is retained once the last owner is gone (R39-04 release)', () 
         const release = acquire(store);
         for (let n = 1; n <= 200; n++) store.change(d => { d.rows[0].a = n; d.other.b = n; });
         const live = internals(store);
-        expect(live.writeLog.targets.paths.size).toBeGreaterThan(0);
-        expect(live.writeLog.recent.entries.size).toBeGreaterThan(0);
+        expect(live[S.writeLog].targets.paths.size).toBeGreaterThan(0);
+        expect(live[S.writeLog].recent.entries.size).toBeGreaterThan(0);
         release();
-        expect(live.writeLog.targets.paths.size).toBe(0);
-        expect(live.writeLog.targets.count).toBe(0);
-        expect(live.writeLog.recent.entries.size).toBe(0);
-        expect(live.writeLog.trackedSince).toBe(Infinity);
-        expect(live.writeTargets.pairs).toHaveLength(0);
-        expect(live.writeTargets.enabled).toBe(false);
+        expect(live[S.writeLog].targets.paths.size).toBe(0);
+        expect(live[S.writeLog].targets.count).toBe(0);
+        expect(live[S.writeLog].recent.entries.size).toBe(0);
+        expect(live[S.writeLog].trackedSince).toBe(Infinity);
+        expect(live[S.writeTargets].pairs).toHaveLength(0);
+        expect(live[S.writeTargets].enabled).toBe(false);
     });
 
     test('the consumer-visible proof is released too', () => {
@@ -25,9 +26,9 @@ describe('nothing is retained once the last owner is gone (R39-04 release)', () 
         const baseline = store.getVersion();
         store.change(d => { d.rows[0].a = 5; });
         expect(targetsSince(store, baseline)?.size).toBe(1);
-        expect(internals(store).writeLog.targets.paths.size).toBe(1);
+        expect(internals(store)[S.writeLog].targets.paths.size).toBe(1);
         release();
-        expect(internals(store).writeLog.targets.paths.size).toBe(0);
+        expect(internals(store)[S.writeLog].targets.paths.size).toBe(0);
         expect(targetsSince(store, baseline)).toBeUndefined();
     });
 
@@ -35,9 +36,9 @@ describe('nothing is retained once the last owner is gone (R39-04 release)', () 
         const store = makeStore();
         acquire(store)();
         for (let n = 1; n <= 3000; n++) store.change(d => { d.rows[0].a = n; });
-        expect(internals(store).writeLog.targets.count).toBe(0);
-        expect(internals(store).writeLog.recent.entries.size).toBe(0);
-        expect(internals(store).writeTargets.pairs).toHaveLength(0);
+        expect(internals(store)[S.writeLog].targets.count).toBe(0);
+        expect(internals(store)[S.writeLog].recent.entries.size).toBe(0);
+        expect(internals(store)[S.writeTargets].pairs).toHaveLength(0);
     });
 
     test('WriteLog.untrack returns an explicitly tracked log to the untracked state', () => {

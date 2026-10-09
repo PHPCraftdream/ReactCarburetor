@@ -1,6 +1,6 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R19-ENGINE-02: one unlocked cache replacement, plus exact endpoint and idle controls.
-import {emit, loadPath} from '../../../harness/lib.mjs';
+import {emit, loadPath, call} from '../../../harness/lib.mjs';
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');
 const {CarburetorHistory} = await loadPath('Carburetor/Tooling/CarburetorHistory.mjs');
 const cache = new ResourceCache(async key => key);
@@ -19,7 +19,7 @@ cache.captureHistory = function (own) {
 };
 const history = new CarburetorHistory(cache);
 for (let n = 0; n < 8; n++) await cache.load(n);
-const key = cache.keyOf(0);
+const key = call(cache, 'keyOf', 0);
 const entries = cache.getData().entries;
 const replacement = {entries: {...entries, [key]: {...entries[key], data: 17}}};
 const measure = fn => {

@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
@@ -24,7 +25,7 @@ class CountingStore extends Carburetor<ISideData> {
     constructor(state: ISideData & {draft?: string}) {
         super(state);
         // Count the write-log consultations the filed read set is supposed to spare.
-        const log = this.writeLog;
+        const log = this[S.writeLog];
         const proxy: WriteLog = Object.create(log);
         proxy.matches = (baseline: number, reads: ReadonlySet<TPath>): boolean => {
             this.matchesCalls++;
@@ -36,7 +37,7 @@ class CountingStore extends Carburetor<ISideData> {
             }
             return log.matches(baseline, reads);
         };
-        this.writeLog = proxy;
+        this[S.writeLog] = proxy;
     }
     public override [CARBURETOR_HAS_DRIFT](baseline: number, reads: ReadonlySet<TPath>): boolean {
         this.matches++;
@@ -151,13 +152,13 @@ describe('retained recompute identity (R34)', () => {
             public matchesCalls = 0;
             constructor(state: IRowData & {draft?: string}) {
                 super(state);
-                const log = this.writeLog;
+                const log = this[S.writeLog];
                 const proxy: WriteLog = Object.create(log);
                 proxy.matches = (baseline: number, reads: ReadonlySet<TPath>): boolean => {
                     this.matchesCalls++;
                     return log.matches(baseline, reads);
                 };
-                this.writeLog = proxy;
+                this[S.writeLog] = proxy;
             }
             public override [CARBURETOR_HAS_DRIFT](baseline: number, reads: ReadonlySet<TPath>): boolean {
                 this.matches++;

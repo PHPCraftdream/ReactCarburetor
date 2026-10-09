@@ -31,7 +31,7 @@ export default [
         id: 'reads/inherited@2k', improvement: 'R12-E02', scenario: 'reads/inherited', args: [20000, 2000],
         gates: [
             {metric: 'inheritedRecords', equals: 1}, {metric: 'shadowWake', equals: 1},
-            {metric: 'shadowValue', equals: '7'}, {metric: 'methodIdentity', equals: true},
+            {metric: 'shadowValue', equals: '7'}, {metric: 'methodsUsable', equals: true},
             {metric: 'methodsRecorded', equals: 0}, {metric: 'ownLeafRecords', equals: 2},
             {metric: 'indexRecords', equals: 3}, {metric: 'constructRecords', equals: 2000},
             {metric: 'leafSum', equals: 1999000},

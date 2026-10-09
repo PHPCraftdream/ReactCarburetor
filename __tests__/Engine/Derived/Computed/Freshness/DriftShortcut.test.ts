@@ -1,3 +1,4 @@
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {Carburetor, ComponentUpdateThrottle, computed, transaction} from '@/Carburetor';
 import {CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT} from '@/Carburetor/Store/Utils/Models';
 import {WriteLog} from '@/Carburetor/Store/Paths/WriteLog';
@@ -16,13 +17,13 @@ class CountingStore extends Store {
         super(state);
         // Count the write-log consultations the fast path is supposed to spare: a subclass
         // view over the same log instance, so record/watermark stay shared.
-        const log = this.writeLog;
+        const log = this[S.writeLog];
         const proxy: WriteLog = Object.create(log);
         proxy.matches = (baseline: number, reads: ReadonlySet<TPath>): boolean => {
             this.matchesCalls++;
             return log.matches(baseline, reads);
         };
-        this.writeLog = proxy;
+        this[S.writeLog] = proxy;
     }
     public override [CARBURETOR_HAS_DRIFT](baseline: number, reads: ReadonlySet<TPath>): boolean {
         this.matches++;

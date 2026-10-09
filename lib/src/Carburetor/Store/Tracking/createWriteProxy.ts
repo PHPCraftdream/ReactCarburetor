@@ -381,9 +381,6 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             this.record(this.keysMarker(), source);
         }
 
-        // A replaced branch's diff is walked once. Its bounded patches are collected during
-        // that walk, while every affected path (including implicit array growth) is recorded
-        // before the first fallible observer call.
         const nextLength = previousLength !== undefined
             ? (source as unknown as {length: number}).length : undefined;
         const grew = nextLength !== undefined && nextLength !== previousLength;
@@ -392,6 +389,9 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
             const patches: Parameters<TPatchRecorder>[0][] | undefined = concrete ? [] : undefined;
             const segments = concrete ? [...this.basePathSegments, key] : [];
             const changed = diffPaths(previous, raw, path, segments, patches);
+            if (patches) for (const patch of patches) {
+                if (typeof patch !== 'symbol') patch.replacesBranch = true;
+            }
             changed.forEach((written: TPath) => this.record(written, raw));
             if (grew) this.record(this.writtenPath('length', source), source);
             if (concrete && patches) {

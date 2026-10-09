@@ -1,3 +1,4 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {
     Carburetor, CarburetorHistory, ComponentUpdateThrottle, EResourceStatus, ResourceCache, ResourceCarburetor,
 } from '@/Carburetor';
@@ -68,6 +69,9 @@ class Aliased extends Carburetor<IAliasedState> {
     public rename(id: string): void {
         this.update(draft => { draft.key.id = id; });
     }
+    public replaceKey(id: string): void {
+        this.update(draft => { draft.key = {id}; });
+    }
 }
 
 const expectLinked = (state: IAliasedState, value: string, id: string): void => {
@@ -90,7 +94,7 @@ class NativeResource extends ResourceCarburetor<Map<object, string>, string> {
 
 class NativeCache extends ResourceCache<Map<object, string>, string> {
     public link(value: string): void {
-        const key = this.keyOf('a');
+        const key = this[R.keyOf]('a');
         const owner = this.getData().entries[key];
         this.update(draft => {
             const map = draft.entries[key].data;
@@ -99,7 +103,7 @@ class NativeCache extends ResourceCache<Map<object, string>, string> {
         });
     }
     public ownedEntry(): {entry: object; map: Map<object, string>} {
-        const entry = this.getData().entries[this.keyOf('a')];
+        const entry = this.getData().entries[this[R.keyOf]('a')];
         if (!(entry.data instanceof Map)) throw new Error('expected loaded Map');
         return {entry, map: entry.data};
     }
@@ -293,6 +297,32 @@ describe('native history endpoint ownership', () => {
         expect(history.redo()).toBe(true);
         expectLinked(store.getData(), 'three', 'renamed');
         history.disconnect();
+    });
+
+    test.each(['replace', 'mutate'])('plain native key %s keeps its alias topology across replay', mode => {
+        const key = {id: 'original'};
+        const store = new Aliased({key, map: new Map([[key, 'one']])});
+        const history = new CarburetorHistory(store);
+        try {
+            if (mode === 'replace') store.replaceKey('next');
+            else store.rename('next');
+            const check = (id: string, linked: boolean): void => {
+                const state = store.getData();
+                expect(state.key.id).toBe(id);
+                expect(state.map.get(state.key)).toBe(linked ? 'one' : undefined);
+                expect(state.key === state.map.keys().next().value).toBe(linked);
+                expect(state.map.size).toBe(1);
+            };
+            check('next', mode === 'mutate');
+            for (let replay = 0; replay < 3; replay++) {
+                expect(history.undo()).toBe(true);
+                check('original', true);
+                expect(history.redo()).toBe(true);
+                check('next', mode === 'mutate');
+            }
+        } finally {
+            history.disconnect();
+        }
     });
 
     test('opaque array-prototype object aliases keep their whole-graph replay classification', () => {

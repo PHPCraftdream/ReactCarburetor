@@ -6,3 +6,4 @@
 export * from './Models';
 export * from './useCarburetorValue';
 export * from './useComputedValue';
+export * from './useResourceValue';

@@ -3,12 +3,13 @@
 // every shifted element. Paths and woken readers are exact mechanism counters, and every
 // operation's result is compared with the same operation on a plain JS array.
 // Args: [rows=10000] [subs=0|1]
-import {emit, load, median} from '../../harness/lib.mjs';
+import {emit, load, median, engineKey} from '../../harness/lib.mjs';
 
 const {Carburetor} = await load();
+const RECORD = engineKey('recordWrite', Carburetor.prototype);
 class S extends Carburetor {
     constructor(...args) { super(...args); this.paths = 0; }
-    recordWrite(path) { this.paths++; super.recordWrite(path); }
+    [RECORD](path) { this.paths++; super[RECORD](path); }
     run(fn) { this.update(fn); }
 }
 

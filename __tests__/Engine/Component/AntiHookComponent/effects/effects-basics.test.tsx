@@ -1,3 +1,5 @@
+import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import * as React from 'react';
 import {act} from 'react';
 import {fireEvent, render} from '@testing-library/react';
@@ -12,7 +14,7 @@ const getCounterData = (): ICounterData => ({value: 0, other: 0});
 
 class CounterCarburetor extends Carburetor<ICounterData> {
     public subscriberCount = (): number => {
-        return Object.keys(this.subscribers).length;
+        return Object.keys(this[S.subscribers]).length;
     };
 
     public incValue = () => {
@@ -334,7 +336,7 @@ describe('<AntiHookComponent />', () => {
 
         const {unmount} = render(<NoEffects ref={(r: NoEffects | null) => { instance = r; }} />);
 
-        expect((instance as unknown as {effects: unknown}).effects).toBeUndefined();
+        expect((instance as unknown as {[C.effects]: unknown})[C.effects]).toBeUndefined();
 
         unmount();
     });
@@ -343,8 +345,8 @@ describe('<AntiHookComponent />', () => {
         const log: string[] = [];
 
         class NamedEffects extends AntiHookComponent<{channel: string}> {
-            public effectKeys = (): string[] => Object.keys(this.effects ?? {});
-            public hasEffects = (): boolean => this.effects !== undefined;
+            public effectKeys = (): string[] => Object.keys(this[C.effects] ?? {});
+            public hasEffects = (): boolean => this[C.effects] !== undefined;
 
             protected useEffects(): void {
                 for (const name of ['__proto__', 'constructor']) {

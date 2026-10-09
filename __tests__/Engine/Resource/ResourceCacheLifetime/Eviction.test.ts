@@ -1,3 +1,5 @@
+import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {TestCache} from '../ResourceCache/Helpers/TestCache';
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
@@ -210,7 +212,8 @@ describe('ResourceCache eviction', () => {
     test('reads of absent keys do not pile up use-order records', async () => {
         const loader = makeLoader();
         const cache = new TestCache<string, string>(loader.load, {maxEntries: 2});
-        const lastUsed = () => (cache as unknown as {eviction: {lastUsed: Map<string, number>}}).eviction.lastUsed;
+        const lastUsed = () =>
+            (cache as unknown as {[R.eviction]: {lastUsed: Map<string, number>}})[R.eviction].lastUsed;
 
         await fill(cache, loader, ['a']);
 
@@ -272,7 +275,7 @@ describe('ResourceCache eviction', () => {
     test('eviction drops the evicted entry\'s cached view', async () => {
         const loader = makeLoader();
         const cache = new TestCache<string, string>(loader.load, {maxEntries: 2, ttl: 60_000});
-        const viewCache = () => (cache as unknown as {viewCache: Map<string, unknown>}).viewCache;
+        const viewCache = () => (cache as unknown as {[R.viewCache]: Map<string, unknown>})[R.viewCache];
 
         await fill(cache, loader, ['a', 'b']);
         cache.getEntry('a');
@@ -315,7 +318,7 @@ describe('ResourceCache eviction', () => {
         }
 
         const subscribers = (): Record<string, {reads: Set<TPath>}> =>
-            (cache as unknown as {subscribers: Record<string, {reads: Set<TPath>}>}).subscribers;
+            (cache as unknown as {[S.subscribers]: Record<string, {reads: Set<TPath>}>})[S.subscribers];
         const counters: CountingReads[] = [];
 
         // Three pinned entries, three readers. The counting set replaces each subscriber's own

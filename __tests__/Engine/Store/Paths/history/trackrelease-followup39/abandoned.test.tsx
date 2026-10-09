@@ -1,3 +1,4 @@
+import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
 import * as React from 'react';
 import {rstest} from '@rstest/core';
 import {act} from 'react';
@@ -63,7 +64,7 @@ test('an abandoned class render cannot overwrite the proof verdict restored by a
     class Owner extends AntiHookComponent {
         public scalar = false;
         private readonly selected = this.connectSelection(store, d => this.scalar ? d.tick : d.rows);
-        public replay(): void { this.releaseSubscriptions(); this.commitSubscriptions(); }
+        public replay(): void { this[C.releaseSubscriptions](); this[C.commitSubscriptions](); }
         render() {
             const selected = this.selected();
             if (this.scalar) throw new Error('abandoned');
