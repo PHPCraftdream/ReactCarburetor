@@ -32,6 +32,17 @@ Ad-hoc A/B of one scenario across builds, no gates: `node perf/harness/ab.mjs <s
 `node --cpu-prof` with `DIST_ROOT` set and summarize the profile with
 `node perf/harness/profile-top.cjs <file.cpuprofile>`.
 
+## Resource retention protection
+
+`resource41/retention-live-cache` adds one isolated liveness gate: **253 entries = 241
+existing + 12 R41 entries**. Its GC-enabled child checks collection in all 10
+cases: forget, forgetAll, setData removal/replacement, restore, fromJSON, draft
+removal/replacement, refresh, and eviction. Caches remain live; strong payload and
+caller-captured resolution controls must survive, and the captured payload must collect
+after its resolution is released. Unchanged warm resolves must retain identity. Each
+collection phase uses 12 job-boundary GCs without allocation pressure. All ten cases and
+controls passed the final three-run suite; no measured timing gain is claimed.
+
 ## Format
 
 A scenario is `perf/scenarios/<area>/<name>.mjs`: it reads the build under test from `DIST_ROOT`
@@ -253,6 +264,94 @@ which sentinel-fills instead of crashing). Scenarios that read engine internals 
 `getEntryByKey`, `recordWrite`) cannot use plain names any more: those members sit under symbol keys, so the scenarios reach
 them through `engine`/`call`/`engineKey` in `perf/harness/lib.mjs`, which resolve the plain name on older builds and the
 symbol on newer ones. Every older scenario that did so was moved to those helpers and runs on both builds.
+
+### Round 41 — Computed
+
+Five automatically discovered entries in `computed41` guard public values, reachability and
+membership work; no timing thresholds are added or older thresholds widened.
+
+| Entry | Required fixed result / expected frozen-build negative |
+|---|---|
+| `computed41/public-collision` | Built-declaration strict uid-only subclass compiles; values 3→4, one delivery. After that graph succeeds, `strictDomainConsumer=true` requires a second strict public-declaration consumer with broader domain fields and callbacks (`version`, `value`, `valid`, dependency/announcement fields and former engine methods). Frozen build: 3→3, zero deliveries; fail `final` and `deliveries`, not uid-only compilation. |
+| `computed41/observer-lifetime` | Old projection, speculative source and captured view collect after failed first body and last-release cleanup, before a new scalar get; strongly held projection/source controls and live evaluation owners survive; scalar 0, next edit 1 with one delivery. Frozen build: obsolete announcement holds projection (`collected=false`). Source/view controls additionally guard strong read-slot filing. Six old cached views remain readable while their retired source WeakRefs collect through observed switches with both distinct and reused ids. `oldViewsPrecise=true` requires actual body runs and deliveries to stay unchanged, not merely equal scalar output: real retired-source right writes give `retiredRightRuns='0,0'`, and replacement-source unread right writes give `replacementRightRuns='0,0'`. The observed-left positive control writes 41, requiring `observedLeftRuns='1,1'`, `observedLeftDeliveries='1,1'` and `observedLeftValues='41,41'`; live owners retain 41. These new retention assertions are not claimed as frozen-build failures. |
+| `computed41/dependencies-{500,1000,2000}` | Seven switches deliver D/2D correctly, retained tick churn is zero, eight diff passes visit `8*(D+1)` edges, fresh-membership comparisons zero. Frozen build: comparisons `7*D*(D+3)/2`, work exceeds the unchanged linear bound. |
+
+Focused and full verification commands:
+
+```text
+npm run build
+npm run typecheck
+npm run lint
+npm run check:layout
+npm test -- __tests__/Engine/Derived
+npm run test:consumers
+npm run bench -- --only computed41 --runs 3 --verbose
+npm run bench -- --only computed41 --runs 3 --verbose --dist D:/dev/ReactCarburetor/worktrees/bench-dist/fad07d684f4b/esm-prod
+npm run bench -- --runs 3
+```
+
+The frozen distribution is read-only: never rebuild, patch or replace it. The orchestrator
+observed the negative results above against frozen R40. The strict consumer uses the selected build's
+public declarations. Mixed-format helper assertions are `collision sum` (4) and `collision
+delivery` ([4]); the helper's first graph is also uid-only, so the frozen build reaches the
+`collision sum` assertion before broader domain-shadow fixtures. Dependency instrumentation resolves `diffDependencies` through `engineKey`,
+which supports old plain names and new symbols. Existing 241-entry gate rules remain untouched.
+Negative checks never overwrite the current or frozen build. Run current-build focused gates and
+the unfiltered suite against the default distribution afterward; no product revert is needed.
+
+### Round 41 — Resource selector cutover
+
+`useResourceValue(source, args, select, isEqual?)` requires a pure synchronous selector and returns
+its detached readonly selection. Dependencies belong to that completed selection, not to later child
+reads. The parent explicitly projects the child's fields; selecting `view.data` captures the whole
+graph and cannot promise unread-leaf precision within it. Hoisted/memoized selectors enable the
+cached-parent lane. Fresh inline selectors execute again even when structural equality keeps the
+returned identity. Local display overrides are real caller-owned overlays, never hook-result writes.
+
+Six `resource41` entries use genuine React renders, state writes, loader observations and DOM checks.
+The final three-run suite passed these actual counters and behavior assertions; no timing/byte saving is claimed:
+
+| Entry | Required result |
+|---|---|
+| `resource41/memo-data@1000` | Hoisted narrow projection: memo child stays at 1 through unrelated parents and 1,000 warm renders; observed leaf and whole refresh deliver once each, child count 3, DOM `Grace`. |
+| `resource41/machinery@1000` | Warm window: accessor definitions, WeakMap constructions, selector calls and subscription adds/removes all 0; actual DOM checksum 1000. Subscriptions balance and proof owners are 0 after unmount. Observed reevaluation calls the stable selector once. |
+| `resource41/dependency-precision` | Unread nested write: parent/child deltas 0/0. Observed in-place leaf write: parent/child deltas 1/1 and DOM `Leaf`. Completed reads survive child bailout. |
+| `resource41/snapshot-lifecycle` | Retained detached result stays `Ada`; loads in render 0; caller-owned overlay displays `local` while cache remains `Grace`. |
+| `resource41/class-positive-control@1000` | Raw class control covers only unrelated parents and whole refresh: child stays 1, then reaches 2 with `Grace`. Separately labelled class selection uses `connectSelection` plus `useResource` loading: unread deltas 0/0, observed in-place deltas 1/1, DOM `Leaf`, then `Grace`. Raw class data does not claim detached in-place delivery or narrow leaf precision. |
+| `resource41/inline-cost@1000` | Fresh inline selector executes 1000 times; DOM checksum 1000, child stays 1 and accessor definitions 0. Inline WeakMap constructions are reported separately, not held to the stable-selector zero promise. |
+
+The scenario reports `reevaluationWeakMaps` separately from warmed `readTreeWeakMaps` and
+`inlineWeakMaps`. The WeakMap instrumentation counts actual constructors in its window, including
+selection-copy machinery; it is not a byte counter or a promise of zero total React allocation.
+The warm result/read-set/ledger cache introduces no selection or source-subscription churn.
+
+The migrated R40 scenarios keep real operations and unchanged thresholds: 50 readers each render
+2 times on mount and 2 on equal invalidation refresh, with 50 refetches and unchanged correct text;
+hook name/error/other unread/read deltas remain 0/1; raw class other-unread remains 1. The ref-commit
+loader guard remains exactly 0 in render, 0 before commit and 1 after commit. No extra selected flags
+or fabricated counters stand in for lifecycle notifications.
+
+Packed fixtures exercise required-selector inference and rejection, readonly plain/native mutation
+failures, detached native values, retained snapshots, real overlays and both cross-format source/hook
+directions. The resource helper runs development and production export conditions in each existing
+React 18.3.1/19.3.0, npm/pnpm, CJS/ESM cell. SSR selection does not load, subscribe or acquire proofs;
+client automatic loading waits for committed publication and attachment.
+
+### Final independent acceptance
+
+The orchestrator ran 2530 tests with zero failures/skips and the unfiltered three-run suite:
+**253 entries, zero failures, zero violations**. A complete manifest comparison preserves every
+old 241-entry ID/args/scenario/threshold; only source callers of the new selector API migrated.
+Packed consumers passed 16/16 checks, and actual Chromium verified memo/precision/refresh behavior
+with zero browser errors. The four original R41 findings, API tradeoff and measured public A/B are
+recorded in [the R41 resolution](../docs/api-engine-review-round-41-2026-10-09.md#resolution--2026-10-10).
+
+The raw supplemental receipt preserves nested allocation lanes that the common runner's display
+format would stringify. Direct-flat object/array and constructed-flat equivalents each use one
+Set and one tracking WeakMap per reevaluation, with zero Set-copy constructions; graph lanes keep
+their required footprint/ledger. Frozen resource runs also fail on the removed internal reader API;
+the separate public legacy/selector A/B, not that incompatibility, proves the allocation/render gain.
+
 
 ## Baseline builds
 

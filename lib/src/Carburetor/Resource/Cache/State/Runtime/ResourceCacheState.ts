@@ -7,6 +7,7 @@ import {
     IResourceCacheData,
     IResourceCacheOptions,
     IResourceEntry,
+    IResourceResolution,
     IResourceView,
     TResourceLoader,
 } from "@/Carburetor/Models/Resource";
@@ -41,6 +42,8 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
     public [R.runtimeRecords]: Map<string, ICacheRuntime<T>> | undefined;
     /** Stable caller-facing views for unchanged entries. */
     public [R.viewCache]: Map<string, IResourceView<T>> = new Map<string, IResourceView<T>>();
+    /** Lazy most-recent resolution, released with its authoritative entry. */
+    public [R.resolution]: IResourceResolution<T> | undefined;
     /** Entry count, LRU order, and eviction hysteresis. */
     public [R.eviction]: EvictionLedger = new EvictionLedger();
 
@@ -106,6 +109,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         });
         this[R.runtimeRecords] = undefined;
         this[R.viewCache].clear();
+        this[R.resolution] = undefined;
         this[R.eviction].reset();
         active.forEach((request) => request.controller.abort());
         if (generation !== this[R.restoreGeneration]) return;
@@ -364,6 +368,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
             if (this[R.runtimeRecords]?.size === 0) this[R.runtimeRecords] = undefined;
             this[R.eviction].lastUsed.delete(key);
             this[R.viewCache].delete(key);
+            if (this[R.resolution]?.key === key) this[R.resolution] = undefined;
             return;
         }
         this[R.removeEntries]([key], false);
@@ -414,6 +419,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
                         this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
                     }
                     this[R.viewCache].delete(key);
+                    if (this[R.resolution]?.key === key) this[R.resolution] = undefined;
                 }
             },
             publish: (defer) => { if (defer) this.emitSoon(); else this.emitUpdate(); },

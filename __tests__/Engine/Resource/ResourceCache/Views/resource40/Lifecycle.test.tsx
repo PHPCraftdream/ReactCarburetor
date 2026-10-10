@@ -5,7 +5,6 @@ import {render} from '@testing-library/react';
 import {hydrateRoot} from 'react-dom/client';
 import {renderToString} from 'react-dom/server';
 import {diagnostics} from '@/Carburetor';
-import {IResourceView} from '@/Carburetor/Models/Resource';
 import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 import {S} from '@/Carburetor/Store/Diagnostics/Internal/StoreIdentity';
 import {useResourceValue} from '@/Interop';
@@ -41,8 +40,8 @@ const fixture = () => {
         rendering = true;
         try {
             renders++;
-            const view: IResourceView<IUser> = useResourceValue(cache, args);
-            return <span>{view.data?.name ?? '…'}</span>;
+            const name = useResourceValue(cache, args, view => view.data?.name);
+            return <span>{name ?? '…'}</span>;
         } finally {
             rendering = false;
         }
@@ -59,9 +58,9 @@ describe('R40-04 useResourceValue ownership', () => {
         const state = fixture();
         const renderSnapshots: number[] = [];
         const Reader = () => {
-            const view = useResourceValue(state.cache, {id: 0});
+            const name = useResourceValue(state.cache, {id: 0}, view => view.data?.name);
             renderSnapshots.push(state.calls.length);
-            return <span>{view.data?.name ?? '…'}</span>;
+            return <span>{name ?? '…'}</span>;
         };
         const mounted = render(<Reader/>);
         try {
@@ -84,7 +83,7 @@ describe('R40-04 useResourceValue ownership', () => {
         const reported: string[] = [];
         let mounted: ReturnType<typeof render> | undefined;
         const DirectLoader = () => {
-            useResourceValue(state.cache, {id: 0});
+            useResourceValue(state.cache, {id: 0}, view => view.data?.name);
             void state.cache.load({id: 0});
             return <span>direct load</span>;
         };

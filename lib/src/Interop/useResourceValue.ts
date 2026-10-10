@@ -1,36 +1,35 @@
 "use client";
 
-import {useEffect, useInsertionEffect, useLayoutEffect, useMemo, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useInsertionEffect, useLayoutEffect, useMemo, useSyncExternalStore} from 'react';
 import {IResourceSource, IResourceView} from '@/Carburetor/Models/Resource';
+import {TReadonly} from '@/Carburetor/Models/Base';
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
 import {resourceReader} from '@/Carburetor/Resource/Cache/Reader/resourceReader';
-import {completeReads} from '@/Carburetor/Store/Tracking/Observation/completeReads';
 import {IS_DEVELOPMENT} from '@/Carburetor/Store/Utils/DevelopmentFlag';
 import {diagnostics} from '@/Carburetor/Store/Diagnostics/DiagnosticsInstance';
+import {TSelector, TValueComparator} from './Models';
 import {createResourceReader} from './createResourceReader';
 
-/** Reads a resource's rendered fields and defers stale loads until after commit.
+/** Selects a detached readonly resource value; automatic loading starts only after attachment.
+ * The pure synchronous selector borrows an evaluation-scoped input. Children observe only the
+ * selected graph: their reads do not collect dependencies. Hoist selectors for cached parent reads.
  *
  * @param source - resource entry owner.
- * @param args - loader arguments identifying the entry.
+ * @param args - immutable loader arguments identifying the canonical entry.
+ * @param select - required synchronous selection of the fields the consumer renders.
+ * @param isEqual - optional detached-value comparator; true retains the previous result.
  */
-export const useResourceValue = <T, TArgs>(
-    source: IResourceSource<T, TArgs>,
-    args: TArgs
-): IResourceView<T> => {
+export const useResourceValue = <T, TArgs, R>(
+    source: IResourceSource<T, TArgs>, args: TArgs,
+    select: TSelector<IResourceView<T>, R>, isEqual?: TValueComparator<R>
+): TReadonly<R> => {
+    // Resolve even on cached parent reads: TTL freshness need not change the source version.
     const resolution = source.resolve(args);
-    // Canonical paths, not argument object identity, own the external-store subscription.
-    // Each render observes its arguments; only commit replaces notification arguments.
-    const reader = useMemo(() => createResourceReader(source, resolution.path), [source, resolution.path]);
-    reader.observe(args);
-    // The external-store snapshot is a stable notification token, not the render
-    // view: unread fields and TTL freshness can change without changing this token.
-    useSyncExternalStore(reader.subscribe, reader.getSnapshot, reader.getSnapshot);
+    const reader = useMemo(() => createResourceReader<T, TArgs, R>(source, resolution.path), [source, resolution.path]);
+    const candidate = reader.evaluate(args, resolution, select, isEqual);
+    const getSnapshot = useCallback(() => reader.getSnapshot(candidate), [reader, candidate]);
+    useSyncExternalStore(reader.subscribe, getSnapshot, getSnapshot);
     const renderVersion = source.getVersion();
-    const {view, pending, finish} = reader.render(resolution);
-    reader.observe(args, completeReads(pending));
-    // This boundary precedes layout effects (including class didMount loads).
-    // It only diagnoses changes since render; it installs nothing and starts no work.
     useInsertionEffect(() => {
         if (IS_DEVELOPMENT && resourceReader.worthFetching(resolution.view)
             && source.getVersion() !== renderVersion) {
@@ -40,17 +39,8 @@ export const useResourceValue = <T, TArgs>(
             }
         }
     });
-    useLayoutEffect(() => {
-        reader.commit(args, finish());
-    });
-    useEffect(() => {
-        if (!resourceReader.worthFetching(resolution.view)) return;
-        const loading = source.load(args);
-        if (resolution.fieldView === undefined) {
-            void loading;
-            return;
-        }
-        void loading.then(() => reader.rearm());
-    }, [source, args, reader, resolution]);
-    return view;
+    // Publish this exact render's record, not a reader-wide latest speculative slot.
+    useLayoutEffect(() => { reader.commit(candidate); });
+    useEffect(() => { reader.load(); });
+    return candidate.value as TReadonly<R>;
 };

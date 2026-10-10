@@ -40,7 +40,8 @@ const run = async kind => {
     const HookReader = () => {
         rendering = true;
         try {
-            return text(useResourceValue(cache, 0));
+            return React.createElement('span', {ref: markCommitted},
+                useResourceValue(cache, 0, view => view.data?.name) ?? '…');
         } finally {
             rendering = false;
         }

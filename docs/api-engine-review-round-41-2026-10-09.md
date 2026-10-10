@@ -233,4 +233,105 @@ node worktrees/r41-probes/allocations.mjs worktrees/r41-probes/dist/cjs-prod res
 | `Interop/useResourceValue.ts` | `e11469673e44a21d894ed7bdb892383b5e4b8e9c5535592b951b4d2442959068` |
 | `Resource/Cache/ResourceCache.ts` | `b325b39de53d2dcc4e098b86d68e2e9f15d8fbff61f44735b27309346e215583` |
 
-Отчёт описывает evidence и направления, не готовую реализацию. Коммит должен содержать только этот файл; push не запрошен.
+Разделы выше — исходное ревью и исторические измерения, сохранённые report-only коммитом `81a5bb8`. Ниже — результат реализации и независимой проверки; исходные prototype timings не выдаются за новые замеры.
+
+## Resolution — 2026-10-10
+
+**Все четыре находки R41-01..04 исправлены и проверены исполнением.** База R40 сохранена отдельно в `fad07d684f4b55153883fa3cb10ab4dd86f40c84`. Реализация R41 выполнена в изолированном worktree; основной checkout не использовался агентами для изменений или тестов.
+
+### Принятый контракт API
+
+Пользователь разрешил breaking changes ради корректности и максимальной практической производительности. Независимый анализ `xa` подтвердил противоречие прежнего transparent proxy API: старый и новый aliases одного proxy дают одинаковые target/key/receiver, но требовали противоположного attribution.
+
+Принят чистый переход:
+
+```ts
+useResourceValue<T, TArgs, R>(
+    source: IResourceSource<T, TArgs>,
+    args: TArgs,
+    select: TSelector<IResourceView<T>, R>,
+    isEqual?: TValueComparator<R>
+): TReadonly<R>
+```
+
+- Selector обязателен; двухаргументного overload, default whole-resource selection и compatibility shim нет.
+- Только synchronous selector/capture reads и loading dependencies владеют подпиской. Дочерние компоненты читают detached selection, не tracking proxy.
+- Hoisted/memoized selector переиспользует значение и completed reads. Fresh inline selector исполняется заново; его стоимость измеряется отдельно.
+- Возвращённые snapshots отделены от source и используют существующие equality/structural-sharing правила. Readonly — существующий immutable-by-contract контракт, не deep-freeze.
+- Hook-result mutation/define/delete удалены. Локальное оформление — caller-owned overlay.
+- Class `useResource` остаётся отдельным API с coarse data-field tracking и writable local facade. Для precise memo-child projection используется class `connectSelection`.
+- Мигрированы все repository callers, R40/R41 tests, published type fixtures, packed consumers, старые benchmark scenarios и API docs.
+
+### Реализация
+
+| ID | Исправление | Независимое доказательство |
+|---|---|---|
+| R41-01 | Все engine state/method/callback slots `Computed` перенесены под module-private symbols; public source protocol остаётся явным subclass contract | Strict published declarations; 28 shadow-name cases × 16 source/consumer format pairs = 448; сумма 3→4, delivery 1 |
+| R41-02 | Last release освобождает observer announcement и strong recorder filing; queued generations, reentrant teardown и rollback сохраняют независимый evaluation cache | Projection/source WeakRefs collectible при живых владельцах; resubscribe и edit доставляют 1; permanent liveness gate проходит три процесса |
+| R41-03 | Fresh membership отмечается на dependency edge, без линейного `includes` и без дополнительного membership Set; порядок setup/rollback сохранён | D sweep, правильные суммы и 7 deliveries; retained tick не churn-ит subscriptions |
+| R41-04 | Closed selector observations, committed/speculative separation, lifecycle token, detached structural sharing; shared explicit-resolution field factory и lazy local override storage | Реальные React/Chromium memo/DOM checks, closed-input и equal-result branch migration, allocation counters, SSR/loading/TTL/unmount и packed matrix |
+
+### Детерминированные выигрыши
+
+Ниже — actual current/frozen-public-consumer A/B, не перенос prototype timings из исходного ревью. Resource consumer читает одинаковые `name`/`nested.n`; DOM не меняется при unrelated parent props. До — прежний API, после — обязательный hoisted selector.
+
+| Workload / counter | До R41 | После R41 |
+|---|---:|---:|
+| 1000 unrelated parent renders: дополнительные memo-child renders | 1000 | 0 |
+| Те же 1000 renders: resource accessor definitions | 8000 | 0 |
+| Те же 1000 renders: WeakMap constructors в stable-DOM window | 1000 | 0 |
+| D=500, 7 dependency switches: membership comparisons | 880250 | 0 |
+| D=1000, 7 switches: membership comparisons | 3510500 | 0 |
+| D=2000, 7 switches: membership comparisons | 14021000 | 0 |
+| D=2000: counted edge + membership work, включая retained tick | 14037008 | 16008 |
+
+Checksum resource A/B — 1000 на обеих сторонах. Всего child renders: 1001→1. Current stable selector вызван один раз на mount и ноль раз в 1000-render window; subscription adds/removes в warmed window — 0/0.
+
+Общая операция dependency switching всё ещё содержит линейные setup/release/version work. Здесь подтверждено устранение квадратичного membership-члена, не универсальный latency speedup.
+
+Direct-flat object/array reevaluation теперь платит один collection Set и один tracking WeakMap; за 32 actual reevaluations — 32/32, Set-copy constructions 0. Constructed-flat equivalents имеют ту же стоимость. Graph control сохраняет отдельный selector footprint и copy ledger: 64 Sets и 128 WeakMaps за 32 reevaluations, current `31`, retained `Ada`.
+
+Fresh inline nested projection в 1000-render scenario исполняется 1000 раз и строит 4000 WeakMaps; memo-child identity остаётся стабильной. Поэтому zero-machinery claim относится к stable-selector warmed lane, не ко всем selectors и не к total React allocation.
+
+При изменении DOM attributes JSDOM сам добавляет WeakMap work: дополнительная exploratory A/B дала 2000→1000 общих constructors. Этот фон не называется engine read-tree allocation; stable-DOM A/B выше исключает его. Byte saving и новый wall-clock speedup не заявляются.
+
+### Ошибки, найденные независимой интеграцией и устранённые
+
+- Retired store удерживался через `live switcher data → cached read proxy → recorder closure → old recompute context → collected dictionary → dependency.source`. Heap snapshot снят до `WeakRef.deref()`. Recorder создаётся в отдельной symbol-keyed factory scope, содержащей только owner/slot; неизменённый public proof после исправления прошёл.
+- Cached last resolution удерживал забытый payload. Instance-symbol ownership и reconciliation освобождают internal view/resolution при removal/eviction/restore/replacement/draft/settlement, не мутируя caller-captured resolutions. Permanent gate проверяет 10 маршрутов с live-cache, strong/captured controls.
+- GC setup/precision writes в top-level suspended async benchmark frame удерживали loop temporaries. Synchronous returned setup исправил harness lifetime; 16 job/GC turns и все шесть retained views/source precision assertions сохранены.
+- Восемь падений полного suite оказались obsolete private view-cache size pins. Они удалены, не переписаны `2→1`; public latest-value, untouched-view identity, synchronous removal delivery и memo-child behavior остались проверены. Целевой suite 18/18 и повторный полный 2530/2530 прошли.
+- Удалены exact singleton-warning count/wording и helper length echoes; actual mixed-format graph/rollback assertions сохранены.
+
+### Постоянные бенчмарки
+
+**12 новых entries автоматически включены в общий `npm run bench`:**
+
+```text
+computed41/public-collision
+computed41/observer-lifetime
+computed41/dependencies-500
+computed41/dependencies-1000
+computed41/dependencies-2000
+resource41/memo-data@1000
+resource41/machinery@1000
+resource41/dependency-precision
+resource41/snapshot-lifecycle
+resource41/class-positive-control@1000
+resource41/inline-cost@1000
+resource41/retention-live-cache
+```
+
+Полное сравнение manifests: все 241 прежние IDs/args/scenarios/gates/thresholds неизменны. Старые scenario callers мигрированы на новый API, но реальные writes, render/loader/DOM operations и acceptance сохранены. В частности, R40 50-reader mount/equal-refresh counts — 2/2, class unread-data control — 1, load-in-render/before/after commit — 0/0/1.
+
+### Проверка
+
+- `build`, четыре `tsc` projects, `check:layout`, type-aware lint — pass; у lint остались warnings, не errors. 188 modules на каждый runtime format.
+- Full tests: **2530 passed, 0 failed, 0 skipped, 0 todo**, 257 files.
+- Unfiltered benchmarks, **три samples на scenario: 253 entries, 0 failed, 0 violations** — 241 старый + 12 новых.
+- Packed matrix: **16/16 pass, 0 skipped**; React 18/19, npm/pnpm, CJS/ESM, cross-format graphs, Next.js webpack/turbopack. Resource helpers также упражняют development/production export conditions.
+- Real Chromium: 5 unrelated parents — hook/selected-class child 1; unread edit — 0 hook renders; observed leaf `Linus` — child 2; whole refresh `Grace` — child 3. Raw class control после whole replacement — child 2. Browser errors 0; managed tab и собственный server закрыты.
+- Frozen pre-R41 gates отрицательны: collision final 3/delivery 0; obsolete projection held; dependency comparisons 880250/3510500/14021000. Resource retention baseline собирает 6/10 payloads. Новый combined resource scenario на старом build завершается ошибкой отсутствующего `reader.evaluate`; это API incompatibility, не timing/allocation proof. Отдельный equivalent public A/B выше доказывает render/machinery finding.
+- Disposable current-build negative с потерей completed reads после bailout провалил assertion `memo bailout must retain the observed leaf dependency`. Product source и frozen distribution не менялись.
+
+Receipts сохранены orchestrator в ignored `.rush/stdin/r41-final-receipts/`; benchmark scenarios/gates и этот resolution входят в scoped R41 commit. Remote CI и push в этом запросе не выполнялись.

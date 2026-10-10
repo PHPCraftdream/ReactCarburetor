@@ -218,6 +218,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
             runtime.answer = undefined;
             this[R.eviction].lastUsed.delete(key);
             this[R.viewCache].delete(key);
+            if (this[R.resolution]?.key === key) this[R.resolution] = undefined;
             this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
             return;
         }
@@ -255,6 +256,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
             runtime.answer = undefined;
             this[R.eviction].lastUsed.delete(key);
             this[R.viewCache].delete(key);
+            if (this[R.resolution]?.key === key) this[R.resolution] = undefined;
             this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
             return;
         }

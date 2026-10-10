@@ -1,5 +1,6 @@
 import {mkdirSync, readFileSync, rmSync, writeFileSync} from 'node:fs';
 import path from 'node:path';
+import {resource41Checks} from './round41/resource41Checks.mjs';
 import {FIXTURE, TSC_BIN, pnpmCommand, run} from './matrix.mjs';
 
 /**
@@ -145,5 +146,20 @@ export const checkFormat = (installDir, format) => {
         return {ok: false, stage: 'runtime', stderr: smoke.stdout + smoke.stderr};
     }
 
+    writeFileSync(path.join(formatDir, 'computed41Checks.mjs'), readFileSync(
+        new URL('./round41/computed41Checks.mjs', import.meta.url), 'utf8'
+    ));
+    writeFileSync(path.join(formatDir, 'computed41.mjs'), `
+import assert from 'node:assert/strict';
+${format === 'esm' ? "import * as engine from 'react-carburetor';" : "import {createRequire} from 'node:module'; const engine = createRequire(import.meta.url)('react-carburetor');"}
+import {computed41Checks} from './computed41Checks.mjs';
+computed41Checks(assert, engine, engine, ${JSON.stringify(format)});
+`);
+    const computed = run(process.execPath, ['computed41.mjs'], {cwd: formatDir});
+    if (!computed.ok) return {ok: false, stage: 'computed41', stderr: computed.stdout + computed.stderr};
+    for (const condition of ['development', 'production']) {
+        const resources = resource41Checks(formatDir, format, condition);
+        if (!resources.ok) return resources;
+    }
     return {ok: true};
 };

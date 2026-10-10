@@ -68,6 +68,10 @@ export class R {
     public static readonly reconcileFailure = Symbol("resource.reconcileFailure");
     /** Internal reconcileFailureWrite slot. */
     public static readonly reconcileFailureWrite = Symbol("resource.reconcileFailureWrite");
+    /** Internal reconcileView slot. */
+    public static readonly reconcileView = Symbol("resource.reconcileView");
+    /** Internal last resolution slot. */
+    public static readonly resolution = Symbol("resource.resolution");
     /** Internal removalEpoch slot. */
     public static readonly removalEpoch = Symbol("resource.removalEpoch");
     /** Internal removeEntries slot. */

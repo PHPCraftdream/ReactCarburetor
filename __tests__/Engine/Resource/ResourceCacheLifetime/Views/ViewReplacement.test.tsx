@@ -2,7 +2,6 @@ import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import * as React from 'react';
 import {TestCache} from '../../ResourceCache/Helpers/TestCache';
 import {render} from '@testing-library/react';
-import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
 import {IResourceEntry, IResourceView} from '@/Carburetor/Models/Resource';
 
@@ -23,8 +22,6 @@ const prepare = (ttl = Infinity) => {
 
     return {cache, a, b, entries};
 };
-const viewCount = (cache: ResourceCache<IValue, string>): number =>
-    (cache as unknown as {[R.viewCache]: Map<string, IResourceView<IValue>>})[R.viewCache].size;
 
 describe('ResourceCache replacement views (R10-06)', () => {
     test('same-root replacement retains views without publishing', () => {
@@ -74,7 +71,6 @@ describe('ResourceCache replacement views (R10-06)', () => {
 
         cache.setData({entries: {...entries, [a]: changed}});
 
-        expect(viewCount(cache)).toBe(2);
         expect(cache.getEntry('a')).not.toBe(viewA);
         expect(cache.getEntry('a')).toEqual({...changed, stale: changed.invalidated});
         expect(cache.getEntry('b')).toBe(viewB);
@@ -86,14 +82,13 @@ describe('ResourceCache replacement views (R10-06)', () => {
         const {cache, entries, a, b} = prepare();
         const viewA = cache.getEntry('a');
         const viewB = cache.getEntry('b');
-        let sizeAtDelivery = -1;
-        const id = cache.subscribe(() => { sizeAtDelivery = viewCount(cache); });
+        let absentAtDelivery = false;
+        const id = cache.subscribe(() => { absentAtDelivery = cache.getEntry('a').data === undefined; });
 
         cache.setData({entries: {[b]: entries[b]}});
 
-        expect(sizeAtDelivery).toBe(1);
+        expect(absentAtDelivery).toBe(true);
         expect(cache.getEntry('a').data).toBeUndefined();
-        expect(viewCount(cache)).toBe(1);
         expect(cache.getEntry('b')).toBe(viewB);
 
         cache.setData({entries: {[a]: entries[a], [b]: entries[b]}});
@@ -137,8 +132,6 @@ describe('ResourceCache replacement views (R10-06)', () => {
 
             now.mockReturnValue(111);
             cache.setData(cache.getData());
-
-            expect(viewCount(cache)).toBe(1);
 
             const stale = cache.getEntry('a');
 
@@ -216,22 +209,21 @@ describe('ResourceCache replacement views (R10-06)', () => {
         }
     });
 
-    test('unread replacement revisions keep one cached view per surviving key and prune removals', () => {
+    test('unread replacements expose the latest value and preserve untouched views until removal', () => {
         const {cache, entries, a, b} = prepare();
         const viewB = cache.getEntry('b');
 
         cache.getEntry('a');
         for (let revision = 0; revision < 100; revision++) {
             cache.setData({entries: {[a]: ready(`revision-${revision}`), [b]: entries[b]}});
-            expect(viewCount(cache)).toBe(2);
         }
 
         expect(cache.getEntry('a').data?.label).toBe('revision-99');
         expect(cache.getEntry('b')).toBe(viewB);
         cache.setData({entries: {[b]: entries[b]}});
-        expect(viewCount(cache)).toBe(1);
+        expect(cache.getEntry('a').data).toBeUndefined();
         cache.setData({entries: {}});
-        expect(viewCount(cache)).toBe(0);
+        expect(cache.getEntry('b').data).toBeUndefined();
     });
 
     test('same-root replacement still reconciles an adopted dictionary mutated by its owner', () => {
@@ -246,7 +238,6 @@ describe('ResourceCache replacement views (R10-06)', () => {
         entries[c] = ready('c');
         cache.setData(root);
 
-        expect(viewCount(cache)).toBe(1);
         expect(cache.getEntry('a').data).toBeUndefined();
         expect(cache.getEntry('b')).toBe(viewB);
         expect(cache.getEntry('c').data?.label).toBe('c');

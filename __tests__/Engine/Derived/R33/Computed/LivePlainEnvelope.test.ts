@@ -52,7 +52,7 @@ describe('computed live plain envelopes (R33-01)', () => {
         rows.subscribe(() => {
             void rows.get().rows?.[5].title;
         }, {id: 'listener'});
-        const computedUid = (rows as unknown as {uid: string}).uid;
+        const computedUid = rows.getUID();
         const reads = c.readsForComputed(computedUid)!;
         const priorSize = reads.size;
 

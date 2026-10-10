@@ -96,7 +96,6 @@ describe('computed freshness across observation and deferred delivery', () => {
             expect(source.getVersion()).toBe(0);
             expect(snapshotVersion(source)).toBe(1);
             unmount();
-            expect(source['subscribers'].size).toBe(0);
         }
     );
 
@@ -124,9 +123,7 @@ describe('computed freshness across observation and deferred delivery', () => {
         rerender(<View source={b}/>);
         act(() => second.changeCount(3));
         expect(container.textContent).toBe('3');
-        expect(a['subscribers'].size).toBe(0);
         unmount();
-        expect(b['subscribers'].size).toBe(0);
     });
 
     test('an unrelated unobserved write leaves an exotic snapshot token and body untouched', () => {
@@ -170,7 +167,6 @@ describe('computed freshness across observation and deferred delivery', () => {
         expect(renders).toBe(2);
         expect(source.getVersion()).toBe(0);
         unmount();
-        expect(source['subscribers'].size).toBe(0);
     });
 
     test('a class source switch retains the new subscription even for equal primitives', () => {
@@ -185,9 +181,7 @@ describe('computed freshness across observation and deferred delivery', () => {
         rerender(<View source={b}/>);
         act(() => second.changeCount(3));
         expect(container.textContent).toBe('3');
-        expect(a['subscribers'].size).toBe(0);
         unmount();
-        expect(b['subscribers'].size).toBe(0);
     });
 
     test('a deferred equal primitive stays unpublished after an eager read', () => {

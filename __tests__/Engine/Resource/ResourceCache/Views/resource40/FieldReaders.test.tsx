@@ -52,8 +52,8 @@ const fixture = () => {
         rendering = true;
         try {
             hookRenders[id]++;
-            const view: IResourceView<IUser> = useResourceValue(source, id);
-            return <span>{view.data?.name ?? '…'}</span>;
+            const name = useResourceValue(source, id, view => view.data?.name);
+            return <span>{name ?? '…'}</span>;
         } finally {
             rendering = false;
         }
@@ -156,8 +156,8 @@ describe('R40-04 useResourceValue field readers', () => {
         let renders = 0;
         const OtherReader = () => {
             renders++;
-            const view = useResourceValue(state.cache, 0);
-            return <span>{view.data?.other ?? '…'}</span>;
+            const other = useResourceValue(state.cache, 0, view => view.data?.other);
+            return <span>{other ?? '…'}</span>;
         };
         const mounted = render(<OtherReader/>);
         try {

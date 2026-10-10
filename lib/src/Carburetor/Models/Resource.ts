@@ -101,9 +101,10 @@ export interface IResourceResolution<T> {
     present?: boolean;
     /** Optional field-level snapshot factory; omitted sources retain whole-entry subscriptions.
      *
+     * @param resolution - explicit capture to read; never a mutable latest-resolution slot.
      * @param record - records a real state-field path, not the synthetic stale field.
      */
-    fieldView?: (record: (path: string) => void) => IResourceView<T>;
+    fieldView?: (resolution: IResourceResolution<T>, record: (path: string) => void) => IResourceView<T>;
 }
 
 /**

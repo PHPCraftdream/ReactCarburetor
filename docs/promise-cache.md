@@ -126,6 +126,47 @@ Raw loader rejections are not part of the serialized entry. Replacing an entry w
 Subclass actions using `draft`/`update` also reconcile changed error/status paths before subscribers
 run; unchanged entries retain their raw failures. Raw-failure reconciliation does not cancel requests.
 
+## Hooks: required synchronous selection
+
+```tsx
+import {IResourceView, TReadonly} from 'react-carburetor';
+import {useResourceValue} from 'react-carburetor/interop';
+
+const selectName = (view: TReadonly<IResourceView<User>>) => view.data?.name;
+function UserName({id}: {id: string}) {
+    const name = useResourceValue(users, id, selectName);
+    return <span>{name ?? 'loading'}</span>;
+}
+```
+
+`useResourceValue<T, TArgs, R>(source, args, select, isEqual?)` returns `TReadonly<R>`.
+The selector is required; there is no two-argument hook or implicit whole-resource selection.
+It is pure and synchronous, borrowing an evaluation-scoped read input. Do not retain that input
+or close deferred callbacks over it. Returning an input branch is supported: capture detaches it
+before the component receives it. Only selector/capture reads and engine loading dependencies
+subscribe; child/effect reads of a returned selection do not discover additional dependencies.
+`view => view.data` explicitly captures the whole graph; use a narrow projection to ignore leaves.
+
+Hoisted or memoized selectors reuse both the result and closed dependencies on unchanged parent
+renders. Inline selectors remain correct but execute again. Structural equality retains equal
+results and unchanged detached subtrees. Plain/null-prototype objects, arrays with holes, cycles,
+aliases and ordinary Date/Map/Set retain the existing selection policy; unsupported class/native
+subclasses are rejected. Object-keyed collections compare conservatively. A custom comparator
+receives detached readonly values; true promises observational equivalence and retains the old
+result, but never prevents dependency migration. Changing its identity reconsiders the value.
+Readonly is the library's compile-time immutable-by-contract policy, not deep freezing.
+
+Presentation overrides are caller-owned, for example `{...selected, name: 'local'}`. Assigning,
+defining or deleting hook-result fields is unsupported. The separate class `useResource` field
+facade retains its local-field semantics; use `connectSelection` for detached memo-child values.
+
+Hook loading starts only after committed publication and subscription attachment, using current
+committed arguments and fresh eligibility. Selected-value equality does not suppress loading
+lifecycle notifications. Pending loads deduplicate; failures disarm automatic retry until explicit
+invalidation. Settlement rearming is scoped to the active reader generation. Parent renders resolve
+TTL freshness even without a source write; no TTL timer is installed. Server selection performs no
+load, subscription or proof acquisition; hydrated readers load only after client commit.
+
 ## Server rendering
 
 The cache is a carburetor, so `CarburetorScope.dehydrate()` already serialises it and `hydrate()`

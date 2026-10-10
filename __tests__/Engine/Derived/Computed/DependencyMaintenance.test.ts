@@ -1,3 +1,4 @@
+import {C} from '@/Carburetor/Derived/Models';
 import {computed, transaction} from '@/Carburetor';
 import {sharedSingleton} from '@/Carburetor/Store/Utils/sharedSingleton';
 import {CounterCarburetor, ExternalComputed, ListCarburetor, delta, getData} from './fixtures';
@@ -465,7 +466,7 @@ describe('computed', () => {
             let markStaleCalls = 0;
 
             nodes.forEach((node) => {
-                const key = (node as unknown as {onDependencyChanged: () => void}).onDependencyChanged;
+                const key = (node as unknown as {[C.onDependencyChanged]: () => void})[C.onDependencyChanged];
                 const original = invalidationEdges.get(key);
 
                 if (original) {

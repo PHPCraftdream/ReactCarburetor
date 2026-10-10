@@ -18,6 +18,7 @@ import {escapeCacheKey} from "./escapeCacheKey";
 import {getInitialCacheEntry} from "./State/getInitialCacheEntry";
 import {ResourceCacheLifecycle} from "./ResourceCacheLifecycle";
 import {isViewCurrent} from "./State/isViewCurrent";
+import {createResourceFieldView} from './Reader/createResourceFieldView';
 import {trimCacheRuntime} from "./State/Runtime/Registry";
 
 declare const process: {env: {NODE_ENV?: string}} | undefined;
@@ -105,21 +106,36 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         const keys = Object.keys(this.data.entries);
         this[R.runtimeRecords]?.forEach((_runtime, key) => this[R.reconcileFailure](key));
         this[R.eviction].replace(keys);
-        this[R.viewCache].forEach((_view: IResourceView<T>, key: string) => {
-            if (!Object.prototype.hasOwnProperty.call(this.data.entries, key)) {
-                this[R.viewCache].delete(key);
-            }
-        });
+        this[R.viewCache].forEach((_view: IResourceView<T>, key: string) => this[R.reconcileView](key));
+        const resolution = this[R.resolution];
+        if (resolution) this[R.reconcileView](resolution.key);
     }
 
     /** Reconcile only live raw-answer owners affected by this completed write. */
     protected preEmit(): void {
-        if (!this[R.runtimeRecords] || this[R.runtimeRecords]!.size === 0 ||
-            (this[S.writes].size === 0 && this[S.draftTouched])) return;
+        const resolution = this[R.resolution];
+        if (resolution) this[R.reconcileView](resolution.key);
+        if (this[S.writes].size === 0 && this[S.draftTouched]) return;
         if (this[S.writes].size === 0 || this[S.writes].has(WILDCARD_PATH) || this[S.writes].has('entries')) {
-            this[R.runtimeRecords]!.forEach((_runtime, key) => this[R.reconcileFailure](key));
+            this[R.viewCache].forEach((_view: IResourceView<T>, key: string) => this[R.reconcileView](key));
+            this[R.runtimeRecords]?.forEach((_runtime, key) => this[R.reconcileFailure](key));
         } else {
             this[S.writes].forEach(this[R.reconcileFailureWrite], this);
+        }
+    }
+
+    /** Release obsolete internal snapshots without mutating caller-captured resolutions.
+     *
+     * @param key - encoded cache key whose published view may have changed.
+     */
+    private [R.reconcileView](key: string): void {
+        const entry = this.data.entries[key];
+        const view = this[R.viewCache].get(key);
+        if (view && (!entry || !isViewCurrent(view, entry, view.stale))) this[R.viewCache].delete(key);
+        const resolution = this[R.resolution];
+        if (resolution?.key === key && (resolution.present !== (entry !== undefined) ||
+            (entry !== undefined && !isViewCurrent(resolution.view, entry, resolution.view.stale)))) {
+            this[R.resolution] = undefined;
         }
     }
 
@@ -153,6 +169,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         const key = escaped.includes('~')
             ? escaped.replace(/~1/g, PATH_SEPARATOR).replace(/~0/g, '~')
             : escaped;
+        this[R.reconcileView](key);
         this[R.reconcileFailure](key);
     }
 
@@ -352,37 +369,14 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         const path = primed !== undefined ? primed.path : this[R.pathOfKey](key);
         const view = this[R.getEntryByKey](key);
 
-        // Only component readers request this facade. Public resolve().view/getEntry stay plain,
-        // and each facade captures this resolution's snapshot rather than becoming a live view.
-        return {
-            key, path, view, present: this.data.entries[key] !== undefined,
-            fieldView: (record): IResourceView<T> => {
-                const fields = {...view};
-                for (const field of Object.keys(fields) as Array<keyof IResourceView<T>>) {
-                    Object.defineProperty(fields, field, {
-                        enumerable: true,
-                        configurable: true,
-                        get: () => {
-                            if (field === 'stale') {
-                                // isStale depends on these fields; time itself has no write path.
-                                record(joinPath(path, 'invalidated'));
-                                record(joinPath(path, 'updatedAt'));
-                            } else {
-                                record(joinPath(path, field));
-                                if (field === 'refreshing') record(joinPath(path, 'updatedAt'));
-                            }
-                            return view[field];
-                        },
-                        set: (value: IResourceView<T>[keyof IResourceView<T>]) => {
-                            Object.defineProperty(fields, field, {
-                                value, writable: true, enumerable: true, configurable: true,
-                            });
-                        },
-                    });
-                }
-                return fields;
-            },
-        };
+        const present = this.data.entries[key] !== undefined;
+        const previous = this[R.resolution];
+        if (previous?.path === path && previous.view === view && previous.present === present) {
+            return previous;
+        }
+        const resolution: IResourceResolution<T> = {key, path, view, present, fieldView: createResourceFieldView};
+        this[R.resolution] = resolution;
+        return resolution;
     }
 
     /**

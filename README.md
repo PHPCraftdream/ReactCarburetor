@@ -392,7 +392,20 @@ render() {
 
 Editing a todo's title invalidates nothing `activeCount` read, so it does not recompute. Toggling
 `done` does recompute it, and if the count comes out the same, nothing re-renders. A computed stops observing its dependencies once
-its last subscriber leaves.
+its last subscriber leaves. Its observer announcement is released then; the independent
+memoized evaluation remains available for later reads. Last release also clears strong live-read
+filing; weak object-identity recorder slots survive so a cached view can rejoin safely. Publication
+also retires old slots on observed source switches and trims absent ids. Slots have no source
+back-reference: a retained old view need not keep its retired store alive. A later successful
+scalar evaluation replaces its captured versions and permits retired sources to collect.
+Old views of a different source cannot extend a replacement merely because its public id was reused.
+
+`Computed<R>` accepts the same `(body, options)` as `computed()`. Subclasses may add domain
+fields such as `uid`, `version`, `value`, or callbacks without replacing engine storage.
+The reserved public protocol is `get()`, `getUID()`, `getVersion()`, `subscribe(callback, options)`,
+and `unsubscribe(id)`; overriding these methods changes the source contract. There are no
+protected engine-state or settlement hooks. Configure evaluation through the constructor body
+and `equals`, not by accessing internal state.
 
 Computeds compose, as long as you read them through `read` as well:
 
@@ -846,21 +859,48 @@ suppressed the latest write. Values truly equal under the new policy keep their 
 With the default comparison a changed selection keeps the previous references of its unchanged
 nested objects and arrays, so rows of a selected list can be `React.memo` children.
 
-A resource cache has a hooks reader too. `useResourceValue(source, args)` is the counterpart of the
-class `useResource`: the same entry view, the same subscription to only the fields the component
-reads, and the same rule that a stale entry is loaded **after** the commit, never during render
-(development reports a load started in render). An invalidated refresh re-arms the reader, and
-server rendering starts no load.
+A resource cache has a hooks reader too:
+`useResourceValue<T, TArgs, R>(source, args, select, isEqual?)` returns `TReadonly<R>`.
+The selector is **required**; there is no two-argument overload or implicit whole-resource selection.
+A stale entry is loaded **after** committed publication and subscription attachment, never during
+render (development reports a load started in render). Loading lifecycle notifications are separate
+from selected-value equality; invalidation surviving a request can re-arm the committed reader.
+Server rendering selects without loading, subscribing or acquiring write proofs.
 
 ```tsx
+import type {IResourceView, TReadonly} from 'react-carburetor';
 import {useResourceValue} from 'react-carburetor/interop';
 
-const UserBadge = ({id}: {id: number}) => {
-    const user = useResourceValue(users, id);
+const selectUserBadge = (view: TReadonly<IResourceView<User>>) =>
+    view.data === undefined ? undefined : {name: view.data.name};
 
-    return <span>{user.data?.name ?? '…'}</span>;
+const UserBadge = ({id}: {id: number}) => {
+    const user = useResourceValue(users, id, selectUserBadge);
+
+    return <span>{user?.name ?? '…'}</span>;
 };
 ```
+
+The pure synchronous selector borrows an evaluation-scoped read input. Returning an input branch
+is supported: the engine detaches it before returning the result. Do not retain the input or close
+deferred callbacks over it. Only selector reads, capture reads and engine loading dependencies
+subscribe. **Child and effect reads of returned selections do not collect dependencies**: explicitly
+project everything the child consumes. `view => view.data` captures the whole data graph and therefore
+observes its content; a narrow projection ignores excluded leaves.
+
+Results follow the detached selection semantics above, including structural sharing of unchanged
+subtrees, aliases/cycles and ordinary native values; unsupported class/native/array subclasses are
+rejected. The optional fourth argument compares detached readonly values. Returning true promises
+observational equivalence and retains the old result, without suppressing dependency migration.
+Readonly is compile-time and immutable by contract, not a deep-freeze pass or mutation membrane.
+
+Hoisted or correctly memoized selectors reuse completed results and read sets on unchanged parent
+renders. A fresh inline selector remains correct and can retain equal result identity, but executes
+again and pays selection/capture costs. Parent renders still resolve TTL freshness without requiring
+a source write; no timer is installed. Local presentation overrides belong to the caller, for example
+`const local = {...user, name: 'local'}`, not assignments, definitions or deletions on hook results.
+The separate class `useResource` facade retains local-field behavior and coarser data precision;
+use `connectSelection` alongside `useResource` for detached, precise memo-child projections.
 
 ## Lint rules
 

@@ -37,8 +37,8 @@ const run = async kind => {
     const HookReader = ({id}) => {
         // oxlint-disable-next-line react/immutability -- Intentional per-reader render-count instrumentation.
         renders[id]++;
-        const view = useResourceValue(cache, id);
-        return React.createElement('span', null, view.data?.name ?? '…');
+        const name = useResourceValue(cache, id, view => view.data?.name);
+        return React.createElement('span', null, name ?? '…');
     };
     const Reader = kind === 'class' ? ClassReader : HookReader;
     flushSync(() => root.render(React.createElement('div', null,

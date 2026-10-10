@@ -377,6 +377,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const {path, view, fieldView} = resolution;
         const attempt = this[C.renderAttempt];
         const entry = this[C.track](source);
+        // The shared reader passes this explicit resolution to its field factory; class facades
+        // still retain their local overrides and whole-data-field dependency semantics.
         const readerView = resourceReader.view(resolution, (fieldPath) => {
             if (fieldView === undefined
                 || (attempt !== undefined && this[C.renderAttempt] === attempt && !attempt.abandoned)) {

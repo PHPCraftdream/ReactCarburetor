@@ -89,7 +89,7 @@ describe('R39-07 resource field readers', () => {
         await loaded;
         const resolved = state.cache.resolve(0);
         const paths: string[] = [];
-        const view = resolved.fieldView!(path => paths.push(path));
+        const view = resolved.fieldView!(resolved, path => paths.push(path));
         view.data = {id: 9, name: 'local'};
         view.refreshing = true;
         expect(paths).toEqual([]);
@@ -270,7 +270,7 @@ describe('R39-07 resource field readers', () => {
         await loaded;
         const resolved = state.cache.resolve(0);
         const paths: string[] = [];
-        const fieldView = resolved.fieldView!(path => paths.push(path));
+        const fieldView = resolved.fieldView!(resolved, path => paths.push(path));
         expect(fieldView.stale).toBe(false);
         expect(paths).toHaveLength(2);
         expect(paths.every(path => path.startsWith(resolved.path))).toBe(true);

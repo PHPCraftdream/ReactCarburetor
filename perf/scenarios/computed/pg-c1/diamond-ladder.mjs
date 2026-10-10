@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // JS-R16-06: both builds use bound markStale fields, not prototype methods.
 // Wrap their registered invalidation callbacks identically, as the ladder fixture does.
-import {emit, load, loadPath} from '../../../harness/lib.mjs';
+import {emit, load, loadPath, engine} from '../../../harness/lib.mjs';
 
 const {Carburetor, computed} = await load();
 const {sharedSingleton} = await loadPath('Carburetor/Store/Utils/sharedSingleton.mjs');
@@ -18,9 +18,9 @@ for (let index = 0; index < 26; index++) {
     }));
 }
 const originals = nodes.map(node => {
-    const original = edges.get(node.onDependencyChanged);
+    const original = edges.get(engine(node, 'onDependencyChanged'));
     if (typeof original !== 'function') throw new Error('Missing registered markStale callback');
-    edges.set(node.onDependencyChanged, () => {
+    edges.set(engine(node, 'onDependencyChanged'), () => {
         marks++;
         original();
     });
@@ -53,6 +53,6 @@ try {
     });
 } finally {
     if (subscription !== undefined) last.unsubscribe(subscription);
-    nodes.forEach((node, index) => edges.set(node.onDependencyChanged, originals[index]));
+    nodes.forEach((node, index) => edges.set(engine(node, 'onDependencyChanged'), originals[index]));
 }
 emit(metrics);

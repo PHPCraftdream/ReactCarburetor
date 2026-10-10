@@ -9,6 +9,23 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Round 41: Computed engine state/callbacks are symbol-keyed so domain subclass fields do not
+  corrupt identity or delivery; last release clears observer-only announcements and strong recorder
+  filing. Persistent recorders are created outside recompute-local closure scopes.
+- Computed dependency attachment marks fresh membership directly instead of scanning an array:
+  500/1000/2000-source seven-switch controls remove 880250/3510500/14021000 comparisons while
+  retaining values, ordered rollback and zero retained-edge subscription churn.
+- **Breaking:** `useResourceValue(source, args, select, isEqual?)` requires a synchronous selector and
+  returns a detached readonly selection. The two-argument hook and writable hook-result facade are
+  removed; use caller-owned presentation overlays. Class `useResource` remains a separate API.
+- Resource selector observations reuse completed reads through memo bailouts. The equivalent
+  stable-DOM 1000-parent-render control reduces extra child renders 1000→0, accessor definitions
+  8000→0 and WeakMap constructions 1000→0; inline selectors still reevaluate.
+- Resource field factories share their implementation and capture explicit resolutions. Internal
+  view/resolution ownership releases obsolete payloads on removal/replacement/settlement. Direct-flat
+  selections avoid the graph-only footprint Set. Twelve permanent R41 entries join the common suite;
+  all 253 entries pass three samples with the original 241 gate contracts unchanged.
+
 - Round 40, each item a gated scenario under `perf/` (`subclass40`, `readset40`, `iterate40`, `cache40`,
   `resource40`) that fails on the build before it:
   - Engine state no longer sits in subclass-visible fields (R40-01). `Carburetor`, `ResourceCache`,

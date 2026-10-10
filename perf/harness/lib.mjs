@@ -59,9 +59,9 @@ export const setupReact = async () => {
  * read or override engine internals stay runnable on both builds).
  */
 export const engineKey = (name, holder) => {
+    // Prefer symbols across the entire chain: a domain field can shadow an old plain name.
     for (let o = holder; o; o = Object.getPrototypeOf(o)) {
-        if (Object.hasOwn(o, name)) return name;
-        const symbol = Object.getOwnPropertySymbols(o).find(s => /^(store|resource|component)./.test(s.description ?? '')
+        const symbol = Object.getOwnPropertySymbols(o).find(s => /^(store|resource|component|computed)\./.test(s.description ?? '')
             && s.description.endsWith('.' + name));
         if (symbol) return symbol;
     }

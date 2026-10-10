@@ -49,8 +49,8 @@ const fixture = (ttl: number = Infinity) => {
         rendering = true;
         try {
             renders++;
-            const view = useResourceValue(cache, args);
-            const value = field === 'error' ? view.error : view.data?.[field];
+            const value = useResourceValue(cache, args,
+                view => field === 'error' ? view.error : view.data?.[field]);
             if (suspend) throw suspend;
             return <span>{value ?? '…'}</span>;
         } finally {
