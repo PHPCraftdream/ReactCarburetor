@@ -9,6 +9,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- React 18 resource SSR uses a server-safe commit effect, while client publication still runs in the
+  layout phase. Hydration checks render on real Node without DOM globals before attaching in JSDOM.
+- The native module-function rule reserves only public/protected component override names; former
+  symbol-private engine names are ordinary consumer helpers. Source-text whitelist pins are removed.
+
 - Round 41: Computed engine state/callbacks are symbol-keyed so domain subclass fields do not
   corrupt identity or delivery; last release clears observer-only announcements and strong recorder
   filing. Persistent recorders are created outside recompute-local closure scopes.

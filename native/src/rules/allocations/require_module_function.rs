@@ -306,18 +306,13 @@ pub(in crate::rules) fn check_with_semantic<'a>(
 #[cfg(test)]
 mod tests {
     use super::extract::has_overload_signature;
-    use super::support::BASE_SURFACE_MEMBERS;
     use oxc_ast::ast::Statement;
 
-    use std::collections::HashSet;
     use std::path::Path;
 
     use super::*;
     use crate::rules::support::testing::{diagnose, lines};
     use oxc_allocator::Allocator;
-    use oxc_ast::ast::ClassElement;
-    use oxc_ast::AstKind;
-    use oxc_ast_visit::Visit;
     use oxc_parser::Parser;
     use oxc_span::SourceType;
 

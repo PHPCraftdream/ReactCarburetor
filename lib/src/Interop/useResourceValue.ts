@@ -10,6 +10,8 @@ import {diagnostics} from '@/Carburetor/Store/Diagnostics/DiagnosticsInstance';
 import {TSelector, TValueComparator} from './Models';
 import {createResourceReader} from './createResourceReader';
 
+const useCommitEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
+
 /** Selects a detached readonly resource value; automatic loading starts only after attachment.
  * The pure synchronous selector borrows an evaluation-scoped input. Children observe only the
  * selected graph: their reads do not collect dependencies. Hoist selectors for cached parent reads.
@@ -40,7 +42,7 @@ export const useResourceValue = <T, TArgs, R>(
         }
     });
     // Publish this exact render's record, not a reader-wide latest speculative slot.
-    useLayoutEffect(() => { reader.commit(candidate); });
+    useCommitEffect(() => { reader.commit(candidate); });
     useEffect(() => { reader.load(); });
     return candidate.value as TReadonly<R>;
 };

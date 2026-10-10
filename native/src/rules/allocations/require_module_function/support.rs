@@ -25,9 +25,7 @@ pub(super) const UNSAFE_PREFIX: &str = "UNSAFE_";
 /// internally, so a member with one of these names is not free to leave either. A name list rather
 /// than a semantic override check, because resolving it properly would mean following the imported
 /// base class into its own file — the cross-file resolution this crate deliberately stays out of.
-/// A test below pins every name against the base class's own source, so a rename there fails here
-/// instead of going stale.
-pub(super) const BASE_SURFACE_MEMBERS: [&str; 14] = [
+pub(super) const BASE_SURFACE_MEMBERS: [&str; 8] = [
     "useEffects",
     "unUseEffects",
     "useEffect",
@@ -36,12 +34,6 @@ pub(super) const BASE_SURFACE_MEMBERS: [&str; 14] = [
     "connectSelection",
     "useComputed",
     "useResource",
-    "track",
-    "loadStaleResources",
-    "releaseEffects",
-    "onCarburetorUpdate",
-    "commitSubscriptions",
-    "releaseSubscriptions",
 ];
 
 /// The name a class member is declared under, private names included — a `#helper` method is as

@@ -3,7 +3,8 @@ import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {hydrateRoot} from 'react-dom/client';
-import {renderToString} from 'react-dom/server';
+import {spawnSync} from 'node:child_process';
+import {resolve} from 'node:path';
 import {diagnostics} from '@/Carburetor';
 import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 import {S} from '@/Carburetor/Store/Diagnostics/Internal/StoreIdentity';
@@ -51,6 +52,20 @@ const fixture = () => {
     };
     return {cache, calls, pending, Reader, settle, renders: () => renders,
         loadedDuringRender: () => loadedDuringRender};
+};
+
+const serverFixture = (mode: 'missing' | 'ready' | 'invalidated') => {
+    const result = spawnSync(process.execPath, [
+        resolve(process.cwd(), 'scripts/consumer-matrix/round41/resourceSsr.mjs'), mode,
+    ], {cwd: process.cwd(), encoding: 'utf8', env: {...process.env, NODE_ENV: 'development'}});
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toBe('');
+    return JSON.parse(result.stdout) as {
+        markup: string;
+        data: ReturnType<ResourceCache<IUser, IArgs>['getData']>;
+        calls: number[];
+        subscriptions: number;
+    };
 };
 
 describe('R40-04 useResourceValue ownership', () => {
@@ -170,13 +185,14 @@ describe('R40-04 useResourceValue ownership', () => {
     });
 
     test('SSR of a missing entry neither loads nor subscribes; hydration loads after commit', async () => {
+        const server = serverFixture('missing');
+        expect(server.calls).toEqual([]);
+        expect(server.subscriptions).toBe(0);
+        expect(Object.keys(server.data.entries)).toEqual([]);
         const state = fixture();
         const container = document.createElement('div');
-        container.innerHTML = renderToString(<state.Reader args={{id: 0}}/>);
+        container.innerHTML = server.markup;
         expect(container.textContent).toBe('…');
-        expect(state.calls).toEqual([]);
-        expect(state.cache.observerCount).toBe(0);
-        expect(Object.keys(state.cache.getData().entries)).toEqual([]);
         const errors: unknown[] = [];
         document.body.appendChild(container);
         let root: ReturnType<typeof hydrateRoot> | undefined;
@@ -202,18 +218,13 @@ describe('R40-04 useResourceValue ownership', () => {
     });
 
     test.each([false, true])('restored SSR data hydrates without mismatch (invalidated=%s)', async invalidated => {
-        const server = fixture();
-        const loaded = server.cache.load({id: 0});
-        server.pending[0].resolve({id: 0, name: 'server'});
-        await loaded;
-        if (invalidated) server.cache.invalidate({id: 0});
-        const markup = renderToString(<server.Reader args={{id: 0}}/>);
+        const server = serverFixture(invalidated ? 'invalidated' : 'ready');
         expect(server.calls).toEqual([0]);
-        expect(server.cache.observerCount).toBe(0);
+        expect(server.subscriptions).toBe(0);
         const client = fixture();
-        client.cache.restore(JSON.parse(JSON.stringify(server.cache.getData())));
+        client.cache.restore(server.data);
         const container = document.createElement('div');
-        container.innerHTML = markup;
+        container.innerHTML = server.markup;
         document.body.appendChild(container);
         const errors: unknown[] = [];
         let root: ReturnType<typeof hydrateRoot> | undefined;

@@ -335,3 +335,32 @@ resource41/retention-live-cache
 - Disposable current-build negative с потерей completed reads после bailout провалил assertion `memo bailout must retain the observed leaf dependency`. Product source и frozen distribution не менялись.
 
 Receipts сохранены orchestrator в ignored `.rush/stdin/r41-final-receipts/`; benchmark scenarios/gates и этот resolution входят в scoped R41 commit. Remote CI и push в этом запросе не выполнялись.
+
+### Publication / CI follow-up — 2026-10-10
+
+`a2657f2` опубликован в `master`. Первый remote run
+[38074088325](https://github.com/PHPCraftdream/ReactCarburetor/actions/runs/38074088325)
+выявил два пропуска локальной матрицы: native source-text whitelist pin (349/350 unit tests)
+и React 18 SSR diagnostics (2404/2407 engine/demo tests). Остальные jobs, включая packed
+consumers и шесть platform packages, завершились успешно.
+
+- `useResourceValue` сохраняет layout-phase commit на клиенте, а в Node SSR выбирает
+  `useEffect`, который на сервере не выполняется. Console warnings не подавляются.
+- SSR часть hydration tests теперь выполняется в отдельном настоящем Node process без DOM
+  globals; затем missing/ready/invalidated snapshots гидратируются в JSDOM.
+- Native override whitelist содержит только восемь public/protected имён. Шесть бывших
+  engine-private имён после symbol cutover больше не маскируют обычные consumer helpers.
+  Source-text test удалён; поведенческий regression проверяет реальные diagnostics.
+- Local verification: resource40 **27/27**, resource41 **36/36**; окончательная изменённая
+  lifecycle suite **9/9**. Real React **18.3.1** SSR + hydration: три состояния, stderr пуст,
+  recoverable errors 0, loaders после commit 1/0/1, live subscriptions после unmount 0.
+- Native **350 unit + 24 CLI tests passed**, Clippy all-targets `-D warnings` passed.
+  Реальный CLI сообщил шесть ordinary-helper diagnostics и не сообщил diagnostics для
+  `useEffects`, `unUseEffects`, `render`. Formatting трёх изменённых Rust files passed;
+  whole-tree `cargo fmt --check` выявил существующие различия в нетронутых files — они не
+  входят в CI gate и не переформатированы.
+- Четыре build formats, четыре typecheck projects, type-aware lint и layout gate passed
+  (существующие lint warnings сохраняются). Receipt: `.rush/stdin/r41-ci-fix-receipts.json`.
+
+Следующий remote run относится к отдельному CI-fix commit; green conclusion подтверждается
+GitHub Actions, а не этим локальным отчётом.

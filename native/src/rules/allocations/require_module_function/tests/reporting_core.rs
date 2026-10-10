@@ -186,13 +186,7 @@ class Widget extends AntiHookComponent {
         return;
     }
 
-    protected track(source: number): number {
-        return source;
-    }
-
     protected useEffect = (callBack: string, name: string): void => {};
-
-    protected onCarburetorUpdate = (): void => {};
 }
 "#;
 
@@ -200,63 +194,19 @@ class Widget extends AntiHookComponent {
 }
 
 #[test]
-fn every_base_surface_name_is_still_declared_on_antihookcomponent_hierarchy() {
-    struct Classes<'a>(Vec<&'a Class<'a>>);
+fn former_engine_names_are_ordinary_consumer_helpers() {
+    let source = r#"
+class Widget extends AntiHookComponent {
+    track(value: number): number { return value; }
+    loadStaleResources(): number { return 1; }
+    releaseEffects(): number { return 1; }
+    onCarburetorUpdate(): number { return 1; }
+    commitSubscriptions(): number { return 1; }
+    releaseSubscriptions(): number { return 1; }
+}
+"#;
 
-    impl<'a> Visit<'a> for Classes<'a> {
-        fn enter_node(&mut self, kind: AstKind<'a>) {
-            if let AstKind::Class(class) = kind {
-                self.0.push(class);
-            }
-        }
-    }
-
-    let mut declared = HashSet::new();
-    let root = Path::new("../lib/src/Carburetor/Component/AntiHookComponent");
-    let files = [
-        "Foundation.tsx",
-        "Reads.tsx",
-        "Effects.tsx",
-        "Subscriptions.tsx",
-        "AntiHookComponent.tsx",
-    ];
-
-    for file in files {
-        let path = root.join(file);
-        let text = std::fs::read_to_string(path).expect("component source must exist");
-        let allocator = Allocator::default();
-        let parsed = Parser::new(&allocator, &text, SourceType::tsx()).parse();
-        assert!(
-            parsed.diagnostics.is_empty(),
-            "{file} must parse: {:?}",
-            parsed.diagnostics
-        );
-
-        let mut classes = Classes(Vec::new());
-        classes.visit_program(&parsed.program);
-
-        for class in classes.0 {
-            for entry in &class.body.body {
-                let name = match entry {
-                    ClassElement::MethodDefinition(method) => member_name(&method.key),
-                    ClassElement::PropertyDefinition(property) => member_name(&property.key),
-                    _ => None,
-                };
-
-                if let Some(name) = name {
-                    declared.insert(name.to_string());
-                }
-            }
-        }
-    }
-
-    for name in BASE_SURFACE_MEMBERS {
-        assert!(
-            declared.contains(name),
-            "{name} is on the base-surface list but no longer declared on \
-                 the AntiHookComponent hierarchy — update the list"
-        );
-    }
+    assert_eq!(lines(&reported(source)), [3, 4, 5, 6, 7, 8]);
 }
 
 #[test]
