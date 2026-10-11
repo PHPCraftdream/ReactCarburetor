@@ -14,27 +14,24 @@ const canonicalResult = (value: unknown): unknown =>
  * as a change. `equals` is never consulted there — `previous` and `next` would alias the very
  * same mutated object, so it could only ever say "equal" and hide a change mutation tracking
  * already earned. A changed reference, by contrast, is exactly what `equals` exists to second
- * -guess: it runs only when there is an announced baseline to compare against and the caller
+ * -guess: it runs only when there is a successful baseline to compare against and the caller
  * supplied one, and its verdict overrides the reference change when it says the content is the
  * same.
  *
- * @param announced - the value last announced to subscribers, if any; `equals` runs only when
- * this is set — an unannounced computed has nothing for it to compare against, so a first
- * successful value is never suppressed
- * @param previous - the cached value from before this recompute, the reference-check baseline
- * when nothing has been announced yet (mirrors `Computed.settle`'s own fallback)
+ * @param baseline - the successful cached or announced value, including undefined
+ * @param hasBaseline - whether that value exists; a cold result is never suppressed
  * @param next - the value this recompute just produced
  * @param dependenciesMoved - whether a dependency drifted since the announced baseline
  * @param equals - the caller's content comparator, if any
  */
 export const announceIsUnchanged = <R>(
-    announced: {value: R} | undefined,
-    previous: R | undefined,
+    baseline: R | undefined,
+    hasBaseline: boolean,
     next: R,
     dependenciesMoved: boolean,
     equals: ((previous: R, next: R) => boolean) | undefined
 ): boolean => {
-    const baseline = announced !== undefined ? announced.value : previous;
+    if (!hasBaseline) return false;
     const sameReference = Object.is(baseline, next);
     const sameRawReference = sameReference || Object.is(canonicalResult(baseline), canonicalResult(next));
     // A persistent read tree keeps an engine view's identity stable across recomputes while the
@@ -43,8 +40,8 @@ export const announceIsUnchanged = <R>(
     const liveChanged = sameRawReference && dependenciesMoved
         && next !== null && typeof next === 'object' && liveViews.readTarget(next) !== undefined;
     const opaqueChanged = sameRawReference && dependenciesMoved && !liveChanged && containsExoticValue(next);
-    const contentSame = !sameReference && !opaqueChanged && !liveChanged && baseline !== undefined
-        && equals !== undefined && equals(baseline, next);
+    const contentSame = !sameReference && !opaqueChanged && !liveChanged
+        && equals !== undefined && equals(baseline as R, next);
 
     return (sameReference && !liveChanged && !opaqueChanged) || contentSame;
 };

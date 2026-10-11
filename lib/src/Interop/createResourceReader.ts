@@ -2,6 +2,7 @@ import {IResourceResolution, IResourceSource, IResourceView} from '@/Carburetor/
 import {TReadonly} from '@/Carburetor/Models/Base';
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
 import {TPath} from '@/Carburetor/Models/Paths';
+import {isCacheSupersededError} from '@/Carburetor/Resource/Cache/Reader/isCacheSupersededError';
 import {resourceReader} from '@/Carburetor/Resource/Cache/Reader/resourceReader';
 import {createReadProxy} from '@/Carburetor/Store/Tracking/createReadProxy';
 import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
@@ -304,22 +305,38 @@ export const createResourceReader = <T, TArgs, R>(source: IResourceSource<T, TAr
             const started = generation;
             const startedArgs = current.args;
             const loading = source.load(startedArgs);
-            // A cache may suppress the first default-only Pending callback. Adopt its present
-            // resolution and loading reads anyway, so a later removal is not absent-to-absent.
-            // The exact absent-to-Pending transition keeps its token for data-only selectors.
-            if (refresh()) notify?.();
-            if (resolution.fieldView === undefined) { void loading; return; }
+            if (resolution.fieldView === undefined) {
+                void loading;
+                if (refresh()) notify?.();
+                return;
+            }
             if (settlement === loading) return;
-            settlement = loading;
-            void loading.then(() => {
+            if (started === generation) settlement = loading;
+            const finish = (superseded: boolean): void => {
                 if (settlement !== loading) return;
                 settlement = undefined;
                 if (started !== generation || !active || !committed) return;
-                if (!resourceReader.rearm(source.resolve(committed.args).view)) return;
+                const settled = source.resolve(committed.args);
+                if (settled.path !== path || (superseded
+                    && (settled.view.status === EResourceStatus.Pending || settled.view.refreshing))) return;
+                if (!resourceReader.rearm(settled.view)
+                    && !(superseded && settled.present === false
+                        && resourceReader.worthFetching(settled.view))) return;
+                // Terminal demand is independent of selected equality. The next effect loads.
                 token = {};
-                committed = {...committed, token};
+                committed = {...committed, resolution: settled, token};
                 notify?.();
+            };
+            // Own both terminal branches before any post-load evaluation can throw.
+            void loading.then(() => finish(false), (error: unknown) => {
+                if (!isCacheSupersededError(error, source, loading)) {
+                    if (settlement === loading) settlement = undefined;
+                    throw error;
+                }
+                finish(true);
             });
+            // Adopt ordinary Pending without changing a data-only selector's lifecycle token.
+            if (refresh()) notify?.();
         },
     };
 };

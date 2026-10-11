@@ -9,6 +9,16 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Round 42: class selections retain committed ownership through suspended transitions.
+  Merged Computed captures preserve every leaf pair, build shared fan-in parts linearly,
+  and apply custom equality to a legitimate `undefined` baseline.
+- Automatic resource readers recover superseded committed demand and own both promise
+  terminal branches without hiding unexpected errors. Class multi-entry loading starts
+  before dependency adoption, preserving the existing one-render cold default contract.
+- Outside-only dictionary selections skip unused enumeration; subscriber matching deduplicates
+  repeated ancestor buckets with lazy match-local backfill, without exact-only metadata.
+  Forty-three permanent R42 benchmark entries join the common runner; original contracts remain.
+
 - React 18 resource SSR uses a server-safe commit effect, while client publication still runs in the
   layout phase. Hydration checks render on real Node without DOM globals before attaching in JSDOM.
 - The native module-function rule reserves only public/protected component override names; former

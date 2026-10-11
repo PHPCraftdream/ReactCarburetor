@@ -138,7 +138,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         }
 
         if (!this[R.isCurrent](key, request)) {
-            rejectRequest(createCacheSupersededError());
+            rejectRequest(createCacheSupersededError(this, promise));
             return promise;
         }
         let answer: Promise<T>;

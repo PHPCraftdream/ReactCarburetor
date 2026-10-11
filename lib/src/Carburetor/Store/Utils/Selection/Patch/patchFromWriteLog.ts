@@ -49,13 +49,16 @@ export const patchFromWriteLog = <R>(
     const paths = pathsSince.call(source, baselineVersion);
     if (paths === undefined) return undefined;
     const outsidePaths: TPath[] = [];
+    let hasInside = false;
     for (const path of paths) {
         if (path === WILDCARD_PATH) return undefined;
         const inside = rootPath === '' || path === rootPath
             || path.startsWith(rootPath + PATH_SEPARATOR);
-        if (!inside) outsidePaths.push(path);
+        if (inside) hasInside = true;
+        else outsidePaths.push(path);
     }
-    const plan = planSelectionPatch(rootPath, paths, shallowSize(previous));
+    // Outside-only writes need no patch budget, but the planner must still reject ancestors.
+    const plan = planSelectionPatch(rootPath, paths, hasInside ? shallowSize(previous) : 0);
     if (plan === undefined) return undefined;
 
     // The raw-target proof applies to outside-root writes only: inside-root changed leaves keep

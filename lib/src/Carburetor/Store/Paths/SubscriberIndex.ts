@@ -171,24 +171,63 @@ export class SubscriberIndex {
         }
 
         const matched = this.wildcard.size > 0 ? new Set<string>(this.wildcard) : new Set<string>();
+        if (writes.size > 1) return this.matchMultiple(writes, matched);
 
+        // Keep the single-write path independent of multi-write backfill bookkeeping.
         for (const writePath of writes) {
             this.collect(this.exact.get(writePath), matched);
             this.collect(this.branch.get(writePath), matched);
-
-            // Ancestors walked in place, longest first, stopping before the root segment: no
-            // ancestors array and no closure per write, just a backward scan for the literal
-            // `.` separator. Safe to scan for: joinPath escapes a real `~` to `~0` and a real
-            // separator to `~1` before ever embedding a key, so every unescaped `.` in a path
-            // string is a genuine segment boundary.
             let cut = writePath.lastIndexOf(PATH_SEPARATOR);
-
             while (cut > 0) {
                 this.collect(this.exact.get(writePath.slice(0, cut)), matched);
                 cut = writePath.lastIndexOf(PATH_SEPARATOR, cut - 1);
             }
         }
+        return matched;
+    }
 
+    /** Matches multi-write buckets without changing the single-write hot path.
+     *
+     * @param writes - closed paths for this publication.
+     * @param matched - wildcard matches and ordered additions.
+     */
+    private matchMultiple(writes: TPathSet, matched: Set<string>): Set<string> {
+        let visited: Set<Set<string>> | undefined;
+        for (const writePath of writes) {
+            const exact = this.exact.get(writePath);
+            if (visited !== undefined && exact instanceof Set) {
+                if (!visited.has(exact)) {
+                    visited.add(exact);
+                    this.collect(exact, matched);
+                }
+            } else {
+                this.collect(exact, matched);
+            }
+            this.collect(this.branch.get(writePath), matched);
+            // Escaped keys contain no literal separator; ancestors are genuine path segments.
+            let cut = writePath.lastIndexOf(PATH_SEPARATOR);
+            while (cut > 0) {
+                const ancestor = this.exact.get(writePath.slice(0, cut));
+                if (ancestor instanceof Set) {
+                    if (visited === undefined) {
+                        visited = new Set<Set<string>>();
+                        // Backfill earlier exact slots once, including the current slot.
+                        for (const path of writes) {
+                            const earlier = this.exact.get(path);
+                            if (earlier instanceof Set) visited.add(earlier);
+                            if (path === writePath) break;
+                        }
+                    }
+                    if (!visited.has(ancestor)) {
+                        visited.add(ancestor);
+                        this.collect(ancestor, matched);
+                    }
+                } else {
+                    this.collect(ancestor, matched);
+                }
+                cut = writePath.lastIndexOf(PATH_SEPARATOR, cut - 1);
+            }
+        }
         return matched;
     }
 

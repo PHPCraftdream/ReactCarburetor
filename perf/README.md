@@ -353,6 +353,49 @@ their required footprint/ledger. Frozen resource runs also fail on the removed i
 the separate public legacy/selector A/B, not that incompatibility, proves the allocation/render gain.
 
 
+### Round 42 — Freshness, committed demand and matching work
+
+Five new manifests add **43 entries** to the existing 253-entry suite; no older manifest
+or threshold is edited. `npm run bench` discovers all **296 entries** without another runner.
+
+| Family | Permanent regression signal |
+|---|---|
+| `computed42/merged-pair-freshness` | Public eager/unobserved values and observed deliveries; complete immutable constituent pairs |
+| `computed42/undefined-equals` | Exact comparator arguments, retained accepted baseline, versions/deliveries and cold/live controls |
+| `computed42/fan-in-part-work@{100,400,1600}-{shared,distinct}` | Actual part-reference traversal/copy ceiling, genuine positive copy/append controls, arithmetic and snapshot invariants |
+| `computed42/fan-in-timing@{100,400,1600}-{shared,distinct}` | Separate uninstrumented complete update+get, 112 timed writes with exact value/delivery checksums |
+| `components42/selection-commit-ownership` | Real suspended class/hook DOM delivery, resume/cancel/source swap, installed reads, equal migration and teardown |
+| `resource42/pre-loader-removal` | Replacement demand without parent rescue; cold class pair remains one render; cancellation between starts must replace before any settlement |
+| `resource42/auto-load-supersession` | Owned expected rejections stay local; caught original promise and unexpected/custom failure visibility remain distinct controls |
+| `selection42/outside-dictionary@{16,128,512,4096,16384}` | Eight outside wakes enumerate zero dictionary keys; selected edits, history/sharing and positive enumeration still work |
+| `subscribe42/common-ancestor@PxN` | Actual filed-bucket member visits and candidate additions equal N, not P×N; independent P/N scales and traversal positive controls |
+| `subscribe42/controls`, `distinct-multi-id@PxN` | Precision/order/refile/retirement; zero exact-only dedup metadata; constructor ceilings and measured exact/ancestor overlap visits |
+
+Timing metrics remain diagnostics rather than tiny machine-specific ceilings. Use the existing
+`perf/harness/ab.mjs` with frozen and current roots for alternating independent process samples.
+The dictionary lane warms **512 complete cycles** before its separate timing window and measures
+a batch of 16 complete cycles (two selected edits plus eight outside wakes). Only this new scenario
+changed its startup calibration; the existing 44 manifests and 253-entry contracts stay unchanged.
+Subscriber lanes measure batches of 32 publications; Computed reports milliseconds per complete
+update+get. Do not compare these different units directly.
+
+Work counters and timing lanes use different fixtures. Constructor and reference counters are
+not heap-byte measurements. Metadata instrumentation uses saved native membership when filtering
+its own probes, asserts one real metadata add/check, resets before charging production, and restores
+all patched methods in `finally`. Parent-first/child-first overlap checks exercise actual filed
+buckets and actual `index.match`; those isolated work checks are not whole-operation latency claims.
+
+The original frozen build must fail freshness/equality/demand or removed-work metrics—not a missing
+API or corrupted fixture. The cold class pair is deliberately a baseline-pass consumer contract.
+Result provenance, actual full-suite checks and limits are in
+[the R42 resolution](../docs/api-engine-review-round-42-2026-10-10.md#resolution--2026-10-11).
+
+The R42 resolution also records actual Windows `InstructionRetired` A/B: 15 accepted, zero-loss
+traces cover the 12 disputed older workloads and three main new optimizations. Hardware recording
+requires explicit elevation and is not part of the portable runner. It counts marked main-thread
+windows, including runtime/boundary overhead—not IR size, allocated bytes or background JIT work.
+All 253 old gate contracts pass; the separate noisy 17 timing flags remain disclosed, not waived.
+
 ## Baseline builds
 
 `node perf/harness/baseline.mjs <ref>` builds any commit's distribution into

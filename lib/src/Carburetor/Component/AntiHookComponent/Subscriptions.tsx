@@ -188,6 +188,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      */
     private [C.buildDescription](entry: IAttemptEntry): IDependencyDescription {
         return {
+            resourcePaths: entry.resourcePaths,
             targetsWanted: entry.targetsWanted,
             carburetor: entry.source, baselineVersion: entry.baselineVersion,
             reads: entry.sharedReads ? entry.reads as unknown as TCompletedReads : completeReads(entry.reads),
@@ -198,17 +199,22 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * Publishes one attempt entry onto a slot's committed description, reusing the existing
      * description object when there is one instead of allocating a fresh one every commit.
      *
-     * Safe to mutate in place: a committed description is read only through `slot.committed`
-     * inside `alignSubscription`, in the same synchronous call that follows this one, and is
-     * never held past it or compared by identity anywhere else.
+     * Description identity survives commits. Deferred resource adoption pairs it with the
+     * render-attempt and registration guards before publishing closed reads.
      *
      * @param slot - the tracked slot or connection being committed
      * @param entry - the attempt's record for the source being committed
      */
     private [C.applyDescription](slot: IDependencySlot, entry: IAttemptEntry): void {
         const description = slot.committed;
+        if (slot.resourceLoads !== undefined) {
+            for (const path of slot.resourceLoads.keys()) {
+                if (!entry.resourcePaths?.has(path)) slot.resourceLoads.delete(path);
+            }
+        }
 
         if (description) {
+            description.resourcePaths = entry.resourcePaths;
             description.targetsWanted = entry.targetsWanted;
             description.carburetor = entry.source;
             description.baselineVersion = entry.baselineVersion;
@@ -337,6 +343,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * @param slot - the slot whose handle to clear
      */
     private [C.releaseSlot](uid: string, slot: IDependencySlot): void {
+        slot.resourceLoads = undefined;
         if (slot.installed) {
             slot.installed.carburetor.unsubscribe(uid);
             slot.installed = undefined;

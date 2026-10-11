@@ -309,6 +309,8 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      */
     private [C.openRenderAttempt](): IRenderAttempt {
         const attempt: IRenderAttempt = {
+            props: this.props,
+            state: this.state,
             tracked: undefined,
             connections: undefined,
             deferredLoads: undefined,
@@ -339,6 +341,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     protected abstract useEffects(): void;
     protected abstract unUseEffects(prevProps: P): void;
     public abstract [C.releaseEffects](): void;
+    public abstract [C.onCarburetorUpdate](): void;
     public abstract [C.commitSubscriptions](): void;
     public abstract [C.releaseSubscriptions](): void;
     public abstract [C.reportTeardownFailure](failure: string): void;

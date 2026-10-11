@@ -63,6 +63,55 @@ class InspectableIndex extends SubscriberIndex {
 }
 
 describe('SubscriberIndex', () => {
+    test('R42 overlapping ancestor buckets preserve first-add order across match-local transitions', () => {
+        const index = new SubscriberIndex();
+        index.add('all', setOf(WILDCARD_PATH));
+        index.add('broad1', setOf('box'));
+        index.add('broad2', setOf('box'));
+        index.add('left', setOf('box.left.n'));
+        index.add('mixed', setOf('box.left', 'box.right.n'));
+        index.add('empty', setOf());
+
+        expect([...index.match(setOf('box.left.n', 'box.left', 'box.right.n'))])
+            .toEqual(['all', 'left', 'mixed', 'broad1', 'broad2']);
+        expect([...index.match(setOf('box', 'box.left.n'))])
+            .toEqual(['all', 'broad1', 'broad2', 'left', 'mixed']);
+        index.add('broad2', setOf('spare.n'));
+        index.add('mixed', setOf('box.right.n'));
+        index.addPath('mixed', 'box.right.flag');
+        index.remove('left');
+        expect([...index.match(setOf('box.left.n', 'box.right.n'))])
+            .toEqual(['all', 'broad1', 'mixed']);
+        index.add('broad3', setOf('box'));
+        expect([...index.match(setOf('box.right.n', 'box.left.n'))])
+            .toEqual(['all', 'mixed', 'broad1', 'broad3']);
+        index.remove('broad1');
+        index.add('mixed', setOf('box.right.flag'));
+        expect([...index.match(setOf('box.left.n', 'box.right.n'))]).toEqual(['all', 'broad3']);
+        expect([...index.match(setOf('box.right', 'spare.n'))])
+            .toEqual(['all', 'mixed', 'broad3', 'broad2']);
+        expect([...index.match(setOf(WILDCARD_PATH))])
+            .toEqual(['all', 'broad2', 'mixed', 'empty', 'broad3']);
+    });
+
+    test.each([false, true])('R42 lazy ancestor backfill preserves overlapping write order (parentFirst=%s)',
+        parentFirst => {
+        const index = new SubscriberIndex();
+        index.add('first', setOf('outside'));
+        index.add('parent1', setOf('box'));
+        index.add('parent2', setOf('box'));
+        index.add('child1', setOf('box.left.n'));
+        index.add('child2', setOf('box.left.n'));
+        const writes = parentFirst
+            ? setOf('outside', 'box', 'box.left.n', 'box.right.n')
+            : setOf('outside', 'box.left.n', 'box', 'box.right.n');
+        const expected = parentFirst
+            ? ['first', 'parent1', 'parent2', 'child1', 'child2']
+            : ['first', 'child1', 'child2', 'parent1', 'parent2'];
+        expect([...index.match(writes)]).toEqual(expected);
+        expect([...index.match(writes)]).toEqual(expected);
+    });
+
     test('matches a write to the path that was read', () => {
         const index = new SubscriberIndex();
 

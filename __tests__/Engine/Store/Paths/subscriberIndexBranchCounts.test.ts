@@ -185,3 +185,135 @@ describe('SubscriberIndex filing differential (R30-09: in-place ancestor walk)',
         expect(ids(index, 'rows.0')).toEqual(['b']);
     });
 });
+
+describe('R42-S02 public subscriber matching', () => {
+    interface IData {
+        box: {left: {n: number}; right: {n: number}};
+        spare: {n: number};
+    }
+    class Store extends Carburetor<IData> {
+        public change(fn: (draft: IData) => void): void { this.update(fn); }
+    }
+    const makeStore = (): Store => new Store({box: {left: {n: 0}, right: {n: 0}}, spare: {n: 0}});
+
+    test.each([false, true])('mixed overlapping writes preserve union through refile/remove and bucket transitions (reverse=%s)', reverse => {
+        const store = makeStore();
+        const calls: string[] = [];
+        const register = (id: string, reads?: string[]): void => {
+            store.subscribe(() => { calls.push(id); }, {id, reads});
+        };
+        const expectWindow = (expected: string[]): void => {
+            expect([...calls].sort()).toEqual([...expected].sort());
+            expect(new Set(calls).size).toBe(calls.length);
+            calls.length = 0;
+        };
+        const siblings = (): void => store.change(d => {
+            if (reverse) { d.box.right.n++; d.box.left.n++; }
+            else { d.box.left.n++; d.box.right.n++; }
+        });
+        const overlapping = (): void => store.change(d => {
+            if (reverse) {
+                d.box.right.n++;
+                d.box.left.n++;
+                d.box.left = {n: d.box.left.n + 1};
+            } else {
+                d.box.left = {n: d.box.left.n + 1};
+                d.box.left.n++;
+                d.box.right.n++;
+            }
+        });
+        register('all');
+        register('broad1', ['box']);
+        register('broad2', ['box']);
+        register('left', ['box.left.n']);
+        register('mixed', ['box.left', 'box.right.n']);
+        register('spare', ['spare.n']);
+        register('empty', []);
+        try {
+            siblings();
+            expectWindow(['all', 'broad1', 'broad2', 'left', 'mixed']);
+            expect(store.getData().box).toEqual({left: {n: 1}, right: {n: 1}});
+            overlapping();
+            expectWindow(['all', 'broad1', 'broad2', 'left', 'mixed']);
+            expect(store.getData().box).toEqual({left: {n: 3}, right: {n: 2}});
+
+            register('broad2', ['spare.n']); // Demote the shared exact bucket.
+            register('mixed', ['box.right.n']); // Drop one shared branch contribution.
+            overlapping();
+            expectWindow(['all', 'broad1', 'left', 'mixed']);
+            store.change(d => { d.spare.n++; });
+            expectWindow(['all', 'spare', 'broad2']);
+            store.unsubscribe('broad1');
+            register('broad3', ['box']);
+            register('broad4', ['box']); // Promote a fresh bucket, not a remembered identity.
+            siblings();
+            expectWindow(['all', 'broad3', 'broad4', 'left', 'mixed']);
+            store.unsubscribe('broad4');
+            store.unsubscribe('left');
+            store.change(d => { d.box.left.n++; });
+            expectWindow(['all', 'broad3']);
+            store.change(d => { d.box = {left: {n: 10}, right: {n: 11}}; d.box.right.n++; });
+            expectWindow(['all', 'broad3', 'mixed']);
+            expect(store.getData().box).toEqual({left: {n: 10}, right: {n: 12}});
+        } finally {
+            for (const id of ['all', 'broad1', 'broad2', 'broad3', 'broad4', 'left', 'mixed', 'spare', 'empty']) {
+                store.unsubscribe(id);
+            }
+        }
+    });
+
+    test('escaped dot and tilde segments do not match lexical lookalikes', () => {
+        class EscapedStore extends Carburetor<{
+            box: {'a.b': {n: number}; 'a~b': {n: number}; a: {b: {n: number}}};
+        }> {
+            public edit(): void { this.update(d => { d.box['a.b'].n++; d.box['a~b'].n++; }); }
+            public nested(): void { this.update(d => { d.box.a.b.n++; }); }
+        }
+        const store = new EscapedStore({box: {'a.b': {n: 0}, 'a~b': {n: 0}, a: {b: {n: 0}}}});
+        const calls: string[] = [];
+        for (const [id, reads] of [
+            ['dot', ['box.a~1b.n']], ['tilde', ['box.a~0b.n']], ['nested', ['box.a.b.n']],
+            ['broad1', ['box']], ['broad2', ['box']],
+        ] as Array<[string, string[]]>) {
+            store.subscribe(() => { calls.push(id); }, {id, reads});
+        }
+        try {
+            store.edit();
+            expect(calls).toEqual(['dot', 'broad1', 'broad2', 'tilde']);
+            calls.length = 0;
+            store.nested();
+            expect(calls).toEqual(['nested', 'broad1', 'broad2']);
+            expect(store.getData().box).toEqual({'a.b': {n: 1}, 'a~b': {n: 1}, a: {b: {n: 1}}});
+        } finally {
+            for (const id of ['dot', 'tilde', 'nested', 'broad1', 'broad2']) store.unsubscribe(id);
+        }
+    });
+
+    test('reentrant publication sees new registrations without inheriting the outer match', () => {
+        const store = makeStore();
+        const calls: string[] = [];
+        let nested = false;
+        store.subscribe(() => {
+            calls.push('all');
+            if (nested) return;
+            nested = true;
+            store.unsubscribe('removed');
+            store.subscribe(() => { calls.push('replacement'); }, {id: 'replaced', reads: ['spare.n']});
+            store.subscribe(() => { calls.push('late'); }, {id: 'late', reads: ['box']});
+            store.change(d => { d.box.left.n++; d.box.right.n++; });
+        }, {id: 'all'});
+        store.subscribe(() => { calls.push('broad'); }, {id: 'broad', reads: ['box']});
+        store.subscribe(() => { calls.push('removed'); }, {id: 'removed', reads: ['box']});
+        store.subscribe(() => { calls.push('old'); }, {id: 'replaced', reads: ['box']});
+        try {
+            store.change(d => { d.box.left.n++; d.box.right.n++; });
+            expect(calls).toEqual(['all', 'all', 'broad', 'late', 'broad']);
+            expect(store.getData().box).toEqual({left: {n: 2}, right: {n: 2}});
+            calls.length = 0;
+            store.change(d => { d.spare.n++; });
+            expect(calls).toEqual(['all', 'replacement']);
+        } finally {
+            for (const id of ['all', 'broad', 'removed', 'replaced', 'late']) store.unsubscribe(id);
+        }
+    });
+});

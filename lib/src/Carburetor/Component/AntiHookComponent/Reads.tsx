@@ -4,11 +4,14 @@ import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
 
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {TPath} from "@/Carburetor/Models/Paths";
+import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {readCoverage} from "@/Carburetor/Store/Paths/Markers/readCoverage";
 import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {IComputed} from "@/Carburetor/Models/Derived";
 import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
+import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {isCacheSupersededError} from "@/Carburetor/Resource/Cache/Reader/isCacheSupersededError";
 import {resourceReader} from "@/Carburetor/Resource/Cache/Reader/resourceReader";
 import {IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
 import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
@@ -178,6 +181,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const view = buildPersistentView(declared);
 
         let snapshot: {value: R} | undefined = undefined;
+        let snapshotAttempt: IRenderAttempt | undefined;
         let escapeReported = false;
         // What the snapshot mirrors, for R36-01's reuse: the live result, its ledger, and whether it is a tree.
         let live: unknown = undefined;
@@ -192,11 +196,15 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const selectionUnchanged = (): boolean => {
             const committed = connection.committed;
 
-            if (snapshot === undefined || committed === undefined || this[C.renderAttempt] !== undefined) {
+            const owner = this[C.committedAttempt];
+            if (snapshot === undefined || committed === undefined || owner === undefined
+                || this[C.renderAttempt] !== undefined || this[C.pendingAttempt] !== owner
+                || snapshotAttempt !== owner || this.props !== owner.props || this.state !== owner.state) {
                 return false;
             }
 
             const version = committed.carburetor.getVersion();
+            if (declared.getCarburetor() !== committed.carburetor) return false;
             const scratch = new Set<TPath>();
             let unchanged = false;
 
@@ -214,7 +222,10 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 declared.scratch = undefined;
             }
 
-            if (!unchanged) {
+            if (!unchanged || this[C.renderAttempt] !== undefined
+                || this[C.pendingAttempt] !== owner || this[C.committedAttempt] !== owner
+                || this.props !== owner.props || this.state !== owner.state
+                || connection.installed === undefined) {
                 return false;
             }
 
@@ -243,12 +254,14 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         };
 
         connection.wake = (): void => {
+            if (connection.installed === undefined) return;
             if (!selectionUnchanged()) {
                 this.forceUpdate();
             }
         };
 
         return (): TReadonly<R> => {
+            snapshotAttempt = this[C.renderAttempt];
             const next: R = select(view);
 
             const previous = snapshot === undefined ? undefined : snapshot.value;
@@ -377,6 +390,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const {path, view, fieldView} = resolution;
         const attempt = this[C.renderAttempt];
         const entry = this[C.track](source);
+        (entry.resourcePaths ??= new Set()).add(path);
         // The shared reader passes this explicit resolution to its field factory; class facades
         // still retain their local overrides and whole-data-field dependency semantics.
         const readerView = resourceReader.view(resolution, (fieldPath) => {
@@ -386,7 +400,6 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             }
         });
         const worthFetching = resourceReader.worthFetching(view);
-
         // The deferred load belongs to the render attempt that queued it, exactly like the reads
         // do: tentative until the commit that consumes the attempt runs it, discarded with an
         // attempt whose render threw. Every call site runs inside render, where an attempt is
@@ -399,23 +412,104 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 }
 
                 attempt.deferredLoads.push(() => {
-                    const loading = source.load(args);
-                    // A custom source keeps the original fire-and-forget load, errors included.
+                    const ownsAttempt = (): boolean => !attempt.abandoned
+                        && this[C.renderAttempt] === undefined && this[C.pendingAttempt] === attempt
+                        && this[C.committedAttempt] === attempt;
+                    const slot = this[C.tracked]?.get(source);
+                    if (!ownsAttempt() || slot?.installed?.carburetor !== source
+                        || slot.committed?.carburetor !== source
+                        || !slot.committed.resourcePaths?.has(path)) return;
+                    const current = source.resolve(args);
+                    if (current.path !== path || !resourceReader.worthFetching(current.view)
+                        || !ownsAttempt() || this[C.tracked]?.get(source) !== slot
+                        || slot.installed?.carburetor !== source
+                        || !slot.committed?.resourcePaths?.has(path)) return;
+                    // Preserve custom-source rejection visibility without allocating terminal metadata.
                     if (fieldView === undefined) {
-                        void loading;
+                        void source.load(args);
                         return;
                     }
-                    void loading.then(() => {
-                        // An invalidation arriving after this load began can survive an equal
-                        // answer without changing any read field. Re-arm after settlement, not
-                        // on loading bookkeeping, and never wake a released subscription.
-                        if (this[C.tracked]?.get(source)?.installed !== undefined) {
-                            const settled = source.resolve(args).view;
-                            if (resourceReader.rearm(settled)) {
-                                this.forceUpdate();
-                            }
+                    const loads = slot.resourceLoads ??= new Map();
+                    const loading = source.load(args);
+                    if (loads.get(path) === loading) return;
+                    if (slot.resourceLoads === loads) loads.set(path, loading);
+                    const finish = (superseded: boolean): void => {
+                        if (slot.resourceLoads !== loads || loads.get(path) !== loading) return;
+                        loads.delete(path);
+                        if (this[C.tracked]?.get(source) !== slot || slot.installed?.carburetor !== source
+                            || slot.committed?.carburetor !== source
+                            || !slot.committed.resourcePaths?.has(path)) return;
+                        const settled = source.resolve(args);
+                        if (this[C.tracked]?.get(source) !== slot || slot.resourceLoads !== loads
+                            || loads.has(path) || slot.installed?.carburetor !== source
+                            || slot.committed?.carburetor !== source
+                            || !slot.committed.resourcePaths?.has(path)
+                            || settled.path !== path || (superseded
+                            && (settled.view.status === EResourceStatus.Pending || settled.view.refreshing))) return;
+                        if (resourceReader.rearm(settled.view)
+                            || (superseded && settled.present === false
+                                && resourceReader.worthFetching(settled.view))) {
+                            this.forceUpdate();
                         }
+                    };
+                    void loading.then(() => finish(false), (error: unknown) => {
+                        if (!isCacheSupersededError(error, source, loading)) {
+                            if (slot.resourceLoads === loads && loads.get(path) === loading) loads.delete(path);
+                            throw error;
+                        }
+                        finish(true);
                     });
+                    // Observe publication at this start, before another queued load can retire it.
+                    // An absent custom load has no lifecycle transition to recover; its rejection
+                    // remains owned by the terminal handler above, not an automatic retry.
+                    const started = source.resolve(args);
+                    const publishedLoading = started.path === path && started.present !== false
+                        && (started.view.status === EResourceStatus.Pending || started.view.refreshing);
+                    // All starts keep the original absent-default wrapper until the entire
+                    // queue has run. Terminal ownership above precedes any adoption failure.
+                    return (): void => {
+                        const committed = slot.committed;
+                        if (!ownsAttempt() || this[C.tracked]?.get(source) !== slot
+                            || slot.installed?.carburetor !== source || committed?.carburetor !== source
+                            || !committed.resourcePaths?.has(path)
+                            || slot.resourceLoads !== loads || loads.get(path) !== loading) return;
+                        const adopted = source.resolve(args);
+                        if (adopted.path !== path || !ownsAttempt()
+                            || this[C.tracked]?.get(source) !== slot
+                            || slot.committed !== committed || slot.installed?.carburetor !== source
+                            || !committed.resourcePaths?.has(path)
+                            || slot.resourceLoads !== loads || loads.get(path) !== loading) return;
+                        // Copy, then close and transfer: never extend a filed closed set.
+                        const reads = new Set(committed.reads);
+                        resourceReader.collect(adopted, read => { reads.add(read); });
+                        const completed = completeReads(reads);
+                        if (!sameReads(slot.installed.reads, completed)) {
+                            source.subscribe(
+                                this[C.onCarburetorUpdate],
+                                transferCompletedReads(completed, this[C.uid])
+                            );
+                            // A source override can reenter while subscribing. Do not publish
+                            // this attempt's handle over a newer commit or a released slot.
+                            if (!ownsAttempt() || this[C.tracked]?.get(source) !== slot
+                                || slot.committed !== committed || slot.installed?.carburetor !== source
+                                || slot.resourceLoads !== loads || loads.get(path) !== loading) return;
+                            slot.installed = {carburetor: source, reads: completed};
+                            committed.reads = completed;
+                        }
+                        // A later start can abort an already-started loader before adoption.
+                        // Filing its Idle status cannot recover the notification already missed;
+                        // its ordinary promise still waits for the retired loader's answer.
+                        const demand = source.resolve(args);
+                        if (!ownsAttempt() || this[C.tracked]?.get(source) !== slot
+                            || slot.committed !== committed || slot.installed?.carburetor !== source
+                            || !committed.resourcePaths?.has(path) || demand.path !== path
+                            || slot.resourceLoads !== loads || loads.get(path) !== loading) return;
+                        if (publishedLoading && demand.view.status !== EResourceStatus.Pending
+                            && !demand.view.refreshing && resourceReader.worthFetching(demand.view)) {
+                            // Schedule a fresh render/commit, never load recursively here.
+                            this.forceUpdate();
+                        }
+                    };
                 });
             } else if (IS_DEVELOPMENT) {
                 diagnostics.report(
@@ -461,8 +555,13 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         }
 
         attempt.deferredLoads = undefined;
-
-        queued.forEach((load: () => void) => load());
+        // Adoption follows every start; custom-only loads allocate no adoption queue.
+        let adoptions: (() => void)[] | undefined;
+        for (const load of queued) {
+            const adopt = load();
+            if (adopt !== undefined) (adoptions ??= []).push(adopt);
+        }
+        if (adoptions !== undefined) for (const adopt of adoptions) adopt();
     }
 
     /**

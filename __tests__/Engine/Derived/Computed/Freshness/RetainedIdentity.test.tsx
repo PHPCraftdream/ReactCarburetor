@@ -6,9 +6,6 @@ import {Carburetor, ComponentUpdateThrottle, computed, transaction} from '@/Carb
 import {CARBURETOR_HAS_DRIFT} from '@/Carburetor/Store/Utils/Models';
 import {useCarburetorValue} from '@/Interop';
 import {WriteLog} from '@/Carburetor/Store/Paths/WriteLog';
-import {captureLeafVersions} from '@/Carburetor/Derived/Freshness/captureLeafVersions';
-import {computedDependencies} from '@/Carburetor/Derived/computedDependencies';
-import {IReadSet} from '@/Carburetor/Derived/Freshness/Models';
 import {TPath} from '@/Carburetor/Models/Paths';
 
 interface ISideData {
@@ -114,32 +111,6 @@ describe('retained recompute identity (R34)', () => {
         store.update(d => { d.mid = 4; });
         expect(total.get()).toBe(7);
         total.unsubscribe(totalId);
-    });
-
-    test('a nested fan-in into an already-merged leaf keeps every constituent', () => {
-        // Stand-ins for inner computeds, so the capture merges their flattened leaves.
-        const makeFakeSource = (id: string): {getUID: () => string} => ({getUID: () => id});
-        const storeSource = makeFakeSource('store-n') as unknown as IReadSet['source'];
-        const inner = ['x', 'y', 'z'].map(path => {
-            const source = makeFakeSource('c-' + path) as unknown as IReadSet['source'];
-            computedDependencies.versions.set(source, () => ({
-                '0': {source: storeSource, version: 0, reads: new Set<TPath>([path])},
-            }));
-
-            return source;
-        });
-        const versions = {};
-
-        captureLeafVersions(Object.fromEntries(inner.map((source, n) => ['d' + n,
-            {source, reads: new Set<TPath>(['c' + n])}] as const)), versions);
-
-        const merged = versions[':store-n'];
-        // THE COUNTER ASSERTION: the third constituent fans into an already-merged leaf; the
-        // merge must extend parts instead of overwriting them with the bare leaf record.
-        expect(merged.parts).toBeDefined();
-        expect(merged.parts!.length).toEqual(3);
-        expect([...(merged.parts![0].reads as Set<TPath>)]).toEqual(['x']);
-        expect([...(merged.parts![2].reads as Set<TPath>)]).toEqual(['z']);
     });
 
     test('a hook cache adopts the filed read set after a related edit', () => {

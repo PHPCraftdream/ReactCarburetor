@@ -43,6 +43,8 @@ export const useResourceValue = <T, TArgs, R>(
     });
     // Publish this exact render's record, not a reader-wide latest speculative slot.
     useCommitEffect(() => { reader.commit(candidate); });
+    // Terminal demand changes the external-store token, not selected value. Keep loading
+    // after every commit (including TTL-only parent commits), never in its notification.
     useEffect(() => { reader.load(); });
     return candidate.value as TReadonly<R>;
 };

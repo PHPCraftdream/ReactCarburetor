@@ -15,23 +15,58 @@ export const captureLeafVersions = (
 ): boolean => {
     let allNative = true;
 
-    const partsOf = (recorded: ILeafVersion): ReadonlyArray<{version: number; reads: ReadonlySet<string>}> =>
-        recorded.parts ?? [{version: recorded.version, reads: recorded.reads as ReadonlySet<string>}];
+    let builders: IDict<{
+        output: ILeafVersion;
+        parts: Array<{version: number; reads: ReadonlySet<string>}>;
+        membership: Map<ReadonlySet<string>, number | Set<number>>;
+    }> | undefined;
 
     const addLeafVersion = (id: string, recorded: ILeafVersion): void => {
         const previous = versions[id];
-        // A merged leaf (parts, no reads) must merge further: a later dependency fanning
-        // into the same leaf, or a nested fan-in, would otherwise drop previous.parts.
-        // reads may be undefined on either side; `undefined !== Set` still merges, and
-        // identity-equal sets fall through to the else branch, which is correct.
+        if (previous === recorded) return;
         if (previous?.source === recorded.source
             && (previous.reads !== undefined || previous.parts !== undefined)
-            && previous.reads !== recorded.reads) {
-            versions[id] = {
-                source: recorded.source, version: recorded.version, data: recorded.data,
-                parts: [...partsOf(previous), ...partsOf(recorded)],
+            && (recorded.reads !== undefined || recorded.parts !== undefined)
+            && (previous.parts !== undefined || recorded.parts !== undefined
+                || previous.reads !== recorded.reads || previous.version !== recorded.version)) {
+            let builder = builders?.[id];
+            const append = (part: {version: number; reads: ReadonlySet<string>}): void => {
+                const captured = builder!.membership.get(part.reads);
+                if (captured === undefined) {
+                    builder!.membership.set(part.reads, part.version);
+                } else if (typeof captured === 'number') {
+                    if (captured === part.version) return;
+                    builder!.membership.set(part.reads, new Set([captured, part.version]));
+                } else {
+                    if (captured.has(part.version)) return;
+                    captured.add(part.version);
+                }
+                builder!.parts.push(part);
             };
+            if (!builder) {
+                const parts: Array<{version: number; reads: ReadonlySet<string>}> = [];
+                builder = {
+                    output: {source: recorded.source, version: recorded.version, data: recorded.data, parts},
+                    parts,
+                    membership: new Map(),
+                };
+                (builders ??= {})[id] = builder;
+                if (previous.parts) {
+                    for (const part of previous.parts) append(part);
+                } else {
+                    append({version: previous.version, reads: previous.reads as ReadonlySet<string>});
+                }
+                versions[id] = builder.output;
+            }
+            if (recorded.parts) {
+                for (const part of recorded.parts) append(part);
+            } else {
+                append({version: recorded.version, reads: recorded.reads as ReadonlySet<string>});
+            }
+            builder.output.version = recorded.version;
+            builder.output.data = recorded.data;
         } else {
+            if (builders) delete builders[id];
             versions[id] = recorded;
         }
     };

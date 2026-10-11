@@ -21,6 +21,8 @@ export interface IDependencyDescription {
     reads: TCompletedReads;
     /** Whether this committed selection needs raw-target proofs. */
     targetsWanted?: boolean;
+    /** Canonical resource entries read by this commit. */
+    resourcePaths?: Set<TPath>;
 }
 
 /**
@@ -58,6 +60,8 @@ export interface IDependencySlot {
     wake?: () => void;
     /** The slot's one ownership of its store's write proofs (R39-04); present only for a patching selection. */
     targets?: TargetsHold;
+    /** Automatic terminal owners, released with the registration. */
+    resourceLoads?: Map<TPath, Promise<void>>;
 }
 
 /**
@@ -144,6 +148,8 @@ export interface IAttemptEntry {
     sharedReads?: boolean;
     /** Tentative proof ownership, published only when this attempt commits. */
     targetsWanted?: boolean;
+    /** Canonical resource entries read by this commit. */
+    resourcePaths?: Set<TPath>;
 }
 
 /**
@@ -161,6 +167,9 @@ export interface IAttemptEntry {
  * `commitSubscriptions` treats an absent collection exactly like an empty one.
  */
 export interface IRenderAttempt {
+    /** Instance configuration read by this attempt's selectors. */
+    props?: unknown;
+    state?: unknown;
     /** `useCarburetor`/`useComputed`/`useResource` entries, keyed by the source read. */
     tracked: Map<ICarburetorSubscription, IAttemptEntry> | undefined;
     /**
@@ -175,8 +184,12 @@ export interface IRenderAttempt {
      * becoming real only if a commit consumes this attempt. An abandoned attempt's queue dies
      * with the attempt, so a render that never committed cannot leave network work behind for a
      * later commit on the same instance to run.
+     *
+     * Each start may return dependency adoption work for a distinct post-start phase, so
+     * adopting one entry cannot prematurely replace the shared absent-default subscription
+     * while another entry's first load is still waiting to start.
      */
-    deferredLoads: (() => void)[] | undefined;
+    deferredLoads: (() => (() => void) | void)[] | undefined;
     /** True when the render threw — an error or a Suspense thenable; a commit will not consume it. */
     abandoned: boolean;
 }
