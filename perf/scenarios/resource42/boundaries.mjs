@@ -37,6 +37,7 @@ export async function checkSelectorBoundary({React, createRoot, api, interop}) {
     await cache.load('x');
     const expected = new Error('selector failed');
     const caught = [];
+    const componentStacks = [];
     const select = () => { throw expected; };
     /** Hook whose selector fails during render. */
     function Hook() {
@@ -47,8 +48,15 @@ export async function checkSelectorBoundary({React, createRoot, api, interop}) {
         state = {failed: false};
         /** Selects the fallback after React captures an error. */
         static getDerivedStateFromError() { return {failed: true}; }
-        /** Retains the actual error identity delivered by React. */
-        componentDidCatch(error) { caught.push(error); }
+        /** Retains the caught error and its public component stack.
+         *
+         * @param error - The caught selector error.
+         * @param info - React's boundary metadata.
+         */
+        componentDidCatch(error, info) {
+            caught.push(error);
+            if (info.componentStack) componentStacks.push(info.componentStack);
+        }
         /** Renders the consumer or the committed error fallback. */
         render() { return this.state.failed ? 'selector-error' : this.props.children; }
     }
@@ -56,10 +64,7 @@ export async function checkSelectorBoundary({React, createRoot, api, interop}) {
     const root = createRoot(container);
     const diagnostics = [];
     const originalError = console.error;
-    console.error = (...args) => {
-        diagnostics.push(args);
-        if (!args.some(value => value === expected)) originalError(...args);
-    };
+    console.error = (...args) => { diagnostics.push(args); };
     try {
         await React.act(async () => root.render(React.createElement(Boundary, null, React.createElement(Hook))));
         assert.equal(container.textContent, 'selector-error');
@@ -68,8 +73,11 @@ export async function checkSelectorBoundary({React, createRoot, api, interop}) {
         try { await React.act(async () => root.unmount()); }
         finally { console.error = originalError; }
     }
-    assert.ok(diagnostics.every(args => args.some(value => value === expected)),
-        'unexpected React diagnostics must not be silenced');
+    const unexpected = diagnostics.filter(args => !args.some(value => value === expected ||
+        (typeof value === 'string' && (value === expected.stack ||
+            componentStacks.some(stack => value.includes(stack))))));
+    for (const args of unexpected) originalError(...args);
+    assert.equal(unexpected.length, 0, 'unexpected React diagnostics must not be silenced');
 }
 
 /** Exercises swap or unmount before a superseded automatic load can start its loader. */

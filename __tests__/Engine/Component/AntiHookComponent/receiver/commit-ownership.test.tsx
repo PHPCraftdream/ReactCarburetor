@@ -49,10 +49,10 @@ describe('R42-A01 committed selection ownership', () => {
         const store = new Store({a: 1, b: 2, boom: false});
         const consumerError = new Error('class selection failed');
         const caught: unknown[] = [];
+        const diagnostics: unknown[][] = [];
+        const componentStacks: string[] = [];
         const originalError = console.error;
-        const errorSpy = rstest.spyOn(console, 'error').mockImplementation((...args: unknown[]) => {
-            if (!args.some(value => value === consumerError)) originalError(...args);
-        });
+        console.error = (...args: unknown[]): void => { diagnostics.push(args); };
         class Owner extends api.AntiHookComponent {
             private readonly pick = this.connectSelection(() => store, data => {
                 if (data.boom) {
@@ -75,6 +75,10 @@ describe('R42-A01 committed selection ownership', () => {
                 return {failed: true};
             }
 
+            public componentDidCatch(_error: unknown, info: React.ErrorInfo): void {
+                if (info.componentStack) componentStacks.push(info.componentStack);
+            }
+
             public render(): React.ReactNode {
                 return this.state.failed ? <p>caught</p> : this.props.children;
             }
@@ -91,7 +95,7 @@ describe('R42-A01 committed selection ownership', () => {
             const installedBeforeThrow = store.installed.length;
             await React.act(async () => store.edit());
             expect(container.textContent).toBe('caught');
-            expect(caught.length).toBeGreaterThan(0);
+            expect(caught).toContain(consumerError);
             for (const error of caught) expect(error).toBe(consumerError);
             expect(store.installed.length).toBe(installedBeforeThrow);
             expect(store.active.size).toBe(0);
@@ -102,10 +106,17 @@ describe('R42-A01 committed selection ownership', () => {
             expect(store.installed.length).toBe(installedBeforeThrow);
             expect(container.textContent).toBe('');
         } finally {
-            await React.act(async () => root.unmount());
-            container.remove();
-            errorSpy.mockRestore();
+            try { await React.act(async () => root.unmount()); }
+            finally {
+                container.remove();
+                console.error = originalError;
+            }
         }
+        const unexpected = diagnostics.filter(args => !args.some(value => value === consumerError ||
+            (typeof value === 'string' && (value === consumerError.stack ||
+                componentStacks.some(stack => value.includes(stack))))));
+        for (const args of unexpected) originalError(...args);
+        expect(unexpected).toEqual([]);
     });
     test.each(['raw', 'hook'])('%s positive retained-DOM control', async kind => {
         await checkOwnership(env, {kind, self: false, resume: true});

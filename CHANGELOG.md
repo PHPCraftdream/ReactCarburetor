@@ -24,6 +24,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   mutation diagnostics remain. No new cleanup, retry or query API is required.
 - 175 permanent R43 benchmark entries join the common runner alongside all 296 original entries.
   Instrumented work and bounded collectibility controls remain separate from completed-operation timing.
+- React 18 error-boundary fixtures capture diagnostics without nested console spies and recognize
+  the boundary's public component stack; unrelated diagnostics still fail instead of being suppressed.
 
 - Round 42: class selections retain committed ownership through suspended transitions.
   Merged Computed captures preserve every leaf pair, build shared fan-in parts linearly,
