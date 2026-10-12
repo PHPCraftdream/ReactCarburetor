@@ -7,14 +7,19 @@ const {useResourceValue} = await load('Interop');
 const hookAvailable = typeof useResourceValue === 'function';
 const {React, flushSync, root, container} = await setupReact();
 const count = 50;
-const drain = async () => {
-    await new Promise(resolve => setTimeout(resolve, 20));
-    flushSync(() => {});
+const drain = async ready => {
+    const deadline = performance.now() + 5000;
+    do {
+        await new Promise(resolve => setImmediate(resolve));
+        flushSync(() => {});
+        if (performance.now() > deadline) throw new Error('resource readers did not commit the expected public state');
+    } while (!ready());
 };
 const run = async kind => {
     const calls = [];
     const pending = [];
     const renders = Array.from({length: count}, () => 0);
+    const expectedText = Array.from({length: count}, (_, id) => `user ${id}`).join('');
     const cache = new ResourceCache(id => {
         calls.push(id);
         const request = Promise.withResolvers();
@@ -22,10 +27,13 @@ const run = async kind => {
         return request.promise;
     }, {ttl: Infinity, maxEntries: Infinity});
     const settle = async start => {
+        const completions = [];
         for (let index = start; index < pending.length; index++) {
+            completions.push(cache.load(calls[index]));
             pending[index].resolve({id: calls[index], name: `user ${calls[index]}`, other: 0});
         }
-        await drain();
+        await Promise.all(completions);
+        await drain(() => container.textContent === expectedText && renders.every(value => value >= 2));
     };
     class ClassReader extends AntiHookComponent {
         render() {
@@ -43,21 +51,20 @@ const run = async kind => {
     const Reader = kind === 'class' ? ClassReader : HookReader;
     flushSync(() => root.render(React.createElement('div', null,
         ...renders.map((_, id) => React.createElement(Reader, {key: id, id})))));
-    await drain();
+    await drain(() => calls.length === count);
     await settle(0);
     const mountRenders = Math.max(...renders);
     const mountUniform = renders.every(value => value === mountRenders);
     const initialText = container.textContent;
     renders.fill(0);
     flushSync(() => cache.invalidateAll());
-    await drain();
+    await drain(() => calls.length === count * 2 && renders.every(value => value >= 1));
     const refetches = calls.length - count;
     const refreshText = container.textContent;
     await settle(count);
     const refreshRenders = Math.max(...renders);
     const refreshUniform = renders.every(value => value === refreshRenders);
     const textUnchanged = initialText === refreshText && initialText === container.textContent;
-    const expectedText = Array.from({length: count}, (_, id) => `user ${id}`).join('');
     const textCorrect = initialText === expectedText && container.textContent === expectedText;
     const correct = mountUniform && refreshUniform && textUnchanged && textCorrect
         && calls.length === count * 2 && calls.every((id, index) => id === index % count);

@@ -1,6 +1,6 @@
 "use client";
 
-import {useCallback, useLayoutEffect, useRef, useSyncExternalStore} from "react";
+import {useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore} from "react";
 import {IReadableCarburetor, TReadonly, TSubscriber} from "@/Carburetor";
 import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
@@ -17,6 +17,8 @@ import {readCoverage} from "@/Carburetor/Store/Paths/Markers/readCoverage";
 import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {TSelector, TValueComparator} from "./Models";
+
+const useCommitEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 interface ICacheEntry<T extends object, R> {
     carburetor: IReadableCarburetor<T> | undefined;
@@ -354,14 +356,14 @@ export const useCarburetorValue = <T extends object, R>(
     // Capture now rather than in the effect, where a later abandoned attempt could overwrite the cache.
     // oxlint-disable-next-line react/refs
     const wantsTargets = cache.current?.copies !== undefined;
-    useLayoutEffect(() => {
+    useCommitEffect(() => {
         // Capture this render's verdict: notifications cannot publish an abandoned render's ledger.
         if (wantsTargets) (targets.current ??= new TargetsHold()).sync(carburetor);
         else targets.current?.sync(undefined);
         install();
         return () => { targets.current?.sync(undefined); };
     }, [carburetor, wantsTargets, install]);
-    useLayoutEffect(() => { install(); });
+    useCommitEffect(() => { install(); });
 
     return result;
 };

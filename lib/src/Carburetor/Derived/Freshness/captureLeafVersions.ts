@@ -19,6 +19,8 @@ export const captureLeafVersions = (
         output: ILeafVersion;
         parts: Array<{version: number; reads: ReadonlySet<string>}>;
         membership: Map<ReadonlySet<string>, number | Set<number>>;
+        firstMerged?: ILeafVersion;
+        merged?: Set<ILeafVersion>;
     }> | undefined;
 
     const addLeafVersion = (id: string, recorded: ILeafVersion): void => {
@@ -49,6 +51,7 @@ export const captureLeafVersions = (
                     output: {source: recorded.source, version: recorded.version, data: recorded.data, parts},
                     parts,
                     membership: new Map(),
+                    firstMerged: previous.parts !== undefined ? previous : undefined,
                 };
                 (builders ??= {})[id] = builder;
                 if (previous.parts) {
@@ -59,7 +62,18 @@ export const captureLeafVersions = (
                 versions[id] = builder.output;
             }
             if (recorded.parts) {
-                for (const part of recorded.parts) append(part);
+                if (builder.firstMerged !== recorded && !builder.merged?.has(recorded)) {
+                    for (const part of recorded.parts) append(part);
+                    if (builder.firstMerged === undefined) {
+                        builder.firstMerged = recorded;
+                    } else {
+                        if (builder.merged === undefined) {
+                            builder.merged = new Set();
+                            builder.merged.add(builder.firstMerged);
+                        }
+                        builder.merged.add(recorded);
+                    }
+                }
             } else {
                 append({version: recorded.version, reads: recorded.reads as ReadonlySet<string>});
             }

@@ -211,7 +211,7 @@ const reconcileKeyed = (
             // also proves `result` is the defined copy to write into.
             const copy = result;
             if (copy !== undefined) assign(copy, key, childResult);
-        } else if (childResult !== found.value || isClassInstance(childLive)) {
+        } else if (!Object.is(childResult, found.value) || isClassInstance(childLive)) {
             changed = true;
             assign(ensure(), key, childResult);
         } else if (result !== undefined) assign(result, key, childResult);
@@ -326,7 +326,7 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
                 cycleEntries.push({index: densePrefix, value: childPrevious, raw: rawOf(childLive)});
             }
         } else childResult = Object.is(childPrevious, childLive) ? childPrevious : childLive;
-        if (childResult !== previous[densePrefix] || isClassInstance(childLive)) {
+        if (!Object.is(childResult, previous[densePrefix]) || isClassInstance(childLive)) {
             changed = true;
             ensure()[densePrefix] = childResult;
         } else if (hasNext && result !== undefined) {
@@ -380,7 +380,7 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
                     cycleEntries.push({index: Number(freshKey), value: childPrevious, raw: rawOf(childLive)});
                 }
             } else childResult = Object.is(childPrevious, childLive) ? childPrevious : childLive;
-            if (childResult !== previous[Number(previousKey)] || isClassInstance(childLive)) {
+            if (!Object.is(childResult, previous[Number(previousKey)]) || isClassInstance(childLive)) {
                 changed = true; ensure()[Number(freshKey)] = childResult;
             } else if (result !== undefined) ensure()[Number(freshKey)] = childResult;
             previousIndex++; freshIndex++;

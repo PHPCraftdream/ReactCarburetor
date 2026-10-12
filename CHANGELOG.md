@@ -9,6 +9,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Round 43: selection content gates consistently use SameValue, delivering signed-zero changes
+  and suppressing cancelled NaN edits without changing Map/Set key or member semantics.
+- Unobserved Computed equality acceptance rolls back value, revision and freshness on failure,
+  including reentrant reads. Borrowed merged captures scan one identical group once; successful
+  observed equal migrations advance dependency checkpoints without deliveries or value changes.
+- Scalar-only history batches skip impossible owned-target folding searches. Native alias answers
+  use root-first weak ownership, preserving topology generations, hidden aliases and getter avoidance.
+- Closed class render routes release transient attempts while keeping cached views and legitimate
+  committed ownership. Bound recorders retain this isolation after production minification.
+  Store hooks use passive server effects and retain both client layout reconciliation boundaries.
+- Resource cancellation releases the eviction skip hint only for a surviving unretained request.
+  Object key memoization no longer strongly owns argument graphs; canonical keys and development
+  mutation diagnostics remain. No new cleanup, retry or query API is required.
+- 175 permanent R43 benchmark entries join the common runner alongside all 296 original entries.
+  Instrumented work and bounded collectibility controls remain separate from completed-operation timing.
+
 - Round 42: class selections retain committed ownership through suspended transitions.
   Merged Computed captures preserve every leaf pair, build shared fan-in parts linearly,
   and apply custom equality to a legitimate `undefined` baseline.

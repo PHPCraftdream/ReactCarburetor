@@ -9,6 +9,12 @@ one command.
 
 ## Running
 
+The `hooks43` SSR gates exercise React 18 and 19. Prepare the other major once with
+`npm run test:consumers`: its `.consumer-matrix/react18-npm` or `react19-npm` cell must sit
+beside the real repository `node_modules` directory. The matching root major is reused directly.
+Scenarios do not install dependencies; temporary bundle copies require writable OS temporary
+storage and directory-junction/symlink support. Intentional SSR-positive warnings are forwarded.
+
 ```bash
 npm run build && npm run bench            # whole suite on the current build (dist/esm-prod)
 npm run bench -- --only history           # entries whose id or area contains the substring
@@ -536,6 +542,41 @@ see [Baseline builds](#baseline-builds) and the [audit resolution](../docs/perf-
 | `subscribe/reads-copy@4k-copy-control` | R6-04 (`control`) | internal copies 0; public and intentional copies detected; no historical separation | — |
 
 Remaining exceptions: #14 and #21b/#21d stay B (no mechanism separates the builds, or the guard is a control); #25 is partial and stays D; #27b stays D (time/model only). #17 closes JS-R15-04 only; JS-R15-05 is guarded by `subscribe/three-path-buckets@4k`. Class counts and per-claim evidence are in the Resolution of `docs/perf-coverage-audit-2026-10-08.md`.
+
+## Round 43
+
+Seven automatically discovered families add **175 entries**: the unfiltered common runner now
+checks **471 entries**, including all **296 original contracts**. The final combined three-sample
+run passed with zero violations; no original gate ID, arguments or threshold was weakened.
+
+| Family | Entries | Guarded consumer-visible mechanism |
+|---|---:|---|
+| `computed43` | 81 | Atomic equality recovery, borrowed-group membership work, equal-migration collectibility |
+| `selection43` | 13 | Complete SameValue delivery/replay matrix, fresh dense/sparse projections, cancelled spine/callback work |
+| `history43` | 64 | Scalar fold-search work across publication/size axes, owned endpoint and replay controls |
+| `aliases43` | 4 | Retired root/payload collectibility, hidden alias/getter/backlink precision, warm operation controls |
+| `components43` | 5 | Closed-route props collectibility, same-source and abandoned attempts, exact lifecycle and warm reuse |
+| `hooks43` | 4 | React18/19 SSR diagnostics, genuine graph target ownership, both pre-passive client boundaries |
+| `resource43` | 4 | Deferred cancellation eviction, argument graph collectibility, canonical serialization/LRU and lookup controls |
+
+Frozen production baseline: `90a1c6041c2d`; permanent common gates run ESM production.
+Direct four-format proofs use format-aware standalone children; the existing common runner's
+ESM entry guard is unchanged. Scoped source/copy mutations reject each removed mechanism and
+are immediately restored; GC uses bounded job boundaries without allocation pressure.
+
+Work gains are literal observations, not heap-byte claims: K8/M8 borrowed probes **64→8**;
+P64 coalesced scalar history verdict visits **2016→0**; live caches release **5/5** argument
+roots/subtrees. Timings are separate completed operations with exact values/checksums.
+Full original-baseline A/B keeps the existing 25% comparison threshold and preserves all flags.
+Hardware InstructionRetired results and their attribution limits belong in the
+[R43 resolution](../docs/api-engine-review-round-43-2026-10-11.md), not inferred constructor savings.
+Nine-sample confirmations and an identical-build A/A control preserve noisy timing alerts;
+the latter also flags unchanged code. Passing work/behavior gates is not a universal
+zero-latency/CPU-regression claim; the resolution keeps full ranges and collection limits.
+
+The legacy `resource40/hook-renders` fixture now joins real load promises and waits for observable
+React phases instead of assuming a 20ms timer means a commit. Its render, loader and value
+assertions are unchanged; five samples passed on each build before the final common sweep.
 
 ## Outside the suite
 

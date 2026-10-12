@@ -55,7 +55,7 @@ const createCollectionReconciler = () => {
             const child = ctx.reconcile(previousValue, liveValue, ctx.rawOf(liveValue), ctx);
             if (ctx.cycleCount !== cycleBefore) cycleEntries.push({key: previousKey, value: previousValue,
                 raw: ctx.rawOf(liveValue)});
-            if (child !== previousValue || ctx.isClassInstance(liveValue)) changed = true;
+            if (!Object.is(child, previousValue) || ctx.isClassInstance(liveValue)) changed = true;
             copy.set(previousKey, child);
         });
         while (true) {

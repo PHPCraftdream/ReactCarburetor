@@ -14,6 +14,7 @@ import {cloneOwnedGraph as own} from "@/Carburetor/Store/Utils/Graph/cloneOwnedG
 import {IReplayAttempt} from './Graph/IReplayAttempt';
 import {sameHistoryGraph} from "./Graph/sameHistoryGraph";
 import {isSafeScalarPatch} from './Graph/isSafeScalarPatch';
+import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
 import {sameExistingScalarPath} from './Graph/sameExistingScalarPath';
 /** One change recorded as the patches to invert it — the fast path (R16-07). */
 interface IPatchesEntry {
@@ -89,6 +90,7 @@ export class CarburetorHistory<T extends object> {
     protected dispose: TDisposer;
     /** Patches collected since the last flush; turned into an entry by record(). */
     protected pendingPatches: IWritePatch[] = [];
+    /** Pending owned endpoints may fold later writes. */ private pendingPossibleOwnedTarget: boolean = false;
     /** Whether the pending change contains a write the proxy could not describe. */
     protected pendingOpaque: boolean = false;
     /** The pending publication requires adoption of the exact owned endpoint on replay. */
@@ -248,6 +250,7 @@ export class CarburetorHistory<T extends object> {
         this.baselineContainsRestricted = capture.restricted;
         this.baselineShared = false;
         this.pendingPatches = [];
+        this.pendingPossibleOwnedTarget = false;
         this.pendingOpaque = false;
         this.pendingOwnedReplay = false;
         if (this.pendingReplayOwner !== undefined) this.replayAttempts.delete(this.pendingReplayOwner);
@@ -284,7 +287,8 @@ export class CarburetorHistory<T extends object> {
 
         if ((patch.previous === null || typeof patch.previous !== 'object') &&
             (patch.next === null || typeof patch.next !== 'object')) {
-            if (!foldDependentPatch(this.pendingPatches, patch)) this.pendingPatches.push(patch);
+            if (!this.pendingPossibleOwnedTarget || !foldDependentPatch(this.pendingPatches, patch))
+                this.pendingPatches.push(patch);
             return;
         }
 
@@ -310,7 +314,10 @@ export class CarburetorHistory<T extends object> {
             this.pendingOpaque = true;
             return;
         }
-        if (!foldDependentPatch(this.pendingPatches, ownedPatch)) this.pendingPatches.push(ownedPatch);
+        if (!this.pendingPossibleOwnedTarget || !foldDependentPatch(this.pendingPatches, ownedPatch)) {
+            this.pendingPatches.push(ownedPatch);
+            if (ownedPatch.nextExists && isTrackable(ownedPatch.next)) this.pendingPossibleOwnedTarget = true;
+        }
     }
 
     /** Advances the owned mirror to the source's installed wire representation. */
@@ -336,6 +343,7 @@ export class CarburetorHistory<T extends object> {
                 this.replayAttempts.delete(fact.owner);
             } else this.reconcileBaseline();
             this.pendingPatches = [];
+            this.pendingPossibleOwnedTarget = false;
             this.pendingOpaque = false;
             this.pendingOwnedReplay = false;
             return;
@@ -351,6 +359,7 @@ export class CarburetorHistory<T extends object> {
             if (customReplay) {
                 this.reconcileBaseline();
                 this.pendingPatches = [];
+                this.pendingPossibleOwnedTarget = false;
                 this.pendingOpaque = false;
                 this.pendingOwnedReplay = false;
                 return;
@@ -360,6 +369,7 @@ export class CarburetorHistory<T extends object> {
 
         const entry = this.buildEntry(fact);
         this.pendingPatches = [];
+        this.pendingPossibleOwnedTarget = false;
         this.pendingOpaque = false;
         this.pendingOwnedReplay = false;
         if (entry === undefined) return;

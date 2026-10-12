@@ -10,6 +10,7 @@ import {
     IConnection,
     IRenderAttempt,
     ITrackedCarburetor,
+    ITrackedView,
 } from "@/Carburetor/Component/Models/Connection";
 import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
 import {renderOwner} from "@/Carburetor/Derived/renderOwner";
@@ -67,6 +68,9 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      * its committed description — ending the subscription; the declaration stays reusable.
      */
     public [C.connections]: IConnection[] = [];
+
+    /** `useCarburetor`'s per-carburetor root views, created on first use; see buildTrackedView. */
+    protected [C.trackedViews]: WeakMap<ICarburetorSubscription, ITrackedView<object>> | undefined;
 
     /** The render attempt currently open, if any; recorders write only while this is set. */
     public [C.renderAttempt]: IRenderAttempt | undefined = undefined;
@@ -334,6 +338,17 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     private [C.closeRenderAttempt](attempt: IRenderAttempt): void {
         this[C.pendingAttempt] = attempt;
         this[C.renderAttempt] = undefined;
+
+        const views = this[C.trackedViews];
+        if (views !== undefined && attempt.tracked !== undefined) {
+            for (const [source, entry] of attempt.tracked) {
+                const tracked = views.get(source);
+                if (tracked?.attempt === attempt && tracked.entry === entry) {
+                    tracked.attempt = undefined;
+                    tracked.entry = undefined;
+                }
+            }
+        }
     }
 
 

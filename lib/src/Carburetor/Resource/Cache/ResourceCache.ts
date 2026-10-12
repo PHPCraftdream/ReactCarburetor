@@ -74,8 +74,8 @@ const validateOptions = (options: IResourceCacheOptions): IResourceCacheOptions 
  */
 export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TArgs>
     implements IResourceSource<T, TArgs> {
-    /** Most recently keyed arguments. */
-    public [R.lastKeyArgs]: TArgs | undefined = undefined;
+    /** Weak development-only arguments identity. */
+    private [R.lastKeyArgsRef]: WeakRef<object> | undefined = undefined;
     /** Serialized value of the most recently keyed arguments. */
     public [R.lastKeyJson]: string | undefined = undefined;
     /** Cache key derived from the most recently keyed arguments. */
@@ -244,7 +244,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
     }
 
     /**
-     * The key an argument set is stored under, memoized while both reference and JSON are unchanged.
+     * Serialized key memo; development mutation diagnostics retain only a weak identity.
      *
      * @param args - the loader arguments to derive the key from
      */
@@ -254,16 +254,17 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
         if (primed !== undefined) return primed.key;
 
         const json = JSON.stringify(args === undefined ? null : args) as string;
-        const memoized = this[R.lastKeyArgs] === args && this[R.lastKeyValue] !== undefined;
-
-        if (memoized && this[R.lastKeyJson] === json && this[R.lastKeyValue] !== undefined) {
+        const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+        const sameReference = development && this[R.lastKeyArgsRef]?.deref() === args &&
+            this[R.lastKeyValue] !== undefined;
+        const unchanged = this[R.lastKeyJson] === json && this[R.lastKeyValue] !== undefined;
+        if (unchanged && !development) {
+            this[R.lastKeyArgsRef] = undefined;
             return this[R.lastKeyValue]!;
         }
+        const key = unchanged ? this[R.lastKeyValue]! : escapeCacheKey(json);
 
-        const key = escapeCacheKey(json);
-        const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
-
-        if (memoized && development && !this[R.keyMutationReported]) {
+        if (sameReference && !unchanged && !this[R.keyMutationReported]) {
             this[R.keyMutationReported] = true;
 
             diagnostics.report(
@@ -273,7 +274,10 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
             );
         }
 
-        this[R.lastKeyArgs] = args;
+        this[R.lastKeyArgsRef] = development && args !== null &&
+            (typeof args === 'object' || typeof args === 'function')
+            ? sameReference ? this[R.lastKeyArgsRef] : new WeakRef(args as object)
+            : undefined;
         this[R.lastKeyJson] = json;
         this[R.lastKeyValue] = key;
 

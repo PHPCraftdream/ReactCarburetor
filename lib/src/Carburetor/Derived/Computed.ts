@@ -270,9 +270,9 @@ export class Computed<R> implements IComputed<R> {
             return source.get();
         };
 
-        const previous = this[C.value];
         const hadValue = this[C.valid] || Object.keys(this[C.versions]).length > 0;
-        const oldVersions = this[C.versions];
+        const acceptance = this as unknown as Parameters<typeof announceIsUnchanged.capture<R>>[0];
+        const baseline = wasUnobserved && hadValue ? announceIsUnchanged.capture(acceptance) : undefined;
         let value: R;
         try {
             value = this[C.body](track as TComputedReader);
@@ -283,19 +283,8 @@ export class Computed<R> implements IComputed<R> {
             throw error;
         }
         computedDependencies.publishActiveReads(this[C.dependencies], this[C.activeReads], this[C.readSlots]);
-        this[C.value] = value;
-        this[C.valid] = true;
 
-        // Before observation no dependency can announce a change to an already-rendered
-        // value. A stable exotic result may have changed in place.
-        const dependenciesMoved = wasUnobserved && hadValue && driftedSince(oldVersions, this[C.versions]);
-        if (dependenciesMoved) {
-            if (announceIsUnchanged(previous, hadValue, value, true, this[C.options].equals)) {
-                this[C.value] = previous as R;
-            } else {
-                this[C.snapshotRevision]++;
-            }
-        }
+        announceIsUnchanged.accept(acceptance, baseline, value);
     }
 
     /** Creates a persistent recorder without capturing an evaluation's lexical environment.
@@ -545,13 +534,14 @@ export class Computed<R> implements IComputed<R> {
 
         const announcement = this[C.announced];
         const moved = announcement !== undefined && driftedSince(announcement.versions, this[C.versions]);
-        const unchanged = announceIsUnchanged(
+        const unchanged = announceIsUnchanged.unchanged(
             announcement !== undefined ? announcement.value : previous, announcement !== undefined,
             this[C.value] as R, moved, this[C.options].equals
         );
         if (generation !== this[C.observationGeneration] || this[C.subscribers].size === 0) return;
         if (unchanged) {
             this[C.value] = announcement !== undefined ? announcement.value : previous;
+            this[C.announced] = {value: this[C.value] as R, versions: this[C.versions]};
             return;
         }
 

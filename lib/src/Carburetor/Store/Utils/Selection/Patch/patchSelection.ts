@@ -60,7 +60,7 @@ export const patchSelection = <R>(
         for (const [key, child] of node.children) {
             if (!hasOwn.call(before, key)) throw new PatchFallback();
             const next = apply(before[key], Reflect.get(now, key), child);
-            if (next === before[key]) continue;
+            if (Object.is(next, before[key])) continue;
             copy ??= cloneSpine(before);
             copy[key] = next;
         }

@@ -36,8 +36,8 @@ export class R {
     public static readonly keyMutationReported = Symbol("resource.keyMutationReported");
     /** Internal keyOf slot. */
     public static readonly keyOf = Symbol("resource.keyOf");
-    /** Internal lastKeyArgs slot. */
-    public static readonly lastKeyArgs = Symbol("resource.lastKeyArgs");
+    /** Internal lastKeyArgsRef slot. */
+    public static readonly lastKeyArgsRef = Symbol("resource.lastKeyArgsRef");
     /** Internal lastKeyJson slot. */
     public static readonly lastKeyJson = Symbol("resource.lastKeyJson");
     /** Internal lastKeyValue slot. */

@@ -121,7 +121,7 @@ export const watchSelection = <T, R>(
         }
         liveSelection = fresh.value;
         version = nowVersion;
-        const changed = next !== previous;
+        const changed = !Object.is(next, previous);
         const last = previous;
         if (changed) previous = next;
         fresh.value = previous;

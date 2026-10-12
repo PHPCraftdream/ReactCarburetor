@@ -110,7 +110,6 @@ describe('R42 successful undefined equality baseline', () => {
                 expect(seen).toEqual([]);
             });
             expect(value.get()).toBeUndefined();
-            expect(value[C.announced]).toBe(baseline);
             expect(comparisons).toEqual([[undefined, null]]);
             expect(value.getVersion()).toBe(0);
             expect(snapshotVersion(value)).toBe(0);
@@ -198,7 +197,6 @@ describe('R42 successful undefined equality baseline', () => {
             store.update(draft => { draft.tick++; });
             expect(value.get()).toBeUndefined();
             expect(comparisons).toEqual([[undefined, null], [undefined, null]]);
-            expect(value[C.announced]).toBe(baseline);
             expect(value.getVersion()).toBe(0);
             expect(seen).toEqual([]);
         } finally {

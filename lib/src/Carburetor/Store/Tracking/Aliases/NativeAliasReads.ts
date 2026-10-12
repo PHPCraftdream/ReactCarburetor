@@ -3,15 +3,16 @@ import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {nativeAliasIndex} from "./NativeAliasIndex";
 
-/** Cached alias answer for one opaque value, valid for one root at one index generation. */
+/** Cached alias answer owned by one weak root, valid at one index generation. */
 interface IAliasAnswer {
-    root: object;
     generation: number;
     wildcard: boolean;
     paths: string[];
 }
 
-const answers = new WeakMap<object, IAliasAnswer>();
+// Root-first ephemeron ownership: a caller-held native must not keep a retired root alive.
+// Answers contain only generation/path data, never the root or exposed graph objects.
+const answers = new WeakMap<object, WeakMap<object, IAliasAnswer>>();
 
 /** Inspect own data only: never invoke getters, including non-enumerable/symbol fields. */
 const hasObjectData = (value: object, keys: readonly (string | symbol)[]): boolean => {
@@ -44,8 +45,13 @@ export const recordNativeAliasReads = (
 ): void => {
     if (native === null || typeof native !== 'object') return;
     const generation = nativeAliasIndex.generation(root);
-    const cached = answers.get(native);
-    if (cached !== undefined && cached.root === root && cached.generation === generation) {
+    let rootAnswers = answers.get(root);
+    if (rootAnswers === undefined) {
+        rootAnswers = new WeakMap<object, IAliasAnswer>();
+        answers.set(root, rootAnswers);
+    }
+    const cached = rootAnswers.get(native);
+    if (cached !== undefined && cached.generation === generation) {
         if (cached.wildcard) record(WILDCARD_PATH);
         else for (const path of cached.paths) record(path);
         return;
@@ -54,10 +60,10 @@ export const recordNativeAliasReads = (
     // A negative answer is generation-scoped, not permanent: in-place object additions
     // must become visible after topology changes. Dates are not unconditionally leaves.
     if (isScalarLeaf(native)) {
-        if (cached !== undefined && cached.root === root && !cached.wildcard && cached.paths.length === 0) {
+        if (cached !== undefined && !cached.wildcard && cached.paths.length === 0) {
             cached.generation = generation;
         } else {
-            answers.set(native, {root, generation, wildcard: false, paths: []});
+            rootAnswers.set(native, {generation, wildcard: false, paths: []});
         }
         return;
     }
@@ -96,7 +102,7 @@ export const recordNativeAliasReads = (
             if (aliases !== undefined) paths.push(...aliases);
         }
     }
-    answers.set(native, {root, generation, wildcard, paths});
+    rootAnswers.set(native, {generation, wildcard, paths});
     if (wildcard) record(WILDCARD_PATH);
     else for (const path of paths) record(path);
 };

@@ -5,6 +5,25 @@ import {IAttemptEntry, IRenderAttempt, ITrackedView} from "@/Carburetor/Componen
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 
 /**
+ * Records against the mutable route, without closing over the proxy-creation call.
+ * Binding only these stable arguments prevents production factory inlining from
+ * sharing a lexical context with the non-trackable recorder's attempt and entry.
+ *
+ * @param getRenderAttempt - the owner's current render attempt
+ * @param tracked - the reusable route, cleared when its render closes
+ * @param path - the observed path
+ */
+function recordTrackedPath<T extends object>(
+    getRenderAttempt: () => IRenderAttempt | undefined,
+    tracked: ITrackedView<T>,
+    path: TPath
+): void {
+    if (tracked.attempt !== undefined && getRenderAttempt() === tracked.attempt) {
+        tracked.entry?.reads.add(path);
+    }
+}
+
+/**
  * `useCarburetor`'s root view for one carburetor: one read proxy reused across renders while the
  * data object stays the same, rebuilt when it changes. A non-trackable root is never cached.
  *
@@ -40,18 +59,17 @@ export const buildTrackedView = <T extends object>(
 
     if (cached !== undefined && cached.data === data) {
         cached.attempt = attempt;
-        cached.entry = entry;
+        cached.entry = attempt === undefined ? undefined : entry;
 
         return cached.view;
     }
 
-    const tracked: ITrackedView<T> = {data, view: undefined as unknown as TReadonly<T>, attempt, entry};
+    const tracked: ITrackedView<T> = {
+        data, view: undefined as unknown as TReadonly<T>, attempt,
+        entry: attempt === undefined ? undefined : entry,
+    };
 
-    tracked.view = carburetor.read((path: TPath) => {
-        if (tracked.attempt !== undefined && getRenderAttempt() === tracked.attempt) {
-            (tracked.entry as IAttemptEntry).reads.add(path);
-        }
-    });
+    tracked.view = carburetor.read(recordTrackedPath.bind(undefined, getRenderAttempt, tracked));
 
     views.set(carburetor, tracked as unknown as ITrackedView<object>);
 

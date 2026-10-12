@@ -23,7 +23,6 @@ import {
     IConnection,
     IConnectionSource,
     IRenderAttempt,
-    ITrackedView,
 } from "@/Carburetor/Component/Models/Connection";
 import {buildTrackedView} from "@/Carburetor/Component/AntiHookComponent/buildTrackedView";
 import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersistentView";
@@ -43,9 +42,6 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * owns connection re-filing; declared here because the equal-value wake path below calls it.
      */
     public abstract [C.migrateConnectionReads](connection: IConnection, reads: TCompletedReads, version: number): void;
-
-    /** `useCarburetor`'s per-carburetor root views, created on first use; see buildTrackedView. */
-    private [C.trackedViews]: WeakMap<ICarburetorSubscription, ITrackedView<object>> | undefined;
 
     /** Live accessor for the recorder built into a cached view, whose call site is long gone. */
     private readonly [C.getRenderAttempt] = (): IRenderAttempt | undefined => this[C.renderAttempt];

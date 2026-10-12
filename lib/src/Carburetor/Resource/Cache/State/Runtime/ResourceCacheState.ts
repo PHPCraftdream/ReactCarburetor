@@ -442,9 +442,13 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         const runtime = this[R.runtimeFor](key);
         const request = runtime?.request;
         if (!runtime || !request) return;
+        const state = this.data;
+        const originalEntry = state.entries[key];
         runtime.request = undefined;
         request.controller.abort();
-        if (this[R.hasRequest](key)) return;
+        if (this.data !== state || this.data.entries[key] !== originalEntry ||
+            this[R.runtimeFor](key) !== runtime || runtime.generation !== request.generation ||
+            this[R.hasRequest](key)) return;
 
         const entry = this.data.entries[key];
         if (!entry || (entry.status !== EResourceStatus.Pending && !entry.refreshing)) {
@@ -459,6 +463,11 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
                 draft.entries[key].failed ||= retryFailed;
             });
         } finally {
+            if (originalEntry && this.data === state && this.data.entries[key] === originalEntry &&
+                this[R.runtimeFor](key) === runtime && runtime.generation === request.generation &&
+                this[R.isRetentionFree](key)) {
+                this[R.eviction].release();
+            }
             this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
         }
     }
