@@ -587,9 +587,10 @@ unpublished-draft diagnostic, which only exists in development builds — it req
 
 ## GitHub Actions
 
-Known limit: `selection44/array-spine-prototype` counts JS-level `hasOwnProperty`/`Reflect.ownKeys` calls, so it proves the spine copier
-adds no per-slot JS loop; the intrinsic `slice` it delegates to is not counted, and growth of that native work with the logical
-array length is covered only by the `selection44/timing` diagnostics.
+`selection44/array-spine-prototype` counts the JS-level `hasOwnProperty`/`Reflect.ownKeys` calls and, through a real public update, the
+`Array.prototype.slice`/`Object.assign` work of the spine copier (`sliceCalls` is pinned and independent of the array length;
+`sliceLengthSum` grows with it as the probe-sensitivity control). The pre-R44 baseline fails before the counted window
+(`value.slice` throws on null/Object prototypes), so the slice metrics guard against future growth rather than prove a gain.
 
 `Performance validation` runs on `ci/**` pushes or manual dispatch with a baseline commit and
 at least three samples. Its hosted Windows runner builds both revisions, runs all current gates,

@@ -24,6 +24,7 @@ class Store extends api.Carburetor {
 let cases = 0, deliveries = 0, scalarDeliveries = 0, projectedDeliveries = 0, unrelatedDeliveries = 0;
 let ownKeyEntries = 0, positiveArrays = 0, diagnostics = 0;
 let positiveSlotVisits = 0, positiveOwnKeyEntries = 0;
+let sliceCalls = 0, sliceLengthSum = 0, assignCalls = 0;
 const [occupied = 8, length = 64] = process.argv.slice(2).map(Number);
 for (const prototype of [Array.prototype, null, Object.prototype]) {
     for (const shape of ['dense', 'sparse']) for (const nested of [false, true]) {
@@ -39,7 +40,7 @@ for (const prototype of [Array.prototype, null, Object.prototype]) {
             store.watch(d => ({rows: d.box.rows}), () => projectedDeliveries++),
             store.watch(d => d.spare, () => unrelatedDeliveries++)];
         const ownKeys = Reflect.ownKeys, own = Object.prototype.hasOwnProperty, error = console.error;
-        let known;
+        let known, savedSlice, savedAssign;
         const rowsOf = value => nested ? value.rows : value;
         try {
             // Capture a detached baseline via the first delivery, outside the counted window.
@@ -59,10 +60,17 @@ for (const prototype of [Array.prototype, null, Object.prototype]) {
             positiveOwnKeyEntries += ownKeyEntries - beforeKeys;
             slotVisits = beforeSlots; ownKeyEntries = beforeKeys;
             console.error = (...args) => { diagnostics++; error(...args); };
+            savedSlice = Array.prototype.slice, savedAssign = Object.assign;
+            Array.prototype.slice = function(...args) {
+                sliceCalls++; sliceLengthSum += this.length;
+                return savedSlice.apply(this, args);
+            };
+            Object.assign = (target, ...sources) => (assignCalls++, savedAssign.call(Object, target, ...sources));
             store.run(d => { d.box.rows[0].n = 2; });
         } finally {
             countedSpine = undefined;
             Reflect.ownKeys = ownKeys; Object.prototype.hasOwnProperty = own; console.error = error;
+            if (savedSlice) { Array.prototype.slice = savedSlice; Object.assign = savedAssign; }
         }
         try {
             assert.equal(events.length, 2);
@@ -83,5 +91,5 @@ assert.equal(positiveSlotVisits, cases);
 assert.ok(positiveOwnKeyEntries >= cases * (occupied + 1));
 assert.equal(diagnostics, 0);
 emit({cases, deliveries, scalarDeliveries, projectedDeliveries, unrelatedDeliveries,
-    slotVisits, ownKeyEntries, positiveSlotVisits, positiveOwnKeyEntries,
+    slotVisits, ownKeyEntries, positiveSlotVisits, positiveOwnKeyEntries, sliceCalls, sliceLengthSum, assignCalls,
     positiveArrays, diagnostics, occupied, length, correct: true});

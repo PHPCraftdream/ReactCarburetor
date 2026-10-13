@@ -11,7 +11,13 @@ export default [[8, 64], [8, 65536], [64, 65536]].flatMap(([m, l]) => [{
         {metric: 'ownKeyEntries', max: 24 * (m + 1)},
         {metric: 'positiveSlotVisits', equals: 12},
         {metric: 'positiveOwnKeyEntries', min: 12 * (m + 1)},
+        {metric: 'sliceCalls', equals: 12}, {metric: 'assignCalls', max: 24},
     ],
+}, {
+    // Baseline (pre-R44 value.slice) throws on prototype null/Object.prototype: fewer slice calls, so min fails there.
+    id: `selection44/array-spine-slice@M${m}-L${l}`, improvement: 'control',
+    scenario: 'selection44/array-spine-prototype', args: [m, l],
+    gates: [{metric: 'sliceLengthSum', min: 6 * (m + l)}, {metric: 'sliceLengthSum', max: 12 * (m + l)}],
 }, {
     id: `selection44/timing@M${m}-L${l}`, improvement: 'R44-S01',
     scenario: 'selection44/timing', args: [m, l],
