@@ -318,6 +318,7 @@ export class CarburetorHistory<T extends object> {
     private markPendingOpaque(): void {
         this.pendingOpaque = true; this.pendingPatches = []; this.pendingPossibleOwnedTarget = false;
     }
+
     /** Advances the owned mirror to the source's installed wire representation. */
     private reconcileBaseline(): void {
         const capture = this.capture();

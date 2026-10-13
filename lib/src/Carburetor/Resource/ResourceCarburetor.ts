@@ -472,7 +472,14 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
     public [R.settleError](request: ISlotRequest<TArgs>, error: unknown): void {
         if (!this[R.isCurrent](request)) return;
         const runtime = this[R.ensureRuntime]();
-        const message = describeError(error);
+        let message: string;
+        let thrown: {error: unknown} | undefined;
+        try {
+            message = describeError(error);
+        } catch (descriptionError: unknown) {
+            message = 'Carburetor: resource failed';
+            thrown = {error: descriptionError};
+        }
         if (this[R.runtime] !== runtime || this[R.operationVersion] !== request.generation
             || !this[R.isCurrent](request)) return;
         runtime.request = undefined;
@@ -482,5 +489,6 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             draft.error = message;
             draft.updatedAt = Date.now();
         });
+        if (thrown) throw thrown.error;
     }
 }

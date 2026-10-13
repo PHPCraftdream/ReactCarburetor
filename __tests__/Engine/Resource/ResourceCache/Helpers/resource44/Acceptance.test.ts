@@ -94,8 +94,8 @@ for (const style of ['object', 'getter']) {
             cacheGate.reject(raw);
             slotGate.reject(raw);
             await Promise.all([cacheRejected, slotRejected]);
-            expect(cache.getEntry('a').error).toBeUndefined();
-            expect(slot.getData().error).toBeUndefined();
+            expect(cache.getEntry('a')).toMatchObject({status: S.Error, error: 'Carburetor: resource failed'});
+            expect(slot.getData()).toMatchObject({status: S.Error, error: 'Carburetor: resource failed'});
             await cache.refresh('a');
             expect(calls).toBe(2);
             expect(cache.getEntry('a').data).toBe('next');

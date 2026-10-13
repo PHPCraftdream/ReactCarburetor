@@ -259,14 +259,18 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         const runtime = this[R.runtimeFor](key) as ICacheRuntime<T>;
         runtime.request = undefined;
         let message: string;
+        let thrown: {error: unknown} | undefined;
         try {
             message = describeError(error);
         } catch (descriptionError: unknown) {
-            this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
-            throw descriptionError;
+            message = 'Carburetor: resource failed';
+            thrown = {error: descriptionError};
         }
         if (this[R.runtimeFor](key) !== runtime || runtime.generation !== request.generation
-            || runtime.request !== undefined || request.controller.signal.aborted) return;
+            || runtime.request !== undefined || request.controller.signal.aborted) {
+            if (thrown) throw thrown.error;
+            return;
+        }
         const entry = this.data.entries[key];
         if (!entry) {
             runtime.answer = undefined;
@@ -274,6 +278,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
             this[R.viewCache].delete(key);
             if (this[R.resolution]?.key === key) this[R.resolution] = undefined;
             this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
+            if (thrown) throw thrown.error;
             return;
         }
         if (this[R.isRetentionFree](key)) this[R.eviction].release();
@@ -291,5 +296,6 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
             if (!hasData) current().status = EResourceStatus.Error;
         });
         this[R.evict]();
+        if (thrown) throw thrown.error;
     }
 }
