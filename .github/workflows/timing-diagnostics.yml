@@ -1,0 +1,38 @@
+name: Timing attribution
+
+on:
+  push:
+    branches: ['ci/**']
+    paths:
+      - 'perf/ci/scenarios/diagnostics.mjs'
+      - '.github/workflows/timing-diagnostics.yml'
+      - 'lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts'
+      - 'lib/src/Carburetor/Store/Diagnostics/Internal/ResourceSymbols.ts'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  attribution:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.12.0
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Nine-sample A/B and byte-identical A/A attribution
+        run: node perf/ci/scenarios/diagnostics.mjs
+      - name: Save every sample and original comparison flag
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: timing-attribution-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worktrees/ci-results/
+          if-no-files-found: warn

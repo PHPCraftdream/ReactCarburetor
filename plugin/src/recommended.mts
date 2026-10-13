@@ -25,6 +25,7 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/no-handler-created-in-render': 'warn',
     'carburetor/no-lifecycle-class-property': 'error',
     'carburetor/no-module-level-store': 'off',
+    'carburetor/no-react-hooks-in-components': 'off',
     'carburetor/no-store-write-in-render': 'error',
     'carburetor/no-tracked-data-mutation': 'error',
     'carburetor/no-untrackable-draft-mutation': 'warn',

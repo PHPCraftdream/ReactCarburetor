@@ -34,6 +34,7 @@ import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSe
 import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconcileFlatSelection";
 import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
+import {getSelectionAttemptIdentity} from "@/Carburetor/Component/Models/getSelectionAttemptIdentity";
 import {AntiHookComponentFoundation} from "./Foundation";
 
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
@@ -177,7 +178,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const view = buildPersistentView(declared);
 
         let snapshot: {value: R} | undefined = undefined;
-        let snapshotAttempt: IRenderAttempt | undefined;
+        let snapshotIdentity: symbol | undefined;
         let escapeReported = false;
         // What the snapshot mirrors, for R36-01's reuse: the live result, its ledger, and whether it is a tree.
         let live: unknown = undefined;
@@ -195,7 +196,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             const owner = this[C.committedAttempt];
             if (snapshot === undefined || committed === undefined || owner === undefined
                 || this[C.renderAttempt] !== undefined || this[C.pendingAttempt] !== owner
-                || snapshotAttempt !== owner || this.props !== owner.props || this.state !== owner.state) {
+                || snapshotIdentity === undefined || snapshotIdentity !== owner.selectionIdentity
+                || this.props !== owner.props || this.state !== owner.state) {
                 return false;
             }
 
@@ -257,7 +259,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         };
 
         return (): TReadonly<R> => {
-            snapshotAttempt = this[C.renderAttempt];
+            snapshotIdentity = getSelectionAttemptIdentity(this[C.renderAttempt]);
             const next: R = select(view);
 
             const previous = snapshot === undefined ? undefined : snapshot.value;

@@ -13,10 +13,20 @@ const isPlainSpine = (value: unknown): value is Record<string, unknown> => {
     return prototype === Object.prototype || prototype === Array.prototype || prototype === null;
 };
 
-const cloneSpine = (value: Record<string, unknown>): Record<string, unknown> =>
-    Array.isArray(value)
-        ? (value as unknown[]).slice() as unknown as Record<string, unknown>
-        : Object.assign(Object.create(Object.getPrototypeOf(value)), value) as Record<string, unknown>;
+const cloneSpine = (value: Record<string, unknown>): Record<string, unknown> => {
+    const prototype = Object.getPrototypeOf(value);
+    if (Array.isArray(value)) {
+        const copy = Array.prototype.slice.call(value) as unknown[];
+        if (prototype !== Array.prototype) Object.setPrototypeOf(copy, prototype);
+        return copy as unknown as Record<string, unknown>;
+    }
+    if (prototype === null || !hasOwn.call(value, '__proto__')) {
+        return Object.assign(Object.create(prototype), value) as Record<string, unknown>;
+    }
+    const copy = Object.assign(Object.create(null), value) as Record<string, unknown>;
+    Object.setPrototypeOf(copy, prototype);
+    return copy;
+};
 
 /**
  * Brings a snapshot up to date by reconciling only the changed subtrees of the live selection.

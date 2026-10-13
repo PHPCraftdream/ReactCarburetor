@@ -125,7 +125,11 @@ export class Computed<R> implements IComputed<R> {
         // reach it when they are invalidated — including when their settlement fails and
         // nothing is announced.
         invalidationEdges.set(this[C.onDependencyChanged], this[C.markStale]);
-        computedDependencies.versions.set(this, () => this[C.versions]);
+        const getter = (): IDict<ILeafVersion> => this[C.versions];
+        computedDependencies.versions.set(this, getter);
+        if (this.get === Computed.prototype.get && this.getVersion === Computed.prototype.getVersion) {
+            computedDependencies.nativeVersions.set(this, {getter, get: this.get, getVersion: this.getVersion});
+        }
     }
 
     /** The identity a component or another computed subscribes by. */
@@ -270,7 +274,7 @@ export class Computed<R> implements IComputed<R> {
             return source.get();
         };
 
-        const hadValue = this[C.valid] || Object.keys(this[C.versions]).length > 0;
+        const hadValue = wasUnobserved && (this[C.valid] || Object.keys(this[C.versions]).length > 0);
         const acceptance = this as unknown as Parameters<typeof announceIsUnchanged.capture<R>>[0];
         const baseline = wasUnobserved && hadValue ? announceIsUnchanged.capture(acceptance) : undefined;
         let value: R;
@@ -424,8 +428,7 @@ export class Computed<R> implements IComputed<R> {
 
     /** Flattens native dependency metadata; external sources expose their public version. */
     private [C.recordVersions](collected: IDict<IDependency>): void {
-        const versions: IDict<ILeafVersion> = {};
-        const allNative = captureLeafVersions(collected, versions);
+        const {versions, allNative} = captureLeafVersions(collected);
         this[C.versions] = versions;
         this[C.allNativeSources] = allNative;
         this[C.validatedEpoch] = nativeStoreWriteEpoch.value;

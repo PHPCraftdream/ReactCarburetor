@@ -4,11 +4,10 @@ The rules ship with the package as `react-carburetor/lint`. This page is the ref
 name; [hazards.md](hazards.md) is the same material organised by mistake, with the code that
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
-Everything shipped is about the safety of carburetor logic — a write nobody hears, a component that
-never subscribes, an effect whose cleanup is dropped — or about allocation hygiene, where nothing is
-wrong but a function object is rebuilt on every call. The repository keeps a second, unpublished
-plugin for its own house style (import direction, line length, documentation); those rules are not
-in the package, because they are this project's taste rather than the library's semantics.
+The recommended rules protect carburetor logic and allocation hygiene: missed writes, abandoned
+subscriptions, dropped cleanup, and functions rebuilt on every call. A separately enabled
+`no-hooks` preset adds a component-architecture policy. The repository's unpublished house-style
+plugin (import direction, line length, documentation) remains separate from both.
 
 ## Setup
 
@@ -49,6 +48,45 @@ reported, not above the enclosing declaration. A whole file takes
 this repository does it in a handful of tests whose entire purpose is to exercise the hazard, and
 each one carries a sentence explaining that.
 
+### Hook-free components (optional)
+
+React hooks remain allowed by `recommended`. Enable the additional supplied preset explicitly:
+
+```json
+{
+  "extends": [
+    "./node_modules/react-carburetor/dist/lint/recommended.oxlintrc.json",
+    "./node_modules/react-carburetor/dist/lint/no-hooks.oxlintrc.json"
+  ]
+}
+```
+
+The JSON is also exported as `react-carburetor/lint/no-hooks.oxlintrc.json`. ESLint v9+ uses the
+same policy through the plugin's shareable config:
+
+```js
+import carburetor from 'react-carburetor/lint';
+
+export default [
+    {...carburetor.configs.recommended, files: ['src/**/*.{js,jsx,ts,tsx}']},
+    {...carburetor.configs['no-hooks'], files: ['src/**/*.{js,jsx,ts,tsx}']},
+];
+```
+
+`no-react-hooks-in-components` rejects statically resolved React `use` and `useX` calls in
+PascalCase components, functions returning JSX, React `memo`/`forwardRef` callbacks, anonymous
+default exports, and recognized component classes. Named and namespace imports, CommonJS
+`require('react')`, destructuring, literal member names and unchanged local aliases retain React
+provenance. Local shadowing, type-only imports and use-prefixed functions from other modules do not.
+Instance methods such as `this.useCarburetor()` are not React hooks.
+
+This rule has no options or automatic conversion: changing component ownership requires a design
+decision. Local forwarding follows at most eight alias links. Dynamic property names and
+cross-module wrapper implementations are not inferred. It enforces a static architecture boundary,
+not a proof of zero allocations: React still allocates, and a hook-free component can allocate in
+its own render. Measure GC and completed-render costs.
+
+
 ## The rules
 
 `error` means the mistake silently loses an update, a subscription or a re-render. `warn` means the
@@ -69,6 +107,7 @@ until your project changes shape.
 | `no-handler-created-in-render` | warn | A handler built in render and passed to a child, which defeats the props gate | [H21](hazards.md) |
 | `no-lifecycle-class-property` | error | A lifecycle method declared as a class property, shadowing the base implementation | [H13](hazards.md) |
 | `no-module-level-store` | off | A store created once per module, which a server shares across requests | [H18](hazards.md) |
+| `no-react-hooks-in-components` | off | React `use`/`useX` calls in components when the optional hook-free policy is enabled | [Optional policy](#hook-free-components-optional) |
 | `no-store-write-in-render` | error | A write to a store while rendering, which notifies subscribers mid-render | [H11](hazards.md) |
 | `no-tracked-data-mutation` | error | A write to data from `useCarburetor`, which throws — or does nothing once a cast hides it | [H9](hazards.md) |
 | `no-untrackable-draft-mutation` | warn | An in-place change to a `Map`, `Set` or `Date` through `draft`, which costs all path precision | [H10](hazards.md) |

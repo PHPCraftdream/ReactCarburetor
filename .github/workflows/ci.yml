@@ -2,8 +2,13 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master, main, 'ci/**']
   pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   library:
@@ -19,7 +24,7 @@ jobs:
       - name: Install
         run: npm ci
 
-      # The 24 carburetor/* rules are a bridge now: `npm run lint` calls this binary to check its
+      # The carburetor/* rules are a bridge: `npm run lint` calls this binary to check its
       # own tree, so it has to exist before anything below it runs, not only before the tests.
       # ubuntu-latest ships a Rust toolchain already; the crate's own pins decide the rest.
       - name: Cargo cache
@@ -61,6 +66,23 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Install hosted Chrome
+        id: chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Actual browser smoke
+        env:
+          CHROME_BIN: ${{ steps.chrome.outputs.chrome-path }}
+        run: npm run smoke:browser
+
+      - name: Upload browser proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke
+          path: worktrees/ci-results/**/browser*
+          if-no-files-found: warn
 
   demo:
     name: Demo app
@@ -141,8 +163,26 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Build native linter for packed lint consumers
+        working-directory: native
+        run: cargo build --release --locked
+
       - name: Consumer matrix
         run: npm run test:consumers
+
+      - name: Allow native lint child fork with Oxlint's parser reservation
+        run: sudo sysctl -w vm.overcommit_memory=1
+
+      - name: Packed optional lint preset smoke
+        run: npm run smoke:packed-lint
+
+      - name: Upload packed lint proof
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packed-lint-smoke
+          path: worktrees/ci-results/**/packed-lint*
+          if-no-files-found: warn
 
   native:
     name: Native linter

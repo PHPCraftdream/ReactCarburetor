@@ -46,6 +46,7 @@ const pluginEntry = {
 
 const pluginAssets = [
     {from: './plugin/recommended.oxlintrc.json', to: './recommended.oxlintrc.json'},
+    {from: './plugin/src/no-hooks.oxlintrc.json', to: './no-hooks.oxlintrc.json'},
     {from: './plugin/lint.d.ts', to: './index.d.mts'},
     {from: './plugin/lint.d.ts', to: './index.d.cts'},
 ];

@@ -83,3 +83,117 @@ Proposed families, **пока не созданные**: `selection44/array-spin
 ## Scope commit
 
 Назначенные reports: [Computed](api-engine-review-round-44-computed-2026-10-12.md), [React API](api-engine-review-round-44-react-api-2026-10-12.md), [Selection/history](api-engine-review-round-44-selection-2026-10-12.md), [Resources](api-engine-review-round-44-resource-2026-10-12.md). Parent делает один scoped local commit пяти Markdown files; agents не коммитили. `.claude/scheduled_tasks.lock`, shared dependencies, current dist и чужие worktrees не включаются и не удаляются. Frozen baseline и raw receipts остаются ignored reproducibility artifacts; временные executable scaffolds удаляются после proof. Push не выполняется без отдельного запроса.
+
+## Реализация R44 и опциональный hook-free линтер
+
+Разделы выше фиксируют исходный review-only результат базы `acfd3e2b8e58` и report commit
+`0cadeeb9bd93`. Последующая реализация сохраняет публичные store/computed/resource signatures:
+новый cleanup/retry/query knob не добавлен. Исправления собраны в отдельном integration-worktree.
+
+### Лично проверенные механизмы
+
+| ID | Наблюдение после исправления | Сохранённая граница |
+|---|---|---|
+| R44-S01 | Все три array prototypes доставляют edit в graph watch, graph/scalar hooks и graph/raw classes; 12 DOM outputs показывают `1`, browser errors отсутствуют | Holes, own-undefined, unchanged rows, alias/cycle selection policy |
+| R44-R-01 | Restored Success и replacement request переживают effectful rejection description | Current runtime/generation, accepted `setData`, operational COW, raw falsy errors |
+| R44-A01 | Все четыре obsolete props targets collectible при alive mounted owner и нуле active subscriptions | Re-arm, committed/abandoned attempts, hidden-write silence, warm registration reuse |
+| R44-A02 | Native/external SSR sources освобождают obsolete hook result; current/caller-held controls остаются живы | Stable active snapshots, client commit boundary, live publication tokens |
+| R44-C01 | K16/M16 flattened leaf entries/UIDs: **256→16**; dictionary enumerations: **16→1** | Trusted native snapshot provenance; foreign/overlap/version-pair fallback |
+| R44-S02 | N32/K3/native-middle after-opacity reflection: **136→0**; unused owned nodes: **34→0** | Required snapshots, replay attribution, structural marker adoption, plain positive |
+| R44-C02 | M32 observed pre-body baseline key calls/entries: **1/32→0/0** | Cold/unobserved/after-release eligibility, equality rollback, publication values |
+| R44-S03 | P64 scalar undo и redo: **128→0 graph WeakMaps** каждый; graph positive остаётся 2 | SameValue, full endpoints, topology bijection, sparse/native capabilities |
+| R44-R-02 | H32 ready hits: **32→1 completion identities** на cache; H0 не создаёт её | No loaders/publications/callbacks, async independent reactions, real request promises |
+
+Это controlled work/ownership observations, не heap-byte, InstructionRetired, FPS или
+универсальный latency claim. Cached no-work Promise identity больше не идентифицирует отдельный
+`load()` call; `async_hooks`/Promise instrumentation видит меньше root initializations.
+[Публичный контракт](promise-cache.md#the-public-surface) документирует эту границу.
+
+A02 — lifetime tradeoff, не сокращение всех allocations: один новый shared envelope получает
+один `WeakRef`. Construction probe наблюдает 21 `WeakRef` на initial read и 20 publications,
+ноль на 100 warm renders, одинаково для 1/4/8 consumers. Timing этого route измеряется отдельно.
+
+### Permanent benchmark coverage
+
+Шесть автоматически обнаруживаемых gate-файлов добавляют **281 entry**: `computed44` — 120,
+`history44` — 134, `selection44` — 6, `components44` — 4, `hooks44` — 13, `resource44` — 4.
+Общий manifest содержит **752 entries**; `--lint-gates` сообщает 0 problems. SHA-256 всех
+56 исходных gate-файлов совпадают с frozen contract: 471 прежний entry не переписан и не ослаблен.
+Счётчики/collectibility исполняются отдельно от uninstrumented completed-operation timing.
+
+### Hosted verification
+
+Все новые тяжёлые прогоны выполняются только на GitHub-hosted runners: build/typecheck/lint,
+React 18/19, native/platform packages, packed Oxlint/ESLint consumers, Chrome и benchmarks.
+Локальный `bench:ci` orchestration запрещён самим runner; версии и зависимости не повышались.
+Обычный [CI для f6c6996](https://github.com/PHPCraftdream/ReactCarburetor/actions/runs/38380384798)
+завершился успешно. Это не означает отсутствие performance regressions.
+
+[Девять samples и all-format calibration](https://github.com/PHPCraftdream/ReactCarburetor/actions/runs/38337735308)
+подтвердили все 72 baseline/fix mechanism cases, но сохранили 11 старых timing flags и heap-byte
+failure на обоих revisions. Порог старого `savedBytes <= 60` не менялся.
+
+[Root relocation control](https://github.com/PHPCraftdream/ReactCarburetor/actions/runs/38356933772)
+перенёс те же байты в equal-depth/equal-length directories. Все 10 focused targets прошли
+старые behavior/work gates и timing thresholds по nine-sample medians; code changes при
+переносе отсутствуют. Исходные пять timing flags и React A/A alert сохранены. Это доказывает
+path/startup confound, а не универсальное отсутствие latency regressions.
+
+[Полный aligned прогон](https://github.com/PHPCraftdream/ReactCarburetor/actions/runs/38360790636):
+752 current entries — 0 behavior/work violations; 471 original contracts на каждом revision —
+0 violations; 129 completed-operation controls — 0 semantic violations. Все 80 all-format
+baseline/fix calibration cases приняты. Порог 25% + 0.05ms и 56 original gate hashes неизменны.
+Прямой M1 capture больше не копирует leaf metadata через `Object.values`: **1→0 arrays**
+относительно `769c2a5`, с independently observed positive **1** во всех четырёх форматах.
+Guard входит в прежние 12 eligibility entries; общий entry count не искусственно увеличен.
+
+Ниже nine-sample medians и полные min–max ranges, production ESM, milliseconds.
+
+| Completed operation | Baseline | Fixed | Fixed/baseline |
+|---|---:|---:|---:|
+| C01 K16/M16 aliases update+get | 0.0740 [0.0706–0.0965] | 0.0419 [0.0384–0.0463] | 0.57 |
+| C02 M32 observed update+get | 0.0753 [0.0666–0.0829] | 0.0706 [0.0642–0.0782] | 0.94 |
+| S03 P64 repeated undo | 0.1859 [0.1697–0.2078] | 0.1629 [0.1439–0.1734] | 0.88 |
+| S03 P64 repeated redo | 0.1356 [0.1197–0.1430] | 0.1407 [0.1304–0.1574] | 1.04 |
+| Ready-cache complete await workload | 7.57 [7.12–8.20] | 7.28 [6.70–9.84] | 0.96 |
+| Ready-cache complete then workload | 5.44 [4.81–5.70] | 5.85 [5.39–8.50] | 1.07 |
+
+Полный timing job завершился failure: один original и четыре new alerts сохранены, а не
+переклассифицированы по удачному отдельному sample. Независимый matched-layout A/B и
+byte-identical A/A подтверждает или отвергает устойчивость этих alerts отдельно.
+
+| Initial timing alert | Baseline ms | Fixed ms | Ratio |
+|---|---:|---:|---:|
+| `writelog39/bound-write-hook@10000` related write | 0.1687 [0.1558–0.2338] | 0.2226 [0.1660–0.2653] | 1.32 |
+| `selection44/timing@M8-L64` dense array graph | 1.22 [1.12–1.62] | 1.54 [1.15–2.20] | 1.26 |
+| `selection44/timing@M8-L64` sparse array graph | 0.7807 [0.7224–1.2520] | 1.15 [0.71–1.52] | 1.47 |
+| `selection44/timing@M8-L65536` null sparse scalar | 0.6367 [0.5694–0.8024] | 0.8629 [0.8134–1.0118] | 1.36 |
+| `selection44/timing@M64-L65536` object dense scalar | 0.4967 [0.4303–0.8097] | 0.7608 [0.4603–0.8620] | 1.53 |
+
+[Независимое подтверждение](https://github.com/PHPCraftdream/ReactCarburetor/actions/runs/38380384986):
+каждый путь исполнялся ещё на 9 samples для baseline/fix и двух byte-identical current copies.
+Ни один из исходных пяти alerts не повторился; original hook write дал
+0.1894 [0.1537–0.2618] → 0.2015 [0.1584–0.2280] ms и прошёл тот же threshold.
+При этом появились два других A/B alerts и шесть A/A alerts; все raw samples и flags сохранены.
+Следовательно, устойчивое ухудшение не подтверждено, но micro-latency этих selection lanes
+остаётся неопределённой из-за runtime variability. Полный strict timing workflow **не назван
+зелёным**: его initial failure сохранён. Behavior/work contracts и обычный CI прошли.
+
+
+### Поставляемая опциональная архитектурная политика
+
+`react-carburetor/lint` предоставляет дополнительный `configs['no-hooks']`; Oxlint получает
+отдельный exported JSON preset `react-carburetor/lint/no-hooks.oxlintrc.json`.
+`recommended` оставляет `no-react-hooks-in-components` выключенным. Native CLI включает правило
+явным `--rule=carburetor/no-react-hooks-in-components=error`.
+
+Правило использует OXC semantic binding identity, а не префикс имени локальной функции:
+React imports/CommonJS, namespaces, literal members и ограниченное alias forwarding сохраняют
+provenance; local shadows, другие модули и `this.useCarburetor()` не запрещаются.
+Checked owners: PascalCase/JSX functions, `memo`/`forwardRef`, anonymous default exports и
+recognized component classes. Dynamic/cross-module wrappers не анализируются.
+
+Лично выполнены 12 focused native cases, весь native suite (361 unit + 24 CLI cases), release
+binary default/opt-in smoke и реальные Oxlint/ESLint hosts с точными тремя diagnostics.
+Статическая policy не доказывает zero allocations/GC: React и пользовательский render могут
+аллочировать без hooks. Setup и ограничения — [rules.md](rules.md#hook-free-components-optional).

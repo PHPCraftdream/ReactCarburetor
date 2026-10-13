@@ -167,6 +167,7 @@ export interface IAttemptEntry {
  * `commitSubscriptions` treats an absent collection exactly like an empty one.
  */
 export interface IRenderAttempt {
+    selectionIdentity?: symbol;
     /** Instance configuration read by this attempt's selectors. */
     props?: unknown;
     state?: unknown;

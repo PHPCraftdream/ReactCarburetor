@@ -144,11 +144,10 @@ describe('R42 lossless leaf capture', () => {
         const reads = new Set(['a']);
         const first: ILeafVersion = {source: store, version: 0, reads};
         const second: ILeafVersion = {source: store, version: 1, reads};
-        const versions: IDict<ILeafVersion> = {};
-        captureLeafVersions({
+        const {versions} = captureLeafVersions({
             a: inner('old', first), b: inner('new', second),
             c: inner('old-copy', {...first}), d: inner('new-copy', {...second}),
-        }, versions);
+        });
         const parts = versions[':' + store.getUID()].parts!;
         expect(parts.map(part => part.version)).toEqual([0, 1]);
         expect(parts[0].reads).toBe(reads);
@@ -255,8 +254,7 @@ describe('R42 lossless leaf capture', () => {
             e: inner('equal-path-distinct-set', {source: store, version: 0, reads: new Set(['a'])}),
         };
         const key = ':' + store.getUID();
-        const versions: IDict<ILeafVersion> = {};
-        captureLeafVersions(dependencies, versions);
+        const {versions} = captureLeafVersions(dependencies);
         const output = versions[key];
         expect(output).not.toBe(first);
         expect(output.parts).toHaveLength(5);
@@ -284,7 +282,7 @@ describe('R42 lossless leaf capture', () => {
             Object.freeze(borrowed);
             dependencies['d' + i] = inner('group' + i, {source: store, version: i + 1, parts: borrowed});
         }
-        const old: IDict<ILeafVersion> = {};
+        let old: IDict<ILeafVersion>;
         const iterator = Array.prototype[Symbol.iterator];
         let references = 0;
         Array.prototype[Symbol.iterator] = function counted() {
@@ -304,16 +302,15 @@ describe('R42 lossless leaf capture', () => {
             expect(control).toHaveLength(K);
             expect(references).toBe(K);
             references = 0;
-            captureLeafVersions(dependencies, old);
+            old = captureLeafVersions(dependencies).versions;
         } finally {
             Array.prototype[Symbol.iterator] = iterator;
         }
         expect(references).toBeLessThanOrEqual(K);
         expect(visited).toBeLessThanOrEqual(2 * K);
         const oldParts = old[':' + store.getUID()].parts!;
-        const current: IDict<ILeafVersion> = {};
         visited = 0;
-        captureLeafVersions(dependencies, current);
+        const {versions: current} = captureLeafVersions(dependencies);
         expect(visited).toBe(K);
         expect(current[':' + store.getUID()].parts).not.toBe(oldParts);
         expect(oldParts).toHaveLength(K);

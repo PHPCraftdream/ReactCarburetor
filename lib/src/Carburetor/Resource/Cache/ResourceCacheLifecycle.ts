@@ -10,6 +10,8 @@ import {ICacheRequest, ICacheRuntime} from "./State/Runtime/Models";
 import {ResourceCacheState} from "./State/Runtime/ResourceCacheState";
 import {trimCacheRuntime} from "./State/Runtime/Registry";
 
+const readyCompletions = new WeakMap<object, Promise<void>>();
+
 /** Owns cache load, settlement, and Suspense transitions. */
 export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheState<T, TArgs> {
     /** Load an entry unless its current value is fresh.
@@ -21,7 +23,12 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         const entry = this.data.entries[key];
         this[R.touch](key);
         if (entry && entry.status === EResourceStatus.Success && !this[R.isStale](entry)) {
-            return Promise.resolve();
+            let completion = readyCompletions.get(this);
+            if (completion === undefined) {
+                completion = Promise.resolve();
+                readyCompletions.set(this, completion);
+            }
+            return completion;
         }
         return this[R.fetch](key, args);
     }
@@ -251,6 +258,15 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         if (!this[R.isCurrent](key, request)) return;
         const runtime = this[R.runtimeFor](key) as ICacheRuntime<T>;
         runtime.request = undefined;
+        let message: string;
+        try {
+            message = describeError(error);
+        } catch (descriptionError: unknown) {
+            this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
+            throw descriptionError;
+        }
+        if (this[R.runtimeFor](key) !== runtime || runtime.generation !== request.generation
+            || runtime.request !== undefined || request.controller.signal.aborted) return;
         const entry = this.data.entries[key];
         if (!entry) {
             runtime.answer = undefined;
@@ -262,7 +278,6 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         }
         if (this[R.isRetentionFree](key)) this[R.eviction].release();
         const hasData = entry.status === EResourceStatus.Success || entry.data !== undefined;
-        const message = describeError(error);
         const status = hasData ? entry.status : EResourceStatus.Error;
         runtime.answer = {key, entry, failure: {value: error, message, status}};
         const invalidated = request.invalidationEpoch !== runtime.invalidationEpoch;

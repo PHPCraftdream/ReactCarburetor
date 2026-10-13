@@ -3,3 +3,4 @@
 
 pub mod require_method_for_closure;
 pub mod require_module_function;
+pub mod no_react_hooks_in_components;

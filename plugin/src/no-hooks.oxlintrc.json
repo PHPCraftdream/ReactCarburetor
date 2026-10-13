@@ -1,0 +1,6 @@
+{
+  "jsPlugins": ["./index.mjs"],
+  "rules": {
+    "carburetor/no-react-hooks-in-components": "error"
+  }
+}

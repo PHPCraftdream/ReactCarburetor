@@ -9,6 +9,9 @@ const setSize = Object.getOwnPropertyDescriptor(Set.prototype, 'size')!.get!;
  * @param right - the current owned graph
  */
 export const sameHistoryGraph = (left: unknown, right: unknown): boolean => {
+    if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object') {
+        return Object.is(left, right);
+    }
     const forward = new WeakMap<object, object>();
     const backward = new WeakMap<object, object>();
     const equal = (a: unknown, b: unknown): boolean => {

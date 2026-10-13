@@ -1,0 +1,34 @@
+/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+import {execFileSync} from 'node:child_process';
+import {createHash} from 'node:crypto';
+import {cpSync, readFileSync, readdirSync} from 'node:fs';
+import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
+import {baselineDist} from '../harness/baseline.mjs';
+
+/** Builds the requested baseline and records its actual gate contracts before removing the metadata worktree. */
+export const prepareBaseline = async reference => {
+    const git = args => execFileSync('git', args, {encoding: 'utf8'}).trim();
+    const sha = git(['rev-parse', '--verify', '--end-of-options', reference + '^{commit}']);
+    if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Baseline must resolve to a full commit SHA');
+    const sourceDist = baselineDist(sha);
+    const dist = resolve('worktrees/ci-comparison/baseline');
+    const currentDist = resolve('worktrees/ci-comparison/modified');
+    // Match root depth and length: relocation alone changed the measured JIT/startup cost.
+    cpSync(sourceDist, dist, {recursive: true});
+    cpSync(resolve('dist'), currentDist, {recursive: true});
+    const tree = resolve('worktrees', 'ci-gates-' + sha.slice(0, 12) + '-' + process.pid);
+    const entries = [], gateHashes = {};
+    git(['worktree', 'add', '--detach', tree, sha]);
+    try {
+        for (const file of readdirSync(resolve(tree, 'perf/gates')).filter(file => file.endsWith('.mjs')).sort()) {
+            const path = resolve(tree, 'perf/gates', file);
+            gateHashes[file] = createHash('sha256').update(readFileSync(path)).digest('hex');
+            const gates = (await import(pathToFileURL(path).href)).default;
+            if (!Array.isArray(gates)) throw new Error('Invalid baseline manifest: ' + file);
+            entries.push(...gates.map(entry => ({...entry, area: file.slice(0, -4)})));
+        }
+    } finally {git(['worktree', 'remove', '--force', tree]);}
+    if (new Set(entries.map(entry => entry.id)).size !== entries.length) throw new Error('Duplicate baseline gate IDs');
+    return {sha, sourceDist, dist, currentDist, entries, gateHashes};
+};

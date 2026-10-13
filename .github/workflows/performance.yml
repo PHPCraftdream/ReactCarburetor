@@ -1,0 +1,87 @@
+name: Performance validation
+
+on:
+  push:
+    branches: ['ci/**']
+    paths-ignore:
+      - 'perf/ci/scenarios/diagnostics.mjs'
+      - 'perf/ci/scenarios/trace.mjs'
+      - '.github/workflows/ci.yml'
+      - '.github/workflows/timing-diagnostics.yml'
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: Commit before the optimizations under review
+        required: true
+        default: acfd3e2b8e58210ce1076bf1683f666283216af5
+        type: string
+      runs:
+        description: Independent alternating samples per build (at least 3)
+        required: true
+        default: '9'
+        type: string
+      metadataBaseline:
+        description: Optional commit before the direct-capture allocation regression fix
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  performance:
+    name: All gates and baseline/fix measurements
+    runs-on: windows-latest
+    timeout-minutes: 240
+    env:
+      BENCH_BASELINE: ${{ inputs.baseline || 'acfd3e2b8e58210ce1076bf1683f666283216af5' }}
+      BENCH_METADATA_BASELINE: ${{ inputs.metadataBaseline }}
+      BENCH_RUNS: ${{ inputs.runs || '9' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.12.0
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build current native linter
+        working-directory: native
+        run: cargo build --release --locked --jobs 2
+
+      - name: Build all current library formats
+        run: npm run build
+
+      - name: Exact pre-fix/fixed mechanism calibration in all formats
+        if: ${{ !cancelled() }}
+        run: npm run bench:ci -- --phase gains --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
+
+      - name: All current benchmark gates
+        if: ${{ !cancelled() }}
+        run: npm run bench:ci -- --phase current --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
+
+      - name: New completed-operation A/B controls
+        if: ${{ !cancelled() }}
+        run: npm run bench:ci -- --phase controls --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
+
+      - name: Every unchanged baseline contract and timing comparison
+        if: ${{ !cancelled() }}
+        run: npm run bench:ci -- --phase previous --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
+
+      - name: Upload exact samples, flags and command receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          path: worktrees/ci-results/
+          if-no-files-found: warn
+          retention-days: 30

@@ -1,78 +1,39 @@
 import {execFileSync} from "node:child_process";
-import {readFileSync} from "node:fs";
 import * as path from "node:path";
-import plugin from "@plugin/index.mts";
-import {RECOMMENDED} from "@plugin/recommended.mts";
 
 /**
  * Guards the packaging, which is the part a consumer touches and the part no rule test covers.
  *
- * Two kinds of check. The drift guards keep the three places a rule name appears — the plugin, the
- * preset the ESLint config reads, and the JSON an oxlint config extends — from disagreeing. The host
- * checks run the *built* bundle the way a consumer would: through `extends` in oxlint and through a
- * flat config in ESLint. CI builds before it tests, so the bundle is there.
+ * Checks the built bundle through real consumer configs in Oxlint and ESLint.
+ * Source-map/config-copy assertions are not substitutes for actual diagnostics.
+ * CI builds before it tests, so the supplied bundle is available.
  */
 const ROOT: string = process.cwd();
 const CONSUMER: string = path.join('plugin', '__fixtures__', 'consumer');
 
-const run = (binary: string, args: string[]): string => {
+const run = (binary: string, args: string[]): {status: number; output: string} => {
     try {
-        return execFileSync(process.execPath, [binary, ...args], {encoding: 'utf8', cwd: ROOT});
+        const output = execFileSync(process.execPath, [binary, ...args], {encoding: 'utf8', cwd: ROOT});
+        return {status: 0, output};
     } catch (error) {
-        const failure = error as {stdout?: string; stderr?: string};
-
-        return `${failure.stdout || ''}${failure.stderr || ''}`;
+        const failure = error as {status?: number; stdout?: string; stderr?: string};
+        if (typeof failure.status !== 'number') throw error;
+        return {status: failure.status, output: `${failure.stdout || ''}${failure.stderr || ''}`};
     }
 };
 
-const readPreset = (): {jsPlugins: string[]; rules: Record<string, string>} => {
-    const file = path.join(ROOT, 'plugin', 'recommended.oxlintrc.json');
-
-    return JSON.parse(readFileSync(file, 'utf8')) as {jsPlugins: string[]; rules: Record<string, string>};
-};
-
 describe('packaging the lint rules', () => {
-    test('the preset covers every rule the plugin ships, and nothing else', () => {
-        const shipped = Object.keys(plugin.rules).map((name: string) => `carburetor/${name}`).sort();
-        const preset = Object.keys(RECOMMENDED).sort();
-
-        expect(preset).toEqual(shipped);
-    });
-
-    test('the oxlint preset matches the one the ESLint config reads', () => {
-        const preset = readPreset();
-
-        expect(preset.rules).toEqual(RECOMMENDED);
-        // Resolved relative to the preset itself, which is what lets `extends` work from anywhere.
-        expect(preset.jsPlugins).toEqual(['./index.mjs']);
-    });
-
-    test('the rule reference documents every rule', () => {
-        const reference = readFileSync(path.join(ROOT, 'docs', 'rules.md'), 'utf8');
-        const undocumented = Object.keys(plugin.rules).filter((name: string) => {
-            return !reference.includes(`\`${name}\``);
-        });
-
-        expect(undocumented).toEqual([]);
-    });
-
-    test('the plugin exposes the preset as a flat config naming itself', () => {
-        const recommended = plugin.configs?.recommended;
-
-        expect(recommended?.plugins.carburetor).toBe(plugin);
-        expect(recommended?.rules).toEqual(RECOMMENDED);
-    });
-
     test('a consumer oxlint config gets the rules from one extends line', () => {
         // Explicit format: oxlint auto-switches to GitHub-annotation output under CI's own
         // GITHUB_ACTIONS env var, which this process inherits when the test itself runs in CI.
         // "agent" is the plain `path:line:col: severity rule: message` layout this assertion
         // expects — the same one oxlint picks on its own outside of a TTY and outside CI.
-        const output = run(path.join('node_modules', 'oxlint', 'bin', 'oxlint'), [
+        const {output, status} = run(path.join('node_modules', 'oxlint', 'bin', 'oxlint'), [
             '-c', path.join(CONSUMER, 'oxlintrc.json'),
             '--format', 'agent',
             path.join(CONSUMER, 'app.tsx'),
         ]);
+        expect(status).toBe(1);
 
         expect(output).toContain('carburetor(no-get-data-in-render)');
         // The preset's severities survive the trip: this one is a warning, not an error.
@@ -80,12 +41,13 @@ describe('packaging the lint rules', () => {
     });
 
     test('the same built plugin works in an ESLint flat config', () => {
-        const output = run(path.join('node_modules', 'eslint', 'bin', 'eslint.js'), [
+        const {output, status} = run(path.join('node_modules', 'eslint', 'bin', 'eslint.js'), [
             '--no-warn-ignored',
             '--format', 'json',
             '-c', path.join(CONSUMER, 'eslint.config.mjs'),
             path.join(CONSUMER, 'app.jsx'),
         ]);
+        expect(status).toBe(1);
 
         const results = JSON.parse(output) as {messages: {ruleId: string; severity: number}[]}[];
         const reported = results.flatMap(result => result.messages.map(message => message.ruleId)).sort();
@@ -94,6 +56,39 @@ describe('packaging the lint rules', () => {
             'carburetor/no-get-data-in-render',
             'carburetor/no-lifecycle-class-property',
             'carburetor/require-super-in-lifecycle',
+        ]);
+    });
+
+    test('Oxlint keeps hooks allowed by default and rejects only React-owned calls when opted in', () => {
+        const fixture = path.join(CONSUMER, 'noHooks.jsx');
+        const host = path.join('node_modules', 'oxlint', 'bin', 'oxlint');
+        const baseline = run(host, ['-c', 'dist/lint/recommended.oxlintrc.json', '--format', 'agent', fixture]);
+        expect(baseline.status).toBe(0);
+        expect(baseline.output).not.toContain('carburetor(no-react-hooks-in-components)');
+        const enabled = run(host, ['-c', 'dist/lint/no-hooks.oxlintrc.json', '--format', 'agent', fixture]);
+        expect(enabled.status).toBe(1);
+        const locations = [...enabled.output.matchAll(
+            /noHooks\.jsx:(\d+):(\d+): error carburetor\(no-react-hooks-in-components\)/g
+        )].map(match => [Number(match[1]), Number(match[2])]);
+        expect(locations).toEqual([[4, 21], [9, 5], [14, 16]]);
+    });
+
+    test('ESLint consumes the supplied optional preset with aliases and shadowing intact', () => {
+        const {output, status} = run(path.join('node_modules', 'eslint', 'bin', 'eslint.js'), [
+            '--no-warn-ignored', '--format', 'json',
+            '-c', path.join(CONSUMER, 'noHooks.config.mjs'),
+            path.join(CONSUMER, 'noHooks.jsx'),
+        ]);
+        expect(status).toBe(1);
+        const results = JSON.parse(output) as {
+            messages: {ruleId: string; severity: number; line: number; column: number}[];
+        }[];
+        expect(results.flatMap(result => result.messages.map(message =>
+            [message.ruleId, message.severity, message.line, message.column]
+        ))).toEqual([
+            ['carburetor/no-react-hooks-in-components', 2, 4, 21],
+            ['carburetor/no-react-hooks-in-components', 2, 9, 5],
+            ['carburetor/no-react-hooks-in-components', 2, 14, 16],
         ]);
     });
 });

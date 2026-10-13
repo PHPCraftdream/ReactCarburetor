@@ -4,16 +4,47 @@ import {computedDependencies} from '@/Carburetor/Derived/computedDependencies';
 import {ILeafVersion, IReadSet} from './Models';
 import {readStoreData} from './readStoreData';
 
+/** Revalidates the current native protocol without copying captured records.
+ *
+ * @param versions - immutable captured dictionary.
+ * @param keys - captured own keys.
+ */
+const snapshotIsNative = (versions: IDict<ILeafVersion>, keys: ReadonlyArray<string>): boolean => {
+    for (const key of keys) {
+        if (!isNativeStoreSource(versions[key].source)) return false;
+    }
+    return true;
+};
+
 /** Fills a version snapshot and classifies native epoch coverage. Merged leaves keep their
  * constituent filed pairs, so drift can be asked per part.
  *
  * @param dependencies - direct read sets to flatten
- * @param versions - destination leaf snapshot
+ * @returns the captured snapshot and native epoch coverage
  */
 export const captureLeafVersions = (
-    dependencies: IDict<IReadSet>, versions: IDict<ILeafVersion>
-): boolean => {
+    dependencies: IDict<IReadSet>
+): {versions: IDict<ILeafVersion>; allNative: boolean} => {
+    const ids = Object.keys(dependencies);
+    const nativeInner = (dependency: IReadSet): IDict<ILeafVersion> | undefined => {
+        const source = dependency.source;
+        const metadata = computedDependencies.nativeVersions.get(source);
+        if ('read' in source || !metadata || computedDependencies.versions.get(source) !== metadata.getter
+            || source.getVersion !== metadata.getVersion
+            || (source as typeof source & {get?: unknown}).get !== metadata.get) return undefined;
+        return metadata.getter();
+    };
+    const single = ids.length === 1 ? nativeInner(dependencies[ids[0]]) : undefined;
+    const singleRecords = single && computedDependencies.nativeSnapshots.get(single);
+    if (single && singleRecords && snapshotIsNative(single, singleRecords)) {
+        return {versions: single, allNative: true};
+    }
+    const versions: IDict<ILeafVersion> = {};
     let allNative = true;
+    let reusable = true;
+    let hasInner = false;
+    let firstSnapshot: IDict<ILeafVersion> | undefined;
+    let processed: Set<IDict<ILeafVersion>> | undefined;
 
     let builders: IDict<{
         output: ILeafVersion;
@@ -26,6 +57,10 @@ export const captureLeafVersions = (
     const addLeafVersion = (id: string, recorded: ILeafVersion): void => {
         const previous = versions[id];
         if (previous === recorded) return;
+        if (previous !== undefined) {
+            firstSnapshot = undefined;
+            processed = undefined;
+        }
         if (previous?.source === recorded.source
             && (previous.reads !== undefined || previous.parts !== undefined)
             && (recorded.reads !== undefined || recorded.parts !== undefined)
@@ -85,12 +120,15 @@ export const captureLeafVersions = (
         }
     };
 
-    for (const cuid of Object.keys(dependencies)) {
+    for (const cuid of ids) {
         const dependency = dependencies[cuid];
-        const inner = 'read' in dependency.source
-            ? undefined : computedDependencies.versions.get(dependency.source)?.() as IDict<ILeafVersion> | undefined;
+        const native = ids.length === 1 ? single : nativeInner(dependency);
+        const inner = native ?? ('read' in dependency.source
+            ? undefined : computedDependencies.versions.get(dependency.source)?.() as IDict<ILeafVersion> | undefined);
 
         if (!inner) {
+            firstSnapshot = undefined;
+            processed = undefined;
             addLeafVersion(cuid, {
                 source: dependency.source, version: dependency.source.getVersion(), reads: dependency.reads,
                 data: readStoreData(dependency.source),
@@ -100,7 +138,22 @@ export const captureLeafVersions = (
             }
             continue;
         }
+        hasInner = true;
 
+        const records = native && computedDependencies.nativeSnapshots.get(native);
+        if (records) {
+            if (firstSnapshot === inner || processed?.has(inner)) continue;
+            if (firstSnapshot === undefined) firstSnapshot = inner;
+            else {
+                if (processed === undefined) processed = new Set([firstSnapshot]);
+                processed.add(inner);
+            }
+            if (!snapshotIsNative(inner, records)) allNative = false;
+        } else {
+            reusable = false;
+            firstSnapshot = undefined;
+            processed = undefined;
+        }
         for (const key of Object.keys(inner)) {
             const recorded = inner[key];
             addLeafVersion(':' + recorded.source.getUID(), recorded);
@@ -110,5 +163,8 @@ export const captureLeafVersions = (
         }
     }
 
-    return allNative;
+    if (allNative && reusable) {
+        computedDependencies.nativeSnapshots.set(versions, hasInner ? Object.keys(versions) : ids);
+    }
+    return {versions, allNative};
 };

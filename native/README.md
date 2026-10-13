@@ -20,7 +20,7 @@ Earlier 22-rule measurement on a 157-file tree, best of several runs:
 
 That JavaScript rule layer cost 270 ms; the old native pass took 20 ms including tree walking,
 parsing and result serialization. These are historical figures, not timings for the current
-24-rule build.
+25-rule build.
 
 On 2026-09-24, a local Windows release build scanned the current `lib/src` tree (88 TS/TSX files)
 in seven alternating on/off pairs after two warmups per mode. The median end-to-end times were
@@ -74,10 +74,23 @@ string or ESLint's `[severity, options]` pair. Rule names may be bare or carry t
 prefix. A missing default config is not an error — the defaults apply — but a `--config` path that
 is not there is, because the caller asked for that exact file.
 
-The defaults mirror `../plugin/src/recommended.mts`, which is the single source of truth for
-strictness; a test in the JavaScript suite compares the two tables so the binary and the plugin
-cannot become two different products. A rule set to `off` never runs, so turning rules off makes the
-pass cheaper rather than only quieter.
+The defaults follow `../plugin/src/recommended.mts`; the optional hook-free rule remains off.
+The bridge applies each host's enabled rules and suppression comments. A native rule set to `off`
+never runs, so turning rules off makes the pass cheaper rather than only quieter.
+
+**Optional hook-free component policy.** `no-react-hooks-in-components` is off by default.
+Enable it without changing the recommended rules:
+
+```bash
+carburetor-lint --rule=carburetor/no-react-hooks-in-components=error src
+```
+
+It follows React import/require identities and unchanged aliases, including `use` itself, while
+leaving unrelated same-named functions and instance read APIs alone. The supplied Node plugin
+exposes the same optional `no-hooks` preset to Oxlint and ESLint; see
+[`../docs/rules.md`](../docs/rules.md#hook-free-components-optional).
+This is an architectural check, not a zero-GC guarantee.
+
 
 **Suppression comments.** `carburetor-disable-next-line <rules>` for the line below, and
 `carburetor-disable <rules>` for the whole file. The oxlint spellings `oxlint-disable-next-line` and

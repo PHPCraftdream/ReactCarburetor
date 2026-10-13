@@ -4,6 +4,7 @@ import {getUid} from '@/Carburetor/Store/Utils/getUid';
 import {sharedSingleton} from '@/Carburetor/Store/Utils/sharedSingleton';
 import {updateWave} from '@/Carburetor/Store/Scheduling/UpdateWaveInstance';
 import {IDependency, IActiveReadSlot} from './Models';
+import {ILeafVersion} from './Freshness/Models';
 
 /** Flattened native metadata shared across module copies. */
 interface IVersion {
@@ -24,12 +25,22 @@ interface IBridge {
 // Object identity identifies native metadata across library copies.
 const versions = sharedSingleton('computedVersions', () =>
     new WeakMap<ICarburetorSubscription, () => IDict<IVersion>>());
+const nativeVersions = sharedSingleton('computedNativeVersions', () =>
+    new WeakMap<ICarburetorSubscription, {
+        getter: () => IDict<ILeafVersion>;
+        get: unknown;
+        getVersion: ICarburetorSubscription['getVersion'];
+    }>());
+const nativeSnapshots = sharedSingleton('computedNativeSnapshotKeys', () =>
+    new WeakMap<IDict<ILeafVersion>, ReadonlyArray<string>>());
 const bridges = sharedSingleton('computedExternalBridges', () =>
     new WeakMap<ICarburetorSubscription, IBridge>());
 
 /** Native metadata lookup and ordered external subscription/recorder operations. */
 export const computedDependencies = {
     versions,
+    nativeVersions,
+    nativeSnapshots,
     /** Subscribes native edges directly and shares one upstream bridge for external sources.
      *
      * @param source - dependency source.

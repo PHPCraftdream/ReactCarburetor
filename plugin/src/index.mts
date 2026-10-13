@@ -1,5 +1,7 @@
 import type {IPlugin} from "./Models.mts";
 import {RECOMMENDED} from "./recommended.mts";
+import {NO_HOOKS} from "./noHooks.mts";
+import {noReactHooksInComponents} from "./Rules/Allocations/noReactHooksInComponents.mts";
 import {requireMethodForClosure} from "./Rules/Allocations/requireMethodForClosure.mts";
 import {requireModuleFunction} from "./Rules/Allocations/requireModuleFunction.mts";
 import {noAsyncTransaction} from "./Rules/Boundaries/noAsyncTransaction.mts";
@@ -50,6 +52,7 @@ const plugin: IPlugin = {
         'no-handler-created-in-render': noHandlerCreatedInRender,
         'no-lifecycle-class-property': noLifecycleClassProperty,
         'no-module-level-store': noModuleLevelStore,
+        'no-react-hooks-in-components': noReactHooksInComponents,
         'no-store-write-in-render': noStoreWriteInRender,
         'no-tracked-data-mutation': noTrackedDataMutation,
         'no-untrackable-draft-mutation': noUntrackableDraftMutation,
@@ -70,6 +73,10 @@ plugin.configs = {
     recommended: {
         plugins: {carburetor: plugin},
         rules: RECOMMENDED,
+    },
+    'no-hooks': {
+        plugins: {carburetor: plugin},
+        rules: NO_HOOKS,
     },
 };
 

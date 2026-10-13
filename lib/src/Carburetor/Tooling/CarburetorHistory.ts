@@ -271,18 +271,16 @@ export class CarburetorHistory<T extends object> {
             (this.replayTarget !== undefined || attempt !== undefined)) return;
 
         if (patch === PATCH_ARRAY_LENGTH_LOCK || patch === PATCH_KEY_ORDER_CHANGE) {
-            this.pendingOpaque = true;
+            this.markPendingOpaque();
             this.pendingOwnedReplay = true;
             return;
         }
-        if (patch === PATCH_OPAQUE) {
-            this.pendingOpaque = true;
-            return;
-        }
+        if (patch === PATCH_OPAQUE) { this.markPendingOpaque(); return; }
+        if (this.pendingOpaque) return;
 
         if (this.baselineContainsExotic && (this.baselineContainsLockedArray ||
             this.baselineContainsRestricted || !isSafeScalarPatch(this.baseline, patch))) {
-            this.pendingOpaque = true; return;
+            this.markPendingOpaque(); return;
         }
 
         if ((patch.previous === null || typeof patch.previous !== 'object') &&
@@ -307,19 +305,19 @@ export class CarburetorHistory<T extends object> {
                 previousExists: patch.previousExists, nextExists: patch.nextExists,
             };
         } catch {
-            this.pendingOpaque = true;
-            return;
+            this.markPendingOpaque(); return;
         }
-        if (requiresOwnedEndpoint || hasExoticEndpoint) {
-            this.pendingOpaque = true;
-            return;
-        }
+        if (requiresOwnedEndpoint || hasExoticEndpoint) { this.markPendingOpaque(); return; }
         if (!this.pendingPossibleOwnedTarget || !foldDependentPatch(this.pendingPatches, ownedPatch)) {
             this.pendingPatches.push(ownedPatch);
             if (ownedPatch.nextExists && isTrackable(ownedPatch.next)) this.pendingPossibleOwnedTarget = true;
         }
     }
 
+    /** Releases unused endpoint ownership as soon as this batch requires authoritative snapshots. */
+    private markPendingOpaque(): void {
+        this.pendingOpaque = true; this.pendingPatches = []; this.pendingPossibleOwnedTarget = false;
+    }
     /** Advances the owned mirror to the source's installed wire representation. */
     private reconcileBaseline(): void {
         const capture = this.capture();

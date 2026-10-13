@@ -9,6 +9,26 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Add the optional supplied `no-hooks` lint preset for Oxlint and ESLint, backed by the native
+  `no-react-hooks-in-components` rule. React import/require aliases are resolved without confusing
+  local shadows or instance read APIs; the recommended preset keeps the rule off. The policy does
+  not claim zero render allocations or zero GC.
+- Round 44: supported null/Object-prototype arrays retain their shallow-spine prototype and deliver
+  graph updates. Error-description reentry cannot overwrite a newer resource settlement.
+- Stopped class selections release obsolete attempt ownership; computed-hook snapshot envelopes
+  use weak global ownership while active consumers keep stable snapshots.
+- Flattened Computed captures reuse trusted immutable native snapshots and skip repeated dictionaries;
+  direct captures reuse their existing key lists instead of copying leaf metadata into a new array.
+  Observed recomputations skip unused baseline enumeration; opaque history batches release unused
+  endpoints, and scalar replay avoids graph comparison ledgers.
+- Fresh ready cache hits reuse one lazy per-cache void completion. Caller reactions remain independent
+  and asynchronous; Promise identity is not a per-call request identity.
+- 281 permanent R44 benchmark entries join the common runner; all 471 preceding contracts remain
+  unchanged. Work/collectibility guards are separate from whole-operation timing.
+- Move complete validation to GitHub Actions: ordinary CI also accepts `ci/**` branches and saves
+  actual browser/packed-lint proofs. A separate hosted performance workflow retains all gate results,
+  exact baseline mechanism negatives and alternating A/B samples without local heavy execution.
+
 - Round 43: selection content gates consistently use SameValue, delivering signed-zero changes
   and suppressing cancelled NaN edits without changing Map/Set key or member semantics.
 - Unobserved Computed equality acceptance rolls back value, revision and freshness on failure,

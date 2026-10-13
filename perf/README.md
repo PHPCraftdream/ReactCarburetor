@@ -585,9 +585,18 @@ unpublished-draft diagnostic, which only exists in development builds — it req
 `NODE_ENV != production` and `dist/esm`, while this suite always runs production builds
 (`dist/esm-prod`, `NODE_ENV=production`).
 
-## CI plan (not wired yet)
+## GitHub Actions
 
-The counter, `equals`, ratio and `scale` gates are deterministic across machines — candidates for a
-required CI job (`npm run build && npm run bench`). Timing ceilings are deliberately generous but
-not noise-proof on a shared runner, so the `--against` comparison and any remaining absolute
-ceilings belong in a separate, optional job. Nothing under `.github/` runs the suite yet.
+`Performance validation` runs on `ci/**` pushes or manual dispatch with a baseline commit and
+at least three samples. Its hosted Windows runner builds both revisions, runs all current gates,
+calibrates the nine R44 mechanisms in all formats, and retains new-control and unchanged-baseline
+A/B results with the existing 25% + 0.05ms threshold. JSON/JSONL samples and flags are artifacts.
+`npm run bench:ci` is GitHub-only; do not run this orchestration on the developer workstation.
+Ordinary CI separately covers build, typecheck, lint, both React majors, native/platform packages,
+packed consumers and actual Chrome DOM/screenshot smoke. Timing flags remain failures, not hidden noise.
+Both comparison distributions use equal-length, same-depth `baseline`/`modified` directories.
+Byte-identical relocation controls exposed path/startup bias; old raw alerts remain in the
+R44 receipts rather than being called code regressions or silently discarded.
+Diagnostic-only pushes do not cancel the full performance sweep.
+The optional manual `metadataBaseline` input adds a four-format before/fix calibration for
+the direct-capture metadata-copy regression; it is not a mandatory historical branch dependency.

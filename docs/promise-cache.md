@@ -109,6 +109,17 @@ explicit re-arm; aborting a retry does not cause an automatic failure loop.
 | `abort(args)` | Cancels one entry's in-flight request, leaving whatever data the entry already holds. |
 | `abortAll()` | Cancels every request in flight. |
 
+Fresh `load(args)` hits on the same cache share a lazily allocated, fulfilled `Promise<void>`,
+including hits for different keys. It is a dedicated no-work completion, not a settled loader
+promise, and is not shared across caches. It holds no arguments, entry, payload or raw failure.
+Each caller's `await` or `.then` reaction still runs asynchronously; each `.then` creates an
+independent child promise, so a throwing callback rejects only that child. Promise identity on
+fresh hits therefore does not identify an individual call. Pending joins, forced refreshes and
+actual loader failures retain their request-owned promises.
+Reusing this completion is observable to `async_hooks` and Promise instrumentation: a fresh hit
+does not promise a separate Promise initialization or async-resource identity for each call.
+Do not use its identity as a request key or attach per-request ownership to it.
+
 A request cancelled or superseded synchronously during its Pending publication, before its
 loader can run, rejects with `AbortError`. A replacement request keeps its own ownership.
 

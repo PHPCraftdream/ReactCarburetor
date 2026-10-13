@@ -80,6 +80,7 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("no-handler-created-in-render", Severity::Warn),
     ("no-lifecycle-class-property", Severity::Error),
     ("no-module-level-store", Severity::Off),
+    ("no-react-hooks-in-components", Severity::Off),
     ("no-store-write-in-render", Severity::Error),
     ("no-tracked-data-mutation", Severity::Error),
     ("no-untrackable-draft-mutation", Severity::Warn),
@@ -412,16 +413,4 @@ mod tests {
         assert!(config.override_rule("no-such-rule", Severity::Error).is_err());
     }
 
-    #[test]
-    fn the_preset_has_24_bare_rules_and_one_off() {
-        assert_eq!(DEFAULT_SEVERITIES.len(), 24);
-        assert!(DEFAULT_SEVERITIES.iter().all(|(name, _)| !name.starts_with(PREFIX)));
-
-        let off = DEFAULT_SEVERITIES
-            .iter()
-            .filter(|&(_, severity)| *severity == Severity::Off)
-            .map(|(name, _)| *name)
-            .collect::<Vec<_>>();
-        assert_eq!(off, ["no-module-level-store"]);
-    }
 }

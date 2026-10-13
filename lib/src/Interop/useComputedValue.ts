@@ -10,13 +10,13 @@ interface IComputedSnapshot<R> {
     readonly value: R;
 }
 
-const snapshots = new WeakMap<IComputed<unknown>, IComputedSnapshot<unknown>>();
+const snapshots = new WeakMap<IComputed<unknown>, WeakRef<IComputedSnapshot<unknown>>>();
 
 const readSnapshot = <R>(source: IComputed<R>): IComputedSnapshot<R> => {
     // A lazy read may settle a publication, so read its version afterwards.
     const value = source.get();
     const version = getComputedSnapshotVersion(source);
-    const previous = snapshots.get(source) as IComputedSnapshot<R> | undefined;
+    const previous = snapshots.get(source)?.deref() as IComputedSnapshot<R> | undefined;
 
     if (previous && previous.version === version && Object.is(previous.value, value)) {
         return previous;
@@ -24,7 +24,7 @@ const readSnapshot = <R>(source: IComputed<R>): IComputedSnapshot<R> => {
 
     const snapshot = {source, version, value};
 
-    snapshots.set(source, snapshot);
+    snapshots.set(source, new WeakRef(snapshot));
 
     return snapshot;
 };

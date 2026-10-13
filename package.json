@@ -44,7 +44,8 @@
         "default": "./dist/lint/index.cjs"
       }
     },
-    "./lint/recommended.oxlintrc.json": "./dist/lint/recommended.oxlintrc.json"
+    "./lint/recommended.oxlintrc.json": "./dist/lint/recommended.oxlintrc.json",
+    "./lint/no-hooks.oxlintrc.json": "./dist/lint/no-hooks.oxlintrc.json"
   },
   "files": [
     "dist",
@@ -65,6 +66,9 @@
     "test": "rstest run",
     "test:rules": "rstest run __tests__/Plugin",
     "bench": "node perf/run.mjs",
+    "bench:ci": "node perf/ci/run.mjs",
+    "smoke:browser": "node perf/ci/smoke/browser.mjs",
+    "smoke:packed-lint": "node perf/ci/smoke/packed-no-hooks.mjs",
     "test:consumers": "node scripts/consumerMatrix.mjs"
   },
   "repository": {

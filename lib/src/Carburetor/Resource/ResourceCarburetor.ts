@@ -471,8 +471,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
      */
     public [R.settleError](request: ISlotRequest<TArgs>, error: unknown): void {
         if (!this[R.isCurrent](request)) return;
-        const message = describeError(error);
         const runtime = this[R.ensureRuntime]();
+        const message = describeError(error);
+        if (this[R.runtime] !== runtime || this[R.operationVersion] !== request.generation
+            || !this[R.isCurrent](request)) return;
         runtime.request = undefined;
         runtime.answer = {key: request.key, owner: this.data, failure: {value: error, message}};
         this.update((draft) => {
