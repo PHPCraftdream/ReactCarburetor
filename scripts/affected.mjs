@@ -1,3 +1,4 @@
+/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // Segmented-run selector + task-tier runner.
 // Contract (stable, consumed by workflow/npm scripts):
 //   node scripts/affected.mjs [--base <ref>] [--files a,b,c] [--json]

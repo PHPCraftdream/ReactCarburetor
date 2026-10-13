@@ -40,8 +40,10 @@ describe('affected map coverage', () => {
     });
 
     it('covers every perf/gates file and perf/scenarios subdirectory', () => {
-        const gates = readdirSync(join(root, 'perf/gates')).filter((f) => f.endsWith('.mjs')).map((f) => 'perf/gates/' + f);
-        const scenarios = readdirSync(join(root, 'perf/scenarios'), {withFileTypes: true}).filter((d) => d.isDirectory()).map((d) => 'perf/scenarios/' + d.name);
+        const gates = readdirSync(join(root, 'perf/gates'))
+            .filter((f) => f.endsWith('.mjs')).map((f) => 'perf/gates/' + f);
+        const scenarios = readdirSync(join(root, 'perf/scenarios'), {withFileTypes: true})
+            .filter((d) => d.isDirectory()).map((d) => 'perf/scenarios/' + d.name);
         expect(gates.length).toBeGreaterThan(0);
         expect(scenarios.length).toBeGreaterThan(0);
         for (const p of [...gates, ...scenarios]) expect(noUnmapped([p])).toEqual([]);

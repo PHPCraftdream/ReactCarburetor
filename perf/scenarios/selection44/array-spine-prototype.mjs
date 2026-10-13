@@ -60,7 +60,8 @@ for (const prototype of [Array.prototype, null, Object.prototype]) {
             positiveOwnKeyEntries += ownKeyEntries - beforeKeys;
             slotVisits = beforeSlots; ownKeyEntries = beforeKeys;
             console.error = (...args) => { diagnostics++; error(...args); };
-            savedSlice = Array.prototype.slice, savedAssign = Object.assign;
+            savedSlice = Array.prototype.slice;
+            savedAssign = Object.assign;
             Array.prototype.slice = function(...args) {
                 sliceCalls++; sliceLengthSum += this.length;
                 return savedSlice.apply(this, args);
