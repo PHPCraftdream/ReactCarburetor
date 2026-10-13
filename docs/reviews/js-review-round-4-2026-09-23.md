@@ -50,9 +50,9 @@ The examples below report their actual observations. The existing change to
 
 ## R4-01 — [P1] Class getters and setters see the raw instance
 
-**Location:** [instance proxy](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L486),
-[ordinary-property traps](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L499),
-[render receiver](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L588).
+**Location:** [instance proxy](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L486),
+[ordinary-property traps](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L499),
+[render receiver](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L588).
 
 The previous repair passes the returned proxy as `this` to a prototype `render()`, so a
 direct `this.#field` read works. But the proxy's ordinary `get` and `set` traps pass the
@@ -80,8 +80,8 @@ instance. Do not treat the repaired direct render test as coverage of accessors.
 
 ## R4-02 — [P1] Copying a data property can change an object's meaning
 
-**Location:** [store snapshot copier](../lib/src/Carburetor/Store/Utils/deepClone.ts#L19),
-[selection copier](../lib/src/Carburetor/Component/Connection/detachSelection.ts#L42).
+**Location:** [store snapshot copier](../../lib/src/Carburetor/Store/Utils/deepClone.ts#L19),
+[selection copier](../../lib/src/Carburetor/Component/Connection/detachSelection.ts#L42).
 
 Both copies create `{}` and assign source keys using `target[key] = value`. An own enumerable
 property named `__proto__` is not installed as an own data property on that target; the assignment
@@ -102,8 +102,8 @@ nested objects, and a null-prototype dictionary.
 
 ## R4-03 — [P1] A scope token can be valid but unsendable
 
-**Location:** [CarburetorScope.dehydrate](../lib/src/Carburetor/Component/Scope/CarburetorScope.ts#L47),
-[token names](../lib/src/Carburetor/Component/Scope/carburetorToken.ts#L21).
+**Location:** [CarburetorScope.dehydrate](../../lib/src/Carburetor/Component/Scope/CarburetorScope.ts#L47),
+[token names](../../lib/src/Carburetor/Component/Scope/carburetorToken.ts#L21).
 
 `carburetorToken(factory, '__proto__')` is accepted as a unique, non-empty name. The scope
 stores its instance in a `Map`, where that name works. During dehydration it assigns
@@ -120,8 +120,8 @@ round-tripping through JSON between independent scopes, including `__proto__`.
 
 ## R4-04 — [P1] Array snapshots copy properties their comparator ignores
 
-**Location:** [deep selection copy](../lib/src/Carburetor/Component/Connection/detachSelection.ts#L42),
-[array equality](../lib/src/Carburetor/Component/Connection/sameSelection.ts#L23).
+**Location:** [deep selection copy](../../lib/src/Carburetor/Component/Connection/detachSelection.ts#L42),
+[array equality](../../lib/src/Carburetor/Component/Connection/sameSelection.ts#L23).
 
 `detachSelection()` now copies all enumerable array keys, including custom string and symbol
 properties. `sameSelection()` still compares only array length and indexed elements, following
@@ -142,9 +142,9 @@ that limit. Cover a memo child, not only a direct comparator call.
 
 ## R4-05 — [P2] StrictMode replay breaks explicit cache lifetime management
 
-**Location:** [unmount](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L207),
-[releaseConnectionViews](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L1006),
-[cache release](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L268).
+**Location:** [unmount](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L207),
+[releaseConnectionViews](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L1006),
+[cache release](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L268).
 
 StrictMode replays `componentWillUnmount` and `componentDidMount` without a fresh render.
 `releaseConnectionViews` releases each cache watcher and clears the component's view list.
@@ -169,8 +169,8 @@ render. Verify watcher counts under StrictMode plus `setData`, then real unmount
 
 ## R4-06 — [P2] A stable nested selection still redraws a memo child
 
-**Location:** [deep copy](../lib/src/Carburetor/Component/Connection/detachSelection.ts#L23),
-[shallow comparison](../lib/src/Carburetor/Component/Connection/sameSelection.ts#L45).
+**Location:** [deep copy](../../lib/src/Carburetor/Component/Connection/detachSelection.ts#L23),
+[shallow comparison](../../lib/src/Carburetor/Component/Connection/sameSelection.ts#L45).
 
 A selection returned `{n: data.n, nested: stableObject}`. The store did not change. A parent
 prop update caused one extra parent render. The memoized child rendered again
@@ -188,8 +188,8 @@ do not solve this by shallowly re-exposing live store branches.
 
 ## R4-07 — [P2] Different deleted keys still fill the invalidation journal
 
-**Location:** [retirement](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L168),
-[record coalescing](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L260).
+**Location:** [retirement](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L168),
+[record coalescing](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L260).
 
 The round-three fix bounds repeat writes to the *same* path. It does not bound distinct-path
 churn while a cache is idle. One view retained `items.a`; three other keys were each inserted
@@ -208,8 +208,8 @@ invalidation needs rather than the number of distinct keys ever touched.
 
 ## R4-08 — [P2] The older read API still accumulates watcher handles
 
-**Location:** [cache registration](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L145),
-[public read](../lib/src/Carburetor/Store/Carburetor.ts#L84).
+**Location:** [cache registration](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L145),
+[public read](../../lib/src/Carburetor/Store/Carburetor.ts#L84).
 
 A `Carburetor.read()` proxy creates its own cache watcher. Starting with one such view, three
 more read calls without writes grew `watcherCount()` from **1 to 4**. The constructor's retirement
@@ -228,8 +228,8 @@ or particular GC timing. Preserve the public `read(record)` use outside componen
 
 ## R4-09 — [P3] Unmounting an unused connection constructs a proxy
 
-**Location:** [releaseConnectionViews](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L1006),
-[persistent view construction](../lib/src/Carburetor/Component/Connection/buildPersistentView.ts#L85).
+**Location:** [releaseConnectionViews](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L1006),
+[persistent view construction](../../lib/src/Carburetor/Component/Connection/buildPersistentView.ts#L85).
 
 A component declared a connection and never read it. At mount it had performed zero store
 `read()` calls. During unmount, `releaseConnectionViews` accessed the facade's cache symbol;
@@ -242,8 +242,8 @@ StrictMode ownership repair.
 
 ## R4-10 — [P3] Browser support for WeakRef has no explicit contract
 
-**Location:** [WeakRef construction](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L156),
-[package runtime metadata](../package.json#L56).
+**Location:** [WeakRef construction](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L156),
+[package runtime metadata](../../package.json#L56).
 
 The package now declares a Node minimum of `14.6.0`. It is also a browser-facing React
 library, yet no browser capability floor or fallback is stated. In an environment where

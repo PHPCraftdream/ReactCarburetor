@@ -58,8 +58,8 @@ Strict consumer `class NamedComputed extends Computed<number> { public uid = 'to
 
 ### Механизм и source
 
-- [`Computed.ts:62–125`](../lib/src/Carburetor/Derived/Computed.ts#L62): state остаётся в обычных protected/private TS fields, `getUID()` читает `this.uid`.
-- [`Computed.ts:221–258`](../lib/src/Carburetor/Derived/Computed.ts#L221): collection keyed по `':' + source.getUID()`. Два источника с одним uid становятся одним dependency edge.
+- [`Computed.ts:62–125`](../../lib/src/Carburetor/Derived/Computed.ts#L62): state остаётся в обычных protected/private TS fields, `getUID()` читает `this.uid`.
+- [`Computed.ts:221–258`](../../lib/src/Carburetor/Derived/Computed.ts#L221): collection keyed по `':' + source.getUID()`. Два источника с одним uid становятся одним dependency edge.
 - R40 resolution перечисляет `Carburetor`, resource classes и `AntiHookComponent`; этот класс не перенесён. Поэтому это remaining cutover gap, а не утверждение, что уже исправленные store/component cases снова сломаны.
 
 ### Направление и acceptance
@@ -96,9 +96,9 @@ Computed и store остаются живы. Старое значение не 
 
 ### Механизм и source
 
-- [`Computed.ts:185–195`](../lib/src/Carburetor/Derived/Computed.ts#L185): last unsubscribe вызывает `releaseDependencies`, `valid=false`.
-- [`Computed.ts:420–435`](../lib/src/Carburetor/Derived/Computed.ts#L420): dependency subscriptions снимаются, slots очищаются, но `announced` не освобождается.
-- [`Computed.ts:261–285`](../lib/src/Carburetor/Derived/Computed.ts#L261): unobserved recompute заменяет `value` и `versions`, не observer baseline.
+- [`Computed.ts:185–195`](../../lib/src/Carburetor/Derived/Computed.ts#L185): last unsubscribe вызывает `releaseDependencies`, `valid=false`.
+- [`Computed.ts:420–435`](../../lib/src/Carburetor/Derived/Computed.ts#L420): dependency subscriptions снимаются, slots очищаются, но `announced` не освобождается.
+- [`Computed.ts:261–285`](../../lib/src/Carburetor/Derived/Computed.ts#L261): unobserved recompute заменяет `value` и `versions`, не observer baseline.
 - `announced.value` остаётся старым array; `announced.versions` также может удерживать уже неактуальные sources. Повторная подписка заменяет baseline на новый value.
 
 ### Направление и acceptance
@@ -138,8 +138,8 @@ D fresh ids ищутся линейно из цикла по D+1 collected sourc
 
 ### Source и acceptance
 
-- [`Computed.ts:310–325`](../lib/src/Carburetor/Derived/Computed.ts#L310): `for Object.keys(collected)` вызывает `fresh?.includes(cuid)`.
-- [`Computed.ts:389–409`](../lib/src/Carburetor/Derived/Computed.ts#L389): `diffDependencies` формирует array fresh ids.
+- [`Computed.ts:310–325`](../../lib/src/Carburetor/Derived/Computed.ts#L310): `for Object.keys(collected)` вызывает `fresh?.includes(cuid)`.
+- [`Computed.ts:389–409`](../../lib/src/Carburetor/Derived/Computed.ts#L389): `diffDependencies` формирует array fresh ids.
 - Membership должен быть O(1) на edge или записываться при diff; порядок subscription/rollback должен сохраниться. Для tiny fresh list можно избежать отдельного Set.
 - Gate по deterministic comparison/work counter для D sweep; retained-edge control не должен churn subscriptions. Все values, deliveries, failure rollback, live late reads и source replacement сохраняются.
 
@@ -180,9 +180,9 @@ Checksum 1000; cache data остаётся Ada. Два процесса: 47.18/4
 
 ### Механизм и source
 
-- [`useResourceValue.ts:21–31`](../lib/src/Interop/useResourceValue.ts#L21): resolve/render на каждом render.
-- [`createResourceReader.ts:74–100`](../lib/src/Interop/createResourceReader.ts#L74): новый collector, record closure, field view, outer Proxy; `trackedData` локален attempt, `createReadProxy({data}, ...)` создаётся заново.
-- [`ResourceCache.ts:348–385`](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L348): field factory создаёт восемь own accessor properties, getter/setter closures на каждую; они захватывают resolution snapshot.
+- [`useResourceValue.ts:21–31`](../../lib/src/Interop/useResourceValue.ts#L21): resolve/render на каждом render.
+- [`createResourceReader.ts:74–100`](../../lib/src/Interop/createResourceReader.ts#L74): новый collector, record closure, field view, outer Proxy; `trackedData` локален attempt, `createReadProxy({data}, ...)` создаётся заново.
+- [`ResourceCache.ts:348–385`](../../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L348): field factory создаёт восемь own accessor properties, getter/setter closures на каждую; они захватывают resolution snapshot.
 
 ### Направление и существенный риск
 

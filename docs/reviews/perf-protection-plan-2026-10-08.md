@@ -2,7 +2,7 @@
 
 Status: planned, not started. Tasks #331–#339 in the session TaskList mirror the steps below.
 
-Source: `docs/perf-coverage-audit-2026-10-08.md` (97 claims: A 54, B 19, C 15, D 9). Every item
+Source: `docs/reviews/perf-coverage-audit-2026-10-08.md` (97 claims: A 54, B 19, C 15, D 9). Every item
 the audit classified B, C or D (Gaps #1–#28 with sub-items) is assigned to exactly one step here;
 the audit's numbering is kept so each line can be traced back to its evidence.
 
@@ -263,7 +263,7 @@ Depends on #331 because of the label renames in the same files.
 2. `npm run build`, `npm run bench -- --lint-gates`, `node scripts/checkLayout.mjs`, oxlint on
    `perf`, full `npm run bench -- --runs 3` in the background (≈ 25 min, more with the new entries):
    0 failed.
-3. Append a Resolution section to `docs/perf-coverage-audit-2026-10-08.md` (original lines
+3. Append a Resolution section to `docs/reviews/perf-coverage-audit-2026-10-08.md` (original lines
    unchanged): new class counts, items that stayed B or D and why, the baseline builds added.
 4. `perf/README.md`: a section per new area or a table of the added entries; `CHANGELOG.md`
    Unreleased: one bullet for the coverage work.

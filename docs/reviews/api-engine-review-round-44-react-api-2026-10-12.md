@@ -26,15 +26,15 @@
 
 ### Consumer, якоря и механизм
 
-Поддержанный caller: class с несколькими заранее объявленными selections для вкладок/секций. В render вызывается только текущая selection; после закрытия секции owner остаётся mounted. Дополнительный props payload уже не нужен ни store, ни scalar selected value. Это тот же разрешённый conditional pattern, который существующий fixture проверяет в [`child-props/prop-escape-safety.test.tsx:5–42`](../__tests__/Engine/Component/AntiHookComponent/child-props/prop-escape-safety.test.tsx#L5), но fixture проверяет subscribers/DOM, не obsolete props lifetime. Достаточно и **одной** selection, которую перестают читать; четыре declarations в probe показывают независимые obsolete attempts.
+Поддержанный caller: class с несколькими заранее объявленными selections для вкладок/секций. В render вызывается только текущая selection; после закрытия секции owner остаётся mounted. Дополнительный props payload уже не нужен ни store, ни scalar selected value. Это тот же разрешённый conditional pattern, который существующий fixture проверяет в [`child-props/prop-escape-safety.test.tsx:5–42`](../../__tests__/Engine/Component/AntiHookComponent/child-props/prop-escape-safety.test.tsx#L5), но fixture проверяет subscribers/DOM, не obsolete props lifetime. Достаточно и **одной** selection, которую перестают читать; четыре declarations в probe показывают независимые obsolete attempts.
 
 Source anchors:
 
-1. [`Reads.tsx:179–180,195–198,259–261`](../lib/src/Carburetor/Component/AntiHookComponent/Reads.tsx#L179), `AntiHookComponentReads.connectSelection`: factory создаёт closure-owned `snapshotAttempt`, возвращённый callable присваивает ему **сам `IRenderAttempt`**, а notification gate проверяет его identity против committed owner.
-2. [`Foundation.tsx:314–322`](../lib/src/Carburetor/Component/AntiHookComponent/Foundation.tsx#L314), `C.openRenderAttempt`: attempt содержит реальные `props`/`state`, не только identity token.
-3. [`Subscriptions.tsx:91–105,138–145`](../lib/src/Carburetor/Component/AntiHookComponent/Subscriptions.tsx#L91), `C.commitSubscriptions`: unread fresh commit очищает `connection.committed`, `attemptTag`, `attemptSource`, `attemptEntry`; прежние attempt maps удаляются. **Closure-owned `snapshotAttempt` не очищается.**
-4. [`Foundation.tsx:338–350`](../lib/src/Carburetor/Component/AntiHookComponent/Foundation.tsx#L338), R43-A01 cleanup касается `trackedViews` raw route; selection closure туда не входит. Frozen ESM `Reads.mjs:62,71,101` сохраняет тот же механизм.
-5. [`Connection.ts:94–100,169–172`](../lib/src/Carburetor/Component/Models/Connection.ts#L94) разделяет persistent declaration и attempt configuration. Declaration должна оставаться reusable, но это не требует сильного владения всеми её obsolete props.
+1. [`Reads.tsx:179–180,195–198,259–261`](../../lib/src/Carburetor/Component/AntiHookComponent/Reads.tsx#L179), `AntiHookComponentReads.connectSelection`: factory создаёт closure-owned `snapshotAttempt`, возвращённый callable присваивает ему **сам `IRenderAttempt`**, а notification gate проверяет его identity против committed owner.
+2. [`Foundation.tsx:314–322`](../../lib/src/Carburetor/Component/AntiHookComponent/Foundation.tsx#L314), `C.openRenderAttempt`: attempt содержит реальные `props`/`state`, не только identity token.
+3. [`Subscriptions.tsx:91–105,138–145`](../../lib/src/Carburetor/Component/AntiHookComponent/Subscriptions.tsx#L91), `C.commitSubscriptions`: unread fresh commit очищает `connection.committed`, `attemptTag`, `attemptSource`, `attemptEntry`; прежние attempt maps удаляются. **Closure-owned `snapshotAttempt` не очищается.**
+4. [`Foundation.tsx:338–350`](../../lib/src/Carburetor/Component/AntiHookComponent/Foundation.tsx#L338), R43-A01 cleanup касается `trackedViews` raw route; selection closure туда не входит. Frozen ESM `Reads.mjs:62,71,101` сохраняет тот же механизм.
+5. [`Connection.ts:94–100,169–172`](../../lib/src/Carburetor/Component/Models/Connection.ts#L94) разделяет persistent declaration и attempt configuration. Declaration должна оставаться reusable, но это не требует сильного владения всеми её obsolete props.
 
 ```text
 mounted owner → selection callable / connection.wake closure
@@ -86,11 +86,11 @@ Probe A01, полный source ниже:
 
 Anchors:
 
-- [`useComputedValue.ts:7–29`](../lib/src/Interop/useComputedValue.ts#L7), `snapshots` / `readSnapshot`: module-wide `WeakMap<IComputed, IComputedSnapshot>` хранит **strong `value`**. Weak key не ослабляет value, пока source жив. Запись меняется только при следующем `readSnapshot` этого source.
-- [`useComputedValue.ts:38–50`](../lib/src/Interop/useComputedValue.ts#L38): disposer лишь `computed.unsubscribe(id)`; SSR никаких disposers не получает. Ни unobserved `source.get()`, ни чужая native publication сами этот cache не обновляют.
-- [`Models/Derived.ts:5–7`](../lib/src/Carburetor/Models/Derived.ts#L5) обещает `IComputed.get(): R`, без `read()` capability; cached envelope нужен для `useSyncExternalStore`, а **returned R stays live**, не detached copy.
-- [`Computed.ts:103–108,200–209,435–447`](../lib/src/Carburetor/Derived/Computed.ts#L435): repaired native last-release path очищает `announced` и active filing; independent evaluation cache законно держит **current** value. No-hook native control в probe получает новый value и освобождает old target. Поэтому finding не приписывается этому repaired owner.
-- [`getComputedSnapshotVersion.ts:5–11`](../lib/src/Carburetor/Derived/Freshness/getComputedSnapshotVersion.ts#L5): native snapshot revision и public external version различаются; изменение cache ownership не может удалять этот publication token.
+- [`useComputedValue.ts:7–29`](../../lib/src/Interop/useComputedValue.ts#L7), `snapshots` / `readSnapshot`: module-wide `WeakMap<IComputed, IComputedSnapshot>` хранит **strong `value`**. Weak key не ослабляет value, пока source жив. Запись меняется только при следующем `readSnapshot` этого source.
+- [`useComputedValue.ts:38–50`](../../lib/src/Interop/useComputedValue.ts#L38): disposer лишь `computed.unsubscribe(id)`; SSR никаких disposers не получает. Ни unobserved `source.get()`, ни чужая native publication сами этот cache не обновляют.
+- [`Models/Derived.ts:5–7`](../../lib/src/Carburetor/Models/Derived.ts#L5) обещает `IComputed.get(): R`, без `read()` capability; cached envelope нужен для `useSyncExternalStore`, а **returned R stays live**, не detached copy.
+- [`Computed.ts:103–108,200–209,435–447`](../../lib/src/Carburetor/Derived/Computed.ts#L435): repaired native last-release path очищает `announced` и active filing; independent evaluation cache законно держит **current** value. No-hook native control в probe получает новый value и освобождает old target. Поэтому finding не приписывается этому repaired owner.
+- [`getComputedSnapshotVersion.ts:5–11`](../../lib/src/Carburetor/Derived/Freshness/getComputedSnapshotVersion.ts#L5): native snapshot revision и public external version различаются; изменение cache ownership не может удалять этот publication token.
 
 ```text
 module snapshots --(alive source key)→ old envelope → obsolete value → result subtree

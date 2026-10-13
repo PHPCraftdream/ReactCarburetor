@@ -48,8 +48,8 @@ to `.claude/scheduled_tasks.lock` is outside this report commit.
 
 ## R5-01 — [P1] Equal fields can conceal a changed object graph
 
-**Location:** [sameSelection.ts](../lib/src/Carburetor/Component/Connection/sameSelection.ts#L49),
-[detachment](../lib/src/Carburetor/Component/Connection/detachSelection.ts#L36).
+**Location:** [sameSelection.ts](../../lib/src/Carburetor/Component/Connection/sameSelection.ts#L49),
+[detachment](../../lib/src/Carburetor/Component/Connection/detachSelection.ts#L36).
 
 `detachSelection` deliberately preserves shared references and cycles. `sameSelection`
 compares values recursively but remembers only a forward pair in a `WeakMap`. If the old
@@ -77,8 +77,8 @@ Assert what a memo child displays, not just the comparator's return value.
 
 ## R5-02 — [P1] A mutable exotic value can strand a memo child
 
-**Location:** [sameSelection.ts](../lib/src/Carburetor/Component/Connection/sameSelection.ts#L49),
-[exotic-value pass-through](../lib/src/Carburetor/Component/Connection/detachSelection.ts#L45).
+**Location:** [sameSelection.ts](../../lib/src/Carburetor/Component/Connection/sameSelection.ts#L49),
+[exotic-value pass-through](../../lib/src/Carburetor/Component/Connection/detachSelection.ts#L45).
 
 A `Map` in store data is an untrackable leaf: touching it through `draft` records the
 leaf path and wakes its subscriber. `connectSelection(store, data => ({map: data.map}))`
@@ -98,9 +98,9 @@ their reference is stable. Keep ordinary primitive and plain-data memoization pr
 
 ## R5-03 — [P1] Late consumer reads do not amend a computed subscription
 
-**Location:** [Computed.recompute](../lib/src/Carburetor/Derived/Computed.ts#L171),
-[dependency observation](../lib/src/Carburetor/Derived/Computed.ts#L330),
-[store read-set copy](../lib/src/Carburetor/Store/Carburetor.ts#L135).
+**Location:** [Computed.recompute](../../lib/src/Carburetor/Derived/Computed.ts#L171),
+[dependency observation](../../lib/src/Carburetor/Derived/Computed.ts#L330),
+[store read-set copy](../../lib/src/Carburetor/Store/Carburetor.ts#L135).
 
 A computed body returns the live `read(store).user` proxy. The body's first read records a
 branch marker. A consumer reading `.name` later records the leaf into the computed's
@@ -121,9 +121,9 @@ reading different fields, in both mount orders, plus the first-consumer control.
 
 ## R5-04 — [P1] Resource APIs exceed the declared Node minimum
 
-**Location:** [package engine constraint](../package.json#L56),
-[ResourceCache request construction](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L520),
-[single-slot construction](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L215).
+**Location:** [package engine constraint](../../package.json#L56),
+[ResourceCache request construction](../../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L520),
+[single-slot construction](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L215).
 
 The package advertises `node >=14.6.0`. Both resource implementations call
 `new AbortController()` on load. Node's [official API history](https://nodejs.org/docs/latest/api/globals.html#class-abortcontroller)
@@ -143,9 +143,9 @@ change; it identifies a mismatch between the current metadata and implementation
 
 ## R5-05 — [P2] Symbols survive tracking but disappear from snapshots
 
-**Location:** [deepClone.ts](../lib/src/Carburetor/Store/Utils/deepClone.ts#L19),
-[read tracking](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts),
-[write tracking](../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts).
+**Location:** [deepClone.ts](../../lib/src/Carburetor/Store/Utils/deepClone.ts#L19),
+[read tracking](../../lib/src/Carburetor/Store/Tracking/createReadProxy.ts),
+[write tracking](../../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts).
 
 Recent fixes permit conservative tracking of symbol-keyed branches and publication of
 nested writes beneath them. The generic local snapshot still enumerates only
@@ -163,8 +163,8 @@ separate and documented.
 
 ## R5-06 — [P2] Cache eviction repeats subscriber scans per candidate
 
-**Location:** [ResourceCache.isRetained](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L373),
-[evict](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L400).
+**Location:** [ResourceCache.isRetained](../../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L373),
+[evict](../../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L400).
 
 When the cache exceeds `maxEntries`, `evict()` tests each non-pending key for retention.
 Each `isRetained(key)` enumerates all subscribers and materializes each subscriber's read
@@ -184,8 +184,8 @@ Do not add a second index without profiling its subscription-update cost.
 
 ## R5-07 — [P3] Deep selections cost work even when their snapshot is reused
 
-**Location:** [sameSelection.ts](../lib/src/Carburetor/Component/Connection/sameSelection.ts#L9),
-[connectSelection](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L342).
+**Location:** [sameSelection.ts](../../lib/src/Carburetor/Component/Connection/sameSelection.ts#L9),
+[connectSelection](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L342).
 
 `connectSelection` reruns the selector for every render to renew tracked dependencies.
 With structured output, comparison then walks its enumerable graph even when the
@@ -202,8 +202,8 @@ well as store data.
 
 ## R5-08 — [P3] React 18 remains an unverified advertised peer
 
-**Location:** [README compatibility note](../README.md#L43),
-[package peer range](../package.json#L71).
+**Location:** [README compatibility note](../../README.md#L43),
+[package peer range](../../package.json#L71).
 
 The package advertises React 18 and 19, while the README explicitly states only React
 19.3 has been exercised in local checks and CI. The proxy-backed class lifecycle,

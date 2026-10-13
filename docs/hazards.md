@@ -877,7 +877,7 @@ engine deliberately refuses to wrap frozen branches during tracked reads instead
 a plain `useCarburetor(cache)` read into `entries.<key>.data` throw in development, trading one hazard
 for a worse one. `no-external-data-mutation` catches the documented `getEntry(...).data.x = ...` shape
 already; a regression test pins the current mutable-escape behavior so a later change cannot alter this
-contract by accident. See `docs/js-review-round-3-2026-09-23.md`, R3-10.
+contract by accident. See `docs/reviews/js-review-round-3-2026-09-23.md`, R3-10.
 
 ### H24 — arguments that cannot become a key
 

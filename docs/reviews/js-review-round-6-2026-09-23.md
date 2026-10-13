@@ -65,9 +65,9 @@ changed. The pre-existing change to `.claude/scheduled_tasks.lock` is outside th
 
 ## R6-01 — [P1] The fallback does not satisfy the loader's signal type
 
-**Location:** [createAbortHandle.ts](../lib/src/Carburetor/Resource/createAbortHandle.ts#L25),
-[loader type](../lib/src/Carburetor/Models/Resource.ts#L14),
-[documented degradation](../README.md#L58).
+**Location:** [createAbortHandle.ts](../../lib/src/Carburetor/Resource/createAbortHandle.ts#L25),
+[loader type](../../lib/src/Carburetor/Models/Resource.ts#L14),
+[documented degradation](../../README.md#L58).
 
 The loader contract provides a standard `AbortSignal`. If the runtime has no global
 `AbortController`, `createAbortHandle()` instead returns
@@ -97,8 +97,8 @@ follow the documented degradation. Keep native-controller cancellation working.
 
 ## R6-02 — [P1] Computed values can hide a published Map mutation
 
-**Location:** [Computed.settle](../lib/src/Carburetor/Derived/Computed.ts#L448),
-[store draft boundary](../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts#L65).
+**Location:** [Computed.settle](../../lib/src/Carburetor/Derived/Computed.ts#L448),
+[store draft boundary](../../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts#L65).
 
 A store holds `index: Map`; the computed body returns `read(store).index`. Mutation through
 `draft.index.set('a', 2)` records the coarse `index` path, and the store version advances.
@@ -120,8 +120,8 @@ restore precision when the consumer needs it. Cover the component, not only `get
 
 ## R6-03 — [P1] Hooks interop does not produce an immutable Map snapshot
 
-**Location:** [useCarburetorValue.ts](../lib/src/Interop/useCarburetorValue.ts#L120),
-[selection equality](../lib/src/Interop/useCarburetorValue.ts#L145).
+**Location:** [useCarburetorValue.ts](../../lib/src/Interop/useCarburetorValue.ts#L120),
+[selection equality](../../lib/src/Interop/useCarburetorValue.ts#L145).
 
 A function component selects `data.index`, a Map. The store publishes
 `draft.index.set('a', 2)`. The interop selector reruns at the new store version and gets
@@ -144,8 +144,8 @@ an ordinary plain-object control.
 
 ## R6-04 — [P2] abort() erases reload()'s only key
 
-**Location:** [ResourceCarburetor.reload](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L150),
-[cancellation bookkeeping](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L182).
+**Location:** [ResourceCarburetor.reload](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L150),
+[cancellation bookkeeping](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L182).
 
 `reload()` is documented to repeat the last load. It currently returns immediately when
 `pendingKey` is undefined. `abort()` clears that pending key even though `lastArgs`
@@ -161,7 +161,7 @@ contract. An initial `reload()` before any load should remain an intentional no-
 
 ## R6-05 — [P2] Value-key memoization accepts changed values under one reference
 
-**Location:** [ResourceCache.keyOf](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L151).
+**Location:** [ResourceCache.keyOf](../../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L151).
 
 `keyOf(args)` memoizes JSON encoding by the argument object's identity. A caller that
 reuses one mutable query object can change its contents while the cache continues to use
@@ -185,7 +185,7 @@ are actually unchanged.
 
 ## R6-06 — [P3] Exotic selections always break the memo child bailout
 
-**Location:** [sameSelection.ts](../lib/src/Carburetor/Component/Connection/sameSelection.ts#L81).
+**Location:** [sameSelection.ts](../../lib/src/Carburetor/Component/Connection/sameSelection.ts#L81).
 
 The round-five repair treats any Map/Set/Date/class instance inside a selection as changed,
 even if the store has not changed. That prevents a stale child after an in-place mutation.
@@ -203,8 +203,8 @@ changing props. Selecting immutable primitives remains the predictable low-cost 
 
 ## R6-07 — [P3] React 18 tests exclude most class-component edge cases
 
-**Location:** [React 18 CI job](../.github/workflows/ci.yml#L83),
-[exclusion](../.github/workflows/ci.yml#L118).
+**Location:** [React 18 CI job](../../.github/workflows/ci.yml#L83),
+[exclusion](../../.github/workflows/ci.yml#L118).
 
 A React 18.3 job was added, but it excludes the entire
 `AntiHookComponent.test.tsx` file. That file contains the most detailed tests of the

@@ -32,9 +32,9 @@ measured performance bottleneck.
 
 ## R12-01 — [P2] Array-subclass prototype survives, but its brand does not
 
-**Location:** [detachSelection.ts](../lib/src/Carburetor/Component/Connection/detachSelection.ts#L64),
-[array copy](../lib/src/Carburetor/Component/Connection/detachSelection.ts#L76),
-[selection return](../lib/src/Carburetor/Component/AntiHookComponent/Reads.tsx#L182).
+**Location:** [detachSelection.ts](../../lib/src/Carburetor/Component/Connection/detachSelection.ts#L64),
+[array copy](../../lib/src/Carburetor/Component/Connection/detachSelection.ts#L76),
+[selection return](../../lib/src/Carburetor/Component/AntiHookComponent/Reads.tsx#L182).
 
 The R11 copy treats every `Array.isArray(value)` as a plain array and creates
 `[]` with the source's prototype installed. For an `Array` subclass, that
@@ -60,9 +60,9 @@ plain-array controls.
 
 ## R12-02 — [P2] Built-in subclasses bypass the hook's class-instance guard
 
-**Location:** [detachOpaque.ts](../lib/src/Carburetor/Store/Utils/detachOpaque.ts#L57),
-[class guard](../lib/src/Carburetor/Store/Utils/detachOpaque.ts#L85),
-[hook fail-fast callback](../lib/src/Interop/useCarburetorValue.ts#L152).
+**Location:** [detachOpaque.ts](../../lib/src/Carburetor/Store/Utils/detachOpaque.ts#L57),
+[class guard](../../lib/src/Carburetor/Store/Utils/detachOpaque.ts#L85),
+[hook fail-fast callback](../../lib/src/Interop/useCarburetorValue.ts#L152).
 
 `detachOpaque()` handles `instanceof Date`, `Map`, and `Set` before it checks
 whether an object is a class instance that cannot be safely copied. It

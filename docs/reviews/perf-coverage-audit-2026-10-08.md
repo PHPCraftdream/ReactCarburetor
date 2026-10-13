@@ -433,12 +433,12 @@ names the JS-R13-05 auxiliary subclaim of grouped counting unit JS-R13-02/05.
 
 ## Resolution — protection plan (2026-10-08)
 
-Executed per `docs/perf-protection-plan-2026-10-08.md`. Every new gate was run on the current build five times in a
+Executed per `docs/reviews/perf-protection-plan-2026-10-08.md`. Every new gate was run on the current build five times in a
 row after integration (41 entry prefixes, zero failures) and on the pre-fix build named below: the improvement
 entries fail on the mechanism counter and the positive controls pass. Per-entry before/after values are in
-`docs/perf-protection-results-2026-10-08.md`; the index of entries is the
-[Coverage of earlier optimizations](../perf/README.md#coverage-of-earlier-optimizations) section of `perf/README.md`;
-added pre-fix builds are in its [Baseline builds](../perf/README.md#baseline-builds) table.
+`docs/reviews/perf-protection-results-2026-10-08.md`; the index of entries is the
+[Coverage of earlier optimizations](../../perf/README.md#coverage-of-earlier-optimizations) section of `perf/README.md`;
+added pre-fix builds are in its [Baseline builds](../../perf/README.md#baseline-builds) table.
 
 ### Step-to-gap resolution
 

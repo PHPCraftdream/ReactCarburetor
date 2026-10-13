@@ -33,8 +33,8 @@ inferred from source inspection alone.
 
 ## R10-01 — [P1] Cache restore has no guard against a nested restore
 
-**Location:** [ResourceCacheLifecycle.restore](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L56),
-[single-slot restore contrast](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L79).
+**Location:** [ResourceCacheLifecycle.restore](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L56),
+[single-slot restore contrast](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L79).
 
 The R9 cache repair clears old request bookkeeping before dispatching abort
 listeners, then merges requests started by those listeners into the restored
@@ -61,8 +61,8 @@ the final snapshot, alongside the existing load-during-restore case.
 
 ## R10-02 — [P2] A superseded `load` reports completion without loading its key
 
-**Location:** [ResourceCarburetor.start](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L234),
-[supersession return](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L246).
+**Location:** [ResourceCarburetor.start](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L234),
+[supersession return](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L246).
 
 If loading `b` aborts an old `a` request and `a`'s abort listener starts `c`,
 the operation-version check correctly prevents the outer `b` call from
@@ -85,9 +85,9 @@ same-key joining and abort-listener re-entry coverage intact.
 
 ## R10-03 — [P2] Selected hidden own fields disappear at the hook boundary
 
-**Location:** [detachOpaque.ts](../lib/src/Carburetor/Store/Utils/detachOpaque.ts#L8),
-[useCarburetorValue.ts](../lib/src/Interop/useCarburetorValue.ts#L152),
-[public interop description](../README.md#L540).
+**Location:** [detachOpaque.ts](../../lib/src/Carburetor/Store/Utils/detachOpaque.ts#L8),
+[useCarburetorValue.ts](../../lib/src/Interop/useCarburetorValue.ts#L152),
+[public interop description](../../README.md#L540).
 
 `useCarburetorValue` types a selector result as `R` and passes any object
 through `detachOpaque()` for React's immutable snapshot. That copy enumerates

@@ -109,7 +109,7 @@ const emittedMetrics = scenarioPath => {
 const isLabel = label => label === 'control' || /^[0-9a-f]{7,12}$/.test(label)
     || /^(?:JS-)?R\d+(?:[-/][A-Za-z0-9.]+)*(?:\+(?:JS-)?R\d+(?:[-/][A-Za-z0-9.]+)*)*$/.test(label);
 
-// js-review rounds registered in docs/perf-coverage-audit-2026-10-08.md.
+// js-review rounds registered in docs/reviews/perf-coverage-audit-2026-10-08.md.
 const jsRounds = new Set([13, 14, 15, 16]);
 const collidesWithJs = label => [...label.matchAll(/(?:^|\+)(JS-)?R(\d+)-(\d{2})(?=$|[/+])/g)]
     .some(match => !match[1] && jsRounds.has(Number(match[2])));

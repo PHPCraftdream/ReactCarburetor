@@ -71,8 +71,8 @@ The pre-existing change in `.claude/scheduled_tasks.lock` was left outside this 
 
 ## R3-01 — [P1] Prototype render methods lose their private-field receiver
 
-**Location:** [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L144),
-[boundary call](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L546).
+**Location:** [AntiHookComponent.tsx](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L144),
+[boundary call](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L546).
 
 The base constructor returns a proxy over the component. A subclass's JavaScript `#field` is
 initialized on that returned proxy. The render boundary, however, closes over the original
@@ -104,9 +104,9 @@ the proxy and original instance unless it is explicitly guaranteed.
 
 ## R3-02 — [P1] The safe child-selection route can still carry a live view
 
-**Location:** [reportLiveViewEscape.ts](../lib/src/Carburetor/Component/Connection/reportLiveViewEscape.ts#L16),
-[detachSelection.ts](../lib/src/Carburetor/Component/Connection/detachSelection.ts#L13),
-[connectSelection](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L332).
+**Location:** [reportLiveViewEscape.ts](../../lib/src/Carburetor/Component/Connection/reportLiveViewEscape.ts#L16),
+[detachSelection.ts](../../lib/src/Carburetor/Component/Connection/detachSelection.ts#L13),
+[connectSelection](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L332).
 
 The escape diagnostic inspects the returned value and only one level of its members.
 Detachment also copies only the top-level object. A nested plain container can therefore
@@ -143,8 +143,8 @@ forbidden shape must fail or report clearly before a silent stale UI.
 
 ## R3-03 — [P1] Cache restore does not cancel the old request
 
-**Location:** [inherited restore](../lib/src/Carburetor/Store/Carburetor.ts#L113),
-[ResourceCache request settlement](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L565).
+**Location:** [inherited restore](../../lib/src/Carburetor/Store/Carburetor.ts#L113),
+[ResourceCache request settlement](../../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L565).
 
 A cache inherits `restore` from `Carburetor`, which replaces data but does not reconcile
 `ResourceCache`'s request and controller maps.
@@ -171,9 +171,9 @@ scope hydration, history/time travel, and a cache containing several independent
 
 ## R3-04 — [P2] In-flight flags survive hydration without in-flight work
 
-**Location:** [ResourceCache state](../lib/src/Carburetor/Models/Resource.ts#L23),
-[useResource fetch gate](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L368),
-[single-slot restore](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L71).
+**Location:** [ResourceCache state](../../lib/src/Carburetor/Models/Resource.ts#L23),
+[useResource fetch gate](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L368),
+[single-slot restore](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L71).
 
 A successful cache entry was invalidated and refreshed; its snapshot had
 `refreshing: true` and `invalidated: true`. After hydration into a new cache, the entry
@@ -195,9 +195,9 @@ and stale entries must be able to fetch again.
 
 ## R3-05 — [P2] Symbol-keyed branches bypass the read and write boundaries
 
-**Location:** [createReadProxy.get](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts#L90),
-[descriptor read](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts#L162),
-[createWriteProxy.get](../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts#L65).
+**Location:** [createReadProxy.get](../../lib/src/Carburetor/Store/Tracking/createReadProxy.ts#L90),
+[descriptor read](../../lib/src/Carburetor/Store/Tracking/createReadProxy.ts#L162),
+[createWriteProxy.get](../../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts#L65).
 
 For a plain object holding `[symbol]: {n: 1}`, reading that branch returns the raw object
 and records no read path. The descriptor route also returns its raw value. Mutating either
@@ -214,8 +214,8 @@ key publish. Test both direct property and descriptor access.
 
 ## R3-06 — [P2] An idle view retains a growing invalidation worklist
 
-**Location:** [createProxyCache.retire](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L125),
-[invalidation](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L203).
+**Location:** [createProxyCache.retire](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L125),
+[invalidation](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L203).
 
 Read one object branch, retain that view, and replace the same path three times without
 reading through the view again. One data key remains, while the scope reports **three
@@ -234,8 +234,8 @@ under a small repeated-write scenario; do not use a synthetic CPU stress test.
 
 ## R3-07 — [P2] Weak watcher handles accumulate during read-only renders
 
-**Location:** [createProxyCache registration](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L105),
-[retirement](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L125).
+**Location:** [createProxyCache registration](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L105),
+[retirement](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L125).
 
 Every fresh `Carburetor.read()` view creates a cache state and inserts a new `WeakRef` into
 the raw root's strongly held watcher `Set`. Four ordinary reads with no writes left four
@@ -253,8 +253,8 @@ particular garbage-collection deadline for correctness or for the regression ora
 
 ## R3-08 — [P2] WeakRef is now a hard runtime dependency
 
-**Location:** [createProxyCache.ts](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L114),
-[compiler target](../tsconfig.json#L3).
+**Location:** [createProxyCache.ts](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L114),
+[compiler target](../../tsconfig.json#L3).
 
 With `globalThis.WeakRef` unavailable, the first store `read()` throws
 `WeakRef is not a constructor`. The package has no stated minimum runtime in its metadata,
@@ -268,8 +268,8 @@ population of affected browsers or servers.
 
 ## R3-09 — [P2] Correct computed graph still performs redundant evaluations
 
-**Location:** [Computed invalidation](../lib/src/Carburetor/Derived/Computed.ts#L347),
-[settlement](../lib/src/Carburetor/Derived/Computed.ts#L400).
+**Location:** [Computed invalidation](../../lib/src/Carburetor/Derived/Computed.ts#L347),
+[settlement](../../lib/src/Carburetor/Derived/Computed.ts#L400).
 
 The previous inconsistent publication is fixed. In a direct-plus-derived three-node graph
 (`a = n*2`, `b = a+1`, `total = n+b`), one source change now delivers only the final
@@ -285,9 +285,9 @@ scheduler redesign.
 
 ## R3-10 — [P3] Resource result views remain a documented mutable escape
 
-**Location:** [IResourceView](../lib/src/Carburetor/Models/Resource.ts#L64),
-[cache view](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L150),
-[documented H23 hazard](hazards.md#L836).
+**Location:** [IResourceView](../../lib/src/Carburetor/Models/Resource.ts#L64),
+[cache view](../../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L150),
+[documented H23 hazard](../hazards.md#L836).
 
 `getEntry()` returns a shallow copy of entry fields and `useResource()` exposes that view.
 Its `data` field remains the raw stored object. Changing `entry.data.name` changed the
@@ -301,7 +301,7 @@ escapes explicit and measure wrapper cost before adding another proxy to a hot r
 
 ## R3-11 — [P3] Connection shape probing masks resolver failures
 
-**Location:** [buildPersistentView.ts](../lib/src/Carburetor/Component/Connection/buildPersistentView.ts#L25).
+**Location:** [buildPersistentView.ts](../../lib/src/Carburetor/Component/Connection/buildPersistentView.ts#L25).
 
 The constructor calls a source resolver to decide whether the permanent facade is an array,
 then catches **every** exception as “source not resolvable yet.” A resolver that throws

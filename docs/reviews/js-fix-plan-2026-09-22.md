@@ -1,7 +1,7 @@
 # JavaScript correction and optimization plan — 2026-09-22
 
 Status: implemented (all 11 steps, commits `df24715`..`45cccf8`). A follow-up review
-(`docs/js-review-round-2-2026-09-22.md`) found gaps in several of these fixes outside their own
+(`docs/reviews/js-review-round-2-2026-09-22.md`) found gaps in several of these fixes outside their own
 test coverage; each step's note below says whether a round-2 fix extended it. Round 2 is itself
 fully implemented as of this commit.
 
@@ -79,9 +79,9 @@ checks pass; writing a patch or updating documentation alone does not close it.
 
 - [x] Done (`df24715`). No round-2 follow-up.
 
-Files: [ResourceCache.ts](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts),
-[encodeCacheKey.ts](../lib/src/Carburetor/Resource/Cache/encodeCacheKey.ts),
-[joinPath.ts](../lib/src/Carburetor/Store/Paths/joinPath.ts).
+Files: [ResourceCache.ts](../../lib/src/Carburetor/Resource/Cache/ResourceCache.ts),
+[encodeCacheKey.ts](../../lib/src/Carburetor/Resource/Cache/encodeCacheKey.ts),
+[joinPath.ts](../../lib/src/Carburetor/Store/Paths/joinPath.ts).
 
 The stored dictionary key and its representation as a path segment are different concepts.
 Keep the existing storage-key format initially, so persisted/hydrated entries do not silently
@@ -108,7 +108,7 @@ Acceptance:
   fallback with a proxy that intercepts `render` at definition time, independent of any lifecycle
   hook being called at all.
 
-Primary file: [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx).
+Primary file: [AntiHookComponent.tsx](../../lib/src/Carburetor/Component/AntiHookComponent.tsx).
 
 First establish a reliable, exception-safe collection boundary around a render attempt. Verify
 the approach with both prototype-method and currently supported class-field render definitions.
@@ -149,8 +149,8 @@ Acceptance:
   nested branch views, which still allowed `setPrototypeOf`/`preventExtensions` to reach the real
   backing object — found and fixed as R2-12 (`createReadProxy.ts`'s own traps).
 
-Files: [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx),
-[createReadProxy.ts](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts).
+Files: [AntiHookComponent.tsx](../../lib/src/Carburetor/Component/AntiHookComponent.tsx),
+[createReadProxy.ts](../../lib/src/Carburetor/Store/Tracking/createReadProxy.ts).
 
 Resolve the target-shape decision before implementing forwarding traps. A proxy over `{}`
 cannot report array identity, and it cannot expose arbitrary non-configurable descriptors from
@@ -182,8 +182,8 @@ Acceptance:
 - [x] Done (`50e039c`). `sameSelection`'s equality check ignored key presence/removal at equal
   cardinality and symbol-keyed properties — found and fixed as R2-07.
 
-Files: [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx),
-[createReadProxy.ts](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts),
+Files: [AntiHookComponent.tsx](../../lib/src/Carburetor/Component/AntiHookComponent.tsx),
+[createReadProxy.ts](../../lib/src/Carburetor/Store/Tracking/createReadProxy.ts),
 component tests, README.
 
 Keep the stable root connection for its owning component. Do not equate that live mutable view
@@ -222,8 +222,8 @@ Acceptance:
   read could consume the first real notification) and part of R2-02 (an upstream failure did not
   propagate staleness to a dependent computed).
 
-Files: [Computed.ts](../lib/src/Carburetor/Derived/Computed.ts),
-[UpdateWave.ts](../lib/src/Carburetor/Store/Scheduling/UpdateWave.ts),
+Files: [Computed.ts](../../lib/src/Carburetor/Derived/Computed.ts),
+[UpdateWave.ts](../../lib/src/Carburetor/Store/Scheduling/UpdateWave.ts),
 the existing diagnostics and scheduler error-handling code.
 
 Use the existing store notification policy consistently: isolate each observer and each
@@ -249,7 +249,7 @@ Acceptance:
   in place could publish a mixed-generation intermediate value for an unequal-depth dependency
   graph — found and fixed as R2-02.
 
-Primary file: [Computed.ts](../lib/src/Carburetor/Derived/Computed.ts).
+Primary file: [Computed.ts](../../lib/src/Carburetor/Derived/Computed.ts).
 
 Replace unconditional `releaseDependencies()` with a comparison between old and newly collected
 dependencies. Keep unchanged source/path edges, replace only changed registrations, and remove
@@ -278,9 +278,9 @@ oracle or introduce synthetic load.
   itself had no pruning and grew with write churn, and a primitive-only read never triggered a
   sweep at all — both found (confirming the documented limitation) and fixed as R2-05/R2-06.
 
-Files: [createProxyCache.ts](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts),
-[createReadProxy.ts](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts),
-[createWriteProxy.ts](../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts).
+Files: [createProxyCache.ts](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts),
+[createReadProxy.ts](../../lib/src/Carburetor/Store/Tracking/createReadProxy.ts),
+[createWriteProxy.ts](../../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts).
 
 Replace the unbounded strong path-to-object cache with an ownership strategy that releases
 obsolete targets. Evaluate weak target ownership or explicit invalidation on branch replacement
@@ -308,7 +308,7 @@ Acceptance:
   counters before the "first derivation" fallback checked whether they existed — found and fixed
   as R2-10.
 
-Primary file: [TodoCarburetor.ts](../lib/src/ToDo/Carburetors/TodoCarburetor.ts).
+Primary file: [TodoCarburetor.ts](../../lib/src/ToDo/Carburetors/TodoCarburetor.ts).
 
 Classify actions by what they actually change. A title-only edit must skip count derivation and
 ordering work. Update counters from the old/new completion state for ordinary single-item actions.
@@ -334,7 +334,7 @@ Acceptance:
   a later, unrelated commit; found and fixed as R2-08 (deferred loads now live on the render
   attempt itself and die with it).
 
-Primary file: [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx).
+Primary file: [AntiHookComponent.tsx](../../lib/src/Carburetor/Component/AntiHookComponent.tsx).
 
 After JS-02, use its render collection context to reuse the resolved source and baseline version.
 The current primitive read resolves the source twice, and the recorder requests the version on
@@ -358,7 +358,7 @@ Acceptance:
 
 - [x] Done (`6f6ad5b`). No round-2 follow-up.
 
-Primary file: [connectDevTools.ts](../lib/src/Carburetor/Tooling/connectDevTools.ts).
+Primary file: [connectDevTools.ts](../../lib/src/Carburetor/Tooling/connectDevTools.ts).
 
 Cache a detached snapshot per connected store and refresh only changed versions when composing
 the DevTools payload. Inspect every store's version as needed: a transaction may already have
@@ -384,7 +384,7 @@ Acceptance:
   completed then and still is not: only React 19.3 has ever been exercised, locally or in CI, in
   this repository's history. README.md now says so explicitly instead of leaving the 18/19
   peerDependency range looking equally verified. A second review round
-  (`docs/js-review-round-2-2026-09-22.md`) found and fixed 14 further findings across most of the
+  (`docs/reviews/js-review-round-2-2026-09-22.md`) found and fixed 14 further findings across most of the
   steps above; see each step's note.
 
 Add regressions alongside the affected engine/component/resource tests. At minimum the suite must

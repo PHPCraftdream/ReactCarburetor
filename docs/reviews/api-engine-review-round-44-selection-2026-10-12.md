@@ -32,16 +32,16 @@ Parent предоставил frozen distribution **`worktrees/bench-dist/acfd3e
 
 Поддержка этих prototypes — не предположение о расширении API:
 
-- [Tracking/isTrackable.ts:7–9](../lib/src/Carburetor/Store/Tracking/isTrackable.ts#L7) принимает `Array.prototype`, `Object.prototype`, `null`.
-- [detachCore.ts:126–149](../lib/src/Carburetor/Store/Utils/Selection/detachCore.ts#L126) создаёт detached array и сохраняет каждый из этих prototypes; [reconcileSelection.ts:121–131,300–305](../lib/src/Carburetor/Store/Utils/Selection/reconcileSelection.ts#L121) делает то же на full path.
-- Existing source coverage [diff.test.ts:505–580](../__tests__/Engine/Store/Carburetor/diff.test.ts#L505), [R39/array-prototype.test.ts:3–16](../__tests__/Engine/Store/Carburetor/Selections/restore/R39/array-prototype.test.ts#L3) и [README:306–315](../README.md#L306) явно сохраняют supported object/array prototype transitions. Эти suites **не запускались**.
+- [Tracking/isTrackable.ts:7–9](../../lib/src/Carburetor/Store/Tracking/isTrackable.ts#L7) принимает `Array.prototype`, `Object.prototype`, `null`.
+- [detachCore.ts:126–149](../../lib/src/Carburetor/Store/Utils/Selection/detachCore.ts#L126) создаёт detached array и сохраняет каждый из этих prototypes; [reconcileSelection.ts:121–131,300–305](../../lib/src/Carburetor/Store/Utils/Selection/reconcileSelection.ts#L121) делает то же на full path.
+- Existing source coverage [diff.test.ts:505–580](../../__tests__/Engine/Store/Carburetor/diff.test.ts#L505), [R39/array-prototype.test.ts:3–16](../../__tests__/Engine/Store/Carburetor/Selections/restore/R39/array-prototype.test.ts#L3) и [README:306–315](../../README.md#L306) явно сохраняют supported object/array prototype transitions. Эти suites **не запускались**.
 
 New gap:
 
-1. [watchSelection.ts:91–95](../lib/src/Carburetor/Store/Tracking/Observation/watchSelection.ts#L91) выбирает write-log route, когда live selection та же и существует copy ledger.
-2. [patchFromWriteLog.ts:55–61,87–89](../lib/src/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog.ts#L55) допускает небольшой inside-root leaf plan.
-3. [patchSelection.ts:10–19](../lib/src/Carburetor/Store/Utils/Selection/Patch/patchSelection.ts#L10), symbol **`cloneSpine`**: `isPlainSpine` признаёт обе формы допустимыми, но array branch использует **`value.slice()`**. У сохранённого prototype `null` / `Object.prototype` этого метода нет.
-4. [patchSelection.ts:62–65,79–81](../lib/src/Carburetor/Store/Utils/Selection/Patch/patchSelection.ts#L62) копирует изменённый spine и ловит только собственный `PatchFallback`. `TypeError` не вызывает safe full fallback. Обычная subscriber isolation оставляет write применённым, но watch callback не получает graph ([reportDeliveryFailure.ts:9–15](../lib/src/Carburetor/Store/Diagnostics/reportDeliveryFailure.ts#L9)).
+1. [watchSelection.ts:91–95](../../lib/src/Carburetor/Store/Tracking/Observation/watchSelection.ts#L91) выбирает write-log route, когда live selection та же и существует copy ledger.
+2. [patchFromWriteLog.ts:55–61,87–89](../../lib/src/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog.ts#L55) допускает небольшой inside-root leaf plan.
+3. [patchSelection.ts:10–19](../../lib/src/Carburetor/Store/Utils/Selection/Patch/patchSelection.ts#L10), symbol **`cloneSpine`**: `isPlainSpine` признаёт обе формы допустимыми, но array branch использует **`value.slice()`**. У сохранённого prototype `null` / `Object.prototype` этого метода нет.
+4. [patchSelection.ts:62–65,79–81](../../lib/src/Carburetor/Store/Utils/Selection/Patch/patchSelection.ts#L62) копирует изменённый spine и ловит только собственный `PatchFallback`. `TypeError` не вызывает safe full fallback. Обычная subscriber isolation оставляет write применённым, но watch callback не получает graph ([reportDeliveryFailure.ts:9–15](../../lib/src/Carburetor/Store/Diagnostics/reportDeliveryFailure.ts#L9)).
 
 Это **не R43-S01**: finite `0→1`, не signed zero/NaN, content gates уже `Object.is`. И не старый R13/R14/R39 prototype replacement finding: initial detach и independent full-projection lane корректны; ломается отдельный **partial spine-copy**.
 
@@ -83,10 +83,10 @@ Production diagnostic отсутствует по существующей polic
 
 Исходное plain tree: `{stamp: null, slot: null, keep: {n: 7}}`; один attached `CarburetorHistory`. Один обычный `update` сначала устанавливает `stamp = new Date(1000)`, затем новый plain rows graph в slot. В более насыщенном control тот же slot K раз заменяется через `null`, сохраняя только последний graph. Ни native mutation через raw reference, ни unsupported endpoint для этого не нужны.
 
-- [CarburetorHistory.ts:266–286](../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L266), **`onPatch`**, учитывает replay ownership/structural markers, но **не отсекает описываемые patches при уже true `pendingOpaque`**.
-- [Там же:295–320](../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L295): `own(previous)` и `own(next)` копируют object endpoints; Date trait ставит opacity. Следующие ordinary endpoints всё равно копируются, fold-ятся или добавляются в `pendingPatches`.
-- [Там же:458–464,499–522](../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L458): `buildEntry` при opacity сразу выбирает **`buildSnapshotEntry`**. Он читает baseline/current capture, а не pending endpoints. [record:370–374](../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L370) затем освобождает patches.
-- [cloneOwnedGraph.ts:23–29,65–101](../lib/src/Carburetor/Store/Utils/Graph/cloneOwnedGraph.ts#L23): даже уже writer-owned plain endpoint действительно traversed и copied history-владельцем.
+- [CarburetorHistory.ts:266–286](../../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L266), **`onPatch`**, учитывает replay ownership/structural markers, но **не отсекает описываемые patches при уже true `pendingOpaque`**.
+- [Там же:295–320](../../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L295): `own(previous)` и `own(next)` копируют object endpoints; Date trait ставит opacity. Следующие ordinary endpoints всё равно копируются, fold-ятся или добавляются в `pendingPatches`.
+- [Там же:458–464,499–522](../../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L458): `buildEntry` при opacity сразу выбирает **`buildSnapshotEntry`**. Он читает baseline/current capture, а не pending endpoints. [record:370–374](../../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L370) затем освобождает patches.
+- [cloneOwnedGraph.ts:23–29,65–101](../../lib/src/Carburetor/Store/Utils/Graph/cloneOwnedGraph.ts#L23): даже уже writer-owned plain endpoint действительно traversed и copied history-владельцем.
 
 Первое превращение в opaque требует classification/ownership и не считается лишним: заранее нельзя знать последующий native trait. Однако после него snapshot route для данного batch уже неизбежен. Это **не R17-ENGINE-04** (повторный discarded traversal внутри одного capture), не R16 duplicate snapshot endpoint copy и не repaired **R43-S02** (impossible scalar fold search). Здесь лишние endpoints создаются **между уже принятым opaque verdict и закрытием publication**, и не используются ни для before, ни для after snapshot.
 
@@ -115,7 +115,7 @@ Non-no-op public endpoints правильны после update, undo и redo: s
 
 ### Точные dimensions, направление и риски
 
-**[INFERENCE]** A — число последующих patches после opacity; S — сумма nodes+own fields object-valued previous/next endpoints этих A patches; T — размер текущего графа final capture, D — path depth. Добавочный ненужный owned traversal/copy член — O(S), плюс pending recording/fold work. Это не утверждение O(T)→O(1) для whole operation: authoritative snapshot capture остаётся O(T), а [writer reportPatch:179–182](../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts#L179) всё ещё делает `clonePatchValue` по своему независимому protocol. В fixture exact measured after-opacity visits равны **(2K−1)(N+2)**: 6, 34, 170. Extrapolation к другим graphs/размерам — [INFERENCE].
+**[INFERENCE]** A — число последующих patches после opacity; S — сумма nodes+own fields object-valued previous/next endpoints этих A patches; T — размер текущего графа final capture, D — path depth. Добавочный ненужный owned traversal/copy член — O(S), плюс pending recording/fold work. Это не утверждение O(T)→O(1) для whole operation: authoritative snapshot capture остаётся O(T), а [writer reportPatch:179–182](../../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts#L179) всё ещё делает `clonePatchValue` по своему независимому protocol. В fixture exact measured after-opacity visits равны **(2K−1)(N+2)**: 6, 34, 170. Extrapolation к другим graphs/размерам — [INFERENCE].
 
 **[INFERENCE]** Pending owned copies также имеют strong ownership до `record`/`clear`, даже если исходные transient graphs уже не находятся в store. При manual throttle эта lifetime длиннее call frame; размер graph/число живых objects или heap bytes **не измерялись**. Это temporary ownership opportunity, не доказанная GC leak.
 
@@ -135,10 +135,10 @@ Parent отдельно расширяет на array-length lock/key-order mark
 
 Обычный store `{box: {n: 0}, spare: {n: 7}}`, attached history, scalar update, затем public `undo()` / `redo()`. Это warmed base-store patch replay; custom restore/snapshot/native restrictions не требуются.
 
-- [replayPatchesOnDraft.ts:62–71](../lib/src/Carburetor/Tooling/Graph/replayPatchesOnDraft.ts#L62) stage-ит owned baseline, а publication сверяет final installed paths.
-- **`matchesInstalledPaths`**, [там же:91–110](../lib/src/Carburetor/Tooling/Graph/replayPatchesOnDraft.ts#L91): после own-descriptor navigation scalar leaf передаётся `sameHistoryGraph(before, after)`.
-- [sameHistoryGraph.ts:11–16](../lib/src/Carburetor/Tooling/Graph/sameHistoryGraph.ts#L11) безусловно создаёт `forward` и `backward` **до** primitive/null/function identity branch `Object.is`. Ни один ledger в этом branch не используется.
-- Callers также находятся в [CarburetorHistory.ts:446,448,509,199,232](../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L446); только scalar replay caller фактически инструментирован.
+- [replayPatchesOnDraft.ts:62–71](../../lib/src/Carburetor/Tooling/Graph/replayPatchesOnDraft.ts#L62) stage-ит owned baseline, а publication сверяет final installed paths.
+- **`matchesInstalledPaths`**, [там же:91–110](../../lib/src/Carburetor/Tooling/Graph/replayPatchesOnDraft.ts#L91): после own-descriptor navigation scalar leaf передаётся `sameHistoryGraph(before, after)`.
+- [sameHistoryGraph.ts:11–16](../../lib/src/Carburetor/Tooling/Graph/sameHistoryGraph.ts#L11) безусловно создаёт `forward` и `backward` **до** primitive/null/function identity branch `Object.is`. Ни один ledger в этом branch не используется.
+- Callers также находятся в [CarburetorHistory.ts:446,448,509,199,232](../../lib/src/Carburetor/Tooling/CarburetorHistory.ts#L446); только scalar replay caller фактически инструментирован.
 
 Это не repaired R43-S02: recording fold hint действительно сохранён, обычный scalar record не создаёт counted WeakMaps. Здесь цена возникает при **post-install replay reconciliation**. Не R37 primitive selection ledgers: другой helper и другой жизненный цикл.
 

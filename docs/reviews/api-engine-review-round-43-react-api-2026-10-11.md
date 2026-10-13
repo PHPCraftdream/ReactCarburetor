@@ -28,11 +28,11 @@ Physical evidence: прочитаны исходники и supplied `dist` decl
 
 Точный путь в текущем source:
 
-1. [`Reads.tsx:47–70`](../lib/src/Carburetor/Component/AntiHookComponent/Reads.tsx#L47), `AntiHookComponentReads.useCarburetor`: instance держит `C.trackedViews`, `WeakMap<source, ITrackedView>`.
-2. [`buildTrackedView.ts:39–56`](../lib/src/Carburetor/Component/AntiHookComponent/buildTrackedView.ts#L39), `buildTrackedView`: cached record получает `attempt` и `entry`; новое значение WeakMap содержит те же ссылки, а persistent recorder читает их. Повторный вызов **того же source** обновляет ссылки; никакой release при прекращении чтения source здесь нет.
-3. [`Foundation.tsx:310–336`](../lib/src/Carburetor/Component/AntiHookComponent/Foundation.tsx#L310), `C.openRenderAttempt`/`C.closeRenderAttempt`: attempt содержит реальные `this.props` и `this.state`. Close оставляет pending identity и сбрасывает только `C.renderAttempt`.
-4. [`Subscriptions.tsx:80–88,138–146`](../lib/src/Carburetor/Component/AntiHookComponent/Subscriptions.tsx#L80), `C.commitSubscriptions`: retired tracked slot удаляется; `attempt.tracked/connections` очищаются, **не** `ITrackedView.attempt/entry`. [`:365–375`](../lib/src/Carburetor/Component/AntiHookComponent/Subscriptions.tsx#L365), `C.releaseSubscriptions`, также не очищает эти поля.
-5. [`Connection.ts:79–89,169–174`](../lib/src/Carburetor/Component/Models/Connection.ts#L79) закрепляет именно strong fields, не WeakRefs.
+1. [`Reads.tsx:47–70`](../../lib/src/Carburetor/Component/AntiHookComponent/Reads.tsx#L47), `AntiHookComponentReads.useCarburetor`: instance держит `C.trackedViews`, `WeakMap<source, ITrackedView>`.
+2. [`buildTrackedView.ts:39–56`](../../lib/src/Carburetor/Component/AntiHookComponent/buildTrackedView.ts#L39), `buildTrackedView`: cached record получает `attempt` и `entry`; новое значение WeakMap содержит те же ссылки, а persistent recorder читает их. Повторный вызов **того же source** обновляет ссылки; никакой release при прекращении чтения source здесь нет.
+3. [`Foundation.tsx:310–336`](../../lib/src/Carburetor/Component/AntiHookComponent/Foundation.tsx#L310), `C.openRenderAttempt`/`C.closeRenderAttempt`: attempt содержит реальные `this.props` и `this.state`. Close оставляет pending identity и сбрасывает только `C.renderAttempt`.
+4. [`Subscriptions.tsx:80–88,138–146`](../../lib/src/Carburetor/Component/AntiHookComponent/Subscriptions.tsx#L80), `C.commitSubscriptions`: retired tracked slot удаляется; `attempt.tracked/connections` очищаются, **не** `ITrackedView.attempt/entry`. [`:365–375`](../../lib/src/Carburetor/Component/AntiHookComponent/Subscriptions.tsx#L365), `C.releaseSubscriptions`, также не очищает эти поля.
+5. [`Connection.ts:79–89,169–174`](../../lib/src/Carburetor/Component/Models/Connection.ts#L79) закрепляет именно strong fields, не WeakRefs.
 
 Таким образом, при живых component **и key-source** сохраняется путь:
 
@@ -50,7 +50,7 @@ WeakMap не ослабляет value, пока жив key. Subscription count 0
 
 Cleanup должен охватить и `finally` abandoned render: исключительно post-commit очистка не освобождает cancelled/suspended attempts. Не стирать `owner.props/state` у committed attempt — они нужны исправленному R42 selection gate. Не сбрасывать весь proxy cache при каждом commit: это вернёт allocation/identity churn и нарушит уже защищённую warm reuse.
 
-Дополнительный implementation risk, **[INFERENCE], не отдельный finding**: `buildTrackedView` создаёт обе recorder closures в одной factory scope (`:31–36` и `:48–54`); одна из них лексически использует исходные `attempt/entry`. V8 context sharing может оставить initial context даже после очистки mutable record. При реализации использовать существующий boring принцип отдельной recorder factory, владеющей только стабильным accessor и mutable route, как [`Computed.ts:301–310`, `C.createReadRecorder`](../lib/src/Carburetor/Derived/Computed.ts#L301). Именно **class** cached route проверяется здесь; исправленный R41 computed route не объявляется снова сломанным. Родитель должен также проверить repeated same-source renders, чтобы clearing pointers не оказалось лишь частичным fix.
+Дополнительный implementation risk, **[INFERENCE], не отдельный finding**: `buildTrackedView` создаёт обе recorder closures в одной factory scope (`:31–36` и `:48–54`); одна из них лексически использует исходные `attempt/entry`. V8 context sharing может оставить initial context даже после очистки mutable record. При реализации использовать существующий boring принцип отдельной recorder factory, владеющей только стабильным accessor и mutable route, как [`Computed.ts:301–310`, `C.createReadRecorder`](../../lib/src/Carburetor/Derived/Computed.ts#L301). Именно **class** cached route проверяется здесь; исправленный R41 computed route не объявляется снова сломанным. Родитель должен также проверить repeated same-source renders, чтобы clearing pointers не оказалось лишь частичным fix.
 
 Инварианты будущего fix:
 
@@ -72,9 +72,9 @@ Cleanup должен охватить и `finally` abandoned render: исклю�
 
 ### Механизм и область нарушения
 
-- [`useCarburetorValue.ts:3,347–364`](../lib/src/Interop/useCarburetorValue.ts#L347): оба commit reconciliations прямо используют `useLayoutEffect`, в том числе selection-примитив без copy ledger.
-- [`useResourceValue.ts:3,13,44–48`](../lib/src/Interop/useResourceValue.ts#L13): уже существующий `useCommitEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect` устраняет тот же server diagnostic на resource route, сохраняя client layout phase.
-- [`README.md:810–836`](../README.md#L810) называет hooks SSR-safe; [`package.json:74–76`](../package.json#L74) поддерживает React 18 и 19.
+- [`useCarburetorValue.ts:3,347–364`](../../lib/src/Interop/useCarburetorValue.ts#L347): оба commit reconciliations прямо используют `useLayoutEffect`, в том числе selection-примитив без copy ledger.
+- [`useResourceValue.ts:3,13,44–48`](../../lib/src/Interop/useResourceValue.ts#L13): уже существующий `useCommitEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect` устраняет тот же server diagnostic на resource route, сохраняя client layout phase.
+- [`README.md:810–836`](../../README.md#L810) называет hooks SSR-safe; [`package.json:74–76`](../../package.json#L74) поддерживает React 18 и 19.
 - В реально доступном **прочитанном, но не исполненном** ReactDOM 18.3.1 `.consumer-matrix/react18-npm/node_modules/react-dom/cjs/react-dom-server-legacy.node.development.js:5159–5164,5261` `useLayoutEffect` вызывает `error('useLayoutEffect does nothing on the server...')`, а server `useEffect` — noop. React 19 server dispatcher использует noop и потому не является достаточным отрицательным control.
 
 Достижимая операция: настоящий Node `renderToString(<Badge/>)` без DOM globals, где Badge использует `useCarburetorValue(store, data => data.n)`, при development React 18. Library production bundle не переключает ReactDOM на production renderer: diagnostics принадлежат consumer React.

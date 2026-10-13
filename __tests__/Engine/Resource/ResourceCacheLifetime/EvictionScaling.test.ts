@@ -29,7 +29,7 @@ describe('ResourceCache eviction scaling (R16-04)', () => {
 
         // Before the fix, evict() filtered and sorted the whole live entry set on every fetch
         // and every answer — ~2N walks of up to N keys, the O(N^2) measured at 8073 ms to
-        // settle 4000 rows (docs/js-review-round-16-2026-09-28.md, R16-04). A bounded number
+        // settle 4000 rows (docs/reviews/js-review-round-16-2026-09-28.md, R16-04). A bounded number
         // of scans (doubling the growth trigger each time one finds nothing to evict) keeps
         // the total a small multiple of N instead of growing with N^2.
         expect(walks()).toBeLessThan(N * 3);

@@ -34,9 +34,9 @@ Performance candidates are not assigned a defect priority without profiling.
 
 ## R11-01 — [P1] `forgetKey()` deletes a re-entrant replacement request's entry
 
-**Location:** [forgetKey](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L179),
-[abortKey](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L286),
-[settlement guard](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L436).
+**Location:** [forgetKey](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L179),
+[abortKey](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L286),
+[settlement guard](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L436).
 
 The R9 repair made `abortKey()` safe when an abort listener calls
 `load(sameKey)`: it unregisters the old request before dispatching the abort,
@@ -67,10 +67,10 @@ next `load(key)` and loader-call count.
 
 ## R11-02 — [P2] The class-component selector has a different snapshot boundary
 
-**Location:** [detachSelection.ts](../lib/src/Carburetor/Component/Connection/detachSelection.ts#L65),
-[sameSelection.ts](../lib/src/Carburetor/Component/Connection/sameSelection.ts#L24),
-[public return cast](../lib/src/Carburetor/Component/AntiHookComponent/Reads.tsx#L182),
-[hook snapshot contrast](../lib/src/Carburetor/Store/Utils/detachOpaque.ts#L6).
+**Location:** [detachSelection.ts](../../lib/src/Carburetor/Component/Connection/detachSelection.ts#L65),
+[sameSelection.ts](../../lib/src/Carburetor/Component/Connection/sameSelection.ts#L24),
+[public return cast](../../lib/src/Carburetor/Component/AntiHookComponent/Reads.tsx#L182),
+[hook snapshot contrast](../../lib/src/Carburetor/Store/Utils/detachOpaque.ts#L6).
 
 R10 fixed the hook snapshot to preserve own non-enumerable data descriptors.
 `connectSelection()` still copies and compares only own **enumerable** keys.

@@ -5,7 +5,7 @@
  * the bound — filtered and sorted the whole live set, on every fetch and every answer. A list
  * where each row reads its own entry retains everything, so that ran to completion and found
  * nothing to evict every single time: O(N) per load and O(N) per answer, O(N^2) overall — 8.1 s
- * to settle 4000 rows at the default `maxEntries` (docs/js-review-round-16-2026-09-28.md).
+ * to settle 4000 rows at the default `maxEntries` (docs/reviews/js-review-round-16-2026-09-28.md).
  *
  * `count` answers "is there anything to do" in O(1). Past the bound, `selectVictims` walks
  * `lastUsed` — kept in least-recently-used order by `touch()` re-inserting on every access —

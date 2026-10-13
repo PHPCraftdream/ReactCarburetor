@@ -35,9 +35,9 @@ are deliberately not assigned a defect priority without application timings.
 
 ## R9-01 — [P1] Abort callback re-entry joins a cancelled request
 
-**Location:** [ResourceCarburetor.cancelInFlight](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L191),
-[ResourceCacheLifecycle.abortKey](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L265),
-[cache restore](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L56).
+**Location:** [ResourceCarburetor.cancelInFlight](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L191),
+[ResourceCacheLifecycle.abortKey](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L265),
+[cache restore](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L56).
 
 `AbortController.abort()` dispatches registered listeners synchronously. Both
 cancellation paths invoke it **before** removing the controller and promise
@@ -69,8 +69,8 @@ loader counts, promise identity, final state, and signal cancellation.
 
 ## R9-02 — [P1] Non-enumerable members are still invisible to computed inspection
 
-**Location:** [containsExoticValue.ts](../lib/src/Carburetor/Store/Utils/containsExoticValue.ts#L34),
-[Computed.settle](../lib/src/Carburetor/Derived/Computed.ts#L492).
+**Location:** [containsExoticValue.ts](../../lib/src/Carburetor/Store/Utils/containsExoticValue.ts#L34),
+[Computed.settle](../../lib/src/Carburetor/Derived/Computed.ts#L492).
 
 R8-02 switched from `Object.values()` to descriptors and now sees enumerable
 symbols. It still explicitly skips every non-enumerable descriptor. A normal
@@ -95,9 +95,9 @@ and a hidden accessor separately, including subscriber and version behavior.
 
 ## R9-03 — [P1] `undefined` is a valid success value but not a cache hit for `suspend()`
 
-**Location:** [ResourceCacheLifecycle.suspend](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L294),
-[markLoading](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L373),
-[settleFailure](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L435).
+**Location:** [ResourceCacheLifecycle.suspend](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L294),
+[markLoading](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L373),
+[settleFailure](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L435).
 
 The generic loader is allowed to resolve with `undefined`; `T` is not
 constrained to non-undefined values, and `ResourceCarburetor.suspend()` already

@@ -42,8 +42,8 @@ No P0 was established. The still-live class-instance boundary from R7-01 is an
 
 ## R8-01 — [P1] Result inspection can throw after a successful computation
 
-**Location:** [containsExoticValue.ts](../lib/src/Carburetor/Store/Utils/containsExoticValue.ts#L33),
-[Computed.ts](../lib/src/Carburetor/Derived/Computed.ts#L496).
+**Location:** [containsExoticValue.ts](../../lib/src/Carburetor/Store/Utils/containsExoticValue.ts#L33),
+[Computed.ts](../../lib/src/Carburetor/Derived/Computed.ts#L496).
 
 `containsExoticValue()` calls `Object.values()` on every plain result container.
 That invokes enumerable getters. The computed body may validly return an object
@@ -66,8 +66,8 @@ a side-effecting getter, with subscriber delivery and version assertions.
 
 ## R8-02 — [P1] Symbol-keyed exotic members hide mutations
 
-**Location:** [containsExoticValue.ts](../lib/src/Carburetor/Store/Utils/containsExoticValue.ts#L33),
-[Computed.ts](../lib/src/Carburetor/Derived/Computed.ts#L497).
+**Location:** [containsExoticValue.ts](../../lib/src/Carburetor/Store/Utils/containsExoticValue.ts#L33),
+[Computed.ts](../../lib/src/Carburetor/Derived/Computed.ts#L497).
 
 `Object.values()` sees enumerable string keys, not symbols. A stable plain
 envelope whose enumerable symbol property holds a Map is considered non-exotic
@@ -86,8 +86,8 @@ result do not acquire different change semantics. Add a symbol-keyed regression.
 
 ## R8-03 — [P1] Request bookkeeping is installed after synchronous publication
 
-**Location:** [ResourceCarburetor.start](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L212),
-[ResourceCacheLifecycle.fetch](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L318).
+**Location:** [ResourceCarburetor.start](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L212),
+[ResourceCacheLifecycle.fetch](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L318).
 
 Both paths publish `Pending`/loading synchronously before storing the promise
 used to join an in-flight request. The default store scheduler calls subscribers
@@ -112,8 +112,8 @@ replacement case.
 
 ## R8-04 — [P2] Falsy rejection values are not rethrown intact
 
-**Location:** [ResourceCarburetor.ts](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L137),
-[ResourceCacheLifecycle.ts](../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L305).
+**Location:** [ResourceCarburetor.ts](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L137),
+[ResourceCacheLifecycle.ts](../../lib/src/Carburetor/Resource/Cache/ResourceCacheLifecycle.ts#L305).
 
 Both `suspend()` methods use `storedFailure || new Error(...)`. JavaScript permits
 `Promise.reject(0)`, `Promise.reject('')`, or `Promise.reject(false)`; their raw
@@ -128,8 +128,8 @@ explicit `undefined` rejection is meant to be preserved or normalized.
 
 ## R8-05 — [P3] Avoidable deep traversal in every computed settlement
 
-**Location:** [Computed.ts](../lib/src/Carburetor/Derived/Computed.ts#L496),
-[containsExoticValue.ts](../lib/src/Carburetor/Store/Utils/containsExoticValue.ts#L17).
+**Location:** [Computed.ts](../../lib/src/Carburetor/Derived/Computed.ts#L496),
+[containsExoticValue.ts](../../lib/src/Carburetor/Store/Utils/containsExoticValue.ts#L17).
 
 `containsExoticValue(this.value)` runs before the result identity is tested.
 It walks the entire reachable plain-object/array graph and allocates an

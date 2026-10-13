@@ -107,7 +107,7 @@ Proposed families, **пока не созданные**: `selection44/array-spin
 Это controlled work/ownership observations, не heap-byte, InstructionRetired, FPS или
 универсальный latency claim. Cached no-work Promise identity больше не идентифицирует отдельный
 `load()` call; `async_hooks`/Promise instrumentation видит меньше root initializations.
-[Публичный контракт](promise-cache.md#the-public-surface) документирует эту границу.
+[Публичный контракт](../promise-cache.md#the-public-surface) документирует эту границу.
 
 A02 — lifetime tradeoff, не сокращение всех allocations: один новый shared envelope получает
 один `WeakRef`. Construction probe наблюдает 21 `WeakRef` на initial read и 20 publications,
@@ -196,4 +196,4 @@ recognized component classes. Dynamic/cross-module wrappers не анализи�
 Лично выполнены 12 focused native cases, весь native suite (361 unit + 24 CLI cases), release
 binary default/opt-in smoke и реальные Oxlint/ESLint hosts с точными тремя diagnostics.
 Статическая policy не доказывает zero allocations/GC: React и пользовательский render могут
-аллочировать без hooks. Setup и ограничения — [rules.md](rules.md#hook-free-components-optional).
+аллочировать без hooks. Setup и ограничения — [rules.md](../rules.md#hook-free-components-optional).

@@ -71,8 +71,8 @@ new cases below.
 
 ## R2-01 — [P1] A mid-wave read consumes the first computed notification
 
-**Location:** [Computed.ts:348](../lib/src/Carburetor/Derived/Computed.ts#L348),
-[initial subscription](../lib/src/Carburetor/Derived/Computed.ts#L87).
+**Location:** [Computed.ts:348](../../lib/src/Carburetor/Derived/Computed.ts#L348),
+[initial subscription](../../lib/src/Carburetor/Derived/Computed.ts#L87).
 
 **Reproduction:** start with `n = 1` and an observed computed `n * 2`. Mount a component
 displaying that computed. After its subscription exists, register a store subscriber for the
@@ -103,9 +103,9 @@ checks values and evaluation counts but does not establish this first-delivery g
 
 ## R2-02 — [P1] Unequal-depth dependency graphs publish inconsistent values
 
-**Location:** [UpdateWave.ts](../lib/src/Carburetor/Store/Scheduling/UpdateWave.ts),
-[Computed.isStale](../lib/src/Carburetor/Derived/Computed.ts#L127),
-[dependency delivery](../lib/src/Carburetor/Derived/Computed.ts#L322).
+**Location:** [UpdateWave.ts](../../lib/src/Carburetor/Store/Scheduling/UpdateWave.ts),
+[Computed.isStale](../../lib/src/Carburetor/Derived/Computed.ts#L127),
+[dependency delivery](../../lib/src/Carburetor/Derived/Computed.ts#L322).
 
 **Reproduction:**
 
@@ -136,8 +136,8 @@ the now-correct one-evaluation-per-node behavior for the ordinary four-node chai
 
 ## R2-03 — [P1] Restoring a resource loses data/key identity
 
-**Location:** [ResourceCarburetor.suspend](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L63),
-[inherited restore/serialization](../lib/src/Carburetor/Store/Carburetor.ts#L107).
+**Location:** [ResourceCarburetor.suspend](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L63),
+[inherited restore/serialization](../../lib/src/Carburetor/Store/Carburetor.ts#L107).
 
 **Reproduction:**
 
@@ -165,8 +165,8 @@ must agree after each operation.
 
 ## R2-04 — [P1] Modern lifecycle APIs bypass class-field render tracking
 
-**Location:** [constructor and mount hook](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L383),
-[wrapRender](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L926).
+**Location:** [constructor and mount hook](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L383),
+[wrapRender](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L926).
 
 **Reproduction:** a subclass declares `render = () => ...`, reads a connection, and defines
 `static getDerivedStateFromProps() { return null; }`. It mounts with zero subscriptions.
@@ -190,9 +190,9 @@ the lost subscription.
 
 ## R2-05 — [P2] Invalidation history is unbounded and repeatedly scanned
 
-**Location:** [createProxyCache.ts:61](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L61),
-[sweep](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L73),
-[invalidate](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L106).
+**Location:** [createProxyCache.ts:61](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L61),
+[sweep](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L73),
+[invalidate](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L106).
 
 **Reproduction:** insert, read, and delete three temporary keys under the same live dictionary.
 Only one live data key remains, but the invalidation Map still contains all three deleted paths.
@@ -216,8 +216,8 @@ counts rather than wall-clock thresholds.
 
 ## R2-06 — [P2] Primitive reads do not release obsolete branch objects
 
-**Location:** [createProxyCache.sync](../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L73),
-[createReadProxy](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts#L83).
+**Location:** [createProxyCache.sync](../../lib/src/Carburetor/Store/Tracking/createProxyCache.ts#L73),
+[createReadProxy](../../lib/src/Carburetor/Store/Tracking/createReadProxy.ts#L83).
 
 **Reproduction:** read `items.old.n`, delete `items.old`, then read `items.count` and enumerate
 `Object.keys(items)`. The internal ownership check still reports the deleted object under
@@ -239,8 +239,8 @@ subsequent branch access. Do not use arbitrary garbage-collection timing as the 
 
 ## R2-07 — [P2] Selection equality ignores key presence and symbols
 
-**Location:** [sameSelection](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L186),
-[selection cache](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L843).
+**Location:** [sameSelection](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L186),
+[selection cache](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L843).
 
 **Reproduced cases:**
 
@@ -262,9 +262,9 @@ cardinality, enumerable symbols, and ordinary unchanged selections retaining ide
 
 ## R2-08 — [P2] Abandoned renders leave network work queued
 
-**Location:** [staleResources](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L373),
-[useResource](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L891),
-[render-attempt closure](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L980).
+**Location:** [staleResources](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L373),
+[useResource](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L891),
+[render-attempt closure](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L980).
 
 **Reproduction:** mount an existing component, attempt an update that reads resource
 `"abandoned"` and then suspends, and later commit an update reading `"committed"`.
@@ -281,8 +281,8 @@ Cover suspension, thrown errors followed by recovery, repeated attempts, and cha
 
 ## R2-09 — [P2] Throwing cleanup prevents complete unmount
 
-**Location:** [componentWillUnmount](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L435),
-[releaseEffects](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L1057).
+**Location:** [componentWillUnmount](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L435),
+[releaseEffects](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L1057).
 
 **Reproduction:** mount a connected component with two effect cleanups; make the first throw.
 Unmounting surfaces that error, the second cleanup never runs, and the store still has one
@@ -300,9 +300,9 @@ teardown; error visibility must remain intact.
 
 ## R2-10 — [P2] Initial inline Todo writes can produce wrong counters
 
-**Location:** [updateTodo](../lib/src/ToDo/Carburetors/TodoCarburetor.ts#L37),
-[preEmit](../lib/src/ToDo/Carburetors/TodoCarburetor.ts#L108),
-[shiftCounters](../lib/src/ToDo/Carburetors/TodoCarburetor.ts#L175).
+**Location:** [updateTodo](../../lib/src/ToDo/Carburetors/TodoCarburetor.ts#L37),
+[preEmit](../../lib/src/ToDo/Carburetors/TodoCarburetor.ts#L108),
+[shiftCounters](../../lib/src/ToDo/Carburetors/TodoCarburetor.ts#L175).
 
 **Reproduction:** construct a Todo store with one active item and omitted optional counters.
 Change only that item's title. The resulting counts are `activeCount = 0`, `doneCount = 0`,
@@ -321,7 +321,7 @@ omitted counters, while preserving the no-whole-list-work path for already-initi
 
 ## R2-11 — [P2] No-op detection changes assignment semantics
 
-**Location:** [createWriteProxy.set](../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts#L96).
+**Location:** [createWriteProxy.set](../../lib/src/Carburetor/Store/Tracking/createWriteProxy.ts#L96).
 
 **Reproduced cases:**
 
@@ -343,8 +343,8 @@ A performance shortcut must preserve the data operation's meaning.
 
 ## R2-12 — [P2] Nested read views allow structural mutation
 
-**Location:** [createReadProxy traps](../lib/src/Carburetor/Store/Tracking/createReadProxy.ts#L176),
-[outer facade guards](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L713).
+**Location:** [createReadProxy traps](../../lib/src/Carburetor/Store/Tracking/createReadProxy.ts#L176),
+[outer facade guards](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L713).
 
 **Reproduction:** obtain `view.user` through `connect()`, then call
 `Object.setPrototypeOf(view.user, null)` and `Object.preventExtensions(view.user)`.
@@ -362,9 +362,9 @@ Keep proxy invariants and any intentionally unsupported data shapes explicit.
 
 ## R2-13 — [P3] Simplify duplicated connection machinery
 
-**Location:** [AntiHookComponent.tsx](../lib/src/Carburetor/Component/AntiHookComponent.tsx),
-particularly [connect](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L510) and
-[connectSelection](../lib/src/Carburetor/Component/AntiHookComponent.tsx#L766).
+**Location:** [AntiHookComponent.tsx](../../lib/src/Carburetor/Component/AntiHookComponent.tsx),
+particularly [connect](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L510) and
+[connectSelection](../../lib/src/Carburetor/Component/AntiHookComponent.tsx#L766).
 
 The component module is now 1,260 lines and combines render interception, connection records,
 subscription reconciliation, proxy shape/descriptor forwarding, selection comparison/copying,
@@ -388,8 +388,8 @@ scaling issue worth addressing first.
 
 ## R2-14 — [P3] Make verification results and contracts more precise
 
-**Locations:** [test setup](../__tests__/setupTests.ts),
-[component tests](../__tests__/Engine/Component/AntiHookComponent.test.tsx),
+**Locations:** [test setup](../../__tests__/setupTests.ts),
+[component tests](../../__tests__/Engine/Component/AntiHookComponent.test.tsx),
 [previous plan](js-fix-plan-2026-09-22.md), README and CHANGELOG.
 
 The suite passed while emitting repeated UNSAFE lifecycle warnings and several unwrapped-`act`

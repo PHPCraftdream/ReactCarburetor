@@ -30,9 +30,9 @@ state transition; P2 means a narrower contract break or repeated hot-path cost.
 
 ## R7-01 — [P1] Hook snapshots do not detach all supported opaque values
 
-**Location:** [useCarburetorValue.ts](../lib/src/Interop/useCarburetorValue.ts#L44),
-[snapshot/equality path](../lib/src/Interop/useCarburetorValue.ts#L170),
-[deepClone.ts](../lib/src/Carburetor/Store/Utils/deepClone.ts#L24).
+**Location:** [useCarburetorValue.ts](../../lib/src/Interop/useCarburetorValue.ts#L44),
+[snapshot/equality path](../../lib/src/Interop/useCarburetorValue.ts#L170),
+[deepClone.ts](../../lib/src/Carburetor/Store/Utils/deepClone.ts#L24).
 
 The R6 fix copies a *top-level* Map, Set, or Date. `snapshotOpaque()` returns a
 class instance unchanged, and `deepClone()` carries an exotic value inside a
@@ -63,8 +63,8 @@ and custom comparators in a rendered component.
 
 ## R7-02 — [P1] The computed equality repair stops at the outer prototype
 
-**Location:** [Computed.ts](../lib/src/Carburetor/Derived/Computed.ts#L486),
-[isExoticValue.ts](../lib/src/Carburetor/Store/Utils/isExoticValue.ts#L9).
+**Location:** [Computed.ts](../../lib/src/Carburetor/Derived/Computed.ts#L486),
+[isExoticValue.ts](../../lib/src/Carburetor/Store/Utils/isExoticValue.ts#L9).
 
 R6-02 now notifies when the computed result *itself* is exotic and a dependency
 version moved. A stable plain object containing an exotic member does not pass
@@ -85,8 +85,8 @@ stable envelope as well as a freshly constructed one.
 
 ## R7-03 — [P1] One abort listener exception interrupts cancellation
 
-**Location:** [createAbortHandle.ts](../lib/src/Carburetor/Resource/createAbortHandle.ts#L97),
-[ResourceCarburetor.ts](../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L171).
+**Location:** [createAbortHandle.ts](../../lib/src/Carburetor/Resource/createAbortHandle.ts#L97),
+[ResourceCarburetor.ts](../../lib/src/Carburetor/Resource/ResourceCarburetor.ts#L171).
 
 On a runtime without global `AbortController`, the new shim invokes abort
 listeners directly and does not isolate their exceptions. A loader registered
@@ -103,8 +103,8 @@ listener, checking both delivery and final resource/cache state.
 
 ## R7-04 — [P2] The fallback is still only a partial AbortSignal
 
-**Location:** [createAbortHandle.ts](../lib/src/Carburetor/Resource/createAbortHandle.ts#L70),
-[loader type](../lib/src/Carburetor/Models/Resource.ts#L14).
+**Location:** [createAbortHandle.ts](../../lib/src/Carburetor/Resource/createAbortHandle.ts#L70),
+[loader type](../../lib/src/Carburetor/Models/Resource.ts#L14).
 
 The loader is typed as receiving `AbortSignal`. With the global removed, the
 fallback now has `addEventListener`/`removeEventListener`, but its
@@ -121,8 +121,8 @@ successful `addEventListener` test alone as full compatibility.
 
 ## R7-05 — [P2] The cache key fix adds repeated serialization to render reads
 
-**Location:** [ResourceCache.ts](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L157),
-[encodeCacheKey.ts](../lib/src/Carburetor/Resource/Cache/encodeCacheKey.ts#L20).
+**Location:** [ResourceCache.ts](../../lib/src/Carburetor/Resource/Cache/ResourceCache.ts#L157),
+[encodeCacheKey.ts](../../lib/src/Carburetor/Resource/Cache/encodeCacheKey.ts#L20).
 
 The R6-05 correction rightly rejects a stale same-reference key, but it now
 `JSON.stringify`s the full arguments on *every* `keyOf` call, including a memo

@@ -7,8 +7,22 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Breaking
+
+- **Breaking:** `useResourceValue(source, args, select, isEqual?)` requires a synchronous selector and
+  returns a detached readonly selection. The two-argument hook and writable hook-result facade are
+  removed; use caller-owned presentation overlays. Class `useResource` remains a separate API.
+  Migration: pass a synchronous selector as the third argument and keep presentation overlays in the caller.
+
 ### Changed
 
+- Resource settlement stays consistent when describing a rejection throws: the cache entry or slot becomes a safe
+  `Error` state instead of staying `Loading` without a request. Explicit `load()` still rejects with the description
+  error and the raw rejection stays in `getFailure`/`getLastError`.
+- Hosted performance validation treats pure timing comparisons as informational (byte-identical A/A noise reached
+  1.85x on the runner); mechanism, behavior and calibration contracts still block. `Timing attribution` fails only for
+  A/B flags above the run's A/A ceiling and writes the classification to the job summary.
+- Review reports of rounds 6-44 moved to `docs/reviews/`.
 - Add the optional supplied `no-hooks` lint preset for Oxlint and ESLint, backed by the native
   `no-react-hooks-in-components` rule. React import/require aliases are resolved without confusing
   local shadows or instance read APIs; the recommended preset keeps the rule off. The policy does
@@ -68,9 +82,6 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Computed dependency attachment marks fresh membership directly instead of scanning an array:
   500/1000/2000-source seven-switch controls remove 880250/3510500/14021000 comparisons while
   retaining values, ordered rollback and zero retained-edge subscription churn.
-- **Breaking:** `useResourceValue(source, args, select, isEqual?)` requires a synchronous selector and
-  returns a detached readonly selection. The two-argument hook and writable hook-result facade are
-  removed; use caller-owned presentation overlays. Class `useResource` remains a separate API.
 - Resource selector observations reuse completed reads through memo bailouts. The equivalent
   stable-DOM 1000-parent-render control reduces extra child renders 1000→0, accessor definitions
   8000→0 and WeakMap constructions 1000→0; inline selectors still reevaluate.
@@ -175,12 +186,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   replacement of a snapshot field (`view.data = …`) is read back, as with the class reader. Both readers share
   one decision module.
 - Expanded `perf/` coverage for rounds 6–38 with mechanism counters and baseline builds;
-  [the coverage audit](docs/perf-coverage-audit-2026-10-08.md#resolution--protection-plan-2026-10-08)
+  [the coverage audit](docs/reviews/perf-coverage-audit-2026-10-08.md#resolution--protection-plan-2026-10-08)
   records the few optimizations that no counter can separate on the available builds rather than claiming every optimization is covered.
 - `npm run bench`: a performance gate suite (`perf/`). Most performance improvements of rounds 6-37 are a
   scenario measured on the built output with gates on the mechanism it removed (exact counters, same-run
   ratios, size scale, generous ceilings), validated to fail on the build before its fix. The ones guarded
-  only by unit tests, time ratios or heap ceilings are listed in `docs/perf-coverage-audit-2026-10-08.md`.
+  only by unit tests, time ratios or heap ceilings are listed in `docs/reviews/perf-coverage-audit-2026-10-08.md`.
   `--against <ref>` also compares timings with a build of that ref; `--lint-gates` checks the manifest.
   See `perf/README.md`. The legacy benchmarks under `benchmarks/` and `scripts/benchmarks/` were migrated
   into it and removed, except `benchmarks/state/unpublishedDraftCheck.mjs` (needs a development build).
