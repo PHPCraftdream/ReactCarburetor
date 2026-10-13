@@ -83,3 +83,10 @@ Tiers 1–2 do not replace the full tier. Cross-cutting effects — shared barre
 configuration, scripts, the lockfile — all map to full precisely because a local
 selective run cannot see them, which is why the full tier also runs on a
 scheduled nightly basis.
+
+## Reading the fast tier's result
+
+The `Plan` job writes the selection to its job summary (`full`, `docsOnly`, `native`, the rstest paths
+and perf areas, and the reasons). A green `Fast gate` means only that the selected checks passed, so
+look at the summary: a docs-only change legitimately skips `Test` and the performance gates, while
+a change to workflows, scripts or shared engine code must show `full: true` and run the whole suite.
