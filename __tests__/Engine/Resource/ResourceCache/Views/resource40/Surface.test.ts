@@ -1,4 +1,5 @@
 import * as Interop from '@/Interop';
+import './Selector.types';
 import type {TReadonly, IResourceSource, IResourceView} from '@/Carburetor';
 
 const assertGenericTypes = <T, TArgs>(source: IResourceSource<T, TArgs>, args: TArgs): void => {

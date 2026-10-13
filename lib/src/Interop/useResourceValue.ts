@@ -23,7 +23,10 @@ const useCommitEffect = typeof window === 'undefined' ? useEffect : useLayoutEff
  */
 export const useResourceValue = <T, TArgs, R>(
     source: IResourceSource<T, TArgs>, args: TArgs,
-    select: TSelector<IResourceView<T>, R>, isEqual?: TValueComparator<R>
+    select: TSelector<
+        IResourceView<T>, R & (Extract<R, PromiseLike<unknown>> extends never ? unknown : never)
+    >,
+    isEqual?: TValueComparator<R>
 ): TReadonly<R> => {
     // Resolve even on cached parent reads: TTL freshness need not change the source version.
     const resolution = source.resolve(args);

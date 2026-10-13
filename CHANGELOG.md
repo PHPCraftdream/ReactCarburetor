@@ -10,8 +10,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Breaking
 
 - **Breaking:** `useResourceValue(source, args, select, isEqual?)` requires a synchronous selector and
-  returns a detached readonly selection. The two-argument hook and writable hook-result facade are
-  removed; use caller-owned presentation overlays. Class `useResource` remains a separate API.
+  returns a detached readonly selection. A selector returning a Promise is rejected by the type.
+  The two-argument hook and writable hook-result facade are removed; use caller-owned presentation
+  overlays. Class `useResource` remains a separate API.
   Migration: pass a synchronous selector as the third argument and keep presentation overlays in the caller.
 
 ### Changed
