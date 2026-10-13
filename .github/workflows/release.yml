@@ -40,8 +40,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The platform packages are the artifacts CI built and ran on their own targets for this
-      # exact commit; publishing them is publishing what was tested, not a rebuild.
+      # ci.yml is the full tier now (dispatch / nightly / tags / ci/** branches), so a new
+      # commit gets its full run only by dispatching it manually against the right ref.
       - name: Require a green CI run for this commit
         id: ci
         env:
@@ -49,7 +49,7 @@ jobs:
         run: |
           run=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success \
             --json databaseId --jq '.[0].databaseId')
-          [ -n "$run" ] || { echo "no successful CI run for $GITHUB_SHA" >&2; exit 1; }
+          [ -n "$run" ] || { echo "no successful full-tier CI run for $GITHUB_SHA — run the full tier first: gh workflow run ci.yml --ref master (or workflow_dispatch on the desired ref / a sprint-* tag)" >&2; exit 1; }
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@v4

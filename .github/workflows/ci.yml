@@ -2,8 +2,10 @@ name: CI
 
 on:
   push:
-    branches: [master, main, 'ci/**']
-  pull_request:
+    branches: ['ci/**']
+    tags: ['sprint-*']
+  schedule:
+    - cron: '17 2 * * *'   # full tier nightly; runs on the default branch only
   workflow_dispatch:
 
 concurrency:
@@ -42,6 +44,11 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      # Deterministic counters, not timings: these are gates, not benchmarks, and they
+      # exit 1 only when a gate is violated, never on a slow-looking timing.
+      - name: Performance gates
+        run: node perf/run.mjs --runs 3
 
       - name: Typecheck
         run: npm run typecheck

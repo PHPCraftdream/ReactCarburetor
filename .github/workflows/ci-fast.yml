@@ -1,0 +1,224 @@
+name: CI fast
+
+# The fast tier: runs the affected subset on every push and PR. `scripts/affected.mjs`
+# decides what to run, so paths-ignore is deliberately absent — a docs-only change still
+# needs the plan step to prove it is docs-only.
+on:
+  push:
+    branches-ignore: ['ci/**']
+  pull_request:
+
+concurrency:
+  group: ci-fast-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plan:
+    name: Plan
+    runs-on: ubuntu-latest
+    outputs:
+      full: ${{ steps.plan.outputs.full }}
+      docsOnly: ${{ steps.plan.outputs.docsOnly }}
+      native: ${{ steps.plan.outputs.native }}
+      rstest: ${{ steps.plan.outputs.rstest }}
+      perfAreas: ${{ steps.plan.outputs.perfAreas }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the selector diffs against a base commit.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      # No npm ci: the selector has no dependencies by design, so the plan stays cheap.
+      - name: Compute the base ref
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            BASE="${{ github.event.pull_request.base.sha }}"
+          else
+            # A tag push (or a first push on a fresh branch) has no meaningful event.before,
+            # so diff against the parent commit instead.
+            BEFORE="${{ github.event.before }}"
+            if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+              BASE="${{ github.sha }}~1"
+            else
+              BASE="$BEFORE"
+            fi
+          fi
+          echo "base=$BASE" >> "$GITHUB_ENV"
+
+      - name: Plan
+        id: plan
+        shell: bash
+        run: |
+          node scripts/affected.mjs --base "$BASE" --json > plan.json
+          node -e '
+            const fs = require("fs");
+            const plan = JSON.parse(fs.readFileSync("plan.json", "utf8"));
+            const out = process.env.GITHUB_OUTPUT;
+            fs.appendFileSync(out, `full=${plan.full}\n`);
+            fs.appendFileSync(out, `docsOnly=${plan.docsOnly}\n`);
+            fs.appendFileSync(out, `native=${plan.native}\n`);
+            fs.appendFileSync(out, `rstest=${(plan.rstest || []).join(" ")}\n`);
+            fs.appendFileSync(out, `perfAreas=${JSON.stringify(plan.perfAreas || [])}\n`);
+            let summary = "## Plan\n\n";
+            summary += "- full: " + plan.full + "\n";
+            summary += "- docsOnly: " + plan.docsOnly + "\n";
+            summary += "- native: " + plan.native + "\n";
+            summary += "- rstest: " + (plan.rstest || []).join(", ") + "\n";
+            summary += "- perfAreas: " + (plan.perfAreas || []).join(", ") + "\n\n";
+            summary += "### Reasons\n\n" + (plan.reasons || []).map(r => "- " + r).join("\n") + "\n";
+            fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
+          '
+
+  checks:
+    name: Checks
+    needs: plan
+    if: needs.plan.outputs.docsOnly != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      # The carburetor/* rules are a bridge: `npm run lint` calls this binary, so it has to
+      # exist before lint runs. ubuntu-latest ships a Rust toolchain already.
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-${{ hashFiles('native/Cargo.lock') }}
+
+      - name: Build native linter
+        working-directory: native
+        run: cargo build --release
+
+      - name: Build
+        run: npm run build
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # See the full tier (ci.yml): tsgolint reserves a lot of virtual address space and the
+      # default overcommit heuristic refuses the fork() for the native-lint child.
+      - name: Allow full memory overcommit
+        run: sudo sysctl -w vm.overcommit_memory=1
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Check layout rules
+        run: npm run check:layout
+
+      - name: Test lint rules
+        run: npm run test:rules
+
+      # Full suite only when the selector says the change is too broad to narrow down.
+      - name: Test
+        if: needs.plan.outputs.full == 'true'
+        run: npm test
+
+      # Otherwise just the suites the changed files can actually affect.
+      - name: Test affected suites
+        if: needs.plan.outputs.full != 'true' && needs.plan.outputs.rstest != ''
+        run: npx rstest run ${{ needs.plan.outputs.rstest }}
+
+  perf:
+    name: Performance gates
+    needs: [plan, checks]
+    if: needs.plan.outputs.docsOnly != 'true' && (needs.plan.outputs.full == 'true' || needs.plan.outputs.perfAreas != '')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      # perf/run.mjs needs a built dist (esm-prod) to run the scenarios against.
+      - name: Build
+        run: npm run build
+
+      # Deterministic counters, not timings; exit 1 only on a gate violation.
+      - name: Performance gates (full sweep)
+        if: needs.plan.outputs.full == 'true'
+        run: node perf/run.mjs --runs 3
+
+      # One --only per affected area. A selector area that matches no entry fails the run —
+      # acceptable, since the selector and the gate names are kept in sync.
+      - name: Performance gates (affected areas)
+        if: needs.plan.outputs.full != 'true'
+        env:
+          AREAS_JSON: ${{ needs.plan.outputs.perfAreas }}
+        run: |
+          AREAS=$(node -e "console.log(JSON.parse(process.env.AREAS_JSON).join(' '))")
+          for area in $AREAS; do
+            node perf/run.mjs --only "$area" --runs 3 || exit 1
+          done
+
+  native:
+    name: Native linter
+    needs: plan
+    if: needs.plan.outputs.native == 'true' || needs.plan.outputs.full == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The toolchain the image ships is enough: the crate pins its dependencies, not rustc.
+      - name: Cargo cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-${{ hashFiles('native/Cargo.lock') }}
+
+      - name: Build
+        working-directory: native
+        run: cargo build --release
+
+      # The integration tests run the built binary, so they cover the command line, the walk
+      # and the exit codes — the parts a unit test cannot see.
+      - name: Test
+        working-directory: native
+        run: cargo test
+
+      - name: Clippy
+        working-directory: native
+        run: cargo clippy --all-targets -- -D warnings
+
+  # The fast tier covers full, affected and skipped runs alike; every job above must either
+  # succeed or be deliberately skipped, and plan must never fail.
+  fast-gate:
+    name: Fast gate
+    needs: [plan, checks, perf, native]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate
+        shell: bash
+        run: |
+          failed=0
+          for result in "${{ needs.plan.result }}" "${{ needs.checks.result }}" \
+            "${{ needs.perf.result }}" "${{ needs.native.result }}"; do
+            if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
+              failed=1
+            fi
+          done
+          echo "plan=${{ needs.plan.result }} checks=${{ needs.checks.result }} perf=${{ needs.perf.result }} native=${{ needs.native.result }}"
+          [ "$failed" -eq 0 ] || exit 1
