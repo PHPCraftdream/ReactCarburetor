@@ -1,0 +1,75 @@
+# Testing tiers
+
+Testing is split into three tiers so that day-to-day work runs only what a change
+can actually affect, while full coverage still comes from CI. The mapping from
+changed files to checks lives in `scripts/affected.map.json` and is shared by the
+local runner and the CI fast tier.
+
+## Tier 1 — task tier (local, per change)
+
+```bash
+npm run check:task    # alias of: node scripts/affected.mjs --task
+```
+
+The script prints the selected plan first, then runs the checks one at a time,
+stopping at the first failure:
+
+```text
+files: lib/src/Carburetor/Resource/createAbortHandle.ts
+plan: selective
+rstest: __tests__/Engine/Resource
+perf areas: resource, cache
+- resource subsystem
+node scripts/checkLayout.mjs
+node node_modules/@rstest/core/bin/rstest.js run __tests__/Engine/Resource
+node perf/run.mjs --only resource --runs 3
+node perf/run.mjs --only cache --runs 3
+check:task OK (4 commands)
+```
+
+Typical change → what runs:
+
+| Changed file | What `check:task` runs |
+|---|---|
+| `lib/src/Carburetor/Resource/x.ts` | layout + rstest `__tests__/Engine/Resource` + perf areas `resource`, `cache` |
+| `lib/src/Carburetor/Component/y.tsx` | layout + rstest `__tests__/Engine/Component` + perf areas `hooks`, `components` |
+| `lib/src/Carburetor/Store/z.ts` | **full tier required** — exit code 2, nothing heavy runs locally |
+| `native/src/...` | `cargo test` (with the explicit `--native` flag; otherwise the command is printed as a hint) |
+| `docs/*.md` | docsOnly — nothing runs |
+| any unmapped file | full tier (fails safe) |
+
+Perf areas need a production build: without `dist/esm-prod` the gate is skipped
+with a hint instead of failing. `--typecheck` adds `tsc --noEmit`, `--dry`
+prints the plan and the commands without running anything.
+
+## Tier 2 — push/PR tier (CI)
+
+`ci-fast.yml` runs the fast tier over the affected areas on CI hardware: the same
+checks tier 1 selects, plus lint and typecheck, combined into one unified
+fast-gate check on every push and pull request.
+
+## Tier 3 — sprint end (full)
+
+`ci.yml` runs the complete suite on schedule, manually via
+`gh workflow run ci.yml --ref master`, or on a `sprint-*` tag. Before a release a
+green full tier for the exact SHA is mandatory — `release.yml` enforces it.
+
+Performance validation and timing attribution are a separate track: dedicated
+`ci/**` branches, up to 240 minutes, run manually (see `perf/README.md`).
+
+## How to extend the map
+
+Add a rule to `scripts/affected.map.json`: a `match` (exact path, `dir/**`
+prefix or `*.ext` suffix, most specific wins), the `rstest` paths it selects,
+its `perfAreas`, and a flag (`full`, `native` or `docsOnly`). An unmapped file
+deliberately maps to full, so forgetting a rule fails safe instead of
+under-testing. The selector's behavior — including that completeness property —
+is pinned by the affected self-test in `__tests__/Tooling/affected`: rules are
+prefix-match by specificity, and anything uncovered is deliberately full.
+
+## Known limitations
+
+Tiers 1–2 do not replace the full tier. Cross-cutting effects — shared barrels,
+configuration, scripts, the lockfile — all map to full precisely because a local
+selective run cannot see them, which is why the full tier also runs on a
+scheduled nightly basis.

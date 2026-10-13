@@ -7,6 +7,10 @@ quietly reintroduces a cost a review round removed fails the suite.
 checks the recorded gates. The exit code is non-zero on any violation, so a change is guarded by
 one command.
 
+When a change touches perf-relevant code, `npm run check:task` selects the
+affected gate areas automatically and runs them focused, e.g.
+`node perf/run.mjs --only <area> --runs 3`; the full suite stays in CI.
+
 ## Running
 
 The `hooks43` SSR gates exercise React 18 and 19. Prepare the other major once with
@@ -587,10 +591,9 @@ unpublished-draft diagnostic, which only exists in development builds — it req
 
 ## GitHub Actions
 
-`selection44/array-spine-prototype` counts the JS-level `hasOwnProperty`/`Reflect.ownKeys` calls and, through a real public update, the
-`Array.prototype.slice`/`Object.assign` work of the spine copier (`sliceCalls` is pinned and independent of the array length;
-`sliceLengthSum` grows with it as the probe-sensitivity control). The pre-R44 baseline fails before the counted window
-(`value.slice` throws on null/Object prototypes), so the slice metrics guard against future growth rather than prove a gain.
+Known limit: `selection44/array-spine-prototype` counts JS-level `hasOwnProperty`/`Reflect.ownKeys` calls, so it proves the spine copier
+adds no per-slot JS loop; the intrinsic `slice` it delegates to is not counted, and growth of that native work with the logical
+array length is covered only by the `selection44/timing` diagnostics.
 
 `Performance validation` runs on `ci/**` pushes or manual dispatch with a baseline commit and
 at least three samples. Its hosted Windows runner builds both revisions, runs all current gates,

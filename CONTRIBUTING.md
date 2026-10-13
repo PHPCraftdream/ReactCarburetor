@@ -208,7 +208,12 @@ npm run lint         # oxlint: native rules, type-aware rules, and this project'
 npm run check:layout # the three structural rules above
 npm test             # Rstest + @testing-library/react
 npm run test:rules   # just the lint rules, when that is what you changed
+npm run check:task   # tiered local check for the files you touched (see docs/testing-tiers.md)
 ```
+
+For day-to-day work, `npm run check:task` selects only the checks affected by
+your changed files. Full coverage still comes from CI — the tiers are described
+in `docs/testing-tiers.md`.
 
 `dist/` is generated and ignored by Git; do not commit bundles or declarations.
 `npm pack` and `npm publish` rebuild it through `prepack`. The package's `files`

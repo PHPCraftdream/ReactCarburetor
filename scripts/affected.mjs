@@ -1,6 +1,7 @@
-// Segmented-run selector: maps changed files to required rstest paths and perf areas.
+// Segmented-run selector + task-tier runner.
 // Contract (stable, consumed by workflow/npm scripts):
 //   node scripts/affected.mjs [--base <ref>] [--files a,b,c] [--json]
+//   node scripts/affected.mjs --task [--base <ref>] [--files a,b,c] [--typecheck] [--native] [--dry]
 // Without --files: `git diff --name-only <base>...HEAD` + `git diff --name-only HEAD`
 // + untracked (`git ls-files --others --exclude-standard`). --base defaults to
 // origin/master, falling back to HEAD~1 if that ref is missing.
@@ -8,15 +9,19 @@
 // rstest: paths for `rstest run <paths>`. perfAreas: substrings passed to
 // `node perf/run.mjs --only <area>` (matched against entry id or area).
 // Any file not covered by a rule => full=true with reason `unmapped: <file>`.
-import {execFileSync} from 'node:child_process';
-import {readFileSync} from 'node:fs';
-import {dirname, join} from 'node:path';
+// With --task: runs the selected checks locally one by one (task tier);
+// a full tier always defers to CI (exit 2, nothing heavy runs locally).
+import {execFileSync, spawnSync} from 'node:child_process';
+import {existsSync, readFileSync, statSync} from 'node:fs';
+import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const norm = (p) => p.replace(/\\/g, '/').replace(/^\.\//, '');
+const root = dirname(fileURLToPath(import.meta.url));
+const repo = resolve(root, '..');
 
 export function loadMap() {
-    return JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'affected.map.json'), 'utf8'));
+    return JSON.parse(readFileSync(join(root, 'affected.map.json'), 'utf8'));
 }
 
 function specificity(pattern, path) {
@@ -103,8 +108,107 @@ function defaultBase() {
     }
 }
 
+// ---- task tier (check:task) ----
+
+const FULL_MSG = 'full tier required: gh workflow run ci.yml (see docs/testing-tiers.md)';
+
+function parseTaskArgs(argv) {
+    const opts = {base: defaultBase(), files: null, typecheck: false, native: false, dry: false};
+    for (let i = 0; i < argv.length; i++) {
+        if (argv[i] === '--base') opts.base = argv[++i];
+        else if (argv[i] === '--files') opts.files = argv[++i];
+        else if (argv[i] === '--typecheck') opts.typecheck = true;
+        else if (argv[i] === '--native') opts.native = true;
+        else if (argv[i] === '--dry') opts.dry = true;
+    }
+    opts.files = opts.files ? opts.files.split(',').map((s) => s.trim()).filter(Boolean) : null;
+    return opts;
+}
+
+function printPlan(p) {
+    console.log('files: ' + (p.files.length ? p.files.join(', ') : '(none)'));
+    console.log(p.full ? 'plan: FULL tier' : p.docsOnly ? 'plan: docs only' : p.native ? 'plan: native' : 'plan: selective');
+    if (p.rstest.length) console.log('rstest: ' + p.rstest.join(' '));
+    if (p.perfAreas.length) console.log('perf areas: ' + p.perfAreas.join(', '));
+    for (const r of p.reasons) console.log('- ' + r);
+}
+
+function buildCommands(p, opts) {
+    const cmds = [['node', 'scripts/checkLayout.mjs']];
+    if (p.rstest.length) cmds.push(['node', 'node_modules/@rstest/core/bin/rstest.js', 'run', ...p.rstest]);
+    for (const area of p.perfAreas) cmds.push(['node', 'perf/run.mjs', '--only', area, '--runs', '3']);
+    if (opts.typecheck) cmds.push(['node', 'node_modules/typescript/bin/tsc', '--noEmit', '-p', 'tsconfig.json']);
+    if (p.native || opts.native) cmds.push(['cargo', 'test']);
+    return cmds;
+}
+
+function distProdExists() {
+    try {
+        return existsSync(resolve(repo, 'dist', 'esm-prod')) && statSync(resolve(repo, 'dist', 'esm-prod')).isDirectory();
+    } catch {
+        return false;
+    }
+}
+
+function describe(cmd) {
+    return cmd[0] === 'cargo' ? 'cd native && cargo test' : cmd.join(' ');
+}
+
+function runCommands(cmds, opts) {
+    let n = 0;
+    for (const cmd of cmds) {
+        const label = describe(cmd);
+        if (cmd[1] === 'perf/run.mjs' && !distProdExists()) {
+            console.log('skip: run npm run build to enable perf gates for ' + cmd[3]);
+            continue;
+        }
+        if (cmd[0] === 'cargo' && !opts.native) {
+            console.log('hint (not run, implied by map): ' + label);
+            continue;
+        }
+        n++;
+        if (opts.dry) {
+            console.log('would run: ' + label);
+            continue;
+        }
+        const cwd = cmd[0] === 'cargo' ? resolve(repo, 'native') : repo;
+        const r = spawnSync(cmd[0], cmd.slice(1), {stdio: 'inherit', cwd, shell: process.platform === 'win32'});
+        if (r.status !== 0) {
+            console.log('FAILED: ' + label);
+            const code = typeof r.status === 'number' ? r.status : 1;
+            console.log('check:task FAILED (' + n + ' command' + (n === 1 ? '' : 's') + ' attempted)');
+            return code;
+        }
+    }
+    return 0;
+}
+
+function runTask(argv) {
+    const opts = parseTaskArgs(argv);
+    const files = opts.files || collectFiles(opts.base);
+    const p = {files, ...select(files, loadMap())};
+    printPlan(p);
+    if (p.full) {
+        console.log(FULL_MSG);
+        return opts.dry ? 0 : 2;
+    }
+    if (p.docsOnly) {
+        console.log('docs only: no code checks needed (docs tier covers rendering, nothing to run)');
+        return 0;
+    }
+    const cmds = buildCommands(p, opts);
+    const code = runCommands(cmds, opts);
+    if (code !== 0) return code;
+    console.log('check:task OK (' + cmds.length + ' commands' + (opts.dry ? ', dry' : '') + ')');
+    return 0;
+}
+
 function main() {
     const argv = process.argv.slice(2);
+    if (argv.includes('--task')) {
+        process.exitCode = runTask(argv);
+        return;
+    }
     let base = defaultBase();
     let filesArg = null;
     let json = false;
