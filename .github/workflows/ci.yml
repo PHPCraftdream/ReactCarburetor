@@ -45,8 +45,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Deterministic counters, not timings: these are gates, not benchmarks, and they
-      # exit 1 only when a gate is violated, never on a slow-looking timing.
+      # Mechanism counters plus a few generous absolute ceilings (for example relatedWriteMs <= 10): gates,
+      # not benchmarks; the A/B timing comparisons live in Performance validation and are informational.
       - name: Performance gates
         run: node perf/run.mjs --runs 3
 
