@@ -39,11 +39,9 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             BASE="${{ github.event.pull_request.base.sha }}"
           else
-            # A tag push (or a first push on a fresh branch) has no meaningful event.before,
-            # so diff against the parent commit instead.
             BEFORE="${{ github.event.before }}"
             if [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
-              BASE="${{ github.sha }}~1"
+              BASE=$(git merge-base origin/master HEAD) || BASE="${{ github.sha }}~1"
             else
               BASE="$BEFORE"
             fi
@@ -54,10 +52,11 @@ jobs:
         id: plan
         shell: bash
         run: |
-          node scripts/affected.mjs --base "$BASE" --json > plan.json
+          node scripts/affected.mjs --base "$BASE" --json > "$RUNNER_TEMP/plan.json"
           node -e '
             const fs = require("fs");
-            const plan = JSON.parse(fs.readFileSync("plan.json", "utf8"));
+            const path = require("path");
+            const plan = JSON.parse(fs.readFileSync(path.join(process.env.RUNNER_TEMP, "plan.json"), "utf8"));
             const out = process.env.GITHUB_OUTPUT;
             fs.appendFileSync(out, `full=${plan.full}\n`);
             fs.appendFileSync(out, `docsOnly=${plan.docsOnly}\n`);
@@ -137,7 +136,7 @@ jobs:
   perf:
     name: Performance gates
     needs: [plan, checks]
-    if: needs.plan.outputs.docsOnly != 'true' && (needs.plan.outputs.full == 'true' || needs.plan.outputs.perfAreas != '')
+    if: needs.plan.outputs.docsOnly != 'true' && (needs.plan.outputs.full == 'true' || fromJSON(needs.plan.outputs.perfAreas || '[]')[0] != null)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -153,7 +152,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Deterministic counters, not timings; exit 1 only on a gate violation.
+      # Mechanism counters and a few generous absolute ceilings; exit 1 only on a gate violation.
       - name: Performance gates (full sweep)
         if: needs.plan.outputs.full == 'true'
         run: node perf/run.mjs --runs 3

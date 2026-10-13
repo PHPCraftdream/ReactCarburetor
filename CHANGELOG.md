@@ -42,7 +42,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Observed recomputations skip unused baseline enumeration; opaque history batches release unused
   endpoints, and scalar replay avoids graph comparison ledgers.
 - 281 permanent R44 benchmark entries join the common runner; all 471 preceding contracts remain
-  unchanged. Work/collectibility guards are separate from whole-operation timing.
+  in force (two files carry recorded amendments in perf/ci/contract/gate-amendments.json). Work/collectibility guards are separate from whole-operation timing.
 - Move complete validation to GitHub Actions: ordinary CI also accepts `ci/**` branches and saves
   actual browser/packed-lint proofs. A separate hosted performance workflow retains all gate results,
   exact baseline mechanism negatives and alternating A/B samples without local heavy execution.

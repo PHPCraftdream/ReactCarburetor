@@ -18,10 +18,15 @@ stopping at the first failure:
 files: lib/src/Carburetor/Resource/createAbortHandle.ts
 plan: selective
 rstest: __tests__/Engine/Resource
+       + __tests__/Engine/Component/AntiHookComponent/lifecycle/
+         deferred-resources.test.tsx, strict-mode.test.tsx
 perf areas: resource, cache
 - resource subsystem
 node scripts/checkLayout.mjs
-node node_modules/@rstest/core/bin/rstest.js run __tests__/Engine/Resource
+node node_modules/@rstest/core/bin/rstest.js run \
+  __tests__/Engine/Resource \
+  __tests__/Engine/Component/AntiHookComponent/lifecycle/deferred-resources.test.tsx \
+  __tests__/Engine/Component/AntiHookComponent/lifecycle/strict-mode.test.tsx
 node perf/run.mjs --only resource --runs 3
 node perf/run.mjs --only cache --runs 3
 check:task OK (4 commands)
@@ -31,8 +36,11 @@ Typical change → what runs:
 
 | Changed file | What `check:task` runs |
 |---|---|
-| `lib/src/Carburetor/Resource/x.ts` | layout + rstest `__tests__/Engine/Resource` + perf areas `resource`, `cache` |
-| `lib/src/Carburetor/Component/y.tsx` | layout + rstest `__tests__/Engine/Component` + perf areas `hooks`, `components` |
+| `lib/src/Carburetor/Resource/x.ts` | layout + rstest `__tests__/Engine/Resource` and the deferred-resources + strict-mode lifecycle tests + perf areas `resource`, `cache` |
+| `lib/src/Carburetor/Component/y.tsx` | layout + rstest `__tests__/Engine/Component`, `__tests__/Engine/Resource/ResourceCache/Views`, `__tests__/Engine/Resource/ResourceCache/Regressions`, `__tests__/Engine/Derived` + perf areas `hooks`, `components` |
+| `lib/src/Interop/x.ts` | layout + rstest `__tests__/Engine/Derived/Readable/Interop`, `__tests__/Engine/Tooling`, `__tests__/Engine/Component`, `__tests__/Engine/Resource` + perf areas `hooks`, `components`, `resource` |
+| `perf/scenarios/resource42/*` | its own `resource42` area + transitive importing family `components42` |
+| `perf/scenarios/computed42/*` | its own `computed42` area + transitive importing family `computed43` |
 | `lib/src/Carburetor/Store/z.ts` | **full tier required** — exit code 2, nothing heavy runs locally |
 | `native/src/...` | `cargo test` (with the explicit `--native` flag; otherwise the command is printed as a hint) |
 | `docs/*.md` | docsOnly — nothing runs |
@@ -46,7 +54,9 @@ prints the plan and the commands without running anything.
 
 `ci-fast.yml` runs the fast tier over the affected areas on CI hardware: the same
 checks tier 1 selects, plus lint and typecheck, combined into one unified
-fast-gate check on every push and pull request.
+fast-gate check on every push and pull request. Plans are written to the runner's
+external temporary directory; first pushes use the merge-base with `origin/master` (or
+fall back to the parent SHA).
 
 ## Tier 3 — sprint end (full)
 

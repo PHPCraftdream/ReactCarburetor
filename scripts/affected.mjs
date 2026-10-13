@@ -13,8 +13,8 @@
 // With --task: runs the selected checks locally one by one (task tier);
 // a full tier always defers to CI (exit 2, nothing heavy runs locally).
 import {execFileSync, spawnSync} from 'node:child_process';
-import {existsSync, readFileSync, statSync} from 'node:fs';
-import {dirname, join, resolve} from 'node:path';
+import {existsSync, readFileSync, readdirSync, statSync} from 'node:fs';
+import {dirname, join, relative, resolve, isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 const norm = (p) => p.replace(/\\/g, '/').replace(/^\.\//, '');
@@ -45,6 +45,46 @@ export function select(files, map) {
     }
     const push = (arr, v) => { if (!arr.includes(v)) arr.push(v); };
     let allDocs = true;
+    let familyGraph = null;
+    const reverseFamilies = (area) => {
+        if (familyGraph === null) {
+            familyGraph = new Map();
+            const scenarioRoot = resolve(repo, map.perfScenarios);
+            const walk = (dir) => {
+                if (!existsSync(dir)) return;
+                for (const entry of readdirSync(dir, {withFileTypes: true})) {
+                    const path = join(dir, entry.name);
+                    if (entry.isDirectory()) walk(path);
+                    else if (entry.isFile() && entry.name.endsWith('.mjs')) {
+                        const sourcePath = norm(path.slice(scenarioRoot.length + 1));
+                        const sourceFamily = sourcePath.split('/')[0];
+                        const text = readFileSync(path, 'utf8');
+                        const imports = [...text.matchAll(/\b(?:from\s*|import\s*\(?\s*)['"](\.[^'"]+)['"]/g)];
+                        for (const match of imports) {
+                            const targetPath = norm(relative(scenarioRoot, resolve(dirname(path), match[1])));
+                            if (isAbsolute(targetPath) || targetPath.startsWith('../')) continue;
+                            const targetFamily = targetPath.split('/')[0];
+                            if (targetFamily !== sourceFamily) {
+                                if (!familyGraph.has(targetFamily)) familyGraph.set(targetFamily, new Set());
+                                familyGraph.get(targetFamily).add(sourceFamily);
+                            }
+                        }
+                    }
+                }
+            };
+            walk(scenarioRoot);
+        }
+        const visited = new Set([area]);
+        const queue = [area];
+        while (queue.length) {
+            for (const dependent of familyGraph.get(queue.shift()) || []) {
+                if (visited.has(dependent)) continue;
+                visited.add(dependent);
+                queue.push(dependent);
+            }
+        }
+        for (const family of visited) push(out.perfAreas, family);
+    };
     for (const raw of files) {
         const file = norm(raw);
         const gate = map.perfGates;
@@ -52,9 +92,12 @@ export function select(files, map) {
         let rule = null;
         if (gate && file.startsWith(gate + '/') && file.endsWith('.mjs')) {
             push(out.perfAreas, file.slice(gate.length + 1, -4));
+            allDocs = false;
             push(out.reasons, 'perf gate file selects its own area');
         } else if (scenario && file.startsWith(scenario + '/')) {
-            push(out.perfAreas, file.slice(scenario.length + 1).split('/')[0]);
+            const area = file.slice(scenario.length + 1).split('/')[0];
+            reverseFamilies(area);
+            allDocs = false;
             push(out.reasons, 'perf scenario selects its area');
         } else {
             let best = -1;
@@ -83,7 +126,7 @@ export function select(files, map) {
         out.native = false;
         out.docsOnly = false;
     } else {
-        out.docsOnly = allDocs && !out.native && out.rstest.length === 0;
+        out.docsOnly = allDocs && !out.native && out.rstest.length === 0 && out.perfAreas.length === 0;
     }
     return out;
 }
