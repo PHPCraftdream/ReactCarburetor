@@ -30,17 +30,17 @@ export default [
         ],
     },
     {
-        id: 'resource44/ready-completion', improvement: 'R44-R-02',
+        id: 'resource44/ready-completion', improvement: 'control',
         scenario: 'resource44/ready-completion', args: [],
         gates: [
             {metric: 'lanes', equals: 12},
-            {metric: 'identities', equals: 8},
+            {metric: 'identities', equals: 160},
             {metric: 'reactions', equals: 160},
             {metric: 'synchronousReactions', equals: 0},
             {metric: 'loaderCalls', equals: 0},
             {metric: 'callbacks', equals: 0},
             {metric: 'versionDelta', equals: 0},
-            {metric: 'resolveCalls', equals: 8},
+            {metric: 'resolveCalls', equals: 160},
             {metric: 'zeroHitResolveCalls', equals: 0},
             {metric: 'independentChildren', equals: 160},
             {metric: 'realWorkControls', equals: 4},
@@ -53,7 +53,7 @@ export default [
         ],
     },
     {
-        id: 'resource44/completed-operations', improvement: 'R44-R-02',
+        id: 'resource44/completed-operations', improvement: 'control',
         scenario: 'resource44/completed-operations', args: ['--iterations', '1024'],
         gates: [
             {metric: 'operations', equals: 8192},

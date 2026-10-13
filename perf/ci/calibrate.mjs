@@ -27,7 +27,6 @@ export const calibrateGains = async (baseline, output) => {
         {finding: 'R44-S01', id: 'selection44/array-spine-prototype@M8-L64', actual: /actual:\s*0\b/, expected: /expected:\s*1\b/},
         {finding: 'R44-A01', id: 'components44/selection-attribution-lifetime@4', actual: /actual:\s*4\b/, expected: /expected:\s*0\b/},
         {finding: 'R44-A02', id: 'hooks44/computed-snapshot-lifetime', expected: /expected:\s*undefined/, diagnostic: /strictEqual/},
-        {finding: 'R44-R-02', id: 'resource44/ready-completion', actual: /actual:\s*8\b/, expected: /expected:\s*1\b/},
     ].filter(target => target.finding !== 'R44-C01-single-leaf' || metadataBaseline);
     const report = {baseline: baseline.sha, metadataBaseline, cases: cases.length,
         formats: ['esm-prod', 'esm', 'cjs-prod', 'cjs'], rows: [], skipped: 0, failures: 0};

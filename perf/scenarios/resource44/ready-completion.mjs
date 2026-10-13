@@ -22,8 +22,8 @@ for (const capacity of [8, Infinity]) for (const kind of ['primitive', 'object']
     } finally { Promise.resolve = original; }
     try {
         const distinct = new Set(promises).size;
-        assert.equal(distinct, hits === 0 ? 0 : 1);
-        assert.equal(counted, hits === 0 ? 0 : 1);
+        assert.equal(distinct, hits);
+        assert.equal(counted, hits);
         assert.equal(new Set(children).size, hits);
         await Promise.all(children);
         assert.equal(localReactions, hits);
@@ -46,7 +46,7 @@ const bad = completion.then(() => { throw thrown; });
 const good = completion.then(() => { goodCalls++; return 19; });
 const observed = assert.rejects(bad, error => error === thrown);
 assert.equal(goodCalls, 0); await observed; assert.equal(await good, 19);
-assert.equal(await completion, undefined); assert.equal(first.load(args), completion);
+assert.equal(await completion, undefined); assert.notEqual(first.load(args), completion);
 first.forgetAll(); assert.equal(captured.view.data, payload); assert.equal(args.id, 'held');
 for (const lane of ['cold', 'forced', 'stale', 'invalidated']) {
     const requests = [gate(), gate()]; let calls = 0;

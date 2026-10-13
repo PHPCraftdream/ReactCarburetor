@@ -31,14 +31,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   not claim zero render allocations or zero GC.
 - Round 44: supported null/Object-prototype arrays retain their shallow-spine prototype and deliver
   graph updates. Error-description reentry cannot overwrite a newer resource settlement.
+- The shared fresh-hit completion Promise of Round 44 (R44-R-02) is reverted: it made the hit path
+  1.3–1.9x slower in A/B runs against the previous build.
 - Stopped class selections release obsolete attempt ownership; computed-hook snapshot envelopes
   use weak global ownership while active consumers keep stable snapshots.
 - Flattened Computed captures reuse trusted immutable native snapshots and skip repeated dictionaries;
   direct captures reuse their existing key lists instead of copying leaf metadata into a new array.
   Observed recomputations skip unused baseline enumeration; opaque history batches release unused
   endpoints, and scalar replay avoids graph comparison ledgers.
-- Fresh ready cache hits reuse one lazy per-cache void completion. Caller reactions remain independent
-  and asynchronous; Promise identity is not a per-call request identity.
 - 281 permanent R44 benchmark entries join the common runner; all 471 preceding contracts remain
   unchanged. Work/collectibility guards are separate from whole-operation timing.
 - Move complete validation to GitHub Actions: ordinary CI also accepts `ci/**` branches and saves

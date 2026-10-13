@@ -6,7 +6,7 @@ const ready = (data: string) => ({status: S.Success, data, error: undefined,
 
 for (const maxEntries of [8, Infinity]) for (const kind of ['primitive', 'object']) {
     describe(`resource44 ready completion ${kind}, capacity ${maxEntries}`, () => {
-        test.each([0, 8, 32])('%s fresh hits share void completion with independent async reactions', async (count) => {
+        test.each([0, 8, 32])('%s fresh hits resolve with distinct promises and independent reactions', async (count) => {
             const args = kind === 'primitive' ? 'a' : {id: 'a'};
             const other = kind === 'primitive' ? 'b' : {id: 'b'};
             let calls = 0;
@@ -24,7 +24,7 @@ for (const maxEntries of [8, Infinity]) for (const kind of ['primitive', 'object
                     reactions++;
                 }));
                 expect(reactions).toBe(0);
-                expect(new Set(promises).size).toBe(count === 0 ? 0 : 1);
+                expect(new Set(promises).size).toBe(count);
                 expect(new Set(children).size).toBe(count);
                 await Promise.all(children);
                 expect(reactions).toBe(count);
@@ -45,7 +45,7 @@ describe('resource44 ready isolation and real work', () => {
         first.setData({entries: {[first.resolve('a').key]: ready('first')}});
         second.setData({entries: {[second.resolve('a').key]: ready('second')}});
         const completion = first.load('a');
-        expect(first.load('a')).toBe(completion);
+        expect(first.load('a')).not.toBe(completion);
         expect(second.load('a')).not.toBe(completion);
         const thrown = new Error('caller callback');
         let called = false;
@@ -57,7 +57,7 @@ describe('resource44 ready isolation and real work', () => {
         await rejected;
         expect(await good).toBe('independent');
         expect(await completion).toBeUndefined();
-        expect(first.load('a')).toBe(completion);
+        expect(first.load('a')).not.toBe(completion);
     });
 
     test.each(['cold', 'forced', 'stale', 'invalidated'] as const)(

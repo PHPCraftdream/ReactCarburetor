@@ -109,6 +109,13 @@ Proposed families, **пока не созданные**: `selection44/array-spin
 `load()` call; `async_hooks`/Promise instrumentation видит меньше root initializations.
 [Публичный контракт](../promise-cache.md#the-public-surface) документирует эту границу.
 
+R44-R-02 откатан: A/B против предыдущей сборки показал устойчивое замедление hit-пути —
+cache/eviction-scaling@1k hitMs 0.88→1.63 мс (1.85×) на hosted windows и 2.2→3.6 мс (1.65×)
+локально, resource43/lookup-operations primitiveHitMs 1.72–1.75×. Возврат `Promise.resolve()` на
+свежий hit убирает регрессию (0.96×), а выигрыша по аллокациям R44 не было измерено как
+whole-operation. Каждый свежий hit снова возвращает свой fulfilled Promise; гейт
+resource44/ready-completion переквалифицирован в control на раздельные идентичности.
+
 A02 — lifetime tradeoff, не сокращение всех allocations: один новый shared envelope получает
 один `WeakRef`. Construction probe наблюдает 21 `WeakRef` на initial read и 20 publications,
 ноль на 100 warm renders, одинаково для 1/4/8 consumers. Timing этого route измеряется отдельно.

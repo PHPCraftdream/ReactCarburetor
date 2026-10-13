@@ -10,8 +10,6 @@ import {ICacheRequest, ICacheRuntime} from "./State/Runtime/Models";
 import {ResourceCacheState} from "./State/Runtime/ResourceCacheState";
 import {trimCacheRuntime} from "./State/Runtime/Registry";
 
-const readyCompletions = new WeakMap<object, Promise<void>>();
-
 /** Owns cache load, settlement, and Suspense transitions. */
 export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheState<T, TArgs> {
     /** Load an entry unless its current value is fresh.
@@ -23,12 +21,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         const entry = this.data.entries[key];
         this[R.touch](key);
         if (entry && entry.status === EResourceStatus.Success && !this[R.isStale](entry)) {
-            let completion = readyCompletions.get(this);
-            if (completion === undefined) {
-                completion = Promise.resolve();
-                readyCompletions.set(this, completion);
-            }
-            return completion;
+            return Promise.resolve();
         }
         return this[R.fetch](key, args);
     }

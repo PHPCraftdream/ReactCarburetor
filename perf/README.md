@@ -608,7 +608,7 @@ array length is covered only by the `selection44/timing` diagnostics.
 
 `Performance validation` runs on `ci/**` pushes or manual dispatch with a baseline commit and
 at least three samples. Its hosted Windows runner builds both revisions, runs all current gates,
-calibrates the nine R44 mechanisms in all formats, and retains new-control and unchanged-baseline
+calibrates the eight R44 mechanisms in all formats, and retains new-control and unchanged-baseline
 A/B results with the existing 25% + 0.05ms threshold. JSON/JSONL samples and flags are artifacts.
 `npm run bench:ci` is GitHub-only; do not run this orchestration on the developer workstation.
 Ordinary CI separately covers build, typecheck, lint, both React majors, native/platform packages,
