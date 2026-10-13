@@ -9,7 +9,7 @@
 //   npm run bench -- --list
 //
 // Options: --dist <dir> (default dist/esm-prod)  --only <substring of an entry id>  --runs <n> (default 3)
-//          --against <ref>  --json <file>  --verbose
+//          --against <ref>  --json <file>  --verbose  --require-all (a missing `requires` path fails)
 //
 // A failing entry does not abort the run: a crashed scenario, a non-zero child or a missing metrics
 // line is that entry's FAIL (counted as a violation) and the remaining entries still run. The same
@@ -131,6 +131,11 @@ if (argv.includes('--lint-gates')) {
                 || !/^(?:--allow-natives-syntax|--(?:min|max)-semi-space-size=[1-9]\d*)(?![\s\S])/.test(arg)))) {
             problems.push(`${where}: nodeArgs must be an array of --allow-natives-syntax or --min/--max-semi-space-size=N flags (positive integer N)`);
         }
+        if (entry.requires !== undefined && (!Array.isArray(entry.requires)
+            || entry.requires.some(item => !item || typeof item !== 'object' || typeof item.path !== 'string'
+                || item.path === '' || Object.keys(item).length !== 1))) {
+            problems.push(`${where}: requires must be an array of {path} objects with a repository-relative path`);
+        }
         if (!existsSync(scenarioPath)) problems.push(`${where}: no scenario at perf/scenarios/${entry.scenario}.mjs`);
         const metrics = emittedMetrics(scenarioPath);
         const gates = Array.isArray(entry.gates) ? entry.gates : [];
@@ -206,6 +211,11 @@ const roots = [{name: 'now', dir: dist}];
 if (against) roots.push({name: 'base', dir: join(baselineDist(against), 'esm-prod')});
 const runs = Number(option('runs', '3'));
 const verbose = argv.includes('--verbose');
+const requireAll = argv.includes('--require-all');
+
+// An entry's `requires` cells are repository-relative paths that must exist before it measures.
+const missingRequires = entry => (entry.requires ?? []).map(item => item.path)
+    .filter(path => !existsSync(resolve(here, '..', path)));
 
 // One measurement per (scenario, args, nodeArgs) per build, shared by every entry that uses it; a failed
 // measurement is cached too, so each entry pointing at the same broken scenario fails with the
@@ -229,7 +239,23 @@ const summaries = new Map();
 const report = [];
 let violations = 0;
 let failedEntries = 0;
+let skippedEntries = 0;
 for (const entry of order) {
+    const missing = missingRequires(entry);
+    if (missing.length > 0) {
+        const reasons = missing.map(path => 'missing ' + path);
+        for (const path of missing) console.log(`skip ${entry.id} (missing ${path})`);
+        if (hidden.has(entry.id)) continue;
+        if (requireAll) {
+            violations += 1;
+            failedEntries += 1;
+            report.push({id: entry.id, improvement: entry.improvement, violations: reasons});
+        } else {
+            skippedEntries += 1;
+            report.push({id: entry.id, improvement: entry.improvement, skipped: reasons});
+        }
+        continue;
+    }
     let now, base, failure;
     try {
         const samples = samplesFor(entry);
@@ -277,5 +303,6 @@ for (const entry of order) {
 const json = option('json', undefined);
 if (json) writeFileSync(json, JSON.stringify(report, null, 2));
 const sources = hidden.size === 0 ? '' : ` (+${hidden.size} scale source${hidden.size === 1 ? '' : 's'} measured)`;
-console.log(`\n${matched.length} entries, ${failedEntries} failed, ${violations} violation${violations === 1 ? '' : 's'}${sources}`);
+console.log(`\n${matched.length} ${matched.length === 1 ? 'entry' : 'entries'}, ${failedEntries} failed, ${skippedEntries} skipped, `
+    + `${violations} violation${violations === 1 ? '' : 's'}${sources}`);
 process.exit(violations === 0 ? 0 : 1);

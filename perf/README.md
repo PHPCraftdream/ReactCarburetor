@@ -16,6 +16,9 @@ affected gate areas automatically and runs them focused, e.g.
 The `hooks43` SSR gates exercise React 18 and 19. Prepare the other major once with
 `npm run test:consumers`: its `.consumer-matrix/react18-npm` or `react19-npm` cell must sit
 beside the real repository `node_modules` directory. The matching root major is reused directly.
+Only the CI job Consumer matrix guarantees the cells: it runs the `hooks43` gates with
+`--require-all` right after `npm run test:consumers` has created them. Elsewhere a missing cell
+marks the entry `skip` (not a failure), and `--require-all` turns that skip into a failure.
 Scenarios do not install dependencies; temporary bundle copies require writable OS temporary
 storage and directory-junction/symlink support. Intentional SSR-positive warnings are forwarded.
 
@@ -27,13 +30,16 @@ npm run bench -- --dist <dir>             # another build, e.g. one under worktr
 npm run bench -- --against <git-ref>      # also build <ref> and compare every *Ms metric with it
 npm run bench -- --verbose                # passing gates too, and full crash output
 npm run bench -- --lint-gates             # static manifest checks, no scenario is run
+npm run bench -- --require-all             # a missing `requires` path fails instead of skipping
 npm run bench -- --list                   # print the entries without running anything
 npm run bench -- --json report.json       # machine-readable results
 ```
 
 A failing entry — a crash, a non-zero child, no `@@` metrics line, including a baseline build that
 lacks an API the scenario needs — is reported as `FAIL <id>` with a short cause, counted as a
-violation, and the run continues; the summary and exit code reflect every violation. Entries
+violation, and the run continues; the summary and exit code reflect every violation. An entry whose
+`requires` paths are missing prints `skip <id> (missing <path>)` instead, counts as neither a
+violation nor a failure, and shows up in the summary as skipped. Entries
 sharing the same (scenario, args, nodeArgs) are measured once and share their samples. `--only` still
 measures the `scale.from` source entries a selected entry needs, without printing them as selected.
 
@@ -216,7 +222,7 @@ on `history39/scale@10k` and the absolute ceilings of the headline entries liste
 | `resource39/data-only-readers@50`, `resource39/status-replacements` | R39-07: data-only readers render 2 times on mount and on an equal refresh and still refetch; `status` readers keep every render (control) |
 | `resource39/forget-reload` | R39-07: a data-only reader whose pending entry is removed (`forget`, `restore`, also inside a manual throttle window) reloads — exactly 2 loader calls, more renders; bare creation renders nothing (`controlExtraRenders` = 0) |
 | `writelog39/bound-write-{watch,hook,class}@10000` | R39-01: median of 21 related writes after two unrelated publications, 10k rows, ≤ 10 ms |
-| `writelog39/write-bytes@6000` | R39-04: heap bytes per write (`used_heap_size` delta) in a child with a 64 MB semi-space (`monotone` proves no scavenge), a fresh store per measurement; a store without a consumer allocates ≤ 900 B per write (pre-R39: 1082 B), turning the proofs on costs ≤ 60 B more, and the opt-in toggle must exist |
+| `writelog39/write-bytes@6000` | R39-04: heap bytes per write (`used_heap_size` delta) in a child with a 64 MB semi-space (`monotone` proves no scavenge), a fresh store per measurement; a store without a consumer allocates ≤ 900 B per write (pre-R39: 1082 B), turning the proofs on costs ≤ 150 B more (median of paired per-round differences; bound sits between environment noise, ~120 B on shared runners, and the ~350 B pre-R39 signal), and the opt-in toggle must exist |
 | `trackrelease39/release-{watch,hook,class}@1000` | R39-04: after the last consumer disposes (watch disposer, hook unmount, class unmount), 1000 writes construct ≤ 3 Maps and ≤ 2000 Sets (pre-R39: 1000 and 3000); while a consumer lives, and after it is created again, a related write reads ≤ 4 paths |
 | `writelog39/raw-retention@10000` | control: 10 000 add/write/remove rows leave ≤ 2112 of their raw objects reachable (cap 2048 + slack) and `writeLog.targets.count` ≤ 2048; manually held store rows survive, unreferenced objects do not |
 | `history39/date-heap@10k` | R39-02: retained heap per history entry with one `Date`, 10k rows, ≤ 50 KB; plain-state control, genuine-snapshot positive control ≥ 100 KB |

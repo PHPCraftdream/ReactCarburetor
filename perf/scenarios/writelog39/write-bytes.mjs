@@ -1,6 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 // R39-04: heap bytes per write. A child with a 64 MB semi-space runs the writes, so no scavenge
 // (which would shrink the used heap) happens inside a measured slice; `monotone` proves it.
+// savedBytes is the median of paired per-round differences (proofs on minus off), not of the margins.
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';
 import {getHeapSpaceStatistics, getHeapStatistics} from 'node:v8';
@@ -18,7 +19,7 @@ if (!process.argv.includes('--child')) {
     const count = Number(process.argv[2] ?? 6000);
     const warm = 1500;
     const slices = 6;
-    const rounds = 3;
+    const rounds = 5;
     // Builds without the opt-in have no such method and record proofs on every write.
     const track = Symbol.for('react-carburetor/v1/store-track-targets');
     class Store extends Carburetor { change(fn) { this.update(fn); } }
@@ -66,6 +67,8 @@ if (!process.argv.includes('--child')) {
         }
     }
     const bytes = kind => median(results[kind].map(item => item.bytes));
+    // Paired per-round differences: each round holds one measurement of each kind, so rotation does not break pairing.
+    const saved = median(results.on.map((item, index) => item.bytes - results.off[index].bytes));
     const perWriteMs = kind => median(results[kind].map(item => item.ms));
     // Positive control: the heap counter resolves small retained objects (3-property objects, >= 32 B).
     const refCount = 20000;
@@ -78,7 +81,7 @@ if (!process.argv.includes('--child')) {
     const newSpaceMB = (getHeapSpaceStatistics().find(space => space.space_name === 'new_space')?.space_size ?? 0) / 1048576;
     emit({
         writes: count, offBytes: bytes('off'), onBytes: bytes('on'), consumerBytes: bytes('consumer'),
-        savedBytes: bytes('on') - bytes('off'), refBytes, newSpaceMB, toggleAvailable, monotone, consumerOk,
+        savedBytes: saved, refBytes, newSpaceMB, toggleAvailable, monotone, consumerOk,
         offWriteMs: perWriteMs('off'), onWriteMs: perWriteMs('on'), consumerWriteMs: perWriteMs('consumer'),
         done: stateOk && consumerOk && keepOk,
     });

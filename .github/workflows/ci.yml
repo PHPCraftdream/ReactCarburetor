@@ -177,6 +177,11 @@ jobs:
       - name: Consumer matrix
         run: npm run test:consumers
 
+      # hooks43 needs the .consumer-matrix cells; --require-all turns a missing cell into a
+      # failure here, where test:consumers has just created them (Library skips instead).
+      - name: SSR performance gates
+        run: node perf/run.mjs --only hooks43 --runs 3 --require-all
+
       - name: Allow native lint child fork with Oxlint's parser reservation
         run: sudo sysctl -w vm.overcommit_memory=1
 

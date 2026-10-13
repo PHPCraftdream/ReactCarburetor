@@ -22,10 +22,11 @@ const boundWrites = ['watch', 'hook', 'class'].map(route => ({
 }));
 export default [...selections, ...boundWrites, {
     // Heap bytes per write in a 64 MB semi-space child; a fresh store per measurement. `offBytes` (no consumer): 732
-    // now, 1082 on pre-R39 (no toggle, proofs always recorded). `savedBytes` = proofs-on minus proofs-off: about 0 now.
+    // now, 1082 on pre-R39 (no toggle, proofs always recorded). `savedBytes` is the median of paired per-round
+    // differences: environment noise pairs against it; bound 150 between noise (~120) and the ~350 B pre-R39 signal.
     id: 'writelog39/write-bytes@6000', improvement: 'R39-04', scenario: 'writelog39/write-bytes', args: [6000],
     gates: [
-        {metric: 'toggleAvailable', equals: true}, {metric: 'savedBytes', max: 60},
+        {metric: 'toggleAvailable', equals: true}, {metric: 'savedBytes', max: 150},
         {metric: 'monotone', equals: true}, {metric: 'refBytes', min: 32}, {metric: 'offBytes', min: 100}, {metric: 'offBytes', max: 900},
         {metric: 'newSpaceMB', min: 8}, {metric: 'consumerBytes', over: 'offBytes', max: 10},
         {metric: 'consumerOk', equals: true}, {metric: 'done', equals: true},
