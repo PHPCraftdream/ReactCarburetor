@@ -6,7 +6,7 @@ const ready = (data: string) => ({status: S.Success, data, error: undefined,
 
 for (const maxEntries of [8, Infinity]) for (const kind of ['primitive', 'object']) {
     describe(`resource44 ready completion ${kind}, capacity ${maxEntries}`, () => {
-        test.each([0, 8, 32])('%s fresh hits resolve with distinct promises and independent reactions', async (count) => {
+        test.each([0, 8, 32])('%s fresh hits give distinct promises and independent reactions', async (count) => {
             const args = kind === 'primitive' ? 'a' : {id: 'a'};
             const other = kind === 'primitive' ? 'b' : {id: 'b'};
             let calls = 0;
