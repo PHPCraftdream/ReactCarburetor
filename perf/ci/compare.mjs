@@ -1,9 +1,11 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 import {createHash} from 'node:crypto';
-import {appendFileSync, readFileSync, writeFileSync} from 'node:fs';
+import {appendFileSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {sampleScenario, summarize, show} from '../harness/measure.mjs';
 import {evaluate, compare} from '../harness/evaluate.mjs';
+import {gateContractStatus} from './contract/gateContract.mjs';
 
 /** Appends an informational GITHUB_STEP_SUMMARY section listing every timing flag. */
 export const timingSummary = (title, rows) => {
@@ -17,13 +19,29 @@ export const timingSummary = (title, rows) => {
 };
 
 /** Checks every contract present in the baseline, retaining raw alternating samples and all timing flags. */
-export const comparePrevious = (baseline, currentRoot, runs, output) => {
+export const comparePrevious = async (baseline, currentRoot, runs, output) => {
+    const amendments = JSON.parse(readFileSync(resolve('perf/ci/contract/gate-amendments.json'), 'utf8'));
+    const amendedGateFiles = [];
     for (const [file, expected] of Object.entries(baseline.gateHashes)) {
-        const actual = createHash('sha256').update(readFileSync(resolve('perf/gates', file))).digest('hex');
-        if (actual !== expected) throw new Error('Baseline gate contract changed: ' + file);
+        const actual = gateContractStatus(file, expected,
+            createHash('sha256').update(readFileSync(resolve('perf/gates', file))).digest('hex'), amendments[file]?.sha256);
+        if (actual.error) throw new Error(actual.error);
+        if (actual.amended) amendedGateFiles.push({file, reason: amendments[file].reason});
     }
-    const byId = new Map(baseline.entries.map(entry => [entry.id, entry]));
-    const ordered = [], placed = new Set(), visiting = new Set();
+    const summary = process.env.GITHUB_STEP_SUMMARY;
+    if (summary && amendedGateFiles.length) appendFileSync(summary, '\n### Amended baseline gates\n\n' + amendedGateFiles.map(row => `- ${row.file}: ${row.reason}`).join('\n') + '\n');
+    let entries = baseline.entries;
+    for (const {file} of amendedGateFiles) {
+        const area = file.slice(0, -4);
+        const current = (await import(pathToFileURL(resolve('perf/gates', file)).href)).default
+            .map(entry => ({...entry, area}));
+        const known = baseline.entries.filter(entry => entry.area === area).map(entry => entry.id).sort();
+        const fresh = current.map(entry => entry.id).sort();
+        if (JSON.stringify(known) !== JSON.stringify(fresh)) throw new Error('Amended gate entry IDs diverge from baseline: ' + file);
+        entries = [...entries.filter(entry => entry.area !== area), ...current];
+    }
+    const byId = new Map(entries.map(entry => [entry.id, entry]));
+    const ordered = [], placed = new Set(), visiting = new Set(), skippedIds = new Set();
     const visit = entry => {
         if (!entry) throw new Error('Missing scale source');
         if (placed.has(entry.id)) return;
@@ -32,15 +50,21 @@ export const comparePrevious = (baseline, currentRoot, runs, output) => {
         for (const gate of entry.gates) if (gate.scale) visit(byId.get(gate.scale.from));
         visiting.delete(entry.id); placed.add(entry.id); ordered.push(entry);
     };
-    baseline.entries.forEach(visit);
+    entries.forEach(visit);
     const measured = new Map(), before = new Map(), after = new Map();
-    const report = {baseline: baseline.sha, baselineEntries: baseline.entries.length, runs,
-        originalGateFiles: Object.keys(baseline.gateHashes).length, currentRoot,
+    const report = {baseline: baseline.sha, baselineEntries: entries.length, runs,
+        originalGateFiles: Object.keys(baseline.gateHashes).length, amendedGateFiles, skippedEntries: [], currentRoot,
         baselineRoot: resolve(baseline.dist, 'esm-prod'), baselineGateFailures: 0,
         currentGateFailures: 0, timingFailures: 0, crashes: 0, timingInformational: true, rows: []};
     const save = () => writeFileSync(output, JSON.stringify(report, null, 2) + '\n');
     save();
     for (const entry of ordered) {
+        const missing = (entry.requires ?? []).filter(item => !existsSync(resolve(item.path))).map(item => item.path);
+        if (missing.length || entry.gates.some(gate => gate.scale && skippedIds.has(gate.scale.from))) {
+            report.skippedEntries.push({id: entry.id, missing});
+            skippedIds.add(entry.id); console.log('skip ' + entry.id + (missing.length ? ' (missing ' + missing.join(', ') + ')' : ' (scale source skipped)'));
+            continue;
+        }
         const key = JSON.stringify([entry.scenario, entry.args ?? [], entry.nodeArgs ?? []]);
         try {
             if (!measured.has(key)) {

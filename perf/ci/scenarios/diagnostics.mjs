@@ -2,7 +2,7 @@
 import {appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
-import {prepareBaseline} from '../baseline.mjs';
+import {prepareBaseline} from '../contract/baseline.mjs';
 import {sampleScenario, summarize, show} from '../../harness/measure.mjs';
 import {evaluate, compare} from '../../harness/evaluate.mjs';
 import {collectTraces, confirmTimingFlags} from './trace.mjs';

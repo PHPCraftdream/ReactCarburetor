@@ -1,9 +1,10 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 import {spawnSync, execFileSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
+import {appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
-import {prepareBaseline} from './baseline.mjs';
+import {prepareBaseline} from './contract/baseline.mjs';
+import {gateContractStatus} from './contract/gateContract.mjs';
 import {comparePrevious} from './compare.mjs';
 import {measureControls} from './measure.mjs';
 import {calibrateGains} from './calibrate.mjs';
@@ -49,12 +50,19 @@ if (!baseline || baseline.sha !== sha || !existsSync(resolve(baseline.dist, 'esm
     baseline = await prepareBaseline(reference);
     writeFileSync(manifestPath, JSON.stringify(baseline, null, 2) + '\n');
 }
+const amendments = JSON.parse(readFileSync(resolve('perf/ci/contract/gate-amendments.json'), 'utf8'));
+const amendedGateFiles = [];
 for (const [file, expected] of Object.entries(baseline.gateHashes)) {
-    const actual = createHash('sha256').update(readFileSync(resolve('perf/gates', file))).digest('hex');
-    if (actual !== expected) throw new Error('Original gate contract changed: ' + file);
+    const actual = gateContractStatus(file, expected,
+        createHash('sha256').update(readFileSync(resolve('perf/gates', file))).digest('hex'), amendments[file]?.sha256);
+    if (actual.error) throw new Error(actual.error);
+    if (actual.amended) amendedGateFiles.push({file, reason: amendments[file].reason});
 }
+const summary = process.env.GITHUB_STEP_SUMMARY;
+if (summary && amendedGateFiles.length) appendFileSync(summary, '\n### Amended baseline gates\n\n' + amendedGateFiles.map(row => `- ${row.file}: ${row.reason}`).join('\n') + '\n');
 writeFileSync(resolve(output, phase + '-environment.json'), JSON.stringify({phase, reference, baseline: sha,
     baselineEntries: baseline.entries.length, originalGateFiles: Object.keys(baseline.gateHashes).length,
+    amendedGateFiles,
     distributionRoots: {baselineSource: baseline.sourceDist, baseline: baseline.dist, current: baseline.currentDist},
     currentCommit: process.env.GITHUB_SHA, node: process.version, platform: process.platform,
     architecture: process.arch, react, otherReact: JSON.parse(readFileSync(resolve(peer, 'node_modules/react/package.json'), 'utf8')).version,
@@ -65,7 +73,7 @@ if (phase === 'current') {
     command('all-current-benchmark-entries', ['perf/run.mjs', '--dist', resolve(baseline.currentDist, 'esm-prod'),
         '--runs', String(runs), '--json', resolve(output, 'current-gates.json')]);
 } else if (phase === 'previous') {
-    const report = comparePrevious(baseline, resolve(baseline.currentDist, 'esm-prod'), runs, resolve(output, 'previous-ab.json'));
+    const report = await comparePrevious(baseline, resolve(baseline.currentDist, 'esm-prod'), runs, resolve(output, 'previous-ab.json'));
     accepted = report.accepted;
 } else if (phase === 'gains') {
     const report = await calibrateGains(baseline, resolve(output, 'mechanism-calibration.json'));

@@ -4,7 +4,7 @@ import {createHash} from 'node:crypto';
 import {cpSync, readFileSync, readdirSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import {baselineDist} from '../harness/baseline.mjs';
+import {baselineDist} from '../../harness/baseline.mjs';
 
 /** Builds the requested baseline and records its actual gate contracts before removing the metadata worktree. */
 export const prepareBaseline = async reference => {

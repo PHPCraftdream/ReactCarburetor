@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createHash} from 'node:crypto';
-import {appendFileSync, readFileSync, writeFileSync} from 'node:fs';
+import {appendFileSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {summarize, show} from '../harness/measure.mjs';
@@ -23,7 +23,7 @@ export const measureControls = async (baseline, gateFiles, runs, output) => {
     const roots = {before: resolve(baseline.dist, 'esm-prod'), after: resolve(baseline.currentDist, 'esm-prod')};
     const report = {baseline: baseline.sha, roots, runs, entries: entries.length,
         ordering: 'alternating AB / BA', completed: 0, crashes: 0, gateFailures: 0,
-        timingFailures: 0, rows: [], raw, started: new Date().toISOString(),
+        timingFailures: 0, rows: [], skippedEntries: [], raw, started: new Date().toISOString(),
         environment: {node: process.version, platform: process.platform, architecture: process.arch,
             runner: process.env.RUNNER_NAME, commit: process.env.GITHUB_SHA},
         limitations: ['Whole-operation production ESM controls only; no bytes, instructions, zero-GC or browser FPS inference.',
@@ -32,6 +32,8 @@ export const measureControls = async (baseline, gateFiles, runs, output) => {
     const save = () => writeFileSync(output, JSON.stringify(report, null, 2) + '\n');
     save();
     for (const entry of entries) {
+        const missing = (entry.requires ?? []).filter(item => !existsSync(resolve(item.path))).map(item => item.path);
+        if (missing.length) {report.skippedEntries.push({id: entry.id, missing}); console.log('skip ' + entry.id + ' (missing ' + missing.join(', ') + ')'); continue;}
         const source = entry.scenario === 'selection44/timing' ? 'perf/ci/scenarios/selection-timing.mjs'
             : entry.scenario === 'history44/timing' ? 'perf/ci/scenarios/history-timing.mjs'
                 : 'perf/scenarios/' + entry.scenario + '.mjs';
@@ -96,6 +98,6 @@ export const measureControls = async (baseline, gateFiles, runs, output) => {
     }
     report.finished = new Date().toISOString();
     timingSummary('Completed-operation timing flags (informational)', report.rows);
-    report.accepted = report.completed === report.entries && !report.crashes && !report.gateFailures;
+    report.accepted = !report.crashes && !report.gateFailures && report.skippedEntries.length + report.completed === report.entries;
     save(); return report;
 };

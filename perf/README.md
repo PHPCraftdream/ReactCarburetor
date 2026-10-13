@@ -39,7 +39,12 @@ A failing entry — a crash, a non-zero child, no `@@` metrics line, including a
 lacks an API the scenario needs — is reported as `FAIL <id>` with a short cause, counted as a
 violation, and the run continues; the summary and exit code reflect every violation. An entry whose
 `requires` paths are missing prints `skip <id> (missing <path>)` instead, counts as neither a
-violation nor a failure, and shows up in the summary as skipped. Entries
+violation nor a failure, and shows up in the summary as skipped. After the baseline is frozen, a
+gate file's contract may legitimately change only via `perf/ci/contract/gate-amendments.json` (recomputed
+`sha256`, mandatory `reason` and `commit`); a wrong hash still fails ("changed without amendment"
+vs "amendment hash mismatch"). Amended files are reported via `amendedGateFiles` and
+GITHUB_STEP_SUMMARY, and their entries are taken from the current file with IDs required to match
+the baseline. Entries
 sharing the same (scenario, args, nodeArgs) are measured once and share their samples. `--only` still
 measures the `scale.from` source entries a selected entry needs, without printing them as selected.
 

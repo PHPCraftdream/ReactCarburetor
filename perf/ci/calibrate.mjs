@@ -1,7 +1,7 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
-import {writeFileSync} from 'node:fs';
+import {existsSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {summarize} from '../harness/measure.mjs';
@@ -30,12 +30,14 @@ export const calibrateGains = async (baseline, output) => {
         {finding: 'R44-R-02', id: 'resource44/ready-completion', actual: /actual:\s*8\b/, expected: /expected:\s*1\b/},
     ].filter(target => target.finding !== 'R44-C01-single-leaf' || metadataBaseline);
     const report = {baseline: baseline.sha, metadataBaseline, cases: cases.length,
-        formats: ['esm-prod', 'esm', 'cjs-prod', 'cjs'], rows: [], failures: 0};
+        formats: ['esm-prod', 'esm', 'cjs-prod', 'cjs'], rows: [], skipped: 0, failures: 0};
     const save = () => writeFileSync(output, JSON.stringify(report, null, 2) + '\n');
     save();
     for (const format of report.formats) for (const target of cases) for (const side of ['before', 'after']) {
         const entry = entries.find(entry => entry.id === target.id);
         assert.ok(entry, 'registered calibration entry ' + target.id);
+        const missing = (entry.requires ?? []).filter(item => !existsSync(resolve(item.path))).map(item => item.path);
+        if (missing.length) {report.rows.push({finding: target.finding, id: target.id, format, skipped: missing, classification: 'skipped-missing-requires', accepted: true}); report.skipped = (report.skipped ?? 0) + 1; continue;}
         const root = resolve(side === 'before' ? (target.beforeDist ?? baseline.dist) : baseline.currentDist, format);
         const argv = ['--expose-gc', resolve('perf/scenarios', entry.scenario + '.mjs'), ...(entry.args ?? []).map(String)];
         const env = {NODE_ENV: format.endsWith('-prod') ? 'production' : 'development', DIST_ROOT: root};

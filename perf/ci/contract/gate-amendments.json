@@ -1,0 +1,4 @@
+{
+  "hooks43.mjs": {"sha256": "0011e595e43e057f91a527795a06f3b6edd18e20bb084f8f48c73385c2ab5046", "reason": "requires cell on react18 entries: .consumer-matrix/react18-npm exists only after test:consumers", "commit": "7ee8871"},
+  "writelog39.mjs": {"sha256": "e40f3cf1bf6fd57deb7d110d4901137ff6e2c10c633074df1d13b555b6647d4a", "reason": "savedBytes threshold 60 to 150 plus steady scenario formula; environment flake 115 B ubuntu / 64 B windows at both revisions", "commit": "7ee8871"}
+}
