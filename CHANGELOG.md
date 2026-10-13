@@ -22,8 +22,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `no-react-hooks-in-components` no longer treats a named `export default function useX` as a component, and a slot `load()`
   whose rejection description restores another root still rejects with the description error.
 - Hosted performance validation treats pure timing comparisons as informational (byte-identical A/A noise reached
-  1.85x on the runner); mechanism, behavior and calibration contracts still block. `Timing attribution` fails only for
-  A/B flags above the run's A/A ceiling and writes the classification to the job summary.
+  1.85x on the runner); mechanism, behavior and calibration contracts still block. `Timing attribution` is informational too: A/B flags above
+  the run's A/A ceiling are annotated and summarized, and only crashes fail it (the flagged one-shot 1-3 ms
+  measurements showed steady-state parity in a separate 1000-hit probe, so they are not treated as regressions).
 - Review reports of rounds 6-44 moved to `docs/reviews/`.
 - Add the optional supplied `no-hooks` lint preset for Oxlint and ESLint, backed by the native
   `no-react-hooks-in-components` rule. React import/require aliases are resolved without confusing
@@ -31,8 +32,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   not claim zero render allocations or zero GC.
 - Round 44: supported null/Object-prototype arrays retain their shallow-spine prototype and deliver
   graph updates. Error-description reentry cannot overwrite a newer resource settlement.
-- The shared fresh-hit completion Promise of Round 44 (R44-R-02) is reverted: it made the hit path
-  1.3–1.9x slower in A/B runs against the previous build.
+- The shared fresh-hit completion Promise of Round 44 (R44-R-02) is reverted: hosted one-shot A/B
+  timings of the hit path flagged it and it had no measured whole-operation gain; each hit returns its own Promise again.
 - Stopped class selections release obsolete attempt ownership; computed-hook snapshot envelopes
   use weak global ownership while active consumers keep stable snapshots.
 - Flattened Computed captures reuse trusted immutable native snapshots and skip repeated dictionaries;

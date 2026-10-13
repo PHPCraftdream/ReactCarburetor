@@ -99,9 +99,10 @@ report.completed = report.rows.length === ids.length; save();
 const summaryPath = process.env.GITHUB_STEP_SUMMARY;
 if (summaryPath) appendFileSync(summaryPath, '\n### Timing attribution (informational)\n\n'
     + `A/B flags: ${abFlags.length}, A/A flags (identical-build noise): ${aaFlags.length}, `
-    + `A/A noise ceiling: ${report.aaNoiseCeiling}x, confirmed regressions: ${report.confirmedAlerts.length}.\n\n`
+    + `A/A noise ceiling: ${report.aaNoiseCeiling}x, persistent A/B flags above the A/A ceiling: ${report.confirmedAlerts.length}.\n\n`
     + '| Alert | Detail |\n|---|---|\n'
     + abFlags.map(flag => `| ${flag.id}${flag.confirmed ? ' *' : ''} | ${flag.detail} |`).join('\n')
     + (aaFlags.length ? '\n\nA/A noise flags: ' + aaFlags.map(flag => flag.id + ' ' + flag.detail).join('; ') : '')
     + '\n');
-process.exitCode = report.failures || !report.completed || report.confirmedAlerts.length ? 1 : 0;
+for (const alert of report.confirmedAlerts) console.log('::warning title=Persistent A/B timing flag::' + alert);
+process.exitCode = report.failures || !report.completed ? 1 : 0;

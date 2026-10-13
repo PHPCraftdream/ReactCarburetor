@@ -1,11 +1,11 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-import {createHash} from 'node:crypto';
 import {appendFileSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {sampleScenario, summarize, show} from '../harness/measure.mjs';
 import {evaluate, compare} from '../harness/evaluate.mjs';
 import {gateContractStatus} from './contract/gateContract.mjs';
+import {hashGate} from './contract/hashGate.mjs';
 
 /** Appends an informational GITHUB_STEP_SUMMARY section listing every timing flag. */
 export const timingSummary = (title, rows) => {
@@ -24,7 +24,7 @@ export const comparePrevious = async (baseline, currentRoot, runs, output) => {
     const amendedGateFiles = [];
     for (const [file, expected] of Object.entries(baseline.gateHashes)) {
         const actual = gateContractStatus(file, expected,
-            createHash('sha256').update(readFileSync(resolve('perf/gates', file))).digest('hex'), amendments[file]?.sha256);
+            hashGate(resolve('perf/gates', file)), amendments[file]?.sha256);
         if (actual.error) throw new Error(actual.error);
         if (actual.amended) amendedGateFiles.push({file, reason: amendments[file].reason});
     }

@@ -1,10 +1,10 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 import {execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
-import {cpSync, readFileSync, readdirSync} from 'node:fs';
+import {cpSync, readdirSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {baselineDist} from '../../harness/baseline.mjs';
+import {hashGate} from './hashGate.mjs';
 
 /** Builds the requested baseline and records its actual gate contracts before removing the metadata worktree. */
 export const prepareBaseline = async reference => {
@@ -23,7 +23,7 @@ export const prepareBaseline = async reference => {
     try {
         for (const file of readdirSync(resolve(tree, 'perf/gates')).filter(file => file.endsWith('.mjs')).sort()) {
             const path = resolve(tree, 'perf/gates', file);
-            gateHashes[file] = createHash('sha256').update(readFileSync(path)).digest('hex');
+            gateHashes[file] = hashGate(path);
             const gates = (await import(pathToFileURL(path).href)).default;
             if (!Array.isArray(gates)) throw new Error('Invalid baseline manifest: ' + file);
             entries.push(...gates.map(entry => ({...entry, area: file.slice(0, -4)})));

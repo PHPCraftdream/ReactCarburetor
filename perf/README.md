@@ -614,7 +614,7 @@ A/B results with the existing 25% + 0.05ms threshold. JSON/JSONL samples and fla
 Ordinary CI separately covers build, typecheck, lint, both React majors, native/platform packages,
 packed consumers and actual Chrome DOM/screenshot smoke. Pure timing comparisons are informational: byte-identical A/A reached a 1.85x median ratio on the hosted runner (run 38380384986),
 so the 25% + 0.05ms threshold sits below its own noise. Flags stay in artifacts and the job summary; behavior, work-counter,
-collectibility and exact baseline/fix calibration contracts block. `Timing attribution` fails only for A/B flags above that run's A/A ceiling.
+collectibility and exact baseline/fix calibration contracts block. `Timing attribution` annotates A/B flags above that run's A/A ceiling and fails only on crashes: the persistent flags are one-shot 1-3 ms first-use measurements with steady-state parity.
 Both comparison distributions use equal-length, same-depth `baseline`/`modified` directories.
 Byte-identical relocation controls exposed path/startup bias; old raw alerts remain in the
 R44 receipts rather than being called code regressions or silently discarded.

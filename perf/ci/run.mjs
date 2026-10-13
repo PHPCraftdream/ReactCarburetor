@@ -1,10 +1,10 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 import {spawnSync, execFileSync} from 'node:child_process';
-import {createHash} from 'node:crypto';
 import {appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {prepareBaseline} from './contract/baseline.mjs';
 import {gateContractStatus} from './contract/gateContract.mjs';
+import {hashGate} from './contract/hashGate.mjs';
 import {comparePrevious} from './compare.mjs';
 import {measureControls} from './measure.mjs';
 import {calibrateGains} from './calibrate.mjs';
@@ -54,7 +54,7 @@ const amendments = JSON.parse(readFileSync(resolve('perf/ci/contract/gate-amendm
 const amendedGateFiles = [];
 for (const [file, expected] of Object.entries(baseline.gateHashes)) {
     const actual = gateContractStatus(file, expected,
-        createHash('sha256').update(readFileSync(resolve('perf/gates', file))).digest('hex'), amendments[file]?.sha256);
+        hashGate(resolve('perf/gates', file)), amendments[file]?.sha256);
     if (actual.error) throw new Error(actual.error);
     if (actual.amended) amendedGateFiles.push({file, reason: amendments[file].reason});
 }
