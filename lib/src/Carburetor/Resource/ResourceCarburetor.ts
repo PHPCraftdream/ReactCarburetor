@@ -481,7 +481,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
             thrown = {error: descriptionError};
         }
         if (this[R.runtime] !== runtime || this[R.operationVersion] !== request.generation
-            || !this[R.isCurrent](request)) return;
+            || !this[R.isCurrent](request)) {
+            if (thrown) throw thrown.error;
+            return;
+        }
         runtime.request = undefined;
         runtime.answer = {key: request.key, owner: this.data, failure: {value: error, message}};
         this.update((draft) => {

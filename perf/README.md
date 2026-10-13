@@ -587,6 +587,10 @@ unpublished-draft diagnostic, which only exists in development builds — it req
 
 ## GitHub Actions
 
+Known limit: `selection44/array-spine-prototype` counts JS-level `hasOwnProperty`/`Reflect.ownKeys` calls, so it proves the spine copier
+adds no per-slot JS loop; the intrinsic `slice` it delegates to is not counted, and growth of that native work with the logical
+array length is covered only by the `selection44/timing` diagnostics.
+
 `Performance validation` runs on `ci/**` pushes or manual dispatch with a baseline commit and
 at least three samples. Its hosted Windows runner builds both revisions, runs all current gates,
 calibrates the nine R44 mechanisms in all formats, and retains new-control and unchanged-baseline

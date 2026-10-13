@@ -113,11 +113,17 @@ impl<'a> Check<'a, '_> {
         for parent in self.semantic.nodes().ancestor_kinds(call.node_id.get()) {
             match parent {
                 AstKind::Function(function) => {
+                    // A named default export is a component only by its name.
+                    let named_default = function.id.is_some()
+                        && matches!(
+                            self.semantic.nodes().ancestor_kinds(function.node_id.get()).next(),
+                            Some(AstKind::ExportDefaultDeclaration(_))
+                        );
                     if function
                         .id
                         .as_ref()
                         .is_some_and(|id| component_name(id.name.as_str()))
-                        || self.component_binding(function.node_id.get())
+                        || (!named_default && self.component_binding(function.node_id.get()))
                         || function.body.as_ref().is_some_and(|body| returns_jsx(body))
                     {
                         return true;

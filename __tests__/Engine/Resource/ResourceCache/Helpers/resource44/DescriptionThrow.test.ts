@@ -30,3 +30,16 @@ for (const style of ['object', 'getter']) {
         });
     });
 }
+
+describe('resource44 description reentry and throw', () => {
+    test('slot load still rejects with the description error when the description restores another root', async () => {
+        const sentinel = new Error('description threw');
+        const snapshot = {status: S.Success, data: 'replacement', error: undefined, updatedAt: Date.now(),
+            refreshing: false, invalidated: false, failed: false, key: JSON.stringify('b')};
+        const slot = new ResourceCarburetor<string, string>(() => Promise.reject({
+            toString: () => { slot.restore(snapshot); throw sentinel; },
+        }));
+        await expect(slot.load('a')).rejects.toBe(sentinel);
+        expect(slot.getData()).toMatchObject({status: S.Success, data: 'replacement'});
+    });
+});

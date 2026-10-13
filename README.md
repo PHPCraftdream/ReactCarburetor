@@ -938,7 +938,7 @@ you have to judge the report. `no-module-level-store` is **off**: a module-level
 pattern in a client-only application, and the rule only makes sense once you render on a server, so
 switch it on then.
 
-Every rule takes `componentBases`, `carburetorBases` and `renderMethods`, because detection is
+Every rule except `no-react-hooks-in-components` (no options) takes `componentBases`, `carburetorBases` and `renderMethods`, because detection is
 syntactic: a project with its own base class or its own render helpers is invisible to the rules
 until it names them.
 

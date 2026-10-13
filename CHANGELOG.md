@@ -19,6 +19,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Resource settlement stays consistent when describing a rejection throws: the cache entry or slot becomes a safe
   `Error` state instead of staying `Loading` without a request. Explicit `load()` still rejects with the description
   error and the raw rejection stays in `getFailure`/`getLastError`.
+- `no-react-hooks-in-components` no longer treats a named `export default function useX` as a component, and a slot `load()`
+  whose rejection description restores another root still rejects with the description error.
 - Hosted performance validation treats pure timing comparisons as informational (byte-identical A/A noise reached
   1.85x on the runner); mechanism, behavior and calibration contracts still block. `Timing attribution` fails only for
   A/B flags above the run's A/A ceiling and writes the classification to the job summary.
@@ -180,11 +182,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- `useResourceValue(source, args)` in `react-carburetor/interop` (R40-04): the hooks counterpart of the class
-  `useResource`, with the same entry view, a subscription to only the fields the component reads, a stale
-  entry loaded after commit (never during render), and re-arming after an invalidated refresh. A local
-  replacement of a snapshot field (`view.data = …`) is read back, as with the class reader. Both readers share
-  one decision module.
+- `useResourceValue(source, args, select, isEqual?)` in `react-carburetor/interop` (R40-04, selector form since R41): the hooks
+  counterpart of the class `useResource`, with a subscription to only the fields the selector reads, a stale entry
+  loaded after commit (never during render), and re-arming after an invalidated refresh. Both readers share one
+  decision module.
 - Expanded `perf/` coverage for rounds 6–38 with mechanism counters and baseline builds;
   [the coverage audit](docs/reviews/perf-coverage-audit-2026-10-08.md#resolution--protection-plan-2026-10-08)
   records the few optimizations that no counter can separate on the available builds rather than claiming every optimization is covered.

@@ -47,6 +47,16 @@ fn memo_forward_ref_and_anonymous_default_components_are_checked() {
 }
 
 #[test]
+fn named_default_export_hooks_are_not_components() {
+    let source = "import {useId as id} from 'react';
+        export default function useCounter() { id(); return null; }";
+    assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    let source = "import {useId as id} from 'react';
+        export default function Counter() { id(); return null; }";
+    assert_eq!(lines(&diagnose(source, check)), [2]);
+}
+
+#[test]
 fn jsx_returning_functions_and_react_use_are_checked() {
     let source = "import React from 'react';\n\
         const render = () => { React.use(resource); return <p/>; };\n\
