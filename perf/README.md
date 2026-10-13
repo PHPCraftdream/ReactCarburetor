@@ -350,7 +350,7 @@ The orchestrator ran 2530 tests with zero failures/skips and the unfiltered thre
 old 241-entry ID/args/scenario/threshold; only source callers of the new selector API migrated.
 Packed consumers passed 16/16 checks, and actual Chromium verified memo/precision/refresh behavior
 with zero browser errors. The four original R41 findings, API tradeoff and measured public A/B are
-recorded in [the R41 resolution](../docs/api-engine-review-round-41-2026-10-09.md#resolution--2026-10-10).
+recorded in [the R41 resolution](../docs/reviews/api-engine-review-round-41-2026-10-09.md#resolution--2026-10-10).
 
 The raw supplemental receipt preserves nested allocation lanes that the common runner's display
 format would stringify. Direct-flat object/array and constructed-flat equivalents each use one
@@ -394,7 +394,7 @@ buckets and actual `index.match`; those isolated work checks are not whole-opera
 The original frozen build must fail freshness/equality/demand or removed-work metrics—not a missing
 API or corrupted fixture. The cold class pair is deliberately a baseline-pass consumer contract.
 Result provenance, actual full-suite checks and limits are in
-[the R42 resolution](../docs/api-engine-review-round-42-2026-10-10.md#resolution--2026-10-11).
+[the R42 resolution](../docs/reviews/api-engine-review-round-42-2026-10-10.md#resolution--2026-10-11).
 
 The R42 resolution also records actual Windows `InstructionRetired` A/B: 15 accepted, zero-loss
 traces cover the 12 disputed older workloads and three main new optimizations. Hardware recording
@@ -488,7 +488,7 @@ scalar-write attribution remains 470a912. No API cancellation protection is clai
 Protection-plan additions for rounds 6–38 are indexed below by step. Sizes are collapsed;
 companion positive/idle/correctness controls remain in the manifests. Bounds are current
 mechanism guards, not timing claims. Baseline sha12 values identify builds, not fresh reruns;
-see [Baseline builds](#baseline-builds) and the [audit resolution](../docs/perf-coverage-audit-2026-10-08.md#resolution--protection-plan-2026-10-08).
+see [Baseline builds](#baseline-builds) and the [audit resolution](../docs/reviews/perf-coverage-audit-2026-10-08.md#resolution--protection-plan-2026-10-08).
 
 | Entry | Finding | Mechanism metric | Baseline build |
 |---|---|---|---|
@@ -541,7 +541,7 @@ see [Baseline builds](#baseline-builds) and the [audit resolution](../docs/perf-
 | `subscribe/three-path-buckets@4k` | JS-R15-05 | exact and ancestor bucket objects = 0; cache records per subscriber = 0 | `868a74f30925` |
 | `subscribe/reads-copy@4k-copy-control` | R6-04 (`control`) | internal copies 0; public and intentional copies detected; no historical separation | — |
 
-Remaining exceptions: #14 and #21b/#21d stay B (no mechanism separates the builds, or the guard is a control); #25 is partial and stays D; #27b stays D (time/model only). #17 closes JS-R15-04 only; JS-R15-05 is guarded by `subscribe/three-path-buckets@4k`. Class counts and per-claim evidence are in the Resolution of `docs/perf-coverage-audit-2026-10-08.md`.
+Remaining exceptions: #14 and #21b/#21d stay B (no mechanism separates the builds, or the guard is a control); #25 is partial and stays D; #27b stays D (time/model only). #17 closes JS-R15-04 only; JS-R15-05 is guarded by `subscribe/three-path-buckets@4k`. Class counts and per-claim evidence are in the Resolution of `docs/reviews/perf-coverage-audit-2026-10-08.md`.
 
 ## Round 43
 
@@ -569,7 +569,7 @@ P64 coalesced scalar history verdict visits **2016→0**; live caches release **
 roots/subtrees. Timings are separate completed operations with exact values/checksums.
 Full original-baseline A/B keeps the existing 25% comparison threshold and preserves all flags.
 Hardware InstructionRetired results and their attribution limits belong in the
-[R43 resolution](../docs/api-engine-review-round-43-2026-10-11.md), not inferred constructor savings.
+[R43 resolution](../docs/reviews/api-engine-review-round-43-2026-10-11.md), not inferred constructor savings.
 Nine-sample confirmations and an identical-build A/A control preserve noisy timing alerts;
 the latter also flags unchanged code. Passing work/behavior gates is not a universal
 zero-latency/CPU-regression claim; the resolution keeps full ranges and collection limits.
@@ -593,7 +593,9 @@ calibrates the nine R44 mechanisms in all formats, and retains new-control and u
 A/B results with the existing 25% + 0.05ms threshold. JSON/JSONL samples and flags are artifacts.
 `npm run bench:ci` is GitHub-only; do not run this orchestration on the developer workstation.
 Ordinary CI separately covers build, typecheck, lint, both React majors, native/platform packages,
-packed consumers and actual Chrome DOM/screenshot smoke. Timing flags remain failures, not hidden noise.
+packed consumers and actual Chrome DOM/screenshot smoke. Pure timing comparisons are informational: byte-identical A/A reached a 1.85x median ratio on the hosted runner (run 38380384986),
+so the 25% + 0.05ms threshold sits below its own noise. Flags stay in artifacts and the job summary; behavior, work-counter,
+collectibility and exact baseline/fix calibration contracts block. `Timing attribution` fails only for A/B flags above that run's A/A ceiling.
 Both comparison distributions use equal-length, same-depth `baseline`/`modified` directories.
 Byte-identical relocation controls exposed path/startup bias; old raw alerts remain in the
 R44 receipts rather than being called code regressions or silently discarded.

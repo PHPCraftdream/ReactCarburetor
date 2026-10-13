@@ -27,7 +27,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-      - name: Nine-sample A/B and byte-identical A/A attribution
+      - name: Nine-sample A/B and byte-identical A/A attribution (exit non-zero only on confirmed regressions or crashes)
         run: node perf/ci/scenarios/diagnostics.mjs
       - name: Save every sample and original comparison flag
         if: always()

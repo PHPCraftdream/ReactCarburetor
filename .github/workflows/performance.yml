@@ -69,11 +69,11 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run bench:ci -- --phase current --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
 
-      - name: New completed-operation A/B controls
+      - name: New completed-operation A/B controls (timing flags informational)
         if: ${{ !cancelled() }}
         run: npm run bench:ci -- --phase controls --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
 
-      - name: Every unchanged baseline contract and timing comparison
+      - name: Unchanged baseline contracts (blocking) and informational timing comparison
         if: ${{ !cancelled() }}
         run: npm run bench:ci -- --phase previous --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
 

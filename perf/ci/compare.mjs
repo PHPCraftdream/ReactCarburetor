@@ -1,9 +1,20 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
 import {createHash} from 'node:crypto';
-import {readFileSync, writeFileSync} from 'node:fs';
+import {appendFileSync, readFileSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {sampleScenario, summarize, show} from '../harness/measure.mjs';
 import {evaluate, compare} from '../harness/evaluate.mjs';
+
+/** Appends an informational GITHUB_STEP_SUMMARY section listing every timing flag. */
+export const timingSummary = (title, rows) => {
+    const summary = process.env.GITHUB_STEP_SUMMARY;
+    if (!summary) return;
+    const lines = rows.map(row => (row.timings ?? row.comparisons ?? []).filter(result => !result.ok)
+        .map(result => `| ${row.id} | ${result.label} | ${result.detail} |`)).flat();
+    appendFileSync(summary, `\n### ${title}\n\n` + (lines.length
+        ? '| Entry | Metric | Baseline -> current |\n|---|---|---|\n' + lines.join('\n') + '\n'
+        : 'No timing flags.\n'));
+};
 
 /** Checks every contract present in the baseline, retaining raw alternating samples and all timing flags. */
 export const comparePrevious = (baseline, currentRoot, runs, output) => {
@@ -26,7 +37,7 @@ export const comparePrevious = (baseline, currentRoot, runs, output) => {
     const report = {baseline: baseline.sha, baselineEntries: baseline.entries.length, runs,
         originalGateFiles: Object.keys(baseline.gateHashes).length, currentRoot,
         baselineRoot: resolve(baseline.dist, 'esm-prod'), baselineGateFailures: 0,
-        currentGateFailures: 0, timingFailures: 0, crashes: 0, rows: []};
+        currentGateFailures: 0, timingFailures: 0, crashes: 0, timingInformational: true, rows: []};
     const save = () => writeFileSync(output, JSON.stringify(report, null, 2) + '\n');
     save();
     for (const entry of ordered) {
@@ -59,6 +70,6 @@ export const comparePrevious = (baseline, currentRoot, runs, output) => {
         }
         save();
     }
-    report.accepted = !report.baselineGateFailures && !report.currentGateFailures && !report.timingFailures && !report.crashes;
-    save(); return report;
+    report.accepted = !report.baselineGateFailures && !report.currentGateFailures && !report.crashes;
+    save(); timingSummary('Baseline/fix timing comparison (informational)', report.rows); return report;
 };

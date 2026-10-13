@@ -1,5 +1,5 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-import {cpSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
 import {prepareBaseline} from '../baseline.mjs';
@@ -84,5 +84,24 @@ for (const id of ids) {
 report.traces = collectTraces(output, {before: report.roots.before, after: current});
 report.failures += report.traces.filter(row => row.status !== 0 || row.error || !row.metrics).length;
 report.confirmation = await confirmTimingFlags(baseline, output);
+const classified = [...report.rows, ...(report.confirmation?.rows ?? [])].filter(row => row.ab || row.aa);
+report.aaNoiseCeiling = Math.max(0, ...classified.flatMap(row => (row.aa ?? [])
+    .map(result => Number(result.detail.match(/\(([\d.]+)x\)$/)?.[1] ?? 0))));
+const abFlags = classified.flatMap(row => (row.ab ?? []).filter(result => !result.ok)
+    .map(result => ({id: row.id, detail: result.detail,
+        confirmed: Number(result.detail.match(/\(([\d.]+)x\)$/)?.[1] ?? 0) > report.aaNoiseCeiling})));
+report.confirmedAlerts = abFlags.filter(flag => flag.confirmed).map(flag => flag.id + ' ' + flag.detail);
+const aaFlags = classified.flatMap(row => (row.aa ?? []).filter(result => !result.ok)
+    .map(result => ({id: row.id, detail: result.detail})));
+report.interpretation = 'Byte-identical A/A on this runner already reaches up to ' + report.aaNoiseCeiling
+    + 'x median ratio, so only A/B flags above that ceiling are confirmed regressions; everything else is informational.';
 report.completed = report.rows.length === ids.length; save();
-process.exitCode = report.failures || !report.completed ? 1 : 0;
+const summaryPath = process.env.GITHUB_STEP_SUMMARY;
+if (summaryPath) appendFileSync(summaryPath, '\n### Timing attribution (informational)\n\n'
+    + `A/B flags: ${abFlags.length}, A/A flags (identical-build noise): ${aaFlags.length}, `
+    + `A/A noise ceiling: ${report.aaNoiseCeiling}x, confirmed regressions: ${report.confirmedAlerts.length}.\n\n`
+    + '| Alert | Detail |\n|---|---|\n'
+    + abFlags.map(flag => `| ${flag.id}${flag.confirmed ? ' *' : ''} | ${flag.detail} |`).join('\n')
+    + (aaFlags.length ? '\n\nA/A noise flags: ' + aaFlags.map(flag => flag.id + ' ' + flag.detail).join('; ') : '')
+    + '\n');
+process.exitCode = report.failures || !report.completed || report.confirmedAlerts.length ? 1 : 0;
