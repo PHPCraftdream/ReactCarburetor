@@ -46,7 +46,9 @@ jobs:
               BASE="$BEFORE"
             fi
           fi
-          echo "base=$BASE" >> "$GITHUB_ENV"
+          # Env names are case-sensitive: an unset BASE made the selector see no changes and skip the tests.
+          [ -n "$BASE" ] || { echo "empty plan base" >&2; exit 1; }
+          echo "BASE=$BASE" >> "$GITHUB_ENV"
 
       - name: Plan
         id: plan
