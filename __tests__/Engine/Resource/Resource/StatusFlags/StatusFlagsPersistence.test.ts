@@ -45,7 +45,7 @@ describe('resource status flags across persistence', () => {
     });
 
     test('a legacy stored payload without flag fields hydrates flags from status', () => {
-        const {storage, entries} = memoryStorage();
+        const {entries} = memoryStorage();
         entries.set('slot', JSON.stringify({
             status: EResourceStatus.Error, data: undefined, error: 'offline',
             updatedAt: 1, key: JSON.stringify('a'),
@@ -58,7 +58,7 @@ describe('resource status flags across persistence', () => {
     });
 
     test('contradicting stored flags are ignored in favor of status', () => {
-        const {storage, entries} = memoryStorage();
+        const {entries} = memoryStorage();
         entries.set('slot', JSON.stringify({
             status: EResourceStatus.Success, isIdle: true, isPending: true,
             isSuccess: false, isError: true, data: 'saved', error: undefined,

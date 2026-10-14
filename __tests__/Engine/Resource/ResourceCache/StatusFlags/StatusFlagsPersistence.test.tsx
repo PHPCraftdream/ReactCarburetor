@@ -22,11 +22,9 @@ const expectFlags = (
 
 const fixture = () => {
     const gates: Array<ReturnType<typeof deferred<unknown>>> = [];
-    let calls = 0;
     const cache = new ResourceCache<unknown, string>(() => {
         const gate = deferred<unknown>();
         gates.push(gate);
-        calls++;
         return gate.promise;
     }, {ttl: Infinity});
     const settle = async (index: number, value: unknown) => {
@@ -70,7 +68,7 @@ describe('ResourceCache status flags across persistence', () => {
     test('a legacy stored entry without flag fields hydrates flags from status', () => {
         const state = fixture();
         const key = state.cache.resolve('a').key;
-        const {storage, entries} = memoryStorage();
+        const {entries} = memoryStorage();
         entries.set('slot', JSON.stringify({
             entries: {
                 [key]: {status: EResourceStatus.Success, data: 'saved', error: undefined,
@@ -87,7 +85,7 @@ describe('ResourceCache status flags across persistence', () => {
     test('contradicting stored flags are ignored in favor of status', () => {
         const state = fixture();
         const key = state.cache.resolve('a').key;
-        const {storage, entries} = memoryStorage();
+        const {entries} = memoryStorage();
         entries.set('slot', JSON.stringify({
             entries: {
                 [key]: {status: EResourceStatus.Error, isIdle: false, isPending: false,

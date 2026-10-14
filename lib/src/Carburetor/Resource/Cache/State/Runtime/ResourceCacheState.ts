@@ -179,8 +179,8 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
             this[R.eviction].release();
         }
         // Creating a Pending entry changes its ancestor path, but data-only readers still
-        // see exactly the absent defaults. Suppress only that first default-only creation;
-        // all subsequent notifications (especially invalidated true/false) remain untouched.
+        // see exactly the absent defaults (status/isIdle/isPending excepted). Suppress only
+        // that first default-only creation; all subsequent notifications remain untouched.
         const absent = new Set<string>();
         const defaults = getInitialCacheEntry<T>();
         const reads = options.reads;
@@ -190,6 +190,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
                 const parent = path.slice(0, end);
                 const field = path.slice(end + 1);
                 if (!parent.startsWith(`entries${PATH_SEPARATOR}`) || field === 'status' ||
+                    field === 'isIdle' || field === 'isPending' ||
                     !Object.prototype.hasOwnProperty.call(defaults, field)) {
                     absent.clear();
                     break;

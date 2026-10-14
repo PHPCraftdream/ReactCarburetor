@@ -5,14 +5,17 @@ const expectFlags = (
     data: {status: EResourceStatus; isIdle?: boolean; isPending?: boolean; isSuccess?: boolean; isError?: boolean},
     expected: 'isIdle' | 'isPending' | 'isSuccess' | 'isError',
 ): void => {
-    const flags = {
-        isIdle: data.isIdle === true, isPending: data.isPending === true,
-        isSuccess: data.isSuccess === true, isError: data.isError === true,
-    };
     const expectedMap: Record<EResourceStatus, 'isIdle' | 'isPending' | 'isSuccess' | 'isError'> = {
         [EResourceStatus.Idle]: 'isIdle', [EResourceStatus.Pending]: 'isPending',
         [EResourceStatus.Success]: 'isSuccess', [EResourceStatus.Error]: 'isError',
     };
+    const flagNames = ['isIdle', 'isPending', 'isSuccess', 'isError'] as const;
+    for (const name of flagNames) {
+        const presentAndBoolean = Object.prototype.hasOwnProperty.call(data, name) && typeof data[name] === 'boolean';
+        expect({[name]: presentAndBoolean}).toEqual({[name]: true});
+    }
+    const flags: Record<string, boolean> = {};
+    for (const name of flagNames) flags[name] = data[name] === true;
     const trueFlags = Object.entries(flags).filter(([, value]) => value).map(([name]) => name);
     expect(trueFlags).toEqual([expected]);
     expect(expectedMap[data.status]).toBe(expected);

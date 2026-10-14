@@ -45,7 +45,9 @@ try {
     const after = cache.snapshot();
     const old = new ResourceCache(() => Promise.resolve('unused'));
     old.restore(before);
-    old.update(draft => { Object.assign(draft.entries[key], {status: Status.Pending, isIdle: false, isPending: true}); });
+    old.update(draft => {
+        Object.assign(draft.entries[key], {status: Status.Pending, isIdle: false, isPending: true});
+    });
     reset();
     counting = true;
     old.update(draft => {

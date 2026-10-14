@@ -109,7 +109,7 @@ export const normalizeOwnedCacheReplay = <T>(
         }
         for (const key of keys) {
             if (liveEntries?.has(key)) continue;
-            const info = normalized.get(copied.entries[key]);
+            const info = normalized.get(entries[key]);
             if (!info) continue;
             for (const field of statusFlags) {
                 writeValue(copied.entries[key], field, info.flags[field]);

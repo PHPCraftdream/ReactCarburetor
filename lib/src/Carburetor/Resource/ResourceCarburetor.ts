@@ -16,6 +16,8 @@ import {prepareSlotRequest} from "./Slot/prepareSlotRequest";
 import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
 import {resourceStatusFlags} from "@/Carburetor/Resource/Status/resourceStatusFlags";
 
+const STATUS_FLAGS = ['isIdle', 'isPending', 'isSuccess', 'isError'] as const;
+
 /** The message a failure is stored under: the state has to stay serializable. */
 const describeError = (error: unknown): string => {
     if (error instanceof Error) {
@@ -171,7 +173,13 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         if (ownedReplay) {
             const statusDescriptor = data.status !== status
                 ? Object.getOwnPropertyDescriptor(data, 'status') : undefined;
-            if (statusDescriptor?.writable === false && statusDescriptor.configurable === false) {
+            // A locked field holding a wrong value can only be fixed in a copy.
+            const lockedWrongFlag = STATUS_FLAGS.some((key) => {
+                const descriptor = Object.getOwnPropertyDescriptor(data, key);
+                return descriptor?.writable === false && descriptor.configurable === false
+                    && descriptor.value !== flags[key];
+            });
+            if (lockedWrongFlag || (statusDescriptor?.writable === false && statusDescriptor.configurable === false)) {
                 nextData = cloneOwnedGraph(data, undefined, (source, key, descriptor) => {
                     if (source !== data) return descriptor;
                     if (key === 'key') return undefined;
@@ -190,10 +198,17 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
                     data.status = status;
                 }
                 delete data.key;
-                data.isIdle = flags.isIdle;
-                data.isPending = flags.isPending;
-                data.isSuccess = flags.isSuccess;
-                data.isError = flags.isError;
+                // Equal values are skipped (locked ones are equal here); readonly ones go through defineProperty.
+                for (const key of STATUS_FLAGS) {
+                    if (data[key] === flags[key]) continue;
+                    const descriptor = Object.getOwnPropertyDescriptor(data, key);
+                    if (descriptor?.writable === false) {
+                        descriptor.value = flags[key];
+                        Object.defineProperty(data, key, descriptor);
+                    } else {
+                        data[key] = flags[key];
+                    }
+                }
                 nextData = data;
             }
         } else {

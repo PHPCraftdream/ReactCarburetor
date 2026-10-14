@@ -17,8 +17,12 @@ export const prepareSlotRequest = <T>(state: IResourceData<T>): IResourceData<T>
     const data = Object.getOwnPropertyDescriptor(state, 'data');
     const error = Object.getOwnPropertyDescriptor(state, 'error');
     const updatedAt = Object.getOwnPropertyDescriptor(state, 'updatedAt');
+    const flagDescriptors = ['isIdle', 'isPending', 'isSuccess', 'isError'].map(
+        (field) => Object.getOwnPropertyDescriptor(state, field)
+    );
     if (status?.writable !== false && data?.writable !== false &&
         error?.writable !== false && updatedAt?.writable !== false &&
+        flagDescriptors.every((flag) => flag?.writable !== false) &&
         (!status || 'value' in status) && (!data || 'value' in data) &&
         (!error || 'value' in error) && (!updatedAt || 'value' in updatedAt)) {
         return undefined;

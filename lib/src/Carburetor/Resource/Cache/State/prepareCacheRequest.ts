@@ -6,6 +6,7 @@ import {applyResourceStatus} from '@/Carburetor/Resource/Status/applyResourceSta
 const requestFields: Readonly<Record<string, true>> = {
     status: true, data: true, error: true, updatedAt: true,
     refreshing: true, invalidated: true, failed: true,
+    isIdle: true, isPending: true, isSuccess: true, isError: true,
 };
 const requestFieldNames = Object.keys(requestFields);
 
