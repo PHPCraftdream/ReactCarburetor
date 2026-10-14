@@ -5,6 +5,10 @@ examples, and the public API.
 
 ## Using the project
 
+- [Examples](examples/README.md) — a runnable example for every public export, grouped by area,
+  with a guide to choosing an API.
+- [Adopting in an existing app](adopting.md) — moving an app over one store at a time.
+- [FAQ](faq.md) — short answers to the common questions.
 - [API reference](api-reference.md) — public engine, cache, tooling, and interop symbols.
 - [Troubleshooting](troubleshooting.md) — symptoms, StrictMode effects, and cache size boundaries.
 - [Hazard catalogue](hazards.md) — silent misuse patterns and lint-rule specifications.

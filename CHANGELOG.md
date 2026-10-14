@@ -237,6 +237,10 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- `docs/examples/`: a self-contained, type-checked example for every public export of
+  `react-carburetor`, `react-carburetor/interop` and `react-carburetor/lint`, grouped by area, with a
+  guide to choosing an API; `docs/adopting.md` and `docs/faq.md`. A test fails when an export has no
+  marked example, and the fast CI tier runs it for documentation changes.
 - `npm run check:examples` typechecks documentation blocks marked with `<!-- example:compile -->`,
   reports errors against the document's own lines, and gates documentation changes in CI.
 - `useResourceValue(source, args, select, isEqual?)` in `react-carburetor/interop` (R40-04, selector form since R41): the hooks

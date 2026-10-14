@@ -99,6 +99,9 @@ jobs:
       - name: Check examples
         run: npm run check:examples
 
+      - name: Example coverage of the public API
+        run: node node_modules/@rstest/core/bin/rstest.js run __tests__/Tooling/examples
+
   checks:
     name: Checks
     needs: plan

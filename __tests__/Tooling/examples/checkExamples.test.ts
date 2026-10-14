@@ -92,4 +92,30 @@ describe('checkExamples end-to-end', () => {
             expect(invalid.stdout).toContain('error TS2322:');
         } finally { fs.rmSync(temp, {recursive: true, force: true}); }
     }, 150000);
+
+    it('resolves the react-carburetor/lint declarations', () => {
+        const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'examples-lint-'));
+        try {
+            const fixture = path.join(temp, 'lint.md');
+            const prefix = '<!-- example:compile -->\n```ts\n';
+            const code = [
+                'import carburetor, {TSeverity, ICarburetorPlugin} from "react-carburetor/lint";',
+                'const severity: TSeverity = "error";',
+                'const plugin: ICarburetorPlugin = carburetor;',
+                'const name: string = plugin.meta.name;',
+            ].join(' ');
+            const run = () => spawnSync(process.execPath, [script, fixture], {
+                cwd: temp, encoding: 'utf8', timeout: 60000,
+            });
+            fs.writeFileSync(fixture, prefix + code + '\n```\n');
+            const valid = run();
+            expect(valid.status).toBe(0);
+            expect(valid.stdout).toContain('1 marked TypeScript example passed.');
+            fs.writeFileSync(fixture, prefix + code + '\nconst bad: TSeverity = "fatal";\n```\n');
+            const invalid = run();
+            expect(invalid.status).toBe(1);
+            expect(invalid.stdout).toContain(`${fixture}:`);
+            expect(invalid.stdout).toContain('error TS2322:');
+        } finally { fs.rmSync(temp, {recursive: true, force: true}); }
+    }, 150000);
 });

@@ -80,6 +80,7 @@ export function checkExamples(options = {}) {
             paths: {'*': [`${nodeModules}/*`], '@types/*': [`${nodeModules}/@types/*`],
                 'react-carburetor': [rel('lib/src/Carburetor/index.ts')],
                 'react-carburetor/interop': [rel('lib/src/Interop/index.ts')],
+                'react-carburetor/lint': [rel('plugin/lint.d.ts')],
                 '@/*': [rel('lib/src') + '/*'],
                 react: [`${nodeModules}/@types/react/index.d.ts`], 'react/*': [`${nodeModules}/@types/react/*`],
                 'react-dom': [`${nodeModules}/@types/react-dom/index.d.ts`],

@@ -15,6 +15,8 @@ the same as React's `useEffect`. No memoization to maintain, and nothing for a c
 optimize after the fact: the unnecessary re-renders are never created in the first place.
 
 [Install and try it](#install) · [Core ideas](#core-ideas) · [API](#api) ·
+[Examples](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/examples/README.md) ·
+[FAQ](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/faq.md) ·
 [Lint rules](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) · [Async cache](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md) ·
 [Contributing](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CONTRIBUTING.md) · [Security](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/SECURITY.md) ·
 [Code of Conduct](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CODE_OF_CONDUCT.md)
@@ -128,11 +130,11 @@ belong to the carburetor, through `update`:
 
 ```ts
 export class TodoCarburetor extends Carburetor<ITodoList> {
-    public renameTodo = (id: string, title: string) => {
+    public renameTodo(id: string, title: string): void {
         this.update((draft) => {
             draft.items[id].title = title;   // records the changed path: items.<id>.title
         });
-    };
+    }
 }
 ```
 
