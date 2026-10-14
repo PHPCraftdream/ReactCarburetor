@@ -19,6 +19,7 @@ optimize after the fact: the unnecessary re-renders are never created in the fir
 [Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) ·
 [Code of Conduct](CODE_OF_CONDUCT.md)
 
+<!-- example:compile -->
 ```tsx
 import {AntiHookComponent, Carburetor} from 'react-carburetor';
 
@@ -74,8 +75,9 @@ After the npm release, install the library in a React project with:
 npm install react-carburetor
 ```
 
-React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal
-build and in a pre-stripped production build that the `production` export condition selects.
+React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal build
+and in a pre-stripped production build that the `production` export condition selects.
+
 The advertised range is `^18.0.0 || ^19.0.0`; the test suite and the demo app are exercised
 locally and in CI against React 19.3, and CI also runs the full suite against React 18.3.1 in
 a dedicated compatibility job — the handful of `AntiHookComponent` assertions that observe
@@ -83,6 +85,12 @@ React's own uncaught-error logging (18 reports the throw where 19 is silent) and
 render counts branch on the installed major at runtime, so nothing is excluded. 18.3.1 is the
 newest of the 18.x line; the range's `18.0.0` floor and the point releases between are not
 separately exercised — a coverage gap, not a report that they fail.
+
+### Requirements
+
+Node.js 14.6 or newer is required (the package engines floor). `WeakRef` is required: Chrome 84+,
+Firefox 79+, or Safari 14.1+. Node 14 does not provide `fetch`; the `AbortController` fallback
+described below does not polyfill `WeakRef`.
 
 `@types/react` is an optional peer, `^18.0.0 || ^19.0.0`: a TypeScript project sees a warning
 only on a real version mismatch, and a plain-JS project needs nothing. See
@@ -144,7 +152,8 @@ policy and development diagnostics. Readonly typing does not promise runtime iso
 When an editable projection is needed, copy the plain branch to edit, for example
 `const editable = {...selected}`. Copy nested branches too before editing them.
 `store.snapshot()` remains an editable plain-data copy for tooling; native Map/Set/Date values
-and class instances still have its existing shared-reference limits.
+and class instances still have its existing shared-reference limits. See the
+[API reference](docs/api-reference.md).
 
 Write the fields that change, or `Object.assign(draft.items[id], patch)`: the no-op check skips
 fields that already hold the value, so only real changes are recorded. Replacing a whole object
@@ -588,24 +597,97 @@ so the nearest error boundary handles it.
 `ResourceCarburetor` holds one value. An API layer needs many — the same loader called with different
 arguments, each answer worth keeping — which is what `ResourceCache` is:
 
+<!-- example:compile -->
 ```tsx
-export const userCache = new ResourceCache<IUser, string>(
-    (id, signal) => fetch(`/api/users/${id}`, {signal}).then(response => response.json()),
-    {ttl: 30_000, maxEntries: 200}
-);
+import React, {Suspense} from 'react';
+import {
+    AntiHookComponent,
+    EResourceStatus,
+    ResourceCache,
+} from 'react-carburetor';
+
+interface User {
+    id: string;
+    name: string;
+}
+
+const users = new ResourceCache<User, string>(async (id, signal) => {
+    const response = await fetch(`/api/users/${id}`, {signal});
+    if (!response.ok) throw new Error(`User request failed: ${response.status}`);
+    return response.json() as Promise<User>;
+}, {ttl: 30_000, maxEntries: 200});
 
 class UserBadge extends AntiHookComponent<{id: string}> {
     public render() {
-        const user = this.useResource(userCache, this.props.id);
-
-        if (user.status === EResourceStatus.Pending) {
-            return <Spinner/>;
+        const user = this.useResource(users, this.props.id);
+        if (user.status === EResourceStatus.Idle || user.status === EResourceStatus.Pending) {
+            return <span>Loading…</span>;
         }
-
-        return <span>{user.data?.name}{user.refreshing ? <Dot/> : null}</span>;
+        if (user.status === EResourceStatus.Error) {
+            return (
+                <span role="alert">
+                    {user.error}{' '}
+                    <button onClick={() => users.refresh(this.props.id)}>Retry</button>
+                </span>
+            );
+        }
+        return (
+            <span>
+                {user.data?.name}
+                {user.refreshing ? ' (refreshing)' : ''}
+                {user.error ? <button onClick={() => users.refresh(this.props.id)}>Retry</button> : null}
+            </span>
+        );
     }
 }
+
+class SuspendingUser extends AntiHookComponent<{id: string}> {
+    public render() {
+        this.useResource(users, this.props.id);
+        return <span>{users.suspend(this.props.id).name}</span>;
+    }
+}
+
+class UserBoundary extends React.Component<
+    {children?: React.ReactNode},
+    {message: string | undefined}
+> {
+    state = {message: undefined as string | undefined};
+
+    static getDerivedStateFromError(error: unknown) {
+        return {message: error instanceof Error ? error.message : String(error)};
+    }
+
+    render() {
+        if (this.state.message !== undefined) {
+            return (
+                <div role="alert">
+                    {this.state.message}
+                    <button
+                        onClick={() => {
+                            users.invalidate('a1');
+                            this.setState({message: undefined});
+                        }}
+                    >
+                        Retry
+                    </button>
+                </div>
+            );
+        }
+        return this.props.children;
+    }
+}
+
+export const UserPage = () => (
+    <UserBoundary>
+        <Suspense fallback={<span>Loading…</span>}>
+            <SuspendingUser id="a1" />
+        </Suspense>
+    </UserBoundary>
+);
 ```
+
+To use explicit status handling instead, export `UserBadge` or render it in its own tree.
 
 Primitive argument keys and paths use a bounded LRU memo, separate from the data-entry limit.
 `keyCacheSize` defaults to 4096 records; any non-negative safe integer is accepted, and `0` disables
@@ -651,8 +733,9 @@ retain their ownership. The cache is bounded: the least recently used entries ar
 and a failed, non-invalidated Error throws its rejection without retrying. A stale Success starts
 revalidation with deferred publication and returns its previous value; a Suspense-only consumer
 needs a subsequent parent render to display the refreshed answer unless it also subscribes.
-Server rendering needs nothing extra: a scope's `dehydrate()` carries the entries, and a hydrated
-entry counts as fresh for the rest of its lifetime rather than being refetched on mount.
+`dehydrate()` preserves each entry's `updatedAt` and invalidated state; TTL freshness is checked
+normally after hydration. A mounted reader can therefore find an entry stale and refetch it after
+commit.
 
 Explicit non-goals, so the shape is clear: no retries with backoff, no refetch on window focus or
 interval, no pagination, no normalisation, no optimistic updates. See
@@ -665,33 +748,48 @@ A module-level singleton is shared by every request on a server, which leaks one
 into another's render. A scope creates the instances per request instead, and components
 resolve them through context — no hooks involved.
 
-```ts
-export const todoToken = carburetorToken(() => new TodoCarburetor(new ToDoClientAPI()), 'todos');
-```
-
+<!-- example:compile -->
 ```tsx
-class TodoScreen extends ScopedAntiHookComponent {
+import * as React from 'react';
+import {renderToString} from 'react-dom/server';
+import {hydrateRoot} from 'react-dom/client';
+import {
+    CarburetorProvider,
+    CarburetorScope,
+    ScopedAntiHookComponent,
+    ResourceCache,
+    carburetorToken,
+} from 'react-carburetor';
+const userToken = carburetorToken(
+    () => new ResourceCache<{name: string}, string>(
+        async (id) => ({name: `User ${id}`}),
+        {ttl: 30_000},
+    ),
+    'ssr-example-users',
+);
+class UserScreen extends ScopedAntiHookComponent {
     render() {
-        const carburetor = this.resolve(todoToken);
-        const {orderIds} = this.useCarburetor(carburetor);
-        ...
+        const cache = this.resolve(userToken);
+        const user = this.useResource(cache, 'a1');
+        return <span>{user.data?.name ?? 'Loading…'}</span>;
     }
 }
-
-// one scope per request
-render(<CarburetorProvider scope={new CarburetorScope()}><TodoScreen/></CarburetorProvider>);
+const tree = (scope: CarburetorScope) => <CarburetorProvider scope={scope}><UserScreen/></CarburetorProvider>;
+export async function renderRequest() {
+    const scope = new CarburetorScope();
+    await scope.get(userToken).load('a1');
+    const markup = renderToString(tree(scope));
+    const payload = JSON.stringify(scope.dehydrate()).replace(/</g, '\\u003c');
+    return {markup, payload};
+}
+export function hydratePage(container: HTMLElement, payload: string) {
+    const scope = new CarburetorScope();
+    scope.hydrate(JSON.parse(payload) as Record<string, unknown>, [userToken]);
+    return hydrateRoot(container, tree(scope));
+}
 ```
 
-For hydration, the scope serializes and restores itself:
-
-```ts
-// server, after rendering
-const state = scope.dehydrate();          // plain object keyed by token
-
-// client, before the first render
-const scope = new CarburetorScope();
-scope.hydrate(state, [todoToken, filterToken]);
-```
+The server calls `renderRequest` per request, inserts `markup` in the root, and sends `payload` as a JSON data script (already escapes `<`). The client calls `hydratePage(root, payloadScript.textContent)`. Both bundles use the same module token; preloading is explicit because `renderToString` does not await. `scope.hydrate` uses `fromJSON`/`restore`.
 
 `dehydrate` covers every carburetor the scope actually created; `hydrate` instantiates the
 tokens whose state is present and leaves the rest to be created on demand. The token's name is
@@ -710,11 +808,11 @@ state as it is at the time of the call.
 
 ```ts
 // Redux DevTools: state inspection plus time travel back onto the carburetors.
-connectDevTools({todos: todoCarburetor, filter: filterCarburetor});
+const stopDevTools = connectDevTools({todos: todoCarburetor, filter: filterCarburetor});
 
 // Mirror a store in a storage; loads what was stored on connect. Writes are coalesced into one
 // stringify per microtask; `coalesce: false` makes each write land before the writing call returns.
-persist(settingsCarburetor, {key: 'settings', storage: localStorage});
+const stopPersist = persist(settingsCarburetor, {key: 'settings', storage: localStorage});
 
 // React to a selection outside React; onChange runs only when it changes.
 const stop = todoCarburetor.watch((data) => data.activeCount, (next, previous) => log(next, previous));
@@ -726,7 +824,15 @@ history.redo();
 
 // Await the next update — for throttled stores and async resources in tests.
 await waitForUpdate(presenceCarburetor);
+
+// Stop subscriptions and tooling when their owner is done.
+stop();
+stopPersist();
+stopDevTools();
+history.disconnect();
 ```
+
+Call the returned disposers and `history.disconnect()` when the owner is done; see the [consumer API reference](docs/api-reference.md).
 
 `persist` writes `JSON.stringify(store)` — the store's wire form via `toJSON()` — and restores
 parsed JSON through `restore()`. Ordinary stores stringify live data without first cloning a
@@ -807,6 +913,67 @@ Failed storage reads reach `onError` without deleting unread data; when the hand
 later writes remain subscribed. Without a handler, a read failure throws. Malformed stored
 data is reported before removal, and a removal failure is reported separately.
 
+## Testing your code
+
+Install jsdom and the React testing dependencies (`@testing-library/react` and `react-dom`). Configure the test runner's jsdom environment with React's act environment enabled in runner setup. Import `act` from `@testing-library/react`: it re-exports the right implementation for the installed React (React's own `act` is unavailable at the React 18.0 floor, and `react-dom/test-utils` is deprecated in React 19).
+
+<!-- example:compile -->
+```tsx
+import * as React from 'react';
+import {act, render, fireEvent} from '@testing-library/react';
+import {test, expect} from '@rstest/core';
+import {
+    Carburetor,
+    CarburetorScope,
+    CarburetorProvider,
+    ScopedAntiHookComponent,
+    carburetorToken,
+    CarburetorHistory,
+    ComponentUpdateThrottle,
+    persist,
+    waitForUpdate,
+} from 'react-carburetor';
+class CounterStore extends Carburetor<{count: number}> {
+    increment() { this.update(draft => { draft.count += 1; }); }
+}
+const counterToken = carburetorToken(() => new CounterStore({count: 0}, new ComponentUpdateThrottle(1)), 'readme-test-counter');
+class CounterView extends ScopedAntiHookComponent {
+    render() {
+        const store = this.resolve(counterToken);
+        const {count} = this.useCarburetor(store);
+        return <button onClick={() => store.increment()}>{count}</button>;
+    }
+}
+test('publishes a counter update', async () => {
+    const scope = new CarburetorScope();
+    const store = scope.get(counterToken);
+    const saved = new Map<string, string>();
+    const stopPersist = persist(store, {key: 'counter', storage: {
+        getItem: key => saved.get(key) ?? null,
+        setItem: (key, value) => { saved.set(key, value); },
+        removeItem: key => { saved.delete(key); },
+    }});
+    const history = new CarburetorHistory(store);
+    const observed: number[] = [];
+    const stopWatch = store.watch(data => data.count, next => { observed.push(next); });
+    const mounted = render(<CarburetorProvider scope={scope}><CounterView/></CarburetorProvider>);
+    try {
+        const delivered = waitForUpdate(store);
+        await act(async () => {
+            fireEvent.click(mounted.getByRole('button'));
+            await delivered;
+        });
+        expect(mounted.getByRole('button').textContent).toBe('1');
+        expect(observed).toEqual([1]);
+    } finally {
+        mounted.unmount();
+        stopWatch();
+        stopPersist();
+        history.disconnect();
+    }
+});
+```
+
 ## Hooks interop
 
 The engine needs no hooks, but the ecosystem around it is hooks-first. An opt-in entry point
@@ -867,6 +1034,8 @@ render (development reports a load started in render). Loading lifecycle notific
 from selected-value equality; invalidation surviving a request can re-arm the committed reader.
 Server rendering selects without loading, subscribing or acquiring write proofs.
 
+Using the `User` and `users` declarations from the cached-resource example above:
+
 ```tsx
 import type {IResourceView, TReadonly} from 'react-carburetor';
 import {useResourceValue} from 'react-carburetor/interop';
@@ -874,7 +1043,7 @@ import {useResourceValue} from 'react-carburetor/interop';
 const selectUserBadge = (view: TReadonly<IResourceView<User>>) =>
     view.data === undefined ? undefined : {name: view.data.name};
 
-const UserBadge = ({id}: {id: number}) => {
+const HookUserBadge = ({id}: {id: string}) => {
     const user = useResourceValue(users, id, selectUserBadge);
 
     return <span>{user?.name ?? '…'}</span>;
@@ -897,7 +1066,10 @@ Readonly is compile-time and immutable by contract, not a deep-freeze pass or mu
 Hoisted or correctly memoized selectors reuse completed results and read sets on unchanged parent
 renders. A fresh inline selector remains correct and can retain equal result identity, but executes
 again and pays selection/capture costs. Parent renders still resolve TTL freshness without requiring
-a source write; no timer is installed. Local presentation overrides belong to the caller, for example
+a source write; no timer is installed. The server snapshot keeps the server's `updatedAt` and
+invalidated state; TTL is checked normally. After commit, a mounted `useResource` or
+`useResourceValue` reader may refetch a successful entry that is stale or invalidated. Local
+presentation overrides belong to the caller, for example
 `const local = {...user, name: 'local'}`, not assignments, definitions or deletions on hook results.
 The separate class `useResource` facade retains local-field behavior and coarser data precision;
 use `connectSelection` alongside `useResource` for detached, precise memo-child projections.
@@ -906,11 +1078,11 @@ use `connectSelection` alongside `useResource` for detached, precise memo-child 
 
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
-subscribed to, or when an effect's cleanup is silently dropped. The package ships 24 rules for
-exactly those, and for the allocations a class rebuilds for nothing. [docs/rules.md](docs/rules.md)
-is the reference by rule name — what each catches, its options, how to switch one off — and
-[docs/hazards.md](docs/hazards.md) is the same material by mistake, with the code that triggers it,
-why it is silent at runtime, and where the rule can be wrong.
+subscribed to, or when an effect's cleanup is silently dropped. The package ships 24 core rules
+plus the optional `no-react-hooks-in-components` rule. [docs/rules.md](docs/rules.md) is the
+reference by rule name — what each catches, how to switch one off, and the optional `no-hooks`
+preset. [docs/hazards.md](docs/hazards.md) is the same material by mistake, with the code that
+triggers it, why it is silent at runtime, and where the rule can be wrong.
 
 One plugin serves both hosts, because oxlint's JS plugin API is ESLint's.
 
@@ -922,7 +1094,8 @@ One plugin serves both hosts, because oxlint's JS plugin API is ESLint's.
 }
 ```
 
-**ESLint v9+** — spread the shareable config into a flat config:
+**ESLint v9+** — add the plugin to an existing TypeScript flat config with a TS/TSX parser already
+configured:
 
 ```js
 import carburetor from 'react-carburetor/lint';
@@ -938,15 +1111,18 @@ you have to judge the report. `no-module-level-store` is **off**: a module-level
 pattern in a client-only application, and the rule only makes sense once you render on a server, so
 switch it on then.
 
-Every rule except `no-react-hooks-in-components` (no options) takes `componentBases`, `carburetorBases` and `renderMethods`, because detection is
-syntactic: a project with its own base class or its own render helpers is invisible to the rules
-until it names them.
+Detection is syntactic. Fixed component bases are `AntiHookComponent` and
+`ScopedAntiHookComponent`; fixed store bases are `Carburetor` and `ResourceCarburetor`; the
+recognized render method is `render`. Directly extending a recognized base works; inheritance
+through a custom intermediate subclass is not resolved transitively. Configure severity only;
+options are not consumed. Use `off` or a host suppression comment for rules that do not fit, or the
+standalone linter's `carburetor-disable` comment.
 
 ```json
 {
   "rules": {
     "carburetor/no-module-level-store": "error",
-    "carburetor/no-get-data-in-render": ["error", {"componentBases": ["AppComponent"]}]
+    "carburetor/no-get-data-in-render": "error"
   }
 }
 ```
@@ -960,7 +1136,8 @@ case.
 
 The rules are implemented once, in Rust (`native/src/rules/`). What `react-carburetor/lint`
 ships is a bridge: it runs that binary once per lint run and reports through the host's own
-`context.report`. Two ways to run them, good at different things.
+`context.report`. It reports diagnostics for saved files on disk, not unsaved buffers, which are not
+analyzed. Disk changes invalidate cached results. Two ways to run them, good at different things.
 
 **Standalone (`carburetor-lint`)** — after its first npm release,
 `npm i -D carburetor-lint` fetches the one binary matching your machine, and
@@ -973,7 +1150,8 @@ editor integration. It is a command, not a plugin.
 
 **The bridge (`react-carburetor/lint`)** — the `extends` line or flat-config snippet above.
 Everything the host already does keeps working for these rules: one config file, one
-suppression-comment syntax, editor diagnostics, per-project severity. What it cannot do is
+suppression-comment syntax, per-project severity, and diagnostics for saved files on disk; unsaved
+buffers are not analyzed. What it cannot do is
 apply fixes: diagnostics arrive through `context.report`, and no host exposes a plugin API that
 could hand a native fix back. It also needs the binary on disk — install `carburetor-lint`
 next to `react-carburetor`, point `CARBURETOR_LINT_BIN` at a built binary, or run
@@ -1058,10 +1236,33 @@ do not redeclare it.
 | `ResourceCarburetor(loader, scheduler?)`      | Async state with status and cancellation.    |
 | `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent` | Per-request stores. |
 | `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
-| `diagnostics`, `Diagnostics`                  | The development-only warning switch.         |
+| `diagnostics`, `Diagnostics`                  | [Development warning switch](docs/api-reference.md): independent instances and engine singleton. |
 | `EResourceStatus`, `EDevToolsAction`, `EDevToolsMessageType` | Enums for the resource status and the DevTools protocol. |
-| `getInitialResourceData`, `CarburetorContext` | The initial resource state and the context a scope is provided through. |
+| `getInitialResourceData` | [Initial resource state](docs/api-reference.md): Idle state only; adapters may seed their own state. |
+| `CarburetorContext`                            | The context a scope is provided through. |
+| `ResourceCache` `load`, `refresh`, `resolve`, `getFailure` | [Consumer API reference](docs/api-reference.md): resource loading, refreshing, resolution and failure access. |
+| `CarburetorHistory` `undo`, `redo`, `canUndo`, `canRedo`, `clear`, `disconnect` | [Consumer API reference](docs/api-reference.md): history navigation and lifecycle. |
+| `ResourceCarburetor` `reload`, `abort` | [Consumer API reference](docs/api-reference.md): resource reload and cancellation. |
+| `useCarburetorValue`, `useComputedValue`, `useResourceValue` (from `react-carburetor/interop`) | [Consumer API reference](docs/api-reference.md): three opt-in interop readers. |
 | `deepClone`, `shallowEqual`                   | Building blocks, exported for extensions.    |
+
+The selected surface is about extensions, not user-facing adapter recipes: `Carburetor` takes initial data, `getInitialResourceData` returns only an Idle resource state, and a custom adapter can seed its own state. A plain `Carburetor` is not a resource loader. A new `Diagnostics` instance is independent; it does not replace the engine's `diagnostics` singleton. Toggling that singleton affects development complaints, but cannot restore warning strings stripped from production builds.
+
+<!-- example:compile -->
+```ts
+import {Carburetor, Diagnostics, diagnostics, getInitialResourceData} from 'react-carburetor';
+interface User {name: string}
+const adapterState = new Carburetor(getInitialResourceData<User>());
+const localDiagnostics = new Diagnostics();
+localDiagnostics.setEnabled(true);
+localDiagnostics.report(`Adapter starts in ${adapterState.getData().status}`);
+const wasEnabled = diagnostics.isEnabled();
+try {
+    diagnostics.setEnabled(false);
+} finally {
+    diagnostics.setEnabled(wasEnabled);
+}
+```
 
 Internals — the tracking proxies, the proxy cache, path string plumbing, the update scheduler
 and the batch coordinator — are deliberately not exported: they are implementation details, and

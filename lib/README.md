@@ -44,10 +44,12 @@ Things worth looking at while clicking around:
 | `persist` | `ToDo/Scope/createTodoScope.ts` (the filter, in `localStorage`) |
 | `ComponentUpdateThrottle` | `ToDo/Scope/Tokens/statusToken.ts` |
 | `connectDevTools`, `diagnostics` | `index.tsx`, development only |
-| `useCarburetorValue`, `useComputedValue` (hooks interop) | `Components/Header/ProgressBadge.tsx` |
+| `useCarburetorValue`, `useComputedValue` (two demonstrated hooks interop APIs) | `Components/Header/ProgressBadge.tsx`; public interop also exports `useResourceValue` |
 | `waitForUpdate` | `__tests__/Demo/ToolingFeatures.test.tsx` |
 | `deepClone`, `EResourceStatus` | `TodoCarburetor.ts`, `ListStatus.tsx` |
 
 Not shown on purpose: `suspend()` (the demo keeps explicit loading states instead of Suspense
 boundaries) and `CarburetorScope.dehydrate()`/`hydrate()`, which only make sense with server
 rendering.
+
+The public lint plugin supplies 24 core rules plus the optional `no-react-hooks-in-components` policy; see [lint rules](../docs/rules.md).
