@@ -5,21 +5,23 @@
 //! the abort it was supposed to perform on unmount never happens. Nothing warns, because returning
 //! nothing is legal too. The supported shape is a synchronous body that starts the work and returns
 //! a real cleanup, usually an `AbortController` the cleanup aborts. Only calls on `this` are
-//! matched — `jobs.useEffect(...)` on a foreign object is not an effect. A name returned by the
-//! body is resolved lexically: the innermost scope that declares it decides, so a local binding
-//! shadowing an outer async function is not reported. See docs/hazards.md, H14.
+//! matched — `jobs.useEffect(...)` on a foreign object is not an effect. A callee named in the
+//! body is resolved to its binding through the semantic model; only a binding that declares an
+//! async function — an async function declaration or a variable initialized to an async function
+//! — is reported, so parameters, imports, and non-function initializers of the same name are
+//! not. See docs/hazards.md, H14.
 
-use std::collections::HashSet;
-
+use oxc_ast::AstKind;
 use oxc_ast::ast::{
-    Argument, ArrowFunctionBody, ArrowFunctionExpression, CallExpression, Expression, Function,
-    Program, Statement, VariableDeclarator,
+    Argument, ArrowFunctionBody, CallExpression, Expression,
+    IdentifierReference, Program, Statement,
 };
 use oxc_ast_visit::{walk, Visit};
-use oxc_syntax::scope::ScopeFlags;
+use oxc_semantic::{Semantic, SymbolId};
 
 use crate::rules::report;
-use crate::rules::support::names::{called_on_this, member_call_name};
+use crate::rules::support::closures::build_semantic;
+use crate::rules::support::names::{called_on_this, member_call_name, referenced_symbol};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -30,9 +32,9 @@ const MESSAGE: &str = "an async effect body returns a promise, and the engine tr
     itself and nothing is aborted on unmount. Start the work in a synchronous body and return a \
     cleanup, for example one that aborts an AbortController.";
 
-/// `() => loadEverything()`, or `() => { return loadEverything(); }` — the call the body hands
-/// back, when identifying by name is possible at all.
-fn returned_identifier_call<'a>(body: &'a ArrowFunctionBody<'a>) -> Option<&'a str> {
+/// `() => loadEverything()`, or `() => { return loadEverything(); }` — the identifier the body
+/// hands back, when identifying it at all is possible.
+fn returned_identifier_call<'a>(body: &'a ArrowFunctionBody<'a>) -> Option<&'a IdentifierReference<'a>> {
     let call = match body {
         ArrowFunctionBody::CallExpression(call) => Some(call.as_ref()),
         ArrowFunctionBody::FunctionBody(function_body) => match function_body.statements.as_slice() {
@@ -46,84 +48,35 @@ fn returned_identifier_call<'a>(body: &'a ArrowFunctionBody<'a>) -> Option<&'a s
     }?;
 
     match &call.callee {
-        Expression::Identifier(identifier) => Some(identifier.name.as_str()),
+        Expression::Identifier(identifier) => Some(identifier),
         _ => None,
     }
 }
 
-/// One function-level scope: blocks like `if`/`for` do not get their own frame, which is precise
-/// enough for the shadowing cases this rule cares about.
-struct ScopeFrame {
-    /// Every name declared in this scope, async or not — the innermost declaration shadows outer
-    /// ones either way.
-    names: HashSet<String>,
-    /// The subset of `names` that is async; only these are worth reporting.
-    async_names: HashSet<String>,
+/// Only a declaration of an async function counts: parameters, imports, catch parameters and
+/// non-function initializers are synchronous no matter what their name suggests.
+fn is_async_binding(semantic: &Semantic<'_>, symbol: SymbolId) -> bool {
+    match semantic.symbol_declaration(symbol).kind() {
+        AstKind::Function(function) => function.r#async,
+        AstKind::VariableDeclarator(declarator) => {
+            declarator.id.get_binding_identifier().is_some_and(|id| id.symbol_id.get() == Some(symbol))
+                && match &declarator.init {
+                    Some(Expression::ArrowFunctionExpression(f)) => f.r#async,
+                    Some(Expression::FunctionExpression(f)) => f.r#async,
+                    _ => false,
+                }
+        }
+        _ => false,
+    }
 }
 
-struct Check<'s> {
+struct Check<'a, 's> {
     source: &'s Source<'s>,
+    semantic: &'s Semantic<'a>,
     diagnostics: Vec<Diagnostic>,
-    /// Lexical scope stack; the innermost frame is last.
-    scopes: Vec<ScopeFrame>,
 }
 
-impl<'s> Check<'s> {
-    /// Walks the stack top-down; the first frame declaring `name` wins, so a local binding
-    /// shadowing an outer async function is respected. An undeclared name is never reported,
-    /// matching how unknown callees are treated.
-    fn is_async_local(&self, name: &str) -> bool {
-        self.scopes.iter().rev().find(|frame| frame.names.contains(name)).is_some_and(|frame| {
-            frame.async_names.contains(name)
-        })
-    }
-
-    fn record(&mut self, name: &str, r#async: bool) {
-        let frame = self.scopes.last_mut().expect("program frame always present");
-        frame.names.insert(name.to_string());
-        if r#async {
-            frame.async_names.insert(name.to_string());
-        }
-    }
-}
-
-impl<'a, 's> Visit<'a> for Check<'s> {
-    fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
-        // A function declaration's name belongs to the enclosing scope, so record it before
-        // pushing the body's frame; sync declarations are recorded too, so they shadow outer
-        // async ones.
-        if let Some(id) = &function.id {
-            self.record(id.name.as_str(), function.r#async);
-        }
-
-        self.scopes.push(ScopeFrame { names: HashSet::new(), async_names: HashSet::new() });
-        walk::walk_function(self, function, flags);
-        self.scopes.pop();
-    }
-
-    fn visit_arrow_function_expression(&mut self, expression: &ArrowFunctionExpression<'a>) {
-        self.scopes.push(ScopeFrame { names: HashSet::new(), async_names: HashSet::new() });
-        walk::walk_arrow_function_expression(self, expression);
-        self.scopes.pop();
-    }
-
-    fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
-        let init_asyncness = match &declarator.init {
-            Some(Expression::ArrowFunctionExpression(f)) => Some(f.r#async),
-            Some(Expression::FunctionExpression(f)) => Some(f.r#async),
-            _ => None,
-        };
-
-        // Sync function initializers are recorded too, so their name shadows outer async ones.
-        if let Some(r#async) = init_asyncness {
-            if let Some(identifier) = declarator.id.get_binding_identifier() {
-                self.record(identifier.name.as_str(), r#async);
-            }
-        }
-
-        walk::walk_variable_declarator(self, declarator);
-    }
-
+impl<'a, 's> Visit<'a> for Check<'a, 's> {
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if called_on_this(&call.callee) && member_call_name(&call.callee) == Some("useEffect") {
             match call.arguments.get(1) {
@@ -135,10 +88,13 @@ impl<'a, 's> Visit<'a> for Check<'s> {
                 }
                 Some(Argument::ArrowFunctionExpression(body)) => {
                     if let Some(callee) = returned_identifier_call(&body.body) {
-                        // Resolve here: the stack matches the call's lexical position exactly.
-                        if self.is_async_local(callee) {
-                            self.diagnostics
-                                .push(report(self.source, body.span.start, RULE, MESSAGE.to_string()));
+                        if let Some(symbol) = referenced_symbol(callee, self.semantic) {
+                            // Only a binding declaring an async function is reported; an
+                            // unresolved name resolves to no symbol at all and is left alone.
+                            if is_async_binding(self.semantic, symbol) {
+                                self.diagnostics
+                                    .push(report(self.source, body.span.start, RULE, MESSAGE.to_string()));
+                            }
                         }
                     }
                 }
@@ -152,11 +108,8 @@ impl<'a, 's> Visit<'a> for Check<'s> {
 
 /// Runs the rule over one parsed file.
 pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    let mut check =
-        Check { source, diagnostics: Vec::new(), scopes: vec![ScopeFrame {
-            names: HashSet::new(),
-            async_names: HashSet::new(),
-        }] };
+    let semantic = build_semantic(program);
+    let mut check = Check { source, semantic: &semantic, diagnostics: Vec::new() };
 
     check.visit_program(program);
 
@@ -254,5 +207,40 @@ mod tests {
         let source = "async function loadAll() {}\n\nthis.useEffect('load', () => {\n    return loadAll();\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [3]);
+    }
+
+    #[test]
+    fn a_parameter_shadowing_an_outer_async_function_is_correct() {
+        let source = "async function subscribe() {}\n\nclass Widget extends AntiHookComponent {\n    useEffects(subscribe: () => () => void) {\n        this.useEffect('listen', () => subscribe(), []);\n    }\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_non_function_initializer_shadowing_an_outer_async_function_is_correct() {
+        let source = "async function subscribe() {}\n\nclass Widget extends AntiHookComponent {\n    useEffects() {\n        const subscribe = makeSubscription;\n\n        this.useEffect('listen', () => subscribe(), []);\n    }\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_destructured_parameter_shadowing_an_outer_async_function_is_correct() {
+        let source = "async function subscribe() {}\n\nfunction effects({subscribe}: {subscribe: () => () => void}) {\n    this.useEffect('listen', () => subscribe(), []);\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_catch_parameter_shadowing_an_outer_async_function_is_correct() {
+        let source = "async function subscribe() {}\n\ntry {\n    load();\n} catch (subscribe) {\n    this.useEffect('listen', () => subscribe(), []);\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_imported_binding_of_the_same_name_is_not_reported() {
+        let source = "import {subscribe} from './subscriptions';\n\nthis.useEffect('listen', () => subscribe(), []);\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 }

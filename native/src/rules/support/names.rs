@@ -4,7 +4,8 @@
 //! every function here answers `None` in that case rather than guessing, because a report a reader
 //! cannot verify is worse than no report.
 
-use oxc_ast::ast::{Class, Expression, PropertyKey};
+use oxc_ast::ast::{Class, Expression, IdentifierReference, PropertyKey};
+use oxc_semantic::{Semantic, SymbolId};
 
 /// The method name in `something.name(...)`, given the call's callee.
 pub fn member_call_name<'a>(callee: &'a Expression<'a>) -> Option<&'a str> {
@@ -63,3 +64,10 @@ pub fn extends_any(class: &Class<'_>, bases: &[&str]) -> bool {
         .is_some_and(|name| bases.contains(&name))
 }
 
+/// The symbol an identifier reference resolves to through the semantic model, if it was resolved.
+pub fn referenced_symbol(
+    identifier: &IdentifierReference<'_>,
+    semantic: &Semantic<'_>,
+) -> Option<SymbolId> {
+    identifier.reference_id.get().and_then(|id| semantic.scoping().get_reference(id).symbol_id())
+}

@@ -421,3 +421,81 @@ describe('the bridge, through the real host', () => {
         expect(narrow.output).toContain('no-escaping-tracked-data');
     });
 });
+
+/**
+ * The launcher resolution step: finding the binary through the consumer's own install.
+ *
+ * A consumer installs `carburetor-lint` as a dev dependency of their project, and that launcher
+ * package's `optionalDependencies` carry the platform binaries. In an isolated layout (pnpm) those
+ * platform packages sit under the launcher's own `node_modules`, invisible from react-carburetor's
+ * position — so `resolveBinary` must resolve *from the project working directory*. These tests
+ * build that nested layout in the OS temp directory, far from this repository, and point
+ * `process.cwd` at it: a shape only the launcher step can see. The negative control proves the
+ * same setup finds nothing without the launcher, and falls through to the workspace walk rather
+ * than pointing anywhere inside the temp dir.
+ */
+const BINARY_NAME: string = process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint';
+
+let projectDir: string;
+let cwdSpy: {mockRestore(): void} | undefined;
+
+/** Builds `<dir>` as a bare project (no launcher) and points `process.cwd` at it. */
+const stubProjectCwd = (dir: string): void => {
+    mkdirSync(dir, {recursive: true});
+    cwdSpy = rstest.spyOn(process, 'cwd').mockReturnValue(dir);
+
+    delete process.env.CARBURETOR_LINT_BIN;
+};
+
+describe('resolveBinary through the carburetor-lint launcher package', () => {
+    test('finds the platform binary nested under the launcher in the project', () => {
+        projectDir = mkdtempSync(path.join(os.tmpdir(), 'carburetor-launcher-'));
+        const launcherDir = path.join(projectDir, 'node_modules', 'carburetor-lint');
+        const platformDir = path.join(launcherDir, 'node_modules', platformPackageNames()[0]);
+        const stubBinary = path.join(platformDir, BINARY_NAME);
+
+        try {
+            mkdirSync(platformDir, {recursive: true});
+            writeFileSync(path.join(launcherDir, 'package.json'), '{"name":"carburetor-lint","version":"0.1.0"}');
+            writeFileSync(stubBinary, 'stub binary');
+
+            stubProjectCwd(projectDir);
+
+            expect(resolveBinary()).toBe(stubBinary);
+        } finally {
+            cwdSpy?.mockRestore();
+            cwdSpy = undefined;
+
+            delete process.env.CARBURETOR_LINT_BIN;
+
+            if (projectDir) {
+                rmSync(projectDir, {recursive: true, force: true});
+            }
+        }
+    });
+
+    test('without a launcher, falls through to the workspace walk, never the temp dir', () => {
+        projectDir = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bare-'));
+
+        try {
+            stubProjectCwd(projectDir);
+
+            const found = resolveBinary();
+
+            if (found !== undefined) {
+                expect(found).toContain('native');
+                expect(found).toContain('target');
+                expect(found.startsWith(projectDir)).toBe(false);
+            }
+        } finally {
+            cwdSpy?.mockRestore();
+            cwdSpy = undefined;
+
+            delete process.env.CARBURETOR_LINT_BIN;
+
+            if (projectDir) {
+                rmSync(projectDir, {recursive: true, force: true});
+            }
+        }
+    });
+});

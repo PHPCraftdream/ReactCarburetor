@@ -665,6 +665,9 @@ whose body returns a call to an `async` function without a cleanup return.
 to a directly returned call expression of a function declared `async` in the same file. The name is
 resolved lexically: a nearer binding with the same name that is not `async` shadows the outer one.
 Only `this.useEffect(...)` is checked, never a `useEffect` method of another object.
+The returned callee is resolved to its actual binding through the semantic model, so only a binding that
+declares an async function (a declaration, or a variable initialised to an async function) is reported;
+parameters, imports and non-function initialisers of the same name are not.
 
 ### H15 — two effects sharing a name in one component
 
@@ -760,7 +763,9 @@ unpublished. The rule covers both call shapes.
 **Rule** `no-async-transaction` — **error**.
 
 **Detection.** The argument of `transaction(...)` or `this.update(...)` is an `async` function
-or a function containing an `await`.
+or a function containing an `await`. A bare `transaction()` counts only when the name resolves to a
+value import from `react-carburetor`; the same name from another module, or a local or parameter
+binding that shadows the import, belongs to somebody else's API.
 
 **False positives.** None known: both APIs are documented as synchronous.
 

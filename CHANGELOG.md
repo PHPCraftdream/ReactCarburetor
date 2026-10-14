@@ -29,9 +29,14 @@ Entries below record development history in change order; where contracts differ
   Base `restore()` copies; history-owned replay may adopt an owned endpoint.
 - **Scope/token:** Names are nonempty; duplicate token names warn in development without throwing, and
   an existing scoped instance is retained. Token IDs are caller-chosen names matching SSR hydration
-  names. `dehydrate()` includes only inspected instances and uses `snapshot()`; `hydrate()` copies its
-  input. Base `toJSON()` returns live data; resource stores add their wire keys.
-  `fromJSON()` adopts its input on base Carburetor (resource stores override behavior).
+  names. `scope.dehydrate()` includes only inspected instances and uses `snapshot()`; it is a detached
+  copy for plain-tree data only, because `snapshot()`/`deepClone()` carry native `Map`/`Set`/`Date`
+  leaves and class instances by reference, and `scope.hydrate()` clones its payload the same way.
+  Cross-process payloads go through `JSON.stringify`; native leaves need their own serialization
+  contract. `dehydrate`/`hydrate` belong to the scope, not to `ResourceCache`, which has its own
+  `toJSON()`/`fromJSON()` and `snapshot()`/`restore()`. Base `toJSON()` returns live data; resource
+  stores add their wire keys. `fromJSON()` adopts its input on base Carburetor (resource stores
+  override behavior).
 - **Selection/readCoverage:** Plain-object selections copy own enumerable string fields, normalize
   their descriptor flags, and omit symbols and non-enumerable fields. Arrays retain length, holes and
   own numeric indices, including non-enumerable ones; extra named and symbol keys are omitted. Array
@@ -805,6 +810,13 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- The lint bridge no longer fails with "no native binary" in isolated installs (pnpm): the binary is
+  also resolved through the project's own `carburetor-lint` dependency, not only from
+  `react-carburetor`'s position in `node_modules`.
+- `no-async-effect` resolves the callee returned by an effect body to its binding through the semantic
+  model (parameters, imports and non-function initialisers of the same name no longer cause a false
+  report), and `no-async-transaction` reports a bare `transaction()` only when it resolves to a value
+  import from `react-carburetor`.
 - `no-async-effect`, `no-duplicate-effect-name` and `require-effect-deps` only check `this.useEffect(...)`,
   and `no-async-effect` resolves the name of a returned call lexically, so an unrelated `useEffect`
   method or a shadowing local function no longer produces an error. `no-async-transaction` reports a

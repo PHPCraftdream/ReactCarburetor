@@ -108,7 +108,7 @@ until your project changes shape.
 | Rule | Level | Catches | Hazard |
 |------|-------|---------|--------|
 | `no-async-effect` | error | An `async` effect body, whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
-| `no-async-transaction` | error | An `async` body given to `transaction()` (when the file imports it) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
+| `no-async-transaction` | error | An `async` body given to `transaction()` (a value import from `react-carburetor`) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
 | `no-computed-get-in-computed` | error | A computed reading a source with `get()`/`getData()` instead of its reader, so it registers no dependency and never invalidates | [H3](hazards.md) |
 | `no-computed-get-in-render` | error | A computed read with `get()` in render, which registers no subscription | [H2](hazards.md) |
 | `no-direct-data-write` | warn | A store writing to `this.data`, which records no path and invalidates everything | [H7](hazards.md) |

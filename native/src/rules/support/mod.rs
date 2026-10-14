@@ -1,5 +1,5 @@
 //! What the rules share: the names carburetor code is recognised by, the statically knowable
-//! names in the AST, the one walk that tells a rule where it is, and the closure analysis that
+//! names in the AST, the one walk that tells a rule where it is, the closure analysis that
 //! tells an allocation rule what a closure would take with it.
 
 pub mod bases;

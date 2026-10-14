@@ -747,9 +747,10 @@ retain their ownership. The cache is bounded: the least recently used entries ar
 and a failed, non-invalidated Error throws its rejection without retrying. A stale Success starts
 revalidation with deferred publication and returns its previous value; a Suspense-only consumer
 needs a subsequent parent render to display the refreshed answer unless it also subscribes.
-`dehydrate()` preserves each entry's `updatedAt` and invalidated state; TTL freshness is checked
-normally after hydration. A mounted reader can therefore find an entry stale and refetch it after
-commit.
+`scope.dehydrate()` preserves each entry's `updatedAt` and invalidated state, and TTL freshness is
+checked normally after hydration. A mounted reader can therefore find an entry stale and refetch it
+after commit. Standalone serialization uses the cache's own `toJSON()`/`fromJSON()` (wire form) or
+`snapshot()`/`restore()` (detached copy), not `dehydrate`.
 
 Explicit non-goals, so the shape is clear: no retries with backoff, no refetch on window focus or
 interval, no pagination, no normalisation, no optimistic updates. See
@@ -813,10 +814,15 @@ id would not survive the trip. Two tokens in one process may not share a name, a
 no token claims is reported in development. A single store can also be seeded directly with
 `scope.set(token, carburetor)`.
 
-`dehydrate()` returns a detached copy that survives later writes. When the payload is serialized
-right away — the usual server case — `JSON.stringify(scope)` does the same in one pass without the
-copy: `scope.toJSON()` returns each store's wire form, at about half the cost, and reflects the
-state as it is at the time of the call.
+`scope.dehydrate()` returns a detached copy that survives later writes for plain-tree data: plain
+objects and arrays are copied, while native `Map`/`Set`/`Date` leaves and class instances are
+carried by reference — the same shared-reference limits `store.snapshot()` documents — so a later
+write to one shows up in the payload. `hydrate(state, tokens)` clones the plain payload the same way
+before `fromJSON` adopts it. Payloads crossing a process boundary go through `JSON.stringify`; a
+native leaf survives that trip only under its own serialization contract. When the payload is
+serialized right away — the usual server case — `JSON.stringify(scope)` produces the same JSON in
+one pass without the copy: `scope.toJSON()` returns each store's wire form, at about half the cost,
+and reflects the state as it is at the time of the call.
 
 ## Tooling
 
@@ -1171,8 +1177,10 @@ Everything the host already does keeps working for these rules: one config file,
 suppression-comment syntax, per-project severity, and diagnostics for saved files on disk; unsaved
 buffers are not analyzed. What it cannot do is
 apply fixes: diagnostics arrive through `context.report`, and no host exposes a plugin API that
-could hand a native fix back. It also needs the binary on disk — install `carburetor-lint`
-next to `react-carburetor`, point `CARBURETOR_LINT_BIN` at a built binary, or run
+could hand a native fix back. It also needs the binary on disk — `carburetor-lint` is installed
+as a dev dependency of your project (`pnpm add -D carburetor-lint`) and the bridge finds the
+platform binary through it, so no extra step is needed; alternatively point `CARBURETOR_LINT_BIN`
+at a built binary, or run
 `cargo build --release` inside `native/` in a checkout of this repository. With none of those,
 the run fails loudly and names the missing platform package; a missing binary never looks like
 a clean run.
