@@ -7,6 +7,49 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+Entries below record development history in change order; where contracts differ, the Public contract section is authoritative.
+
+### Public contract at first release
+
+- **Components/effects:** Declare `render` as a method, not a class field.
+  `useEffect(name, callBack, deps)` runs when dependencies change; a returned function cleans up before rerun and on unmount.
+- **Watch:** `watch(select, onChange)` tracks selector reads and reports detached readonly
+  `next`/`previous` values; it rejects class instances. Dispose it to stop watching. Use
+  `subscribe(callback)` / `unsubscribe(id)` for every-write notifications. Public subscribe read
+  sets are copied.
+- **Resources/useResourceValue:** `useResourceValue(source, args, select, isEqual?)` requires a
+  synchronous selector and returns a detached readonly selection without a writable facade. Load
+  starts after commit. Class `useResource` is separate and tracks entry fields, but `data` remains
+  a whole-field dependency; sources without a field view use a whole-entry subscription.
+  `IResourceSource` requires `resolve(args)` and `load(args)`.
+- **History/snapshot:** Ordinary `snapshot()` copies plain containers and retains native/class
+  references. History independently owns supported native graphs and rejects unsupported
+  class/accessor endpoints. Override `captureHistory(own)` only when the wire form differs, not
+  merely to customize snapshot copying. History supports the Carburetor family, not custom sources.
+  Base `restore()` copies; history-owned replay may adopt an owned endpoint.
+- **Scope/token:** Names are nonempty; duplicate token names warn in development without throwing, and
+  an existing scoped instance is retained. Token IDs are caller-chosen names matching SSR hydration
+  names. `dehydrate()` includes only inspected instances and uses `snapshot()`; `hydrate()` copies its
+  input. Base `toJSON()` returns live data; resource stores add their wire keys.
+  `fromJSON()` adopts its input on base Carburetor (resource stores override behavior).
+- **Selection/readCoverage:** Selection models own enumerable string keys (array elements and `length`),
+  omitting descriptors, symbols and non-enumerables even on natives. Ordinary Date copies time; Map/Set
+  copy entries. Plain selector getters run once. Equality uses `Object.is` for leaves, compares Date time
+  and Map/Set order, handles primitive-key collections, and is conservative for object-keyed collections.
+  Class `connectSelection` may retain opaque live values conservatively; selector hooks reject classes,
+  and resource selection rejects array/native subclasses. `readCoverage` is internal redundant-presence
+  pruning, not a public paths API. Extension and drift protocols are internal; public path grammar is not stable.
+- **State keys:** Trackable plain-container state is own enumerable string-keyed data. Development
+  rejects symbols, accessors, non-enumerables, and non-index array keys; symbol writes and
+  non-data draft definitions are rejected in every build.
+- **Linter/CLI:** The registry has 25 rules (`native/src/rules/mod.rs`).
+  `no-react-hooks-in-components` is off in recommended configuration; the optional `no-hooks`
+  preset enables it at error severity. Human/JSON diagnostics, fix/dry-run, and exit codes
+  0 (clean), 1 (findings), and 2 (tool/config/CLI failure) are supported.
+- **Packaging/runtime:** React 18/19 are supported; `@types/react` is an optional peer. Production
+  ESM/CJS exports support runtime interop; lint is a separate entry. Current `useComputedValue`,
+  object-argument `ResourceCache` (development), and supersession-error paths require `WeakRef`.
+
 ### Breaking
 
 - **Breaking:** `useResourceValue(source, args, select, isEqual?)` requires a synchronous selector and
@@ -164,7 +207,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
     `invalidateAll()` (was 3 and 3); all 50 of 50 mounted readers still refetch after `invalidate`/
     `invalidateAll`, and a pending entry removed under a mounted reader (`forget`, `restore`) is reloaded. `refreshing`/`status` readers keep their indicator renders; a custom `IResourceSource`
     without a field view keeps the whole-entry subscription; `getEntry()` and `resolve().view` remain plain
-    copies.
+    copies. (superseded: see "Public contract at first release").
 - **Documentation (R39-06):** history supports the `Carburetor` family (`Carburetor`, `ResourceCarburetor`,
   `ResourceCache` and their subclasses); a store with a different wire form overrides `captureHistory(own)`.
   `attachPatchListener`, `IPatchSource` and `IPatchObserver` are documented as the engine's internal
@@ -243,11 +286,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   selector's reads subscribe the owner, and its plain objects/arrays and ordinary Map/Set/Date values
   are detached with descriptors and aliases intact. Plain selection content is compared recursively;
   opaque custom instances remain live and conservatively changed. Safely copied plain views do not
-  warn; a live opaque facade escaping into the selection is reported in development.
+  warn; a live opaque facade escaping into the selection is reported in development. (superseded: see "Public contract at first release").
 - `Carburetor.update(mutate)`: mutates through `draft` and publishes in one step, so a write
   cannot be left unpublished. A draft write that never reaches `emitUpdate` is reported in
   development, and `emitSoon()` covers the case where notifying immediately is unsafe.
-- Per-effect cleanup: `useEffect(callback, name, deps)` takes a dependency array and treats the
+- Per-effect cleanup: `useEffect(name, callBack, deps)` takes a dependency array and treats the
   callback's return value as that effect's cleanup, run before the effect re-runs and on unmount.
 - A props/state gate on `AntiHookComponent`: a parent re-render no longer cascades into children
   whose props did not change, the bail-out `React.memo` gives function components. Exported
@@ -274,7 +317,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   cleanup is dropped, a computed that never invalidates, an allocation rebuilt for nothing. One
   plugin serves both hosts, since oxlint's JS plugin API is ESLint's: oxlint consumers add one
   `extends` line pointing at the shipped `recommended.oxlintrc.json`, ESLint v9 consumers spread
-  `carburetor.configs.recommended` into a flat config.
+  `carburetor.configs.recommended` into a flat config. (superseded: see "Public contract at first release").
 - `require-method-for-closure` and `require-module-function`: two `warn` rules for avoidable
   allocations in component classes — a closure inside a member that only the class could supply,
   rebuilt on every call of the member, and a closure or member that uses nothing from the class and
@@ -295,7 +338,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   severity all still work, because the bridge only tells a rule which of its own findings exist; it
   never decides whether or how loudly to report them. A conformance suite runs both the native
   binary and the (now retired) reference behaviour over one shared fixture corpus and requires
-  identical output, file by file, line by line, rule by rule.
+  identical output, file by file, line by line, rule by rule. (superseded: see "Public contract at first release").
 - House style rules in the unpublished plugin, on for the whole repository: `max-line-length`
   (120 columns, a tab counted to its tab stop), `require-tsdoc`, `no-blank-line-after-tsdoc` and
   `tsdoc-blank-line-before-tags` (exactly one blank line between a description and its first
@@ -335,7 +378,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `transaction(body)`: writes made inside it are delivered as one update per carburetor,
   however many stores were touched.
 - `snapshot()` / `restore()` and a type-erased `toJSON()` / `fromJSON()` bridge, plus
-  `watch(paths, callback)` for subscribing outside React.
+  `watch(paths, callback)` for subscribing outside React. (superseded: see "Public contract at first release").
 - `ResourceCarburetor`: async state with an explicit status, request deduplication, abort via
   `AbortSignal`, a serializable error message and `suspend()` for Suspense — class components
   do suspend on a thrown promise, which the test suite pins down.
@@ -405,11 +448,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A changed selection is reconciled against the previous snapshot in one walk (round 34): unchanged
   subtrees keep their identity in `useCarburetorValue`, `connectSelection` and `watch`, so one edited
   row re-renders one `React.memo` row instead of all (10 000 rows: 10 000 renders → 1; the edit
-  ~240 → ~165 ms). A class instance in a selection still makes its container count as changed.
+  ~240 → ~165 ms). A class instance in a selection still makes its container count as changed. (superseded: see "Public contract at first release").
 - `CarburetorScope.toJSON()` serializes the stores' wire forms in one pass without `dehydrate()`'s
   copy, so `JSON.stringify(scope)` equals `JSON.stringify(scope.dehydrate())` at about half the cost;
   `dehydrate()` stays the detached form. The `persist` and `CarburetorHistory` doc comments now
-  describe the behaviour.
+  describe the behaviour. (superseded: see "Public contract at first release").
 - **Breaking (round 33):** `persist()` coalesces writes by default — one `JSON.stringify` per
   microtask instead of one per write (50 one-field writes on 10 000 rows: 218 → ~3–6 ms). Pass
   `coalesce: false` for the previous behaviour, where a write lands in storage before the call that
@@ -488,14 +531,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stable user-facing API.
 - **Breaking:** `IResourceSource` is `resolve(args) → {key, path, view}` plus `load(args)` instead
   of six members. `ResourceCache` keeps `keyOf`, `pathOf`, `pathOfKey`, `getEntry` and
-  `getEntryByKey` as its own methods.
+  `getEntryByKey` as its own methods. (superseded: see "Public contract at first release").
 - **Breaking:** `fromJSON(value)` adopts `value` instead of copying it: hand it freshly parsed
   JSON. `restore` still copies; resource stores keep hydrating through their `restore`.
 - **Breaking:** `CarburetorHistory` takes `ICarburetor<T> & IPatchSource`: every `Carburetor`
   qualifies. `attachPatchListener` takes `{patch, publication?, ownRestore?}`, not a function;
   hand-written sources must honor requested pre-subscriber publication and exact restore-owned
   installation callbacks. Patch-only callers pass `{patch}`. A subclass that overrides `snapshot()`
-  must also implement `captureHistory(own)`: `CarburetorHistory` throws at creation without it.
+  must also implement `captureHistory(own)`: `CarburetorHistory` throws at creation without it. (superseded: see "Public contract at first release").
 - **Performance:** `CarburetorHistory` records the patches behind each change instead of a deep
   copy of the state: one title write at 4000 items went from 3.9–5.1 ms to ~0.01 ms, and 50 entries
   retain 0.5 MB instead of 20.5 MB. A change the write proxy cannot describe still records a full
@@ -537,10 +580,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`onClick={history.undo}`, `const {get} = scope`) must bind or wrap in an arrow.
 - **Breaking:** `extend(id, path)` moved from `ICarburetorSubscription` to `ICarburetor`. Only
   stores implement it; a custom subscription source no longer has to, and `Computed` no longer
-  carries a no-op.
+  carries a no-op. (superseded: see "Public contract at first release").
 - **Performance:** a symbol read records nothing. Writes through symbols already wake every
   subscriber, so `concat`, `Object.prototype.toString`, `String(obj)` and React's development
-  prop logging no longer subscribe a reader to every write in the store.
+  prop logging no longer subscribe a reader to every write in the store. (superseded: see "Public contract at first release").
 - **Performance:** a read set that moves by one path re-registers only that path
   (`SubscriberIndex` diffs against what it filed): 1.1 ms → 0.08 ms per re-subscribe at 1000
   paths. Single-subscriber index buckets hold the bare id, and the per-subscriber ancestor cache
@@ -572,16 +615,15 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Performance:** read and write proxies share their traps on a handler prototype (one small
   handler per proxy instead of eight closures); render attempts allocate their collections on
   first use and key them by object; `useCarburetorValue` keeps one root read view per hook;
-  `subscribe()` adopts its read set (`watch()` still copies); cache eviction asks the index for readers instead of scanning every subscriber.
+  `subscribe()` adopts its read set (`watch()` still copies); cache eviction asks the index for readers instead of scanning every subscriber. (superseded: see "Public contract at first release").
 - **Breaking:** `SubscriberIndex`, `pathsIntersect`, `getUid`, `isTrackable`, `SyncUpdateScheduler`
   and its `syncUpdateScheduler` instance are no longer exported from the package entry point.
   They were building blocks that never needed a semver contract of their own; they stay inside
   the engine, reachable only through internal import paths for code that lives in this repo.
-- **Breaking:** `AntiHookComponent.useEffect` now takes `(name, callBack, deps)`, matching
-  `subscribe(callback, options)`'s callback-first order instead of putting it last.
+- **Breaking:** `AntiHookComponent.useEffect` now takes `(name, callBack, deps)`, with the name first and callback second.
 - **Breaking:** `Carburetor.watch` now takes `(callback, reads?)`, the same argument order as
   `subscribe(callback, options)`; `reads` is optional and defaults to every write (the wildcard
-  path), so `watch(callback)` replaces `watch(new Set([WILDCARD_PATH]), callback)`.
+  path), so `watch(callback)` replaces `watch(new Set([WILDCARD_PATH]), callback)`. (superseded: see "Public contract at first release").
 - **Breaking:** `carburetorToken` no longer throws when a name is already claimed — an HMR
   reload re-declares the same token, and throwing turned every edit into a crash. Development
   reports the collision once via `diagnostics.report` and still returns a working token, built
@@ -595,7 +637,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   every cache miss instead of a fresh object per call; `useResource` derives its cache key once
   per render instead of serializing the arguments twice (once for the read path, once for the
   entry); `escapeCacheKey` skips its escape pass when the key holds neither `~` nor `.`. `IResourceSource` gains `keyOf`,
-  `pathOfKey` and `getEntryByKey`; a custom implementation must add them.
+  `pathOfKey` and `getEntryByKey`; a custom implementation must add them. (superseded: see "Public contract at first release").
 - **Performance:** `useCarburetor` now keeps one persistent root read view per (component
   instance, carburetor), reused across renders while the carburetor's `getData()` object stays
   the same, instead of allocating a fresh read-tracking proxy on every call — the same steady-state
@@ -630,7 +672,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   per key (falling back to `defineProperty` only for an own key literally named `__proto__`) and
   walks `Reflect.ownKeys` directly instead of building a filtered array first. Measured on a
   1000-row store: the persist write dropped from ~7.3 ms to ~1.2 ms per call, and `deepClone`
-  itself from ~9.4 ms to ~2.6 ms.
+  itself from ~9.4 ms to ~2.6 ms. (superseded: see "Public contract at first release").
 - `useCarburetorValue()`'s default `isEqual` is now the same structural comparison
   `connectSelection()` uses — own data properties and `Object.is` values, recursively through
   plain objects and arrays — instead of `Object.is`. Every selected object is detached into a
@@ -639,7 +681,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   content, always re-rendered. A `Map`, `Set`, `Date` or class instance still always compares as
   changed. Pass `Object.is` explicitly for the previous behavior. The default comparison runs
   before the selected value is detached, so a match skips the copy; a custom `isEqual` still
-  receives detached values.
+  receives detached values. (superseded: see "Public contract at first release").
 - The demo app uses the library's whole feature set where an app would need it: stores resolved
   from a `CarburetorScope`, the list loaded through a `ResourceCarburetor` with cancel and reload,
   per-todo details in a `ResourceCache`, a filter with computed visible ids, a
@@ -653,7 +695,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   counter could not guarantee: any carburetor, component or token created before this one in one
   bundle but not the other shifted every later id, and the client silently hydrated from defaults.
   Two tokens claiming one name in a process are rejected, and `hydrate()` reports payload keys no
-  token claims in development — a subset hydration stays silent and legitimate in production.
+  token claims in development — a subset hydration stays silent and legitimate in production. (superseded: see "Public contract at first release").
 - `subscribe(callback, options)` takes an options object instead of positional `customId` and
   `reads`, and copies the read set it is given.
 - `Carburetor<T extends object>`: a primitive store silently degraded to wildcard tracking.
@@ -827,7 +869,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   two extra full endpoint walks for ordinary opaque changes. Primitive patches remain allocation-free.
 
 - Persistent array connection descriptor queries remain lawful after length locks, undo/redo
-  and source replacement. Detached selections keep raw descriptor flags and stable equal identity.
+  and source replacement. Detached selections keep raw descriptor flags and stable equal identity. (superseded: see "Public contract at first release").
 
 - A cache load cancelled or superseded by a Pending subscriber before its loader runs rejects
   with `AbortError` instead of reporting success without an answer; replacement requests stay owned.
@@ -876,7 +918,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Detached selections preserve aliases between tracked plain views and raw Map keys in either
   traversal order, without losing dependency reads. Class selections copy ordinary Map/Set/Date
   values consistently with hooks and watchers; safely copied views no longer trigger live-escape
-  warnings, while opaque live facades still do. One weak registry records view identity.
+  warnings, while opaque live facades still do. One weak registry records view identity. (superseded: see "Public contract at first release").
 - Replacing a cache entry discards its former raw rejection without disturbing unchanged entries
   or current requests. Explicit invalidation re-arms initially failed mounted readers after commit;
   aborting that retry preserves its quiet guard even after replacement or hydration.
@@ -889,11 +931,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   reconcile only affected error/status paths, preserving unrelated raw failures.
 - Detached supported arrays preserve ordinary, null and `Object.prototype` topology; real Array
   subclasses remain rejected by class selections. Ordinary Map/Set/Date copies retain own data
-  descriptors, hidden/symbol fields and graph links, and reject accessors without running getters.
+  descriptors, hidden/symbol fields and graph links, and reject accessors without running getters. (superseded: see "Public contract at first release").
 - Persistent connected plain/array/native roots detach from their current raw targets, preserving
   legal descriptor flags, raw Map-key aliases and native self-cycles after replacement or source
   swaps. Native copying uses intrinsic methods, so own `forEach`/`getTime` accessors are rejected
-  without being called; native roots retain their coarse subscription.
+  without being called; native roots retain their coarse subscription. (superseded: see "Public contract at first release").
 - Cross-copy selectors share weak read-view/raw-target identities, preserving Map-key aliases
   when a CJS store is consumed by an ESM hook or class connection.
 
@@ -928,7 +970,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `restore()` lost a sparse array's growth by `length` alone: the live array kept its length and no
   update was published.
 - `setData` and `restore` announced nothing when only a non-enumerable property changed, and
-  `restore(snapshot())` woke every subscriber of a store holding a symbol key.
+  `restore(snapshot())` woke every subscriber of a store holding a symbol key. (superseded: see "Public contract at first release").
 - A subclass overriding `ComponentUpdateThrottle.runUpdater`, `CarburetorScope.get` or another
   scheduler, scope, history or diagnostics member with method syntax was silently ignored.
 - A subclass overriding a store member with method syntax (`preEmit() {}`) was silently
@@ -993,7 +1035,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Object.defineProperty` on draft data never reached the set trap, so the write landed in the
   data and woke nobody. It has a trap of its own now.
 - A write under a symbol key recorded no path and was dropped the same way; it now invalidates
-  everything, since a symbol cannot be expressed as a path.
+  everything, since a symbol cannot be expressed as a path. (superseded: see "Public contract at first release").
 - `update(mutate)` given an `async` callback published at the first `await` and left every later
   write unpublished with no warning; development now reports it.
 - A `ResourceCache` key containing the path separator (`.` or `~`) never notified its readers:
@@ -1035,13 +1077,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `getSnapshotBeforeUpdate` mounted with zero subscriptions, because React does not call
   `UNSAFE_componentWillMount` for a component defining either of those. The render boundary is
   now installed at definition time through a proxy over the instance, independent of any React
-  lifecycle hook actually being called.
+  lifecycle hook actually being called. (superseded: see "Public contract at first release").
 - `connectSelection()`'s equality check ignored key presence/removal at equal cardinality (a key
   swapped for another with the same count) and symbol-keyed properties, so some real content
   changes did not update a memoized child. The later conservative treatment of exotic selection
   members (Map/Set/Date/class instances) as always-changed was reassessed in the round-6 review
   and kept as a deliberate correctness-over-performance tradeoff, to be revisited only if
-  real-app profiling shows a measurable cost.
+  real-app profiling shows a measurable cost. (superseded: see "Public contract at first release").
 - An abandoned render (one that suspended or threw) could leave a queued resource load to fire at
   a later, unrelated commit on the same instance. Deferred loads now live on the render attempt
   itself and are discarded with it.
@@ -1062,12 +1104,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the base constructor actually returns a Proxy over that instance. A subclass's native `#private`
   field or method is installed on the returned proxy, so the mismatched receiver failed the
   brand check the first time `render()` (or a prototype method it called) touched one. The
-  boundary now closes over and calls against that same returned proxy.
+  boundary now closes over and calls against that same returned proxy. (superseded: see "Public contract at first release").
 - `reportLiveViewEscape` and `detachSelection` only inspected or copied one level of a
   `connectSelection()` result, so a live store view nested inside a plain object or array — or
   reachable only through a symbol key — escaped undetected and undetached, leaving a memo child
   silently stale after a change the owner's shallow copy did not carry. Both are now bounded,
-  cycle-safe recursive traversals covering any depth.
+  cycle-safe recursive traversals covering any depth. (superseded: see "Public contract at first release").
 - `ResourceCache` inherited `restore()` from `Carburetor`, which replaced data but left the
   request/controller maps untouched, so a pre-restore refresh's late answer still passed the
   currency check and overwrote the restored entry. `restore()` is now a request-generation
@@ -1082,7 +1124,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A plain object's symbol-keyed branch bypassed both tracking proxies: reading it returned the
   raw, unwrapped object (mutable, unrecorded), and a nested `draft` write under a symbol key
   changed data without publishing. Both traps now record a wildcard for a symbol-keyed access and
-  wrap a trackable value the same way a string-keyed branch already is.
+  wrap a trackable value the same way a string-keyed branch already is. (superseded: see "Public contract at first release").
 - `useCarburetor`/`connect()` made server-rendering N components over one shared store an O(N²)
   cost: every fresh read proxy's cache registered a watcher in an invalidation ledger kept per
   raw object, and every proxy construction, read and write walked every watcher ever registered
@@ -1090,7 +1132,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `WeakRef` requirement it rested on — is gone. Each proxy tree now caches its branch wrappers
   in a `WeakMap` keyed by the branch's own raw object: a removed or replaced branch's entry is
   collectable the moment nothing outside the cache still references it, so eviction needs no
-  read-driven sweep, no write-driven invalidation and no explicit `release()`.
+  read-driven sweep, no write-driven invalidation and no explicit `release()`. (superseded: see "Public contract at first release").
 - An unequal-depth computed graph (a node read both directly and through a derived chain) could
   recompute a node's body twice per write: an eager `get()` during a sibling's settlement already
   reran it against current inputs, then the node's own deferred `settle()` recomputed it again
