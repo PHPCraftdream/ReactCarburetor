@@ -35,8 +35,11 @@ export const foldDependentPatch = (patches: IWritePatch[], patch: IWritePatch): 
         }
         const holder = node as Record<string, unknown>;
         const key = patch.segments[patch.segments.length - 1];
-        if (patch.nextExists) holder[key] = patch.next;
-        else delete holder[key];
+        if (!patch.nextExists) delete holder[key];
+        else if (key === '__proto__') {
+            Object.defineProperty(holder, key,
+                {value: patch.next, writable: true, enumerable: true, configurable: true});
+        } else holder[key] = patch.next;
         return true;
     }
     return false;
