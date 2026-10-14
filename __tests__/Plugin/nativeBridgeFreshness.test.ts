@@ -54,6 +54,14 @@ describe('native bridge freshness', () => {
             expect(runNativeOnce(cwd, () => 'stub', file)[0].message).toBe('second');
             expect(runNativeOnce(cwd, () => 'stub')[0].message).toBe('second');
             expect(nativeSpawn).toHaveBeenCalledTimes(2);
+
+            // A save whose coarse mtime trails the scan start by a moment still counts as newer.
+            writeFileSync(file, 'third');
+            const trailing = new Date(Date.now() - 1_000);
+            utimesSync(file, trailing, trailing);
+
+            expect(runNativeOnce(cwd, () => 'stub', file)[0].message).toBe('third');
+            expect(nativeSpawn).toHaveBeenCalledTimes(3);
         } finally {
             rmSync(cwd, {recursive: true, force: true});
         }

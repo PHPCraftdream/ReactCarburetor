@@ -228,14 +228,18 @@ const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinar
     return JSON.parse(result.stdout || '[]') as INativeDiagnostic[];
 };
 
-/** True if `filename` was saved at or after `startMs`, so a run begun then cannot describe it. */
+/** Filesystem timestamps are coarse (a kernel tick, or seconds on some volumes) and can trail
+ * `Date.now()`, so a save moments after a run began may carry an mtime just before its start. */
+const MTIME_SLACK_MS = 2_000;
+
+/** True if `filename` may have been saved after `startMs`, so a run begun then may not describe it. */
 const changedSince = (filename: string | undefined, startMs: number): boolean => {
     if (!filename) {
         return false;
     }
 
     try {
-        return statSync(filename).mtimeMs >= startMs;
+        return statSync(filename).mtimeMs >= startMs - MTIME_SLACK_MS;
     } catch {
         return false;
     }
