@@ -210,6 +210,8 @@ cannot be configured; only rule severity can be set to `error`, `warn` or `off`.
 **Binary required.** Build the native linter before linting, or configure `CARBURETOR_LINT_BIN` to
 point to an existing binary. The verification block below builds it first.
 
+**Example checking:** Mark self-contained TypeScript/TSX example blocks with `<!-- example:compile -->` on its own line immediately before the code fence.
+
 ```bash
 cargo build --release --manifest-path native/Cargo.toml
 npm ci

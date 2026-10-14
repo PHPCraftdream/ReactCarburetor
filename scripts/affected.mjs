@@ -6,7 +6,7 @@
 // Without --files: `git diff --name-only <base>...HEAD` + `git diff --name-only HEAD`
 // + untracked (`git ls-files --others --exclude-standard`). --base defaults to
 // origin/master, falling back to HEAD~1 if that ref is missing.
-// Exports select(files, map) -> {full, docsOnly, native, rstest, perfAreas, reasons}.
+// Exports select(files, map) -> {full, docsOnly, native, rstest, perfAreas, examples, reasons}.
 // rstest: paths for `rstest run <paths>`. perfAreas: substrings passed to
 // `node perf/run.mjs --only <area>` (matched against entry id or area).
 // Any file not covered by a rule => full=true with reason `unmapped: <file>`.
@@ -38,7 +38,7 @@ function specificity(pattern, path) {
 }
 
 export function select(files, map) {
-    const out = {full: false, docsOnly: false, native: false, rstest: [], perfAreas: [], reasons: []};
+    const out = {full: false, docsOnly: false, native: false, rstest: [], perfAreas: [], examples: false, reasons: []};
     if (files.length === 0) {
         out.reasons.push('no changed files');
         return out;
@@ -89,6 +89,11 @@ export function select(files, map) {
         const file = norm(raw);
         const gate = map.perfGates;
         const scenario = map.perfScenarios;
+        const exampleCandidate = map.exampleSources?.some((pattern) => specificity(pattern, file) >= 0)
+            && !map.exampleExclusions?.some((pattern) => specificity(pattern, file) >= 0)
+            && (file === 'README.md' || file.endsWith('.md')
+                || file.startsWith('lib/src/Carburetor/') || file.startsWith('lib/src/Interop/'));
+        if (exampleCandidate) out.examples = true;
         let rule = null;
         if (gate && file.startsWith(gate + '/') && file.endsWith('.mjs')) {
             push(out.perfAreas, file.slice(gate.length + 1, -4));
@@ -114,6 +119,7 @@ export function select(files, map) {
             push(out.reasons, rule.reason);
             if (rule.full) out.full = true;
             if (rule.native) out.native = true;
+            if (rule.examples) out.examples = true;
             if (!rule.docsOnly) allDocs = false;
             for (const p of rule.rstest || []) push(out.rstest, p);
             if (rule.self) push(out.rstest, file);
@@ -124,6 +130,7 @@ export function select(files, map) {
         out.rstest = [];
         out.perfAreas = [];
         out.native = false;
+        out.examples = true;
         out.docsOnly = false;
     } else {
         out.docsOnly = allDocs && !out.native && out.rstest.length === 0 && out.perfAreas.length === 0;

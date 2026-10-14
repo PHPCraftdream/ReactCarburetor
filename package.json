@@ -71,7 +71,8 @@
     "bench:ci": "node perf/ci/run.mjs",
     "smoke:browser": "node perf/ci/smoke/browser.mjs",
     "smoke:packed-lint": "node perf/ci/smoke/packed-no-hooks.mjs",
-    "test:consumers": "node scripts/consumerMatrix.mjs"
+    "test:consumers": "node scripts/consumerMatrix.mjs",
+    "check:examples": "node scripts/consumer-fixture/checkExamples.mjs"
   },
   "repository": {
     "type": "git",

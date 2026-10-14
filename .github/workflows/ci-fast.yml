@@ -8,6 +8,9 @@ on:
     branches-ignore: ['ci/**']
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-fast-${{ github.ref }}
   cancel-in-progress: true
@@ -21,6 +24,7 @@ jobs:
       docsOnly: ${{ steps.plan.outputs.docsOnly }}
       native: ${{ steps.plan.outputs.native }}
       rstest: ${{ steps.plan.outputs.rstest }}
+      examples: ${{ steps.plan.outputs.examples }}
       perfAreas: ${{ steps.plan.outputs.perfAreas }}
     steps:
       - uses: actions/checkout@v4
@@ -64,16 +68,36 @@ jobs:
             fs.appendFileSync(out, `docsOnly=${plan.docsOnly}\n`);
             fs.appendFileSync(out, `native=${plan.native}\n`);
             fs.appendFileSync(out, `rstest=${(plan.rstest || []).join(" ")}\n`);
+            fs.appendFileSync(out, `examples=${plan.examples}\n`);
             fs.appendFileSync(out, `perfAreas=${JSON.stringify(plan.perfAreas || [])}\n`);
             let summary = "## Plan\n\n";
             summary += "- full: " + plan.full + "\n";
             summary += "- docsOnly: " + plan.docsOnly + "\n";
             summary += "- native: " + plan.native + "\n";
             summary += "- rstest: " + (plan.rstest || []).join(", ") + "\n";
+            summary += "- examples: " + plan.examples + "\n";
             summary += "- perfAreas: " + (plan.perfAreas || []).join(", ") + "\n\n";
             summary += "### Reasons\n\n" + (plan.reasons || []).map(r => "- " + r).join("\n") + "\n";
             fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, summary);
           '
+
+  examples:
+    name: Examples
+    needs: plan
+    if: needs.plan.outputs.examples == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      - name: Check examples
+        run: npm run check:examples
 
   checks:
     name: Checks
@@ -207,7 +231,7 @@ jobs:
   # succeed or be deliberately skipped, and plan must never fail.
   fast-gate:
     name: Fast gate
-    needs: [plan, checks, perf, native]
+    needs: [plan, checks, perf, native, examples]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -216,10 +240,10 @@ jobs:
         run: |
           failed=0
           for result in "${{ needs.plan.result }}" "${{ needs.checks.result }}" \
-            "${{ needs.perf.result }}" "${{ needs.native.result }}"; do
+            "${{ needs.perf.result }}" "${{ needs.native.result }}" "${{ needs.examples.result }}"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               failed=1
             fi
           done
-          echo "plan=${{ needs.plan.result }} checks=${{ needs.checks.result }} perf=${{ needs.perf.result }} native=${{ needs.native.result }}"
+          echo "plan=${{ needs.plan.result }} checks=${{ needs.checks.result }} perf=${{ needs.perf.result }} native=${{ needs.native.result }} examples=${{ needs.examples.result }}"
           [ "$failed" -eq 0 ] || exit 1

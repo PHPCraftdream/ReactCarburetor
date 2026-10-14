@@ -1,6 +1,8 @@
 {
   "perfGates": "perf/gates",
   "perfScenarios": "perf/scenarios",
+  "exampleSources": ["README.md", "docs/**", "lib/src/Carburetor/**", "lib/src/Interop/**"],
+  "exampleExclusions": ["docs/reviews/**", "docs/checkpoints/**"],
   "rules": [
     {"match": "lib/src/Carburetor/**", "full": true, "reason": "carburetor core barrel is shared entry"},
     {"match": "lib/src/Carburetor/Store/**", "full": true, "reason": "store core affects all consumers"},
@@ -22,6 +24,7 @@
     {"match": "perf/ci/**", "full": true, "reason": "perf CI driver is cross-cutting"},
     {"match": "scripts/affected.mjs", "rstest": ["__tests__/Tooling/affected"], "reason": "affected tooling self-test"},
     {"match": "scripts/affected.map.json", "rstest": ["__tests__/Tooling/affected"], "reason": "affected map self-test"},
+    {"match": "scripts/consumer-fixture/checkExamples.mjs", "rstest": ["__tests__/Tooling/examples"], "examples": true, "reason": "example checker"},
     {"match": "scripts/**", "full": true, "reason": "build scripts affect everything"},
     {"match": "package.json", "full": true, "reason": "package manifest affects everything"},
     {"match": "package-lock.json", "full": true, "reason": "lockfile affects everything"},

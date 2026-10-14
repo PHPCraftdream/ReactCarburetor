@@ -8,6 +8,9 @@ on:
     - cron: '17 2 * * *'   # full tier nightly; runs on the default branch only
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -25,6 +28,9 @@ jobs:
 
       - name: Install
         run: npm ci
+
+      - name: Check examples
+        run: npm run check:examples
 
       # The carburetor/* rules are a bridge: `npm run lint` calls this binary to check its
       # own tree, so it has to exist before anything below it runs, not only before the tests.
