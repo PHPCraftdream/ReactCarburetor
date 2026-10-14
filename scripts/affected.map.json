@@ -32,6 +32,7 @@
     {"match": "rstest.config.ts", "full": true, "reason": "test runner config affects everything"},
     {"match": "rslib.config.ts", "full": true, "reason": "build config affects everything"},
     {"match": ".oxlintrc.json", "full": true, "reason": "lint config affects everything"},
-    {"match": ".github/workflows/**", "full": true, "reason": "CI workflow is cross-cutting"}
+    {"match": ".github/workflows/**", "full": true, "reason": "CI workflow is cross-cutting"},
+    {"match": ".github/ISSUE_TEMPLATE/**", "docsOnly": true, "reason": "issue templates are documentation"}
   ]
 }

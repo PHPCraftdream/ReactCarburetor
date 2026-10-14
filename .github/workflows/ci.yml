@@ -20,9 +20,9 @@ jobs:
     name: Library
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -36,7 +36,7 @@ jobs:
       # own tree, so it has to exist before anything below it runs, not only before the tests.
       # ubuntu-latest ships a Rust toolchain already; the crate's own pins decide the rest.
       - name: Cargo cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -82,7 +82,7 @@ jobs:
 
       - name: Install hosted Chrome
         id: chrome
-        uses: browser-actions/setup-chrome@v1
+        uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
 
       - name: Actual browser smoke
         env:
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload browser proof
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: browser-smoke
           path: worktrees/ci-results/**/browser*
@@ -101,9 +101,9 @@ jobs:
     name: Demo app
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -127,9 +127,9 @@ jobs:
     name: Library on React 18
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -164,9 +164,9 @@ jobs:
     name: Consumer matrix
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -196,7 +196,7 @@ jobs:
 
       - name: Upload packed lint proof
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: packed-lint-smoke
           path: worktrees/ci-results/**/packed-lint*
@@ -206,11 +206,11 @@ jobs:
     name: Native linter
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # The toolchain the image ships is enough: the crate pins its dependencies, not rustc.
       - name: Cargo cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -270,7 +270,7 @@ jobs:
             linker: aarch64-linux-gnu-gcc
             emulator: qemu-aarch64-static
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # The cross legs need a linker that speaks the target's ABI; qemu-user-static doubles as
       # the way to execute the arm64 artefact, since installing it registers binfmt. Running an
@@ -306,7 +306,7 @@ jobs:
         run: rustup target add ${{ matrix.target }}
 
       - name: Cargo cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -334,7 +334,7 @@ jobs:
           [ "$CODE" -eq 1 ] || { echo "expected exit 1 (findings), got $CODE" >&2; exit 1; }
           echo "$OUT" | grep -q no-get-data-in-render || { echo "expected the fixture's violation in the output" >&2; exit 1; }
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -349,7 +349,7 @@ jobs:
           # and fail with SIGPIPE under `set -e -o pipefail`, even when the check itself passes.
           tar -tf *.tgz | grep "package/carburetor-lint" >/dev/null
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.package }}
           path: npm/${{ matrix.package }}/*.tgz

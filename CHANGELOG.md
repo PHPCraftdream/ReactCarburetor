@@ -287,7 +287,7 @@ Entries below record development history in change order; where contracts differ
   consumer sees a warning on a real version mismatch, a plain-JS consumer sees nothing.
 - A consumer matrix (`npm run test:consumers`) packs the library and installs it into fresh npm
   and pnpm projects across React 18/19 and ESM/CJS, typechecking and rendering a fixture
-  against each; a CI job runs it on every push. See `docs/react-compatibility.md`.
+  against each; a CI job runs it on every push. See `docs/react-compatibility.md`. (superseded: the matrix now runs in the full tier `ci.yml` — nightly, on demand and before a release — see `docs/testing-tiers.md`.)
 - `AntiHookComponent.connect(source)`: a persistent view of a carburetor, built once (a field
   initializer is the intended call site) and read directly in render, instead of a fresh
   read-tracking proxy on every `useCarburetor` call. `source` is a carburetor or a function

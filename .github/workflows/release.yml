@@ -38,7 +38,7 @@ jobs:
       ci_run: ${{ steps.ci.outputs.run }}
       version: ${{ steps.versions.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # ci.yml is the full tier now (dispatch / nightly / tags / ci/** branches), so a new
       # commit gets its full run only by dispatching it manually against the right ref.
@@ -52,7 +52,7 @@ jobs:
           [ -n "$run" ] || { echo "no successful full-tier CI run for $GITHUB_SHA — run the full tier first: gh workflow run ci.yml --ref master (or workflow_dispatch on the desired ref / a sprint-* tag)" >&2; exit 1; }
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -93,12 +93,12 @@ jobs:
       DIST_TAG: ${{ inputs.dist_tag }}
       DRY_RUN: ${{ inputs.dry_run }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # No registry-url: setup-node would export a placeholder NODE_AUTH_TOKEN, which npm can
       # take for a real token and skip the OIDC exchange. Credentials are written below, and
       # only in token mode.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 

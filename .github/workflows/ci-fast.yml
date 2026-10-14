@@ -27,12 +27,12 @@ jobs:
       examples: ${{ steps.plan.outputs.examples }}
       perfAreas: ${{ steps.plan.outputs.perfAreas }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           # Full history: the selector diffs against a base commit.
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -87,9 +87,9 @@ jobs:
     if: needs.plan.outputs.examples == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -105,9 +105,9 @@ jobs:
     if: needs.plan.outputs.docsOnly != 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -117,7 +117,7 @@ jobs:
       # The carburetor/* rules are a bridge: `npm run lint` calls this binary, so it has to
       # exist before lint runs. ubuntu-latest ships a Rust toolchain already.
       - name: Cargo cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry
@@ -165,9 +165,9 @@ jobs:
     if: needs.plan.outputs.docsOnly != 'true' && (needs.plan.outputs.full == 'true' || fromJSON(needs.plan.outputs.perfAreas || '[]')[0] != null)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
@@ -201,11 +201,11 @@ jobs:
     if: needs.plan.outputs.native == 'true' || needs.plan.outputs.full == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # The toolchain the image ships is enough: the crate pins its dependencies, not rustc.
       - name: Cargo cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             ~/.cargo/registry

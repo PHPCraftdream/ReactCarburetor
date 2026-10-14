@@ -15,9 +15,9 @@ the same as React's `useEffect`. No memoization to maintain, and nothing for a c
 optimize after the fact: the unnecessary re-renders are never created in the first place.
 
 [Install and try it](#install) · [Core ideas](#core-ideas) · [API](#api) ·
-[Lint rules](docs/rules.md) · [Async cache](docs/promise-cache.md) ·
-[Contributing](CONTRIBUTING.md) · [Security](SECURITY.md) ·
-[Code of Conduct](CODE_OF_CONDUCT.md)
+[Lint rules](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) · [Async cache](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md) ·
+[Contributing](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CONTRIBUTING.md) · [Security](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/SECURITY.md) ·
+[Code of Conduct](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CODE_OF_CONDUCT.md)
 
 <!-- example:compile -->
 ```tsx
@@ -77,7 +77,7 @@ npm install react-carburetor
 
 React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal build
 and in a pre-stripped production build that the `production` export condition selects. See
-[docs/troubleshooting.md](docs/troubleshooting.md) for common issues and diagnostic guidance.
+[docs/troubleshooting.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/troubleshooting.md) for common issues and diagnostic guidance.
 
 The advertised range is `^18.0.0 || ^19.0.0`; the test suite and the demo app are exercised
 locally and in CI against React 19.3. CI also runs the Engine and Demo suites against React
@@ -94,7 +94,7 @@ described below does not polyfill `WeakRef`.
 
 `@types/react` is an optional peer, `^18.0.0 || ^19.0.0`: a TypeScript project sees a warning
 only on a real version mismatch, and a plain-JS project needs nothing. See
-[`docs/react-compatibility.md`](docs/react-compatibility.md) for how the library binds to the
+[`docs/react-compatibility.md`](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/react-compatibility.md) for how the library binds to the
 consumer's own React, what a duplicate-React install looks like, and how compatibility is tested.
 
 With React Server Components (Next.js App Router), components and hooks ship as `"use client"`
@@ -153,7 +153,7 @@ When an editable projection is needed, copy the plain branch to edit, for exampl
 `const editable = {...selected}`. Copy nested branches too before editing them.
 `store.snapshot()` remains an editable plain-data copy for tooling; native Map/Set/Date values
 and class instances still have its existing shared-reference limits. See the
-[API reference](docs/api-reference.md).
+[API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md).
 
 Write the fields that change, or `Object.assign(draft.items[id], patch)`: the no-op check skips
 fields that already hold the value, so only real changes are recorded. Replacing a whole object
@@ -754,7 +754,7 @@ after commit. Standalone serialization uses the cache's own `toJSON()`/`fromJSON
 
 Explicit non-goals, so the shape is clear: no retries with backoff, no refetch on window focus or
 interval, no pagination, no normalisation, no optimistic updates. See
-[docs/promise-cache.md](docs/promise-cache.md) for the reasoning behind the key encoding, the lifetime
+[docs/promise-cache.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md) for the reasoning behind the key encoding, the lifetime
 semantics and the eviction rules.
 
 ## Per-request stores
@@ -854,7 +854,7 @@ stopDevTools();
 history.disconnect();
 ```
 
-Call the returned disposers and `history.disconnect()` when the owner is done; see the [consumer API reference](docs/api-reference.md).
+Call the returned disposers and `history.disconnect()` when the owner is done; see the [consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md).
 
 `persist` writes `JSON.stringify(store)` — the store's wire form via `toJSON()` — and restores
 parsed JSON through `restore()`. Ordinary stores stringify live data without first cloning a
@@ -1105,9 +1105,9 @@ use `connectSelection` alongside `useResource` for detached, precise memo-child 
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
 subscribed to, or when an effect's cleanup is silently dropped. The package ships 24 core rules
-plus the optional `no-react-hooks-in-components` rule. [docs/rules.md](docs/rules.md) is the
+plus the optional `no-react-hooks-in-components` rule. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
 reference by rule name — what each catches, how to switch one off, and the optional `no-hooks`
-preset. [docs/hazards.md](docs/hazards.md) is the same material by mistake, with the code that
+preset. [docs/hazards.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/hazards.md) is the same material by mistake, with the code that
 triggers it, why it is silent at runtime, and where the rule can be wrong.
 
 One plugin serves both hosts, because oxlint's JS plugin API is ESLint's.
@@ -1187,7 +1187,7 @@ at a built binary, or run
 the run fails loudly and names the missing platform package; a missing binary never looks like
 a clean run.
 
-The measurements are this repository's, taken the way [native/README.md](native/README.md)
+The measurements are this repository's, taken the way [native/README.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/native/README.md)
 describes.
 
 ## API
@@ -1264,14 +1264,14 @@ do not redeclare it.
 | `ResourceCarburetor(loader, scheduler?)`      | Async state with status and cancellation.    |
 | `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent` | Per-request stores. |
 | `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
-| `diagnostics`, `Diagnostics`                  | [Development warning switch](docs/api-reference.md): independent instances and engine singleton. |
+| `diagnostics`, `Diagnostics`                  | [Development warning switch](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): independent instances and engine singleton. |
 | `EResourceStatus`, `EDevToolsAction`, `EDevToolsMessageType` | Enums for the resource status and the DevTools protocol. |
-| `getInitialResourceData` | [Initial resource state](docs/api-reference.md): Idle state only; adapters may seed their own state. |
+| `getInitialResourceData` | [Initial resource state](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): Idle state only; adapters may seed their own state. |
 | `CarburetorContext`                            | The context a scope is provided through. |
-| `ResourceCache` `load`, `refresh`, `resolve`, `getFailure` | [Consumer API reference](docs/api-reference.md): resource loading, refreshing, resolution and failure access. |
-| `CarburetorHistory` `undo`, `redo`, `canUndo`, `canRedo`, `clear`, `disconnect` | [Consumer API reference](docs/api-reference.md): history navigation and lifecycle. |
-| `ResourceCarburetor` `reload`, `abort` | [Consumer API reference](docs/api-reference.md): resource reload and cancellation. |
-| `useCarburetorValue`, `useComputedValue`, `useResourceValue` (from `react-carburetor/interop`) | [Consumer API reference](docs/api-reference.md): three opt-in interop readers. |
+| `ResourceCache` `load`, `refresh`, `resolve`, `getFailure` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): resource loading, refreshing, resolution and failure access. |
+| `CarburetorHistory` `undo`, `redo`, `canUndo`, `canRedo`, `clear`, `disconnect` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): history navigation and lifecycle. |
+| `ResourceCarburetor` `reload`, `abort` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): resource reload and cancellation. |
+| `useCarburetorValue`, `useComputedValue`, `useResourceValue` (from `react-carburetor/interop`) | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): three opt-in interop readers. |
 | `deepClone`, `shallowEqual`                   | Building blocks, exported for extensions.    |
 
 The selected surface is about extensions, not user-facing adapter recipes: `Carburetor` takes initial data, `getInitialResourceData` returns only an Idle resource state, and a custom adapter can seed its own state. A plain `Carburetor` is not a resource loader. A new `Diagnostics` instance is independent; it does not replace the engine's `diagnostics` singleton. Toggling that singleton affects development complaints, but cannot restore warning strings stripped from production builds.
@@ -1369,7 +1369,7 @@ The `lib/` folder contains a Todo app built on the library (React 19, Rsbuild, T
 Each row shows its own render counter, so you can watch precise invalidation at work: edit
 one todo and only that row's counter moves. It uses the library's features where an app would
 need them — scoped stores, async resources and a cache, computeds, selections, transactions,
-undo/redo, persistence, throttling and the hooks interop; [lib/README.md](lib/README.md) maps
+undo/redo, persistence, throttling and the hooks interop; [lib/README.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/lib/README.md) maps
 each feature to the file that uses it.
 
 ```bash

@@ -1,0 +1,51 @@
+name: Bug report
+description: Something in react-carburetor or carburetor-lint behaves differently from its documentation.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Security problems go through the private channel in SECURITY.md, not through an issue.
+  - type: input
+    id: version
+    attributes:
+      label: Package versions
+      description: react-carburetor, carburetor-lint (if used), react, react-dom.
+      placeholder: react-carburetor 0.1.0, react 19.3.0
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Store / Carburetor
+        - Components (AntiHookComponent, scope)
+        - Computed
+        - Resources (ResourceCarburetor, ResourceCache)
+        - Hooks interop (react-carburetor/interop)
+        - Tooling (history, persist, DevTools)
+        - Lint rules / carburetor-lint
+        - Documentation
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Minimal reproduction
+      description: The smallest code that shows the problem, ideally a store and one component.
+      render: tsx
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behaviour
+      description: What the documentation says should happen, and what happens instead.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Node version, bundler, browser or SSR framework, operating system.
