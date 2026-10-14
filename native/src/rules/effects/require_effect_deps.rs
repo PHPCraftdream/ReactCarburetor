@@ -4,7 +4,8 @@
 //! new prop while the effect keeps holding the old connection. It is the `exhaustive-deps` class of
 //! bug without the hook, and it stays quiet because running once is also a legitimate intent.
 //!
-//! Deliberately conservative: only `this.props.x` and `this.state.x` are considered. A store read is
+//! Deliberately conservative: only `this.useEffect` calls, and only `this.props.x` and
+//! `this.state.x` are considered. A store read is
 //! not a dependency — the component subscribes to it — and anything else would produce noise rather
 //! than findings. A dependency covers every read below it, so `[this.props.user]` satisfies a read of
 //! `this.props.user.name`. See docs/hazards.md, H16.
@@ -19,7 +20,7 @@ use oxc_span::{GetSpan, Span};
 
 use crate::rules::report;
 use crate::rules::support::chain::{chain_root, Base};
-use crate::rules::support::names::member_call_name;
+use crate::rules::support::names::{called_on_this, member_call_name};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -43,7 +44,8 @@ impl<'s> Check<'s> {
 
 impl<'a, 's> Visit<'a> for Check<'s> {
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if member_call_name(&call.callee) != Some("useEffect") {
+        // Only the component's own effect API counts; a foreign object's `useEffect` is out of scope.
+        if member_call_name(&call.callee) != Some("useEffect") || !called_on_this(&call.callee) {
             walk::walk_call_expression(self, call);
 
             return;
@@ -198,6 +200,13 @@ mod tests {
     #[test]
     fn a_non_inline_body_is_not_analysable() {
         let source = "this.useEffect('load', this.props.carburetor.loadData, []);\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_use_effect_on_a_foreign_receiver_is_not_an_effect() {
+        let source = "jobs.useEffect('x', () => this.props.id, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }

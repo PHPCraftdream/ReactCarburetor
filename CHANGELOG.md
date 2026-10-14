@@ -805,6 +805,10 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- `no-async-effect`, `no-duplicate-effect-name` and `require-effect-deps` only check `this.useEffect(...)`,
+  and `no-async-effect` resolves the name of a returned call lexically, so an unrelated `useEffect`
+  method or a shadowing local function no longer produces an error. `no-async-transaction` reports a
+  bare `transaction(...)` only when the file imports `transaction`.
 - A stale-while-revalidate fetch started by `ResourceCache.suspend()` no longer leaves an unhandled
   rejection when the loader's rejection throws while being described; the cache keeps its published
   failure and an explicit `load()` still rejects.

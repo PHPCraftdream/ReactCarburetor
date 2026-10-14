@@ -662,7 +662,9 @@ when no request is active. Do not have competing owners independently cancel a s
 whose body returns a call to an `async` function without a cleanup return.
 
 **False positives.** Low for the `async` keyword case; the "returns a promise" case is limited
-to a directly returned call expression of a function declared `async` in the same file.
+to a directly returned call expression of a function declared `async` in the same file. The name is
+resolved lexically: a nearer binding with the same name that is not `async` shadows the outer one.
+Only `this.useEffect(...)` is checked, never a `useEffect` method of another object.
 
 ### H15 — two effects sharing a name in one component
 

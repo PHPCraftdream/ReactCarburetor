@@ -108,11 +108,11 @@ until your project changes shape.
 | Rule | Level | Catches | Hazard |
 |------|-------|---------|--------|
 | `no-async-effect` | error | An `async` effect body, whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
-| `no-async-transaction` | error | An `async` body given to `transaction()` or `update()`, which closes the batch at the first `await` | [H17](hazards.md) |
+| `no-async-transaction` | error | An `async` body given to `transaction()` (when the file imports it) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
 | `no-computed-get-in-computed` | error | A computed reading a source with `get()`/`getData()` instead of its reader, so it registers no dependency and never invalidates | [H3](hazards.md) |
 | `no-computed-get-in-render` | error | A computed read with `get()` in render, which registers no subscription | [H2](hazards.md) |
 | `no-direct-data-write` | warn | A store writing to `this.data`, which records no path and invalidates everything | [H7](hazards.md) |
-| `no-duplicate-effect-name` | error | Two effects under one name, where the second overwrites the first one's cleanup | [H15](hazards.md) |
+| `no-duplicate-effect-name` | error | Two `this.useEffect` calls under one name, where the second overwrites the first one's cleanup | [H15](hazards.md) |
 | `no-escaping-tracked-data` | warn | Tracked data stored on the component or captured by a function that runs after the render | [H5](hazards.md) |
 | `no-external-data-mutation` | error | A write through `getData()`, which notifies nobody and mutates shared snapshots | [H8](hazards.md) |
 | `no-get-data-in-render` | error | `getData()` in render, so the component never subscribes and freezes | [H1](hazards.md) |

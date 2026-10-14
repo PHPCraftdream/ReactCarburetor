@@ -1,4 +1,4 @@
-//! H15: two effects registered under the same name in one component.
+//! H15: two effects registered under the same name in one component, via `this.useEffect`.
 //!
 //! The name is the effect's identity: its dependency array and its cleanup are stored under it. A
 //! second registration overwrites the first one's record, so the first effect's cleanup is lost and
@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use oxc_ast::ast::{CallExpression, Expression, Program};
 
 use crate::rules::report;
-use crate::rules::support::names::member_call_name;
+use crate::rules::support::names::{called_on_this, member_call_name};
 use crate::rules::support::walk::{walk_rule, Context, Rule};
 use crate::{Diagnostic, Source};
 
@@ -30,7 +30,8 @@ impl<'a, 's> Rule<'a> for Check<'s> {
     }
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
-        if member_call_name(&call.callee) != Some("useEffect") {
+        // Only the component's own effect API counts: a foreign object's `useEffect` is not this rule's business.
+        if member_call_name(&call.callee) != Some("useEffect") || !called_on_this(&call.callee) {
             return;
         }
 
@@ -104,6 +105,15 @@ mod tests {
     #[test]
     fn a_name_built_at_runtime_cannot_be_compared() {
         let source = component("        this.useEffect(name, this.load, []);\n        this.useEffect(name, this.retry, []);");
+
+        assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_use_effect_on_a_foreign_receiver_is_not_an_effect_registration() {
+        let source = component(
+            "        jobs.useEffect('load', this.load, []);\n        jobs.useEffect('load', this.retry, []);",
+        );
 
         assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
     }
