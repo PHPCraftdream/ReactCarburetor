@@ -1,5 +1,7 @@
 //! The rule registry, and the machinery every rule shares.
 
+use std::collections::HashSet;
+
 use oxc_ast::ast::Program;
 
 use crate::config::{Config, Severity};
@@ -228,6 +230,22 @@ pub fn run(program: &Program<'_>, source: &Source, config: &Config) -> Vec<Diagn
             diagnostic
         }));
     }
+
+    // H31 repeats the allocation rules' finding with blunter advice, so it yields wherever H29 or
+    // H30 reported at the same spot; when both are off, nothing is collected here and H31 stays.
+    let allocation_spots = diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic.rule == allocations::require_method_for_closure::RULE
+                || diagnostic.rule == allocations::require_module_function::RULE
+        })
+        .map(|diagnostic| (diagnostic.line, diagnostic.column))
+        .collect::<HashSet<(usize, usize)>>();
+
+    diagnostics.retain(|diagnostic| {
+        diagnostic.rule != lifecycle::no_function_in_render::RULE
+            || !allocation_spots.contains(&(diagnostic.line, diagnostic.column))
+    });
 
     diagnostics
 }

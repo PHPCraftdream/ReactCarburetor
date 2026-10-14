@@ -14,6 +14,7 @@ use oxc_ast::ast::{
     Expression, Function, JSXAttribute, JSXAttributeValue, JSXExpression, Program,
     VariableDeclarator,
 };
+use oxc_span::Span;
 
 use crate::rules::report;
 use crate::rules::support::names::member_call_name;
@@ -28,59 +29,89 @@ const MESSAGE: &str = "this handler creates a new function on every render; decl
                        @bind, or move a per-item handler into a child component that receives the \
                        id.";
 
-/// Whether the expression is a function this render just built.
-fn is_fresh_expression(expression: &Expression<'_>) -> bool {
-    match expression {
-        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => true,
-        Expression::CallExpression(call) => member_call_name(&call.callee) == Some("bind"),
-        Expression::ParenthesizedExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        Expression::TSAsExpression(expression) => is_fresh_expression(&expression.expression),
-        Expression::TSSatisfiesExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        Expression::TSTypeAssertion(expression) => is_fresh_expression(&expression.expression),
-        Expression::TSNonNullExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        Expression::TSInstantiationExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        _ => false,
+/// Records a span once, so one expression never yields the same diagnostic position twice.
+fn push_once(out: &mut Vec<Span>, span: Span) {
+    if !out.contains(&span) {
+        out.push(span);
     }
 }
 
-/// Whether the attribute's value is a function this render just built.
-fn is_fresh_function(value: &Option<JSXAttributeValue<'_>>) -> bool {
+/// Collects the spans of every function this expression creates, without descending into them.
+///
+/// A conditional or logical can build a function in either branch, so both arms are searched —
+/// but the condition itself only selects, it never allocates a function.
+fn fresh_functions(expression: &Expression<'_>, out: &mut Vec<Span>) {
+    match expression {
+        Expression::ArrowFunctionExpression(arrow) => push_once(out, arrow.span),
+        Expression::FunctionExpression(function) => push_once(out, function.span),
+        Expression::CallExpression(call) => {
+            // A `.bind(this)` call is the function object it returns; the call's own span is where
+            // a fix would land.
+            if member_call_name(&call.callee) == Some("bind") {
+                push_once(out, call.span);
+            }
+        }
+        Expression::ParenthesizedExpression(expression) => {
+            fresh_functions(&expression.expression, out)
+        }
+        Expression::TSAsExpression(expression) => fresh_functions(&expression.expression, out),
+        Expression::TSSatisfiesExpression(expression) => {
+            fresh_functions(&expression.expression, out)
+        }
+        Expression::TSTypeAssertion(expression) => fresh_functions(&expression.expression, out),
+        Expression::TSNonNullExpression(expression) => fresh_functions(&expression.expression, out),
+        Expression::TSInstantiationExpression(expression) => {
+            fresh_functions(&expression.expression, out)
+        }
+        Expression::ConditionalExpression(expression) => {
+            fresh_functions(&expression.consequent, out);
+            fresh_functions(&expression.alternate, out);
+        }
+        Expression::LogicalExpression(expression) => {
+            fresh_functions(&expression.left, out);
+            fresh_functions(&expression.right, out);
+        }
+        _ => {}
+    }
+}
+
+/// Collects the spans of every function the attribute's value creates.
+fn fresh_attribute_functions(value: &Option<JSXAttributeValue<'_>>, out: &mut Vec<Span>) {
     let Some(JSXAttributeValue::ExpressionContainer(container)) = value else {
-        return false;
+        return;
     };
 
     match &container.expression {
-        JSXExpression::ArrowFunctionExpression(_) | JSXExpression::FunctionExpression(_) => {
-            true
+        JSXExpression::ArrowFunctionExpression(arrow) => push_once(out, arrow.span),
+        JSXExpression::FunctionExpression(function) => push_once(out, function.span),
+        JSXExpression::CallExpression(call) => {
+            if member_call_name(&call.callee) == Some("bind") {
+                push_once(out, call.span);
+            }
         }
-        JSXExpression::CallExpression(call) => member_call_name(&call.callee) == Some("bind"),
         JSXExpression::ParenthesizedExpression(expression) => {
-            is_fresh_expression(&expression.expression)
+            fresh_functions(&expression.expression, out)
         }
-        JSXExpression::TSAsExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
+        JSXExpression::TSAsExpression(expression) => fresh_functions(&expression.expression, out),
         JSXExpression::TSSatisfiesExpression(expression) => {
-            is_fresh_expression(&expression.expression)
+            fresh_functions(&expression.expression, out)
         }
-        JSXExpression::TSTypeAssertion(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
+        JSXExpression::TSTypeAssertion(expression) => fresh_functions(&expression.expression, out),
         JSXExpression::TSNonNullExpression(expression) => {
-            is_fresh_expression(&expression.expression)
+            fresh_functions(&expression.expression, out)
         }
         JSXExpression::TSInstantiationExpression(expression) => {
-            is_fresh_expression(&expression.expression)
+            fresh_functions(&expression.expression, out)
         }
-        _ => false,
+        JSXExpression::ConditionalExpression(expression) => {
+            fresh_functions(&expression.consequent, out);
+            fresh_functions(&expression.alternate, out);
+        }
+        JSXExpression::LogicalExpression(expression) => {
+            fresh_functions(&expression.left, out);
+            fresh_functions(&expression.right, out);
+        }
+        _ => {}
     }
 }
 
@@ -96,16 +127,18 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
     fn jsx_attribute(&mut self, attribute: &JSXAttribute<'a>, context: &Context) {
         // Component props belong to H21; only a DOM element's attribute is this rule's business.
-        if !context.in_render || context.jsx_component || !is_fresh_function(&attribute.value) {
+        if !context.in_render || context.jsx_component {
             return;
         }
 
-        self.diagnostics.push(report(
-            self.source,
-            attribute.span.start,
-            RULE,
-            MESSAGE.to_string(),
-        ));
+        let mut spans = Vec::new();
+        fresh_attribute_functions(&attribute.value, &mut spans);
+
+        // The report lands on the function itself, where a method declaration would go.
+        for span in spans {
+            self.diagnostics
+                .push(report(self.source, span.start, RULE, MESSAGE.to_string()));
+        }
     }
 
     fn declarator(&mut self, declarator: &VariableDeclarator<'a>, context: &Context) {
@@ -113,17 +146,14 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         }
 
-        if declarator
-            .init
-            .as_ref()
-            .is_some_and(|init| is_fresh_expression(init))
-        {
-            self.diagnostics.push(report(
-                self.source,
-                declarator.span.start,
-                RULE,
-                MESSAGE.to_string(),
-            ));
+        let mut spans = Vec::new();
+        if let Some(init) = &declarator.init {
+            fresh_functions(init, &mut spans);
+        }
+
+        for span in spans {
+            self.diagnostics
+                .push(report(self.source, span.start, RULE, MESSAGE.to_string()));
         }
     }
 
@@ -157,6 +187,9 @@ pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::{Config, Severity};
+    use crate::rules::allocations::require_method_for_closure;
+    use crate::rules::allocations::require_module_function;
     use crate::rules::support::testing::{diagnose, lines};
     use oxc_allocator::Allocator;
     use oxc_parser::Parser;
@@ -170,7 +203,7 @@ mod tests {
         )
     }
 
-    fn run_rules(text: &str) -> Vec<Diagnostic> {
+    fn run_rules_with(text: &str, customize: impl FnOnce(&mut Config)) -> Vec<Diagnostic> {
         let allocator = Allocator::default();
         let parsed = Parser::new(&allocator, text, SourceType::tsx()).parse();
 
@@ -180,14 +213,33 @@ mod tests {
             parsed.diagnostics
         );
 
+        let mut config = Config::default();
+        customize(&mut config);
+
         crate::rules::run(
             &parsed.program,
             &crate::Source {
                 path: Path::new("fixture.tsx"),
                 text,
             },
-            &crate::config::Config::default(),
+            &config,
         )
+    }
+
+    fn run_rules(text: &str) -> Vec<Diagnostic> {
+        run_rules_with(text, |_| {})
+    }
+
+    /// The rule set a full-registry run reports on one source line, sorted and exact.
+    fn rules_on_line(diagnostics: &[Diagnostic], line: usize) -> Vec<&str> {
+        let mut rules = diagnostics
+            .iter()
+            .filter(|diagnostic| diagnostic.line == line)
+            .map(|diagnostic| diagnostic.rule.as_str())
+            .collect::<Vec<_>>();
+        rules.sort_unstable();
+
+        rules
     }
 
     #[test]
@@ -313,25 +365,111 @@ class Widget extends AntiHookComponent {
 
     #[test]
     fn dom_attributes_report_once_through_the_full_registry() {
-        for body in [
-            "        return <button onClick={() => this.handle()}/>; // H31 only",
-            "        return <Row onClick={() => this.handle()}/>; // H21 only",
-        ] {
-            let diagnostics = run_rules(&render(body));
-            let expected: &[&str] = if body.contains("H31") {
-                &[RULE]
-            } else {
-                &[crate::rules::lifecycle::no_handler_created_in_render::RULE]
-            };
-            let rules = diagnostics
-                .iter()
-                .map(|diagnostic| diagnostic.rule.as_str())
-                .filter(|rule| *rule == RULE || *rule == expected[0])
-                .collect::<Vec<_>>();
+        let cases = [
+            // H29 claims the outer map arrow, which uses `this.pick`; H31 reports the inner arrow
+            // itself, whose capture of the callback parameter blocks H29's rewrite of it.
+            (
+                "        return items.map((item) => <button onClick={() => this.pick(item.id)}/>);",
+                vec![require_method_for_closure::RULE, RULE],
+            ),
+            // H29 wins here: the arrow needs nothing but `this`, and H31 yields to its advice.
+            (
+                "        return <button onClick={() => this.handle()}/>;",
+                vec![require_method_for_closure::RULE],
+            ),
+            // A component prop is H21's finding alone.
+            (
+                "        return <Row onClick={() => this.handle()}/>;",
+                vec![crate::rules::lifecycle::no_handler_created_in_render::RULE],
+            ),
+            // H30 wins: the arrow needs nothing from the class at all.
+            (
+                "        const h = () => handle();",
+                vec![require_module_function::RULE],
+            ),
+        ];
 
-            // Other rules may also fire on the fixture; this one must fire exactly where the
-            // spec puts it and never double up with H21 on the same attribute.
-            assert_eq!(rules, expected, "{diagnostics:#?}");
+        for (body, expected) in cases {
+            let diagnostics = run_rules(&render(body));
+            let mut expected = expected;
+            expected.sort_unstable();
+
+            assert_eq!(rules_on_line(&diagnostics, 3), expected, "{diagnostics:#?}");
         }
+
+        // With H30 off there is nothing to yield to, and H31 reports the same local itself.
+        let diagnostics = run_rules_with(&render("        const h = () => handle();"), |config| {
+            config
+                .override_rule(require_module_function::RULE, Severity::Off)
+                .expect("registered rule");
+        });
+        assert_eq!(
+            rules_on_line(&diagnostics, 3),
+            vec![RULE],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn the_report_lands_on_the_arrow_not_the_attribute() {
+        let body = "        return <button onClick={() => this.handle()}/>;";
+        let source = render(body);
+
+        // Through the full registry H29 claims the spot and H31 is deduplicated away.
+        let diagnostics = run_rules(&source);
+        assert_eq!(lines(&diagnostics), [3]);
+        assert_eq!(
+            rules_on_line(&diagnostics, 3),
+            vec![require_method_for_closure::RULE],
+            "{diagnostics:#?}"
+        );
+
+        // With H29 off, H31 reports at the arrow's own column, not the attribute's.
+        let diagnostics = run_rules_with(&source, |config| {
+            config
+                .override_rule(require_method_for_closure::RULE, Severity::Off)
+                .expect("registered rule");
+        });
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].rule, RULE);
+        assert_eq!(diagnostics[0].line, 3);
+        // One-based column of the arrow's `(` within the render body's line.
+        assert_eq!(diagnostics[0].column, body.find("() =>").unwrap() + 1);
+    }
+
+    #[test]
+    fn a_map_callback_under_a_type_cast_still_marks_the_nested_handler() {
+        let source = render(
+            "        return items.map(((item) => <button onClick={() => pick(item.id)}/>) as (item: Item) => JSX.Element);",
+        );
+        assert_eq!(lines(&diagnose(&source, check)), [3]);
+    }
+
+    #[test]
+    fn a_conditional_arm_building_a_function_is_reported() {
+        let source = render("        const x = cond ? () => act() : null;");
+        assert_eq!(lines(&diagnose(&source, check)), [3]);
+    }
+
+    #[test]
+    fn a_logical_right_building_a_function_is_reported() {
+        let source = render("        const y = cond && function () { act(); };");
+        assert_eq!(lines(&diagnose(&source, check)), [3]);
+    }
+
+    #[test]
+    fn a_conditional_dom_attribute_building_a_function_is_reported() {
+        let source = render("        return <button onClick={cond ? () => act() : undefined}/>;");
+        assert_eq!(lines(&diagnose(&source, check)), [3]);
+    }
+
+    #[test]
+    fn both_conditional_arms_are_reported_separately() {
+        let source = render("        const z = cond ? () => a() : () => b();");
+
+        let diagnostics = diagnose(&source, check);
+        assert_eq!(diagnostics.len(), 2, "{diagnostics:#?}");
+        assert!(diagnostics.iter().all(|diagnostic| diagnostic.line == 3));
+        assert_ne!(diagnostics[0].column, diagnostics[1].column);
     }
 }

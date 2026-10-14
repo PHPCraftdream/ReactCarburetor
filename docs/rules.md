@@ -115,7 +115,7 @@ until your project changes shape.
 | `no-duplicate-effect-name` | error | Two `this.useEffect` calls under one name, where the second overwrites the first one's cleanup | [H15](hazards.md) |
 | `no-escaping-tracked-data` | warn | Tracked data stored on the component or captured by a function that runs after the render | [H5](hazards.md) |
 | `no-external-data-mutation` | error | A write through `getData()`, which notifies nobody and mutates shared snapshots | [H8](hazards.md) |
-| `no-function-in-render` | warn | A function built in a component's render for a DOM-element attribute or as a render-body local — declare a method with `@bind` or move a per-item handler into a child | [H31](hazards.md) |
+| `no-function-in-render` | warn | A function built in a component's render for a DOM-element attribute or as a render-body local; silent where `require-method-for-closure` or `require-module-function` reports the same function | [H31](hazards.md) |
 | `no-get-data-in-render` | error | `getData()` in render, so the component never subscribes and freezes | [H1](hazards.md) |
 | `no-handler-created-in-render` | warn | A handler built in render and passed to a child, which defeats the props gate | [H21](hazards.md) |
 | `no-lifecycle-class-property` | error | A lifecycle method declared as a class property, shadowing the base implementation | [H13](hazards.md) |

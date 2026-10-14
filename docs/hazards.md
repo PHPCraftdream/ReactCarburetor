@@ -1163,15 +1163,18 @@ a stable method reference) and owns its own bound method.
 
 **Detection.** In `render` of a component extending `AntiHookComponent`/`ScopedAntiHookComponent`:
 an arrow, a function expression, a `.bind(...)` call or a function declaration created directly in
-the render body — as the value of a DOM-element JSX attribute (a lowercase tag, including
+the render body — in either branch of a conditional (`cond ? f : g`) or of a logical expression
+(`&&`, `||`, `??`) — as the value of a DOM-element JSX attribute (a lowercase tag, including
 `ref={el => ...}`), as a local's initializer, or as a declaration. A handler created inside a
 synchronous array-method callback (`map`, `filter`, ...) is reported where it lands; the callback
-itself is not, so `items.map(...)` alone stays clean. Wrappers (`as`, parentheses, non-null
-assertions) are seen through.
+itself is not, so `items.map(...)` alone stays clean. A callback wrapped in a type-level wrapper
+(`as`, `satisfies`, a non-null assertion, parentheses) is still seen through.
 
 **False positives.** A function rebuilt on purpose — where identity is part of the data — is
 indistinguishable without type information, hence `warn`. Component props are out of scope: H21
-reports them, and the two rules never report the same attribute.
+reports them, and the two rules never report the same attribute. Where `require-method-for-closure`
+(H29) or `require-module-function` (H30) reports the same function, their more specific advice wins
+and this rule stays silent (if both are off, this rule reports as usual).
 
 ## Not hazards
 

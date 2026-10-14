@@ -242,7 +242,10 @@ Entries below record development history in change order; where contracts differ
   `ref={el => ...}`, including per-item handlers inside `map`/`filter`/... callbacks) or as a
   render-body local reports a new function object per render; declare a method with `@bind` or move
   a per-item handler into a child component that receives the id. Component props stay with
-  `no-handler-created-in-render`; the two rules never report the same attribute.
+  `no-handler-created-in-render`; the two rules never report the same attribute. A function in
+  either branch of a conditional or logical expression counts, and a type-wrapped array callback is
+  seen through. Where `require-method-for-closure` or `require-module-function` reports the same
+  function, their more specific advice is the one shown.
 - `docs/examples/`: a self-contained, type-checked example for every public export of
   `react-carburetor`, `react-carburetor/interop` and `react-carburetor/lint`, grouped by area, with a
   guide to choosing an API; `docs/adopting.md` and `docs/faq.md`. A test fails when an export has no

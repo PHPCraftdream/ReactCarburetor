@@ -71,3 +71,20 @@ pub fn referenced_symbol(
 ) -> Option<SymbolId> {
     identifier.reference_id.get().and_then(|id| semantic.scoping().get_reference(id).symbol_id())
 }
+
+/// The expression with its type-level and syntactic wrappers removed.
+pub fn unwrap_expression<'a>(expression: &'a Expression<'a>) -> &'a Expression<'a> {
+    match expression {
+        Expression::ParenthesizedExpression(expression) => {
+            unwrap_expression(&expression.expression)
+        }
+        Expression::TSAsExpression(expression) => unwrap_expression(&expression.expression),
+        Expression::TSSatisfiesExpression(expression) => unwrap_expression(&expression.expression),
+        Expression::TSTypeAssertion(expression) => unwrap_expression(&expression.expression),
+        Expression::TSNonNullExpression(expression) => unwrap_expression(&expression.expression),
+        Expression::TSInstantiationExpression(expression) => {
+            unwrap_expression(&expression.expression)
+        }
+        _ => expression,
+    }
+}

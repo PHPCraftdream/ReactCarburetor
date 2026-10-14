@@ -25,7 +25,9 @@ use crate::rules::support::bases::{
     ARRAY_MUTATORS, CARBURETOR_BASES, COMPONENT_BASES, RENDER_METHODS, SYNCHRONOUS_CALLBACKS,
 };
 use crate::rules::support::chain::{assignment_root, chain_root, simple_target_root, ChainRoot};
-use crate::rules::support::names::{extends_any, member_call_name, property_key_name};
+use crate::rules::support::names::{
+    extends_any, member_call_name, property_key_name, unwrap_expression,
+};
 use crate::Diagnostic;
 
 /// Where the walk currently is.
@@ -300,7 +302,9 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
         if method.is_some_and(|name| SYNCHRONOUS_CALLBACKS.contains(&name)) {
             for argument in &call.arguments {
                 if let Some(expression) = argument.as_expression() {
-                    self.synchronous.insert(expression.span());
+                    // The wrapper's own span would miss the arrow inside, dropping it from the
+                    // render context.
+                    self.synchronous.insert(unwrap_expression(expression).span());
                 }
             }
         }
