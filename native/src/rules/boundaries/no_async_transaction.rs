@@ -1,4 +1,4 @@
-//! H17: an asynchronous body given to `transaction()` or `update()`.
+//! H17: an asynchronous body given to `transaction()` or `this.update()`.
 //!
 //! Both are open only while the body runs synchronously. At the first `await` the body returns a
 //! promise, the batch closes, and every write after the await is delivered on its own — so the
@@ -18,7 +18,7 @@ use oxc_span::Span;
 use oxc_syntax::scope::ScopeFlags;
 
 use crate::rules::report;
-use crate::rules::support::names::member_call_name;
+use crate::rules::support::names::{called_on_this, member_call_name};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -32,7 +32,8 @@ fn batching_name(call: &CallExpression<'_>) -> Option<&'static str> {
         }
     }
 
-    (member_call_name(&call.callee) == Some("update")).then_some("update")
+    ((member_call_name(&call.callee) == Some("update")) && called_on_this(&call.callee))
+        .then_some("update")
 }
 
 /// The batching call currently enclosing the walk, if the function being visited is its body.
@@ -182,5 +183,27 @@ mod tests {
         let source = "this.update(async (draft) => {\n    await a();\n    await b();\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [1]);
+    }
+
+    #[test]
+    fn an_update_call_on_a_foreign_receiver_is_not_reported() {
+        // `update` is a protected method of the component; an unrelated object's `update` is not a batch.
+        let source = "const api = {update: async (cb) => cb()};\n\napi.update(async () => {\n    await save();\n});\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_store_update_call_is_not_reported() {
+        let source = "store.update(async (draft) => {\n    await load();\n});\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_nested_receiver_update_call_is_not_reported() {
+        let source = "this.props.x.update(async (draft) => {\n    await load();\n});\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 }

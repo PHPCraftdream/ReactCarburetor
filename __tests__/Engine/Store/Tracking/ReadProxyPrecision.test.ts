@@ -347,6 +347,16 @@ class RowsCarburetor extends Carburetor<IRowsData> {
     };
 }
 
+interface ICountsData {counts: Record<string, number>;}
+
+const getCountsData = (): ICountsData => ({counts: {a: 1, b: 2}});
+
+class CountsCarburetor extends Carburetor<ICountsData> {
+    public setCount = (key: string, value: number): void => {
+        this.update((draft: ICountsData) => { draft.counts[key] = value; });
+    };
+}
+
 describe('descriptor introspection and tracked value reads (R8-02)', () => {
     test('a root primitive descriptor and hasOwnProperty do not record a leaf', () => {
         const carburetor = new RowsCarburetor({...getRowsData(), extra: 1});
@@ -478,6 +488,25 @@ describe('R16-01: an enumerator wakes on a key added or removed under it, not on
 
         // A key added or removed must still wake it too.
         carburetor.addItem('k4', {title: 'd', done: false});
+        expect(wakes).toEqual(2);
+    });
+
+    test('Object.values(counts) wakes on an edit under an unchanged key set', () => {
+        const carburetor = new CountsCarburetor(getCountsData());
+        const reads = new Set<TPath>();
+        const view = carburetor.read((path: TPath) => reads.add(path));
+        let wakes = 0;
+
+        // Reads every returned primitive value, not just the key set.
+        expect(Object.values(view.counts)).toEqual([1, 2]);
+        expect(reads.has('counts.a') && reads.has('counts.b')).toBe(true);
+
+        carburetor.subscribe(() => wakes++, {id: 'values-leaves', reads});
+
+        // A read leaf changing must wake it; a key added/removed must wake it too.
+        carburetor.setCount('a', 3);
+        expect(wakes).toEqual(1);
+        carburetor.setCount('c', 4);
         expect(wakes).toEqual(2);
     });
 

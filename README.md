@@ -302,10 +302,12 @@ touches a read when the paths are equal or one is nested in the other:
 Two properties keep this honest:
 
 - **Traversal is not a read.** Reaching into `data.items` on the way to `items.a1.title`
-  subscribes you to the leaf, not to the whole container. Enumerating (`Object.keys`,
-  `Object.values`, `for…in`, spread) subscribes to the key set — woken when a key is added or
-  removed, not by an edit under a key it listed; probing (`'a1' in items`) subscribes to that
-  key's presence — woken when it is added or removed, not by edits inside it. That is also what `items.map(...)` does per index, so a parent laying out rows is
+  subscribes you to the leaf, not to the whole container. `Object.keys` and `for…in` read the key
+  set — woken when a key is added or removed, not by an edit under a key they listed. Value
+  enumeration — `Object.values`, `Object.entries`, object spread — also reads every primitive
+  value it returns, so it subscribes to those leaf paths too: an edit under an unchanged key set
+  still wakes the reader. Probing (`'a1' in items`) subscribes to that key's presence — woken
+  when it is added or removed, not by edits inside it. That is also what `items.map(...)` does per index, so a parent laying out rows is
   not re-rendered by an edit inside one. Inherited members (`map`, `Symbol.iterator`) are not
   data and record nothing, so `for…of` and spread track only the elements they visit.
 - **Array writes are per index.** `push` wakes readers of `length` and the new index, not the
@@ -587,11 +589,16 @@ It also works under Suspense, which class components support by throwing the pen
 
 ```tsx
 render() {
-    this.useCarburetor(profile);
+    const {status} = this.useCarburetor(profile);
 
-    return <ProfileCard profile={profile.suspend({id: 'a1'})}/>;
+    return <ProfileCard profile={profile.suspend({id: 'a1'})} refreshing={status === EResourceStatus.Pending}/>;
 }
 ```
+
+The subscription covers exactly the fields the render reads off the `useCarburetor`
+result — here `status` — so a later `reload()` that publishes a new answer wakes
+the component again. A call whose result is never read registers no field reads
+and would not wake.
 
 While the request is in flight the nearest `<Suspense>` fallback shows; a failure is rethrown
 so the nearest error boundary handles it.
@@ -1304,7 +1311,15 @@ a test pins the exported surface so one does not slip in by accident.
   non-data `defineProperty` through `draft` throws in every build, including new properties with
   omitted writable/configurable flags, which JavaScript defaults to false; production does not check the
   rest and leaves their behaviour unspecified. Keep a derived value in a `computed`, and a value
-  with its own identity in a `Map` or a class instance, which are leaves.
+  with its own identity in a `Map` or a class instance, which are leaves. Plain state must stay a
+  tree: one object under exactly one path. The same plain object reachable from two paths
+  (`{left: shared, right: shared}`) is not supported — a `draft` write records only the written
+  path, so a reader of the other path is never woken (development reports this as an alias
+  diagnostic), and a plain cycle is rejected outright. Keep one object per path: clone it, give
+  each path its own object, or refer to a shared value by id. This limits plain state only —
+  native values expose their own coarser alias rules (see the tracking caveat above), and
+  selection results may alias and cycle freely; that freedom belongs to selections, not to the
+  store.
 - `update(mutate)` publishes when `mutate` returns. An `async` callback is accepted by its
   `void`-returning signature and publishes at the first `await`, leaving everything written
   afterwards unpublished — development warns about it. Do the async work first, then write.

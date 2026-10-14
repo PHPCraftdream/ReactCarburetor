@@ -805,6 +805,10 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- The `no-async-transaction` rule no longer reports an `update` call on an unrelated receiver; only
+  `transaction()` and `this.update()` are batching calls.
+- `carburetor-lint --fix` keeps the original file's permissions (for example the executable bit of a
+  CLI script) across its atomic write and removes the temporary file when publishing fails.
 - The native CLI no longer reports success for a missing path or an unreadable source file: access,
   traversal and read errors go to stderr and exit with code 2 in report, `--fix` and `--fix-dry-run`
   modes. The npm launcher also exits with code 2 on a spawn failure or signal termination and passes

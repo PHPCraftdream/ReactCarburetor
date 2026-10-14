@@ -51,14 +51,37 @@ pub fn apply(source: &str, mut fixes: Vec<&Fix>) -> Option<String> {
 
 /// Writes `text` to `path` so that a process dying mid-write leaves the original file intact: the
 /// new content lands in a sibling temporary file first, and only a single rename — atomic on every
-/// platform this runs on — ever touches `path` itself.
+/// platform this runs on — ever touches `path` itself. The original file's permissions are carried
+/// over, so an executable file stays executable, while a read-only original makes the rename fail
+/// loudly rather than being silently replaced by a writable file.
 pub fn write_atomically(path: &Path, text: &str) -> io::Result<()> {
     let mut temp_name = path.as_os_str().to_os_string();
     temp_name.push(".carburetor-fix.tmp");
     let temp_path = Path::new(&temp_name).to_path_buf();
 
     fs::write(&temp_path, text)?;
-    fs::rename(&temp_path, path)
+
+    let carry = match fs::metadata(path) {
+        Ok(metadata) => fs::set_permissions(&temp_path, metadata.permissions()),
+        // The original is gone; a default-permission replacement is the best that remains.
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    };
+
+    if let Err(error) = carry {
+        let _ = fs::remove_file(&temp_path);
+
+        return Err(error);
+    }
+
+    match fs::rename(&temp_path, path) {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            let _ = fs::remove_file(&temp_path);
+
+            Err(error)
+        }
+    }
 }
 
 /// A preview of what [`write_atomically`] would do, for `--fix-dry-run`: the lines that differ
@@ -204,5 +227,61 @@ mod tests {
     #[test]
     fn diff_of_identical_text_is_empty() {
         assert_eq!(diff("same", "same"), "");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomically_preserves_the_executable_bit() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = std::env::temp_dir().join(format!("carburetor-fix-test-mode-{}", std::process::id()));
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        write_atomically(&path, "new").unwrap();
+
+        let mode = fs::metadata(&path).unwrap().permissions().mode();
+
+        assert_eq!(mode & 0o777, 0o755, "the executable bit must survive the atomic write");
+
+        fs::remove_file(&path).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_atomically_preserves_a_restricted_mode() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path =
+            std::env::temp_dir().join(format!("carburetor-fix-test-mode-restricted-{}", std::process::id()));
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o640)).unwrap();
+
+        write_atomically(&path, "new").unwrap();
+
+        let mode = fs::metadata(&path).unwrap().permissions().mode();
+
+        assert_eq!(mode & 0o777, 0o640);
+
+        fs::remove_file(&path).unwrap();
+    }
+
+    #[test]
+    fn a_failed_publish_leaves_no_temp_behind() {
+        // The rename's destination is a directory, so the publish fails after the temp is written;
+        // the temp must be cleaned up either way.
+        let path = std::env::temp_dir().join(format!("carburetor-fix-test-dir-temp-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&path);
+        fs::create_dir(&path).unwrap();
+
+        let result = write_atomically(&path, "new");
+
+        assert!(result.is_err());
+
+        let mut temp_name = path.as_os_str().to_os_string();
+        temp_name.push(".carburetor-fix.tmp");
+        assert!(!Path::new(&temp_name).exists(), "the temporary file must be cleaned up on failure");
+
+        fs::remove_dir_all(&path).unwrap();
     }
 }

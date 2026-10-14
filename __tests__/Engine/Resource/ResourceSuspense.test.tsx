@@ -27,7 +27,7 @@ interface IViewProps {
 
 class SuspendingView extends AntiHookComponent<IViewProps> {
     render() {
-        // Subscribes to the resource, so a later reload re-renders this component too.
+        // Reads nothing off the proxy: suspend() below drives rendering, not field reads.
         this.useCarburetor(this.props.resource);
 
         return <div className="value">{this.props.resource.suspend(undefined)}</div>;
@@ -125,6 +125,68 @@ describe('resource under Suspense', () => {
 
         expect(reported.filter((message: string) =>
             message.includes('The above error occurred in the <SuspendingView> component')).length).toEqual(1);
+    });
+
+    test('a useCarburetor subscription covering a read field wakes the component on reload', async () => {
+        // Pins that the subscription covers exactly the fields read off the result —
+        // here `status` — so reload's status/data writes wake this component.
+        // Loader hands each call its own gate, answering with the current value of
+        // `answer`; reload() re-invokes it, so flipping the variable serves 'second'.
+        let answer = 'first';
+        const gates: IDeferred<string>[] = [];
+        const resource = new ResourceCarburetor<string>(() => {
+            const gate = deferred<string>();
+
+            gates.push(gate);
+            void Promise.resolve().then(() => gate.resolve(answer));
+
+            return gate.promise;
+        });
+
+        let parentRenders = 0;
+
+        class ReloadView extends AntiHookComponent<IViewProps> {
+            render() {
+                // The subscription covers the fields read — here `status` — so
+                // reload's status/data writes wake this component.
+                const state = this.useCarburetor(this.props.resource);
+
+                return <div className="value" data-status={state.status}>{this.props.resource.suspend(undefined)}</div>;
+            }
+        }
+
+        const Parent = () => {
+            parentRenders++;
+
+            return <ReloadView resource={resource}/>;
+        };
+
+        const {container, unmount} = render(
+            <React.Suspense fallback={<div className="fallback">loading</div>}>
+                <Parent/>
+            </React.Suspense>
+        );
+
+        expect(container.querySelector('.fallback')).not.toBeNull();
+
+        await act(async () => {
+            await gates[0].promise;
+        });
+
+        expect(container.querySelector('.value')?.textContent).toEqual('first');
+
+        const rendersBeforeReload = parentRenders;
+
+        answer = 'second';
+
+        await act(async () => {
+            await resource.reload();
+        });
+
+        expect(parentRenders).toEqual(rendersBeforeReload);
+        expect(container.querySelector('.value')?.textContent).toEqual('second');
+
+        unmount();
     });
 
     test('a Pending snapshot restored into a fresh instance does not strand a status reader (R3-04)', async () => {
