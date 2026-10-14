@@ -128,6 +128,9 @@ pub trait Rule<'a> {
 
     /// A class, once `context.in_component` / `context.in_carburetor` reflect it.
     fn class(&mut self, _class: &Class<'a>, _context: &Context) {}
+
+    /// `function inner() {}`, called while the enclosing context is still the render body.
+    fn function_declaration(&mut self, _function: &Function<'a>, _context: &Context) {}
 }
 
 /// The first parameter of a call's callback argument, which is how a draft or a reader is named.
@@ -245,6 +248,11 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
     }
 
     fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
+        // A declaration reports against the context it is declared in, so call it before entering.
+        if function.is_function_declaration() {
+            self.rule.function_declaration(function, &self.context);
+        }
+
         let (render, enclosing) = self.enter_function(function.span);
 
         walk::walk_function(self, function, flags);

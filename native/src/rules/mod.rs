@@ -18,7 +18,7 @@ type Check = fn(&Program<'_>, &Source<'_>) -> Vec<Diagnostic>;
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check); 25] = [
+const REGISTRY: [(&str, Check); 26] = [
     (
         allocations::require_method_for_closure::RULE,
         allocations::require_method_for_closure::check,
@@ -26,6 +26,10 @@ const REGISTRY: [(&str, Check); 25] = [
     (
         allocations::require_module_function::RULE,
         allocations::require_module_function::check,
+    ),
+    (
+        lifecycle::no_function_in_render::RULE,
+        lifecycle::no_function_in_render::check,
     ),
     (
         allocations::no_react_hooks_in_components::RULE,

@@ -1,6 +1,6 @@
 //! Rules about allocation hygiene: a closure rebuilt on every call that the class could own as a
 //! method instead, and code that needs no class at all and belongs at module level.
 
+pub mod no_react_hooks_in_components;
 pub mod require_method_for_closure;
 pub mod require_module_function;
-pub mod no_react_hooks_in_components;

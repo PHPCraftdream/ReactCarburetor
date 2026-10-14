@@ -8,6 +8,7 @@
     "carburetor/no-duplicate-effect-name": "error",
     "carburetor/no-escaping-tracked-data": "error",
     "carburetor/no-external-data-mutation": "error",
+    "carburetor/no-function-in-render": "error",
     "carburetor/no-get-data-in-render": "error",
     "carburetor/no-handler-created-in-render": "error",
     "carburetor/no-lifecycle-class-property": "error",

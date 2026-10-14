@@ -76,6 +76,7 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("no-duplicate-effect-name", Severity::Error),
     ("no-escaping-tracked-data", Severity::Warn),
     ("no-external-data-mutation", Severity::Error),
+    ("no-function-in-render", Severity::Warn),
     ("no-get-data-in-render", Severity::Error),
     ("no-handler-created-in-render", Severity::Warn),
     ("no-lifecycle-class-property", Severity::Error),

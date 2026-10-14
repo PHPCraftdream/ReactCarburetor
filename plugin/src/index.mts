@@ -1,6 +1,7 @@
 import type {IPlugin} from "./Models.mts";
 import {RECOMMENDED} from "./recommended.mts";
 import {NO_HOOKS} from "./noHooks.mts";
+import {noFunctionInRender} from "./Rules/Lifecycle/noFunctionInRender.mts";
 import {noReactHooksInComponents} from "./Rules/Allocations/noReactHooksInComponents.mts";
 import {requireMethodForClosure} from "./Rules/Allocations/requireMethodForClosure.mts";
 import {requireModuleFunction} from "./Rules/Allocations/requireModuleFunction.mts";
@@ -48,6 +49,7 @@ const plugin: IPlugin = {
         'no-duplicate-effect-name': noDuplicateEffectName,
         'no-escaping-tracked-data': noEscapingTrackedData,
         'no-external-data-mutation': noExternalDataMutation,
+        'no-function-in-render': noFunctionInRender,
         'no-get-data-in-render': noGetDataInRender,
         'no-handler-created-in-render': noHandlerCreatedInRender,
         'no-lifecycle-class-property': noLifecycleClassProperty,

@@ -3,7 +3,7 @@ class Widget extends AntiHookComponent {
     componentDidMount = (): void => {};
 
     render() {
-        // carburetor-disable-next-line carburetor/require-method-for-closure
+        // carburetor-disable-next-line carburetor/require-method-for-closure, carburetor/no-function-in-render
         return <button onClick={() => this.handle()}/>;
     }
 

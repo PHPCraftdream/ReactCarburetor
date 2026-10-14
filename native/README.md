@@ -22,7 +22,7 @@ Earlier 22-rule measurement on a 157-file tree, best of several runs:
 
 That JavaScript rule layer cost 270 ms; the old native pass took 20 ms including tree walking,
 parsing and result serialization. These are historical figures, not timings for the current
-25-rule build.
+26-rule build.
 
 On 2026-09-24, a local Windows release build scanned the current `lib/src` tree (88 TS/TSX files)
 in seven alternating on/off pairs after two warmups per mode. The median end-to-end times were

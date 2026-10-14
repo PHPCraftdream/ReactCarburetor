@@ -356,7 +356,7 @@ describe('a missing binary fails loudly', () => {
 });
 
 describe('the bridge, through the real host', () => {
-    test('the native binary runs exactly once for 6 files and 24 rules, and cleans up after itself', async () => {
+    test('the native binary runs exactly once for 6 files and 25 rules, and cleans up after itself', async () => {
         const config = path.join('plugin', '__fixtures__', 'oxlintrc.json');
         // A private TEMP for this one child: `os.tmpdir()` is the bridge's own namespace, so
         // pointing the child at an empty directory isolates its lock/result files completely,

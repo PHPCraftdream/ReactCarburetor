@@ -1,6 +1,6 @@
 # carburetor-lint
 
-React Carburetor's native linter: 25 rules for state mistakes and avoidable allocations, run as one
+React Carburetor's native linter: 26 rules for state mistakes and avoidable allocations, run as one
 process over a directory tree instead of once per file through a linter's plugin bridge.
 
 ```bash

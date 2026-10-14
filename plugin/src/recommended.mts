@@ -21,6 +21,7 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/no-duplicate-effect-name': 'error',
     'carburetor/no-escaping-tracked-data': 'warn',
     'carburetor/no-external-data-mutation': 'error',
+    'carburetor/no-function-in-render': 'warn',
     'carburetor/no-get-data-in-render': 'error',
     'carburetor/no-handler-created-in-render': 'warn',
     'carburetor/no-lifecycle-class-property': 'error',

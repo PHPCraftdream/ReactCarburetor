@@ -16,3 +16,16 @@ export class AllocationRow extends AntiHookComponent {
         store.getData();
     }
 }
+
+export class AllocationList extends AntiHookComponent {
+    // no-function-in-render: a per-item handler rebuilt on every render
+    public render() {
+        const items = [{id: 1, name: "one"}];
+
+        return <ul>{items.map((item) => <li key={item.id} onClick={() => this.pick(item.id)}>{item.name}</li>)}</ul>;
+    }
+
+    protected pick(id: number): void {
+        void id;
+    }
+}
