@@ -1,0 +1,27 @@
+# Troubleshooting
+
+Use this page to diagnose common symptoms. For the full rule specifications, see the [hazard catalogue](hazards.md); for cache behavior and API details, see [promise cache](promise-cache.md).
+
+## Symptoms and fixes
+
+| Symptom | Cause | Action |
+|---|---|---|
+| A raw write changes data but subscribers stay stale. | Mutating raw data does not publish. `emitUpdate()` with no recorded paths publishes only when the draft was not touched; mixed draft paths need explicit `markAllChanged()` before emission. A touched no-op draft can suppress emission. | Prefer `draft`/`update(...)` for state changes. For an intentional raw write, call protected `markAllChanged()` and then `emitUpdate()`; do not assemble changed paths manually. See [precise invalidation](../README.md#precise-invalidation). |
+| A mixed raw and draft write loses an update. | Draft paths cannot describe the raw write, so publishing only those paths leaves part of the change unreported. | Call protected `markAllChanged()` before emission whenever raw and draft writes are mixed. See [precise invalidation](../README.md#precise-invalidation). |
+| A draft edit changes data, but the UI does not update. | Draft edits mutate store data immediately; without a publish, subscribers are not notified. | Use `update(...)`, or publish the change with the appropriate store method. See [H6](hazards.md#h6--writing-through-draft-without-publishing). |
+| A component misses a change to a computed value. | A computed's live result may be the same object after a change, so identity-based memoization can preserve the previous result. | Return a scalar or detached projection, or let the child subscribe to the source it reads. See [derived values](../README.md#derived-values) and [`useComputedValue`](../lib/src/Interop/useComputedValue.ts). |
+| An effect runs more than once in development StrictMode. | StrictMode may repeat render and replay committed effects as setup, cleanup, setup. Equal deps skip only while the component's existing effect record is present; `[]` does not mean a literal one-time setup. | Keep render pure. Make setup reversible or idempotent and return cleanup that undoes its setup (for example, add a listener and remove that same listener). See [effects without hooks](../README.md#effects-without-hooks). |
+| The lint integration says its native binary is missing. | The `carburetor-lint` executable or platform package is unavailable. | Install `carburetor-lint` with the optional package for your platform, or set `CARBURETOR_LINT_BIN` to a valid binary. Contributors can build the native binary by running `cargo build --release` inside `native/`. See [the binary and the bridge](../README.md#the-binary-and-the-bridge). |
+| A write to returned tracked data fails or has no effect. | Tracked data returned from a read is read-only; it is not the writable store draft. | Make changes through store methods or the writable draft inside an update. See [H9](hazards.md#h9--mutating-data-returned-by-usecarburetor) and [H7](hazards.md#h7--writing-to-thisdata-directly). |
+| Writing to frozen or non-writable store data fails. | `Reflect.set` fails against frozen/non-writable properties; a TypeScript cast does not make the underlying object writable. | Keep owned, writable plain state and change it through store methods. Do not assume snapshots detach native values. See [hooks interop](../README.md#hooks-interop). |
+| A resource does not refresh when its TTL expires. | TTL freshness is lazy (`Date.now()` compared with `updatedAt`); no timer is installed. | Call `load`/`refresh`, or schedule freshness checks in the application. Do not trigger loads as a render side effect. A hydrated entry may refetch after client commit if stale; hydration does not always refetch. See [freshness and hydration](promise-cache.md#freshness-is-lazy-passive-reads-do-not-write) and [server rendering and hydration](promise-cache.md#server-rendering). |
+
+## StrictMode and effects
+
+Development StrictMode can call render more than once and replay committed effects using a setup-cleanup-setup sequence. Render must therefore stay pure; external work belongs in effects. Carburetor shallow-compares dependencies against an existing effect record and skips an equal set. Release clears those records, so a replayed setup is not suppressed merely because its dependencies are `[]`. Design each setup so its cleanup reverses it, and so repeating the pair is safe. The StrictMode tests cover subscription restoration and avoiding duplicate requests; they do not explicitly assert effect counts.
+
+## Resource cache limits
+
+`maxEntries` is an eviction target, not an absolute cap: eviction skips entries with an in-flight request or a reader, so the live entry count can exceed the setting. If a scan cannot find enough evictable entries, the eviction ledger remembers that unsuccessful scan and avoids repeating it until a relevant change or growth warrants another scan.
+
+`keyCacheSize` counts retained primitive-key memo records, including their key/path data and LRU links. It is not a byte limit and is separate from the cache's entry count. Serialized argument size and payload size vary. Selection may fall back to walking the full graph, and native history retains owned endpoints/copies whose cost depends on the data. These are qualitative boundaries, not timing or memory guarantees. See [promise-cache design notes](promise-cache.md).

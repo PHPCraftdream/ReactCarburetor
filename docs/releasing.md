@@ -7,9 +7,10 @@ decision.
 
 1. Confirm the intended versions, update the changelog, and verify the npm
    package names are available to the publisher.
-2. Require a green CI run for the release commit, including React 18, the demo,
-   native tests, and all six platform-binary jobs. Run `npm ci`,
-   `npm run build`, `npm run typecheck`, `npm run lint`,
+2. Require a green CI run for the release commit, including the React 18 Engine/Demo
+   compatibility suites, native tests, and all six platform-binary jobs. Run `npm ci`,
+   `npm run build`, then build the native linter with `cargo build --release` from `native/`
+   before `npm run typecheck`, `npm run lint`,
    `npm run check:layout`, and `npm test` from a clean checkout.
 3. Inspect `npm pack --dry-run --json` for the root library, the launcher under
    `npm/carburetor-lint`, and each platform package. Every tarball must include

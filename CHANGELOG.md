@@ -32,13 +32,18 @@ Entries below record development history in change order; where contracts differ
   names. `dehydrate()` includes only inspected instances and uses `snapshot()`; `hydrate()` copies its
   input. Base `toJSON()` returns live data; resource stores add their wire keys.
   `fromJSON()` adopts its input on base Carburetor (resource stores override behavior).
-- **Selection/readCoverage:** Selection models own enumerable string keys (array elements and `length`),
-  omitting descriptors, symbols and non-enumerables even on natives. Ordinary Date copies time; Map/Set
-  copy entries. Plain selector getters run once. Equality uses `Object.is` for leaves, compares Date time
-  and Map/Set order, handles primitive-key collections, and is conservative for object-keyed collections.
-  Class `connectSelection` may retain opaque live values conservatively; selector hooks reject classes,
-  and resource selection rejects array/native subclasses. `readCoverage` is internal redundant-presence
-  pruning, not a public paths API. Extension and drift protocols are internal; public path grammar is not stable.
+- **Selection/readCoverage:** Plain-object selections copy own enumerable string fields, normalize
+  their descriptor flags, and omit symbols and non-enumerable fields. Arrays retain length, holes and
+  own numeric indices, including non-enumerable ones; extra named and symbol keys are omitted. Array
+  descriptor flags are not uniformly normalized: flat selections and sparse tracked detachment can
+  preserve non-enumerable index flags, but descriptor-only changes are not a stable selection-equality
+  guarantee. Ordinary Date copies time; Map/Set copy entries, ignoring extra own properties. Plain
+  selector getters run once. Equality uses `Object.is` for leaves, compares Date time and Map/Set
+  order, handles primitive-key collections, and is conservative for object-keyed collections. Class
+  `connectSelection` may retain opaque live values conservatively; selector hooks reject classes, and
+  resource selection rejects array/native subclasses. `readCoverage` is internal redundant-presence
+  pruning, not a public paths API. Extension and drift protocols are internal; public path grammar is
+  not stable.
 - **State keys:** Trackable plain-container state is own enumerable string-keyed data. Development
   rejects symbols, accessors, non-enumerables, and non-index array keys; symbol writes and
   non-data draft definitions are rejected in every build.
@@ -748,11 +753,15 @@ Entries below record development history in change order; where contracts differ
   use `restoreClaim(state)` returning `{owner, representation, adopt}`.
 - `Carburetor.captureHistory` no longer throws when `snapshot()` is overridden: the default owns the
   live graph, and only classes whose wire form differs need an override.
-- **Breaking:** a connection/`select` selection follows the state model: own enumerable string keys,
-  array elements and `length`. Descriptors, symbol keys and non-enumerable keys are neither compared
-  nor copied, and an accessor's getter runs once. A detached Date compares by time, a Map/Set by
-  content over primitive keys (object-keyed collections and class instances still count as changed),
-  so an unchanged `Date`/`Map`/`Set` field no longer re-renders a gated child.
+- **Breaking:** a connection/`select` selection follows the state model: plain objects copy own
+  enumerable string fields with normalized descriptor flags, omitting symbols and non-enumerable
+  fields. Arrays retain length, holes and own numeric indices, including non-enumerable ones, but
+  omit extra named and symbol keys. Array flags are not uniformly normalized: flat selections and
+  sparse tracked detachment can preserve non-enumerable index flags; descriptor-only changes are
+  not a stable selection-equality guarantee. An accessor's getter runs once. A detached Date
+  compares by time, a Map/Set by content over primitive keys (object-keyed collections and class
+  instances still count as changed), so an unchanged `Date`/`Map`/`Set` field no longer re-renders
+  a gated child.
 - Reading an opaque value (class instance, Map, Set, Date) no longer walks its reachable graph on
   every read: the answer is cached per native and revalidated by a per-root generation that only
   topology changes bump. Measured against `1a02d29`: repeated read of an instance with a 10000-row

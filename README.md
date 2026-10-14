@@ -76,15 +76,15 @@ npm install react-carburetor
 ```
 
 React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal build
-and in a pre-stripped production build that the `production` export condition selects.
+and in a pre-stripped production build that the `production` export condition selects. See
+[docs/troubleshooting.md](docs/troubleshooting.md) for common issues and diagnostic guidance.
 
 The advertised range is `^18.0.0 || ^19.0.0`; the test suite and the demo app are exercised
-locally and in CI against React 19.3, and CI also runs the full suite against React 18.3.1 in
-a dedicated compatibility job — the handful of `AntiHookComponent` assertions that observe
-React's own uncaught-error logging (18 reports the throw where 19 is silent) and error-replay
-render counts branch on the installed major at runtime, so nothing is excluded. 18.3.1 is the
-newest of the 18.x line; the range's `18.0.0` floor and the point releases between are not
-separately exercised — a coverage gap, not a report that they fail.
+locally and in CI against React 19.3. CI also runs the Engine and Demo suites against React
+18.3.1; no tests are excluded within those suites, but Plugin, Native and Tooling suites are not
+run in that compatibility job. 18.3.1 is the newest of the 18.x line; the range's `18.0.0` floor
+and the point releases between are not separately exercised — a coverage gap, not a report that
+they fail.
 
 ### Requirements
 
@@ -253,14 +253,15 @@ class TodoList extends AntiHookComponent<ITodoProps> {
 
 `select` reads the same tracked view `connect` hands out, so the owner subscribes to exactly
 the paths the selection touches. What the call returns is detached data in the state-model
-sense: a plain object is its own enumerable string keys, an array is its elements and
-`length` (holes stay holes), and an own key literally named `__proto__` lands as data.
-Plain-object symbol keys, non-enumerable fields and descriptor flags are not copied. Arrays retain
-their own numeric indices, including non-enumerable ones, but normalize descriptor flags.
-Sparse selections enumerate present indices after the first hole; adding an own `undefined` slot
-or deleting one still updates the consumer. Ordinary Maps, Sets and Dates are detached (a Date is its
-time); repeated references and Map-key aliases stay shared within the copy, including a key
-selected through a tracked view. Custom instances remain live. An accessor's getter runs
+sense: plain objects include own enumerable string keys; flags are normalized, symbols and
+non-enumerable fields are omitted, and an own key literally named `__proto__` lands as data. Arrays
+retain their length, holes and all own numeric indices (including non-enumerable ones); extra named
+and symbol keys are ignored. Descriptor flags are not uniformly normalized: some flat or sparse
+selection paths can preserve non-enumerable index flags, but descriptor-only changes are not a
+stable selection-equality guarantee. Sparse selections enumerate present indices after the first hole; adding an own `undefined` slot or
+deleting one still updates the consumer. Ordinary Maps, Sets and Dates are detached (a Date is its
+time), comparing only their entries or timestamp and ignoring extra own properties; repeated references
+and Map-key aliases stay shared within the copy, including a key selected through a tracked view. Custom instances remain live. An accessor's getter runs
 once, like any plain read, and its value is what the copy keeps. An `Array` subclass is
 rejected — its copy would lack its private state — so select `Array.from(value)` or the
 fields the child needs instead. The snapshot keeps its identity while the selected plain
@@ -325,8 +326,11 @@ Two properties keep this honest:
   on both sides is skipped without a look, so never mutate what `getData()` returns and hand it
   back: those edits are invisible to the diff.
 
-If a write bypasses `draft` (a direct `this.data.x = y`), the changed paths are unknown, so
-the whole store is treated as changed. Coarse, but never a missed update.
+A direct write to `this.data` followed by publication invalidates the whole store only when no
+recorded draft paths are available and the draft was not touched (a no-op draft access suppresses
+the emission). If draft writes and direct writes are mixed, recorded paths can miss the direct
+write; call `markAllChanged()` to deliberately invalidate the whole store. Prefer `update()` or
+`setData()` when possible for precise, reliable notifications.
 
 Matching is indexed rather than scanned: read paths and their ancestors are kept in maps, so a
 write looks up the subscribers it concerns instead of comparing itself against all of them. On
@@ -1005,11 +1009,15 @@ Selected plain objects, arrays, `Map`, `Set` and `Date` values are detached for 
 React snapshot. A class instance cannot be copied safely, so selecting one directly or
 inside another value throws an actionable error; select the fields you render instead. A
 `Map`, `Set` or `Date` subclass counts as a class instance here, not as the built-in.
-A selection is plain data in the state-model sense: own enumerable string fields, array own indices
-and `length`. Array holes and non-enumerable numeric indices are retained; other non-enumerable fields,
-symbol keys and descriptor flags are not copied. An accessor's getter runs once and its value is the
-snapshot. Repeated references and cycles stay connected within one detached selection,
-including a `Date` used both as a `Map` key and elsewhere in the selected graph.
+A selection is plain data in the state-model sense: plain objects include own enumerable string fields;
+arrays retain their length, holes and all own numeric indices, including non-enumerable ones, while
+extra named and symbol keys are omitted. Plain-object descriptor flags are normalized; array flags are
+not uniformly normalized, since flat and sparse tracked detachment can preserve non-enumerable index
+flags. Descriptor-only changes are not an equality guarantee. Ordinary Dates compare by timestamp,
+and Maps/Sets by entries, ignoring extra own metadata. There is no universal promise to preserve flags.
+An accessor's getter runs once and its value is the snapshot. Repeated references and cycles stay
+connected within one detached selection, including a Date used both as a Map key and elsewhere in the
+selected graph.
 
 The third argument is the equality check that decides whether a recomputed selection
 counts as changed. It defaults to a structural comparison — own enumerable string keys and

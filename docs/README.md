@@ -6,6 +6,7 @@ examples, and the public API.
 ## Using the project
 
 - [API reference](api-reference.md) — public engine, cache, tooling, and interop symbols.
+- [Troubleshooting](troubleshooting.md) — symptoms, StrictMode effects, and cache size boundaries.
 - [Hazard catalogue](hazards.md) — silent misuse patterns and lint-rule specifications.
 - [Testing tiers](testing-tiers.md) — what each local/CI tier runs.
 - [Async resource cache](promise-cache.md) — keys, freshness, invalidation, and hydration.

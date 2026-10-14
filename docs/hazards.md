@@ -337,17 +337,16 @@ public setTitle = (title: string) => {
 };
 ```
 
-**Why it is silent.** No path is recorded, so `emitUpdate` cannot identify the changed fields. As the README explains, a publication after bypassing `draft` invalidates the whole store.
+**Why it is silent.** A direct write records no path. If the draft was not touched and no draft paths were recorded, `emitUpdate` publishes a wildcard and invalidates the whole store. A no-op draft access suppresses that emission; with mixed direct and recorded draft writes, only recorded paths are published, so the direct write can be missed.
 
-**Right.** Write through `this.draft`, or `this.update(draft => ...)`.
+**Right.** Prefer `this.update(draft => ...)` or `setData(...)`. If a direct write is deliberate, call `markAllChanged()` before `emitUpdate()` to publish a wildcard, especially when mixing it with draft writes.
 
 **Rule** `no-direct-data-write` — **warn**.
 
 **Detection.** An assignment, update-assignment, `delete` or mutating method call whose object
 chain starts at `this.data` inside a `Carburetor` subclass.
 
-**False positives.** Low. A deliberate wildcard invalidation is the only case, and
-`setData(...)` expresses it better.
+**False positives.** Deliberate raw writes followed by `markAllChanged()` and an emission are intentional, but the warning is still useful: prefer `update()` or `setData()` when possible.
 
 ### H8 — mutating `getData()` from outside the store
 
