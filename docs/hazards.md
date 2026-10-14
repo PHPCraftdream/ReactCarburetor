@@ -73,6 +73,7 @@ only; suppress a diagnostic with the host's disable comment or set that rule's s
 | H27 | none — a judgement about the data | cache | — | — |
 | H29 | `require-method-for-closure` | allocations | warn | no |
 | H30 | `require-module-function` | allocations | warn | no |
+| H31 | `no-function-in-render` | allocations | warn | no |
 
 Three of these overlap with a runtime diagnostic the engine already reports in development
 (H6, H14, H17). The rule is still worth having: it fires on code paths that were never
@@ -82,12 +83,13 @@ All four syntactic forms of a change count wherever a rule looks for one: `x.y =
 `delete x.y`, and an in-place array method (`push`, `splice`, `sort`, …). A rule that handled only
 assignment would miss three quarters of the hazard.
 
-**24 rules are implemented**, covering H1–H23, H26, H29 and H30: reads (H1–H5), writes (H6–H11),
-lifecycle (H12, H13, H21, H22), effects (H14–H16), boundaries (H17–H20) and allocations (H29, H30),
+**25 catalogue rules are implemented**, covering H1–H23, H26 and H29–H31: reads (H1–H5), writes (H6–H11),
+lifecycle (H12, H13, H21, H22), effects (H14–H16), boundaries (H17–H20) and allocations (H29–H31),
 with H23 and H26 folded into the rules they share. H24 and H25 are specified and named but not
-written yet; H27 cannot be a rule at all. Detection lives in `native/src/rules/`, tested there with
-oxc's own parser over hand-written
-edge cases; `plugin/src/Rules/` is now a thin bridge that calls that binary once per lint run and
+written yet; H27 cannot be a rule at all. The opt-in `no-react-hooks-in-components` policy rule
+brings the registry to 26; the conformance fixture corpus covers the 25 the shared configs
+enable. Detection lives in `native/src/rules/`, tested there with oxc's own parser over
+hand-written edge cases; `plugin/src/Rules/` is now a thin bridge that calls that binary once per lint run and
 reports through whichever host is running, so oxlint's `RuleTester` — which never writes its
 synthetic snippets to disk — cannot exercise it. `__tests__/Native/conformance.test.ts` and
 `__tests__/Plugin/host.test.ts` cover that path instead: real fixtures in `plugin/__fixtures__`,
@@ -1118,6 +1120,58 @@ an analysis with no cross-file resolution — the same documented blindness ever
 the no-visibility-split policy accepts the report rather than guessing. The `implements` exclusion
 exists for the same reason in the one case a contract is visible. The escape hatch is a disable
 comment directly above the member.
+
+### H31 — a function built in render for a DOM handler or a local
+
+**Wrong**
+
+```tsx
+public render() {
+    return <ul>{items.map((item) =>
+        <li key={item.id} onClick={() => this.pick(item.id)}>{item.name}</li>)}</ul>;
+}
+```
+
+**Why it is silent.** Nothing breaks. A new function object is allocated on every render and the old
+one becomes garbage; for a DOM attribute the worst immediate effect is one cheap attribute update.
+The cost is the pattern: render bodies fill up with per-call helpers and per-item closures, and a
+component that allocates in render allocates everywhere.
+
+**Right**
+
+```tsx
+@bind
+private pick(id: string): void {
+    this.props.onPick(id);
+}
+
+@bind
+private renderItem(item: Item): JSX.Element {
+    return <TodoRow item={item} onPick={this.pick}/>;
+}
+
+public render() {
+    return <ul>{items.map(this.renderItem)}</ul>;
+}
+```
+
+Declare the handler as a method decorated with `@bind`, bound once per instance. For a per-item
+handler move the row into a child component that receives the id (here through `onPick={this.pick}`,
+a stable method reference) and owns its own bound method.
+
+**Rule** `no-function-in-render` — **warn**.
+
+**Detection.** In `render` of a component extending `AntiHookComponent`/`ScopedAntiHookComponent`:
+an arrow, a function expression, a `.bind(...)` call or a function declaration created directly in
+the render body — as the value of a DOM-element JSX attribute (a lowercase tag, including
+`ref={el => ...}`), as a local's initializer, or as a declaration. A handler created inside a
+synchronous array-method callback (`map`, `filter`, ...) is reported where it lands; the callback
+itself is not, so `items.map(...)` alone stays clean. Wrappers (`as`, parentheses, non-null
+assertions) are seen through.
+
+**False positives.** A function rebuilt on purpose — where identity is part of the data — is
+indistinguishable without type information, hence `warn`. Component props are out of scope: H21
+reports them, and the two rules never report the same attribute.
 
 ## Not hazards
 

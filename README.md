@@ -617,6 +617,7 @@ import {
     AntiHookComponent,
     EResourceStatus,
     ResourceCache,
+    bind,
 } from 'react-carburetor';
 
 interface User {
@@ -631,6 +632,11 @@ const users = new ResourceCache<User, string>(async (id, signal) => {
 }, {ttl: 30_000, maxEntries: 200});
 
 class UserBadge extends AntiHookComponent<{id: string}> {
+    @bind
+    private retry(): void {
+        void users.refresh(this.props.id);
+    }
+
     public render() {
         const user = this.useResource(users, this.props.id);
         if (user.status === EResourceStatus.Idle || user.status === EResourceStatus.Pending) {
@@ -640,7 +646,7 @@ class UserBadge extends AntiHookComponent<{id: string}> {
             return (
                 <span role="alert">
                     {user.error}{' '}
-                    <button onClick={() => users.refresh(this.props.id)}>Retry</button>
+                    <button onClick={this.retry}>Retry</button>
                 </span>
             );
         }
@@ -648,7 +654,7 @@ class UserBadge extends AntiHookComponent<{id: string}> {
             <span>
                 {user.data?.name}
                 {user.refreshing ? ' (refreshing)' : ''}
-                {user.error ? <button onClick={() => users.refresh(this.props.id)}>Retry</button> : null}
+                {user.error ? <button onClick={this.retry}>Retry</button> : null}
             </span>
         );
     }
@@ -672,19 +678,18 @@ class UserBoundary extends React.Component<
         return {message: error instanceof Error ? error.message : String(error)};
     }
 
+    @bind
+    private retry(): void {
+        users.invalidate('a1');
+        this.setState({message: undefined});
+    }
+
     render() {
         if (this.state.message !== undefined) {
             return (
                 <div role="alert">
                     {this.state.message}
-                    <button
-                        onClick={() => {
-                            users.invalidate('a1');
-                            this.setState({message: undefined});
-                        }}
-                    >
-                        Retry
-                    </button>
+                    <button onClick={this.retry}>Retry</button>
                 </div>
             );
         }
@@ -954,6 +959,7 @@ import {
     carburetorToken,
     CarburetorHistory,
     ComponentUpdateThrottle,
+    bind,
     persist,
     waitForUpdate,
 } from 'react-carburetor';
@@ -962,10 +968,15 @@ class CounterStore extends Carburetor<{count: number}> {
 }
 const counterToken = carburetorToken(() => new CounterStore({count: 0}, new ComponentUpdateThrottle(1)), 'readme-test-counter');
 class CounterView extends ScopedAntiHookComponent {
+    @bind
+    private increment(): void {
+        this.resolve(counterToken).increment();
+    }
+
     render() {
         const store = this.resolve(counterToken);
         const {count} = this.useCarburetor(store);
-        return <button onClick={() => store.increment()}>{count}</button>;
+        return <button onClick={this.increment}>{count}</button>;
     }
 }
 test('publishes a counter update', async () => {
@@ -1106,7 +1117,7 @@ use `connectSelection` alongside `useResource` for detached, precise memo-child 
 
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
-subscribed to, or when an effect's cleanup is silently dropped. The package ships 24 core rules
+subscribed to, or when an effect's cleanup is silently dropped. The package ships 25 core rules
 plus the optional `no-react-hooks-in-components` rule. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
 reference by rule name — what each catches, how to switch one off, and the optional `no-hooks`
 preset. [docs/hazards.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/hazards.md) is the same material by mistake, with the code that
@@ -1232,7 +1243,7 @@ require their own write/tooling capabilities.
 
 Members are prototype methods — here and on `ComponentUpdateThrottle`, `CarburetorScope`,
 `CarburetorHistory` and `Diagnostics`: override them with method syntax and reach the base through
-`super`. Bind one before handing it out as a callback (`onClick={() => history.undo()}`).
+`super`. Bind one with `@bind` before handing it out as a callback (`onClick={this.undo}`).
 
 The protected members above are the whole subclass contract. The engine keeps its own state —
 the version counter, the identity, the write set, subscribers, the scheduler — behind

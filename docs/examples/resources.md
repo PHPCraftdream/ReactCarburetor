@@ -39,6 +39,11 @@ export class UserProfile extends AntiHookComponent<{userId: string}> {
         void userResource.load(id);
     }
 
+    @bind
+    private loadProfile(): void {
+        this.loadUser(this.props.userId);
+    }
+
     render(): JSX.Element {
         const view = this.useCarburetor(userResource);
 
@@ -52,7 +57,7 @@ export class UserProfile extends AntiHookComponent<{userId: string}> {
             return <h1>{view.data.name}</h1>;
         }
         return (
-            <button type="button" onClick={(): void => this.loadUser(this.props.userId)}>
+            <button type="button" onClick={this.loadProfile}>
                 Load profile
             </button>
         );
@@ -147,24 +152,28 @@ declare function fetchPost(id: string): Promise<Post>;
 const postCache = new ResourceCache<Post, string>((id: string, _signal: AbortSignal) => fetchPost(id));
 
 export class PostList extends AntiHookComponent<{postIds: string[]}> {
-    @bind
-    private refreshPost(id: string): void {
-        void postCache.refresh(id);
-    }
-
     render(): JSX.Element {
         return (
             <ul>
-                {this.props.postIds.map((id: string): JSX.Element => {
-                    const view: IResourceView<Post> = postCache.resolve(id).view;
-                    return (
-                        <li key={view.stale ? `${id}-stale` : id}>
-                            <button type="button" onClick={(): void => this.refreshPost(id)}>↻</button>
-                            <PostRow postId={id} />
-                        </li>
-                    );
-                })}
+                {this.props.postIds.map((id: string): JSX.Element => <PostListItem key={id} postId={id} />)}
             </ul>
+        );
+    }
+}
+
+class PostListItem extends AntiHookComponent<{postId: string}> {
+    @bind
+    private refresh(): void {
+        void postCache.refresh(this.props.postId);
+    }
+
+    render(): JSX.Element {
+        const view: IResourceView<Post> = postCache.resolve(this.props.postId).view;
+        return (
+            <li className={view.stale ? 'stale' : undefined}>
+                <button type="button" onClick={this.refresh}>↻</button>
+                <PostRow postId={this.props.postId} />
+            </li>
         );
     }
 }

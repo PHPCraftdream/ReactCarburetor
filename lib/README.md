@@ -52,4 +52,4 @@ Not shown on purpose: `suspend()` (the demo keeps explicit loading states instea
 boundaries) and `CarburetorScope.dehydrate()`/`hydrate()`, which only make sense with server
 rendering.
 
-The public lint plugin supplies 24 core rules plus the optional `no-react-hooks-in-components` policy; see [lint rules](../docs/rules.md).
+The public lint plugin supplies 25 core rules plus the optional `no-react-hooks-in-components` policy; see [lint rules](../docs/rules.md).

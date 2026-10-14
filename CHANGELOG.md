@@ -52,7 +52,7 @@ Entries below record development history in change order; where contracts differ
 - **State keys:** Trackable plain-container state is own enumerable string-keyed data. Development
   rejects symbols, accessors, non-enumerables, and non-index array keys; symbol writes and
   non-data draft definitions are rejected in every build.
-- **Linter/CLI:** The registry has 25 rules (`native/src/rules/mod.rs`).
+- **Linter/CLI:** The registry has 26 rules (`native/src/rules/mod.rs`).
   `no-react-hooks-in-components` is off in recommended configuration; the optional `no-hooks`
   preset enables it at error severity. Human/JSON diagnostics, fix/dry-run, and exit codes
   0 (clean), 1 (findings), and 2 (tool/config/CLI failure) are supported.
@@ -237,6 +237,12 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- `carburetor/no-function-in-render` (H31, `warn` in recommended): a function created in a
+  component's render for a DOM-element attribute (arrow, function expression, `.bind(...)`,
+  `ref={el => ...}`, including per-item handlers inside `map`/`filter`/... callbacks) or as a
+  render-body local reports a new function object per render; declare a method with `@bind` or move
+  a per-item handler into a child component that receives the id. Component props stay with
+  `no-handler-created-in-render`; the two rules never report the same attribute.
 - `docs/examples/`: a self-contained, type-checked example for every public export of
   `react-carburetor`, `react-carburetor/interop` and `react-carburetor/lint`, grouped by area, with a
   guide to choosing an API; `docs/adopting.md` and `docs/faq.md`. A test fails when an export has no

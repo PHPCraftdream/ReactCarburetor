@@ -1,6 +1,6 @@
 # Lint usage
 
-React Carburetor ships 25 lint rules that catch silent mistakes in consumer code: missed writes,
+React Carburetor ships 26 lint rules that catch silent mistakes in consumer code: missed writes,
 abandoned subscriptions, dropped cleanup, tracked data escaping a store, and functions rebuilt on
 every call. The same rules run three ways — as an oxlint plugin preset, as ESLint shareable
 configs, or through a standalone binary.
@@ -140,3 +140,46 @@ The native pass also honours the oxlint spellings `oxlint-disable-next-line` and
 under the ESLint host, `eslint-disable` comments work as ESLint itself interprets them.
 
 Rule-by-rule reference: [rules.md](../rules.md); symptoms: [troubleshooting.md](../troubleshooting.md).
+
+## Functions built in render
+
+A function created while a component renders — an arrow in a DOM-element attribute, a `.bind(...)`, a render-body local — is a new object on every render. Handlers belong on the instance: declare a method with `@bind`; for a per-item handler, move the row into a child component that receives the id.
+
+<!-- example:compile -->
+```tsx
+import {AntiHookComponent, bind} from 'react-carburetor';
+
+interface Item {
+    id: string;
+    name: string;
+}
+
+declare function pick(id: string): void;
+
+// Wrong: a fresh handler on every render.
+export class BadList extends AntiHookComponent<{items: Item[]}> {
+    public render() {
+        return <ul>{this.props.items.map((item) =>
+            <li key={item.id} onClick={() => pick(item.id)}>{item.name}</li>)}
+        </ul>;
+    }
+}
+
+// Right: one bound method per instance; the row owns its handler.
+class ItemRow extends AntiHookComponent<{item: Item}> {
+    @bind
+    private onClick(): void {
+        pick(this.props.item.id);
+    }
+
+    public render() {
+        return <li onClick={this.onClick}>{this.props.item.name}</li>;
+    }
+}
+
+export class ItemList extends AntiHookComponent<{items: Item[]}> {
+    public render() {
+        return <ul>{this.props.items.map((item) => <ItemRow key={item.id} item={item} />)}</ul>;
+    }
+}
+```
