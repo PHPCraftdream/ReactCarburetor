@@ -2,6 +2,8 @@
 
 The native implementation of React Carburetor's lint rules: one process over a directory tree,
 parsing in parallel, instead of a JavaScript rule invoked per file through a linter's plugin bridge.
+The shipped plugin is a thin bridge to this binary; it reports native findings through the host's
+`context.report`, so host suppressions and severity settings still apply.
 
 ```bash
 cargo build --release
@@ -70,13 +72,21 @@ Every valued flag takes both spellings, `--flag value` and `--flag=value`.
 **Configuration.** JSON, because serde_json is already a dependency and oxlint, the ESLint host and
 this crate then share one format — one format, no second parser. Two keys, `rules` and `ignore`;
 anything else is rejected rather than ignored, so a typo fails loudly. A rule's value is a severity
-string or ESLint's `[severity, options]` pair. Rule names may be bare or carry the `carburetor/`
+string: `error`, `warn` or `off`. Legacy `[severity, options]` payloads may be stored by host
+configuration, but options are not consumed by the native rules. Rule names may be bare or carry the
+`carburetor/`
 prefix. A missing default config is not an error — the defaults apply — but a `--config` path that
 is not there is, because the caller asked for that exact file.
 
 The defaults follow `../plugin/src/recommended.mts`; the optional hook-free rule remains off.
 The bridge applies each host's enabled rules and suppression comments. A native rule set to `off`
 never runs, so turning rules off makes the pass cheaper rather than only quieter.
+
+Recognition is fixed and syntactic: component bases are `AntiHookComponent` and
+`ScopedAntiHookComponent`, store bases are `Carburetor` and `ResourceCarburetor`, and render is
+recognised by the fixed method name `render`. Custom components should directly inherit a
+component base; custom intermediate classes are not generally recognised. Disable recognition by
+suppressing a diagnostic or setting that rule's severity to `off`.
 
 **Optional hook-free component policy.** `no-react-hooks-in-components` is off by default.
 Enable it without changing the recommended rules:
@@ -140,8 +150,11 @@ npx carburetor-lint --fix src
 The packages live in `../npm/`, one directory each, versioned in lockstep with this crate. The
 CI `native-packages` job builds all six cargo targets, runs each produced binary against a
 fixture to prove the artefact executes on its target — compiling for a target proves nothing
-about the result — and uploads the packed tarballs as artifacts; publishing itself stays a hand
-step, `npm publish` from each package directory.
+about the result — and uploads the packed tarballs as artifacts. The manual Release workflow
+requires successful full-tier CI on the exact SHA, downloads those artifacts, packs and verifies
+the packages, then publishes the six platform packages, `carburetor-lint`, and `react-carburetor`
+in that order. Its default is `dry_run: true`; trusted OIDC publishing or `NPM_TOKEN` is supported,
+and already-published versions are skipped. See [`../docs/releasing.md`](../docs/releasing.md).
 
 The lint bridge in `../plugin/src` looks the binary up through the same platform packages, so a
 project using `react-carburetor/lint` should install `carburetor-lint` alongside it. When
@@ -156,7 +169,7 @@ repository's [dual-license notice](../LICENSE).
 
 - `src/main.rs` — the command line, the walk, the parallel parse, the fix loop, the output formats,
   the exit codes.
-- `src/config.rs` — severities per rule, per-rule options, ignore patterns.
+- `src/config.rs` — severity per rule and ignore patterns.
 - `src/suppression.rs` — the disable directives one file carries.
 - `src/fix.rs` — applying a rule's suggested edit: overlap resolution, the atomic write, the dry-run
   diff.

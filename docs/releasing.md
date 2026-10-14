@@ -34,9 +34,10 @@ Apache-2.0; the two full texts accompany every distributable package.
 
 `.github/workflows/release.yml` publishes all eight packages (`react-carburetor`, `carburetor-lint` and
 the six `carburetor-lint-<platform>` packages) under one version. It runs only when started by hand
-(Actions → Release → Run workflow), only from `master`, and only for a commit whose `CI` run
-succeeded: the platform packages are the artifacts that run built and executed on their own targets,
-so what is published is what was tested.
+(Actions → Release → Run workflow), only from `master`, and only for a commit with a successful full-tier
+`.github/workflows/ci.yml` run on that exact SHA. A `ci-fast.yml` success does not qualify. The
+platform packages are artifacts produced by that full CI run, so what is published is what was
+built and executed on its own targets.
 
 ### Two ways to authenticate
 
@@ -87,12 +88,15 @@ runs with `id-token: write`, which is what lets npm exchange the identity and si
    `npm/carburetor-lint-*/package.json` and the `optionalDependencies` of `carburetor-lint`.
    Rename `[Unreleased]` in `CHANGELOG.md`. The workflow refuses to run if any of the eight
    versions disagree.
-2. Push to `master` and wait for `CI` to pass on that commit.
-3. Actions → Release → Run workflow, branch `master`, `dry_run` left on. It checks the commit and
-   the versions, downloads the platform packages, packs the library and the launcher, lists every
-   tarball, and runs `npm publish --dry-run` for all eight.
-4. Run it again with `dry_run` off (approve the `npm` environment if reviewers are set). Packages
-   are published in this order: the six platform packages, `carburetor-lint`, `react-carburetor`.
+2. Push to `master`, then manually start `.github/workflows/ci.yml` with `--ref master` to get a
+   full-tier run for that exact SHA; pushing to `master` alone does not trigger the full run. A
+   fast-tier `ci-fast.yml` run is insufficient. The release workflow will fail if the full run is
+   missing.
+3. Actions → Release → Run workflow, branch `master`, with `dry_run` left on (the default). It
+   downloads platform artifacts from the qualifying run, packs and verifies all packages, and runs
+   `npm publish --dry-run` without publishing.
+4. Run it again with `dry_run` off (approve the `npm` environment if reviewers are set). It publishes
+   the six platform packages, then `carburetor-lint`, then `react-carburetor`.
 5. A version already on the registry is skipped, so a run that stopped halfway is simply started
    again.
 

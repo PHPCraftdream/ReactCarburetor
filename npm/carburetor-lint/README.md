@@ -1,6 +1,6 @@
 # carburetor-lint
 
-React Carburetor's native linter: 24 rules for state mistakes and avoidable allocations, run as one
+React Carburetor's native linter: 25 rules for state mistakes and avoidable allocations, run as one
 process over a directory tree instead of once per file through a linter's plugin bridge.
 
 ```bash
@@ -19,8 +19,21 @@ npm keeps only the one whose `os`/`cpu`/`libc` fields match. Supported platforms
 `linux-arm64-gnu`.
 
 The same binary powers the `react-carburetor/lint` oxlint/ESLint plugin — install this package
-next to `react-carburetor` and the plugin finds it. See the repository's `native/README.md` for
-the full option reference, exit codes, configuration file and suppression comments.
+next to `react-carburetor` and the plugin finds it.
+
+| Kind | Recognised names |
+|------|------------------|
+| Store | `Carburetor`, `ResourceCarburetor` |
+| Component | `AntiHookComponent`, `ScopedAntiHookComponent` |
+| Render | `render` |
+
+Recognition is fixed and syntactic. Custom components should directly extend a recognised
+component base; recognition is not generally transitive. These names cannot be configured.
+Suppress an individual report with `// carburetor-disable-next-line <rule>` or a whole file with
+`// carburetor-disable <rule>`; either directive without a rule list silences all carburetor rules.
+Configuration accepts severity only: `error`, `warn` or `off`. Legacy `[severity, options]`
+payloads may remain stored in host configuration, but native rules do not consume options. See
+the repository's `native/README.md` for the full command and configuration reference.
 
 ## License
 

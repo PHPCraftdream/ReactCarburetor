@@ -72,8 +72,7 @@ An entry records `updatedAt`. Whether it is stale is computed when someone asks 
 `Date.now() - updatedAt > ttl` — and never by a timer. Timers would mean a handle per entry to leak,
 wake-ups in an idle tab, and a cache that keeps the process alive.
 
-`getEntry` only reports staleness. `useResource` starts the refetch after commit, never during
-render: synchronous publication from render would notify subscribers mid-render (hazards.md, H11).
+`getEntry` only reports staleness. `useResource` starts the refetch after commit, never during render: synchronous publication from render would notify subscribers mid-render (see [hazards.md](hazards.md), H11).
 `suspend` must arrange a request while rendering to supply its pending promise, so that path defers
 publication to a microtask. A stale Success keeps its old value while revalidating; a Suspense-only
 reader needs another parent render to display the answer unless it also subscribes.
@@ -177,10 +176,8 @@ load, subscription or proof acquisition; hydrated readers load only after client
 ## Server rendering
 
 The cache is a carburetor, so `CarburetorScope.dehydrate()` already serialises it and `hydrate()`
-already restores it. The open question is `updatedAt` across the boundary: the server's clock wrote
-it, the client's clock reads it. Treating it as absolute makes an entry look fresh or stale by the
-difference between two machines' clocks. The decision is to keep `updatedAt` as the server wrote it
-and let the client's first read judge it with its own clock — the error is bounded by clock skew,
-which is smaller than any sensible TTL — and to document that a hydrated entry is deliberately
-considered *fresh* for its remaining TTL rather than refetched on mount, because refetching
-everything on hydration is the cost server rendering was meant to avoid.
+already restores it. The cache preserves `updatedAt` exactly as serialized; the client's first read
+judges freshness using its own clock. Clock skew can affect that verdict, so hydration does not
+guarantee freshness. An old timestamp or invalidated entry remains stale, and the normal TTL check
+is `Date.now() - updatedAt > ttl`. A stale entry read by a mounted hook may refetch after commit;
+hydration itself does not refetch every entry.

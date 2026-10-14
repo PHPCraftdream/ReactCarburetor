@@ -5,8 +5,11 @@ examples, and the public API.
 
 ## Using the project
 
+- [API reference](api-reference.md) — public engine, cache, tooling, and interop symbols.
+- [Hazard catalogue](hazards.md) — silent misuse patterns and lint-rule specifications.
+- [Testing tiers](testing-tiers.md) — what each local/CI tier runs.
 - [Async resource cache](promise-cache.md) — keys, freshness, invalidation, and hydration.
-- [Lint rule reference](rules.md) — rules, severities, options, and host setup.
+- [Lint rule reference](rules.md) — rules, severities, and host setup.
 - [Native linter](../native/README.md) — binary usage and supported platforms.
 - [React compatibility](react-compatibility.md) — supported versions, how the library binds to
   the consumer's React, the dual-package/duplicate-React hazard and its fixes, and how

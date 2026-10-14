@@ -19,13 +19,19 @@ plugin (import direction, line length, documentation) remains separate from both
 }
 ```
 
-**ESLint v9+** — spread the shareable config:
+**ESLint v9+** — spread the shareable config. `@typescript-eslint/parser` must be installed in
+lint tooling; this config includes TS/TSX parsing.
 
 ```js
+import tsParser from '@typescript-eslint/parser';
 import carburetor from 'react-carburetor/lint';
 
 export default [
-    {...carburetor.configs.recommended, files: ['src/**/*.{ts,tsx}']},
+    {
+        ...carburetor.configs.recommended,
+        files: ['src/**/*.{ts,tsx}'],
+        languageOptions: {parser: tsParser},
+    },
 ];
 ```
 
@@ -41,16 +47,13 @@ Either way, a rule can be changed or switched off afterwards, since a later entr
 }
 ```
 
-A single line is silenced with a disable comment — `// oxlint-disable-next-line carburetor/<rule>`
-or `// eslint-disable-next-line carburetor/<rule>` — placed directly above the line that gets
-reported, not above the enclosing declaration. A whole file takes
-`/* oxlint-disable carburetor/<rule> */` as a comment of its own. When you silence a rule, say why:
-this repository does it in a handful of tests whose entire purpose is to exercise the hazard, and
-each one carries a sentence explaining that.
+A single line is silenced with `// oxlint-disable-next-line carburetor/<rule>` or
+`// eslint-disable-next-line carburetor/<rule>`, placed directly above the reported line. A whole
+file takes `/* oxlint-disable carburetor/<rule> */`. Say why when silencing a rule.
 
 ### Hook-free components (optional)
 
-React hooks remain allowed by `recommended`. Enable the additional supplied preset explicitly:
+React hooks remain allowed by `recommended`. Enable the optional preset explicitly:
 
 ```json
 {
@@ -65,11 +68,20 @@ The JSON is also exported as `react-carburetor/lint/no-hooks.oxlintrc.json`. ESL
 same policy through the plugin's shareable config:
 
 ```js
+import tsParser from '@typescript-eslint/parser';
 import carburetor from 'react-carburetor/lint';
 
 export default [
-    {...carburetor.configs.recommended, files: ['src/**/*.{js,jsx,ts,tsx}']},
-    {...carburetor.configs['no-hooks'], files: ['src/**/*.{js,jsx,ts,tsx}']},
+    {
+        ...carburetor.configs.recommended,
+        files: ['src/**/*.{js,jsx,ts,tsx}'],
+        languageOptions: {parser: tsParser},
+    },
+    {
+        ...carburetor.configs['no-hooks'],
+        files: ['src/**/*.{js,jsx,ts,tsx}'],
+        languageOptions: {parser: tsParser},
+    },
 ];
 ```
 
@@ -109,7 +121,7 @@ until your project changes shape.
 | `no-module-level-store` | off | A store created once per module, which a server shares across requests | [H18](hazards.md) |
 | `no-react-hooks-in-components` | off | React `use`/`useX` calls in components when the optional hook-free policy is enabled | [Optional policy](#hook-free-components-optional) |
 | `no-store-write-in-render` | error | A write to a store while rendering, which notifies subscribers mid-render | [H11](hazards.md) |
-| `no-tracked-data-mutation` | error | A write to data from `useCarburetor`, which throws — or does nothing once a cast hides it | [H9](hazards.md) |
+| `no-tracked-data-mutation` | error | A write to data from `useCarburetor`, which throws | [H9](hazards.md) |
 | `no-untrackable-draft-mutation` | warn | An in-place change to a `Map`, `Set` or `Date` through `draft`, which costs all path precision | [H10](hazards.md) |
 | `no-untrackable-store-data` | warn | `Map`, `Set` or `Date` in a store's data, which tracking and `snapshot()` both pass over | [H19](hazards.md) |
 | `no-use-carburetor-outside-render` | error | `useCarburetor`/`useComputed` outside render, where they establish no subscription | [H4](hazards.md) |
@@ -121,36 +133,22 @@ until your project changes shape.
 | `require-subscription-disposal` | warn | A subscription whose id is discarded, so it can never be released | [H20](hazards.md) |
 | `require-super-in-lifecycle` | error | A lifecycle override that skips `super`, disabling effects, cleanup or the props gate | [H12](hazards.md) |
 
-## Options
+## Fixed recognition and severity-only configuration
 
-Detection is syntactic — a JS plugin gets no type checker — so a project whose classes the rules
-cannot recognise by name has to name them. Every rule accepts:
+The preset's recognitions are fixed and syntactic:
 
-| Option | Default | Purpose |
-|--------|---------|---------|
-| `componentBases` | `["AntiHookComponent", "ScopedAntiHookComponent"]` | Base classes that make a class a carburetor component |
-| `carburetorBases` | `["Carburetor", "ResourceCarburetor"]` | Base classes that make a class a store |
-| `renderMethods` | `["render"]` | Methods to treat as render, for components with render helpers |
+| Kind | Recognised names |
+|------|------------------|
+| Store | `Carburetor`, `ResourceCarburetor` |
+| Component | `AntiHookComponent`, `ScopedAntiHookComponent` |
+| Render | `render` |
 
-Rules with an option of their own:
-
-| Rule | Option | Purpose |
-|------|--------|---------|
-| `require-emit-after-draft-write` | `deferredEmitMethods` | Methods that deliberately leave publishing to their caller. `preEmit`, and anything it calls, is already exempt |
-| `no-untrackable-draft-mutation` | `mutatingMethods` | The method names treated as in-place changes |
-| `no-untrackable-store-data` | `allowedTypes` | Untrackable types you accept in store data, `Date` being the usual one |
-| `no-store-write-in-render` | `storeNames` | Stores a component writes to without ever reading them |
-| `no-handler-created-in-render` | `ignoreComponents` | Components cheap enough that a fresh handler does not matter |
-| `no-module-level-store` | `storeConstructors` | Store constructors this rule cannot recognise by name |
-
-```json
-{
-  "rules": {
-    "carburetor/no-get-data-in-render": ["error", {"renderMethods": ["render", "renderRow"]}],
-    "carburetor/no-untrackable-store-data": ["warn", {"allowedTypes": ["Date"]}]
-  }
-}
-```
+Custom components should directly extend a recognised component base; recognition is not generally
+transitive. Recognition names cannot be configured. Configuration accepts severity only: `error`,
+`warn` or `off`. Legacy `[severity, options]` payloads may remain stored in host configuration, but
+native rules do not consume options. Suppress reports with `// carburetor-disable-next-line <rule>`
+or `// carburetor-disable <rule>`; either directive without a rule list silences all carburetor
+rules.
 
 ## One rule replaces a built-in
 

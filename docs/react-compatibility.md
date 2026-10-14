@@ -10,8 +10,8 @@ and how both are tested.
 
 | Entry | Peer `react` range | Notes |
 |---|---|---|
-| `.` (core) | `^18.0.0 \|\| ^19.0.0` | React 19.3 and 18.3.1 both run the full test suite in CI. |
-| `./interop` | same range, but needs `>=18.0.0` exactly | Uses `useSyncExternalStore`, added in React 18.0; there is no React 17 shim. |
+| `.` (core) | `^18.0.0 \|\| ^19.0.0` | CI's React 18 job installs exactly 18.3.1; it is not a claim that 18.0 is tested. |
+| `./interop` | same range | Uses `useSyncExternalStore`, added in React 18.0; there is no React 17 shim. |
 
 `@types/react` is an **optional** peer, `^18.0.0 || ^19.0.0`: both major versions type-check the
 same consumer code cleanly (checked against `@types/react` 18.3.x and 19.3.x). A plain-JS
@@ -20,6 +20,16 @@ range does.
 
 `react-dom` is not a peer dependency at all — nothing under `dist/` imports it. Rendering is
 entirely the consumer's job.
+
+## Runtime requirements
+
+The package declares Node.js `>=14.6.0`. The cache uses `WeakRef`; browser runtimes need support
+for it (Chrome 84+, Firefox 79+, Safari 14.1+). Native `AbortController` is available globally
+from Node 14.17; earlier runtimes use a fallback for cooperative abortion and ignore late results,
+but cannot provide a native fetch signal. See [resource cancellation](../README.md) for using a
+compatible `AbortController` with APIs that require a native signal. Native linter packages are published for Windows x64,
+macOS x64/arm64, Linux x64 glibc/musl, and Linux arm64 glibc; these are not JavaScript runtime
+limits.
 
 ## How the library binds to your React
 
@@ -30,6 +40,11 @@ entirely the consumer's job.
 - Because `React.Component` is read live from your own `react` install, `class Foo extends
   AntiHookComponent` really does extend *your* `React.Component`, not a vendored one.
 - `react-carburetor/lint` has no runtime dependency on React at all.
+
+`useComputedValue` returns the live value from `computed.get()`; unlike
+`useCarburetorValue` and `useResourceValue`, it does not return a detached, versioned selector
+result. Mutable/native results may retain identity across updates, so memoized children should
+receive scalar or detached selector projections.
 
 ## Sharing state across copies of the library
 
@@ -114,12 +129,11 @@ link, link `react` from your app into the library too.
 
 ## React Server Components
 
-The modules that touch React's client API carry `"use client"` in every build: the
-`AntiHookComponent` class chain, `ScopedAntiHookComponent`, `CarburetorContext`,
-`CarburetorProvider`, and the two interop hooks. Everything else — `Carburetor`, `Computed`,
-`ResourceCache`, `CarburetorScope`, `carburetorToken`, `transaction`, the tooling — has no
-directive and stays importable from a Server Component. The barrels have none either: an RSC
-bundler follows their re-exports to the marked files, and a client boundary cannot `export *`.
+The client-facing class chain, provider/context, and all three interop hooks
+(`useCarburetorValue`, `useComputedValue`, and `useResourceValue`) carry `"use client"`. Server-side
+engine and tooling exports remain importable without evaluating client-only React APIs. The barrels
+have no directive: the RSC bundler follows their re-exports to the marked files; a client boundary
+cannot `export *`.
 
 What this gives a Server Component:
 
@@ -162,17 +176,15 @@ hot-reloading its own components never re-evaluates `react-carburetor`'s modules
 
 ## How compatibility is tested
 
-- CI's **Library on React 18** job swaps `react`/`react-dom` to 18.3.1 in the root and demo trees
-  and reruns the full internal test suite. The few assertions that observe React's own
-  uncaught-error logging and error-replay render counts branch on the installed major at
-  runtime, so nothing is skipped.
+- CI's **Library on React 18** job swaps `react`/`react-dom` to exactly 18.3.1 in the root and demo
+trees, builds, then runs `rstest` only for `__tests__/Engine` and `__tests__/Demo` (not the full
+internal suite).
 - `npm run test:consumers` (CI's **Consumer matrix** job) tests the *published tarball*, not repo
   source: it packs the library with `npm pack`, then for each of React 18.3.1 and 19.3.0 crossed
   with npm and pnpm, installs it into a fresh consumer project — 4 installs, each reused for both
   an ESM and a CJS cell, 8 cells total. Each cell:
-  - typechecks a fixture consumer — class components, `connect`/`connectSelection`/
-    `useComputed`/`useResource`, `CarburetorProvider`, both interop hooks — against that cell's
-    own installed `react`/`@types/react`;
+  - typechecks the fixture consumer against its own `react`/`@types/react`, including
+    `useCarburetorValue`, `useComputedValue` and `useResourceValue`;
   - compiles and renders it through `react-dom/server`, asserting the output and that a
     captured instance is `instanceof` that cell's own `React.Component`.
 
@@ -182,8 +194,9 @@ hot-reloading its own components never re-evaluates `react-carburetor`'s modules
 
   The last cells build a Next.js App Router app (Next pinned, React 19) on the same tarball, once
   with Turbopack and once with webpack: a server page imports the package barrel next to two
-  `"use client"` subtrees — a connected component, and a provider with a scoped component and both
-  interop hooks — and the prerendered page must contain every subtree's output.
+  `"use client"` subtrees — a connected component, and a provider with a scoped component,
+  `useCarburetorValue` and `useComputedValue` — and the prerendered page must contain every
+  subtree's output.
 - A unit test (`__tests__/Engine/ClientDirective.test.ts`) derives the client set from the sources
   — modules with a value import from `react`, plus everything importing one, barrels excluded —
   and checks that exactly those modules start with the directive, in the sources and in all four

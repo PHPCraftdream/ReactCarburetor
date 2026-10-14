@@ -1,6 +1,6 @@
 # Hazard catalogue
 
-This document is the specification for the lint rules shipped in `eslint-plugin-carburetor`.
+This document is the specification for the lint rules shipped in `react-carburetor/lint`.
 Every hazard below is a way to use React Carburetor that compiles, runs, and produces wrong
 behaviour **without any error** — a component that never updates, a write nobody hears, an
 effect that never cleans up. That silence is the reason the rules exist: the type system
@@ -33,7 +33,11 @@ The shapes a rule may rely on:
 - `.getData()`, `.get()`, `.subscribe(...)`, `.watch(...)` as member calls.
 
 A rule that would need a type to be correct (is this `.set()` a `Map` or a setter of my own?)
-is documented as such, defaults to `warn` at most, and states its heuristic.
+is documented as such, defaults to `warn` at most, and states its heuristic. Detection uses
+fixed names from `native/src/rules/support/bases.rs` and direct syntax; it does not resolve
+arbitrary inheritance chains. Custom component classes should directly inherit
+`AntiHookComponent` or `ScopedAntiHookComponent` to be recognised. Rules have severity settings
+only; suppress a diagnostic with the host's disable comment or set that rule's severity to `off`.
 
 ## Rule index
 
@@ -124,8 +128,7 @@ of a class extending a component base. "Immediately enclosing" is the whole poin
 `map`, `filter`, `forEach`, `reduce`, `sort` and friends — which is render code and is treated as
 such, because building a list with `ids.map(...)` is the ordinary way to render one.
 
-Extra render helpers are named through the `renderMethods` option, and a project-local base class
-through `componentBases`; neither is discoverable without types.
+The rule's fixed-name recognition is syntactic. Render is recognised by the fixed method name `render`; project-specific helper methods and custom class names are not configurable.
 
 **False positives.** `getData()` is legitimate in event handlers, effects and outside components,
 and none of those are reported. A store passed into a free function that calls `getData()` cannot
@@ -215,8 +218,8 @@ subscription is wanted.
 **Detection.** `this.useCarburetor(...)` / `this.useComputed(...)` inside a method or class
 property of an `AntiHookComponent` subclass that is not `render` and not called from render.
 
-**False positives.** A render helper method the rule cannot recognise as such. The
-`renderMethods` option lists extra method names to treat as render.
+**False positives.** A render helper method the rule cannot recognise as such; render helpers
+are not configurable.
 
 ### H5 — tracked data escaping render
 
@@ -278,8 +281,7 @@ props, and let the child declare its own `connect()` or `useCarburetor`. An exte
 `connectSelection()` snapshot — detached plain data whose identity changes only when the selected
 content changes.
 
-**Rule** none yet — the engine itself reports handing a live view through a `connectSelection()`
-snapshot, once per selection, in development; see the README's Diagnostics section.
+**Rule** Selections detach ordinary plain objects, arrays, Map, Set and Date values. Development reports an opaque live facade that cannot be detached, once per selection; project its fields instead.
 
 ## Writes
 
@@ -321,8 +323,7 @@ calls out of `preEmit`, because a helper it delegates to is in the same position
 existed.
 
 **False positives.** A method that deliberately leaves publishing to its caller and is not reachable
-from `preEmit`. Name it in the `deferredEmitMethods` option; a one-off is silenced with a disable
-comment on the write itself.
+from `preEmit`. Suppress the diagnostic with a disable comment, or turn this rule off by severity.
 
 ### H7 — writing to `this.data` directly
 
@@ -336,9 +337,7 @@ public setTitle = (title: string) => {
 };
 ```
 
-**Why it is silent.** It works — and quietly costs the whole point of the library. No path is
-recorded, so `emitUpdate` falls back to invalidating everything and every subscriber of the
-store re-renders. Nothing breaks; the app just gets slow the way a hooks app does.
+**Why it is silent.** No path is recorded, so `emitUpdate` cannot identify the changed fields. As the README explains, a publication after bypassing `draft` invalidates the whole store.
 
 **Right.** Write through `this.draft`, or `this.update(draft => ...)`.
 
@@ -358,9 +357,10 @@ chain starts at `this.data` inside a `Carburetor` subclass.
 todoCarburetor.getData().items[id].done = true;
 ```
 
-**Why it is silent.** No path is recorded and no `emitUpdate` runs at all, so the state and the
-screen disagree until something else triggers a render. Snapshots and undo/redo recorded before
-this write also silently drift, because the mutation edited the same object they share.
+**Why it is silent.** No tracked write path or notification is produced, so subscribers can remain
+stale until another update. `getData()` exposes live data, but history maintains owned snapshots
+rather than sharing ordinary plain-data leaves: arbitrary raw mutations are not recorded as
+history steps, so do not expect undo/redo to capture them.
 
 **Right.** Add a method to the carburetor and write through `draft` there. State changes belong
 to the store that owns the state.
@@ -382,9 +382,10 @@ const data = this.useCarburetor(todoCarburetor);
 data.items[id].done = true;
 ```
 
-**Why it is silent.** It is not, at runtime: the read proxy throws, and the type is deeply
-read-only. It becomes silent only once a cast is involved (`as ITodoData`, `as any`), which is
-exactly what people reach for when the compiler complains.
+**Why it is silent.** Plain-object and array reads are guarded by runtime proxies, so a cast does
+not bypass their mutation traps. Native/opaque leaves are not wrapped in the same way; unsafe
+mutations of those values may succeed without tracked writes. The data is deeply read-only in the
+type surface, but casts are not a general runtime escape hatch.
 
 **Right.** Call a method on the carburetor.
 
@@ -415,14 +416,13 @@ invalidates the entire store.
 
 **Rule** `no-untrackable-draft-mutation` — **warn**.
 
-**Detection.** A call to a known mutating method (`set`, `delete`, `clear`, `add`, `setTime`,
-`setDate`, `setHours`, …) on a member chain rooted at `this.draft` or at the `draft` parameter
-of `this.update(...)`. Without type information the rule cannot tell a `Map` from an object
-with a method called `set`, so the method-name list is the heuristic and it is configurable.
+**Detection.** A call to a fixed set of known mutating method names on a member chain rooted at
+`this.draft` or at the `draft` parameter of `this.update(...)`. Without type information the rule
+cannot tell a `Map` from an object with a method called `set`, so the method-name heuristic is
+intentionally limited.
 
-**False positives.** Real: a plain nested object is not mutated by a method call, but a class
-instance of your own with a `set` method would be reported. `warn`, and the `mutatingMethods`
-option narrows it.
+**False positives.** A class instance of your own with a method whose name matches the fixed
+mutation heuristic can be reported; without type information the rule cannot distinguish it.
 
 ### H11 — writing to a store from render
 
@@ -447,12 +447,11 @@ cause. In the unlucky case an abandoned concurrent render has already changed th
 
 **Detection.** A call in render on something the file identified as a store, with a method name
 outside the read allow-list (`getData`, `getVersion`, `getUID`, `getLastError`, `snapshot`,
-`toJSON`, `read`, `get`, `suspend`).
+`toJSON`, `read`, `get`, `suspend`, `getEntry`).
 
-A store is identified by evidence, not by a naming convention: whatever is passed to
-`this.useCarburetor(...)` or `this.useComputed(...)` anywhere in the file is one, matched by the
-source text of that argument, so `this.props.carburetor` works as well as an imported singleton. A
-component that writes to a store it never reads is not detected; `storeNames` covers that.
+A store is identified by evidence: whatever is passed to `this.useCarburetor(...)`,
+`this.useComputed(...)` or `this.useResource(...)` anywhere in the file is one, matched by the
+source text of that argument. A component that writes to a store it never reads is not detected.
 
 `suspend()` is in the allow-list even though it writes. It marks the resource pending and defers
 the notification to a microtask precisely because a render must not notify, and it is *designed*
@@ -574,8 +573,8 @@ arrow function, a function expression, or a `.bind(...)` call, on a component el
 element whose name starts with an uppercase letter). DOM elements are excluded: a fresh
 `onClick` on a `<button>` costs an attribute update, not a subtree render.
 
-**False positives.** Deliberate for cheap leaf children. `warn`, and the `ignoreComponents`
-option lists component names to skip.
+**False positives.** Deliberate for cheap leaf children. `warn`; suppress the diagnostic or turn
+the rule off by severity when this trade-off is intentional.
 
 ### H22 — passing an unbound method as a value
 
@@ -637,14 +636,26 @@ warns, because returning nothing is also legal.
 **Right**
 
 ```ts
-this.useEffect('load', () => {
-    const controller = new AbortController();
+class TodoResource extends ResourceCarburetor<TTodo, {id: string}> {
+    constructor() {
+        super(async ({id}, signal) => fetchTodo(id, signal));
+    }
+}
 
-    void todoResource.load(controller.signal);
+const todoResource = new TodoResource();
 
-    return () => controller.abort();
-}, []);
+protected useEffects(): void {
+    this.useEffect('load', () => {
+        void todoResource.load({id: this.props.id});
+        return () => todoResource.abort();
+    }, [this.props.id]);
+}
 ```
+
+The resource owns each request's controller and supplies its signal to the loader. `abort()` cancels
+the active request for the resource as a whole (not just this effect's request); stale settlements
+are ignored, cancellation of the active request returns the resource to Idle, and abort is a no-op
+when no request is active. Do not have competing owners independently cancel a shared resource.
 
 **Rule** `no-async-effect` — **error**.
 
@@ -786,11 +797,10 @@ interface IData {
 }
 ```
 
-**Why it is silent.** Tracking stops at `Map`, `Set`, `Date` and class instances. Reads are
-coarse (the whole value is one leaf), in-place mutation through `draft` invalidates the whole
-value, and the same mutation through `this.data` invalidates the whole store. Everything keeps
-working, at a granularity that quietly defeats the library's purpose. `snapshot()` also shares
-these values by reference instead of copying them, so undo/redo over them does not restore.
+**Why it is silent.** Tracking treats native `Map`, `Set`, `Date` and class-instance leaves
+coarsely; in-place draft mutation invalidates at the whole leaf, and direct `this.data` mutation
+has no precise tracked path. `CarburetorHistory` owns its `Map`, `Set` and `Date` endpoints and
+supports undo/redo for them. Ordinary `snapshot()` copies plain objects and arrays but keeps `Map`, `Set` and `Date` leaves by reference; it is not the owned history capture. It does not generically clone arbitrary mutable class instances.
 
 **Right.** Keep plain objects and arrays in the store; convert at the edges.
 
@@ -800,8 +810,8 @@ these values by reference instead of copying them, so undo/redo over them does n
 of a `Carburetor` subclass: a `Map`/`Set`/`Date`/`WeakMap`/`WeakSet` type reference or `new`
 expression. Purely syntactic, so it sees the declared shape only.
 
-**False positives.** A `Date` in a store is common and sometimes deliberate. `warn`, with the
-`allowedTypes` option.
+**False positives.** A `Date` in a store is common and sometimes deliberate. `warn`; the rule
+has no per-type allow-list.
 
 ### H20 — a subscription nobody disposes of
 
@@ -818,14 +828,19 @@ firing after the thing it served is gone.
 **Right**
 
 ```ts
-const dispose = todoCarburetor.watch(
-    (data) => data,
-    (next) => log(next)
-);
+const stop = todoCarburetor.watch(selectTodos, onTodosChanged);
+
+// In the owning object's cleanup:
+stop();
 ```
 
-`watch` returns a disposer, which makes the cleanup impossible to forget. Components do not
-need either: `useCarburetor` subscribes and `componentWillUnmount` releases.
+For a component-owned history recorder, disconnect it during cleanup:
+
+```ts
+this.history.disconnect();
+```
+
+It releases the history subscriptions. Components' own `useCarburetor` subscriptions are released by the component lifecycle.
 
 **Rule** `require-subscription-disposal` — **warn**.
 
@@ -836,13 +851,12 @@ and computed values. That discriminator is what keeps the rule off the library's
 needing an exemption list.
 
 **False positives.** A deliberately process-long subscription — logging, persistence — is a
-legitimate case, which is why this is a `warn` and why the message names `watch` rather than
-demanding it.
+legitimate case, which is why this is a `warn`.
 
 ## Cached resources
 
-`ResourceCache` adds a layer with hazards of its own. They are catalogued here in the same form, and
-the rule names are reserved; only H23 is implemented so far, by extending H8.
+`ResourceCache` adds a layer with hazards of its own. H23 and H26 are implemented by the shared
+rules H8 and H11 respectively.
 
 ### H23 — writing through a cache entry
 
@@ -934,8 +948,8 @@ render — the hazard H11 describes, reached through the cache instead of a stor
 
 **Right.** `this.useResource(userCache, id)`, which reads in render and fetches after the commit.
 
-**Rule** `no-store-write-in-render` — **error**, H11's rule, once `load`, `refresh`, `invalidate` and
-`forget` are added to the methods it recognises as writes. Not done yet.
+**Rule** `no-store-write-in-render` — **error**, implemented as H11's rule. It recognises
+resource writes such as `load`, `refresh`, `invalidate` and `forget`.
 
 ### H27 — a lifetime longer than the data's truth
 
@@ -989,7 +1003,7 @@ because the output is correct every time.
 
 ```tsx
 @bind
-private renderTodoItem(id: string): JSX.Element {
+private renderTodoItem(id: string): React.ReactElement {
     return <TodoItem key={id} carburetor={this.props.carburetor} id={id}/>;
 }
 
@@ -1114,5 +1128,4 @@ report them.
 - **`useEffect` behind a condition.** Effects are keyed by name, not by call order.
 - **`getData()` in an event handler, an effect, or outside a component.** That is what it is
   for; only render is the wrong place (H1).
-- **A carburetor method that writes without `draft`** when it replaces the whole state through
-  `setData(...)`: the wildcard invalidation is explicit and intended there.
+- **A carburetor method that writes without `draft`** when it calls `setData(...)`: replacement diffing records changed leaves/keys when it can, and may record a replacement path for incompatible or large changes; it is not unconditionally a wildcard invalidation.

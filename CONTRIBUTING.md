@@ -106,11 +106,11 @@ One implementation serves both hosts, because oxlint's JS plugin API is ESLint's
 loads both plugins through `jsPlugins` in `.oxlintrc.json`, and a consumer on ESLint v9 imports the
 shipped one into a flat config.
 
-Adding a rule: one file per rule next to the others, registered in `plugin/src/index.mts`, and
-tested twice — with oxlint's `RuleTester` (from `oxlint/plugins-dev`, so no extra dependency) for
-the rule's logic, and through the real binary over a fixture in `plugin/__fixtures__` for the
-host path. The second test exists because `RuleTester` drives `create` directly and cannot show
-that oxlint loads the plugin at all.
+Adding an internal style rule: one file per rule next to the others, registered in
+`plugin/internal/index.mts`, and tested with oxlint's `RuleTester` (from `oxlint/plugins-dev`).
+`RuleTester` applies to these private source-style rules only. Shipped native rules are covered by
+native unit/conformance/CLI tests and bridge saved-file host tests; bridge source text comes from
+saved files scanned by the native binary, not from the `RuleTester` buffer.
 
 Three host constraints are easy to trip over, all established by probing rather than by reading:
 
@@ -154,9 +154,10 @@ stable ABI and oxc's AST types move between releases.
 So the native path is a **binary of our own**, in `native/`, called by the plugin once per lint run
 rather than compiled into the linter. An earlier 22-rule benchmark recorded 20 ms natively against
 270 ms for the JavaScript rule layer — see `native/README.md` for current measurements and why "once
-per run" is achievable in ESLint's multithreaded mode. All 24 rules under `plugin/src/Rules/` are
-now this bridge: each one is `nativeRule(id, description)`
-(`plugin/src/Utils/Native/nativeRule.mts`), a few lines that read the one shared result and report
+per run" is achievable in ESLint's multithreaded mode. `plugin/src/Rules/` now contains 25 bridge
+rules, registered against the native registry.
+Each bridge is `nativeRule(id, description)` in
+`plugin/src/Utils/Native/nativeRule.mts`, a few lines that read the one shared result and report
 whatever belongs to that rule's own id. Detection lives only in `native/src/rules/` — one
 implementation, not two — and suppression comments, editor diagnostics and per-rule severity keep
 working because the host still owns every `context.report()` call; the bridge never decides
@@ -198,9 +199,19 @@ A rule that reports code the repository writes on purpose — a regression test 
 does the wrong thing — is silenced with a line comment explaining why, never by weakening the
 rule.
 
+The library's published plugin is the shipped surface: the native binary recognises fixed class
+bases (`AntiHookComponent`, `ScopedAntiHookComponent`, `Carburetor`, and `ResourceCarburetor`) and
+the fixed method name `render`. Custom component classes should directly extend one of the two
+component bases; custom intermediate classes are not generally recognised. Recognition names
+cannot be configured; only rule severity can be set to `error`, `warn` or `off`.
+
 ## Getting started
 
+**Binary required.** Build the native linter before linting, or configure `CARBURETOR_LINT_BIN` to
+point to an existing binary. The verification block below builds it first.
+
 ```bash
+cargo build --release --manifest-path native/Cargo.toml
 npm ci
 npm run build        # Rslib: bundleless library, bundled lint plugin, declarations via tsgo
 npm run typecheck    # TypeScript 7, library and plugin

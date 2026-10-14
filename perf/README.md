@@ -307,7 +307,7 @@ npm run check:layout
 npm test -- __tests__/Engine/Derived
 npm run test:consumers
 npm run bench -- --only computed41 --runs 3 --verbose
-npm run bench -- --only computed41 --runs 3 --verbose --dist D:/dev/ReactCarburetor/worktrees/bench-dist/fad07d684f4b/esm-prod
+npm run bench -- --only computed41 --runs 3 --verbose --dist <repo>/worktrees/bench-dist/fad07d684f4b/esm-prod
 npm run bench -- --runs 3
 ```
 
