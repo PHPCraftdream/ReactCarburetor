@@ -654,8 +654,9 @@ class UserBadge extends AntiHookComponent<{id: string}> {
 
 class SuspendingUser extends AntiHookComponent<{id: string}> {
     public render() {
-        this.useResource(users, this.props.id);
-        return <span>{users.suspend(this.props.id).name}</span>;
+        const {data} = this.useResource(users, this.props.id);
+        users.suspend(this.props.id);
+        return <span>{data?.name}</span>;
     }
 }
 
@@ -697,6 +698,8 @@ export const UserPage = () => (
     </UserBoundary>
 );
 ```
+
+`suspend()` itself does not subscribe to later updates: reading `data` off the `useResource` result is what keeps `SuspendingUser` re-rendering when a background `refresh()` lands a new answer for the entry.
 
 To use explicit status handling instead, export `UserBadge` or render it in its own tree.
 

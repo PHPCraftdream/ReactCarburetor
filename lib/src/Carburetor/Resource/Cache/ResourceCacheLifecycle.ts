@@ -46,7 +46,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         this[R.touch](key);
         if (entry && entry.status === EResourceStatus.Success) {
             if (this[R.isStale](entry) && !entry.failed && !this[R.hasRequest](key)) {
-                void this[R.fetch](key, args, true);
+                void this[R.fetch](key, args, true).catch(() => undefined);
             }
             return entry.data as T;
         }

@@ -805,6 +805,9 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- A stale-while-revalidate fetch started by `ResourceCache.suspend()` no longer leaves an unhandled
+  rejection when the loader's rejection throws while being described; the cache keeps its published
+  failure and an explicit `load()` still rejects.
 - The `no-async-transaction` rule no longer reports an `update` call on an unrelated receiver; only
   `transaction()` and `this.update()` are batching calls.
 - `carburetor-lint --fix` keeps the original file's permissions (for example the executable bit of a

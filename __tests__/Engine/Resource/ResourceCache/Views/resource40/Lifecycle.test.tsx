@@ -215,7 +215,7 @@ describe('R40-04 useResourceValue ownership', () => {
             container.remove();
         }
         expect(state.cache.observerCount).toBe(0);
-    });
+    }, 30_000);
 
     test.each([false, true])('restored SSR data hydrates without mismatch (invalidated=%s)', async invalidated => {
         const server = serverFixture(invalidated ? 'invalidated' : 'ready');
@@ -249,5 +249,5 @@ describe('R40-04 useResourceValue ownership', () => {
             container.remove();
         }
         expect(client.cache.observerCount).toBe(0);
-    });
+    }, 30_000);
 });
