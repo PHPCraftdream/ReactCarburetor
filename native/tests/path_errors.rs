@@ -128,7 +128,7 @@ fn unreadable_file_is_reported_without_changing_permissions() {
     std::fs::write(&path, OFFENDER).unwrap();
     let original = std::fs::metadata(&path).unwrap().permissions().mode();
     let mut permissions = std::fs::metadata(&path).unwrap().permissions();
-    permissions.set_mode(0);
+    permissions.set_mode(0o000);
     std::fs::set_permissions(&path, permissions).unwrap();
     let restore = RestorePermissions { path: path.clone(), mode: original };
     if std::fs::read(&path).is_ok() {
@@ -166,7 +166,7 @@ fn unreadable_nested_directory_is_reported() {
     std::fs::create_dir(&nested).unwrap();
     std::fs::write(nested.join("clean.tsx"), CLEAN).unwrap();
     let original = std::fs::metadata(&nested).unwrap().permissions().mode();
-    std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0)).unwrap();
+    std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o000)).unwrap();
     let restore = RestorePermissions { path: nested.clone(), mode: original };
     if std::fs::read_dir(&nested).is_ok() {
         eprintln!("skipping permission assertions: process can traverse mode-000 directories");

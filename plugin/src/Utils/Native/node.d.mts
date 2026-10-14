@@ -79,3 +79,9 @@ declare module "node:module" {
 declare module "node:url" {
     export function fileURLToPath(url: string): string;
 }
+
+declare module "node:crypto" {
+    export function createHash(algorithm: string): {
+        update(data: string): {digest(encoding: string): string};
+    };
+}
