@@ -21,9 +21,10 @@ optimize after the fact: the unnecessary re-renders are never created in the fir
 
 <!-- example:compile -->
 ```tsx
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
 
 class CounterCarburetor extends Carburetor<{value: number}> {
+    @bind
     inc(): void {
         this.update((draft) => {
             draft.value += 1;
@@ -32,13 +33,12 @@ class CounterCarburetor extends Carburetor<{value: number}> {
 }
 
 const counterCarburetor = new CounterCarburetor({value: 0});
-const increment = () => counterCarburetor.inc();
 
 export class Counter extends AntiHookComponent {
     render() {
         const {value} = this.useCarburetor(counterCarburetor);
 
-        return <button onClick={increment}>{value}</button>;
+        return <button onClick={counterCarburetor.inc}>{value}</button>;
     }
 }
 ```
