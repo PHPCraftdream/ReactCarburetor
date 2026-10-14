@@ -109,7 +109,9 @@ rule list a directive silences every carburetor rule. A directive must be the wh
 that merely mentions one silences nothing.
 
 **Exit codes.** `0` clean, `1` problems found, `2` the linter itself failed — an unreadable or
-malformed config, an invalid command line. CI has to tell a broken tool from a failing check.
+malformed config, an invalid command line, missing or unreadable paths, file-read or traversal
+errors. The npm launcher also exits `2` when it cannot start the native binary or it terminates by
+signal. CI has to tell a broken tool from a failing check.
 A warning alone does not fail the run, the line oxlint draws too; `--deny-warnings` opts in.
 
 **The walk** honours `.gitignore` and the config's `ignore` patterns, and never enters

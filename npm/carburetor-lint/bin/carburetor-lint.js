@@ -97,8 +97,13 @@ const result = spawnSync(binary, process.argv.slice(2), {stdio: 'inherit'});
 if (result.error) {
     process.stderr.write(`carburetor-lint: could not run ${binary}: ${result.error.message}\n`);
 
-    process.exit(1);
+    process.exit(2);
 }
 
-// `status` is null only when a signal killed the child; there is no code to pass through then.
-process.exit(result.status === null ? 1 : result.status);
+// `status` is null when a signal killed the child; report the reason instead of passing a fake code.
+if (result.status === null) {
+    process.stderr.write(`carburetor-lint: native process terminated by ${result.signal || 'unknown reason'}\n`);
+    process.exit(2);
+}
+
+process.exit(result.status);

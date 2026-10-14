@@ -206,15 +206,32 @@ fn collect_files(paths: &[PathBuf], ignores: &[String]) -> Result<Vec<PathBuf>, 
     let mut files: Vec<PathBuf> = Vec::new();
 
     for root in paths {
+        let _metadata = fs::metadata(root)
+            .map_err(|error| format!("could not access {}: {error}", root.display()))?;
+
         let walk = WalkBuilder::new(root)
             .hidden(false)
             .overrides(exclusions(root, ignores)?)
             .build();
 
-        for entry in walk.flatten() {
+        for result in walk {
+            let entry = result.map_err(|error| {
+                format!("could not traverse {}: {error}", root.display())
+            })?;
+            if let Some(error) = entry.error() {
+                return Err(format!("could not traverse {}: {error}", root.display()));
+            }
             let path = entry.path();
-
-            if !path.is_file() {
+            let is_file = match entry.file_type() {
+                Some(file_type) if file_type.is_symlink() => fs::metadata(path)
+                    .map_err(|error| format!("could not access {}: {error}", path.display()))?
+                    .is_file(),
+                Some(file_type) => file_type.is_file(),
+                None => fs::metadata(path)
+                    .map_err(|error| format!("could not access {}: {error}", path.display()))?
+                    .is_file(),
+            };
+            if !is_file {
                 continue;
             }
 
@@ -256,14 +273,12 @@ fn analyze(path: &Path, text: &str, config: &Config) -> Option<Vec<Diagnostic>> 
     )
 }
 
-/// Reads and analyzes one file from disk. An unreadable file is silently skipped, the same as a
-/// file the walker should never have handed us.
-fn check_file(path: &Path, config: &Config) -> Vec<Diagnostic> {
-    let Ok(text) = fs::read_to_string(path) else {
-        return Vec::new();
-    };
+/// Reads and analyzes one file from disk; read failures retain the path for the run-level error.
+fn check_file(path: &Path, config: &Config) -> Result<Vec<Diagnostic>, String> {
+    let text = fs::read_to_string(path)
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
 
-    analyze(path, &text, config).unwrap_or_default()
+    Ok(analyze(path, &text, config).unwrap_or_default())
 }
 
 /// One file's outcome after `--fix`'s pass loop: the diagnostics that remain, and — when the text
@@ -310,24 +325,25 @@ fn stabilize(
     (text, diagnostics)
 }
 
-/// Runs the fix loop for one file. Reading failures are silent, matching [`check_file`].
-fn fix_one_file(path: &Path, config: &Config) -> FixOutcome {
-    let Ok(original) = fs::read_to_string(path) else {
-        return FixOutcome { diagnostics: Vec::new(), change: None };
-    };
+/// Runs the fix loop for one file; read failures retain the path for the run-level error.
+fn fix_one_file(path: &Path, config: &Config) -> Result<FixOutcome, String> {
+    let original = fs::read_to_string(path)
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
 
     let (final_text, diagnostics) = stabilize(original.clone(), |text| analyze(path, text, config));
     let change = (final_text != original).then_some((original, final_text));
 
-    FixOutcome { diagnostics, change }
+    Ok(FixOutcome { diagnostics, change })
 }
 
 /// Runs `--fix`/`--fix-dry-run` over every file: [`Write`](FixMode::Write) publishes each changed
 /// file atomically, [`DryRun`](FixMode::DryRun) prints a diff and touches nothing.
 fn run_fix(files: &[PathBuf], config: &Config, mode: FixMode) -> Result<Vec<Diagnostic>, String> {
     // One task per file, the same reasoning as the plain check: parsing dominates the work.
-    let outcomes: Vec<(&PathBuf, FixOutcome)> =
-        files.par_iter().map(|path| (path, fix_one_file(path, config))).collect();
+    let outcomes: Vec<(&PathBuf, FixOutcome)> = files
+        .par_iter()
+        .map(|path| fix_one_file(path, config).map(|outcome| (path, outcome)))
+        .collect::<Result<Vec<_>, _>>()?;
 
     let mut diagnostics = Vec::new();
 
@@ -388,7 +404,13 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
 
     let mut diagnostics: Vec<Diagnostic> = match options.fix_mode {
         // One task per file: parsing dominates the work and is embarrassingly parallel.
-        FixMode::Report => files.par_iter().flat_map(|path| check_file(path, &config)).collect(),
+        FixMode::Report => files
+            .par_iter()
+            .map(|path| check_file(path, &config))
+            .collect::<Result<Vec<_>, _>>()?
+            .into_iter()
+            .flatten()
+            .collect(),
         FixMode::Write | FixMode::DryRun => run_fix(&files, &config, options.fix_mode)?,
     };
 

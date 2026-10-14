@@ -35,6 +35,10 @@ Configuration accepts severity only: `error`, `warn` or `off`. Legacy `[severity
 payloads may remain stored in host configuration, but native rules do not consume options. See
 the repository's `native/README.md` for the full command and configuration reference.
 
+**Exit codes.** `0` clean, `1` lint problems, `2` missing paths or launcher/linter failure. The
+launcher exits `2` if the native binary cannot start or terminates by signal; otherwise it
+forwards the native exit code.
+
 ## License
 
 Choose either MIT or Apache-2.0. The package includes [LICENSE](LICENSE),

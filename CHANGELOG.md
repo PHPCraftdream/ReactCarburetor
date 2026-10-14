@@ -232,6 +232,8 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- `npm run check:examples` typechecks documentation blocks marked with `<!-- example:compile -->`,
+  reports errors against the document's own lines, and gates documentation changes in CI.
 - `useResourceValue(source, args, select, isEqual?)` in `react-carburetor/interop` (R40-04, selector form since R41): the hooks
   counterpart of the class `useResource`, with a subscription to only the fields the selector reads, a stale entry
   loaded after commit (never during render), and re-arming after an invalidated refresh. Both readers share one
@@ -803,6 +805,13 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- The native CLI no longer reports success for a missing path or an unreadable source file: access,
+  traversal and read errors go to stderr and exit with code 2 in report, `--fix` and `--fix-dry-run`
+  modes. The npm launcher also exits with code 2 on a spawn failure or signal termination and passes
+  the binary's own exit code through unchanged.
+- The lint bridge hashes the full working directory for its lock names, so two projects sharing a long
+  path prefix no longer share a lock, and a failed re-scan can no longer make the previous answer look
+  fresh.
 - `CarburetorHistory` no longer corrupts a node holding a literal `__proto__` key added in the same
   update as its parent: folding assigned the key through the inherited setter, so undo/redo restored a
   different prototype instead of an own key.
