@@ -51,9 +51,17 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         }
     }
 
+    // Version tracking defeats a deferred scheduler: a write queued at dispose time gets
+    // cancelled by unsubscribe, so any version drift is written out explicitly below.
+    let lastSeenVersion = carburetor.getVersion();
+
     // A failing write must reach onError like a failed restore does, and must not cut off the
     // subscribers notified after this one; the last good entry stays in place.
     const write = (): void => {
+        // Mark this version as attempted even on failure: dispose must not retry a failed
+        // write, which would report the same error twice.
+        lastSeenVersion = carburetor.getVersion();
+
         try {
             // The store's wire form: JSON.stringify invokes its toJSON(), without cloning it.
             storage.setItem(key, JSON.stringify(carburetor));
@@ -70,7 +78,14 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     if (coalesce === false) {
         const id = carburetor.subscribe(write);
 
-        return () => carburetor.unsubscribe(id);
+        return () => {
+            carburetor.unsubscribe(id);
+
+            // The write was this subscriber and just got cancelled; persist any drift.
+            if (carburetor.getVersion() !== lastSeenVersion) {
+                write();
+            }
+        };
     }
 
     // One write per microtask: further changes before it runs just move the value it will
@@ -98,5 +113,10 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     return () => {
         carburetor.unsubscribe(id);
         flush();
+
+        // A flush the scheduler had not delivered yet was cancelled by unsubscribe; persist any drift.
+        if (carburetor.getVersion() !== lastSeenVersion) {
+            write();
+        }
     };
 };

@@ -1,5 +1,6 @@
 import {
     Carburetor,
+    ComponentUpdateThrottle,
     IStorageLike,
     persist,
 } from "@/Carburetor";
@@ -133,6 +134,28 @@ describe('persist', () => {
             expect(JSON.parse(storage.getItem('counter') as string).value).toEqual(3);
 
             dispose();
+        });
+
+        test('flushes the last state at dispose even when a throttled scheduler swallowed the callback', () => {
+            const storage = new MemoryStorage();
+            const carburetor = new CounterCarburetor(getData(), new ComponentUpdateThrottle(40));
+            const dispose = persist(carburetor, {key: 'counter', storage});
+
+            carburetor.setValue(5);
+            dispose();
+
+            expect(JSON.parse(storage.getItem('counter') as string).value).toEqual(5);
+        });
+
+        test('with coalesce: false, a throttled store still lands the write by dispose', () => {
+            const storage = new MemoryStorage();
+            const carburetor = new CounterCarburetor(getData(), new ComponentUpdateThrottle(40));
+            const dispose = persist(carburetor, {key: 'counter', storage, coalesce: false});
+
+            carburetor.setValue(6);
+            dispose();
+
+            expect(JSON.parse(storage.getItem('counter') as string).value).toEqual(6);
         });
     });
 });

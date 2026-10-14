@@ -810,6 +810,11 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- `persist`: the disposer writes the latest state even when a deferred update scheduler such as
+  `ComponentUpdateThrottle` had not yet delivered the subscriber callback, which `unsubscribe` cancels;
+  version drift is written at dispose in both coalescing modes.
+- `no-async-transaction` no longer reports an `await` that computes a call argument
+  (`transaction(await load())`); only the function passed as the first argument is the batch body.
 - The lint bridge no longer fails with "no native binary" in isolated installs (pnpm): the binary is
   also resolved through the project's own `carburetor-lint` dependency, not only from
   `react-carburetor`'s position in `node_modules`.

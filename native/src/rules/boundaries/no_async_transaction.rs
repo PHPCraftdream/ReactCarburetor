@@ -70,15 +70,26 @@ struct Enclosing {
     name: &'static str,
 }
 
+impl Clone for Enclosing {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl Copy for Enclosing {}
+
 struct Check<'a, 's> {
     source: &'s Source<'s>,
     semantic: &'s Semantic<'a>,
     diagnostics: Vec<Diagnostic>,
     reported: HashSet<Span>,
     /// The batching call whose body the walk is currently inside, if any — only an `await` in the
-    /// body itself closes the batch; one in a nested function belongs to that function's own
+    /// body itself closes the batch; awaits computing the call's own arguments are not part of
+    /// the batch, and one in a nested function belongs to that function's own
     /// timeline, which is why entering any function clears this.
     enclosing: Option<Enclosing>,
+    /// Marks the very next function entered as the batching call's body.
+    pending_body: Option<Enclosing>,
     /// Symbols `transaction` was imported under; a bare call counts only for these.
     transactions: HashSet<SymbolId>,
 }
@@ -135,16 +146,29 @@ impl<'a, 's> Visit<'a> for Check<'a, 's> {
             self.report_once(call.span, name);
         }
 
-        let outer = self.enclosing.replace(Enclosing { span: call.span, name });
+        self.visit_expression(&call.callee);
 
-        walk::walk_call_expression(self, call);
+        for (index, argument) in call.arguments.iter().enumerate() {
+            if index == 0
+                && matches!(
+                    argument,
+                    Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
+                )
+            {
+                self.pending_body = Some(Enclosing { span: call.span, name });
+            }
 
-        self.enclosing = outer;
+            self.visit_argument(argument);
+
+            self.pending_body = None;
+        }
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        let body = self.pending_body.take();
         // A nested function's awaits belong to its own timeline, not the batching call's.
         let outer = self.enclosing.take();
+        self.enclosing = body;
 
         walk::walk_arrow_function_expression(self, arrow);
 
@@ -152,7 +176,9 @@ impl<'a, 's> Visit<'a> for Check<'a, 's> {
     }
 
     fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
+        let body = self.pending_body.take();
         let outer = self.enclosing.take();
+        self.enclosing = body;
 
         walk::walk_function(self, function, flags);
 
@@ -179,6 +205,7 @@ pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
         diagnostics: Vec::new(),
         reported: HashSet::new(),
         enclosing: None,
+        pending_body: None,
         transactions: imported_transaction_symbols(program),
     };
 
@@ -298,5 +325,41 @@ mod tests {
         let source = "import * as C from 'react-carburetor';\n\nC.transaction(async () => {\n    await load();\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_await_computing_the_transaction_argument_is_not_reported() {
+        let source = "import {transaction} from 'react-carburetor';\n\nasync function run() {\n    transaction(await Promise.resolve(() => 42));\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_await_loading_the_callback_argument_is_not_reported() {
+        let source = "import {transaction} from 'react-carburetor';\n\nasync function run() {\n    transaction(await makeCallback());\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_await_computing_the_update_argument_is_not_reported() {
+        let source = "async function run() {\n    this.update(await getUpdater());\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_await_in_a_later_argument_evaluation_is_not_reported() {
+        let source = "import {transaction} from 'react-carburetor';\n\nasync function run() {\n    transaction(cb, await x);\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_await_directly_in_the_transaction_body_is_reported() {
+        // A non-async body cannot legally contain an await, so the smallest parseable positive is an async body.
+        let source = "import {transaction} from 'react-carburetor';\n\ntransaction(async function handle() {\n    await load();\n});\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [3]);
     }
 }
