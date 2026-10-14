@@ -37,7 +37,7 @@ export const nativeRule = (id: string, description: string): IRule => ({
     create(context: IRuleContext): TRuleVisitor {
         return {
             'Program:exit'(): void {
-                const diagnostics = runNativeOnce(process.cwd());
+                const diagnostics = runNativeOnce(process.cwd(), undefined, context.filename);
                 const file = path.relative(process.cwd(), context.filename).replace(/\\/g, '/');
                 const text = context.sourceCode.getText();
 

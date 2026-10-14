@@ -794,6 +794,12 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- `CarburetorHistory` no longer corrupts a node holding a literal `__proto__` key added in the same
+  update as its parent: folding assigned the key through the inherited setter, so undo/redo restored a
+  different prototype instead of an own key.
+- The lint bridge (`react-carburetor/lint`) no longer keeps the first answer for the life of a long-lived
+  host: a file saved after the cached native run began triggers one fresh scan. Unsaved editor buffers
+  are still not analyzed; native reads saved files.
 - Truncating an array through `draft` (`draft.rows.length = n`) now invalidates the native-alias ownership
   index; previously it did not (found while fixing R39-03).
 - A `computed` whose result holds store data (`read(store).items`) no longer keeps handing out a view of

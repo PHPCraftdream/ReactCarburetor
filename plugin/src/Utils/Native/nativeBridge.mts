@@ -51,6 +51,10 @@ const MAX_CLAIM_ATTEMPTS = 5;
 
 let cached: INativeDiagnostic[] | undefined;
 
+/** The project and start time of the run `cached` came from; a file saved after it is not covered. */
+let cachedCwd: string | undefined;
+let cachedStartMs = 0;
+
 /** This run's own lock/result files, deleted together once nothing can read them anymore. */
 const pendingCleanup = new Set<string>();
 let cleanupRegistered = false;
@@ -223,14 +227,44 @@ const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinar
     return JSON.parse(result.stdout || '[]') as INativeDiagnostic[];
 };
 
+/** True if `filename` was saved at or after `startMs`, so a run begun then cannot describe it. */
+const changedSince = (filename: string | undefined, startMs: number): boolean => {
+    if (!filename) {
+        return false;
+    }
+
+    try {
+        return statSync(filename).mtimeMs >= startMs;
+    } catch {
+        return false;
+    }
+};
+
 /** Runs the native binary once for this process, sharing the result across worker threads.
  * The resolver is injectable so a test can stage an install with no binary.
  *
+ * Native reads saved files from disk, so a long-lived host (an editor, a watch run) would keep
+ * the first answer forever. A file saved after the cached run began is therefore re-linted: the
+ * project is scanned again in this thread alone, with no cross-thread sharing, which is rare
+ * and keeps the lock protocol untouched. Unsaved buffers are never analyzed.
+ *
  * @param cwd - the project the binary lints; its digest also names this run's lock file
  * @param resolve - consulted only by the worker that wins the lock; waiters never resolve
+ * @param filename - the file being linted; a save after the cached run forces a fresh scan
  */
-export const runNativeOnce = (cwd: string, resolve: () => string | undefined = resolveBinary): INativeDiagnostic[] => {
-    if (cached) {
+export const runNativeOnce = (
+    cwd: string,
+    resolve: () => string | undefined = resolveBinary,
+    filename?: string,
+): INativeDiagnostic[] => {
+    if (cached && cachedCwd === cwd) {
+        if (!changedSince(filename, cachedStartMs)) {
+            return cached;
+        }
+
+        cachedStartMs = Date.now();
+        cached = runBinary(cwd, resolve);
+
         return cached;
     }
 
@@ -247,6 +281,8 @@ export const runNativeOnce = (cwd: string, resolve: () => string | undefined = r
         sweepStaleFiles(digest);
 
         try {
+            cachedStartMs = Date.now();
+            cachedCwd = cwd;
             cached = runBinary(cwd, resolve);
             writeAtomic(result, JSON.stringify(cached));
 
@@ -283,6 +319,8 @@ export const runNativeOnce = (cwd: string, resolve: () => string | undefined = r
     }
 
     cached = payload;
+    cachedCwd = cwd;
+    cachedStartMs = statSync(lock).mtimeMs;
 
     return cached;
 };
