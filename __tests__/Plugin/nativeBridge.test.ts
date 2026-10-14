@@ -1,4 +1,5 @@
 import {spawn, spawnSync} from "node:child_process";
+import {createHash} from "node:crypto";
 import {
     existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, watch, writeFileSync,
 } from "node:fs";
@@ -41,7 +42,7 @@ const processStartMs = (): number => Date.now() - Math.round(process.uptime() * 
 
 /** The lock path `runNativeOnce` would use for `cwd`, computed exactly as `runPaths` does. */
 const lockPathFor = (cwd: string): string => {
-    const digest = Buffer.from(cwd).toString('base64url').slice(0, 24);
+    const digest = createHash('sha256').update(cwd).digest('hex').slice(0, 32);
 
     return path.join(BRIDGE_DIR, `${process.pid}-${digest}.lock`);
 };

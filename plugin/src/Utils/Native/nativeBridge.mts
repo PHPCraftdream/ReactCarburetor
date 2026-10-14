@@ -1,3 +1,4 @@
+import {createHash} from "node:crypto";
 import {spawnSync} from "node:child_process";
 import {
     closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync,
@@ -66,7 +67,7 @@ const sleepSync = (milliseconds: number): void => {
 
 /** This run's lock path and cwd digest; the digest also scopes the leftover-file sweep. */
 const runPaths = (cwd: string): {lock: string; digest: string} => {
-    const digest = Buffer.from(cwd).toString('base64url').slice(0, 24);
+    const digest = createHash('sha256').update(cwd).digest('hex').slice(0, 32);
 
     return {lock: path.join(BRIDGE_DIR, `${process.pid}-${digest}.lock`), digest};
 };
@@ -262,10 +263,14 @@ export const runNativeOnce = (
             return cached;
         }
 
-        cachedStartMs = Date.now();
-        cached = runBinary(cwd, resolve);
+        // Adopt the new start only once the scan succeeded, so a failed one cannot make stale results fresh.
+        const startMs = Date.now();
+        const fresh = runBinary(cwd, resolve);
 
-        return cached;
+        cachedStartMs = startMs;
+        cached = fresh;
+
+        return fresh;
     }
 
     const {lock, digest} = runPaths(cwd);
