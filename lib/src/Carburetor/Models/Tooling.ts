@@ -30,7 +30,9 @@ export interface IPersistOptions {
     /**
      * On by default: batches same-microtask writes into one stringify instead of one per write.
      * Stringifying on every write costs 6.1–218 ms for 50 one-field updates at 10k rows (R33-07).
-     * False: synchronous, one write lands in storage before the call that caused it returns.
+     * False: one write per notification, with no extra microtask. With the default immediate
+     * delivery it lands before the call that caused it returns; a deferring scheduler
+     * (ComponentUpdateThrottle) or a transaction delays the notification, and the write with it.
      * The disposer always flushes a write still pending (coalesce true or false).
      */
     coalesce?: boolean;

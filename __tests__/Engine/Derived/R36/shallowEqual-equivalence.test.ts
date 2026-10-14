@@ -10,7 +10,8 @@ const reference = (left: unknown, right: unknown): boolean => {
     const a = left as Record<string, unknown>;
     const b = right as Record<string, unknown>;
     const keys = Object.keys(a);
-    return keys.length === Object.keys(b).length && keys.every(key => key in b && Object.is(a[key], b[key]));
+    const own = (key: string): boolean => Object.prototype.hasOwnProperty.call(b, key);
+    return keys.length === Object.keys(b).length && keys.every(key => own(key) && Object.is(a[key], b[key]));
 };
 
 describe('shallowEqual allocation-free equivalence', () => {
@@ -38,5 +39,17 @@ describe('shallowEqual allocation-free equivalence', () => {
             const b = make();
             expect(shallowEqual(a, b)).toBe(reference(a, b));
         }
+    });
+});
+
+describe('shallowEqual treats inherited keys as absent', () => {
+    test('an own key on the left is not satisfied by an inherited one on the right, in either order', () => {
+        const left = {toString: Object.prototype.toString};
+        const right = {x: 1};
+
+        expect(shallowEqual(left, right)).toBe(false);
+        expect(shallowEqual(right, left)).toBe(false);
+        expect(shallowEqual({a: 1}, Object.assign(Object.create({a: 1}), {b: 1}))).toBe(false);
+        expect(shallowEqual(Object.assign(Object.create({a: 1}), {b: 1}), {a: 1})).toBe(false);
     });
 });

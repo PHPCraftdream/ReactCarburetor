@@ -265,7 +265,9 @@ Entries below record development history in change order; where contracts differ
 
 - `persist(store, {coalesce: true})`: one `JSON.stringify` per microtask instead of one per write
   (0.94–1.44 ms per keystroke at 4000 items). On by default since round 33; `coalesce: false`
-  lands a write in storage before the call that caused it returns. The disposer flushes a pending write.
+  writes on every notification, so with the default immediate delivery a write lands in storage before
+  the call that caused it returns (a deferring scheduler or a transaction delays it). The disposer
+  flushes a pending write.
 
 - `computed(body, {equals})`: a comparator that judges a recomputed result by content, so a
   body that builds a new array or object (`filter`, `map`, a literal) re-renders nobody when the
@@ -810,6 +812,11 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- `shallowEqual` no longer treats a key inherited by the right operand as satisfying an own key of the
+  left one, so `{equals: shallowEqual}` can no longer suppress the publication of a computed whose
+  key set changed; the comparison is symmetric again.
+- The `persist` documentation states that `coalesce: false` writes on every notification, which lands
+  before the writing call returns only with immediate delivery (a throttle or a transaction delays it).
 - `persist`: the disposer writes the latest state even when a deferred update scheduler such as
   `ComponentUpdateThrottle` had not yet delivered the subscriber callback, which `unsubscribe` cancels;
   version drift is written at dispose in both coalescing modes.

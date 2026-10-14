@@ -507,7 +507,7 @@ Override `useEffects`, and declare each effect with a name and its dependencies:
 ```tsx
 export class TodoApp extends AntiHookComponent<ITodoProps> {
     protected useEffects(): void {
-        this.useEffect('loadData', this.props.carburetor.loadData, []);
+        this.useEffect('loadData', () => { void this.props.carburetor.loadData(); }, []);
 
         this.useEffect(
             'channel',
@@ -831,7 +831,9 @@ and reflects the state as it is at the time of the call.
 const stopDevTools = connectDevTools({todos: todoCarburetor, filter: filterCarburetor});
 
 // Mirror a store in a storage; loads what was stored on connect. Writes are coalesced into one
-// stringify per microtask; `coalesce: false` makes each write land before the writing call returns.
+// stringify per microtask; `coalesce: false` writes on every notification instead, so with the
+// default immediate delivery each write lands before the writing call returns (a throttle or a
+// transaction delays the notification, and the write with it).
 const stopPersist = persist(settingsCarburetor, {key: 'settings', storage: localStorage});
 
 // React to a selection outside React; onChange runs only when it changes.
