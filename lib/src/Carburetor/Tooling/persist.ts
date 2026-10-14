@@ -4,12 +4,13 @@ import {IPersistOptions} from "@/Carburetor/Models/Tooling";
 
 /**
  * Keeps a carburetor mirrored in a storage: loads the stored state once on connect, then
- * writes a snapshot on every change. Returns a disposer that stops the mirroring.
+ * writes its wire form (`toJSON()`) on every change. Returns a disposer that stops the mirroring.
  *
  * Writes are coalesced by default: one stringify per microtask instead of one per write (R33-07)
- * — the latest state is still what gets stored, and the disposer flushes a write still pending.
- * `coalesce: false` makes persistence synchronous: a write lands in storage before the call that
- * caused it returns, which the engine's own tests rely on.
+ * — the latest state is still what gets stored, and the disposer writes any state a deferred
+ * scheduler had not yet delivered. `coalesce: false` writes on every notification, so with the
+ * default immediate delivery a write lands in storage before the call that caused it returns; a
+ * deferring scheduler or a transaction delays the notification, and the write with it.
  * A failed storage read is reported without discarding the unread entry; when `onError`
  * returns, the subscription still starts and later writes follow the chosen sync/coalesce
  * policy. Without `onError`, a failed read throws rather than pretending storage was empty.

@@ -12,6 +12,7 @@ come from `react-carburetor/interop`. Source links are repository-relative.
 | `reload` | `(): Promise<void>` | Repeats the last load; resolves immediately if none exists. | [same](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
 | `abort` | `(): void` | Aborts the active resource-wide request; no-op when none is active. Late results are ignored. | [same](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
 | `ResourceCache<T, TArgs = void>` | `(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions)` | Multi-entry cache keyed by loader arguments. | [`ResourceCache.ts`](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
+| `load` / `refresh` | `(args: TArgs): Promise<void>` | `load` resolves from the cache when fresh and otherwise fetches, sharing one request among identical calls; `refresh` always fetches and keeps the previous entry on failure. See [promise cache](promise-cache.md). | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
 | `resolve` | `(args: TArgs): IResourceResolution<T>` | Resolves key, subscription path and current view together. | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
 | `getFailure` | `(args: TArgs): unknown` | Raw rejection (including `undefined`), not serialized; check failure presence separately. | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
 

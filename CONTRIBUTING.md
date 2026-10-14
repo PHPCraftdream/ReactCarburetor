@@ -217,7 +217,7 @@ cargo build --release --manifest-path native/Cargo.toml
 npm ci
 npm run build        # Rslib: bundleless library, bundled lint plugin, declarations via tsgo
 npm run typecheck    # TypeScript 7, library and plugin
-npm run lint         # oxlint: native rules, type-aware rules, and this project's own 24
+npm run lint         # oxlint: native rules, type-aware rules, and this project's own 25 (one opt-in)
 npm run check:layout # the three structural rules above
 npm test             # Rstest + @testing-library/react
 npm run test:rules   # just the lint rules, when that is what you changed

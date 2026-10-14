@@ -177,8 +177,9 @@ load, subscription or proof acquisition; hydrated readers load only after client
 
 The cache is a carburetor, so `CarburetorScope.dehydrate()` already serialises it and
 `CarburetorScope.hydrate()` already restores it; the standalone cache also exposes its own
-`toJSON()`/`fromJSON()` and `snapshot()`/`restore()`. Entries are plain data, so the payload is a
-genuinely detached copy — native leaves elsewhere in a store would be shared references. The cache
+`toJSON()`/`fromJSON()` and `snapshot()`/`restore()`. Cache entries are plain data, so their serialised form is
+detached as long as the loaded values themselves are plain trees; a `Map`, `Set`, `Date` or class
+instance inside a loaded value is carried by reference, as with any snapshot. The cache
 preserves `updatedAt` exactly as serialized; the client's first read
 judges freshness using its own clock. Clock skew can affect that verdict, so hydration does not
 guarantee freshness. An old timestamp or invalidated entry remains stale, and the normal TTL check
