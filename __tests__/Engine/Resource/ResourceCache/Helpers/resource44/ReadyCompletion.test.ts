@@ -1,7 +1,8 @@
 import {EResourceStatus as S, ResourceCache} from '@/Carburetor';
 import {deferred} from '../../../Resource/helpers';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 
-const ready = (data: string) => ({status: S.Success, data, error: undefined,
+const ready = (data: string) => ({...resourceStatusFlags(S.Success), status: S.Success, data, error: undefined,
     updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false});
 
 for (const maxEntries of [8, Infinity]) for (const kind of ['primitive', 'object']) {

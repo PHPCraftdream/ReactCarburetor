@@ -30,7 +30,7 @@ export * from './Store/Utils/deepClone';
 export * from './Derived/Computed';
 export * from './Derived/computedFactory';
 
-export * from './Resource/getInitialResourceData';
+export * from './Resource/Slot/getInitialResourceData';
 export * from './Resource/ResourceCarburetor';
 export * from './Resource/Cache/ResourceCache';
 

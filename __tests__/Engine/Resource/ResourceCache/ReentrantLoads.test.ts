@@ -1,4 +1,5 @@
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {TestCache} from './Helpers/TestCache';
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
@@ -150,6 +151,7 @@ describe('ResourceCache reentrant loads', () => {
         await expect(cache.refresh('a')).rejects.toMatchObject({name: 'AbortError'});
         expect(calls).toBe(1);
         expect(cache.getEntry('a')).toMatchObject({
+            ...resourceStatusFlags(EResourceStatus.Success),
             status: EResourceStatus.Success, data: 'answer-1', refreshing: false,
         });
     });
@@ -436,9 +438,11 @@ describe('ResourceCache reentrant loads', () => {
 
         signals.a.addEventListener('abort', () => {
             cache.setData({entries: {
-                [cache.exposeKeyOf('a')]: {status: EResourceStatus.Success, data: 'restored-a',
+                [cache.exposeKeyOf('a')]: {...resourceStatusFlags(EResourceStatus.Success),
+                    status: EResourceStatus.Success, data: 'restored-a',
                     error: undefined, updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false},
-                [cache.exposeKeyOf('new')]: {status: EResourceStatus.Success, data: 'restored-new',
+                [cache.exposeKeyOf('new')]: {...resourceStatusFlags(EResourceStatus.Success),
+                    status: EResourceStatus.Success, data: 'restored-new',
                     error: undefined, updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false},
             }});
         });

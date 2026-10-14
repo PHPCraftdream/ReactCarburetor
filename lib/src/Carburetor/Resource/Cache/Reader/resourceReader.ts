@@ -19,7 +19,12 @@ export const resourceReader = {
             record(joinPath(path, 'refreshing'));
             record(joinPath(path, 'updatedAt'));
         }
-        if ((present !== false && view.status !== EResourceStatus.Success)
+        if (present !== false && view.status === EResourceStatus.Pending) {
+            // A Pending reader must wake when the request lands back on Idle (abort or
+            // supersede teardown) but not when it settles to Success with data: `isIdle`
+            // flips only on the former.
+            record(joinPath(path, 'isIdle'));
+        } else if ((present !== false && view.status !== EResourceStatus.Success)
             || (view.invalidated && view.status === EResourceStatus.Pending)) {
             record(joinPath(path, 'status'));
         }

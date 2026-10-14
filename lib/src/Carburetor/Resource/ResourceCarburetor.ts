@@ -10,9 +10,11 @@ import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {cloneOwnedGraph} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
-import {getInitialResourceData} from "./getInitialResourceData";
+import {getInitialResourceData} from "./Slot/getInitialResourceData";
 import {createAbortHandle} from "./createAbortHandle";
-import {prepareSlotRequest} from "./prepareSlotRequest";
+import {prepareSlotRequest} from "./Slot/prepareSlotRequest";
+import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
+import {resourceStatusFlags} from "@/Carburetor/Resource/Status/resourceStatusFlags";
 
 /** The message a failure is stored under: the state has to stay serializable. */
 const describeError = (error: unknown): string => {
@@ -164,6 +166,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         // A restored Pending status has no live request behind it. Normalize it before
         // installation while preserving held history endpoints and their native backlinks.
         const status = data.status === EResourceStatus.Pending ? EResourceStatus.Idle : data.status;
+        const flags = resourceStatusFlags(status);
         let nextData: IResourceData<T>;
         if (ownedReplay) {
             const statusDescriptor = data.status !== status
@@ -173,6 +176,10 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
                     if (source !== data) return descriptor;
                     if (key === 'key') return undefined;
                     if (key === 'status') descriptor.value = status;
+                    else if (key === 'isIdle') descriptor.value = flags.isIdle;
+                    else if (key === 'isPending') descriptor.value = flags.isPending;
+                    else if (key === 'isSuccess') descriptor.value = flags.isSuccess;
+                    else if (key === 'isError') descriptor.value = flags.isError;
                     return descriptor;
                 });
             } else {
@@ -183,10 +190,16 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
                     data.status = status;
                 }
                 delete data.key;
+                data.isIdle = flags.isIdle;
+                data.isPending = flags.isPending;
+                data.isSuccess = flags.isSuccess;
+                data.isError = flags.isError;
                 nextData = data;
             }
         } else {
-            nextData = deepClone({status, data: data.data, error: data.error, updatedAt: data.updatedAt});
+            nextData = deepClone({
+                status, ...flags, data: data.data, error: data.error, updatedAt: data.updatedAt,
+            });
         }
 
         const runtime = this[R.ensureRuntime]();
@@ -311,7 +324,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         this[R.cancelInFlight]();
         if (this[R.operationVersion] !== operationVersion) return;
         if (this[R.runtime]) this[R.runtime]!.answer = undefined;
-        this.draft.status = EResourceStatus.Idle;
+        applyResourceStatus(this.draft, EResourceStatus.Idle);
         this.emitUpdate();
     }
 
@@ -373,7 +386,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
                     publication: deferNotification ? 'deferred' : 'sync',
                 });
             } else {
-                this.draft.status = EResourceStatus.Pending;
+                applyResourceStatus(this.draft, EResourceStatus.Pending);
                 if (this[R.isCurrent](request)) this.draft.error = undefined;
                 if (this[R.isCurrent](request)) {
                     if (deferNotification) this.emitSoon();
@@ -398,7 +411,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
                             });
                         } else if (this.data === previousState) {
                             this.update((draft) => {
-                                draft.status = previousStatus;
+                                applyResourceStatus(draft, previousStatus);
                                 draft.error = previousError;
                             });
                         }
@@ -457,7 +470,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         runtime.request = undefined;
         runtime.answer = {key: request.key, owner: this.data};
         this.update((draft) => {
-            draft.status = EResourceStatus.Success;
+            applyResourceStatus(draft, EResourceStatus.Success);
             draft.data = data;
             draft.error = undefined;
             draft.updatedAt = Date.now();
@@ -488,7 +501,7 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         runtime.request = undefined;
         runtime.answer = {key: request.key, owner: this.data, failure: {value: error, message}};
         this.update((draft) => {
-            draft.status = EResourceStatus.Error;
+            applyResourceStatus(draft, EResourceStatus.Error);
             draft.error = message;
             draft.updatedAt = Date.now();
         });

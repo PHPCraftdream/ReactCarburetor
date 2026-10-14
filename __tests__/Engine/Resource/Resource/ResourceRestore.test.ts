@@ -1,4 +1,5 @@
 import {EResourceStatus, IResourceData, IResourceSnapshot, ResourceCarburetor} from "@/Carburetor";
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {deferred, flush, IDeferred} from "./helpers";
 
 const thrownBy = (resource: ResourceCarburetor<string, string>, key: string): unknown => {
@@ -248,7 +249,7 @@ describe('ResourceCarburetor', () => {
 
         // A settled answer from elsewhere is restored over the aborted slot.
         resource.restore({
-            status: EResourceStatus.Success,
+            ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success,
             data: 'restored',
             error: undefined,
             updatedAt: 1,
@@ -351,7 +352,8 @@ describe('single-slot public replacement', () => {
                 serialized: JSON.parse(JSON.stringify(resource)),
             });
         });
-        const replacement = {...resource.getData(), status: EResourceStatus.Error, error: 'access-denied'};
+        const replacement = {...resource.getData(), ...resourceStatusFlags(EResourceStatus.Error),
+            status: EResourceStatus.Error, error: 'access-denied'};
         resource.setData(replacement);
         resource.unsubscribe(stop);
 
@@ -444,8 +446,8 @@ describe('single-slot public replacement', () => {
             });
         });
 
-        const replacement = {...resource.getData(), status: EResourceStatus.Success,
-            data: 'manual', error: undefined};
+        const replacement = {...resource.getData(), ...resourceStatusFlags(EResourceStatus.Success),
+            status: EResourceStatus.Success, data: 'manual', error: undefined};
         resource.setData(replacement);
         resource.unsubscribe(stop);
 
@@ -472,7 +474,8 @@ describe('single-slot public replacement', () => {
         });
         const loading = resource.load('a');
 
-        resource.setData({...resource.getData(), status: EResourceStatus.Error, error: 'manual'});
+        resource.setData({...resource.getData(), ...resourceStatusFlags(EResourceStatus.Error),
+            status: EResourceStatus.Error, error: 'manual'});
 
         expect(signal?.aborted).toBe(false);
         expect(resource.snapshot().key).toBeUndefined();

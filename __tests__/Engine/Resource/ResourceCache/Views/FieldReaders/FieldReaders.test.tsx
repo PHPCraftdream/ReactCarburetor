@@ -1,4 +1,5 @@
 import * as React from 'react';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {AntiHookComponent, EResourceStatus} from '@/Carburetor';
@@ -131,13 +132,13 @@ describe('R39-07 resource field readers', () => {
     test.each(['setData', 'restore'] as const)('%s status-only Error to Idle rearms a stale reader', async method => {
         const state = fixture();
         const key = state.cache.resolve(0).key;
-        const entry = {...state.cache.getEntry(0), status: EResourceStatus.Error};
+        const entry = {...state.cache.getEntry(0), ...resourceStatusFlags(EResourceStatus.Error), status: EResourceStatus.Error};
         state.cache.setData({entries: {[key]: entry}});
         const mounted = render(<state.Badge id={0}/>);
         expect(state.calls).toEqual([]);
         expect(state.renders[0]).toBe(1);
         await act(async () => {
-            state.cache[method]({entries: {[key]: {...entry, status: EResourceStatus.Idle}}});
+            state.cache[method]({entries: {[key]: {...entry, ...resourceStatusFlags(EResourceStatus.Idle), status: EResourceStatus.Idle}}});
         });
         expect(state.calls).toEqual([0]);
         expect(state.cache.getEntry(0).status).toBe(EResourceStatus.Pending);
@@ -158,7 +159,7 @@ describe('R39-07 resource field readers', () => {
         const mounted = render(<state.Badge id={0}/>);
         expect(state.calls).toEqual([]);
         await act(async () => {
-            state.cache[method]({entries: {[key]: {...entry, status: EResourceStatus.Success}}});
+            state.cache[method]({entries: {[key]: {...entry, ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success}}});
         });
         expect(state.renders[0]).toBe(2);
         expect(state.calls).toEqual([]);

@@ -183,6 +183,12 @@ export const createResourceReader = <T, TArgs, R>(source: IResourceSource<T, TAr
             || ((previousReads.has(joinPath(path, 'status')) || previousReads.has(path)) && old.status !== view.status)
             || (old.invalidated && previousReads.has(joinPath(path, 'refreshing'))
                 && old.refreshing !== view.refreshing)
+            // An aborted or superseded request lands back on Idle with no data: a reader with flag-level
+            // precision never consumed `status`, yet the loading state it rendered is gone.
+            || (old.status !== view.status && view.status === EResourceStatus.Idle
+                && old.data === undefined && view.data === undefined
+                && !previousReads.has(joinPath(path, 'status'))
+                && !previousReads.has(path))
         );
         return {args, select, isEqual, resolution, version, value, reads, selectorReads, raw, branchPath, copies,
             patchable: patched ? previous!.patchable : !trace.shared,

@@ -1,11 +1,12 @@
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {TestCache} from '../ResourceCache/Helpers/TestCache';
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceEntry} from "@/Carburetor/Models/Resource";
 
 const ready = (value: string): IResourceEntry<string> => ({
-    status: EResourceStatus.Success, data: value, error: undefined, updatedAt: Date.now(),
-    refreshing: false, invalidated: false, failed: false,
+    ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success, data: value, error: undefined,
+    updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false,
 });
 
 const flush = async (): Promise<void> => {

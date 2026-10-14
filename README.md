@@ -564,13 +564,21 @@ await profile.load({id: 'a1'});   // EResourceStatus.Pending -> Success | Error
 ```
 
 The status is an enum, `EResourceStatus`, not a bare string, so a typo in a comparison is a
-compile error rather than a branch that never runs:
+compile error rather than a branch that never runs. Four derived boolean flags — `isIdle`,
+`isPending`, `isSuccess`, `isError` — mirror it: exactly one is true and matches `status`, and
+they live in the data itself, so they are serializable and readable through `getData()`,
+selectors and copies:
 
 ```ts
-if (profile.getData().status === EResourceStatus.Error) {
+if (profile.getData().isError) {
     ...
 }
 ```
+
+The flags are always derived from the authoritative `status`: `restore()`, `fromJSON()`, cache
+hydration and `persist` recompute them and ignore stored values, and a restored `Pending` without a
+live request is normalized to `Idle`. Subscriptions track them per field — a component that
+reads only `isError` is not re-rendered by a `Pending` → `Success` transition.
 
 Concurrent loads with the same arguments share one request; a load with different arguments
 aborts the previous one. The state stays serializable — the failure is stored as a message,
@@ -591,14 +599,14 @@ It also works under Suspense, which class components support by throwing the pen
 
 ```tsx
 render() {
-    const {status} = this.useCarburetor(profile);
+    const view = this.useCarburetor(profile);
 
-    return <ProfileCard profile={profile.suspend({id: 'a1'})} refreshing={status === EResourceStatus.Pending}/>;
+    return <ProfileCard profile={profile.suspend({id: 'a1'})} refreshing={view.isPending}/>;
 }
 ```
 
 The subscription covers exactly the fields the render reads off the `useCarburetor`
-result — here `status` — so a later `reload()` that publishes a new answer wakes
+result — here `isPending` — so a later `reload()` that publishes a new answer wakes
 the component again. A call whose result is never read registers no field reads
 and would not wake.
 
@@ -615,7 +623,6 @@ arguments, each answer worth keeping — which is what `ResourceCache` is:
 import React, {Suspense} from 'react';
 import {
     AntiHookComponent,
-    EResourceStatus,
     ResourceCache,
     bind,
 } from 'react-carburetor';
@@ -639,10 +646,10 @@ class UserBadge extends AntiHookComponent<{id: string}> {
 
     public render() {
         const user = this.useResource(users, this.props.id);
-        if (user.status === EResourceStatus.Idle || user.status === EResourceStatus.Pending) {
+        if (user.isIdle || user.isPending) {
             return <span>Loading…</span>;
         }
-        if (user.status === EResourceStatus.Error) {
+        if (user.isError) {
             return (
                 <span role="alert">
                     {user.error}{' '}

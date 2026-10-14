@@ -55,3 +55,13 @@ Use `// carburetor-disable-next-line <rule>` for a single line or `// carburetor
 ## A rule fired wrongly — where do I report it?
 
 [hazards.md](hazards.md) documents, per hazard, where each rule can produce a false positive — check the relevant hazard first. If it is a genuine false positive or a case the catalogue does not cover, open an issue at https://github.com/PHPCraftdream/ReactCarburetor/issues.
+
+## I build `IResourceData` / `IResourceEntry` objects myself — what do the status flags require?
+
+Resource state carries four boolean flags derived from `status`: `isIdle`, `isPending`,
+`isSuccess`, `isError`. If you build `IResourceData`, `IResourceEntry`, `IResourceView` or
+`IResourceSnapshot` objects by hand — your own `IResourceSource`, test fixtures, seeded stores —
+set all four: exactly one is `true`, the one matching `status`. Payloads you restore
+(`restore()`, `fromJSON()`, cache hydration, `persist`) do not need them: the library recomputes
+the flags from `status` and ignores stored values, so payloads saved before the flags existed
+still load.

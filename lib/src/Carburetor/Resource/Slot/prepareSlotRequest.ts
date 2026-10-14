@@ -1,10 +1,12 @@
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
 import {IResourceData} from '@/Carburetor/Models/Resource';
 import {cloneOwnedGraph} from '@/Carburetor/Store/Utils/Graph/cloneOwnedGraph';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 
 /** The slot owns these fields through request publication and eventual settlement. */
 const isRequestField = (field: PropertyKey): boolean =>
-    field === 'status' || field === 'data' || field === 'error' || field === 'updatedAt';
+    field === 'status' || field === 'data' || field === 'error' || field === 'updatedAt'
+    || field === 'isIdle' || field === 'isPending' || field === 'isSuccess' || field === 'isError';
 
 /** Prepare a writable operational graph without changing a captured endpoint.
  *
@@ -21,10 +23,15 @@ export const prepareSlotRequest = <T>(state: IResourceData<T>): IResourceData<T>
         (!error || 'value' in error) && (!updatedAt || 'value' in updatedAt)) {
         return undefined;
     }
+    const flags = resourceStatusFlags(EResourceStatus.Pending);
     return cloneOwnedGraph(state, undefined, (source, field, descriptor) => {
         if (source === state && isRequestField(field)) {
             descriptor.writable = true;
             if (field === 'status') descriptor.value = EResourceStatus.Pending;
+            else if (field === 'isIdle') descriptor.value = flags.isIdle;
+            else if (field === 'isPending') descriptor.value = flags.isPending;
+            else if (field === 'isSuccess') descriptor.value = flags.isSuccess;
+            else if (field === 'isError') descriptor.value = flags.isError;
             if (field === 'error') descriptor.value = undefined;
         }
         return descriptor;

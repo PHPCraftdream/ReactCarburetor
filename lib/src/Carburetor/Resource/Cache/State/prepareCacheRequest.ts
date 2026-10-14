@@ -1,6 +1,7 @@
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
 import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
 import {cloneOwnedGraph} from '@/Carburetor/Store/Utils/Graph/cloneOwnedGraph';
+import {applyResourceStatus} from '@/Carburetor/Resource/Status/applyResourceStatus';
 
 const requestFields: Readonly<Record<string, true>> = {
     status: true, data: true, error: true, updatedAt: true,
@@ -40,7 +41,7 @@ export const prepareCacheRequest = <T>(
     const next = prepared.entries[key];
     if (entry.status === EResourceStatus.Success) next.refreshing = true;
     else {
-        next.status = EResourceStatus.Pending;
+        applyResourceStatus(next, EResourceStatus.Pending);
         next.error = undefined;
     }
     return prepared;

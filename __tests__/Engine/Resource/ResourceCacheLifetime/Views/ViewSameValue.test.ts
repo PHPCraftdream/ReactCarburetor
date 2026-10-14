@@ -1,9 +1,10 @@
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {TestCache} from '../../ResourceCache/Helpers/TestCache';
 import {IResourceEntry} from '@/Carburetor/Models/Resource';
 
 const ready = <T>(data: T): IResourceEntry<T> => ({
-    status: EResourceStatus.Success,
+    ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success,
     data,
     error: undefined,
     updatedAt: 100,

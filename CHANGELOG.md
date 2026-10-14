@@ -67,6 +67,10 @@ Entries below record development history in change order; where contracts differ
   The two-argument hook and writable hook-result facade are removed; use caller-owned presentation
   overlays. Class `useResource` remains a separate API.
   Migration: pass a synchronous selector as the third argument and keep presentation overlays in the caller.
+- **Breaking:** `IResourceData` (and `IResourceEntry`, `IResourceView`, `IResourceSnapshot`) gains four
+  required boolean fields, `isIdle`, `isPending`, `isSuccess`, `isError`. Objects built by hand — a
+  custom `IResourceSource`'s state, test literals — must set them; exactly one is true, matching
+  `status`. Restored payloads are unaffected: the flags are recomputed from `status`.
 
 ### Changed
 
@@ -237,6 +241,12 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- Resource state carries derived boolean flags `isIdle`, `isPending`, `isSuccess`, `isError`
+  alongside `status`, which stays authoritative; exactly one flag is true. They are stored fields,
+  so they work in `getData()`, selectors, copies and serialized payloads, and subscriptions track
+  them per field: a reader of only `isError` does not re-render on `Pending → Success`. A status
+  change writes only the two flags that flip. `restore()`, `fromJSON()`, cache hydration, `persist`
+  and history derive the flags from `status` and ignore stored values.
 - `carburetor/no-function-in-render` (H31, `warn` in recommended): a function created in a
   component's render for a DOM-element attribute (arrow, function expression, `.bind(...)`,
   `ref={el => ...}`, including per-item handlers inside `map`/`filter`/... callbacks) or as a

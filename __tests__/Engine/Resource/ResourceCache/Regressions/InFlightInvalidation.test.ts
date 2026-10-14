@@ -1,4 +1,5 @@
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 
 const controlled = () => {
@@ -138,7 +139,7 @@ test('undefined raw failure ownership remains distinct from a stale invalidated 
     staleAnswer.reject(undefined);
     await staleFailure;
     expect(cache.getEntry('stale')).toMatchObject({
-        status: EResourceStatus.Error, invalidated: true, failed: false,
+        ...resourceStatusFlags(EResourceStatus.Error), status: EResourceStatus.Error, invalidated: true, failed: false,
     });
 
     let retryThrown: unknown;

@@ -1,4 +1,5 @@
 import {CarburetorHistory, EResourceStatus, ResourceCarburetor} from "@/Carburetor";
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {deferred, flush} from "./helpers";
 
 describe('ResourceCarburetor', () => {
@@ -31,6 +32,7 @@ describe('ResourceCarburetor', () => {
         });
         const request = resource.load('requested');
         const replacement = {
+            ...resourceStatusFlags(EResourceStatus.Idle),
             status: EResourceStatus.Idle, data: 'manual', error: undefined, updatedAt: 7,
         };
 
@@ -203,7 +205,8 @@ describe('ResourceCarburetor', () => {
         const history = new CarburetorHistory(resource);
         const map = new Map<object, object>();
         const payload = {map};
-        const pending = {status: EResourceStatus.Pending, data: payload, error: 'old', updatedAt: 7};
+        const pending = {...resourceStatusFlags(EResourceStatus.Pending),
+            status: EResourceStatus.Pending, data: payload, error: 'old', updatedAt: 7};
         map.set(pending, payload);
         map.set(payload, pending);
         for (const field of ['status', 'data', 'error', 'updatedAt'] as const) {
@@ -249,7 +252,8 @@ describe('ResourceCarburetor', () => {
             return calls === 1 ? first.promise : calls === 2 ? Promise.reject(raw) : second.promise;
         });
         const history = new CarburetorHistory(resource);
-        const pending = {status: EResourceStatus.Pending, data: 3, error: undefined, updatedAt: 7};
+        const pending = {...resourceStatusFlags(EResourceStatus.Pending),
+            status: EResourceStatus.Pending, data: 3, error: undefined, updatedAt: 7};
         Object.defineProperty(pending, 'status', {
             value: EResourceStatus.Pending, writable: false, configurable: false, enumerable: true,
         });
@@ -295,7 +299,8 @@ describe('ResourceCarburetor', () => {
             return gate.promise;
         });
         const history = new CarburetorHistory(resource);
-        const pending = {status: EResourceStatus.Pending, data: 1, error: undefined, updatedAt: 2};
+        const pending = {...resourceStatusFlags(EResourceStatus.Pending),
+            status: EResourceStatus.Pending, data: 1, error: undefined, updatedAt: 2};
         Object.defineProperty(pending, 'status', {
             value: EResourceStatus.Pending, writable: false, configurable: false, enumerable: true,
         });
@@ -322,6 +327,7 @@ describe('ResourceCarburetor', () => {
         const date = new Date(123);
         const payload = {key, alias: key, map, set, date};
         const source = {
+            ...resourceStatusFlags(EResourceStatus.Success),
             status: EResourceStatus.Success, data: payload, error: undefined, updatedAt: 7,
         };
         map.set(key, source);
@@ -424,7 +430,8 @@ describe('ResourceCarburetor', () => {
         }
         let calls = 0;
         const resource = new ThrowingResource(async () => ++calls);
-        const old = {status: EResourceStatus.Idle, data: 1, error: undefined, updatedAt: 3};
+        const old = {...resourceStatusFlags(EResourceStatus.Idle),
+            status: EResourceStatus.Idle, data: 1, error: undefined, updatedAt: 3};
         Object.defineProperty(old, 'status', {
             value: EResourceStatus.Idle, writable: false, configurable: false, enumerable: true,
         });
@@ -456,7 +463,8 @@ describe('ResourceCarburetor', () => {
             return replacement.promise;
         });
         const history = new CarburetorHistory(resource);
-        const pending = {status: EResourceStatus.Pending, data: 4, error: undefined, updatedAt: 7};
+        const pending = {...resourceStatusFlags(EResourceStatus.Pending),
+            status: EResourceStatus.Pending, data: 4, error: undefined, updatedAt: 7};
         Object.defineProperty(pending, 'status', {
             value: EResourceStatus.Pending, writable: false, configurable: false, enumerable: true,
         });
@@ -485,7 +493,8 @@ describe('ResourceCarburetor', () => {
         const map = new Map<object, object>();
         const payload = {item: original, map};
         const resource = new ResourceCarburetor<Payload | typeof payload, string>(async () => result);
-        const state = {status: EResourceStatus.Idle, data: payload, error: undefined, updatedAt: 7};
+        const state = {...resourceStatusFlags(EResourceStatus.Idle),
+            status: EResourceStatus.Idle, data: payload, error: undefined, updatedAt: 7};
         map.set(state, payload);
         map.set(payload, state);
         for (const field of ['status', 'data', 'error', 'updatedAt'] as const) {
@@ -514,7 +523,8 @@ describe('ResourceCarburetor', () => {
             calls.push(key);
             return gate.promise;
         });
-        const idle = {status: EResourceStatus.Idle, data: 1, error: undefined, updatedAt: 7};
+        const idle = {...resourceStatusFlags(EResourceStatus.Idle),
+            status: EResourceStatus.Idle, data: 1, error: undefined, updatedAt: 7};
         Object.defineProperty(idle, 'status', {
             value: EResourceStatus.Idle, writable: false, configurable: false, enumerable: true,
         });

@@ -1,6 +1,7 @@
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
 import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
 import {deepClone} from '@/Carburetor/Store/Utils/deepClone';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {normalizeOwnedCacheReplay} from './normalizeOwnedCacheReplay';
 
 /** Assemble restored entries with newer requests created by abort listeners.
@@ -22,7 +23,7 @@ export const buildCacheRestore = <T>(
         const entry = data.entries[key];
         if (!owned) {
             const status = entry.status === EResourceStatus.Pending ? EResourceStatus.Idle : entry.status;
-            entries[key] = {...entry, refreshing: false, status};
+            entries[key] = {...entry, refreshing: false, ...resourceStatusFlags(status), status};
         }
         if (!wasTouched(key)) touch(key);
     });

@@ -1,6 +1,6 @@
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
-import {TestCache} from './Helpers/TestCache';
+import {TestCache} from '../Helpers/TestCache';
 import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {encodeCacheKey} from "@/Carburetor/Resource/Cache/encodeCacheKey";
 

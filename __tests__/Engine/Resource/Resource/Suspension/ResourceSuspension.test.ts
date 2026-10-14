@@ -1,5 +1,5 @@
 import {EResourceStatus, ResourceCarburetor} from "@/Carburetor";
-import {deferred, flush, IDeferred} from "./helpers";
+import {deferred, flush, IDeferred} from "../helpers";
 
 describe('ResourceCarburetor', () => {
     test('a suspend for a different key does not serve the stored answer', async () => {

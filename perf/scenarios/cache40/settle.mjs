@@ -45,7 +45,7 @@ try {
     const after = cache.snapshot();
     const old = new ResourceCache(() => Promise.resolve('unused'));
     old.restore(before);
-    old.update(draft => { draft.entries[key].status = Status.Pending; });
+    old.update(draft => { Object.assign(draft.entries[key], {status: Status.Pending, isIdle: false, isPending: true}); });
     reset();
     counting = true;
     old.update(draft => {
@@ -57,11 +57,15 @@ try {
             draft.entries[key].refreshing = false;
             draft.entries[key].invalidated = false;
             draft.entries[key].failed = false;
+            draft.entries[key].isPending = false;
+            draft.entries[key].isSuccess = true;
         } else {
             draft.entries[key].error = 'offline';
             draft.entries[key].refreshing = false;
             draft.entries[key].failed = true;
             draft.entries[key].status = Status.Error;
+            draft.entries[key].isPending = false;
+            draft.entries[key].isError = true;
         }
     });
     counting = false;

@@ -79,8 +79,9 @@ export async function checkWriteShape(api, WriteLog, mode, optimized = false) {
                     previous: true, nextExists: true, next: false},
             ]);
             assert.equal(history.canUndo(), false);
-            assert.equal(sets, 4);
-            if (optimized) assert.equal(gets, 4);
+            // The refresh rollback keeps status Success, so applyResourceStatus writes nothing.
+            assert.equal(sets, 3);
+            if (optimized) assert.equal(gets, 5);
             return {gets, sets, traps: gets + sets};
         }
         const request = mode === 'refresh-failure' ? cache.refresh('a.b~c') : cache.load('a.b~c');
@@ -111,9 +112,20 @@ export async function checkWriteShape(api, WriteLog, mode, optimized = false) {
             Date.now = now;
             counting = false;
         }
-        const fields = mode === 'success' ? ['status', 'data', 'updatedAt']
+        // Status flags are derived from `status` (applyResourceStatus): only the flags whose
+        // value actually changes under the transition are recorded as written paths, in
+        // isIdle/isPending/isSuccess/isError order, immediately after `status` itself.
+        const flagsOf = status => ({
+            isIdle: status === Status.Idle, isPending: status === Status.Pending,
+            isSuccess: status === Status.Success, isError: status === Status.Error,
+        });
+        const flagFields = (from, to) => Object.keys(flagsOf(to))
+            .filter(name => flagsOf(from)[name] !== flagsOf(to)[name]);
+        const fields = mode === 'success'
+            ? ['status', ...flagFields(Status.Pending, Status.Success), 'data', 'updatedAt']
             : mode === 'refresh-failure' ? ['error', 'refreshing', 'failed']
-                : ['error', 'failed', 'status'];
+                // Pending -> Error: the entry also drops isPending and gains isError.
+                : ['error', 'failed', 'status', ...flagFields(Status.Pending, Status.Error)];
         const after = cache.snapshot();
         assert.deepEqual(paths[1], fields.map(field));
         assert.deepEqual(patches, fields.map(name => ({
@@ -133,9 +145,10 @@ export async function checkWriteShape(api, WriteLog, mode, optimized = false) {
         assert.equal(history.redo(), true);
         assert.deepEqual(cache.snapshot(), after);
         if (optimized) {
-            assert.equal(sets, mode === 'success' ? 7 : mode === 'failure' ? 4 : 3);
-            assert.equal(gets + sets, mode === 'success' ? 9 : mode === 'failure' ? 6 : 5);
-            assert.equal(gets, 2);
+            assert.equal(sets, mode === 'success' ? 9 : mode === 'failure' ? 6 : 3);
+            assert.equal(gets + sets, mode === 'success' ? 12 : mode === 'failure' ? 9 : 5);
+            // applyResourceStatus reads the previous status once when status changes.
+            assert.equal(gets, mode === 'refresh-failure' ? 2 : 3);
         }
         return {gets, sets, traps: gets + sets};
     } finally {

@@ -1,9 +1,11 @@
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {IResourceEntry} from "@/Carburetor/Models/Resource";
 import {TestCache} from '../Helpers/TestCache';
 
 const replacement = (error: string): IResourceEntry<string> => ({
+    ...resourceStatusFlags(EResourceStatus.Error),
     status: EResourceStatus.Error, data: undefined, error, updatedAt: undefined,
     refreshing: false, invalidated: false, failed: true,
 });
@@ -56,7 +58,8 @@ describe('cache failure ownership across replacement', () => {
         await cache.load('a');
         const key = cache.exposeKeyOf('a');
         cache.setData({entries: {[key]: {
-            ...replacement('unused'), status: EResourceStatus.Success, data: 'replacement',
+            ...replacement('unused'), ...resourceStatusFlags(EResourceStatus.Success),
+            status: EResourceStatus.Success, data: 'replacement',
             error: undefined, updatedAt: Date.now(), failed: false,
         }}});
 
@@ -130,7 +133,8 @@ describe('cache failure ownership across replacement', () => {
         expect(cache.getEntry('a').error).toBe('restored-message');
         expect(() => cache.suspend('a')).toThrow('restored-message');
 
-        cache[method]({entries: {[key]: {...replacement('unused'), status: EResourceStatus.Pending}}});
+        cache[method]({entries: {[key]: {...replacement('unused'), ...resourceStatusFlags(EResourceStatus.Pending),
+            status: EResourceStatus.Pending}}});
         expect(cache.getEntry('a').status).toBe(EResourceStatus.Idle);
         expect(cache.getFailure('a')).toBeUndefined();
     });

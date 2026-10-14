@@ -1,10 +1,12 @@
 import {CarburetorHistory, EResourceStatus} from '@/Carburetor';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
 import {TestCache} from '../Helpers/TestCache';
 import {IResourceEntry} from '@/Carburetor/Models/Resource';
 
 const ready = (data: unknown): IResourceEntry<unknown> => ({
-    ...getInitialCacheEntry<unknown>(), status: EResourceStatus.Success, data, updatedAt: Date.now(),
+    ...getInitialCacheEntry<unknown>(), ...resourceStatusFlags(EResourceStatus.Success),
+    status: EResourceStatus.Success, data, updatedAt: Date.now(),
 });
 
 const lock = (owner: object, key: string): void => {

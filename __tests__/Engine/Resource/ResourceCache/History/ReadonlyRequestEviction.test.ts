@@ -1,5 +1,6 @@
 import {CarburetorHistory, EResourceStatus} from '@/Carburetor';
 import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {TestCache} from '../Helpers/TestCache';
 
 const lock = (owner: object, key: string): void => {
@@ -12,7 +13,8 @@ describe('cache request restart and immutable-slot removal', () => {
         const cache = new TestCache<string, string>(async (key) => key + '!');
         const history = new CarburetorHistory(cache);
         const key = cache.exposeKeyOf('a');
-        const entry = {...getInitialCacheEntry<string>(), status: EResourceStatus.Pending, updatedAt: 7};
+        const entry = {...getInitialCacheEntry<string>(), status: EResourceStatus.Pending,
+            ...resourceStatusFlags(EResourceStatus.Pending), updatedAt: 7};
         lock(entry, 'status');
         lock(entry, 'updatedAt');
         const root = {entries: {[key]: entry}};
@@ -46,6 +48,7 @@ describe('cache request restart and immutable-slot removal', () => {
         const history = new CarburetorHistory(cache);
         const key = cache.exposeKeyOf('a');
         const entry = {...getInitialCacheEntry<string>(), status: EResourceStatus.Success,
+            ...resourceStatusFlags(EResourceStatus.Success),
             data: 'saved', updatedAt: 1, refreshing: true};
         lock(entry, 'refreshing');
         lock(entry, 'error');
@@ -88,6 +91,7 @@ describe('cache request restart and immutable-slot removal', () => {
         const cache = new TestCache<unknown, string>(async (key) => key, {ttl: Infinity, maxEntries: 1});
         const a = cache.exposeKeyOf('a');
         const entry = {...getInitialCacheEntry<unknown>(), status: EResourceStatus.Success,
+            ...resourceStatusFlags(EResourceStatus.Success),
             data: 'prior', updatedAt: Date.now()};
         const entries = {[a]: entry};
         lock(entries, a);
@@ -122,8 +126,10 @@ describe('cache request restart and immutable-slot removal', () => {
         const retained = cache.exposeKeyOf('retained');
         const entries = {
             [a]: {...getInitialCacheEntry<unknown>(), status: EResourceStatus.Success,
+                ...resourceStatusFlags(EResourceStatus.Success),
                 data: 'a', updatedAt: Date.now()},
             [retained]: {...getInitialCacheEntry<unknown>(), status: EResourceStatus.Success,
+                ...resourceStatusFlags(EResourceStatus.Success),
                 data: undefined, updatedAt: Date.now()},
         };
         lock(entries, a);
@@ -150,6 +156,7 @@ describe('cache request restart and immutable-slot removal', () => {
         const cache = new TestCache<string, string>(async (key) => key, {ttl: Infinity, maxEntries: 1});
         const a = cache.exposeKeyOf('a');
         cache.setData({entries: {[a]: {...getInitialCacheEntry<string>(), status: EResourceStatus.Success,
+            ...resourceStatusFlags(EResourceStatus.Success),
             data: 'old', updatedAt: Date.now()}}});
         let replacement: Promise<void> | undefined;
         const stop = cache.attachPatchListener({patch: () => {
@@ -176,6 +183,7 @@ describe('cache request restart and immutable-slot removal', () => {
         const entries = {[failed]: cache.getData().entries[failed]};
         Object.defineProperty(entries, old, {
             value: {...getInitialCacheEntry<string>(), status: EResourceStatus.Success,
+                ...resourceStatusFlags(EResourceStatus.Success),
                 data: 'old', updatedAt: Date.now()},
             enumerable: true, writable: false, configurable: false,
         });

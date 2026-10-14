@@ -16,6 +16,7 @@ import {ISubscribeOptions} from "@/Carburetor/Models/Store";
 import {IStateInstallation, IStateRestoreClaim, STATE_PUBLIC_REPLACEMENT} from "@/Carburetor/Models/Paths";
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
+import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
 import {buildCacheRestore} from "@/Carburetor/Resource/Cache/State/buildCacheRestore";
 import {removeCacheEntries} from "@/Carburetor/Resource/Cache/State/Mutation/removeCacheEntries";
 import {prepareCacheInvalidation} from "@/Carburetor/Resource/Cache/State/Mutation/prepareCacheInvalidation";
@@ -458,7 +459,8 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         const retryFailed = request.retryingFailure || runtime.answer?.failure !== undefined;
         try {
             this.update((draft) => {
-                if (entry.status === EResourceStatus.Pending) draft.entries[key].status = EResourceStatus.Idle;
+                if (entry.status === EResourceStatus.Pending)
+                    applyResourceStatus(draft.entries[key], EResourceStatus.Idle);
                 else draft.entries[key].refreshing = false;
                 draft.entries[key].failed ||= retryFailed;
             });

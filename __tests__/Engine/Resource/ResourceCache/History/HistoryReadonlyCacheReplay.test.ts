@@ -1,10 +1,12 @@
 import {CarburetorHistory, EResourceStatus} from '@/Carburetor';
 import {TestCache} from '../Helpers/TestCache';
 import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {normalizeOwnedCacheReplay} from '@/Carburetor/Resource/Cache/State/normalizeOwnedCacheReplay';
 
 const entry = (status: EResourceStatus, data: unknown, refreshing = false): IResourceEntry<unknown> => ({
-    status, data, refreshing, error: undefined, updatedAt: 17, invalidated: false, failed: false,
+    ...resourceStatusFlags(status), status, data, refreshing,
+    error: undefined, updatedAt: 17, invalidated: false, failed: false,
 });
 
 const lock = (owner: object, key: string, configurable: boolean): void => {

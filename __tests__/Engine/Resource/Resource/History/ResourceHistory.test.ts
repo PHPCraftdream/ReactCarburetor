@@ -1,3 +1,4 @@
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {
     CarburetorHistory, ComponentUpdateThrottle, connectDevTools, EResourceStatus, IDevToolsConnection,
     IStorageLike, persist, ResourceCarburetor,
@@ -86,7 +87,7 @@ describe('resource wire identity and history', () => {
             if (key === 'slow') {
                 signal.addEventListener('abort', () => {
                     resource.restore({
-                        status: EResourceStatus.Success,
+                        ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success,
                         data: 'answer-b',
                         error: undefined,
                         updatedAt: 1,
@@ -123,7 +124,7 @@ describe('resource wire identity and history', () => {
         const resource = new ResourceCarburetor<string, string>(async (key, signal) => {
             if (key === 'slow') {
                 signal.addEventListener('abort', () => resource.restore({
-                    status: EResourceStatus.Success, data: 'answer-b',
+                    ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success, data: 'answer-b',
                     error: undefined, updatedAt: 1, key: JSON.stringify('b'),
                 }));
                 return new Promise<string>(() => {});

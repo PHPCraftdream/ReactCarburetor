@@ -4,6 +4,11 @@ import {EResourceStatus} from "./Enums/EResourceStatus";
 
 export interface IResourceData<T> {
     status: EResourceStatus;
+    /** Derived from `status`: exactly one is true and matches it. */
+    isIdle: boolean;
+    isPending: boolean;
+    isSuccess: boolean;
+    isError: boolean;
     data: T | undefined;
     /** Message only: the resource state has to stay serializable for SSR and devtools. */
     error: string | undefined;

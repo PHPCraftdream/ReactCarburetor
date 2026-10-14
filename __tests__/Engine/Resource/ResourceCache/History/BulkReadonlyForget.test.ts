@@ -1,11 +1,13 @@
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {CarburetorHistory, EResourceStatus, ResourceCache} from '@/Carburetor';
 import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
 import {TestCache} from '../Helpers/TestCache';
 import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
 
 const ready = (data: unknown): IResourceEntry<unknown> => ({
-    ...getInitialCacheEntry<unknown>(), status: EResourceStatus.Success, data, updatedAt: 1,
+    ...getInitialCacheEntry<unknown>(), ...resourceStatusFlags(EResourceStatus.Success),
+    status: EResourceStatus.Success, data, updatedAt: 1,
 });
 
 interface ILinkedCacheData extends IResourceCacheData<unknown> {
@@ -152,6 +154,7 @@ describe('ResourceCache active forgetAll reentry', () => {
 
         expect(cache.getEntry('old').data).toBeUndefined();
         expect(cache.getEntry('new')).toMatchObject({
+            ...resourceStatusFlags(EResourceStatus.Success),
             status: EResourceStatus.Success, data: 'restored-new-owner',
         });
     });

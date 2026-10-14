@@ -1,4 +1,5 @@
 import {CarburetorHistory, EResourceStatus, IResourceData, ResourceCarburetor} from '@/Carburetor';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 
 describe('readonly pending resource history', () => {
     test.each([true, false])('normalizes before installing status, configurable=%s', configurable => {
@@ -10,7 +11,8 @@ describe('readonly pending resource history', () => {
         const date = new Date(7);
         const data = {key, alias: key, map, set, date};
         const pending: IResourceData<typeof data> = {
-            status: EResourceStatus.Pending, data, error: undefined, updatedAt: 7,
+            status: EResourceStatus.Pending, ...resourceStatusFlags(EResourceStatus.Pending),
+            data, error: undefined, updatedAt: 7,
         };
         map.set(key, pending);
         map.set(pending, data);
@@ -33,7 +35,8 @@ describe('readonly pending resource history', () => {
         expect(Object.getOwnPropertyDescriptor(restored, 'status')).toMatchObject({
             value: EResourceStatus.Idle, writable: false, enumerable: true, configurable,
         });
-        expect(Object.keys(restored)).toEqual(['status', 'data', 'error', 'updatedAt']);
+        expect(Object.keys(restored)).toEqual(
+            ['status', 'isIdle', 'isPending', 'isSuccess', 'isError', 'data', 'error', 'updatedAt']);
         expect(resource.snapshot().key).toBeUndefined();
         expect(payload.alias).toBe(payload.key);
         expect(payload.map.get(payload.key)).toBe(restored);
@@ -57,7 +60,8 @@ describe('readonly pending resource history', () => {
         const resource = new ResourceCarburetor<number>(async () => 1);
         const first = new CarburetorHistory(resource);
         const second = new CarburetorHistory(resource);
-        const pending = {status: EResourceStatus.Pending, data: 3, error: undefined, updatedAt: 7};
+        const pending = {status: EResourceStatus.Pending, ...resourceStatusFlags(EResourceStatus.Pending),
+            data: 3, error: undefined, updatedAt: 7};
         Object.defineProperty(pending, 'status', {
             value: EResourceStatus.Pending, enumerable: true, writable: false, configurable: false,
         });
@@ -86,7 +90,8 @@ describe('readonly pending resource history', () => {
             finish = resolve;
         }));
         const history = new CarburetorHistory(resource);
-        const pending = {status: EResourceStatus.Pending, data: 3, error: 'old', updatedAt: 7};
+        const pending = {status: EResourceStatus.Pending, ...resourceStatusFlags(EResourceStatus.Pending),
+            data: 3, error: 'old', updatedAt: 7};
         Object.defineProperty(pending, 'status', {
             value: EResourceStatus.Pending, enumerable: true, writable: false, configurable: false,
         });
@@ -113,13 +118,15 @@ describe('readonly pending resource history', () => {
         let resource!: ResourceCarburetor<number, string>;
         resource = new ResourceCarburetor<number, string>((_key, signal) => {
             signal.addEventListener('abort', () => resource.restore({
-                status: EResourceStatus.Success, data: 44, error: undefined,
+                status: EResourceStatus.Success, ...resourceStatusFlags(EResourceStatus.Success),
+                data: 44, error: undefined,
                 updatedAt: 12, key: JSON.stringify('new'),
             }));
             return new Promise<number>(resolve => { finish = resolve; });
         });
         const history = new CarburetorHistory(resource);
-        const pending = {status: EResourceStatus.Pending, data: 3, error: 'old', updatedAt: 7};
+        const pending = {status: EResourceStatus.Pending, ...resourceStatusFlags(EResourceStatus.Pending),
+            data: 3, error: 'old', updatedAt: 7};
         Object.defineProperty(pending, 'status', {
             value: EResourceStatus.Pending, enumerable: true, writable: false, configurable: false,
         });

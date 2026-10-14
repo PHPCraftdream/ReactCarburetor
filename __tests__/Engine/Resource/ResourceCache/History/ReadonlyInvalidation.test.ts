@@ -1,4 +1,5 @@
 import {CarburetorHistory, EResourceStatus} from '@/Carburetor';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {getInitialCacheEntry} from '@/Carburetor/Resource/Cache/State/getInitialCacheEntry';
 import {TestCache} from '../Helpers/TestCache';
 
@@ -7,7 +8,8 @@ const locked = (owner: object, field: string, value: unknown): void => {
 };
 
 const success = (data: string) => ({
-    ...getInitialCacheEntry<string>(), status: EResourceStatus.Success, data,
+    ...getInitialCacheEntry<string>(), ...resourceStatusFlags(EResourceStatus.Success),
+    status: EResourceStatus.Success, data,
     updatedAt: Date.now(), invalidated: false, failed: true,
 });
 
@@ -82,7 +84,8 @@ describe('single invalidation of admitted readonly entries', () => {
         const b = cache.exposeKeyOf('b');
         const target = success('saved');
         locked(target, 'invalidated', false);
-        const sibling = {...getInitialCacheEntry<unknown>(), status: EResourceStatus.Success,
+        const sibling = {...getInitialCacheEntry<unknown>(), ...resourceStatusFlags(EResourceStatus.Success),
+            status: EResourceStatus.Success,
             data: undefined as unknown, updatedAt: Date.now()};
         const entries = {[a]: target, [b]: sibling};
         const root = {entries};

@@ -1,4 +1,5 @@
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import * as React from 'react';
 import {TestCache} from '../../ResourceCache/Helpers/TestCache';
 import {render} from '@testing-library/react';
@@ -10,6 +11,7 @@ interface IValue {
 }
 
 const ready = (label: string): IResourceEntry<IValue> => ({
+    ...resourceStatusFlags(EResourceStatus.Success),
     status: EResourceStatus.Success, data: {label}, error: undefined, updatedAt: 100,
     refreshing: false, invalidated: false, failed: false,
 });

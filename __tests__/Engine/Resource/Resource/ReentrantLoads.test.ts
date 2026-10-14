@@ -1,4 +1,5 @@
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {IResourceSnapshot} from "@/Carburetor/Models/Resource";
 import {ResourceCarburetor} from "@/Carburetor/Resource/ResourceCarburetor";
 import {deferred} from "./helpers";
@@ -167,7 +168,7 @@ describe('ResourceCarburetor reentrant loads', () => {
         });
         const first = resource.load('a');
         const snapshot: IResourceSnapshot<string> = {
-            status: EResourceStatus.Success,
+            ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success,
             data: 'restored',
             error: undefined,
             updatedAt: 1,

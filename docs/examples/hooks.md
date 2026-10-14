@@ -214,13 +214,14 @@ function UserName({userId}: {userId: number}): ReactElement {
 Do not call the loader during render — the hook owns when the load starts.
 
 Status is just another field of the entry view, so a parent component can render a
-spinner while the same entry is `Pending`. Import `EResourceStatus` from
-`'react-carburetor'` to compare against it:
+spinner while the same entry is `Pending`. Read the derived `isPending` flag off the
+entry — it mirrors `status`, exactly one of `isIdle`/`isPending`/`isSuccess`/`isError`
+is true:
 
 <!-- example:compile -->
 ```tsx
 import type {ReactElement} from 'react';
-import {EResourceStatus, ResourceCache} from 'react-carburetor';
+import {ResourceCache} from 'react-carburetor';
 import {useResourceValue} from 'react-carburetor/interop';
 
 interface User {
@@ -233,8 +234,8 @@ declare function fetchUser(id: number): Promise<User>;
 const userCache = new ResourceCache<User, number>(async (id) => fetchUser(id));
 
 function UserStatus({userId}: {userId: number}): ReactElement | null {
-    const status = useResourceValue(userCache, userId, (entry) => entry.status);
-    if (status === EResourceStatus.Pending) return <div className="spinner" />;
+    const isPending = useResourceValue(userCache, userId, (entry) => entry.isPending);
+    if (isPending) return <div className="spinner" />;
     return null;
 }
 
@@ -242,9 +243,9 @@ function UserCard({userId}: {userId: number}): ReactElement {
     const view = useResourceValue(
         userCache,
         userId,
-        (entry) => ({status: entry.status, name: entry.data?.name}),
+        (entry) => ({isPending: entry.isPending, name: entry.data?.name}),
     );
-    if (view.status === EResourceStatus.Pending) return <div className="spinner" />;
+    if (view.isPending) return <div className="spinner" />;
     return <span>{view.name ?? 'unknown'}</span>;
 }
 ```

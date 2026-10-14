@@ -1,5 +1,6 @@
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
 import {R} from '@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols';
+import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {TestCache} from '../TestCache';
 
 const compareKeys = (left: string, right: string): number => left < right ? -1 : left > right ? 1 : 0;
@@ -178,10 +179,14 @@ describe('ResourceCache post-start cancellation capacity', () => {
                     expect(f.requests).toHaveLength(phase === 'refresh' ? 2 : 1);
                     expect(f.cache[R.hasRequest](key)).toBe(false);
                     expect(f.cache.getData()).toBe(installed);
+                    // restore() derives the flags from the (possibly normalized) status,
+                    // so the expected entry re-derives them instead of keeping the live ones.
+                    const expectedStatus = method === 'restore' && phase === 'initial'
+                        ? EResourceStatus.Idle : replacement.entries[key].status;
                     expect(f.cache.getData().entries[key]).toEqual({
                         ...replacement.entries[key],
-                        status: method === 'restore' && phase === 'initial'
-                            ? EResourceStatus.Idle : replacement.entries[key].status,
+                        ...resourceStatusFlags(expectedStatus),
+                        status: expectedStatus,
                         refreshing: method === 'setData' && phase === 'refresh',
                     });
                     expect(f.cache.getVersion() - before).toBe(1);

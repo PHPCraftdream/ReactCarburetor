@@ -9,11 +9,12 @@ no hooks anywhere.
 
 `ResourceCarburetor` wraps a single loader function. `load()` starts (or joins) a request,
 and the component reads the whole `IResourceData` state with `this.useCarburetor()` to
-subscribe, rendering from `view.status` / `view.data` / `view.error`.
+subscribe, rendering from the derived flags — `view.isPending`, `view.isError`,
+`view.isSuccess` — and `view.data`.
 
 <!-- example:compile -->
 ```tsx
-import {AntiHookComponent, bind, EResourceStatus, ResourceCarburetor, TResourceLoader} from 'react-carburetor';
+import {AntiHookComponent, bind, ResourceCarburetor, TResourceLoader} from 'react-carburetor';
 import {Component, type JSX} from 'react';
 
 interface User {
@@ -47,13 +48,13 @@ export class UserProfile extends AntiHookComponent<{userId: string}> {
     render(): JSX.Element {
         const view = this.useCarburetor(userResource);
 
-        if (view.status === EResourceStatus.Pending) {
+        if (view.isPending) {
             return <span className="spinner">Loading…</span>;
         }
-        if (view.status === EResourceStatus.Error) {
+        if (view.isError) {
             return <span className="error">{view.error}</span>;
         }
-        if (view.status === EResourceStatus.Success && view.data !== undefined) {
+        if (view.isSuccess && view.data !== undefined) {
             return <h1>{view.data.name}</h1>;
         }
         return (
@@ -75,7 +76,7 @@ subscribes on its own.
 
 <!-- example:compile -->
 ```tsx
-import {AntiHookComponent, EResourceStatus, IResourceData, ResourceCarburetor} from 'react-carburetor';
+import {AntiHookComponent, IResourceData, ResourceCarburetor} from 'react-carburetor';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
 
 interface Config {
@@ -124,7 +125,7 @@ export class ConfigShell extends AntiHookComponent {
 }
 
 export const describeResourceState = (view: IResourceData<Config>): string =>
-    view.status === EResourceStatus.Success ? view.data?.theme ?? '' : '';
+    view.isSuccess ? view.data?.theme ?? '' : '';
 ```
 
 While `error` in the state is a string, the raw rejection value stays available through
@@ -139,7 +140,7 @@ commit when the entry is stale.
 
 <!-- example:compile -->
 ```tsx
-import {AntiHookComponent, bind, EResourceStatus, IResourceView, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, bind, IResourceView, ResourceCache} from 'react-carburetor';
 import {Component, type JSX} from 'react';
 
 interface Post {
@@ -181,7 +182,7 @@ class PostListItem extends AntiHookComponent<{postId: string}> {
 class PostRow extends AntiHookComponent<{postId: string}> {
     render(): JSX.Element {
         const view = this.useResource(postCache, this.props.postId);
-        if (view.status === EResourceStatus.Success && view.data !== undefined) {
+        if (view.isSuccess && view.data !== undefined) {
             return <span className="title">{view.data.title}</span>;
         }
         return <span className="status">{view.status}</span>;
@@ -197,7 +198,7 @@ actually subscribes and triggers the load.
 
 <!-- example:compile -->
 ```tsx
-import {AntiHookComponent, EResourceStatus, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, ResourceCache} from 'react-carburetor';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
 
 interface Avatar {
@@ -243,8 +244,8 @@ export class AvatarWithFallback extends AntiHookComponent<{userId: string}> {
     }
 }
 
-export const isAvatarError = (view: {status: EResourceStatus}): boolean =>
-    view.status === EResourceStatus.Error;
+export const isAvatarError = (view: {isError: boolean}): boolean =>
+    view.isError;
 ```
 
 If you skip the `useResource()` call the value renders once but the component never
@@ -273,8 +274,13 @@ const quoteCache = new ResourceCache<Quote, string>(
 
 export const quoteSnapshot = (symbol: string): IResourceCacheData<Quote>['entries'] => {
     const view = quoteCache.getEntry(symbol);
+    const settled = view.isSuccess;
     const entry: IResourceEntry<Quote> = {
-        status: view.status === EResourceStatus.Success ? EResourceStatus.Success : EResourceStatus.Idle,
+        status: settled ? EResourceStatus.Success : EResourceStatus.Idle,
+        isIdle: !settled,
+        isPending: false,
+        isSuccess: settled,
+        isError: false,
         data: view.data,
         error: view.error,
         updatedAt: view.updatedAt,
@@ -343,7 +349,7 @@ you need the raw rejection (an `Error`, a server payload, whatever the loader th
 
 <!-- example:compile -->
 ```ts
-import {EResourceStatus, IResourceView, ResourceCache} from 'react-carburetor';
+import {IResourceView, ResourceCache} from 'react-carburetor';
 
 interface Report {
     rows: string[];
@@ -355,7 +361,7 @@ const reportCache = new ResourceCache<Report, string>((period: string) => fetchR
 
 export const describeReportFailure = (period: string): string => {
     const view: IResourceView<Report> = reportCache.getEntry(period);
-    if (view.status !== EResourceStatus.Error || !view.failed) {
+    if (!view.isError || !view.failed) {
         return 'no failure';
     }
     const failure: unknown = reportCache.getFailure(period);
@@ -426,8 +432,14 @@ export class LabelSource extends Carburetor<ILabelSourceData> implements IResour
 
     public resolve(id: string): IResourceResolution<Label> {
         const entry = this.data.entries[id];
+        // Derived flags must match status: exactly one is true.
+        const status = entry?.status ?? EResourceStatus.Idle;
         const view: IResourceView<Label> = {
-            status: entry?.status ?? EResourceStatus.Idle,
+            status,
+            isIdle: status === EResourceStatus.Idle,
+            isPending: status === EResourceStatus.Pending,
+            isSuccess: status === EResourceStatus.Success,
+            isError: status === EResourceStatus.Error,
             data: entry?.value,
             error: undefined,
             updatedAt: undefined,
@@ -454,7 +466,7 @@ const labelSource = new LabelSource();
 export class LabelChip extends AntiHookComponent<{labelId: string}> {
     render(): JSX.Element {
         const view = this.useResource(labelSource, this.props.labelId);
-        if (view.status === EResourceStatus.Success && view.data !== undefined) {
+        if (view.isSuccess && view.data !== undefined) {
             return <span className="chip">{view.data.text}</span>;
         }
         return <span className="chip">{view.status}</span>;

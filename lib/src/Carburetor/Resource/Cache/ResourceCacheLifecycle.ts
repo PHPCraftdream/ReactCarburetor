@@ -9,6 +9,7 @@ import {prepareCacheRequest} from "./State/prepareCacheRequest";
 import {ICacheRequest, ICacheRuntime} from "./State/Runtime/Models";
 import {ResourceCacheState} from "./State/Runtime/ResourceCacheState";
 import {trimCacheRuntime} from "./State/Runtime/Registry";
+import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
 
 /** Owns cache load, settlement, and Suspense transitions. */
 export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheState<T, TArgs> {
@@ -121,7 +122,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
                                 const root = this.data;
                                 const target = draft.entries[key];
                                 const current = () => root.entries[key] === entry ? target : draft.entries[key];
-                                current().status = priorStatus as EResourceStatus;
+                                applyResourceStatus(current(), priorStatus as EResourceStatus);
                                 current().error = priorError;
                                 current().refreshing = priorRefreshing as boolean;
                             });
@@ -177,13 +178,15 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         }
         const draft = this.draft;
         if (!entry) {
-            draft.entries[key] = {...getInitialCacheEntry<T>(), status: EResourceStatus.Pending};
+            const next: IResourceEntry<T> = {...getInitialCacheEntry<T>()};
+            applyResourceStatus(next, EResourceStatus.Pending);
+            draft.entries[key] = next;
             this[R.eviction].create();
         } else if (entry.status !== EResourceStatus.Success) {
             const root = this.data;
             const target = draft.entries[key];
             const current = () => root.entries[key] === entry ? target : draft.entries[key];
-            current().status = EResourceStatus.Pending;
+            applyResourceStatus(current(), EResourceStatus.Pending);
             current().error = undefined;
         } else {
             draft.entries[key].refreshing = true;
@@ -229,7 +232,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
             const root = this.data;
             const target = draft.entries[key];
             const current = () => root.entries[key] === entry ? target : draft.entries[key];
-            current().status = EResourceStatus.Success;
+            applyResourceStatus(current(), EResourceStatus.Success);
             current().data = data;
             current().error = undefined;
             current().updatedAt = Date.now();
@@ -286,7 +289,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
             current().error = message;
             current().refreshing = false;
             current().failed = !invalidated;
-            if (!hasData) current().status = EResourceStatus.Error;
+            if (!hasData) applyResourceStatus(current(), EResourceStatus.Error);
         });
         this[R.evict]();
         if (thrown) throw thrown.error;

@@ -273,7 +273,7 @@ ceilings (`readset40/index-entries` ≤ 0.85× of its control, `subclass40/write
 | `iterate40/traps-{map,filter,forEach}@5000` | R40-03: one handler `get` per element and no `has` for present indices (2 per element before), the same read set and result as the native method |
 | `iterate40/parent-render@5000`, `iterate40/computed-filter@1000` | R40-03: parent render and computed filter record the same paths with no `has` calls; one append wakes the parent once |
 | `iterate40/delivery-index-length`, `iterate40/own-reads` | controls: delivery on index/length writes is unchanged, and reading own keys pays no method-table lookup (0 of 1000 lookups) |
-| `cache40/settle-{success,failure}` | R40-05: write-proxy traps per settle publication 9 / 6 (21 / 12 through repeated `draft.entries[key]`), at most 0.5× of a control that writes the same fields the old way |
+| `cache40/settle-{success,failure}` | R40-05: write-proxy traps per settle publication 12 / 9 (27 / 18 through repeated `draft.entries[key]`), at most 0.5× of a control that writes the same fields the old way |
 | `resource40/hook-renders@50` | R40-04: `useResourceValue` renders 2 on mount and 2 for an equal refresh after `invalidateAll()`, as the class `useResource` does, and reloads after `invalidate` |
 | `resource40/field-precision`, `resource40/no-load-in-render` | R40-04: an unread field re-renders 0 times, a read one once; a load starts after commit, never in render |
 
