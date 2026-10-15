@@ -223,6 +223,7 @@ mod tests {
                 text,
             },
             &config,
+            false,
         )
     }
 

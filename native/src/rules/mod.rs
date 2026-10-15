@@ -181,11 +181,17 @@ fn may_contain_component_base(text: &str) -> bool {
             .any(|base| text.contains(base))
 }
 
-/// Runs the rules the configuration leaves on over one parsed file.
+/// Runs the rules the configuration leaves on over one parsed file; `keep_overlaps` leaves H31
+/// (no-function-in-render) beside H29/H30 instead of yielding to them at the same spot.
 ///
 /// A rule set to `off` is not merely filtered out of the output — it never runs, so turning rules
 /// off makes the pass cheaper rather than only quieter.
-pub fn run(program: &Program<'_>, source: &Source, config: &Config) -> Vec<Diagnostic> {
+pub fn run(
+    program: &Program<'_>,
+    source: &Source<'_>,
+    config: &Config,
+    keep_overlaps: bool,
+) -> Vec<Diagnostic> {
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let method_severity = config.severity(allocations::require_method_for_closure::RULE);
     let module_severity = config.severity(allocations::require_module_function::RULE);
@@ -233,19 +239,21 @@ pub fn run(program: &Program<'_>, source: &Source, config: &Config) -> Vec<Diagn
 
     // H31 repeats the allocation rules' finding with blunter advice, so it yields wherever H29 or
     // H30 reported at the same spot; when both are off, nothing is collected here and H31 stays.
-    let allocation_spots = diagnostics
-        .iter()
-        .filter(|diagnostic| {
-            diagnostic.rule == allocations::require_method_for_closure::RULE
-                || diagnostic.rule == allocations::require_module_function::RULE
-        })
-        .map(|diagnostic| (diagnostic.line, diagnostic.column))
-        .collect::<HashSet<(usize, usize)>>();
+    if !keep_overlaps {
+        let allocation_spots = diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.rule == allocations::require_method_for_closure::RULE
+                    || diagnostic.rule == allocations::require_module_function::RULE
+            })
+            .map(|diagnostic| (diagnostic.line, diagnostic.column))
+            .collect::<HashSet<(usize, usize)>>();
 
-    diagnostics.retain(|diagnostic| {
-        diagnostic.rule != lifecycle::no_function_in_render::RULE
-            || !allocation_spots.contains(&(diagnostic.line, diagnostic.column))
-    });
+        diagnostics.retain(|diagnostic| {
+            diagnostic.rule != lifecycle::no_function_in_render::RULE
+                || !allocation_spots.contains(&(diagnostic.line, diagnostic.column))
+        });
+    }
 
     diagnostics
 }
@@ -260,7 +268,12 @@ mod tests {
 
     use super::*;
 
-    fn run_with(text: &str, method: Severity, module: Severity) -> Vec<Diagnostic> {
+    fn run_with_overlaps(
+        text: &str,
+        method: Severity,
+        module: Severity,
+        keep_overlaps: bool,
+    ) -> Vec<Diagnostic> {
         let allocator = Allocator::default();
         let parsed = Parser::new(&allocator, text, SourceType::tsx()).parse();
         assert!(
@@ -284,7 +297,12 @@ mod tests {
                 text,
             },
             &config,
+            keep_overlaps,
         )
+    }
+
+    fn run_with(text: &str, method: Severity, module: Severity) -> Vec<Diagnostic> {
+        run_with_overlaps(text, method, module, false)
     }
 
     const ALLOCATION_SOURCE: &str = r#"
@@ -405,5 +423,40 @@ class Widget {
 "#;
         assert!(!may_contain_component_base(source));
         assert!(run_with(source, Severity::Error, Severity::Error).is_empty());
+    }
+
+    #[test]
+    fn keep_overlaps_leaves_h31_beside_h29() {
+        let source = r#"
+class Widget extends AntiHookComponent {
+    render() {
+        return <button onClick={() => this.toggle()}>go</button>;
+    }
+
+    toggle() {}
+}
+"#;
+
+        let deduplicated = run_with_overlaps(source, Severity::Warn, Severity::Off, false);
+        let lines = |rule: &str| {
+            deduplicated
+                .iter()
+                .filter(|diagnostic| diagnostic.rule == rule)
+                .map(|diagnostic| diagnostic.line)
+                .collect::<Vec<_>>()
+        };
+        assert!(lines(lifecycle::no_function_in_render::RULE).is_empty());
+        assert_eq!(
+            lines(allocations::require_method_for_closure::RULE),
+            [4]
+        );
+
+        let kept = run_with_overlaps(source, Severity::Warn, Severity::Off, true);
+        let on_arrow = |rule: &str| {
+            kept.iter()
+                .any(|diagnostic| diagnostic.rule == rule && diagnostic.line == 4)
+        };
+        assert!(on_arrow(lifecycle::no_function_in_render::RULE));
+        assert!(on_arrow(allocations::require_method_for_closure::RULE));
     }
 }

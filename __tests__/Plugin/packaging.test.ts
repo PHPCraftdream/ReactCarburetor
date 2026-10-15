@@ -73,6 +73,26 @@ describe('packaging the lint rules', () => {
         expect(locations).toEqual([[4, 21], [9, 5], [14, 16]]);
     });
 
+    test('H31 reports when H29 and H30 are off in an ESLint flat config', () => {
+        const {output, status} = run(path.join('node_modules', 'eslint', 'bin', 'eslint.js'), [
+            '--no-warn-ignored',
+            '--format', 'json',
+            '-c', path.join(CONSUMER, 'overlaps', 'overlaps.config.mjs'),
+            path.join(CONSUMER, 'overlaps', 'overlaps.component.jsx'),
+        ]);
+        // warnings alone do not fail ESLint, the message assertion below is what proves the report
+        expect(status).toBe(0);
+
+        const results = JSON.parse(output) as {messages: {ruleId: string; severity: number}[]}[];
+        const messages = results.flatMap(result => result.messages.map(message =>
+            [message.ruleId, message.severity]
+        ));
+
+        expect(messages).toEqual([
+            ['carburetor/no-function-in-render', 1],
+        ]);
+    });
+
     test('ESLint consumes the supplied optional preset with aliases and shadowing intact', () => {
         const {output, status} = run(path.join('node_modules', 'eslint', 'bin', 'eslint.js'), [
             '--no-warn-ignored', '--format', 'json',

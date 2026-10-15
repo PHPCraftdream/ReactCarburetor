@@ -383,3 +383,69 @@ fn fix_resolves_two_violations_that_start_out_needing_more_than_one_pass() {
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
+
+#[test]
+fn keep_overlaps_flag_restores_the_blunter_rule() {
+    // One arrow that both the allocation rule and no-function-in-render report on: by default the
+    // blunter rule yields, and `--keep-overlaps` keeps both side by side.
+    let source = "class Widget extends AntiHookComponent {\n    render() {\n        return <button onClick={() => this.handle()}>go</button>;\n    }\n\n    handle() {}\n}\n";
+    let dir = workspace(&[("widget.tsx", source)]);
+    let found = |extra: &[&str]| {
+        let mut all: Vec<&str> = extra.to_vec();
+        all.extend_from_slice(&[
+            "--format=json",
+            "--rule=carburetor/no-function-in-render=error",
+            "--rule=carburetor/require-method-for-closure=error",
+            "widget.tsx",
+        ]);
+        let output = run_in(&dir, &all);
+        assert_eq!(code(&output), 1, "{}", stdout(&output));
+        serde_json::from_str::<Value>(&stdout(&output))
+            .expect("output is JSON")
+            .as_array()
+            .expect("the top level is an array")
+            .clone()
+    };
+    let rules_at = |found: &[Value], line: usize| -> Vec<String> {
+        let mut rules: Vec<String> = found
+            .iter()
+            .filter(|diagnostic| diagnostic["line"] == line)
+            .map(|diagnostic| diagnostic["rule"].as_str().expect("a rule").to_string())
+            .collect();
+        rules.sort();
+
+        rules
+    };
+
+    let silenced = found(&[]);
+    assert!(!rules_at(&silenced, 3).contains(&"carburetor/no-function-in-render".to_string()));
+    assert_eq!(
+        rules_at(&silenced, 3),
+        ["carburetor/require-method-for-closure"]
+    );
+
+    let kept = found(&["--keep-overlaps"]);
+    assert_eq!(
+        rules_at(&kept, 3),
+        [
+            "carburetor/no-function-in-render",
+            "carburetor/require-method-for-closure",
+        ]
+    );
+    // Both reports land on the same spot, since they are about the same arrow.
+    let columns: Vec<u64> = kept
+        .iter()
+        .filter(|diagnostic| diagnostic["line"] == 3)
+        .map(|diagnostic| diagnostic["column"].as_u64().unwrap())
+        .collect();
+    assert_eq!(columns[0], columns[1]);
+
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+#[test]
+fn help_lists_the_keep_overlaps_flag() {
+    let output = run(&["--help"]);
+
+    assert!(stdout(&output).contains("--keep-overlaps"), "{}", stdout(&output));
+}

@@ -197,7 +197,9 @@ const claimLock = (lock: string): {isRunner: boolean; identity: {dev: number; in
 };
 
 /** Runs the binary over `cwd` with every rule forced on, so the host — not native — decides what
- * a rule's own `create()` actually surfaces. */
+ * a rule's own `create()` actually surfaces. `--keep-overlaps` disables native's own
+ * deduplication of overlapping rules — a host may have disabled the rule a diagnostic would
+ * otherwise be folded into; those overlaps are re-deduplicated host-side in nativeRule.mts. */
 const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinary): INativeDiagnostic[] => {
     const binary = resolve();
 
@@ -212,7 +214,7 @@ const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinar
     }
 
     const args = ALL_RULE_IDS.flatMap((id) => ['--rule', `${id}=error`]);
-    const result = spawnSync(binary, ['--format=json', ...args, '.'], {cwd, encoding: 'utf8'});
+    const result = spawnSync(binary, ['--format=json', '--keep-overlaps', ...args, '.'], {cwd, encoding: 'utf8'});
 
     // `spawnSync` never throws; a launch failure (missing file, not executable, bad path) shows up
     // here instead, with `status: null` — checking only `status === 2` would silently swallow it

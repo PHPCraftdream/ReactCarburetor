@@ -89,6 +89,8 @@ struct Options {
     overrides: Vec<(String, Severity)>,
     /// Whether a warning is enough to fail the run.
     deny_warnings: bool,
+    /// Whether no-function-in-render stays beside the allocation rules instead of yielding.
+    keep_overlaps: bool,
     fix_mode: FixMode,
 }
 
@@ -99,6 +101,7 @@ carburetor-lint [options] [paths...]
   --rule <name>=<severity> override one rule's severity (error, warn, off)
   --format <human|json>    output format; default human
   --deny-warnings          fail the run on warnings too
+  --keep-overlaps          keep no-function-in-render alongside the allocation rules
   --fix                    write every available fix to disk
   --fix-dry-run            print what --fix would change, without writing it
   -h, --help               print this
@@ -113,6 +116,7 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
     let mut config: Option<PathBuf> = None;
     let mut overrides: Vec<(String, Severity)> = Vec::new();
     let mut deny_warnings = false;
+    let mut keep_overlaps = false;
     let mut fix_mode = FixMode::Report;
 
     let mut arguments = arguments.into_iter().skip(1);
@@ -160,6 +164,7 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
                 overrides.push((rule.to_string(), severity));
             }
             "--deny-warnings" => deny_warnings = true,
+            "--keep-overlaps" => keep_overlaps = true,
             "--fix" if fix_mode == FixMode::DryRun => {
                 return Err("--fix and --fix-dry-run are mutually exclusive".to_string());
             }
@@ -177,7 +182,15 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
         paths.push(PathBuf::from("."));
     }
 
-    Ok(Some(Options { paths, format, config, overrides, deny_warnings, fix_mode }))
+    Ok(Some(Options {
+        paths,
+        format,
+        config,
+        overrides,
+        deny_warnings,
+        keep_overlaps,
+        fix_mode,
+    }))
 }
 
 /// The walker's exclusions for one root: the never-walked directories plus the config's patterns.
@@ -253,7 +266,7 @@ fn collect_files(paths: &[PathBuf], ignores: &[String]) -> Result<Vec<PathBuf>, 
 /// what a directive silences. `None` means the parser could not make sense of it — a half-built
 /// tree is the compiler's problem to report, not ours, and (for `--fix`) a signal that whatever
 /// produced this text broke it and should not be trusted.
-fn analyze(path: &Path, text: &str, config: &Config) -> Option<Vec<Diagnostic>> {
+fn analyze(path: &Path, text: &str, config: &Config, keep_overlaps: bool) -> Option<Vec<Diagnostic>> {
     let source_type = SourceType::from_path(path).unwrap_or_default();
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, text, source_type).parse();
@@ -266,7 +279,7 @@ fn analyze(path: &Path, text: &str, config: &Config) -> Option<Vec<Diagnostic>> 
     let suppression = Suppression::build(&parsed.program);
 
     Some(
-        rules::run(&parsed.program, &source, config)
+        rules::run(&parsed.program, &source, config, keep_overlaps)
             .into_iter()
             .filter(|diagnostic| !suppression.silenced(&diagnostic.rule, diagnostic.line))
             .collect(),
@@ -274,11 +287,11 @@ fn analyze(path: &Path, text: &str, config: &Config) -> Option<Vec<Diagnostic>> 
 }
 
 /// Reads and analyzes one file from disk; read failures retain the path for the run-level error.
-fn check_file(path: &Path, config: &Config) -> Result<Vec<Diagnostic>, String> {
+fn check_file(path: &Path, config: &Config, keep_overlaps: bool) -> Result<Vec<Diagnostic>, String> {
     let text = fs::read_to_string(path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
 
-    Ok(analyze(path, &text, config).unwrap_or_default())
+    Ok(analyze(path, &text, config, keep_overlaps).unwrap_or_default())
 }
 
 /// One file's outcome after `--fix`'s pass loop: the diagnostics that remain, and — when the text
@@ -326,11 +339,12 @@ fn stabilize(
 }
 
 /// Runs the fix loop for one file; read failures retain the path for the run-level error.
-fn fix_one_file(path: &Path, config: &Config) -> Result<FixOutcome, String> {
+fn fix_one_file(path: &Path, config: &Config, keep_overlaps: bool) -> Result<FixOutcome, String> {
     let original = fs::read_to_string(path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
 
-    let (final_text, diagnostics) = stabilize(original.clone(), |text| analyze(path, text, config));
+    let (final_text, diagnostics) =
+        stabilize(original.clone(), |text| analyze(path, text, config, keep_overlaps));
     let change = (final_text != original).then_some((original, final_text));
 
     Ok(FixOutcome { diagnostics, change })
@@ -338,11 +352,11 @@ fn fix_one_file(path: &Path, config: &Config) -> Result<FixOutcome, String> {
 
 /// Runs `--fix`/`--fix-dry-run` over every file: [`Write`](FixMode::Write) publishes each changed
 /// file atomically, [`DryRun`](FixMode::DryRun) prints a diff and touches nothing.
-fn run_fix(files: &[PathBuf], config: &Config, mode: FixMode) -> Result<Vec<Diagnostic>, String> {
+fn run_fix(files: &[PathBuf], config: &Config, mode: FixMode, keep_overlaps: bool) -> Result<Vec<Diagnostic>, String> {
     // One task per file, the same reasoning as the plain check: parsing dominates the work.
     let outcomes: Vec<(&PathBuf, FixOutcome)> = files
         .par_iter()
-        .map(|path| fix_one_file(path, config).map(|outcome| (path, outcome)))
+        .map(|path| fix_one_file(path, config, keep_overlaps).map(|outcome| (path, outcome)))
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut diagnostics = Vec::new();
@@ -406,12 +420,14 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
         // One task per file: parsing dominates the work and is embarrassingly parallel.
         FixMode::Report => files
             .par_iter()
-            .map(|path| check_file(path, &config))
+            .map(|path| check_file(path, &config, options.keep_overlaps))
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .flatten()
             .collect(),
-        FixMode::Write | FixMode::DryRun => run_fix(&files, &config, options.fix_mode)?,
+        FixMode::Write | FixMode::DryRun => {
+            run_fix(&files, &config, options.fix_mode, options.keep_overlaps)?
+        }
     };
 
     diagnostics.sort_by(|left, right| {

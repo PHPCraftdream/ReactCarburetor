@@ -137,6 +137,28 @@ describe('lint plugin in the oxlint host', () => {
         });
     });
 
+    test('H29 fires on both allocation closures while H31 covers only the distinct spot', () => {
+        const output = runOxlint([
+            '-c', 'plugin/__fixtures__/oxlintrc.json',
+            'plugin/__fixtures__/data/allocations.tsx',
+        ]);
+
+        expect(countOccurrences(output, 'carburetor(require-method-for-closure)')).toEqual(2);
+        // H31 only fires on the per-item handler (25:68); the arrow spots it shares with H29 stay deduplicated.
+        expect(countOccurrences(output, 'carburetor(no-function-in-render)')).toEqual(1);
+    });
+
+    test('H31 reports when H29 and H30 are off', () => {
+        const output = runOxlint([
+            '-c', 'plugin/__fixtures__/consumer/overlaps/overlaps.oxlintrc.json',
+            'plugin/__fixtures__/consumer/overlaps/overlaps.component.jsx',
+        ]);
+
+        expect(countOccurrences(output, 'carburetor(no-function-in-render)')).toEqual(1);
+        expect(output).not.toContain('require-method-for-closure');
+        expect(output).not.toContain('require-module-function');
+    });
+
     test('the repository config loads the plugin', () => {
         const output = runOxlint(['-c', '.oxlintrc.json', 'plugin/src/index.mts']);
 

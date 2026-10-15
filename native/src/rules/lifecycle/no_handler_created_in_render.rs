@@ -139,6 +139,7 @@ mod tests {
                 text,
             },
             &crate::config::Config::default(),
+            false,
         )
     }
 
