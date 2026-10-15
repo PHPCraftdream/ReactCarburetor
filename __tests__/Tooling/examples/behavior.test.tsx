@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
+import {rstest} from '@rstest/core';
 import {AntiHookComponent, Carburetor, ResourceCarburetor, ResourceCache, waitForUpdate} from '@/Carburetor';
 
 describe('AutosaveDraft example reads tracked state (docs/examples/components.md)', () => {
@@ -41,32 +42,74 @@ describe('AutosaveDraft example reads tracked state (docs/examples/components.md
     });
 });
 
-describe('ConfigView example re-renders after reload (docs/examples/resources.md)', () => {
-    test('the component re-renders with fresh data after reload', async () => {
-        let current = {theme: 'dark'};
-        const resource = new ResourceCarburetor<{theme: string}, void>(() => Promise.resolve(current));
+describe('ConfigView example (docs/examples/resources.md)', () => {
+    const setup = async () => {
+        let next: () => Promise<{theme: string}> = () => Promise.resolve({theme: 'dark'});
+        const resource = new ResourceCarburetor<{theme: string}, void>(() => next());
         await act(async () => {
             await resource.load();
         });
 
-        class ConfigView extends AntiHookComponent {
-            public render() {
-                const view = this.useCarburetor(resource);
-                const value = view.data ?? resource.suspend(undefined);
+        class ConfigBoundary extends React.Component<{children?: React.ReactNode}, {error?: string}> {
+            public state: {error?: string} = {};
 
-                return <span className="theme">{value.theme}</span>;
+            public static getDerivedStateFromError(error: unknown): {error: string} {
+                return {error: error instanceof Error ? error.message : String(error)};
+            }
+
+            public render() {
+                return this.state.error === undefined
+                    ? this.props.children
+                    : <span className="error">{this.state.error}</span>;
             }
         }
 
-        const {container} = render(<ConfigView/>);
-        expect(container.querySelector('.theme')?.textContent).toEqual('dark');
+        class ConfigView extends AntiHookComponent {
+            public render() {
+                const view = this.useCarburetor(resource);
+                const value = resource.suspend(undefined);
 
-        current = {theme: 'light'};
+                return <span className={view.isPending ? 'theme refreshing' : 'theme'}>{value.theme}</span>;
+            }
+        }
+
+        const mounted = render(
+            <ConfigBoundary>
+                <React.Suspense fallback={<span className="spinner"/>}>
+                    <ConfigView/>
+                </React.Suspense>
+            </ConfigBoundary>
+        );
+
+        return {resource, mounted, setNext: (loader: typeof next) => { next = loader; }};
+    };
+
+    test('a reload with fresh data re-renders the component', async () => {
+        const {resource, mounted, setNext} = await setup();
+        expect(mounted.container.querySelector('.theme')?.textContent).toEqual('dark');
+
+        setNext(() => Promise.resolve({theme: 'light'}));
         await act(async () => {
             await resource.reload();
         });
 
-        expect(container.querySelector('.theme')?.textContent).toEqual('light');
+        expect(mounted.container.querySelector('.theme')?.textContent).toEqual('light');
+    });
+
+    test('a failed reload after a success reaches the error boundary', async () => {
+        const {resource, mounted, setNext} = await setup();
+        expect(mounted.container.querySelector('.theme')?.textContent).toEqual('dark');
+
+        // React logs the error its boundary caught; that log is expected here.
+        const errors = rstest.spyOn(console, 'error').mockImplementation(() => {});
+        setNext(() => Promise.reject(new Error('offline')));
+        await act(async () => {
+            await resource.reload().catch(() => undefined);
+        });
+
+        expect(mounted.container.querySelector('.error')?.textContent).toEqual('offline');
+        expect(errors).toHaveBeenCalled();
+        errors.mockRestore();
     });
 });
 

@@ -71,8 +71,9 @@ Calling `load()` again with different args aborts the previous request automatic
 
 For shell-style layouts, `suspend()` reads the value or throws the in-flight promise / the
 raw failure, so a `<Suspense>` boundary and an error boundary handle the waiting and the
-failure. The component must still call `this.useCarburetor(resource)` — `suspend()` never
-subscribes on its own.
+failure. `suspend()` never subscribes on its own, so the component also reads a field off
+`this.useCarburetor(resource)` — here `isPending`, which flips on every reload — and calls
+`suspend()` unconditionally, so a failed reload still reaches the error boundary.
 
 <!-- example:compile -->
 ```tsx
@@ -107,8 +108,8 @@ class ConfigErrorBoundary extends Component<{children?: ReactNode}, {error: stri
 export class ConfigView extends AntiHookComponent {
     render(): JSX.Element {
         const view = this.useCarburetor(configResource);
-        const value: Config = view.data ?? configResource.suspend(undefined);
-        return <span className="theme">{value.theme}</span>;
+        const value: Config = configResource.suspend(undefined);
+        return <span className={view.isPending ? 'theme refreshing' : 'theme'}>{value.theme}</span>;
     }
 }
 
