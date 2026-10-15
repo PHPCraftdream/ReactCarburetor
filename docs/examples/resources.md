@@ -153,13 +153,11 @@ declare function fetchPost(id: string): Promise<Post>;
 
 const postCache = new ResourceCache<Post, string>((id: string, _signal: AbortSignal) => fetchPost(id));
 
+const renderPost = (id: string): JSX.Element => <PostListItem key={id} postId={id} />;
+
 export class PostList extends AntiHookComponent<{postIds: string[]}> {
     render(): JSX.Element {
-        return (
-            <ul>
-                {this.props.postIds.map((id: string): JSX.Element => <PostListItem key={id} postId={id} />)}
-            </ul>
-        );
+        return <ul>{this.props.postIds.map(renderPost)}</ul>;
     }
 }
 
@@ -318,9 +316,12 @@ const settingsCache = new ResourceCache<Settings, string>((userId: string) => fe
 export class SettingsPanel extends AntiHookComponent<{userId: string}> {
     @bind
     private rename(nextName: string): void {
-        void saveSettings(this.props.userId, {displayName: nextName}).then((): void => {
-            settingsCache.invalidate(this.props.userId);
-        });
+        void saveSettings(this.props.userId, {displayName: nextName}).then(this.invalidateSettings);
+    }
+
+    @bind
+    private invalidateSettings(): void {
+        settingsCache.invalidate(this.props.userId);
     }
 
     @bind
@@ -534,9 +535,8 @@ class SessionStore extends Carburetor<{current: IResourceData<Session>}> {
     }
 
     public reset(): void {
-        this.update((draft) => {
-            draft.current = getInitialResourceData<Session>();
-        });
+        this.draft.current = getInitialResourceData<Session>();
+        this.emitUpdate();
     }
 }
 ```

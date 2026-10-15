@@ -178,6 +178,18 @@ const draft = new Carburetor<IDraftData>({text: ''});
 
 declare function saveToServer(text: string): void;
 
+const cleanupAutosave = (handle: TTimerHandle | undefined): TEffectCleanup => (): void => {
+    if (handle !== undefined) {
+        clearTimeout(handle);
+    }
+};
+
+const autosaveEffect: TEffect = (): TEffectCleanup => {
+    let handle: TTimerHandle;
+    handle = setTimeout((): void => saveToServer(draft.getData().text), 500);
+    return cleanupAutosave(handle);
+};
+
 class AutosaveDraft extends AntiHookComponent {
     public render() {
         const view = this.useCarburetor(draft);
@@ -186,25 +198,7 @@ class AutosaveDraft extends AntiHookComponent {
 
     protected useEffects(): void {
         const deps: TEffectDeps = [draft.getData().text];
-
-        const effect: TEffect = (): TEffectCleanup => {
-            let handle: TTimerHandle;
-
-            const schedule = (): void => {
-                if (handle !== undefined) {
-                    clearTimeout(handle);
-                }
-                handle = setTimeout((): void => saveToServer(draft.getData().text), 500);
-            };
-            schedule();
-
-            return (): void => {
-                if (handle !== undefined) {
-                    clearTimeout(handle);
-                }
-            };
-        };
-        this.useEffect('autosave', effect, deps);
+        this.useEffect('autosave', autosaveEffect, deps);
     }
 }
 ```

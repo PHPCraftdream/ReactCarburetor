@@ -18,9 +18,8 @@ import {Carburetor, bind, computed} from 'react-carburetor';
 class CartCarburetor extends Carburetor<{items: string[]}> {
     @bind
     add(item: string): void {
-        this.update((draft) => {
-            draft.items.push(item);
-        });
+        this.draft.items.push(item);
+        this.emitUpdate();
     }
 }
 
@@ -144,9 +143,8 @@ import {AntiHookComponent, Carburetor, bind, computed} from 'react-carburetor';
 class CartCarburetor extends Carburetor<{items: string[]}> {
     @bind
     add(item: string): void {
-        this.update((draft) => {
-            draft.items.push(item);
-        });
+        this.draft.items.push(item);
+        this.emitUpdate();
     }
 }
 

@@ -16,16 +16,12 @@ so all later `this.update(...)` calls are captured automatically.
 import {AntiHookComponent, bind, Carburetor, CarburetorHistory, IHistoryOptions} from 'react-carburetor';
 import {ReactElement} from 'react';
 
-class CounterCarburetor extends Carburetor<{count: number}> {
-    @bind
-    public increment(): void {
-        this.update((draft) => { draft.count += 1; });
-    }
+const increment = (draft: {count: number}): void => { draft.count += 1; };
+const decrement = (draft: {count: number}): void => { draft.count -= 1; };
 
-    @bind
-    public decrement(): void {
-        this.update((draft) => { draft.count -= 1; });
-    }
+class CounterCarburetor extends Carburetor<{count: number}> {
+    @bind public increment(): void { this.update(increment); }
+    @bind public decrement(): void { this.update(decrement); }
 }
 
 const store = new CounterCarburetor({count: 0});
@@ -73,9 +69,12 @@ import {bind, Carburetor, IPersistOptions, IStorageLike, persist} from 'react-ca
 class TodoCarburetor extends Carburetor<{items: string[]}> {
     @bind
     public add(item: string): void {
-        this.update((draft) => { draft.items.push(item); });
+        this.draft.items.push(item);
+        this.emitUpdate();
     }
 }
+
+const logPersistError = (error: unknown): void => { console.error('persist failed', error); };
 
 const memoryStorage = (): IStorageLike => {
     const items = new Map<string, string>();
@@ -91,7 +90,7 @@ const options: IPersistOptions = {
     key: 'todos',
     storage: memoryStorage(),
     coalesce: false,
-    onError: (error: unknown): void => { console.error('persist failed', error); },
+    onError: logPersistError,
 };
 const stop = persist(store, options);
 
@@ -125,11 +124,12 @@ import {
     TDisposer,
 } from 'react-carburetor';
 
+const incrementCount = (draft: {count: number}): void => { draft.count += 1; };
+const sendDevTools = (action: string, state: unknown): void => { console.log(action, state); };
+
 class CounterCarburetor extends Carburetor<{count: number}> {
     @bind
-    public increment(): void {
-        this.update((draft) => { draft.count += 1; });
-    }
+    public increment(): void { this.update(incrementCount); }
 }
 
 const store = new CounterCarburetor({count: 0});
@@ -140,8 +140,8 @@ class StubDevToolsExtension implements IDevToolsExtension {
 
     public connect(options: {name?: string}): IDevToolsConnection {
         return {
-            init: (state: unknown): void => { console.log(options.name, state); },
-            send: (action: string, state: unknown): void => { console.log(action, state); },
+            init: (state: unknown): void => { console.log(options.name ?? '', state); },
+            send: sendDevTools,
             subscribe: (listener: (message: IDevToolsMessage) => void): TDisposer => {
                 this.listener = listener;
                 return () => { this.listener = undefined; };
@@ -192,12 +192,15 @@ declare function fetchUser(id: string): Promise<User>;
 class UserCarburetor extends Carburetor<{user: User | undefined; loading: boolean}> {
     @bind
     public async load(id: string): Promise<void> {
-        this.update((draft) => { draft.loading = true; });
+        this.draft.loading = true;
+        this.emitUpdate();
         const user = await fetchUser(id);
-        this.update((draft) => {
-            draft.user = user;
-            draft.loading = false;
-        });
+        try {
+            this.draft.user = user;
+            this.draft.loading = false;
+        } finally {
+            this.emitUpdate();
+        }
     }
 }
 

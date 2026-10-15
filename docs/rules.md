@@ -4,10 +4,10 @@ The rules ship with the package as `react-carburetor/lint`. This page is the ref
 name; [hazards.md](hazards.md) is the same material organised by mistake, with the code that
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
-The recommended rules protect carburetor logic and allocation hygiene: missed writes, abandoned
-subscriptions, dropped cleanup, and functions rebuilt on every call. A separately enabled
-`no-hooks` preset adds a component-architecture policy. The repository's unpublished house-style
-plugin (import direction, line length, documentation) remains separate from both.
+The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
+`no-hooks` preset adds a component-architecture policy. The registry contains **27 rules**:
+26 catalogue rules plus the optional `no-react-hooks-in-components` rule. `no-module-level-store`
+is off in recommended configuration, so do not equate registry count with enabled rule count.
 
 ## Setup
 
@@ -92,12 +92,10 @@ default exports, and recognized component classes. Named and namespace imports, 
 provenance. Local shadowing, type-only imports and use-prefixed functions from other modules do not.
 Instance methods such as `this.useCarburetor()` are not React hooks.
 
-This rule has no options or automatic conversion: changing component ownership requires a design
-decision. Local forwarding follows at most eight alias links. Dynamic property names and
-cross-module wrapper implementations are not inferred. It enforces a static architecture boundary,
-not a proof of zero allocations: React still allocates, and a hook-free component can allocate in
-its own render. Measure GC and completed-render costs.
-
+This rule has no automatic conversion: changing component ownership requires a design decision.
+Local forwarding follows at most eight alias links. Dynamic property names and cross-module wrapper
+implementations are not inferred. It enforces a static architecture boundary, not a proof of zero
+allocations: React still allocates, and a hook-free component can allocate in its own render.
 
 ## The rules
 
@@ -109,13 +107,14 @@ until your project changes shape.
 |------|-------|---------|--------|
 | `no-async-effect` | error | An `async` effect body, whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
 | `no-async-transaction` | error | An `async` body given to `transaction()` (a value import from `react-carburetor`) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
+| `no-closure-in-update` | warn | A capturing inline callback passed to `this.update` in a recognized store member; write to `this.draft` and emit instead | [H32](hazards.md) |
 | `no-computed-get-in-computed` | error | A computed reading a source with `get()`/`getData()` instead of its reader, so it registers no dependency and never invalidates | [H3](hazards.md) |
 | `no-computed-get-in-render` | error | A computed read with `get()` in render, which registers no subscription | [H2](hazards.md) |
 | `no-direct-data-write` | warn | A store writing to `this.data`, which records no path and invalidates everything | [H7](hazards.md) |
 | `no-duplicate-effect-name` | error | Two `this.useEffect` calls under one name, where the second overwrites the first one's cleanup | [H15](hazards.md) |
 | `no-escaping-tracked-data` | warn | Tracked data stored on the component or captured by a function that runs after the render | [H5](hazards.md) |
 | `no-external-data-mutation` | error | A write through `getData()`, which notifies nobody and mutates shared snapshots | [H8](hazards.md) |
-| `no-function-in-render` | warn | A function built in a component's render for a DOM-element attribute or as a render-body local; silent where `require-method-for-closure` or `require-module-function` reports the same function | [H31](hazards.md) |
+| `no-function-in-render` | warn | A function built in render for a DOM attribute/local/declaration or synchronous array callback; yields to H29/H30 at the same position | [H31](hazards.md) |
 | `no-get-data-in-render` | error | `getData()` in render, so the component never subscribes and freezes | [H1](hazards.md) |
 | `no-handler-created-in-render` | warn | A handler built in render and passed to a child, which defeats the props gate | [H21](hazards.md) |
 | `no-lifecycle-class-property` | error | A lifecycle method declared as a class property, shadowing the base implementation | [H13](hazards.md) |
@@ -130,11 +129,11 @@ until your project changes shape.
 | `require-effect-deps` | warn | A prop or piece of state read by an effect but missing from its dependencies | [H16](hazards.md) |
 | `require-emit-after-draft-write` | error | A method that writes through `draft` and never publishes | [H6](hazards.md) |
 | `require-method-for-closure` | warn | A closure inside a class member that depends only on the class, rebuilt on every call of the member — declare it as a method | [H29](hazards.md) |
-| `require-module-function` | warn | A closure or member that uses nothing from the class, rebuilt per call or per instance — declare it at module level | [H30](hazards.md) |
+| `require-module-function` | warn | A clean nested function needing no surrounding invocation state, or an eligible component member needing no class; configurable scope | [H30](hazards.md) |
 | `require-subscription-disposal` | warn | A subscription whose id is discarded, so it can never be released | [H20](hazards.md) |
 | `require-super-in-lifecycle` | error | A lifecycle override that skips `super`, disabling effects, cleanup or the props gate | [H12](hazards.md) |
 
-## Fixed recognition and severity-only configuration
+## Fixed recognition and configuration
 
 The preset's recognitions are fixed and syntactic:
 
@@ -145,11 +144,35 @@ The preset's recognitions are fixed and syntactic:
 | Render | `render` |
 
 Custom components should directly extend a recognised component base; recognition is not generally
-transitive. Recognition names cannot be configured. Configuration accepts severity only: `error`,
-`warn` or `off`. Legacy `[severity, options]` payloads may remain stored in host configuration, but
-native rules do not consume options. Suppress reports with `// carburetor-disable-next-line <rule>`
-or `// carburetor-disable <rule>`; either directive without a rule list silences all carburetor
-rules.
+transitive. Recognition names cannot be configured. Most rules accept severity only: `error`,
+`warn` or `off`; `require-module-function` also accepts the `scope` option (`"all"` or `"classes"`).
+Unknown scope values and option keys are malformed configuration. Suppress reports with
+`// carburetor-disable-next-line <rule>` or `// carburetor-disable <rule>`; either directive without
+a rule list silences all Carburetor rules.
+
+### `require-module-function`: `scope`
+
+```json
+{
+  "rules": {
+    "carburetor/require-module-function": ["warn", {"scope": "classes"}]
+  }
+}
+```
+
+- `"all"` is the default. Analyze nested functions throughout the file, including module functions
+  and class members.
+- `"classes"` limits nested-function findings to class bodies. Clean callbacks inside component and
+  store methods remain findings, including callbacks passed to `this.update`.
+
+Both modes retain eligible component-member analysis. Module-level declarations are not nested
+function findings. Each H30 JSON diagnostic carries `scope: "class"` or `scope: "module"`. The
+JavaScript bridge obtains one complete native result and applies the host's `context.options` when
+reporting it. Its native invocation uses a neutral configuration, so `.carburetorrc.json` cannot
+silently narrow the result requested by an ESLint or oxlint rule option. Direct native CLI
+invocations honor `.carburetorrc.json`. Native configuration rejects an unknown scope or option key
+as malformed configuration and exits with code 2. Options for other native rules retain their
+existing behavior.
 
 ## One rule replaces a built-in
 

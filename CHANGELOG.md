@@ -52,13 +52,20 @@ Entries below record development history in change order; where contracts differ
 - **State keys:** Trackable plain-container state is own enumerable string-keyed data. Development
   rejects symbols, accessors, non-enumerables, and non-index array keys; symbol writes and
   non-data draft definitions are rejected in every build.
-- **Linter/CLI:** The registry has 26 rules (`native/src/rules/mod.rs`).
+- **Linter/CLI:** The registry has 27 rules (`native/src/rules/mod.rs`).
   `no-react-hooks-in-components` is off in recommended configuration; the optional `no-hooks`
   preset enables it at error severity. Human/JSON diagnostics, fix/dry-run, and exit codes
   0 (clean), 1 (findings), and 2 (tool/config/CLI failure) are supported.
 - **Packaging/runtime:** React 18/19 are supported; `@types/react` is an optional peer. Production
   ESM/CJS exports support runtime interop; lint is a separate entry. Current `useComputedValue`,
   object-argument `ResourceCache` (development), and supersession-error paths require `WeakRef`.
+
+### Added
+
+- `carburetor/no-closure-in-update` (H32, recommended warning) reports inline `this.update` callbacks that capture surrounding member bindings or `this` in recognized store classes. Its advice is to write to `this.draft` and call `emitUpdate()`, preserving `try/finally` publication when mutation can throw. The registry now contains 27 rules.
+- `carburetor/require-module-function` now supports `scope: "all"` (default) and "classes". Nested-function analysis is no longer limited to component callbacks: clean callbacks inside store methods, including `this.update(draft => ...)`, are reported under both scopes. Unknown scope values and option keys are configuration errors.
+- `carburetor/no-function-in-render` now reports inline callbacks of synchronous array methods during render. Stable callback references remain unreported, and H31 yields to H29/H30 at the same diagnostic position.
+- H30 JSON diagnostics include their class/module scope so JavaScript hosts can apply per-rule options while sharing one native run.
 
 ### Breaking
 

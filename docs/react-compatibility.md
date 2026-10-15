@@ -154,8 +154,10 @@ What stays yours:
 ```tsx
 'use client';
 
+const createScope = (): CarburetorScope => new CarburetorScope();
+
 export function Stores({children}: {children: React.ReactNode}) {
-    const [scope] = React.useState(() => new CarburetorScope());
+    const [scope] = React.useState(createScope);
 
     return <CarburetorProvider scope={scope}>{children}</CarburetorProvider>;
 }

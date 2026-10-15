@@ -60,6 +60,10 @@ paths, tracking proxies, transactions, schedulers), `Derived/` (computed values)
 `Resource/` (async state), `Component/` (React integration) and `Tooling/` (devtools,
 persistence, history, test helpers). The optional hooks bridge lives in `lib/src/Interop`.
 
+## Documentation examples and native lint rules
+
+The registry contains 27 rules: 26 catalogue rules plus the optional `no-react-hooks-in-components` policy. `no-module-level-store` is off in recommended. `require-module-function` accepts `scope: "all"` (default) or `"classes"`; H31 covers inline synchronous array callbacks in render, and H32 flags capturing `this.update` callbacks in recognized store classes. Positive documentation examples should use module-level callbacks when they need no surrounding state, bound methods when they need `this`, and direct draft writes plus `emitUpdate()` instead of capturing update callbacks.
+
 ## The lint plugins
 
 There are two, and the line between them is what a rule is *about*.
@@ -154,8 +158,7 @@ stable ABI and oxc's AST types move between releases.
 So the native path is a **binary of our own**, in `native/`, called by the plugin once per lint run
 rather than compiled into the linter. An earlier 22-rule benchmark recorded 20 ms natively against
 270 ms for the JavaScript rule layer — see `native/README.md` for current measurements and why "once
-per run" is achievable in ESLint's multithreaded mode. `plugin/src/Rules/` now contains 26 bridge
-rules, registered against the native registry.
+per run" is achievable in ESLint's multithreaded mode. `plugin/src/Rules/` contains 27 bridges, registered against the native registry.
 Each bridge is `nativeRule(id, description)` in
 `plugin/src/Utils/Native/nativeRule.mts`, a few lines that read the one shared result and report
 whatever belongs to that rule's own id. Detection lives only in `native/src/rules/` — one

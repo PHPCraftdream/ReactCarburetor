@@ -14,12 +14,10 @@ I/O is stubbed with `declare` where it appears.
 ```ts
 import {Carburetor, ICarburetor} from 'react-carburetor';
 
+const increment = (draft: {value: number}): void => { draft.value += 1; };
+
 class CounterStore extends Carburetor<{value: number}> {
-    public increment(): void {
-        this.update((draft) => {
-            draft.value += 1;
-        });
-    }
+    public increment(): void { this.update(increment); }
 }
 
 const counterStore = new CounterStore({value: 0});
@@ -119,14 +117,11 @@ interface IUser {name: string}
 class UserStore extends Carburetor<IDict<IUser>> {
     /** Replaces an entry's object wholesale through a raw reference from the server. */
     public replaceRaw(id: string, user: IUser): void {
-        this.update((draft) => {
-            draft[id] = {name: 'written through draft'};
-            // A write made outside draft — here on the raw object getData() handed out —
-            // records no path. Mixed with the draft write above, only the recorded path
-            // would go out; markAllChanged() publishes the raw write deliberately.
-            this.getData()[id].name = user.name;
-            this.markAllChanged();
-        });
+        this.draft[id] = {name: 'written through draft'};
+        // A write made outside draft does not record a path; publish it deliberately.
+        this.getData()[id].name = user.name;
+        this.markAllChanged();
+        this.emitUpdate();
     }
 }
 
@@ -138,7 +133,8 @@ console.log(store.getData().u1.name); // 'grace'
 `draft` and `markAllChanged` are protected, so this pattern lives inside a
 store method. Without `markAllChanged()` the raw write still mutates the data
 but wakes nobody; with a draft write in the same emit it would wake no one at
-all.
+all. This deliberately demonstrates a low-level raw mutation and is an intentional
+lint finding for `markAllChanged`.
 
 Pitfall: this escape hatch is for writes that genuinely bypass draft (server
 hydrated objects, external mutation). Ordinary writes belong in `draft`.
@@ -194,7 +190,8 @@ import {Carburetor, TDisposer, TReadonly, TSelector} from 'react-carburetor';
 
 const store = new Carburetor({items: [{done: false}, {done: true}]});
 
-const select: TSelector<{items: {done: boolean}[]}, number> = (data) => data.items.filter((item) => item.done).length;
+const isDone = (item: {done: boolean}): boolean => item.done;
+const select: TSelector<{items: {done: boolean}[]}, number> = (data) => data.items.filter(isDone).length;
 
 const disposer: TDisposer = store.watch(
     select,
@@ -388,9 +385,11 @@ import {
 
 interface IState {value: number}
 
+const ignorePath = (_path: string): void => {};
+
 /** Read-only consumers (trackers, telemetry) accept the narrow interface. */
 function observe(source: IReadableCarburetor<IState>): void {
-    source.read((path) => void path);
+    source.read(ignorePath);
 }
 
 /** History tooling additionally needs the unstable patch surface. */

@@ -1,14 +1,10 @@
 # Lint usage
 
-React Carburetor ships 26 lint rules that catch silent mistakes in consumer code: missed writes,
-abandoned subscriptions, dropped cleanup, tracked data escaping a store, and functions rebuilt on
-every call. The same rules run three ways — as an oxlint plugin preset, as ESLint shareable
-configs, or through a standalone binary.
+React Carburetor ships 27 registry rules: 26 catalogue rules plus the optional `no-react-hooks-in-components` policy rule. Recommended includes rules at their configured severities; `no-module-level-store` and the hook policy default to off. The same rules run through oxlint, ESLint, or the standalone binary.
 
 ## oxlint
 
-One line in `.oxlintrc.json`; the plugin file (`index.mjs`) travels next to the preset inside the
-package and is loaded through the preset's `jsPlugins` entry:
+One line in `.oxlintrc.json`; the plugin file travels next to the preset inside the package:
 
 ```json
 {
@@ -16,16 +12,20 @@ package and is loaded through the preset's `jsPlugins` entry:
 }
 ```
 
-The direct path works too, and is what [rules.md](../rules.md) shows:
+The direct path works too:
 
 ```json
 {
-  "extends": ["./node_modules/react-carburetor/dist/lint/recommended.oxlintrc.json"]
+  "extends": ["./node_modules/react-carburetor/dist/lint/recommended.oxlintrc.json"],
+  "rules": {
+    "carburetor/require-module-function": ["warn", {"scope": "classes"}]
+  }
 }
 ```
 
-The optional hook-free preset adds a component-architecture policy on top of recommended. It sets
-`carburetor/no-react-hooks-in-components: 'error'`; add it as a second extends entry:
+`require-module-function` accepts `scope: "all"` (default) or `"classes"`. The default analyzes clean nested functions throughout a file; `classes` limits nested-function findings to class bodies. Both retain eligible component-member analysis and cover clean callbacks in store classes. Unknown scope values or option keys are configuration errors.
+
+The optional hook-free preset is separate. It enables `carburetor/no-react-hooks-in-components: 'error'`:
 
 ```json
 {
@@ -38,8 +38,7 @@ The optional hook-free preset adds a component-architecture policy on top of rec
 
 ## ESLint flat config
 
-For `eslint.config.ts` or `eslint.config.mjs`, spread the shareable configs. `@typescript-eslint/parser`
-must be installed in lint tooling:
+For `eslint.config.ts` or `eslint.config.mjs`, spread the shareable configs. `@typescript-eslint/parser` must be installed in lint tooling:
 
 ```js
 import tsParser from '@typescript-eslint/parser';
@@ -57,8 +56,7 @@ export default [
 ];
 ```
 
-To check the config itself against the shipped declarations, type it with the same imports the
-plugin exposes:
+To check the config against the shipped declarations:
 
 <!-- example:compile -->
 ```ts
@@ -72,57 +70,45 @@ import carburetor, {
 const plugin: ICarburetorPlugin = carburetor;
 const severity: TSeverity = 'error';
 const configs: ICarburetorFlatConfig[] = [plugin.configs.recommended, plugin.configs['no-hooks']];
-
-// Each rule carries its own description, for a generated rule list or editor tooling.
 const describeRule = (rule: ICarburetorRule): string => rule.meta?.docs?.description ?? '';
 const catalogue = Object.entries(plugin.rules).map(([id, rule]) => `${id}: ${describeRule(rule)}`);
 ```
 
-The configs array can be exported directly from `eslint.config.ts`; the annotations above simply
-prove the shapes match before it ships.
-
 ## Standalone CLI
 
-`carburetor-lint` runs the native rules without a host linter:
+`carburetor-lint` runs native rules without a host linter:
 
 ```shell
 pnpm add -D carburetor-lint
 ```
 
-It ships one compiled binary per platform through `optionalDependencies`, so nothing is compiled at
-install time.
+It ships a compiled binary per platform through `optionalDependencies`, so nothing is compiled at install time.
 
 ```shell
 npx carburetor-lint src                 # report
-npx carburetor-lint --fix src           # apply the fixes rules can make
-npx carburetor-lint --fix-dry-run src   # preview them
+npx carburetor-lint --fix src           # apply supported fixes
+npx carburetor-lint --fix-dry-run src   # preview fixes
 npx carburetor-lint --format=json src   # machine-readable output
 ```
 
-`--config` defaults to `./.carburetorrc.json` when that file exists. Exit codes are `0` when clean,
-`1` for lint problems, and `2` for missing paths or a launcher/linter failure. `--fix` and
-`--fix-dry-run` are mutually exclusive. Configuration accepts severity strings only — `error`,
-`warn`, or `off`; the native rules do not consume rule options.
+`--config` defaults to `./.carburetorrc.json` when present. Exit codes are `0` (clean), `1` (findings), and `2` (missing paths or tool/config/CLI failure). `--fix` and `--fix-dry-run` are mutually exclusive.
 
 ## .carburetorrc.json
 
-Configuration is JSON with two top-level keys, `rules` and `ignore`; anything else is rejected
-rather than ignored. Rule names may be bare or carry the `carburetor/` prefix:
+Configuration is JSON with `rules` and `ignore` top-level keys; anything else is rejected. Rule names may be bare or prefixed with `carburetor/`:
 
 ```json
 {
   "rules": {
     "carburetor/no-escaping-tracked-data": "off",
-    "carburetor/no-module-level-store": "error"
+    "carburetor/require-module-function": ["warn", {"scope": "classes"}]
   }
 }
 ```
 
 ## Suppressions
 
-A single line is silenced with `// carburetor-disable-next-line <rule>` placed directly above it;
-`// carburetor-disable <rule>` silences a rule for the whole file. Without a rule list either
-directive silences all carburetor rules — always name the rule and say why.
+A line is silenced with `// carburetor-disable-next-line <rule>` directly above it; `// carburetor-disable <rule>` silences the rule for a whole file. Without a rule list either directive silences all rules — name the rule and explain why.
 
 <!-- example:compile -->
 ```ts
@@ -131,46 +117,38 @@ import {AntiHookComponent} from 'react-carburetor';
 class Counter extends AntiHookComponent {
     value = 0;
 
+    // Intentional anti-pattern for demonstrating a narrow suppression.
     // carburetor-disable-next-line carburetor/require-method-for-closure
     increment = () => { this.value += 1; };
 }
 ```
 
-The native pass also honours the oxlint spellings `oxlint-disable-next-line` and `oxlint-disable`;
-under the ESLint host, `eslint-disable` comments work as ESLint itself interprets them.
+The native pass also honours oxlint suppression spellings. ESLint disable comments work as ESLint interprets them.
 
-Rule-by-rule reference: [rules.md](../rules.md); symptoms: [troubleshooting.md](../troubleshooting.md).
+## H31: functions built in render
 
-## Functions built in render
-
-A function created while a component renders — an arrow in a DOM-element attribute, a `.bind(...)`, a render-body local — is a new object on every render. Handlers belong on the instance: declare a method with `@bind`; for a per-item handler, move the row into a child component that receives the id.
+Inline function callbacks passed to synchronous array methods in render are findings, even when they only create elements. Use a module-level function when no `this` is needed or a bound method when it is. A capturing `this.update` callback is H32; write directly to `this.draft` and publish with `emitUpdate()` (use `try/finally` if a mutation can throw). Clean update callbacks belong at module scope under H30.
 
 <!-- example:compile -->
 ```tsx
 import {AntiHookComponent, bind} from 'react-carburetor';
 
-interface Item {
-    id: string;
-    name: string;
-}
+interface Item { id: string; name: string }
+const renderRow = (item: Item): React.ReactElement => <ItemRow key={item.id} item={item}/>;
 
 declare function pick(id: string): void;
 
-// Wrong: a fresh handler on every render.
+// Intentional anti-pattern: inline map callback and handler allocate during render.
 export class BadList extends AntiHookComponent<{items: Item[]}> {
     public render() {
         return <ul>{this.props.items.map((item) =>
-            <li key={item.id} onClick={() => pick(item.id)}>{item.name}</li>)}
-        </ul>;
+            <li key={item.id} onClick={() => pick(item.id)}>{item.name}</li>)}</ul>;
     }
 }
 
-// Right: one bound method per instance; the row owns its handler.
 class ItemRow extends AntiHookComponent<{item: Item}> {
     @bind
-    private onClick(): void {
-        pick(this.props.item.id);
-    }
+    private onClick(): void { pick(this.props.item.id); }
 
     public render() {
         return <li onClick={this.onClick}>{this.props.item.name}</li>;
@@ -179,7 +157,70 @@ class ItemRow extends AntiHookComponent<{item: Item}> {
 
 export class ItemList extends AntiHookComponent<{items: Item[]}> {
     public render() {
-        return <ul>{this.props.items.map((item) => <ItemRow key={item.id} item={item} />)}</ul>;
+        return <ul>{this.props.items.map(renderRow)}</ul>;
     }
 }
 ```
+
+The map callback is a stable module-level reference. The row owns its event handler through a bound method. See [rules.md](../rules.md) and [hazards.md](../hazards.md).
+
+## H32: capturing callbacks passed to `this.update`
+
+A callback that captures a member parameter, local binding, or `this` allocates a closure each time the method runs. Write directly to `this.draft` and publish with `emitUpdate()`; use `try/finally` when a mutation may throw. A clean callback is H30 instead.
+
+**Wrong**
+
+<!-- example:compile -->
+```tsx
+import {Carburetor} from 'react-carburetor';
+
+interface CounterState { count: number; name: string }
+declare function normalizeName(name: string): string;
+
+class Counter extends Carburetor<CounterState> {
+    public bump(step: number): void {
+        this.update((draft) => {
+            draft.count += step;
+        });
+    }
+
+    public rename(name: string): void {
+        this.update((draft) => {
+            draft.name = normalizeName(name);
+        });
+    }
+}
+```
+
+**Right**
+
+<!-- example:compile -->
+```tsx
+import {Carburetor} from 'react-carburetor';
+
+interface CounterState { count: number; name: string }
+declare function normalizeName(name: string): string;
+
+const increment = (draft: CounterState): void => { draft.count += 1; };
+
+class Counter extends Carburetor<CounterState> {
+    public bump(step: number): void {
+        this.draft.count += step;
+        this.emitUpdate();
+    }
+
+    public rename(name: string): void {
+        try {
+            this.draft.name = normalizeName(name);
+        } finally {
+            this.emitUpdate();
+        }
+    }
+
+    public increment(): void {
+        this.update(increment);
+    }
+}
+```
+
+A clean inline callback belongs at module scope under H30. `update` publishes in `finally`; direct draft writes should likewise publish in `finally` if an exception can follow a partial mutation.

@@ -36,8 +36,9 @@ A rule that would need a type to be correct (is this `.set()` a `Map` or a sette
 is documented as such, defaults to `warn` at most, and states its heuristic. Detection uses
 fixed names from `native/src/rules/support/bases.rs` and direct syntax; it does not resolve
 arbitrary inheritance chains. Custom component classes should directly inherit
-`AntiHookComponent` or `ScopedAntiHookComponent` to be recognised. Rules have severity settings
-only; suppress a diagnostic with the host's disable comment or set that rule's severity to `off`.
+`AntiHookComponent` or `ScopedAntiHookComponent` to be recognised. Configuration uses severity
+(`error`, `warn`, `off`); `require-module-function` also accepts `scope: "all"` (default) or
+`"classes"`. Suppress a diagnostic with the host's disable comment or set that rule to `off`.
 
 ## Rule index
 
@@ -74,6 +75,7 @@ only; suppress a diagnostic with the host's disable comment or set that rule's s
 | H29 | `require-method-for-closure` | allocations | warn | no |
 | H30 | `require-module-function` | allocations | warn | no |
 | H31 | `no-function-in-render` | allocations | warn | no |
+| H32 | `no-closure-in-update` | allocations | warn | no |
 
 Three of these overlap with a runtime diagnostic the engine already reports in development
 (H6, H14, H17). The rule is still worth having: it fires on code paths that were never
@@ -83,19 +85,13 @@ All four syntactic forms of a change count wherever a rule looks for one: `x.y =
 `delete x.y`, and an in-place array method (`push`, `splice`, `sort`, …). A rule that handled only
 assignment would miss three quarters of the hazard.
 
-**25 catalogue rules are implemented**, covering H1–H23, H26 and H29–H31: reads (H1–H5), writes (H6–H11),
-lifecycle (H12, H13, H21, H22), effects (H14–H16), boundaries (H17–H20) and allocations (H29–H31),
-with H23 and H26 folded into the rules they share. H24 and H25 are specified and named but not
-written yet; H27 cannot be a rule at all. The opt-in `no-react-hooks-in-components` policy rule
-brings the registry to 26; the conformance fixture corpus covers the 25 the shared configs
-enable. Detection lives in `native/src/rules/`, tested there with oxc's own parser over
-hand-written edge cases; `plugin/src/Rules/` is now a thin bridge that calls that binary once per lint run and
-reports through whichever host is running, so oxlint's `RuleTester` — which never writes its
-synthetic snippets to disk — cannot exercise it. `__tests__/Native/conformance.test.ts` and
-`__tests__/Plugin/host.test.ts` cover that path instead: real fixtures in `plugin/__fixtures__`,
-run through the real binary and the real host together. The fixture run doubles as a positive
-control: a green lint proves nothing if the rules never see the file. See CONTRIBUTING for the
-bridge's mechanics and the host constraints that are easy to trip over.
+**26 catalogue rules are implemented**, covering H1–H23, H26 and H29–H32: reads (H1–H5), writes (H6–H11),
+lifecycle (H12, H13, H21, H22), effects (H14–H16), boundaries (H17–H20) and allocations (H29–H32),
+with H23 and H26 folded into shared rules. H24 and H25 are not implemented; H27 is not a rule.
+The optional `no-react-hooks-in-components` policy brings the registry total to 27; `no-module-level-store`
+remains off in recommended. Detection lives in `native/src/rules/`, tested there with oxc's parser.
+The thin host bridge reports native diagnostics. Real fixture and host coverage live in
+`__tests__/Native/conformance.test.ts` and `__tests__/Plugin/host.test.ts`.
 
 ## Reads
 
@@ -1051,75 +1047,65 @@ that built it, the method sees current props — the idiomatic behaviour for cla
 change, which is why the message names the re-read. The rewrite is also sometimes more verbose than
 the allocation it avoids, which is why this is a `warn` to judge rather than an `error` to obey.
 
-### H30 — a member or closure that uses nothing from the class
+### H30 — a member or nested function that belongs at module level
 
 **Wrong**
 
 ```tsx
-export class TodoApp extends AntiHookComponent {
-    /** The plus icon on the add button. */
-    public renderPlusIcon() {
-        return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg>;
+class Counter extends Carburetor<{count: number}> {
+    public increment(): void {
+        this.update((draft) => {
+            draft.count += 1;
+        });
     }
 
-    #formatCount(value: number): string {
-        return value.toLocaleString();
+    public completed() {
+        return this.items.filter((item) => item.done);
     }
+}
+
+function completed(items: Item[]) {
+    return items.filter((item) => item.done);
 }
 ```
 
-Neither member reads `this`, touches `super` or `#private` state, or names a type parameter of the
-class. The demo's `renderPlusIcon`, `renderCounter` and `renderEmpty` are the shape in the wild.
-
-**Why it is silent.** Again no value is ever wrong. The cost depends on the member's kind, and the
-message says which: a closure is rebuilt on every call of the member (every render, for render); a
-function-valued field is allocated once per instance, so a hundred instances pay it a hundred
-times; a plain prototype method allocates nothing at all. It is reported all the same,
-for the reason that covers all three: code that uses nothing from the class does not belong in the
-class. At module level one copy serves every instance and every call.
+**Why it is silent.** The results are correct. Each inline function that needs none of its surrounding invocation state is rebuilt unnecessarily; a module-level function can serve all calls.
 
 **Right**
 
 ```tsx
-/** The plus icon on the add button. */
-export function renderPlusIcon() {
-    return <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5.5v13M5.5 12h13"/></svg>;
+const increment = (draft: {count: number}): void => {
+    draft.count += 1;
+};
+
+const isDone = (item: Item): boolean => item.done;
+
+class Counter extends Carburetor<{count: number}> {
+    public increment(): void {
+        this.update(increment);
+    }
+
+    public completed() {
+        return this.items.filter(isDone);
+    }
+}
+
+function completed(items: Item[]) {
+    return items.filter(isDone);
 }
 ```
 
-Call sites inside the class become `renderPlusIcon()`.
-
 **Rule** `require-module-function` — **warn**.
 
-**Detection.** Two shapes. The closure case is H29's machinery with the answer flipped: a closure
-inside a member body of a component class with no class dependency — no `this`, `super` or
-`#private`, no this-derived capture — and every capture passable on H29's terms, which for a
-callback means no captures at all and for a directly-called helper means never-written locals that
-become parameters. It is report-only, because hoisting loses the contextual typing the callback's
-parameters enjoy today. The member case is a method or a function-valued field with a body whose
-signature and body show no class dependency. Visibility is *not* the boundary — the rule
-deliberately fires on an ordinary-looking `#private` helper, and on public and protected members
-alike: as soon as extraction is possible, report it, and for `#private` it always is, nothing
-outside the class being able to reference it. The named exclusions are the cases where extraction
-is genuinely impossible whatever the body does: the React lifecycle and static names React calls on
-the instance, the component base's own override points (`useEffects`, `useEffect`, `connect`,
-`useComputed`, …) which the base calls as `this.<name>()`, and any member of a class with an
-`implements` clause — a contract the linter cannot verify. Mechanical exclusions apply regardless:
-`constructor`, getters and setters, `accessor`, body-less declarations, `override`, decorated
-members, computed names. The component-base list is pinned by a test against its source; the rule's
-own source carries both full lists. Only eligible `#private` methods and arrow-function fields ship
-an autofix (`--fix`) that moves the function above the class and rewrites its `this.#name` references.
-Public and protected members remain report-only because callers in other files cannot be ruled out.
-Overloads, function-expression fields, methods with an explicit `this` parameter, and members whose
-references cannot all be safely rewritten are also report-only. The extraction preserves the body's
-source bytes, including meaningful whitespace in literals and JSX. The closure case has no fix. Scope
-is H29's: component classes only, store classes never analysed.
+**Detection.** With `scope: "all"` (the default), nested-function analysis applies throughout the file, including functions nested in module functions and callbacks inside class methods. Arrow functions, function expressions and function declarations are candidates when they do not depend on surrounding function bindings or class context. Their own parameters and locals, module-level names, imports and globals do not require the surrounding invocation. A function’s reference to itself is not an outer capture. Async functions and generators follow the same dependency checks.
 
-**False positives.** A member that some other file calls as `instance.<name>()` looks extractable to
-an analysis with no cross-file resolution — the same documented blindness every rule here has — and
-the no-visibility-split policy accepts the report rather than guessing. The `implements` exclusion
-exists for the same reason in the one case a contract is visible. The escape hatch is a disable
-comment directly above the member.
+A function declared at module level is not a nested-function finding, including a callback passed directly to a top-level call. A function nested inside that callback is considered separately: in `computed(() => items.filter(item => item.done))`, the filter callback is nested.
+
+Both scopes cover clean callbacks inside classes, including stores and ordinary methods outside render. In particular, `this.update(draft => { draft.count += 1; })` is an H30 finding under both `"all"` and `"classes"`; H32 does not report it because it has no surrounding capture.
+
+`scope: "classes"` suppresses findings outside class bodies. Existing analysis of eligible component methods and function-valued fields remains in place, with its lifecycle, override, decorator, interface-contract and safe-autofix restrictions. Specifically, lifecycle/static names called by React, component-base override points (`useEffects`, `useEffect`, `connect`, `useComputed`, …), and members of classes with `implements` clauses are excluded. Mechanical exclusions remain: constructors, getters/setters, accessors, body-less declarations, `override`, decorated members and computed names. Only eligible `#private` methods and arrow-function fields receive an autofix; public/protected members remain report-only because external references cannot be ruled out. Overloads, function-expression fields, explicit `this` parameters and unsafe reference rewrites are report-only. The fix preserves body source bytes. Nested-function findings are report-only because extraction loses contextual typing and may need explicit parameter types.
+
+**False positives.** A public member may be called from another file, which cannot be resolved; the `implements` exclusion handles visible contracts. Function identity may intentionally be part of data or API behavior. Disable the diagnostic directly above an intentional case.
 
 ### H31 — a function built in render for a DOM handler or a local
 
@@ -1132,10 +1118,7 @@ public render() {
 }
 ```
 
-**Why it is silent.** Nothing breaks. A new function object is allocated on every render and the old
-one becomes garbage; for a DOM attribute the worst immediate effect is one cheap attribute update.
-The cost is the pattern: render bodies fill up with per-call helpers and per-item closures, and a
-component that allocates in render allocates everywhere.
+**Why it is silent.** Nothing breaks. A new function object is allocated on every render and the old one becomes garbage; for a DOM attribute the worst immediate effect is one cheap attribute update. The cost is the pattern: render bodies fill up with per-call helpers and per-item closures, and a component that allocates in render allocates everywhere.
 
 **Right**
 
@@ -1146,35 +1129,85 @@ private pick(id: string): void {
 }
 
 @bind
-private renderItem(item: Item): JSX.Element {
-    return <TodoRow item={item} onPick={this.pick}/>;
+private renderRow(item: Item): JSX.Element {
+    return <ItemRow item={item} onPick={this.pick}/>;
 }
 
 public render() {
-    return <ul>{items.map(this.renderItem)}</ul>;
+    return <ul>{items.map(this.renderRow)}</ul>;
 }
 ```
 
-Declare the handler as a method decorated with `@bind`, bound once per instance. For a per-item
-handler move the row into a child component that receives the id (here through `onPick={this.pick}`,
-a stable method reference) and owns its own bound method.
+Declare the handler as a method decorated with `@bind`, bound once per instance. For a per-item handler move the row into a child component that receives the id (here through `onPick={this.pick}`, a stable method reference) and owns its own bound method. This keeps the callback reference stable; inline array callbacks in render are reported too.
 
 **Rule** `no-function-in-render` — **warn**.
 
-**Detection.** In `render` of a component extending `AntiHookComponent`/`ScopedAntiHookComponent`:
-an arrow, a function expression, a `.bind(...)` call or a function declaration created directly in
-the render body — in either branch of a conditional (`cond ? f : g`) or of a logical expression
-(`&&`, `||`, `??`) — as the value of a DOM-element JSX attribute (a lowercase tag, including
-`ref={el => ...}`), as a local's initializer, or as a declaration. A handler created inside a
-synchronous array-method callback (`map`, `filter`, ...) is reported where it lands; the callback
-itself is not, so `items.map(...)` alone stays clean. A callback wrapped in a type-level wrapper
-(`as`, `satisfies`, a non-null assertion, parentheses) is still seen through.
+**Detection.** In `render` of a component extending `AntiHookComponent` or `ScopedAntiHookComponent`, report an arrow, function expression, `.bind(...)` call or function declaration created for a DOM-element JSX attribute (including `ref`), a local initializer or a declaration. Conditional/logical expression branches are inspected. Inline arrow/function-expression callbacks of synchronous array methods (`map`, `flatMap`, `filter`, `forEach`, `reduce`, `reduceRight`, `some`, `every`, `find`, `findIndex`, `findLast`, `sort`) are themselves findings; handlers created inside them are separate findings. Parentheses and TypeScript expression wrappers do not hide the callback. Stable references (`ids.map(this.renderItem)`, `ids.map(renderRow)`) are not reported. Component-element props remain H21's territory. At the same source position, H31 yields to H29 or H30; when the covering rule is disabled, H31 reports.
 
-**False positives.** A function rebuilt on purpose — where identity is part of the data — is
-indistinguishable without type information, hence `warn`. Component props are out of scope: H21
-reports them, and the two rules never report the same attribute. Where `require-method-for-closure`
-(H29) or `require-module-function` (H30) reports the same function, their more specific advice wins
-and this rule stays silent (if both are off, this rule reports as usual).
+**False positives.** A callback in an unfamiliar wrapper may execute synchronously but cannot be recognized; the listed built-in array methods are the supported synchronous callback set. A function intentionally created in render may still be reported because the analysis is syntactic. Suppress an intentional case locally.
+
+### H32 — a closure handed to `update`
+
+**Wrong**
+
+```tsx
+class Counter extends Carburetor<{count: number}> {
+    public bump(step: number): void {
+        this.update((draft) => {
+            draft.count += step;
+        });
+    }
+}
+```
+
+**Why it is silent.** The update produces the expected value and publishes it correctly. The avoidable cost is the callback object: every call of `bump` allocates a new function that captures `step`. A callback that reads `this` is also tied to its surrounding context.
+
+**Right**
+
+```tsx
+class Counter extends Carburetor<{count: number}> {
+    public bump(step: number): void {
+        this.draft.count += step;
+        this.emitUpdate();
+    }
+}
+```
+
+When the mutation can throw, preserve publication of any writes already made:
+
+```tsx
+public rename(name: string): void {
+    try {
+        this.draft.name = normalizeName(name);
+    } finally {
+        this.emitUpdate();
+    }
+}
+```
+
+`update` invokes `mutate(this.draft)` and calls `emitUpdate()` in `finally`. Direct draft writes followed by the same publication retain the subscription and transaction behavior. A forgotten publication is checked by `require-emit-after-draft-write`.
+
+A callback with no surrounding captures belongs to H30 instead:
+
+```tsx
+const increment = (draft: {count: number}): void => {
+    draft.count += 1;
+};
+
+class Counter extends Carburetor<{count: number}> {
+    public increment(): void {
+        this.update(increment);
+    }
+}
+```
+
+**Rule** `no-closure-in-update` — **warn**.
+
+**Detection.** In a member of a class directly extending a recognized store base (`Carburetor` or `ResourceCarburetor`), inspect an arrow or function expression passed to `this.update`. Report it when it captures a parameter or local binding from the surrounding member, or uses `this`. Report at the beginning of the callback.
+
+The callback’s own parameters and locals, module-level bindings, imports and globals are not surrounding captures. A clean inline callback is reported by `require-module-function` (H30), including under `scope: "classes"`; H32 stays silent. `this.update(ref)` does not create a function at the call site and is not reported.
+
+**False positives.** Recognition is syntactic, not type-based: an unrelated class using a recognized base name can look like a store, while aliases and unrecognized intermediate bases can be missed. The rule does not prove that a mutation cannot throw; use the `try/finally` spelling whenever publication must survive an exception. Function identity may intentionally be part of a design, so the rule is a warning and can be suppressed locally.
 
 ## Not hazards
 

@@ -22,12 +22,12 @@ detached, and an unbound `inc` passed to `onClick` fails at the first `this.upda
 ```ts
 import {bind, Carburetor} from 'react-carburetor';
 
+const incrementValue = (draft: {value: number}): void => { draft.value += 1; };
+
 class CounterCarburetor extends Carburetor<{value: number}> {
     @bind
     inc(): void {
-        this.update((draft) => {
-            draft.value += 1;
-        });
+        this.update(incrementValue);
     }
 }
 
@@ -48,21 +48,23 @@ state they still hold in `useState`.
 import {bind, Carburetor} from 'react-carburetor';
 import {useCarburetorValue} from 'react-carburetor/interop';
 
+const incrementValue = (draft: {value: number}): void => { draft.value += 1; };
+const selectValue = (state: {value: number}): number => state.value;
+
 class CounterCarburetor extends Carburetor<{value: number}> {
     @bind
     inc(): void {
-        this.update((draft) => {
-            draft.value += 1;
-        });
+        this.update(incrementValue);
     }
 }
 
 const counterCarburetor = new CounterCarburetor({value: 0});
+const incrementCounter = (): void => { counterCarburetor.inc(); };
 
 function Counter() {
-    const value = useCarburetorValue(counterCarburetor, (state) => state.value);
+    const value = useCarburetorValue(counterCarburetor, selectValue);
 
-    return <button onClick={() => counterCarburetor.inc()}>{value}</button>;
+    return <button onClick={incrementCounter}>{value}</button>;
 }
 ```
 
@@ -78,12 +80,12 @@ Methods can go straight to `onClick` — provided they are `@bind`-decorated as 
 ```tsx
 import {AntiHookComponent, bind, Carburetor} from 'react-carburetor';
 
+const incrementValue = (draft: {value: number}): void => { draft.value += 1; };
+
 class CounterCarburetor extends Carburetor<{value: number}> {
     @bind
     inc(): void {
-        this.update((draft) => {
-            draft.value += 1;
-        });
+        this.update(incrementValue);
     }
 }
 
@@ -124,15 +126,14 @@ subscribes for one notification and resolves on the next update (or rejects afte
 ```ts
 import {bind, Carburetor, waitForUpdate} from 'react-carburetor';
 
-declare function fetchCount(): Promise<number>;
+const fetchCount = async (): Promise<number> => 1;
 
 class CountCarburetor extends Carburetor<{value: number}> {
     @bind
     public async reload(): Promise<void> {
         const value = await fetchCount();
-        this.update((draft) => {
-            draft.value = value;
-        });
+        this.draft.value = value;
+        this.emitUpdate();
     }
 }
 

@@ -28,9 +28,8 @@ import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
 class CounterCarburetor extends Carburetor<{value: number}> {
     @bind
     inc(): void {
-        this.update((draft) => {
-            draft.value += 1;
-        });
+        this.draft.value += 1;
+        this.emitUpdate();
     }
 }
 
@@ -126,14 +125,14 @@ Data returned from `useCarburetor` is deeply read-only where it is plain data: t
 rejects a write, and the proxy throws if you force one past it. Standard native Map/Set mutators
 and Date setters are excluded from the TypeScript view, but native objects are not frozen; writes
 through JavaScript or unsafe casts remain possible. Writes
-belong to the carburetor, through `update`:
+belong to the carburetor: write through `this.draft`, then publish with `emitUpdate()` (or hand
+a module-level mutator to `update`, which does both):
 
 ```ts
 export class TodoCarburetor extends Carburetor<ITodoList> {
     public renameTodo(id: string, title: string): void {
-        this.update((draft) => {
-            draft.items[id].title = title;   // records the changed path: items.<id>.title
-        });
+        this.draft.items[id].title = title;   // records the changed path: items.<id>.title
+        this.emitUpdate();                     // publishes it to the readers of that path
     }
 }
 ```
@@ -184,6 +183,8 @@ intended call site — it hands back the same object for the component's whole l
 render (a prop, a scope lookup) or an array-rooted scoped store:
 
 ```tsx
+const renderTodoItem = (id: string): JSX.Element => <TodoItem key={id} id={id} />;
+
 class TodoApp extends AntiHookComponent<ITodoProps> {
     private readonly todos = this.connect(() => this.props.carburetor);
 
@@ -191,7 +192,7 @@ class TodoApp extends AntiHookComponent<ITodoProps> {
         return (
             <>
                 <span>Active: {this.todos.activeCount}</span>
-                {this.todos.orderIds.map((id) => <TodoItem key={id} id={id} />)}
+                {this.todos.orderIds.map(renderTodoItem)}
             </>
         );
     }
@@ -394,10 +395,11 @@ It is recomputed only when one of them is written, and subscribers are woken onl
 result actually changed.
 
 ```ts
+const isNotDone = (item: {done: boolean}): boolean => !item.done;
+
 export const activeCount = computed<number>((read) => {
     const {items} = read(todoCarburetor);
-
-    return Object.keys(items).filter((id) => !items[id].done).length;
+    return Object.values(items).filter(isNotDone).length;
 });
 ```
 
@@ -450,7 +452,6 @@ content is identical. Pass `equals` to judge the result by content instead:
 ```ts
 export const visibleIds = computed<string[]>((read) => {
     const {orderIds, items} = read(todoCarburetor);
-
     return orderIds.filter((id) => !items[id].done);
 }, {equals: shallowEqual});
 ```
@@ -509,13 +510,12 @@ Override `useEffects`, and declare each effect with a name and its dependencies:
 ```tsx
 export class TodoApp extends AntiHookComponent<ITodoProps> {
     protected useEffects(): void {
-        this.useEffect('loadData', () => { void this.props.carburetor.loadData(); }, []);
+        this.useEffect('loadData', () => { void this.props.carburetor.loadData(); }, [this.props.carburetor]);
 
         this.useEffect(
             'channel',
             () => {
                 const socket = connect(this.props.channel);
-
                 return () => socket.close();
             },
             [this.props.channel]
@@ -556,8 +556,10 @@ for toolchains that do not substitute `NODE_ENV` themselves.
 deduplication and cancellation:
 
 ```ts
+const parseProfile = (response: Response): Promise<IProfile> => response.json();
+
 export const profile = new ResourceCarburetor<IProfile, {id: string}>(
-    ({id}, signal) => fetch(`/api/profile/${id}`, {signal}).then((response) => response.json())
+    ({id}, signal) => fetch(`/api/profile/${id}`, {signal}).then(parseProfile)
 );
 
 await profile.load({id: 'a1'});   // EResourceStatus.Pending -> Success | Error
@@ -789,11 +791,9 @@ import {
     ResourceCache,
     carburetorToken,
 } from 'react-carburetor';
+const loadUser = async (id: string): Promise<{name: string}> => ({name: `User ${id}`});
 const userToken = carburetorToken(
-    () => new ResourceCache<{name: string}, string>(
-        async (id) => ({name: `User ${id}`}),
-        {ttl: 30_000},
-    ),
+    () => new ResourceCache(loadUser, {ttl: 30_000}),
     'ssr-example-users',
 );
 class UserScreen extends ScopedAntiHookComponent {
@@ -970,8 +970,10 @@ import {
     persist,
     waitForUpdate,
 } from 'react-carburetor';
+const selectCount = (data: {count: number}) => data.count;
+
 class CounterStore extends Carburetor<{count: number}> {
-    increment() { this.update(draft => { draft.count += 1; }); }
+    increment() { this.draft.count += 1; this.emitUpdate(); }
 }
 const counterToken = carburetorToken(() => new CounterStore({count: 0}, new ComponentUpdateThrottle(1)), 'readme-test-counter');
 class CounterView extends ScopedAntiHookComponent {
@@ -997,7 +999,7 @@ test('publishes a counter update', async () => {
     }});
     const history = new CarburetorHistory(store);
     const observed: number[] = [];
-    const stopWatch = store.watch(data => data.count, next => { observed.push(next); });
+    const stopWatch = store.watch(selectCount, next => { observed.push(next); });
     const mounted = render(<CarburetorProvider scope={scope}><CounterView/></CarburetorProvider>);
     try {
         const delivered = waitForUpdate(store);
@@ -1035,8 +1037,10 @@ value at that boundary. Keep store data unfrozen if those read guarantees matter
 ```tsx
 import {useCarburetorValue, useComputedValue} from 'react-carburetor/interop';
 
+const selectProfileName = (data: {name: string}) => data.name;
+
 const NameBadge = () => {
-    const name = useCarburetorValue(profileCarburetor, (data) => data.name);
+    const name = useCarburetorValue(profileCarburetor, selectProfileName);
 
     return <span>{name}</span>;
 };
@@ -1124,8 +1128,7 @@ use `connectSelection` alongside `useResource` for detached, precise memo-child 
 
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
-subscribed to, or when an effect's cleanup is silently dropped. The package ships 25 core rules
-plus the optional `no-react-hooks-in-components` rule. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
+subscribed to, or when an effect's cleanup is silently dropped. The package ships 26 core rules plus the optional 27th `no-react-hooks-in-components` rule. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
 reference by rule name — what each catches, how to switch one off, and the optional `no-hooks`
 preset. [docs/hazards.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/hazards.md) is the same material by mistake, with the code that
 triggers it, why it is silent at runtime, and where the rule can be wrong.
@@ -1160,9 +1163,7 @@ switch it on then.
 Detection is syntactic. Fixed component bases are `AntiHookComponent` and
 `ScopedAntiHookComponent`; fixed store bases are `Carburetor` and `ResourceCarburetor`; the
 recognized render method is `render`. Directly extending a recognized base works; inheritance
-through a custom intermediate subclass is not resolved transitively. Configure severity only;
-options are not consumed. Use `off` or a host suppression comment for rules that do not fit, or the
-standalone linter's `carburetor-disable` comment.
+through a custom intermediate subclass is not resolved transitively. Most rules accept severity; `require-module-function` additionally accepts `scope: "all"` (default) or `"classes"`. Use `off` or a host suppression comment for rules that do not fit, or the standalone linter's `carburetor-disable` comment.
 
 ```json
 {

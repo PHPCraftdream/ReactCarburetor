@@ -8,7 +8,7 @@ how components read them. All examples are compatible with React 18 and 19.
 
 Reminders that apply to every store below: no arrow-function class fields, decorate any
 method you pass around as a value with `@bind`, and write state through
-`this.update((draft) => { ... })`.
+`this.update(updater)` where `updater` is a module-level function; use direct draft writes plus `emitUpdate()` if the update needs a member parameter.
 
 ## Reading with a selector
 
@@ -32,14 +32,17 @@ class ProfileCarburetor extends Carburetor<{name: string; email: string}> {
 
     @bind
     public rename(name: string): void {
-        this.update((draft) => { draft.name = name; });
+        this.draft.name = name;
+        this.emitUpdate();
     }
 }
 
 const profile = new ProfileCarburetor();
 
+const selectName = (profile: {name: string; email: string}): string => profile.name;
+
 function ProfileName(): ReactElement {
-    const name = useCarburetorValue(profile, (p) => p.name);
+    const name = useCarburetorValue(profile, selectName);
     return <span>{name}</span>;
 }
 ```
@@ -69,10 +72,12 @@ const profile = new ProfileCarburetor();
 const sameLabel: TValueComparator<{label: string}> =
     (a, b) => a.label === b.label;
 
+const selectLabel = (p: {name: string; email: string}): {label: string} => ({label: p.name.toUpperCase()});
+
 function ProfileLabel(): ReactElement {
     const view = useCarburetorValue(
         profile,
-        (p) => ({label: p.name.toUpperCase()}),
+        selectLabel,
         sameLabel,
     );
     return <span>{view.label}</span>;
@@ -107,9 +112,10 @@ const selectIds: TSelector<{ids: number[]}, readonly number[]> = (view) => view.
 const sameIds: TValueComparator<readonly number[]> = (a, b) =>
     a.length === b.length && a.every((id, index) => id === b[index]);
 
+const renderId = (id: number): ReactElement => <li key={id}>{id}</li>;
 function IdList(): ReactElement {
     const ids = useCarburetorValue(selection, selectIds, sameIds);
-    return <ul>{ids.map((id) => <li key={id}>{id}</li>)}</ul>;
+    return <ul>{ids.map(renderId)}</ul>;
 }
 ```
 
@@ -129,8 +135,10 @@ class CounterCarburetor extends Carburetor<{count: number}> {
 
 const counter = new CounterCarburetor();
 
+const selectCount = (counter: {count: number}): number => counter.count;
+
 function Count(): ReactElement {
-    const count = useCarburetorValue(counter, (c) => c.count, Object.is);
+    const count = useCarburetorValue(counter, selectCount, Object.is);
     return <span>{count}</span>;
 }
 ```
@@ -167,8 +175,10 @@ const DoubledLabel = memo(function DoubledLabel({value}: {value: number}): React
     return <span>{value}</span>;
 });
 
+const selectCounterCount = (c: {count: number}): number => c.count;
+
 function CounterView(): ReactElement {
-    const count = useCarburetorValue(counter, (c) => c.count);
+    const count = useCarburetorValue(counter, selectCounterCount);
     const value = useComputedValue(doubled);
     return (
         <div>
@@ -209,8 +219,10 @@ declare function fetchUser(id: number): Promise<User>;
 
 const userCache = new ResourceCache<User, number>(async (id) => fetchUser(id));
 
+const selectUserName = (entry: {data?: User}): string | undefined => entry.data?.name;
+
 function UserName({userId}: {userId: number}): ReactElement {
-    const name = useResourceValue(userCache, userId, (entry) => entry.data?.name);
+    const name = useResourceValue(userCache, userId, selectUserName);
     return <span>{name ?? '…'}</span>;
 }
 ```
@@ -237,18 +249,18 @@ declare function fetchUser(id: number): Promise<User>;
 
 const userCache = new ResourceCache<User, number>(async (id) => fetchUser(id));
 
+const selectPending = (entry: {isPending: boolean}): boolean => entry.isPending;
+
 function UserStatus({userId}: {userId: number}): ReactElement | null {
-    const isPending = useResourceValue(userCache, userId, (entry) => entry.isPending);
+    const isPending = useResourceValue(userCache, userId, selectPending);
     if (isPending) return <div className="spinner" />;
     return null;
 }
 
+const selectCard = (entry: {isPending: boolean; data?: User}) => ({isPending: entry.isPending, name: entry.data?.name});
+
 function UserCard({userId}: {userId: number}): ReactElement {
-    const view = useResourceValue(
-        userCache,
-        userId,
-        (entry) => ({isPending: entry.isPending, name: entry.data?.name}),
-    );
+    const view = useResourceValue(userCache, userId, selectCard);
     if (view.isPending) return <div className="spinner" />;
     return <span>{view.name ?? 'unknown'}</span>;
 }

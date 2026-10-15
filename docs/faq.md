@@ -40,9 +40,9 @@ In React Carburetor, a class component reads a store inside `render()` via `this
 
 Tracking in React Carburetor is path-based: reads made through the tracked data during render record paths into a plain state tree, and writes invalidate the intersecting paths. There is no observable class, no decorator-based observable graph, and components are class components by default. Effects are declared on the component: override `useEffects` and declare each effect with `this.useEffect(name, callback, deps)`, where `deps` is compared element by element with `Object.is` — see [effects without hooks in the README](../README.md#effects-without-hooks).
 
-## Why don't the lint rules accept options?
+## How do I configure lint rule scope?
 
-The rules are native, and configuration accepts severity only — `error`, `warn` or `off`; a legacy `[severity, options]` payload may sit in host configuration but native rules do not consume options. Recognition is likewise fixed and syntactic: store bases named `Carburetor` and `ResourceCarburetor`, component bases named `AntiHookComponent` and `ScopedAntiHookComponent`, and a `render` method. See [rules.md](rules.md) and [npm/carburetor-lint/README.md](../npm/carburetor-lint/README.md).
+Most rules accept severity (`error`, `warn` or `off`). `require-module-function` also accepts `scope: "all"` (default) or `"classes"`; unknown scope values and option keys are errors. Recognition remains syntactic: store bases named `Carburetor` and `ResourceCarburetor`, component bases named `AntiHookComponent` and `ScopedAntiHookComponent`, and a `render` method. See [rules.md](rules.md) and [npm/carburetor-lint/README.md](../npm/carburetor-lint/README.md).
 
 ## How big is it, and how fast?
 
