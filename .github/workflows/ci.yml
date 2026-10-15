@@ -350,9 +350,10 @@ jobs:
           - package: carburetor-lint-linux-arm64-gnu
             os: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            apt: gcc-aarch64-linux-gnu qemu-user-static
+            apt: gcc-aarch64-linux-gnu
             linker_var: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER
             linker: aarch64-linux-gnu-gcc
+            emulator_apt: qemu-user-static
             emulator: qemu-aarch64-static
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -366,20 +367,22 @@ jobs:
           path: native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}
           key: native-pkg-${{ matrix.target }}-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
 
-      # The cross legs need a linker that speaks the target's ABI; qemu-user-static doubles as
-      # the way to execute the arm64 artefact, since installing it registers binfmt. Running an
-      # aarch64 binary under qemu-user still needs an aarch64 dynamic linker on disk, which is why
-      # the arm64 leg also pulls in the multiarch runtime libs.
+      # The cross legs need a linker that speaks the target's ABI.
       - name: Install the cross toolchain
         if: matrix.apt && steps.pkg-bin.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
+
+      # The smoke step runs on a cache hit too, so the emulator is installed unconditionally.
+      - name: Install the emulator
+        if: matrix.emulator_apt
+        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.emulator_apt }}
 
       # qemu-user only needs the arm64 ld.so and libc on disk to execute a foreign binary; a real
       # `apt-get install libc6:arm64` drags in dpkg's cross-arch version-parity `Breaks:` rules and
       # apt tries to reconcile the whole base system against them. Downloading the .deb and
       # unpacking it with dpkg -x sidesteps the dependency resolver entirely.
       - name: Install the aarch64 runtime libraries
-        if: matrix.target == 'aarch64-unknown-linux-gnu' && steps.pkg-bin.outputs.cache-hit != 'true'
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
         run: |
           sudo dpkg --add-architecture arm64
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main" \
