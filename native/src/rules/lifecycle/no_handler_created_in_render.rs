@@ -126,6 +126,23 @@ mod tests {
         format!("class Widget extends AntiHookComponent {{\n    render() {{\n{body}\n    }}\n}}\n")
     }
 
+    fn run_rules_with_scope(text: &str, scope: crate::config::ModuleFunctionScope) -> Vec<Diagnostic> {
+        let allocator = Allocator::default();
+        let parsed = Parser::new(&allocator, text, SourceType::tsx()).parse();
+
+        assert!(parsed.diagnostics.is_empty(), "test source must parse: {:?}", parsed.diagnostics);
+
+        let mut config = crate::config::Config::default();
+        config.set_module_function_scope(scope);
+
+        crate::rules::run(
+            &parsed.program,
+            &crate::Source { path: Path::new("fixture.tsx"), text },
+            &config,
+            false,
+        )
+    }
+
     fn run_rules(text: &str) -> Vec<Diagnostic> {
         let allocator = Allocator::default();
         let parsed = Parser::new(&allocator, text, SourceType::tsx()).parse();
@@ -141,6 +158,42 @@ mod tests {
             &crate::config::Config::default(),
             false,
         )
+    }
+
+    #[test]
+    fn a_fresh_child_handler_reports_once_in_the_full_registry_for_both_scopes() {
+        let source = "class View extends AntiHookComponent { render() { return <Child onClick={() => console.log(1)}/>; } }";
+
+        for scope in [crate::config::ModuleFunctionScope::All, crate::config::ModuleFunctionScope::Classes] {
+            let diagnostics = run_rules_with_scope(source, scope);
+
+            assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+            assert_eq!(diagnostics[0].rule, RULE);
+        }
+    }
+
+    #[test]
+    fn module_function_boundary_keeps_component_handlers_out_but_nested_and_dom_functions_in() {
+        let component = "class View extends AntiHookComponent { render() { return <Child onClick={() => { const nested = () => console.log(1); nested(); }}/>; } }";
+        let dom = "class View extends AntiHookComponent { render() { return <button onClick={() => console.log(1)}/>; } }";
+
+        for scope in [crate::config::ModuleFunctionScope::All, crate::config::ModuleFunctionScope::Classes] {
+            let component_diagnostics = run_rules_with_scope(component, scope);
+            assert!(component_diagnostics.iter().any(|diagnostic| diagnostic.rule == RULE));
+            assert!(component_diagnostics.iter().any(|diagnostic| diagnostic.rule == "carburetor/require-module-function"), "{component_diagnostics:#?}");
+
+            let dom_diagnostics = run_rules_with_scope(dom, scope);
+            assert!(dom_diagnostics.iter().any(|diagnostic| diagnostic.rule == "carburetor/require-module-function"), "{dom_diagnostics:#?}");
+        }
+    }
+
+    #[test]
+    fn ordinary_function_expression_child_handler_reports_h21() {
+        let source = render("        return <Child onClick={function () { console.log(1); }}/>;");
+        let diagnostics = run_rules(&source);
+
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].rule, RULE);
     }
 
     #[test]

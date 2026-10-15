@@ -166,7 +166,7 @@ a rule list silences all Carburetor rules.
   store methods remain findings, including callbacks passed to `this.update`.
 
 Both modes retain eligible component-member analysis. Module-level declarations are not nested
-function findings. Each H30 JSON diagnostic carries `scope: "class"` or `scope: "module"`. The
+function findings. Each H30 JSON diagnostic carries `scope: "class"` or `scope: "module"`. Type-only references, including `typeof x` in a type position, do not count as runtime captures; a callback depending on an enclosing generic type may still need a promoted or generalized signature when moved. Component JSX prop callbacks belong to H21, not H30. The
 JavaScript bridge obtains one complete native result and applies the host's `context.options` when
 reporting it. Its native invocation uses a neutral configuration, so `.carburetorrc.json` cannot
 silently narrow the result requested by an ESLint or oxlint rule option. Direct native CLI

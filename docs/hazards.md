@@ -568,7 +568,8 @@ the child the id as a prop and let it call the store itself — that is what the
 **Detection.** In `render` of an `AntiHookComponent` subclass: a JSX attribute whose value is an
 arrow function, a function expression, or a `.bind(...)` call, on a component element (an
 element whose name starts with an uppercase letter). DOM elements are excluded: a fresh
-`onClick` on a `<button>` costs an attribute update, not a subtree render.
+`onClick` on a `<button>` costs an attribute update, not a subtree render. Component prop callbacks
+belong to H21 rather than H30's module-level extraction advice.
 
 **False positives.** Deliberate for cheap leaf children. `warn`; suppress the diagnostic or turn
 the rule off by severity when this trade-off is intentional.
@@ -1101,11 +1102,13 @@ function completed(items: Item[]) {
 
 A function declared at module level is not a nested-function finding, including a callback passed directly to a top-level call. A function nested inside that callback is considered separately: in `computed(() => items.filter(item => item.done))`, the filter callback is nested.
 
+A nested function that uses a name only in a TypeScript type position is still independent at runtime. Type-only references, including `typeof x` inside a type, do not count as captures. Fresh callbacks passed as component JSX props are H21's responsibility and are excluded here.
+
 Both scopes cover clean callbacks inside classes, including stores and ordinary methods outside render. In particular, `this.update(draft => { draft.count += 1; })` is an H30 finding under both `"all"` and `"classes"`; H32 does not report it because it has no surrounding capture.
 
 `scope: "classes"` suppresses findings outside class bodies. Existing analysis of eligible component methods and function-valued fields remains in place, with its lifecycle, override, decorator, interface-contract and safe-autofix restrictions. Specifically, lifecycle/static names called by React, component-base override points (`useEffects`, `useEffect`, `connect`, `useComputed`, …), and members of classes with `implements` clauses are excluded. Mechanical exclusions remain: constructors, getters/setters, accessors, body-less declarations, `override`, decorated members and computed names. Only eligible `#private` methods and arrow-function fields receive an autofix; public/protected members remain report-only because external references cannot be ruled out. Overloads, function-expression fields, explicit `this` parameters and unsafe reference rewrites are report-only. The fix preserves body source bytes. Nested-function findings are report-only because extraction loses contextual typing and may need explicit parameter types.
 
-**False positives.** A public member may be called from another file, which cannot be resolved; the `implements` exclusion handles visible contracts. Function identity may intentionally be part of data or API behavior. Disable the diagnostic directly above an intentional case.
+**False positives.** A public member may be called from another file, which cannot be resolved; the `implements` exclusion handles visible contracts. Function identity may intentionally be part of data or API behavior. A nested callback may also rely on contextual typing from an enclosing generic; moving it can require promoting or generalizing its signature. H30 is syntactic and can warn even when extraction needs that type adjustment. Disable the diagnostic directly above an intentional case.
 
 ### H31 — a function built in render for a DOM handler or a local
 
@@ -1203,7 +1206,7 @@ class Counter extends Carburetor<{count: number}> {
 
 **Rule** `no-closure-in-update` — **warn**.
 
-**Detection.** In a member of a class directly extending a recognized store base (`Carburetor` or `ResourceCarburetor`), inspect an arrow or function expression passed to `this.update`. Report it when it captures a parameter or local binding from the surrounding member, or uses `this`. Report at the beginning of the callback.
+**Detection.** In a member of a class directly extending a recognized store base (`Carburetor` or `ResourceCarburetor`), inspect an arrow or function expression passed to `this.update`. Report it when it captures a parameter or local binding from the surrounding member, uses `this`, or an arrow inherits the enclosing member's runtime `arguments`. An ordinary function expression uses its own `arguments`; nested ordinary functions likewise own theirs, while nested arrows inherit the nearest non-arrow function's `arguments`. Type-only references are ignored. Report at the beginning of the callback.
 
 The callback’s own parameters and locals, module-level bindings, imports and globals are not surrounding captures. A clean inline callback is reported by `require-module-function` (H30), including under `scope: "classes"`; H32 stays silent. `this.update(ref)` does not create a function at the call site and is not reported.
 

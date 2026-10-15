@@ -1,4 +1,5 @@
-import {execFileSync} from "node:child_process";
+import {execFileSync, spawnSync} from "node:child_process";
+import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import * as path from "node:path";
 
 /**
@@ -42,6 +43,65 @@ describe('lint plugin in the oxlint host', () => {
         expect(output).toContain('lifecycleClassProperty.tsx:5:5');
         // GoodRow declares the same lifecycle as a method and must stay unreported.
         expect(countOccurrences(output, RULE_ID)).toEqual(1);
+    });
+
+    test('H21 child handler survives host/native overlaps for both H30 scopes', () => {
+        const directory = mkdtempSync(path.join(ROOT, '.tmp-h21-'));
+        const fixture = path.join(directory, 'view.tsx');
+        const config = path.join(directory, 'oxlintrc.json');
+        const plugin = path.relative(directory, path.join(ROOT, 'plugin', 'src', 'index.mts')).replace(/\\/g, '/');
+
+        try {
+            writeFileSync(fixture,
+                'import {AntiHookComponent} from "react-carburetor";\n' +
+                'export class View extends AntiHookComponent { render() { return <Child onClick={() => console.log(1)}/>; } }\n'
+            );
+
+            for (const scope of ['all', 'classes']) {
+                writeFileSync(config, JSON.stringify({
+                    jsPlugins: [plugin],
+                    rules: {
+                        'carburetor/no-handler-created-in-render': 'warn',
+                        'carburetor/require-module-function': ['warn', {scope}],
+                    },
+                }));
+                const hostResult = spawnSync(process.execPath, [OXLINT, '-c', config, '--format', 'json', fixture], {
+                    cwd: directory,
+                    encoding: 'utf8',
+                    env: {...process.env, CARBURETOR_LINT_BIN: path.join(ROOT, 'native', 'target', 'release',
+                        process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint')},
+                });
+                expect(hostResult.status).toBe(0, `${hostResult.stdout || ''}${hostResult.stderr || ''}`);
+                expect(hostResult.stdout).toContain('"diagnostics"');
+                expect(hostResult.stderr).toBe('', `${hostResult.stderr}\n${hostResult.stdout}`);
+
+                const hostDiagnostics = JSON.parse(hostResult.stdout || '') as {
+                    diagnostics: {code: string; filename: string}[];
+                };
+
+                expect(hostDiagnostics.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+                    'carburetor(no-handler-created-in-render)',
+                ]);
+
+                const nativeConfig = path.join(directory, `native-${scope}.json`);
+                writeFileSync(nativeConfig, JSON.stringify({rules: {
+                    'carburetor/no-handler-created-in-render': 'warn',
+                    'carburetor/require-module-function': ['warn', {scope}],
+                }}));
+                const nativeResult = spawnSync(path.join(ROOT, 'native', 'target', 'release',
+                    process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint'), [
+                    '--config', nativeConfig, '--format=json', '--keep-overlaps', fixture,
+                ], {cwd: directory, encoding: 'utf8'});
+                expect(nativeResult.status).toBe(0, `${nativeResult.stdout || ''}${nativeResult.stderr || ''}`);
+                const nativeDiagnostics = JSON.parse(nativeResult.stdout || '') as {rule: string}[];
+
+                expect(nativeDiagnostics.map(diagnostic => diagnostic.rule)).toEqual([
+                    'carburetor/no-handler-created-in-render',
+                ]);
+            }
+        } finally {
+            rmSync(directory, {recursive: true, force: true});
+        }
     });
 
     test('every rule in the reads group fires on its fixture', () => {

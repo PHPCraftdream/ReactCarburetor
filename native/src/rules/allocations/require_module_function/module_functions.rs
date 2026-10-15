@@ -11,7 +11,7 @@
 use oxc_ast::AstKind;
 use oxc_ast::ast::*;
 use oxc_ast_visit::{walk, Visit};
-use oxc_semantic::{NodeId, Semantic};
+use oxc_semantic::{NodeId, ReferenceFlags, Semantic};
 use oxc_span::{GetSpan, Span};
 use oxc_syntax::scope::ScopeFlags;
 
@@ -35,6 +35,42 @@ fn callee_name<'a>(callee: &'a Expression<'a>) -> Option<&'a str> {
     match callee {
         Expression::Identifier(identifier) => Some(identifier.name.as_str()),
         _ => member_call_name(callee),
+    }
+}
+
+fn is_component_prop_callback(semantic: &Semantic<'_>, node_id: NodeId) -> bool {
+    let nodes = semantic.nodes();
+    let mut id = node_id;
+
+    loop {
+        match nodes.parent_kind(id) {
+            AstKind::ParenthesizedExpression(_)
+            | AstKind::TSAsExpression(_)
+            | AstKind::TSSatisfiesExpression(_)
+            | AstKind::TSTypeAssertion(_)
+            | AstKind::TSNonNullExpression(_)
+            | AstKind::TSInstantiationExpression(_) => id = nodes.parent_id(id),
+            AstKind::JSXExpressionContainer(_) => {
+                let attribute_id = nodes.parent_id(nodes.parent_id(id));
+                let AstKind::JSXAttribute(_) = nodes.kind(attribute_id) else {
+                    return false;
+                };
+                let opening_id = nodes.parent_id(attribute_id);
+                let AstKind::JSXOpeningElement(opening) = nodes.kind(opening_id) else {
+                    return false;
+                };
+
+                return match &opening.name {
+                    JSXElementName::Identifier(identifier) =>
+                        identifier.name.chars().next().is_some_and(char::is_uppercase),
+                    JSXElementName::IdentifierReference(identifier) =>
+                        identifier.name.chars().next().is_some_and(char::is_uppercase),
+                    JSXElementName::MemberExpression(_) => true,
+                    _ => false,
+                };
+            }
+            _ => return false,
+        }
     }
 }
 
@@ -103,6 +139,17 @@ struct CaptureProbe<'a, 'p> {
 
 impl<'a, 'p> Visit<'a> for CaptureProbe<'a, 'p> {
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        let is_runtime_reference = identifier.reference_id.get().is_some_and(|reference| {
+            self.scoping.get_reference(reference).flags()
+                .intersects(ReferenceFlags::Read | ReferenceFlags::Write)
+        });
+
+        if !is_runtime_reference {
+            walk::walk_identifier_reference(self, identifier);
+
+            return;
+        }
+
         if let Some(symbol) = identifier
             .reference_id
             .get()
@@ -214,6 +261,7 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
             matches!(kind, AstKind::CallExpression(call) if callee_name(&call.callee).is_some_and(|name| RENDER_TRACKED_APIS.contains(&name)))
         });
         let clean = !member_root
+            && !is_component_prop_callback(self.semantic, function.node_id())
             && !class_dependency
             && !tracked
             && marked != Some(true)
@@ -256,6 +304,7 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
             matches!(kind, AstKind::CallExpression(call) if callee_name(&call.callee).is_some_and(|name| RENDER_TRACKED_APIS.contains(&name)))
         });
         let clean = !member_root
+            && !is_component_prop_callback(self.semantic, arrow.node_id())
             && !class_dependency
             && !tracked
             && marked != Some(true)
@@ -306,7 +355,24 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
 
     /// `this` does; in a function of its own it marks that one.
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
-        if identifier.name == "arguments" {
+        let is_runtime_reference = identifier.reference_id.get().is_some_and(|reference| {
+            self.semantic.scoping()
+                .get_reference(reference)
+                .flags()
+                .intersects(ReferenceFlags::Read | ReferenceFlags::Write)
+        });
+
+        let is_implicit_arguments = identifier.name == "arguments"
+            && identifier.reference_id.get().is_some_and(|reference| {
+                let resolved = self.semantic.scoping().get_reference(reference);
+                resolved.flags().intersects(ReferenceFlags::Read | ReferenceFlags::Write)
+                    && resolved.symbol_id().is_none()
+            });
+
+        if is_runtime_reference
+            && is_implicit_arguments
+            && self.functions.iter().any(|span| contains(*span, identifier.span))
+        {
             self.mark_dynamic();
         }
 

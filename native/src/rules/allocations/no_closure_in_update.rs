@@ -12,7 +12,7 @@ use std::collections::HashSet;
 
 use oxc_ast::ast::{CallExpression, Expression, IdentifierReference, Program, ThisExpression};
 use oxc_ast_visit::{walk, Visit};
-use oxc_semantic::{ReferenceId, Semantic};
+use oxc_semantic::{ReferenceFlags, ReferenceId, Scoping, Semantic};
 use oxc_span::{GetSpan, Span};
 use oxc_syntax::scope::ScopeFlags;
 
@@ -61,17 +61,51 @@ fn is_callback_expression(expression: &Expression<'_>) -> bool {
 
 /// The identifier references and `this` occurrences one callback body reads.
 #[derive(Default)]
-struct Reads {
-    /// What each reference was spelled as, and the semantic reference to resolve it by — the
-    /// visitor's methods take anonymously-lifetimed nodes, so the references are copied out.
+struct Reads<'s> {
+    /// What each runtime reference was spelled as, and the semantic reference to resolve it by.
     identifiers: Vec<(String, Option<ReferenceId>)>,
     uses_this: bool,
+    uses_lexical_arguments: bool,
+    arrows: Vec<bool>,
+    scoping: Option<&'s Scoping>,
 }
 
-impl Visit<'_> for Reads {
+impl<'a, 's> Visit<'a> for Reads<'s> {
+    fn visit_arrow_function_expression(&mut self, arrow: &oxc_ast::ast::ArrowFunctionExpression<'_>) {
+        self.arrows.push(true);
+        walk::walk_arrow_function_expression(self, arrow);
+        self.arrows.pop();
+    }
+
+    fn visit_function(&mut self, function: &oxc_ast::ast::Function<'_>, flags: ScopeFlags) {
+        self.arrows.push(false);
+        walk::walk_function(self, function, flags);
+        self.arrows.pop();
+    }
+
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'_>) {
-        self.identifiers
-            .push((identifier.name.to_string(), identifier.reference_id.get()));
+        let runtime = identifier.reference_id.get().is_some_and(|reference| {
+            self.scoping.is_some_and(|scoping| {
+                scoping.get_reference(reference).flags().intersects(ReferenceFlags::Read | ReferenceFlags::Write)
+            })
+        });
+
+        if runtime && identifier.name == "arguments" {
+            let inside_ordinary_function = self.arrows.iter().any(|is_arrow| !is_arrow);
+            let explicit_binding = identifier.reference_id.get().is_some_and(|reference| {
+                self.scoping.is_some_and(|scoping| scoping.get_reference(reference).symbol_id().is_some())
+            });
+            let callback_uses_lexical_arguments = !self.arrows.is_empty()
+                && self.arrows.iter().all(|is_arrow| *is_arrow);
+
+            if !inside_ordinary_function && !explicit_binding && callback_uses_lexical_arguments {
+                self.uses_lexical_arguments = true;
+            }
+        }
+
+        if runtime && !(identifier.name == "arguments" && self.arrows.iter().any(|is_arrow| !is_arrow)) {
+            self.identifiers.push((identifier.name.to_string(), identifier.reference_id.get()));
+        }
 
         walk::walk_identifier_reference(self, identifier);
     }
@@ -84,8 +118,8 @@ impl Visit<'_> for Reads {
 }
 
 /// Reads one callback body — arrow or function expression, already unwrapped.
-fn reads(callback: &Expression<'_>) -> Reads {
-    let mut reads = Reads::default();
+fn reads<'a, 's>(callback: &Expression<'a>, scoping: Option<&'s Scoping>) -> Reads<'s> {
+    let mut reads = Reads {scoping, ..Reads::default()};
 
     match callback {
         Expression::ArrowFunctionExpression(arrow) => {
@@ -117,11 +151,15 @@ impl<'s, 'a> Check<'s, 'a> {
     /// global are not captures — a callback free of them is `require-module-function`'s finding.
     fn captures(&self, callback: &Expression<'_>, member: Span) -> Vec<String> {
         let callback_span = callback.span();
-        let reads = reads(callback);
+        let reads = reads(callback, Some(self.semantic.scoping()));
         let mut captured: Vec<String> = Vec::new();
 
         if reads.uses_this {
             captured.push(String::from("this"));
+        }
+
+        if reads.uses_lexical_arguments {
+            captured.push(String::from("arguments"));
         }
 
         for (name, reference) in reads.identifiers {
@@ -235,6 +273,110 @@ fn a_capturing_update_callback_is_reported_with_its_captures_named() {
 
     assert!(message.contains("rebuilt on every call of `rename`"), "{message}");
     assert!(message.contains("captures `this`, `name`"), "{message}");
+}
+
+#[test]
+fn generic_method_draft_write_to_undefined_is_not_a_closure_capture_but_is_a_module_candidate() {
+    let source = r#"
+class Store extends Carburetor<{ value: unknown }> {
+    set<T>(): void {
+        this.update((draft: { value: T | undefined }) => { draft.value = undefined; });
+    }
+}
+"#;
+
+    let allocator = oxc_allocator::Allocator::default();
+    let parsed = oxc_parser::Parser::new(&allocator, source, oxc_span::SourceType::tsx()).parse();
+    assert!(parsed.diagnostics.is_empty(), "test source must parse: {:?}", parsed.diagnostics);
+    let config = crate::config::Config::default();
+    let full_registry = crate::rules::run(
+        &parsed.program,
+        &crate::Source { path: std::path::Path::new("fixture.tsx"), text: source },
+        &config,
+        false,
+    );
+
+    assert!(!full_registry.iter().any(|diagnostic| diagnostic.rule == RULE));
+    assert!(full_registry.iter().any(|diagnostic| diagnostic.rule == crate::rules::allocations::require_module_function::RULE));
+}
+
+#[test]
+fn arguments_is_a_capture_of_an_update_arrow() {
+    let source = store(
+        "    updateValue() {\n        this.update(draft => { draft.value = arguments[0]; });\n    }",
+    );
+    let found = diagnose(&source, check);
+
+    assert_eq!(lines(&found), [3]);
+    assert!(found[0].message.contains("`arguments`"), "{}", found[0].message);
+}
+
+#[test]
+fn a_function_expression_uses_its_own_arguments_without_capturing_the_method() {
+    let source = store(
+        "    updateValue() {\n        this.update(function (draft) { draft.value = arguments[0]; });\n    }",
+    );
+
+    assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+}
+
+#[test]
+fn a_nested_function_owns_arguments_and_its_nested_arrow_inherits_them() {
+    let own_arguments = store(
+        "    updateValue() {\n        this.update(() => { function inner() { return arguments[0]; } });\n    }",
+    );
+    let nested_arrow_after_function = store(
+        "    updateValue() {\n        this.update(() => { function inner() { return (() => arguments[0])(); } });\n    }",
+    );
+    let lexical_argument = store(
+        "    updateValue() {\n        this.update(() => { const inner = () => arguments[0]; });\n    }",
+    );
+    let type_only_arguments = store(
+        "    updateValue() {\n        this.update(draft => { const value: typeof arguments = draft.value; });\n    }",
+    );
+
+    assert_eq!(lines(&diagnose(&own_arguments, check)), [] as [usize; 0]);
+    assert_eq!(lines(&diagnose(&nested_arrow_after_function, check)), [] as [usize; 0]);
+    assert_eq!(lines(&diagnose(&lexical_argument, check)), [3]);
+    assert_eq!(lines(&diagnose(&type_only_arguments, check)), [] as [usize; 0]);
+}
+
+#[test]
+fn own_arguments_in_a_nested_ordinary_function_do_not_capture_the_method() {
+    let source = store(
+        "    updateValue() {\n        this.update(() => { function inner() { return arguments[0]; } });\n    }",
+    );
+
+    assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+}
+
+#[test]
+fn explicit_arguments_binding_in_an_update_callback_is_an_ordinary_capture() {
+    let source = store(
+        "    updateValue(arguments) {\n        this.update(() => arguments[0]);\n    }",
+    );
+    let found = diagnose(&source, check);
+
+    assert_eq!(lines(&found), [3]);
+    assert!(found[0].message.contains("`arguments`"), "{}", found[0].message);
+}
+
+#[test]
+fn ordinary_function_arguments_shadow_outer_binding() {
+    let source = store(
+        "    updateValue(arguments) {\n        this.update(function (draft) { draft.value = arguments[0]; });\n    }",
+    );
+
+    assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+}
+
+#[test]
+fn type_only_arguments_is_not_a_capture() {
+    let source = store(
+        "    updateValue() {\n        this.update(draft => { const value: typeof arguments = draft.value; });\n    }",
+    );
+
+    assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
 }
 
 #[test]

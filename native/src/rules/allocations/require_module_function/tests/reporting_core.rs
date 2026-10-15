@@ -56,6 +56,64 @@ class Widget extends AntiHookComponent {
 }
 
 #[test]
+fn generic_closure_type_only_references_do_not_prevent_h30() {
+    for declaration in [
+        "function factory<T>() { return (value: T) => value; }",
+        "function factory<T>() { return (value: number): T => undefined as T; }",
+        "function factory<T>() { return <U extends T>(value: U) => value; }",
+        "function factory(x: number) { return (value: typeof x) => value; }",
+    ] {
+        let source = format!(
+            "{declaration}\nclass Widget extends AntiHookComponent {{\n    render() {{\n        return null;\n    }}\n}}"
+        );
+        let found = reported(&source);
+
+        assert_eq!(lines(&found), [1], "{declaration}: {found:#?}");
+        assert_eq!(found[0].scope.as_deref(), Some("module"));
+    }
+}
+
+#[test]
+fn a_type_only_generic_reference_does_not_prevent_h30_but_a_runtime_capture_does() {
+    let type_only = r#"
+function factory<T>() { return (value: T) => value; }
+class Widget extends AntiHookComponent { render() { return null; } }
+"#;
+    let runtime_capture = r#"
+function factory() {
+    const outer = 1;
+    return (value: number) => outer + value;
+}
+class Widget extends AntiHookComponent { render() { return null; } }
+"#;
+
+    assert_eq!(reported(type_only).len(), 1);
+    assert!(reported(runtime_capture).is_empty());
+}
+
+#[test]
+fn jsx_component_props_are_h21_owned_but_nested_functions_remain_candidates() {
+    let body = "        return <Child onClick={(() => console.log(1))}/>;";
+    let source = format!("class View extends AntiHookComponent {{ render() {{\n{body}\n}} }}");
+    assert!(reported(&source).is_empty(), "{body}");
+
+    let button = "class View extends AntiHookComponent { render() {\n        return <button onClick={() => console.log(1)}/>;\n} }";
+    assert_eq!(reported(button).len(), 1);
+
+    let nested = r#"
+class View extends AntiHookComponent {
+    render() {
+        return <Child onClick={() => { const inner = () => console.log(1); return inner; }}/>;
+    }
+}
+"#;
+    let found = reported(nested);
+
+    assert_eq!(found.len(), 1, "{found:#?}");
+    assert_eq!(found[0].rule, RULE);
+}
+
+#[test]
 fn a_callback_capturing_a_plain_local_is_not_reported() {
     // The local would freeze at closure creation, where a module-level function's parameter
     // would not — the same passability gate the method rule applies.
