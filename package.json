@@ -73,8 +73,7 @@
     "smoke:packed-lint": "node perf/ci/smoke/packed-no-hooks.mjs",
     "test:consumers": "node scripts/consumerMatrix.mjs",
     "docs:build": "node scripts/tools/buildDocs.mjs",
-    "docs:check": "node scripts/tools/buildDocs.mjs --check",
-    "check:examples": "node scripts/consumer-fixture/checkExamples.mjs"
+    "docs:check": "node scripts/tools/buildDocs.mjs --check"
   },
   "repository": {
     "type": "git",

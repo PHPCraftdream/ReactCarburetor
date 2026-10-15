@@ -19,7 +19,7 @@ the only one: `connect` and `connectSelection` below build persistent connection
 tracked view. In every case the component re-renders only when the fields the render actually read
 change.
 
-<!-- example:compile -->
+<!-- example:file examples/api/components/UseCarburetor.tsx#doc -->
 ```tsx
 import {AntiHookComponent, Carburetor} from 'react-carburetor';
 
@@ -56,7 +56,7 @@ callback — record nothing; read in `render()`, act in handlers.
 (so `super.method()` still works) and the bound reference is stable for the instance's lifetime,
 so the props gate can bail out of parent-driven re-renders.
 
-<!-- example:compile -->
+<!-- example:file examples/api/components/connect/Bind.tsx#doc -->
 ```tsx
 import {AntiHookComponent, bind, Carburetor} from 'react-carburetor';
 
@@ -96,7 +96,7 @@ component's lifetime — the facade is created per connection and stays stable u
 dies, independent of what the underlying data object does. A field initializer is the intended call
 site; the returned view is read directly in `render()`.
 
-<!-- example:compile -->
+<!-- example:file examples/api/components/connect/Connect.tsx#doc -->
 ```tsx
 import {AntiHookComponent, Carburetor} from 'react-carburetor';
 
@@ -124,7 +124,7 @@ Pitfall: `connect()` accepts a function as its source too — `this.connect(() =
 function is called in render. It produces a detached plain-data snapshot whose identity changes
 only when the selected content changes — safe to hand a child gated by shallow props comparison.
 
-<!-- example:compile -->
+<!-- example:file examples/api/components/connect/ConnectSelection.tsx#doc -->
 ```tsx
 import * as React from 'react';
 import {AntiHookComponent, Carburetor} from 'react-carburetor';
@@ -167,6 +167,7 @@ committed update. Each effect is declared with `useEffect(name, callBack, deps)`
 callback returns is that effect's cleanup, run before the effect runs again and on unmount.
 
 <!-- example:file examples/components/AutosaveDraft.tsx#component -->
+<!-- example:file examples/api/components/AutosaveDraft.tsx#component -->
 ```tsx
 import {
     AntiHookComponent,
@@ -230,10 +231,9 @@ another's render. A token names a carburetor; a `CarburetorScope` creates one in
 lazily, on first `get()`. `set()` replaces an instance (tests, hydration), `has()` asks whether
 one exists, `dehydrate()`/`hydrate()` carry state across a server/client boundary.
 
-<!-- example:compile -->
+<!-- example:file examples/api/components/Scope.tsx#doc -->
 ```tsx
 import {
-    AntiHookComponent,
     bind,
     carburetorToken,
     Carburetor,
@@ -284,7 +284,7 @@ outside the provider's DOM subtree still shares the React context tree, but a tr
 different root does not — re-provide the scope there with `CarburetorContext.Provider` so scoped
 components resolve their tokens.
 
-<!-- example:compile -->
+<!-- example:file examples/api/components/Portal.tsx#doc -->
 ```tsx
 import * as React from 'react';
 import {createPortal} from 'react-dom';

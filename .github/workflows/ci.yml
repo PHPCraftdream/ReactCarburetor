@@ -43,9 +43,6 @@ jobs:
           path: native/target/release/carburetor-lint
           key: native-bin-linux-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
 
-      - name: Check examples
-        run: npm run check:examples
-
       - name: Check documentation examples are up to date
         run: npm run docs:check
 

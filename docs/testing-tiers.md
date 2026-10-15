@@ -50,7 +50,7 @@ Perf areas need a production build: without `dist/esm-prod` the gate is skipped
 with a hint instead of failing. `--typecheck` adds `tsc --noEmit`, `--dry`
 prints the plan and the commands without running anything.
 
-The `npm run check:examples` command checks `<!-- example:compile -->` TypeScript/TSX blocks in README and docs Markdown (excluding `docs/reviews/**` and `docs/checkpoints/**`); changes to the public API source trigger the same CI check independently of `docsOnly`.
+Documentation examples in README and docs Markdown (excluding `docs/reviews/**` and `docs/checkpoints/**`) are generated from `examples/` and verified by `npm run docs:check`; changes to the public API source trigger the same check in CI independently of `docsOnly`.
 
 ## Tier 2 — push/PR tier (CI)
 

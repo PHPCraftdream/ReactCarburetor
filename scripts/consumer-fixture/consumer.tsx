@@ -183,7 +183,7 @@ export const resource41Control = new Resource41Cache(
     async () => ({nested: {name: 'Ada', unread: 0}}), {ttl: Infinity}
 );
 export const resource41Counts = {child: 0, parent: 0, control: 0};
-export let resource41Retained: TReadonly<{nested: {name: string}}> | undefined;
+export let resource41Retained: {readonly nested: {readonly name: string}} | undefined;
 const resource41Sparse: string[] = [];
 resource41Sparse.length = 3;
 resource41Sparse[2] = 'Ada';

@@ -1,6 +1,6 @@
 # Examples
 
-This catalog contains self-contained typechecked recipes covering the whole public API of the library. Each example is a standalone TypeScript snippet that can be read on its own, without reading the surrounding documentation first; external I/O is declared with `declare`. Every TypeScript block marked `<!-- example:compile -->` is typechecked by `npm run check:examples`, and the behavior of some examples is verified by tests in `__tests__/Tooling/examples`.
+This catalog contains self-contained typechecked recipes covering the whole public API of the library. Each example is a standalone TypeScript snippet that can be read on its own, without reading the surrounding documentation first; external I/O is declared with `declare`. Every code block is generated from an `examples/` source file via `<!-- example:file ... -->` markers and typechecked by `npm run typecheck` (strictly verified by `npm run docs:check`), and the behavior of some examples is verified by tests in `__tests__/Tooling/examples`.
 
 ## Examples
 

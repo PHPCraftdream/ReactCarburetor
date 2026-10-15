@@ -151,6 +151,7 @@ What stays yours:
 - `CarburetorProvider` takes a `CarburetorScope`, a class instance, which cannot cross from a
   Server Component as a prop; create the scope inside a client component:
 
+<!-- example:file examples/readme/App/Stores.tsx#doc -->
 ```tsx
 'use client';
 

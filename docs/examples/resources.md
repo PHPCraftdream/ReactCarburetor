@@ -12,10 +12,10 @@ and the component reads the whole `IResourceData` state with `this.useCarburetor
 subscribe, rendering from the derived flags — `view.isPending`, `view.isError`,
 `view.isSuccess` — and `view.data`.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/resource-carburetor/load.tsx#load -->
 ```tsx
 import {AntiHookComponent, bind, ResourceCarburetor, TResourceLoader} from 'react-carburetor';
-import {Component, type JSX} from 'react';
+import {type JSX} from 'react';
 
 interface User {
     id: string;
@@ -75,18 +75,17 @@ failure. `suspend()` never subscribes on its own, so the component also reads a 
 `this.useCarburetor(resource)` — here `isPending`, which flips on every reload — and calls
 `suspend()` unconditionally, so a failed reload still reaches the error boundary.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/resource-carburetor/suspend.tsx#suspend -->
 ```tsx
 import {AntiHookComponent, IResourceData, ResourceCarburetor} from 'react-carburetor';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
+import {fetchConfig} from '../endpoints/config';
 
 interface Config {
     theme: string;
 }
 
-declare function fetchConfig(): Promise<Config>;
-
-const configResource = new ResourceCarburetor<Config, void>(
+export const configResource = new ResourceCarburetor<Config, void>(
     (_args: void, _signal: AbortSignal) => fetchConfig()
 );
 
@@ -139,19 +138,18 @@ While `error` in the state is a string, the raw rejection value stays available 
 `this.useResource(cache, args)` subscribes to the entry path and triggers the load after
 commit when the entry is stale.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/resource-cache/list.tsx#list -->
 ```tsx
 import {AntiHookComponent, bind, ResourceCache} from 'react-carburetor';
-import {Component, type JSX} from 'react';
+import {type JSX} from 'react';
+import {fetchPost} from '../endpoints/posts';
 
 interface Post {
     id: string;
     title: string;
 }
 
-declare function fetchPost(id: string): Promise<Post>;
-
-const postCache = new ResourceCache<Post, string>((id: string, _signal: AbortSignal) => fetchPost(id));
+export const postCache = new ResourceCache<Post, string>((id: string, _signal: AbortSignal) => fetchPost(id));
 
 const renderPost = (id: string): JSX.Element => <PostListItem key={id} postId={id} />;
 
@@ -195,7 +193,7 @@ A stale entry keeps rendering its old data while the refetch runs — the UI nev
 promise while pending; pair it with `this.useResource(cache, args)` so the component
 actually subscribes and triggers the load.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/resource-cache/suspense.tsx#suspense -->
 ```tsx
 import {AntiHookComponent, ResourceCache} from 'react-carburetor';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
@@ -256,7 +254,7 @@ the component renders once and never updates when the entry reloads or refreshes
 memory bounds: entries older than `ttl` go stale (refetched after the next commit) and
 least-recently-used unretained entries are evicted beyond `maxEntries`.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/resource-cache/ttl.ts#ttl -->
 ```ts
 import {EResourceStatus, IResourceCacheData, IResourceCacheOptions, IResourceEntry, ResourceCache} from 'react-carburetor';
 
@@ -299,7 +297,7 @@ After a mutation, mark the affected entries stale so the next render refetches t
 the old data stays on screen. `invalidate(args)` targets one entry, `invalidateAll()` all
 of them.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/resource-cache/invalidate.tsx#invalidate -->
 ```tsx
 import {AntiHookComponent, bind, ResourceCache} from 'react-carburetor';
 import {Component, type JSX} from 'react';
@@ -351,7 +349,7 @@ Invalidating is not forgetting: the data remains readable while the refetch is s
 An entry can fail; the state's `error` is only a string, so use `getFailure(args)` when
 you need the raw rejection (an `Error`, a server payload, whatever the loader threw).
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/resource-cache/failure.ts#failure -->
 ```ts
 import {IResourceView, ResourceCache} from 'react-carburetor';
 
@@ -378,7 +376,7 @@ export const describeReportFailure = (period: string): string => {
 To remove entries entirely (and cancel their in-flight requests), use `forget(args)` and
 `forgetAll()` — for example on logout or when leaving a route.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/resource-cache/forget.ts#forget -->
 ```ts
 import {ResourceCache} from 'react-carburetor';
 
@@ -408,10 +406,18 @@ Anything with `resolve()` + `load()` (plus the subscription surface `Carburetor`
 provides) works as a resource source: extend `Carburetor` with your own data shape,
 implement `IResourceSource`, and read it with `this.useResource(source, args)`.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/custom-source/label-source.tsx#label-source -->
 ```tsx
-import {AntiHookComponent, Carburetor, EResourceStatus, IDict, IResourceResolution, IResourceSource, IResourceView} from 'react-carburetor';
-import {Component, type JSX} from 'react';
+import {
+    AntiHookComponent,
+    Carburetor,
+    EResourceStatus,
+    IDict,
+    IResourceResolution,
+    IResourceSource,
+    IResourceView,
+} from 'react-carburetor';
+import {type JSX} from 'react';
 
 interface Label {
     id: string;
@@ -491,7 +497,7 @@ slip through to runtime.
 `IResourceSnapshot<T>` is what `snapshot()` returns and `restore()` takes — pass it
 across a serialization boundary (postMessage, storage, server payload) and back.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/snapshots/rates.ts#rates -->
 ```ts
 import {IResourceSnapshot, ResourceCarburetor} from 'react-carburetor';
 
@@ -521,7 +527,7 @@ reference and do not survive a wire format.
 `getInitialResourceData()` gives the pristine `IResourceData` shape — handy to reset a
 custom carburetor or to seed your own data structure.
 
-<!-- example:compile -->
+<!-- example:file examples/api/resources/snapshots/session.ts#session -->
 ```ts
 import {Carburetor, getInitialResourceData, IResourceData} from 'react-carburetor';
 

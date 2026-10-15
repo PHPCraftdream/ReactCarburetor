@@ -19,7 +19,7 @@ plain projection is cached for equality comparison, and a mutation can corrupt t
 baseline (see "Selection results and ownership" in the README).
 Use it whenever a function component needs a slice of a store.
 
-<!-- example:compile -->
+<!-- example:file examples/interop/selectors/ProfileName.tsx#name -->
 ```tsx
 import type {ReactElement} from 'react';
 import {Carburetor, bind} from 'react-carburetor';
@@ -55,7 +55,7 @@ from fields.
 A selector may build a small derived object from the fields it reads; the custom
 `isEqual` decides when React actually re-renders on top of the structural default.
 
-<!-- example:compile -->
+<!-- example:file examples/interop/selectors/ProfileLabel.tsx#label -->
 ```tsx
 import type {ReactElement} from 'react';
 import {Carburetor} from 'react-carburetor';
@@ -93,7 +93,7 @@ Pass `isEqual` explicitly when the default structural comparison is not what you
 For a returned array of ids, a shallow element-wise comparison keeps re-renders tied to
 actual membership changes:
 
-<!-- example:compile -->
+<!-- example:file examples/interop/selectors/IdList.tsx#ids -->
 ```tsx
 import type {ReactElement} from 'react';
 import {Carburetor} from 'react-carburetor';
@@ -121,7 +121,7 @@ function IdList(): ReactElement {
 
 For values you want compared by reference only, pass `Object.is`:
 
-<!-- example:compile -->
+<!-- example:file examples/interop/selectors/Count.tsx#count -->
 ```tsx
 import type {ReactElement} from 'react';
 import {Carburetor} from 'react-carburetor';
@@ -156,7 +156,7 @@ memoized child is safe. A mutable or native object result can keep the same iden
 publications, so a memoized child that receives it as a prop may skip a re-render; pass a
 detached projection of objects and arrays instead (see "Derived lists" in the README).
 
-<!-- example:compile -->
+<!-- example:file examples/interop/computed/CounterView.tsx#view -->
 ```tsx
 import {memo, type ReactElement} from 'react';
 import {Carburetor, Computed} from 'react-carburetor';
@@ -204,7 +204,7 @@ selector runs synchronously on every render over the entry view (`IResourceView<
 which carries `status`, `data`, `error`, and friends); the load itself starts only
 after the commit, never during render. Select only the fields you render.
 
-<!-- example:compile -->
+<!-- example:file examples/interop/resources/UserName.tsx#name -->
 ```tsx
 import type {ReactElement} from 'react';
 import {ResourceCache} from 'react-carburetor';
@@ -234,7 +234,7 @@ spinner while the same entry is `Pending`. Read the derived `isPending` flag off
 entry — it mirrors `status`, exactly one of `isIdle`/`isPending`/`isSuccess`/`isError`
 is true:
 
-<!-- example:compile -->
+<!-- example:file examples/interop/resources/UserStatusCard.tsx#status -->
 ```tsx
 import type {ReactElement} from 'react';
 import {ResourceCache} from 'react-carburetor';
@@ -274,7 +274,7 @@ second fetch — the cache deduplicates by the serialized `args`.
 The interop entry point re-exports `TSelector` and `TValueComparator`; annotate shared
 selectors and comparators with them instead of repeating inline parameter types:
 
-<!-- example:compile -->
+<!-- example:file examples/interop/types/Models.ts#shared -->
 ```ts
 import {TSelector, TValueComparator} from 'react-carburetor/interop';
 

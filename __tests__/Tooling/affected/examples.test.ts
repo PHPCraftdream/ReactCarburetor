@@ -13,7 +13,7 @@ describe('affected example selection', () => {
         expect(picked('docs/examples/stores.md').examples).toBe(true);
         expect(picked('docs/reviews/old.md').examples).toBe(false);
         expect(picked('docs/checkpoints/old.md').examples).toBe(false);
-        expect(picked('examples/components/AutosaveDraft.tsx').examples).toBe(true);
+        expect(picked('examples/api/components/AutosaveDraft.tsx').examples).toBe(true);
         expect(picked('examples/wrong/no-get-data-in-render/Counter.tsx').rstest)
             .toContain('__tests__/Native/examples.test.ts');
         expect(picked('notes.md').examples).toBe(false);

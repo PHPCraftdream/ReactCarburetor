@@ -18,7 +18,7 @@ every request; the lint rule `no-module-level-store` exists to flag exactly this
 Methods you pass as callbacks must be `@bind`-decorated. Prototype methods lose `this` when
 detached, and an unbound `inc` passed to `onClick` fails at the first `this.update`.
 
-<!-- example:compile -->
+<!-- example:file examples/interop/adopting/Store.ts#doc -->
 ```ts
 import {bind, Carburetor} from 'react-carburetor';
 
@@ -43,7 +43,7 @@ required; an optional third argument overrides the structural equality check. Ex
 hook-based components can adopt the store one component at a time, mixed freely with the
 state they still hold in `useState`.
 
-<!-- example:compile -->
+<!-- example:file examples/interop/adopting/InteropCounter.tsx#doc -->
 ```tsx
 import {bind, Carburetor} from 'react-carburetor';
 import {useCarburetorValue} from 'react-carburetor/interop';
@@ -76,7 +76,7 @@ and no dependency array: the read itself records which fields the component touc
 subscription follows those paths. A write to `value` wakes only components that read `value`.
 Methods can go straight to `onClick` — provided they are `@bind`-decorated as in step 1.
 
-<!-- example:compile -->
+<!-- example:file examples/interop/adopting/ClassCounter.tsx -->
 ```tsx
 import {AntiHookComponent, bind, Carburetor} from 'react-carburetor';
 
@@ -122,7 +122,7 @@ no renderer, no act, no mocked React. For writes that land asynchronously, `wait
 subscribes for one notification and resolves on the next update (or rejects after a timeout,
 1000 ms by default), so the assertion waits for the store instead of guessing at ticks.
 
-<!-- example:compile -->
+<!-- example:file examples/interop/adopting/Testing.ts -->
 ```ts
 import {bind, Carburetor, waitForUpdate} from 'react-carburetor';
 

@@ -177,14 +177,6 @@
       "reason": "documentation builder affects examples"
     },
     {
-      "match": "scripts/consumer-fixture/checkExamples.mjs",
-      "rstest": [
-        "__tests__/Tooling/examples"
-      ],
-      "examples": true,
-      "reason": "example checker"
-    },
-    {
       "match": "scripts/**",
       "full": true,
       "reason": "build scripts affect everything"

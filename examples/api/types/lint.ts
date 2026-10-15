@@ -1,8 +1,17 @@
-import carburetor, {ICarburetorFlatConfig, ICarburetorPlugin, ICarburetorRule, TSeverity} from 'react-carburetor/lint';
+// #region doc
+import carburetor, {
+    ICarburetorFlatConfig,
+    ICarburetorPlugin,
+    ICarburetorRule,
+    TSeverity,
+} from 'react-carburetor/lint';
 
 const plugin: ICarburetorPlugin = carburetor;
 const severity: TSeverity = 'error';
-const config: ICarburetorFlatConfig = plugin.configs.recommended;
-const rule: ICarburetorRule | undefined = plugin.rules['no-get-data-in-render'];
-void [severity, config, rule];
+const configs: ICarburetorFlatConfig[] = [plugin.configs.recommended, plugin.configs['no-hooks']];
+const describeRule = (rule: ICarburetorRule): string => rule.meta?.docs?.description ?? '';
+const catalogue = Object.entries(plugin.rules).map(([id, rule]) => `${id}: ${describeRule(rule)}`);
+// #endregion doc
+
+void [severity, configs, catalogue];
 export default plugin;

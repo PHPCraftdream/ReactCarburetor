@@ -11,6 +11,6 @@ A whole-file source marker sits immediately above the fence:
 ```
 ```
 
-For an excerpt, put matching `// #region name` and `// #endregion name` lines in the source and append `#region=name` to the marker path. Region lines are omitted from the fence. Supported extensions are `.ts`, `.tsx`, `.js`, and `.jsx`; indentation is normalized and surrounding Markdown line endings are preserved. An existing `example:compile` marker may coexist with an `example:file` marker immediately above it.
+For an excerpt, put matching `// #region name` and `// #endregion name` lines in the source and append `#region=name` to the marker path. Region lines are omitted from the fence. Supported extensions are `.ts`, `.tsx`, `.js`, and `.jsx`; indentation is normalized and surrounding Markdown line endings are preserved. Every target-language fence must carry a marker.
 
-Run `node scripts/tools/buildDocs.mjs` to update marked fences, or add `--check` to aggregate missing markers, mismatches, malformed fences, unsafe paths, and stale exceptions without writing. Unmigrated blocks are explicitly listed by document path, code-fence ordinal, and SHA-256 content hash in `unmigrated.json`; the builder never creates allowlist entries.
+Run `node scripts/tools/buildDocs.mjs` to update marked fences, or add `--check` to aggregate missing markers, mismatches, malformed fences, and unsafe paths without writing. The check is strict: any unmarked `ts`/`tsx`/`js`/`jsx` fence is an error, with no allowlist.

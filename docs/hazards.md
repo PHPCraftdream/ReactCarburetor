@@ -120,6 +120,7 @@ error, no warning, just a number that stops moving.
 
 **Right**
 
+<!-- example:file examples/hazards/reads/H1/UseCarburetor.tsx#doc -->
 ```tsx
 const {count} = this.useCarburetor(todoCarburetor);
 ```
@@ -143,10 +144,9 @@ be followed and is out of scope.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-computed-get-in-render/Counter.tsx#doc -->
 ```tsx
-public render() {
-    return <span>{visibleCount.get()}</span>;
-}
+return <span>{visibleCount.get()}</span>;
 ```
 
 **Why it is silent.** Same as H1: `get()` returns the memoized value and registers no
@@ -154,6 +154,7 @@ subscription, so the component never hears that the derived value changed.
 
 **Right**
 
+<!-- example:file examples/hazards/reads/H2/UseComputed.tsx#doc -->
 ```tsx
 const count = this.useComputed(visibleCount);
 ```
@@ -174,6 +175,7 @@ judge.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-computed-get-in-computed/Total.ts#doc -->
 ```ts
 export const total = computed(() => visibleCount.get() * 2);
 ```
@@ -185,6 +187,7 @@ engine's own history and is the single most silent hazard in the list.
 
 **Right**
 
+<!-- example:file examples/hazards/reads/H3/ComputedRead.ts#doc -->
 ```ts
 export const total = computed(read => read(visibleCount) * 2);
 ```
@@ -202,7 +205,8 @@ computed is not reported, and neither is `when.getTime()`.
 
 **Wrong**
 
-```ts
+<!-- example:file examples/wrong/no-use-carburetor-outside-render/Handler.tsx#doc -->
+```tsx
 private onClick = () => {
     const data = this.useCarburetor(todoCarburetor);
 
@@ -230,14 +234,12 @@ are not configurable.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-escaping-tracked-data/Escape.tsx#doc -->
 ```tsx
-public render() {
-    const data = this.useCarburetor(todoCarburetor);
+const data = this.useCarburetor(todoCarburetor);
 
-    this.lastData = data;                       // kept across renders
+this.lastData = data;                       // kept across renders
 
-    return <button onClick={() => console.log(data.items)}>log</button>;
-}
 ```
 
 **Why it is silent.** The returned value is a proxy over the state at that moment. Read it
@@ -265,6 +267,7 @@ handler runs while that render is still current. `warn`, not `error`, for that r
 
 **Wrong**
 
+<!-- example:file examples/wrong/_unlinted/h28/LiveView.tsx#doc -->
 ```tsx
 private readonly todos = this.connect(() => this.props.carburetor);
 
@@ -294,6 +297,7 @@ content changes.
 
 **Wrong**
 
+<!-- example:file examples/wrong/require-emit-after-draft-write/Toggle.ts#doc -->
 ```ts
 public toggle = (id: string) => {
     this.draft.items[id].done = !this.data.items[id].done;
@@ -306,11 +310,12 @@ through `diagnostics`, but only for code paths that actually ran.
 
 **Right**
 
+<!-- example:file examples/hazards/writes/H6/Publish.ts#doc -->
 ```ts
 public toggle = (id: string) => {
-    this.update(draft => {
-        draft.items[id].done = !this.data.items[id].done;
-    });
+    this.draft.items[id].done = !this.draft.items[id].done;
+
+    this.emitUpdate();
 };
 ```
 
@@ -334,6 +339,7 @@ from `preEmit`. Suppress the diagnostic with a disable comment, or turn this rul
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-direct-data-write/SetTitle.ts#doc -->
 ```ts
 public setTitle = (title: string) => {
     this.data.title = title;
@@ -357,6 +363,7 @@ chain starts at `this.data` inside a `Carburetor` subclass.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-external-data-mutation/GetData.ts#doc -->
 ```ts
 todoCarburetor.getData().items[id].done = true;
 ```
@@ -380,10 +387,11 @@ class that owns it.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-tracked-data-mutation/Mutate.tsx#doc -->
 ```tsx
 const data = this.useCarburetor(todoCarburetor);
 
-data.items[id].done = true;
+(data.items as Record<string, {done: boolean}>).a.done = true;
 ```
 
 **Why it is silent.** Plain-object and array reads are guarded by runtime proxies, so a cast does
@@ -404,6 +412,7 @@ type surface, but casts are not a general runtime escape hatch.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-untrackable-draft-mutation/Index.expected.no-untrackable-draft-mutation.no-closure-in-update.ts#doc -->
 ```ts
 this.update(draft => {
     draft.index.set(id, 1);      // index is a Map
@@ -432,6 +441,7 @@ mutation heuristic can be reported; without type information the rule cannot dis
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-store-write-in-render/MarkSeen.tsx#doc -->
 ```tsx
 public render() {
     todoCarburetor.markSeen();       // writes and emits
@@ -469,6 +479,7 @@ to be called from render — the rule reported the library's own Suspense test b
 
 **Wrong**
 
+<!-- example:file examples/wrong/require-super-in-lifecycle/Mount.tsx#doc -->
 ```tsx
 public componentDidMount(): void {
     this.load();
@@ -483,6 +494,7 @@ every subscription it ever made. No error is raised at any point.
 
 **Right**
 
+<!-- example:file examples/hazards/lifecycle/H12/SuperCall.tsx#doc -->
 ```tsx
 public componentDidMount(): void {
     super.componentDidMount();
@@ -511,6 +523,7 @@ get wrong.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-lifecycle-class-property/Field.tsx#doc -->
 ```tsx
 public componentDidMount = () => {
     super.componentDidMount();       // reachable, but the base method is shadowed anyway
@@ -544,9 +557,12 @@ lifecycle name or `render`.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-handler-created-in-render/Rows.expected.no-handler-created-in-render.tsx#doc -->
 ```tsx
-<TodoRow onToggle={() => this.toggle(id)}/>
-<TodoRow onToggle={this.toggle.bind(this)}/>
+<>
+    <TodoRow onToggle={() => this.toggle(id)}/>
+    <TodoRow onToggle={this.toggle.bind(this)}/>
+</>
 ```
 
 **Why it is silent.** Both produce a new function on every render of the parent. The child's
@@ -556,6 +572,7 @@ working. Nothing breaks; the app just re-renders as much as it would have withou
 
 **Right**
 
+<!-- example:file examples/hazards/lifecycle/H21/StableHandler.tsx#doc -->
 ```tsx
 class Parent extends AntiHookComponent {
     @bind
@@ -585,8 +602,9 @@ the rule off by severity when this trade-off is intentional.
 
 **Wrong**
 
+<!-- example:file examples/wrong/require-bind-for-passed-method/Row.tsx#doc -->
 ```tsx
-class Row extends AntiHookComponent {
+export class Row extends AntiHookComponent<{carburetor: Todos; id: string}> {
     protected onToggle(): void {
         this.props.carburetor.toggle(this.props.id);       // `this` is undefined here
     }
@@ -625,7 +643,8 @@ the same.
 
 **Wrong**
 
-```ts
+<!-- example:file examples/wrong/no-async-effect/Load.tsx#doc -->
+```tsx
 protected useEffects(): void {
     this.useEffect('load', async () => {
         await todoResource.load();
@@ -640,20 +659,28 @@ warns, because returning nothing is also legal.
 
 **Right**
 
-```ts
+<!-- example:file examples/hazards/effects/H14/ResourceEffect.tsx#doc -->
+```tsx
 class TodoResource extends ResourceCarburetor<TTodo, {id: string}> {
     constructor() {
-        super(async ({id}, signal) => fetchTodo(id, signal));
+        super(loadTodo);
     }
 }
 
 const todoResource = new TodoResource();
 
-protected useEffects(): void {
-    this.useEffect('load', () => {
-        void todoResource.load({id: this.props.id});
-        return () => todoResource.abort();
-    }, [this.props.id]);
+class TodoList extends AntiHookComponent<{id: string}> {
+    @bind
+    private stopLoading(): void {
+        todoResource.abort();
+    }
+
+    protected useEffects(): void {
+        this.useEffect('load', () => {
+            void todoResource.load({id: this.props.id});
+            return this.stopLoading;
+        }, [this.props.id]);
+    }
 }
 ```
 
@@ -679,7 +706,8 @@ parameters, imports and non-function initialisers of the same name are not.
 
 **Wrong**
 
-```ts
+<!-- example:file examples/wrong/no-duplicate-effect-name/Names.tsx#doc -->
+```tsx
 this.useEffect('effect', subscribeToSocket, [url]);
 this.useEffect('effect', startTimer, [interval]);
 ```
@@ -703,7 +731,8 @@ reported.
 
 **Wrong**
 
-```ts
+<!-- example:file examples/wrong/require-effect-deps/Missing.tsx#doc -->
+```tsx
 this.useEffect('connect', () => connect(this.props.url), []);
 ```
 
@@ -713,7 +742,8 @@ re-renders with the new prop and the effect keeps holding the old connection. Ex
 
 **Right**
 
-```ts
+<!-- example:file examples/hazards/effects/H16/EffectDeps.tsx#doc -->
+```tsx
 this.useEffect('connect', () => connect(this.props.url), [this.props.url]);
 ```
 
@@ -739,6 +769,7 @@ callback that intentionally sees the latest value. `warn`, with a disable commen
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-async-transaction/Transaction.ts#doc -->
 ```ts
 await transaction(async () => {
     await save();
@@ -754,6 +785,7 @@ the rule catches paths that never ran.
 
 **Right**
 
+<!-- example:file examples/hazards/boundaries/H17/SyncTransaction.ts#doc -->
 ```ts
 await save();
 
@@ -779,6 +811,7 @@ binding that shadows the import, belongs to somebody else's API.
 
 **Wrong**
 
+<!-- example:file examples/wrong/_unlinted/h18/ModuleStore.ts#doc -->
 ```ts
 export const todoCarburetor = new TodoCarburetor(getInitialData());
 ```
@@ -803,8 +836,9 @@ a client-only app. Off unless the project opts in, rather than nagging every con
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-untrackable-store-data/Map.ts#doc -->
 ```ts
-interface IData {
+export interface IData {
     index: Map<string, number>;
 }
 ```
@@ -829,6 +863,7 @@ has no per-type allow-list.
 
 **Wrong**
 
+<!-- example:file examples/wrong/require-subscription-disposal/Subscribe.ts#doc -->
 ```ts
 todoCarburetor.subscribe(() => log(todoCarburetor.getData()));
 ```
@@ -839,6 +874,7 @@ firing after the thing it served is gone.
 
 **Right**
 
+<!-- example:file examples/hazards/boundaries/H20/Watch.ts#doc -->
 ```ts
 const stop = todoCarburetor.watch(selectTodos, onTodosChanged);
 
@@ -848,7 +884,8 @@ stop();
 
 For a component-owned history recorder, disconnect it during cleanup:
 
-```ts
+<!-- example:file examples/hazards/boundaries/H20/History.tsx#doc -->
+```tsx
 this.history.disconnect();
 ```
 
@@ -874,6 +911,7 @@ rules H8 and H11 respectively.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-external-data-mutation/CacheEntry.ts#doc -->
 ```ts
 userCache.getEntry(id).data.name = 'edited';
 ```
@@ -909,8 +947,9 @@ contract by accident. See `docs/reviews/js-review-round-3-2026-09-23.md`, R3-10.
 
 **Wrong**
 
+<!-- example:file examples/wrong/_unlinted/h24/CacheArgs.ts#doc -->
 ```ts
-void userCache.load({id, onDone: () => refresh()});
+userCache.load({id, onDone: () => refresh(id)});
 ```
 
 **Why it is silent.** The key is the arguments serialised as JSON. A function or a symbol disappears,
@@ -927,6 +966,7 @@ is an object literal with a function property or a shorthand method.
 
 **Wrong**
 
+<!-- example:file examples/wrong/_unlinted/h25/Invalidate.ts#doc -->
 ```ts
 await api.renameUser(id, name);
 // nothing else
@@ -947,6 +987,7 @@ opt-in.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-store-write-in-render/CacheLoad.tsx#doc -->
 ```tsx
 public render() {
     void userCache.load(this.props.id);
@@ -967,6 +1008,7 @@ resource writes such as `load`, `refresh`, `invalidate` and `forget`.
 
 **Wrong**
 
+<!-- example:file examples/wrong/_unlinted/h27/Lifetime.ts#doc -->
 ```ts
 export const draftCache = new ResourceCache(loadDraft, {ttl: Infinity});
 ```
@@ -991,14 +1033,13 @@ which is about the props gate a fresh handler defeats; these two are about the a
 
 **Wrong**
 
+<!-- example:file examples/wrong/require-method-for-closure/Closure.tsx#doc -->
 ```tsx
-public render() {
-    const {orderIds, carburetor} = this.props;
+const {orderIds, carburetor} = this.props;
 
-    return <ul>{orderIds.map((id: string) =>
-        <TodoItem key={id} carburetor={carburetor} id={id}/>)}
-    </ul>;
-}
+return <ul>{orderIds.map((id: string) =>
+    <TodoItem key={id} carburetor={carburetor} id={id}/>)}
+</ul>;
 ```
 
 The arrow's only class connection is what `this` could hand it: `orderIds` and `carburetor` are
@@ -1013,9 +1054,10 @@ because the output is correct every time.
 
 **Right**
 
+<!-- example:file examples/hazards/allocations/H29/BoundMethod.tsx#doc -->
 ```tsx
 @bind
-private renderTodoItem(id: string): React.ReactElement {
+private renderTodoItem(id: string) {
     return <TodoItem key={id} carburetor={this.props.carburetor} id={id}/>;
 }
 
@@ -1059,8 +1101,9 @@ the allocation it avoids, which is why this is a `warn` to judge rather than an 
 
 **Wrong**
 
+<!-- example:file examples/wrong/require-module-function/ModuleFn.expected.require-module-function.tsx#doc -->
 ```tsx
-class Counter extends Carburetor<{count: number}> {
+class Counter extends Carburetor<{count: number; items: Item[]}> {
     public increment(): void {
         this.update((draft) => {
             draft.count += 1;
@@ -1081,6 +1124,7 @@ function completed(items: Item[]) {
 
 **Right**
 
+<!-- example:file examples/hazards/allocations/H30/ModuleFns.tsx#doc -->
 ```tsx
 const increment = (draft: {count: number}): void => {
     draft.count += 1;
@@ -1094,7 +1138,7 @@ class Counter extends Carburetor<{count: number}> {
     }
 
     public completed() {
-        return this.items.filter(isDone);
+        return items.filter(isDone);
     }
 }
 
@@ -1121,17 +1165,17 @@ Both scopes cover clean callbacks inside classes, including stores and ordinary 
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-function-in-render/RenderFn.expected.require-method-for-closure.no-function-in-render.tsx#doc -->
 ```tsx
-public render() {
-    return <ul>{items.map((item) =>
-        <li key={item.id} onClick={() => this.pick(item.id)}>{item.name}</li>)}</ul>;
-}
+return <ul>{items.map((item) =>
+    <li key={item.id} onClick={() => this.pick(item.id)}>{item.name}</li>)}</ul>;
 ```
 
 **Why it is silent.** Nothing breaks. A new function object is allocated on every render and the old one becomes garbage; for a DOM attribute the worst immediate effect is one cheap attribute update. The cost is the pattern: render bodies fill up with per-call helpers and per-item closures, and a component that allocates in render allocates everywhere.
 
 **Right**
 
+<!-- example:file examples/hazards/allocations/H31/BoundMethods.tsx#doc -->
 ```tsx
 @bind
 private pick(id: string): void {
@@ -1160,13 +1204,12 @@ Declare the handler as a method decorated with `@bind`, bound once per instance.
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-closure-in-update/Bump.tsx#doc -->
 ```tsx
-class Counter extends Carburetor<{count: number}> {
-    public bump(step: number): void {
-        this.update((draft) => {
-            draft.count += step;
-        });
-    }
+public bump(step: number): void {
+    this.update((draft) => {
+        draft.count += step;
+    });
 }
 ```
 
@@ -1174,17 +1217,17 @@ class Counter extends Carburetor<{count: number}> {
 
 **Right**
 
+<!-- example:file examples/hazards/allocations/H32/DirectPublish.tsx#doc -->
 ```tsx
-class Counter extends Carburetor<{count: number}> {
-    public bump(step: number): void {
-        this.draft.count += step;
-        this.emitUpdate();
-    }
+public bump(step: number): void {
+    this.draft.count += step;
+    this.emitUpdate();
 }
 ```
 
 When the mutation can throw, preserve publication of any writes already made:
 
+<!-- example:file examples/hazards/allocations/H32/TryFinally.tsx#doc -->
 ```tsx
 public rename(name: string): void {
     try {
@@ -1199,6 +1242,7 @@ public rename(name: string): void {
 
 A callback with no surrounding captures belongs to H30 instead:
 
+<!-- example:file examples/hazards/allocations/H32/ModuleCallback.tsx#doc -->
 ```tsx
 const increment = (draft: {count: number}): void => {
     draft.count += 1;

@@ -10,7 +10,7 @@ I/O is stubbed with `declare` where it appears.
 
 ## Creating a store
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/construction/counter.ts#creating-store -->
 ```ts
 import {Carburetor, ICarburetor} from 'react-carburetor';
 
@@ -34,7 +34,7 @@ later writes unpublished.
 
 ## getVersion
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/read-write/get-version.ts#get-version -->
 ```ts
 import {Carburetor} from 'react-carburetor';
 
@@ -52,7 +52,7 @@ moments to detect that a write landed in between, without inspecting the data.
 
 ## A custom update scheduler
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/construction/scheduler.ts#scheduler -->
 ```ts
 import {Carburetor, IUpdateScheduler, TUpdater} from 'react-carburetor';
 
@@ -84,7 +84,7 @@ immediately; implement your own when updates need deferring or coalescing.
 
 ## ComponentUpdateThrottle
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/construction/throttle.ts#throttle -->
 ```ts
 import {Carburetor, ComponentUpdateThrottle} from 'react-carburetor';
 
@@ -108,7 +108,7 @@ for the window (at least `updateTimeout` ms) before asserting.
 
 ## Raw writes and markAllChanged
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/construction/raw-writes.ts#raw-writes -->
 ```ts
 import {Carburetor, IDict} from 'react-carburetor';
 
@@ -119,7 +119,7 @@ class UserStore extends Carburetor<IDict<IUser>> {
     public replaceRaw(id: string, user: IUser): void {
         this.draft[id] = {name: 'written through draft'};
         // A write made outside draft does not record a path; publish it deliberately.
-        // carburetor-disable-next-line carburetor/no-external-data-mutation -- deliberate raw write, published by markAllChanged()
+        // carburetor-disable-next-line carburetor/no-external-data-mutation -- raw write, published by markAllChanged()
         this.getData()[id].name = user.name;
         this.markAllChanged();
         this.emitUpdate();
@@ -142,7 +142,7 @@ hydrated objects, external mutation). Ordinary writes belong in `draft`.
 
 ## setData and getData
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/read-write/set-get-data.ts#set-get-data -->
 ```ts
 import {Carburetor} from 'react-carburetor';
 
@@ -162,7 +162,7 @@ the protected `markAllChanged()` inside a store method (see
 
 ## read: the tracked read API
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/read-write/read-api.ts#read-api -->
 ```ts
 import {Carburetor} from 'react-carburetor';
 
@@ -185,7 +185,7 @@ build them — the grammar is not a stable format.
 
 ## watch: subscribe to a selection
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/observe/watch-api.ts#watch-api -->
 ```ts
 import {Carburetor, TDisposer, TReadonly, TSelector} from 'react-carburetor';
 
@@ -216,7 +216,7 @@ as a comparison baseline — copy before editing.
 
 ## subscribe and unsubscribe
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/observe/subscribe-api.ts#subscribe-api -->
 ```ts
 import {Carburetor, ICarburetorSubscription, ISubscribeOptions, TSubscriber} from 'react-carburetor';
 
@@ -243,7 +243,7 @@ devtools. A throwing callback does not stop the other subscribers.
 
 ## snapshot and restore
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/persistence/snapshot-restore.ts#snapshot-restore -->
 ```ts
 import {Carburetor} from 'react-carburetor';
 
@@ -269,7 +269,7 @@ installs its own copy.
 
 ## deepClone
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/utilities/deep-clone.ts#deep-clone -->
 ```ts
 import {Carburetor, deepClone} from 'react-carburetor';
 
@@ -287,7 +287,7 @@ detach data before handing it to code that must not touch live state.
 
 ## toJSON and fromJSON
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/persistence/json.ts#json -->
 ```ts
 import {Carburetor, IInspectable} from 'react-carburetor';
 
@@ -312,7 +312,7 @@ freshly for each call instead of reusing a cached object.
 
 ## transaction: many writes, one delivery
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/utilities/transaction.ts#transaction -->
 ```ts
 import {Carburetor, transaction} from 'react-carburetor';
 
@@ -338,7 +338,7 @@ the part before its first await.
 
 ## shallowEqual
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/utilities/shallow-equal.ts#shallow-equal -->
 ```ts
 import {shallowEqual} from 'react-carburetor';
 
@@ -354,7 +354,7 @@ already does that precisely).
 
 ## Diagnostics
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/utilities/diagnostics.ts#diagnostics -->
 ```ts
 import {Diagnostics, diagnostics} from 'react-carburetor';
 
@@ -375,7 +375,7 @@ an isolated channel.
 
 ## Typing a store for consumers
 
-<!-- example:compile -->
+<!-- example:file examples/api/stores/utilities/contracts.ts#typing -->
 ```ts
 import {
     Carburetor,

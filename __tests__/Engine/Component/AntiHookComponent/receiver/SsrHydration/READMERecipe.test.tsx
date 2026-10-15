@@ -1,85 +1,18 @@
-// Guards the README SSR → hydration recipe: the copy below must stay in sync
-// with the README block, and hydrating its payload must not mismatch.
-// Imported before react-dom/client so the global reportError capture is in
-// place when react-dom picks its reportGlobalError implementation.
-// RECIPE-START
-import * as React from 'react';
-import {renderToString} from 'react-dom/server';
-import {hydrateRoot} from 'react-dom/client';
-import {
-    CarburetorProvider,
-    CarburetorScope,
-    ScopedAntiHookComponent,
-    ResourceCache,
-    carburetorToken,
-} from '@/Carburetor';
-const loadUser = async (id: string): Promise<{name: string}> => ({name: `User ${id}`});
-const userToken = carburetorToken(
-    () => new ResourceCache(loadUser, {ttl: 30_000}),
-    'ssr-example-users',
-);
-class UserScreen extends ScopedAntiHookComponent {
-    render() {
-        const cache = this.resolve(userToken);
-        const user = this.useResource(cache, 'a1');
-        return <span>{user.data?.name ?? 'Loading…'}</span>;
-    }
-}
-const tree = (scope: CarburetorScope) => <CarburetorProvider scope={scope}><UserScreen/></CarburetorProvider>;
-export async function renderRequest() {
-    const scope = new CarburetorScope();
-    await scope.get(userToken).load('a1');
-    const markup = renderToString(tree(scope));
-    const payload = JSON.stringify(scope.dehydrate()).replace(/</g, '\\u003c');
-    return {markup, payload};
-}
-export function hydratePage(container: HTMLElement, payload: string) {
-    const scope = new CarburetorScope();
-    scope.hydrate(JSON.parse(payload) as Record<string, unknown>, [userToken]);
-    return hydrateRoot(container, tree(scope));
-}
-// RECIPE-END
+// Guards the README SSR → hydration recipe by exercising the exported example
+// in examples/readme/App/Ssr.tsx (the source of the README block): hydrating
+// its payload must not mismatch.
+// The example is imported before react-dom/client so the global reportError
+// capture is in place when react-dom picks its reportGlobalError implementation.
+import {renderRequest, hydratePage} from '../../../../../../examples/readme/App/Ssr';
 
-import {readFileSync} from 'node:fs';
-import {dirname, resolve} from 'node:path';
-import {fileURLToPath} from 'node:url';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {rstest} from '@rstest/core';
+import {ResourceCache} from '@/Carburetor';
 import {enableReactActEnvironment} from '../../../../../reactActEnvironment';
 import {Counter} from '../../../../../../examples/readme/Counter';
 
 enableReactActEnvironment();
-
-const root = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../..');
-
-/** Extract the fenced block after a marker line, as scripts/consumer-fixture/checkExamples.mjs does. */
-const readRecipeBlock = (file: string, marker: string, mustContain: string): string => {
-    const lines = readFileSync(file, 'utf8').split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-        if (lines[i].trim() !== marker) continue;
-        let start = i + 1;
-        while (start < lines.length && !/^\s*`{3,}/.test(lines[start])) start++;
-        const open = lines[start]?.match(/^\s*`{3,}\s*(\S*)/);
-        if (!open || !['ts', 'tsx'].includes(open[1])) continue;
-        let end = start + 1;
-        while (end < lines.length && !new RegExp('^\\s*`{3,}\\s*$').test(lines[end])) end++;
-        const code = lines.slice(start + 1, end).join('\n');
-        if (code.includes(mustContain)) return code;
-        i = end;
-    }
-    throw new Error(`No ${mustContain} example block after ${marker} in ${file}`);
-};
-
-const readSelfRecipe = (): string => {
-    const lines = readFileSync(fileURLToPath(import.meta.url), 'utf8').split(/\r?\n/);
-    const start = lines.indexOf('// RECIPE-START');
-    const end = lines.indexOf('// RECIPE-END');
-    if (start < 0 || end < 0) throw new Error('Recipe markers missing');
-    return lines.slice(start + 1, end).join('\n');
-};
-
-const normalizeImport = (code: string): string => code.replace("from 'react-carburetor'", "from '@/Carburetor'");
 
 let loadSpy: ReturnType<typeof rstest.spyOn> | undefined;
 
@@ -96,11 +29,6 @@ describe('README hydration recipe', () => {
         expect(button.textContent).toBe('0');
         await act(async () => button.click());
         expect(button.textContent).toBe('1');
-    });
-
-    test('the README block stays in sync with this file', () => {
-        const readme = readRecipeBlock(resolve(root, 'README.md'), '<!-- example:compile -->', 'renderRequest');
-        expect(normalizeImport(readme)).toEqual(readSelfRecipe());
     });
 
     test('hydration renders the server markup without a mismatch or a second request', async () => {

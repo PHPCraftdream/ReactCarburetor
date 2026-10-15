@@ -11,7 +11,7 @@ class components — no hooks anywhere.
 through them. Attach it right after creating the store; it watches the store's patch stream,
 so all later `this.update(...)` calls are captured automatically.
 
-<!-- example:compile -->
+<!-- example:file examples/api/tooling/History.tsx -->
 ```tsx
 import {AntiHookComponent, bind, Carburetor, CarburetorHistory, IHistoryOptions} from 'react-carburetor';
 import {ReactElement} from 'react';
@@ -62,7 +62,7 @@ outlives the history to stop recording, and `clear()` to drop all entries in pla
 every change. Storage is any object with `getItem`/`setItem`/`removeItem` (`IStorageLike`), so
 `localStorage` and in-memory test doubles both fit.
 
-<!-- example:compile -->
+<!-- example:file examples/api/tooling/Persist.ts -->
 ```ts
 import {bind, Carburetor, IPersistOptions, IStorageLike, persist} from 'react-carburetor';
 
@@ -109,7 +109,7 @@ extension and applies time travel back onto them. Each key of the object becomes
 key of the published state; the `extension` option replaces the auto-discovered browser
 extension, which is how tests and non-browser environments inject a stub.
 
-<!-- example:compile -->
+<!-- example:file examples/api/tooling/DevTools.ts -->
 ```ts
 import {
     bind,
@@ -179,16 +179,8 @@ exposing `snapshot()`/`fromJSON()`/`getVersion()`/`subscribe()` qualifies — pl
 a timeout, 1000 ms by default. It is meant for orchestration code around throttled stores and
 async resources, where the update does not arrive within the current tick.
 
-<!-- example:compile -->
+<!-- example:file examples/api/tooling/WaitForUpdate.ts#doc -->
 ```ts
-import {bind, Carburetor, waitForUpdate} from 'react-carburetor';
-
-interface User {
-    name: string;
-}
-
-declare function fetchUser(id: string): Promise<User>;
-
 class UserCarburetor extends Carburetor<{user: User | undefined; loading: boolean}> {
     @bind
     public async load(id: string): Promise<void> {
@@ -204,7 +196,7 @@ class UserCarburetor extends Carburetor<{user: User | undefined; loading: boolea
     }
 }
 
-const store = new UserCarburetor({user: undefined, loading: false});
+export const store = new UserCarburetor({user: undefined, loading: false});
 
 const run = async (): Promise<void> => {
     const updated = waitForUpdate(store, 2000);

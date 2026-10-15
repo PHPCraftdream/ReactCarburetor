@@ -6,9 +6,7 @@ import {buildDocs} from '../../../scripts/tools/buildDocs.mjs';
 const fixture = async () => {
     const directory = await mkdtemp(join(tmpdir(), 'docs-builder-'));
     await mkdir(join(directory, 'docs'), {recursive: true});
-    await mkdir(join(directory, 'scripts/tools'), {recursive: true});
     await writeFile(join(directory, 'README.md'), '');
-    await writeFile(join(directory, 'scripts/tools/unmigrated.json'), JSON.stringify({entries: []}));
     return directory;
 };
 const save = async (root: string, path: string, text: string) => {
@@ -89,17 +87,15 @@ describe('buildDocs', () => {
         } finally { await rm(root, {recursive: true, force: true}); }
     });
 
-    test('allowlist accepts any unmarked target block and rejects legacy blocks without allowlist', async () => {
+    test('strict mode rejects unmarked and legacy target blocks without an allowlist', async () => {
         const root = await fixture();
         try {
             await save(root, 'docs/legacy.md', '<!-- example:compile -->\n```ts\nconst legacy = true;\n```\n');
-            await expect(buildDocs({directory: root, check: true})).rejects.toThrow('missing example:file marker or allowlist entry');
+            await expect(buildDocs({directory: root, check: true})).rejects.toThrow('missing example:file marker');
             await save(root, 'docs/legacy.md', '```ts\nchanged content\n```\n');
-            await save(root, 'scripts/tools/unmigrated.json',
-                JSON.stringify({entries: [{path: 'docs/legacy.md', ordinal: 1}]}));
-            await expect(buildDocs({directory: root, check: true})).resolves.toBeUndefined();
+            await expect(buildDocs({directory: root, check: true})).rejects.toThrow('missing example:file marker');
             await save(root, 'docs/legacy.md', '```ts\nchanged\n```\n```ts\nadded\n```\n');
-            await expect(buildDocs({directory: root, check: true})).rejects.toThrow('missing example:file marker or allowlist entry');
+            await expect(buildDocs({directory: root, check: true})).rejects.toThrow('missing example:file marker');
         } finally { await rm(root, {recursive: true, force: true}); }
     });
 
@@ -124,10 +120,10 @@ describe('buildDocs', () => {
         const root = await fixture();
         try {
             await save(root, 'examples/a.ts', 'export const a = 1;\n');
-            await save(root, 'docs/broken.md', '<!-- example:file broken -->\n<!-- example:compile -->\n<!-- example:file examples/a.ts -->\n```ts\nx\n```\n');
+            await save(root, 'docs/broken.md', '<!-- example:file broken -->\nplain prose between markers\n<!-- example:file examples/a.ts -->\n```ts\nx\n```\n');
             await expect(buildDocs({directory: root, check: true})).rejects.toThrow('dangling or malformed example marker');
             await save(root, 'docs/prose.md', '```ts\nconst prose = true;\n```\n');
-            await expect(buildDocs({directory: root, check: true})).rejects.toThrow('missing example:file marker or allowlist entry');
+            await expect(buildDocs({directory: root, check: true})).rejects.toThrow('missing example:file marker');
             await save(root, 'docs/noncode-marker.md', '<!-- example:file examples/a.ts -->\n```text\nnot code\n```\n');
             await expect(buildDocs({directory: root, check: true})).rejects.toThrow('dangling or malformed example marker');
         } finally { await rm(root, {recursive: true, force: true}); }

@@ -2,8 +2,16 @@ import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {rstest} from '@rstest/core';
-import {Carburetor, ResourceCarburetor, ResourceCache, waitForUpdate, AntiHookComponent} from '@/Carburetor';
-import {AutosaveDraft} from '../../../examples/components/AutosaveDraft';
+import {Carburetor, AntiHookComponent, waitForUpdate} from '@/Carburetor';
+import {AutosaveDraft} from '../../../examples/api/components/AutosaveDraft';
+import {ConfigView, configResource} from '../../../examples/api/resources/resource-carburetor/suspend';
+import {PostList, postCache} from '../../../examples/api/resources/resource-cache/list';
+import {store} from '../../../examples/api/tooling/WaitForUpdate';
+import {fetchConfig} from '../../../examples/api/resources/endpoints/config';
+import {fetchPost} from '../../../examples/api/resources/endpoints/posts';
+import {fetchUser} from '../../../examples/api/resources/endpoints/user';
+
+const userStore = store;
 
 describe('AutosaveDraft example reads tracked state (docs/examples/components.md)', () => {
     test('the exported component tracks text and invokes its injected save callback', () => {
@@ -37,15 +45,14 @@ describe('AutosaveDraft example reads tracked state (docs/examples/components.md
     });
 });
 
-describe('ConfigView example (docs/examples/resources.md)', () => {
+describe('ConfigView example suspends and refreshes (docs/examples/resources.md)', () => {
     const setup = async () => {
-        let next: () => Promise<{theme: string}> = () => Promise.resolve({theme: 'dark'});
-        const resource = new ResourceCarburetor<{theme: string}, void>(() => next());
+        fetchConfig.use(() => Promise.resolve({theme: 'dark'}));
         await act(async () => {
-            await resource.load();
+            await configResource.load();
         });
 
-        class ConfigBoundary extends React.Component<{children?: React.ReactNode}, {error?: string}> {
+        class TestBoundary extends React.Component<{children?: React.ReactNode}, {error?: string}> {
             public state: {error?: string} = {};
 
             public static getDerivedStateFromError(error: unknown): {error: string} {
@@ -59,92 +66,62 @@ describe('ConfigView example (docs/examples/resources.md)', () => {
             }
         }
 
-        class ConfigView extends AntiHookComponent {
-            public render() {
-                const view = this.useCarburetor(resource);
-                const value = resource.suspend(undefined);
-
-                return <span className={view.isPending ? 'theme refreshing' : 'theme'}>{value.theme}</span>;
-            }
-        }
-
         const mounted = render(
-            <ConfigBoundary>
+            <TestBoundary>
                 <React.Suspense fallback={<span className="spinner"/>}>
                     <ConfigView/>
                 </React.Suspense>
-            </ConfigBoundary>
+            </TestBoundary>
         );
 
-        return {resource, mounted, setNext: (loader: typeof next) => { next = loader; }};
+        return {mounted};
     };
 
     test('a reload with fresh data re-renders the component', async () => {
-        const {resource, mounted, setNext} = await setup();
+        const {mounted} = await setup();
         expect(mounted.container.querySelector('.theme')?.textContent).toEqual('dark');
 
-        setNext(() => Promise.resolve({theme: 'light'}));
+        fetchConfig.use(() => Promise.resolve({theme: 'light'}));
         await act(async () => {
-            await resource.reload();
+            await configResource.reload();
         });
 
         expect(mounted.container.querySelector('.theme')?.textContent).toEqual('light');
     });
 
     test('a failed reload after a success reaches the error boundary', async () => {
-        const {resource, mounted, setNext} = await setup();
+        const {mounted} = await setup();
         expect(mounted.container.querySelector('.theme')?.textContent).toEqual('dark');
 
         // React logs the error its boundary caught; that log is expected here.
         const errors = rstest.spyOn(console, 'error').mockImplementation(() => {});
-        setNext(() => Promise.reject(new Error('offline')));
+        fetchConfig.use(() => Promise.reject(new Error('offline')));
         await act(async () => {
-            await resource.reload().catch(() => undefined);
+            await configResource.reload().catch(() => undefined);
         });
 
-        expect(mounted.container.querySelector('.error')?.textContent).toEqual('offline');
+        expect(mounted.container.querySelector('.error')?.textContent).toContain('offline');
         expect(errors).toHaveBeenCalled();
         errors.mockRestore();
     });
 });
 
-describe('PostListItem example tracks stale through useResource (docs/examples/resources.md)', () => {
+describe('PostList example tracks stale through useResource (docs/examples/resources.md)', () => {
     test('the row renders fresh data and then marks itself stale after invalidation', async () => {
-        let post = {id: 'p1', title: 'First'};
-        // The refetch must hang, so stale stays visible until the test ends.
-        let allowResolve = true;
-        const cache = new ResourceCache<{id: string; title: string}, string>(() => {
-            if (allowResolve) {
-                return Promise.resolve(post);
-            }
-
-            return new Promise(() => {});
-        });
-
-        class Row extends AntiHookComponent {
-            public render() {
-                const view = this.useResource(cache, 'p1');
-
-                if (view.isSuccess && view.data !== undefined) {
-                    return <li className={view.stale ? 'stale' : undefined}>{view.data.title}</li>;
-                }
-
-                return <li className="status">{view.status}</li>;
-            }
-        }
-
-        const {container} = render(<Row/>);
+        fetchPost.use((id: string) => Promise.resolve({id, title: 'First'}));
+        const {container, unmount} = render(<PostList postIds={['p1']}/>);
         await act(async () => {});
-        expect(container.querySelector('li')?.textContent).toEqual('First');
+        expect(container.querySelector('.title')?.textContent).toEqual('First');
         expect(container.querySelector('li')?.className).not.toContain('stale');
 
         // The refetch must hang, so stale stays visible until the assertion below.
-        allowResolve = false;
+        fetchPost.use(() => new Promise<{id: string; title: string}>(() => {}));
         await act(async () => {
-            cache.invalidate('p1');
+            postCache.invalidate('p1');
         });
 
         expect(container.querySelector('li')?.className).toContain('stale');
+        unmount();
     });
 });
 
@@ -154,25 +131,12 @@ describe('waitForUpdate must be subscribed before a synchronous publish (docs/ex
         const deferred = new Promise<void>((resolve) => {
             resolveLoad = resolve;
         });
+        fetchUser.use(() => deferred.then(() => ({name: 'Ada'})));
 
-        class UserStore extends Carburetor<{user: {name: string} | undefined; loading: boolean}> {
-            public async load(): Promise<void> {
-                this.update((d) => {
-                    d.loading = true;
-                });
-                await deferred;
-                this.update((d) => {
-                    d.user = {name: 'Ada'};
-                    d.loading = false;
-                });
-            }
-        }
-
-        const store = new UserStore({user: undefined, loading: false});
         let result: boolean | undefined;
         await act(async () => {
-            const updated = waitForUpdate(store, 2000);
-            void store.load();
+            const updated = waitForUpdate(userStore, 2000);
+            void store.load('u1');
             await updated;
             result = store.getData().loading;
         });

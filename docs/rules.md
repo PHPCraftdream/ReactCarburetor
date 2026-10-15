@@ -22,6 +22,7 @@ is off in recommended configuration, so do not equate registry count with enable
 **ESLint v9+** — spread the shareable config. `@typescript-eslint/parser` must be installed in
 lint tooling; this config includes TS/TSX parsing.
 
+<!-- example:file examples/api/lint/Recommended.js#doc -->
 ```js
 import tsParser from '@typescript-eslint/parser';
 import carburetor from 'react-carburetor/lint';
@@ -67,6 +68,7 @@ React hooks remain allowed by `recommended`. Enable the optional preset explicit
 The JSON is also exported as `react-carburetor/lint/no-hooks.oxlintrc.json`. ESLint v9+ uses the
 same policy through the plugin's shareable config:
 
+<!-- example:file examples/api/lint/NoHooks.js#doc -->
 ```js
 import tsParser from '@typescript-eslint/parser';
 import carburetor from 'react-carburetor/lint';

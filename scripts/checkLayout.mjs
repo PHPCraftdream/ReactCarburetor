@@ -21,10 +21,16 @@ const ROOTS = [
 const STANDALONE_CODE_FILES = [
     'rslib.config.ts', 'rstest.config.ts', 'lib/rsbuild.config.ts', 'plugin/lint.d.ts',
 ];
-const EXPORT_ROOTS = new Set(['lib/src', 'plugin/src', 'plugin/internal', '__tests__', 'examples']);
+// The one-export rule exists for library code. Examples may export several names — tests import
+// them directly instead of going through facade objects.
+const EXPORT_ROOTS = new Set(['lib/src', 'plugin/src', 'plugin/internal', '__tests__']);
 const MAX_ENTRIES = 7;
 // Registries of the perf suite: one flat entry per benchmarked area, unbounded by design.
 const FLAT_REGISTRIES = new Set(['perf/gates', 'perf/scenarios']);
+// `examples/wrong` holds one directory per native lint rule id, plus `_unlinted` for hazards no
+// rule catches yet; both names are dictated by the native examples test, so the count follows
+// the rule registry rather than the seven-entry readability cap.
+FLAT_REGISTRIES.add('examples/wrong');
 const MAX_LINES = 600;
 const TYPE_FILES = /^Models\.(ts|mts)$/;
 const BARREL_FILES = /^index\.(ts|tsx|mts)$/;

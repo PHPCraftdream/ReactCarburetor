@@ -40,6 +40,7 @@ The optional hook-free preset is separate. It enables `carburetor/no-react-hooks
 
 For `eslint.config.ts` or `eslint.config.mjs`, spread the shareable configs. `@typescript-eslint/parser` must be installed in lint tooling:
 
+<!-- example:file examples/api/tooling/eslint.config.js#doc -->
 ```js
 import tsParser from '@typescript-eslint/parser';
 import carburetor from 'react-carburetor/lint';
@@ -58,7 +59,7 @@ export default [
 
 To check the config against the shipped declarations:
 
-<!-- example:compile -->
+<!-- example:file examples/api/types/lint.ts#doc -->
 ```ts
 import carburetor, {
     ICarburetorFlatConfig,
@@ -110,7 +111,7 @@ Configuration is JSON with `rules` and `ignore` top-level keys; anything else is
 
 A line is silenced with `// carburetor-disable-next-line <rule>` directly above it; `// carburetor-disable <rule>` silences the rule for a whole file. Without a rule list either directive silences all rules — name the rule and explain why.
 
-<!-- example:compile -->
+<!-- example:file examples/api/types/suppressions.ts#doc -->
 ```ts
 import {AntiHookComponent} from 'react-carburetor';
 
@@ -129,7 +130,7 @@ The native pass also honours oxlint suppression spellings. ESLint disable commen
 
 Inline function callbacks passed to synchronous array methods in render are findings, even when they only create elements. Use a module-level function when no `this` is needed or a bound method when it is. A capturing `this.update` callback is H32; write directly to `this.draft` and publish with `emitUpdate()` (use `try/finally` if a mutation can throw). Clean update callbacks belong at module scope under H30.
 
-<!-- example:compile -->
+<!-- example:file examples/wrong/no-function-in-render/List.expected.no-function-in-render.require-module-function.tsx#doc -->
 ```tsx
 import {AntiHookComponent, bind} from 'react-carburetor';
 
@@ -170,12 +171,11 @@ A callback that captures a member parameter, local binding, or `this` allocates 
 
 **Wrong**
 
-<!-- example:compile -->
-```tsx
+<!-- example:file examples/wrong/no-closure-in-update/Counter.ts#doc -->
+```ts
 import {Carburetor} from 'react-carburetor';
 
 interface CounterState { count: number; name: string }
-declare function normalizeName(name: string): string;
 
 class Counter extends Carburetor<CounterState> {
     public bump(step: number): void {
@@ -183,19 +183,13 @@ class Counter extends Carburetor<CounterState> {
             draft.count += step;
         });
     }
-
-    public rename(name: string): void {
-        this.update((draft) => {
-            draft.name = normalizeName(name);
-        });
-    }
 }
 ```
 
 **Right**
 
-<!-- example:compile -->
-```tsx
+<!-- example:file examples/api/types/update.ts#doc -->
+```ts
 import {Carburetor} from 'react-carburetor';
 
 interface CounterState { count: number; name: string }

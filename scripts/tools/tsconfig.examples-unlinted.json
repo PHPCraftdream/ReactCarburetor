@@ -1,0 +1,7 @@
+{
+    "extends": "../../examples/tsconfig.json",
+    "include": [
+        "../../examples/wrong/_unlinted/**/*"
+    ],
+    "exclude": []
+}

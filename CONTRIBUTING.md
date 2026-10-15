@@ -212,9 +212,9 @@ cannot be configured; only rule severity can be set to `error`, `warn` or `off`.
 
 Runnable examples live under `examples/` and are checked as consumer code against source aliases for `react-carburetor`, `react-carburetor/interop`, and `react-carburetor/lint`. Add practical, self-contained recipes that demonstrate actual API usage; do not add lists of export names merely to satisfy coverage. Proper examples are included in `npm run typecheck` and linted under normal allocation rules.
 
-In Markdown, `<!-- example:compile -->` directly before a fenced `ts`/`tsx` block asks the example check to typecheck a standalone snippet. Use `<!-- example:file examples/path/File.tsx -->` when a block is copied from a whole runnable source file, or append `#name` (`examples/path/File.tsx#name`) to include a named region delimited by `// #region name` and `// #endregion name`. Keep generated prose synchronized with `npm run docs:build`; `npm run docs:check` reports stale copies and invalid markers without rewriting files. Legacy unmarked examples are maintained in `scripts/tools/unmigrated.json` by exact content hash; remove allowlist entries as the corresponding examples are migrated.
+In Markdown, every `ts`/`tsx`/`js`/`jsx` block in README and docs is generated from `examples/`: place `<!-- example:file examples/path/File.tsx -->` directly before the fence, or append `#name` (`examples/path/File.tsx#name`) to include a named region delimited by `// #region name` and `// #endregion name`. Keep generated prose synchronized with `npm run docs:build`; `npm run docs:check` is strict — it reports stale copies, invalid markers, and any unmarked target-language fence without rewriting files. There is no allowlist: a code fence without a marker is an error.
 
-Examples that intentionally demonstrate a violation belong only in `examples/wrong/<rule>/`. The native example suite requires each such file to yield exactly its expected finding and no unrelated diagnostics; positive examples must remain clean under default native rules. Never suppress allocation rules for proper examples to make them pass. `npm run check:examples` checks marked documentation examples and lints the examples tree. The focused checks are `npx tsc --noEmit -p examples/tsconfig.json` and `node node_modules/@rstest/core/bin/rstest.js run __tests__/Native/examples.test.ts __tests__/Tooling/examples`.
+Examples that intentionally demonstrate a violation belong only in `examples/wrong/<rule>/`; directories starting with `_` (`_unlinted/<hazard-id>/`) hold wrong examples the native linter cannot catch and are typechecked through `scripts/tools/tsconfig.examples-unlinted.json`. Tests import example sources directly to assert their behavior and diagnostics. The native example suite requires each such file to yield exactly its expected finding and no unrelated diagnostics; positive examples must remain clean under default native rules. Never suppress allocation rules for proper examples to make them pass. The focused checks are `npx tsc --noEmit -p examples/tsconfig.json` and `node node_modules/@rstest/core/bin/rstest.js run __tests__/Native/examples.test.ts __tests__/Tooling/examples`.
 
 Keep every directory to seven entries and source files to 600 lines. Add API recipes incrementally; this is not a request to bulk-migrate all existing prose.
 
@@ -222,7 +222,7 @@ Keep every directory to seven entries and source files to 600 lines. Add API rec
 **Binary required.** Build the native linter before linting, or configure `CARBURETOR_LINT_BIN` to
 point to an existing binary. The verification block below builds it first.
 
-**Example checking:** Mark self-contained TypeScript/TSX example blocks with `<!-- example:compile -->` on its own line immediately before the code fence.
+**Documentation examples:** every TypeScript/TSX block in README and docs is generated from `examples/` via `<!-- example:file ... -->` markers; run `npm run docs:check` after editing examples or docs.
 
 ```bash
 cargo build --release --manifest-path native/Cargo.toml

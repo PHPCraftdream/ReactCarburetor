@@ -22,7 +22,7 @@ optimize after the fact: the unnecessary re-renders are never created in the fir
 [Code of Conduct](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CODE_OF_CONDUCT.md)
 
 <!-- example:file examples/readme/Counter.tsx -->
-<!-- example:compile -->
+<!-- example:file examples/readme/Counter.tsx -->
 ```tsx
 import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
 
@@ -118,7 +118,8 @@ when passing the signal to such APIs; development reports the limitation once.
 render is recorded as a path (`value`, `items.a1.title`), and those paths become the
 component's subscription.
 
-```tsx
+<!-- example:file examples/readme/Core/TodoStore.ts#read -->
+```ts
 const {orderIds, activeCount} = this.useCarburetor(todoCarburetor);
 ```
 
@@ -129,6 +130,7 @@ through JavaScript or unsafe casts remain possible. Writes
 belong to the carburetor: write through `this.draft`, then publish with `emitUpdate()` (or hand
 a module-level mutator to `update`, which does both):
 
+<!-- example:file examples/readme/Core/TodoStore.ts#renameTodo -->
 ```ts
 export class TodoCarburetor extends Carburetor<ITodoList> {
     public renameTodo(id: string, title: string): void {
@@ -183,6 +185,7 @@ intended call site — it hands back the same object for the component's whole l
 `useCarburetor` reads the same way but is called in render, which suits a store chosen per
 render (a prop, a scope lookup) or an array-rooted scoped store:
 
+<!-- example:file examples/readme/Core/Connect.tsx#connect -->
 ```tsx
 const renderTodoItem = (id: string): JSX.Element => <TodoItem key={id} id={id} />;
 
@@ -242,6 +245,7 @@ id, a key) as props — this is how `TodoItem` works. The child declares its own
 **An external child gets a selection snapshot.** `connectSelection(source, select)` is declared
 once like `connect`, and what it returns is called in render:
 
+<!-- example:file examples/readme/Core/Connect.tsx#connectSelection -->
 ```tsx
 class TodoList extends AntiHookComponent<ITodoProps> {
     private readonly row = this.connectSelection(
@@ -365,6 +369,7 @@ avoid comes back through the props.
 
 `@bind` binds a method once, when the instance is constructed:
 
+<!-- example:file examples/readme/Core/Bind.tsx#bind -->
 ```tsx
 class TodoRow extends AntiHookComponent<IProps> {
     @bind
@@ -395,7 +400,8 @@ use `@bind`, or silence it per line.
 It is recomputed only when one of them is written, and subscribers are woken only when the
 result actually changed.
 
-```ts
+<!-- example:file examples/readme/Computed/ActiveCount.tsx#activeCount -->
+```tsx
 const isNotDone = (item: {done: boolean}): boolean => !item.done;
 
 export const activeCount = computed<number>((read) => {
@@ -404,6 +410,7 @@ export const activeCount = computed<number>((read) => {
 });
 ```
 
+<!-- example:file examples/readme/Computed/ActiveCount.tsx#useComputed -->
 ```tsx
 render() {
     return <span>{this.useComputed(activeCount)}</span>;
@@ -429,6 +436,7 @@ and `equals`, not by accessing internal state.
 
 Computeds compose, as long as you read them through `read` as well:
 
+<!-- example:file examples/readme/Computed/Summary.ts#summary -->
 ```ts
 export const summary = computed<string>((read) => `${read(activeCount)} left`);
 ```
@@ -450,6 +458,7 @@ A body that has to build a new array or object on every recompute — `filter`, 
 object literal — cannot rely on that check: a new reference looks like a change even when its
 content is identical. Pass `equals` to judge the result by content instead:
 
+<!-- example:file examples/readme/Computed/VisibleIds.ts#visibleIds -->
 ```ts
 export const visibleIds = computed<string[]>((read) => {
     const {orderIds, items} = read(todoCarburetor);
@@ -483,6 +492,7 @@ props — is reported once per computed.
 Writes inside `transaction` are delivered as one update per carburetor, however many stores
 were touched:
 
+<!-- example:file examples/readme/Core/Transaction.ts#transaction -->
 ```ts
 transaction(() => {
     todoCarburetor.createTodo();
@@ -496,6 +506,7 @@ By default updates are delivered immediately and React does the batching — no 
 to a click or a keystroke. Throttling is opt-in, per carburetor, for streaming sources where
 coalescing actually helps:
 
+<!-- example:file examples/readme/Core/Throttle.ts#presence -->
 ```ts
 // A socket pushing hundreds of messages per second: collapse them into ~25 renders/sec.
 export const presenceCarburetor = new PresenceCarburetor(initial, new ComponentUpdateThrottle(40));
@@ -508,6 +519,7 @@ in-progress throttle flush. A callback already running is not interrupted.
 
 Override `useEffects`, and declare each effect with a name and its dependencies:
 
+<!-- example:file examples/readme/Core/UseEffects.tsx#useEffects -->
 ```tsx
 export class TodoApp extends AntiHookComponent<ITodoProps> {
     protected useEffects(): void {
@@ -541,6 +553,7 @@ The engine complains about a few kinds of misuse — a write that was never publ
 facade to a child, reported once per selection. Safely copied plain/array views are supported;
 project plain fields from opaque live instances. Those complaints are development-only and switchable:
 
+<!-- example:file examples/readme/Core/Diagnostics.ts#diagnostics -->
 ```ts
 diagnostics.setEnabled(false);   // silence them anywhere
 diagnostics.isEnabled();
@@ -556,6 +569,7 @@ for toolchains that do not substitute `NODE_ENV` themselves.
 `ResourceCarburetor` turns a promise into state with an explicit status, request
 deduplication and cancellation:
 
+<!-- example:file examples/readme/Resources/Resource.ts#profile -->
 ```ts
 const parseProfile = (response: Response): Promise<IProfile> => response.json();
 
@@ -572,9 +586,10 @@ compile error rather than a branch that never runs. Four derived boolean flags �
 they live in the data itself, so they are serializable and readable through `getData()`,
 selectors and copies:
 
+<!-- example:file examples/readme/Resources/Resource.ts#isError -->
 ```ts
 if (profile.getData().isError) {
-    ...
+    // handle the error state
 }
 ```
 
@@ -600,6 +615,7 @@ that load rejects with `AbortError` instead of reporting a successful load that 
 
 It also works under Suspense, which class components support by throwing the pending promise:
 
+<!-- example:file examples/readme/Resources/Suspend.tsx#suspend -->
 ```tsx
 render() {
     const view = this.useCarburetor(profile);
@@ -621,7 +637,7 @@ so the nearest error boundary handles it.
 `ResourceCarburetor` holds one value. An API layer needs many — the same loader called with different
 arguments, each answer worth keeping — which is what `ResourceCache` is:
 
-<!-- example:compile -->
+<!-- example:file examples/readme/Resources/UserPage.tsx -->
 ```tsx
 import React, {Suspense} from 'react';
 import {
@@ -641,7 +657,7 @@ const users = new ResourceCache<User, string>(async (id, signal) => {
     return response.json() as Promise<User>;
 }, {ttl: 30_000, maxEntries: 200});
 
-class UserBadge extends AntiHookComponent<{id: string}> {
+export class UserBadge extends AntiHookComponent<{id: string}> {
     @bind
     private retry(): void {
         void users.refresh(this.props.id);
@@ -780,9 +796,8 @@ A module-level singleton is shared by every request on a server, which leaks one
 into another's render. A scope creates the instances per request instead, and components
 resolve them through context — no hooks involved.
 
-<!-- example:compile -->
+<!-- example:file examples/readme/App/Ssr.tsx -->
 ```tsx
-import * as React from 'react';
 import {renderToString} from 'react-dom/server';
 import {hydrateRoot} from 'react-dom/client';
 import {
@@ -841,6 +856,7 @@ and reflects the state as it is at the time of the call.
 
 ## Tooling
 
+<!-- example:file examples/readme/Tooling/DevTools.ts#tooling -->
 ```ts
 // Redux DevTools: state inspection plus time travel back onto the carburetors.
 const stopDevTools = connectDevTools({todos: todoCarburetor, filter: filterCarburetor});
@@ -954,9 +970,8 @@ data is reported before removal, and a removal failure is reported separately.
 
 Install jsdom and the React testing dependencies (`@testing-library/react` and `react-dom`). Configure the test runner's jsdom environment with React's act environment enabled in runner setup. Import `act` from `@testing-library/react`: it re-exports the right implementation for the installed React (React's own `act` is unavailable at the React 18.0 floor, and `react-dom/test-utils` is deprecated in React 19).
 
-<!-- example:compile -->
+<!-- example:file examples/readme/App/Testing.tsx -->
 ```tsx
-import * as React from 'react';
 import {act, render, fireEvent} from '@testing-library/react';
 import {test, expect} from '@rstest/core';
 import {
@@ -1035,6 +1050,7 @@ ordinary property reads through them are tracked. A frozen or otherwise locked p
 object value cannot legally be wrapped is refused in development; production may return the raw
 value at that boundary. Keep store data unfrozen if those read guarantees matter.
 
+<!-- example:file examples/readme/Interop/NameBadge.tsx#nameBadge -->
 ```tsx
 import {useCarburetorValue, useComputedValue} from 'react-carburetor/interop';
 
@@ -1087,6 +1103,7 @@ Server rendering selects without loading, subscribing or acquiring write proofs.
 
 Using the `User` and `users` declarations from the cached-resource example above:
 
+<!-- example:file examples/readme/Interop/HookUserBadge.tsx#hookUserBadge -->
 ```tsx
 import type {IResourceView, TReadonly} from 'react-carburetor';
 import {useResourceValue} from 'react-carburetor/interop';
@@ -1147,6 +1164,7 @@ One plugin serves both hosts, because oxlint's JS plugin API is ESLint's.
 **ESLint v9+** — add the plugin to an existing TypeScript flat config with a TS/TSX parser already
 configured:
 
+<!-- example:file examples/readme/Tooling/EslintConfig.js -->
 ```js
 import carburetor from 'react-carburetor/lint';
 
@@ -1298,7 +1316,7 @@ do not redeclare it.
 
 The selected surface is about extensions, not user-facing adapter recipes: `Carburetor` takes initial data, `getInitialResourceData` returns only an Idle resource state, and a custom adapter can seed its own state. A plain `Carburetor` is not a resource loader. A new `Diagnostics` instance is independent; it does not replace the engine's `diagnostics` singleton. Toggling that singleton affects development complaints, but cannot restore warning strings stripped from production builds.
 
-<!-- example:compile -->
+<!-- example:file examples/readme/Tooling/Adapter.ts -->
 ```ts
 import {Carburetor, Diagnostics, diagnostics, getInitialResourceData} from 'react-carburetor';
 interface User {name: string}

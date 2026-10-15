@@ -15,6 +15,15 @@ const run = (files: string[]) => spawnSync(executable, [
     '--format=json', ...files.map(file => relative(root, file).replaceAll('\\', '/')),
 ], {cwd: root, encoding: 'utf8'});
 const parse = (output: string) => JSON.parse(output || '[]');
+// A file named `Name.expected.<rule>.<rule2>.tsx` declares the full set of rules its single
+// hazard demonstrably triggers (documented overlaps, e.g. a clean `update` callback is both
+// H30 and H32 territory); every other file in `examples/wrong/<rule-id>/` expects exactly one
+// finding of `carburetor/<rule-id>`.
+const expectedRules = (file: string): string[] | null => {
+    const name = file.split(sep).at(-1) ?? '';
+    const match = /^.+\.(?:expected)\.([a-z-]+(?:\.[a-z-]+)*)\.(?:tsx?|jsx?)$/.exec(name);
+    return match ? match[1].split('.') : null;
+};
 
 describe('native lint on documentation examples', () => {
     test('proper examples are clean under native defaults', () => {
@@ -30,15 +39,40 @@ describe('native lint on documentation examples', () => {
         const directories = readdirSync(wrongRoot, {withFileTypes: true}).filter(entry => entry.isDirectory());
         expect(directories.length).toBeGreaterThan(0);
         for (const directory of directories) {
+            // `_`-prefixed directories hold hazards no native rule catches (not implemented yet,
+            // or a development diagnostic); their files must be silent and still typecheck.
+            if (directory.name.startsWith('_')) {
+                const files = sourceFiles(join(wrongRoot, directory.name));
+                expect(files.length).toBeGreaterThan(0);
+                const typecheck = spawnSync('npx', [
+                    'tsc', '--noEmit', '-p', resolve(root, 'scripts/tools/tsconfig.examples-unlinted.json'),
+                ], {cwd: root, encoding: 'utf8', shell: process.platform === 'win32'});
+                expect(typecheck.stdout + typecheck.stderr).toBe('');
+                for (const file of files) {
+                    const result = run([file]);
+                    expect(parse(result.stdout)).toEqual([]);
+                }
+
+                continue;
+            }
             const expected = `carburetor/${directory.name}`;
             const files = sourceFiles(join(wrongRoot, directory.name));
             expect(files.length).toBeGreaterThan(0);
             for (const file of files) {
+                const expectedSet = expectedRules(file);
                 const result = run([file]);
                 const findings = parse(result.stdout);
-                expect(findings).toHaveLength(1);
-                expect(findings[0].rule).toBe(expected);
-                expect(result.status).toBe(findings[0].severity === 'error' ? 1 : 0);
+                if (expectedSet === null) {
+                    expect(findings).toHaveLength(1);
+                    expect(findings[0].rule).toBe(expected);
+                    expect(result.status).toBe(findings[0].severity === 'error' ? 1 : 0);
+                } else {
+                    expect(expectedSet).toContain(directory.name);
+                    expect(findings.length).toBeGreaterThan(0);
+                    expect([...new Set<string>(findings.map((finding: {rule: string}) => finding.rule))]
+                        .sort((a, b) => a.localeCompare(b)))
+                        .toEqual(expectedSet.map(rule => `carburetor/${rule}`).sort((a, b) => a.localeCompare(b)));
+                }
             }
         }
     });

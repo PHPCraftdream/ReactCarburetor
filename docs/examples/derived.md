@@ -11,7 +11,7 @@ All examples import from the root entry `react-carburetor`.
 `computed()` takes a body that receives a tracking `read` function. Everything the body reads
 through `read` becomes a dependency of the value.
 
-<!-- example:compile -->
+<!-- example:file examples/api/computed/Simple.ts -->
 ```ts
 import {Carburetor, bind, computed} from 'react-carburetor';
 
@@ -40,7 +40,7 @@ dependency — always go through `read`.
 `get()` returns the value, recomputing first when a dependency moved. Outside React this is the
 whole read API; the value stays cached between calls.
 
-<!-- example:compile -->
+<!-- example:file examples/api/computed/Get.ts -->
 ```ts
 import {Carburetor, computed} from 'react-carburetor';
 
@@ -62,7 +62,7 @@ Pitfall: `get()` inside a component body does not subscribe the component — us
 A computed can read another computed through the same `read` function. The outer value then
 depends on the inner one as a whole and is invalidated only when the inner value is.
 
-<!-- example:compile -->
+<!-- example:file examples/api/computed/advanced/Compose.ts -->
 ```ts
 import {Carburetor, computed} from 'react-carburetor';
 
@@ -88,7 +88,7 @@ value stale — pass the inner computed through `read`.
 annotated, type them with `TComputeBody<R>` and `IComputedOptions<R>`; the value itself satisfies
 `IComputed<R>`.
 
-<!-- example:compile -->
+<!-- example:file examples/api/computed/advanced/Typed.ts -->
 ```ts
 import {Carburetor, Computed} from 'react-carburetor';
 import type {IComputed, IComputedOptions, TComputedReader, TComputeBody} from 'react-carburetor';
@@ -112,7 +112,7 @@ subscription happens through a component's `useComputed` or an explicit `subscri
 By default a settled result is compared by reference. Pass `equals` to judge results by content;
 `shallowEqual` (exported from the root entry) compares one level deep, like `React.memo` props.
 
-<!-- example:compile -->
+<!-- example:file examples/api/computed/advanced/ShallowEqual.ts -->
 ```ts
 import {Carburetor, computed, shallowEqual} from 'react-carburetor';
 
@@ -136,7 +136,7 @@ the same result object aliases `previous` and `next`, so rebuild the result (spr
 subscribes to the computed itself — not to its inputs — so it re-renders only when the derived
 value changes.
 
-<!-- example:compile -->
+<!-- example:file examples/api/computed/read/UseComputed.tsx#doc -->
 ```tsx
 import {AntiHookComponent, Carburetor, bind, computed} from 'react-carburetor';
 

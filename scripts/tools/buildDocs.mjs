@@ -6,7 +6,6 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const languages = {'.ts': 'ts', '.tsx': 'tsx', '.js': 'js', '.jsx': 'jsx'};
 const markerPattern = /^\s*<!--\s*example:file\s+([^\s]+)\s*-->\s*$/;
 const markerLike = /^\s*<!--\s*example:file\b/;
-const legacyLine = /^\s*<!--\s*example:compile\s*-->\s*$/;
 const fencePattern = /^\s*(`{3,}|~{3,})(?:\s*([^\s`~]+).*)?\s*$/;
 const trimLine = (line) => line.replace(/\r?\n$/, '');
 const walk = async (directory, exclude = new Set()) => (await Promise.all(
@@ -66,20 +65,11 @@ const sourceFor = async (base, spec) => {
  * Synchronizes `example:file`-marked TypeScript and JavaScript fences in README.md and docs/
  * from their example sources, without writing anything in `check` mode.
  *
- * Unmarked target-language fences are accepted only when listed in scripts/tools/unmigrated.json by
+ * Every target-language fence must carry an `example:file` marker; unmarked fences are errors.
  */
 export async function buildDocs({check = false, directory = root} = {}) {
     const base = resolve(directory);
-    const allow = JSON.parse(await readFile(resolve(base, 'scripts/tools/unmigrated.json'), 'utf8'));
-    const exceptions = allow.entries ?? [];
     const errors = [];
-    const seen = new Set();
-    const keys = new Set();
-    for (const item of exceptions) {
-        const key = `${item.path}:${item.ordinal}`;
-        if (keys.has(key)) errors.push(`${key}: duplicate allowlist entry`);
-        keys.add(key);
-    }
     const docs = [
         resolve(base, 'README.md'),
         ...(await walk(resolve(base, 'docs'), new Set(['reviews', 'checkpoints']))),
@@ -96,20 +86,14 @@ export async function buildDocs({check = false, directory = root} = {}) {
             const line = trimLine(lines[index]);
             const opening = line.match(fencePattern);
             if (!opening) {
-                if (markerLike.test(line) || legacyLine.test(line)) {
+                if (markerLike.test(line)) {
                     let next = index + 1;
-                    while (next < lines.length
-                        && (markerLike.test(trimLine(lines[next])) || legacyLine.test(trimLine(lines[next])))) next++;
+                    while (next < lines.length && markerLike.test(trimLine(lines[next]))) next++;
                     const candidate = trimLine(lines[next]);
                     const candidateFence = candidate.match(fencePattern);
                     const codeFollows = candidateFence !== null
                         && Object.values(languages).includes((candidateFence[2] ?? '').toLowerCase());
-                    if (codeFollows) {
-                        let markerAt = next - 1;
-                        while (markerAt > index && legacyLine.test(trimLine(lines[markerAt]))) markerAt--;
-                        if (legacyLine.test(line) || markerAt === index) { output.push(lines[index++]); continue; }
-                    }
-                    errors.push(`${document}:${index + 1}: dangling or malformed example marker`);
+                    if (!codeFollows) errors.push(`${document}:${index + 1}: dangling or malformed example marker`);
                 }
                 output.push(lines[index++]);
                 continue;
@@ -128,13 +112,9 @@ export async function buildDocs({check = false, directory = root} = {}) {
                 output.push(...lines.slice(index, end + 1)); index = end + 1; continue;
             }
             ordinal++;
-            let markerIndex = index - 1;
-            const legacy = markerIndex >= 0 && legacyLine.test(trimLine(lines[markerIndex]));
-            if (legacy) markerIndex--;
-            const markerText = markerIndex >= 0 ? trimLine(lines[markerIndex]) : '';
+            const markerText = index > 0 ? trimLine(lines[index - 1]) : '';
             const markerMatch = markerText.match(markerPattern);
             const marked = markerLike.test(markerText);
-            const allowItem = exceptions.find((item) => item.path === document && item.ordinal === ordinal);
             if (marked && !markerMatch) errors.push(`${document}:${ordinal}: malformed example:file marker`);
             if (markerMatch) {
                 try {
@@ -163,19 +143,14 @@ export async function buildDocs({check = false, directory = root} = {}) {
                     errors.push(`${document}:${ordinal}: ${message}`);
                     output.push(...lines.slice(index, end + 1));
                 }
-                if (allowItem) errors.push(`${document}:${ordinal}: allowlist entry conflicts with file marker`);
             } else {
-                if (allowItem) seen.add(allowItem);
-                else errors.push(`${document}:${ordinal}: missing example:file marker or allowlist entry`);
+                errors.push(`${document}:${ordinal}: missing example:file marker`);
                 output.push(...lines.slice(index, end + 1));
             }
             index = end + 1;
         }
         const result = output.join('');
         if (!check && result !== original) pending.push([path, result]);
-    }
-    for (const item of exceptions) {
-        if (!seen.has(item)) errors.push(`${item.path}:${item.ordinal}: stale allowlist entry`);
     }
     if (errors.length) throw new Error(errors.join('\n'));
     if (!check) for (const [path, content] of pending) await writeFile(path, content);

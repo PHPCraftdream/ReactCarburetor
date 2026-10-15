@@ -25,6 +25,7 @@ becomes a framework:
 
 One carburetor holding a flat dictionary:
 
+<!-- example:file examples/api/resources/promise-cache/CacheShape.ts#doc -->
 ```ts
 interface IResourceCacheData<T> {
     entries: IDict<IResourceEntry<T>>;
@@ -134,6 +135,7 @@ run; unchanged entries retain their raw failures. Raw-failure reconciliation doe
 
 ## Hooks: required synchronous selection
 
+<!-- example:file examples/api/resources/promise-cache/Hooks.tsx#doc -->
 ```tsx
 import {IResourceView, TReadonly} from 'react-carburetor';
 import {useResourceValue} from 'react-carburetor/interop';
