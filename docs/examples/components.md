@@ -166,7 +166,6 @@ A subclass overrides the protected `useEffects()` method; it runs on mount and a
 committed update. Each effect is declared with `useEffect(name, callBack, deps)`; whatever the
 callback returns is that effect's cleanup, run before the effect runs again and on unmount.
 
-<!-- example:file examples/components/AutosaveDraft.tsx#component -->
 <!-- example:file examples/api/components/AutosaveDraft.tsx#component -->
 ```tsx
 import {

@@ -6,6 +6,14 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const languages = {'.ts': 'ts', '.tsx': 'tsx', '.js': 'js', '.jsx': 'jsx'};
 const markerPattern = /^\s*<!--\s*example:file\s+([^\s]+)\s*-->\s*$/;
 const markerLike = /^\s*<!--\s*example:file\b/;
+const prefixPattern = /^((?:[ \t]|>[ \t]?)+)/; // leading indent and/or blockquote markers
+const quotePattern = /^[ \t]*(?:>[ \t]?)+/; // blockquote markers with optional indent
+const stripPrefix = (line) => {
+    const match = line.match(prefixPattern);
+    return match ? [match[1], line.slice(match[1].length)] : ['', line];
+};
+const stripQuote = (line) => line.replace(quotePattern, '');
+const cutPrefix = (line, prefix) => line.startsWith(prefix) ? line.slice(prefix.length) : line;
 const fencePattern = /^\s*(`{3,}|~{3,})(?:\s*([^\s`~]+).*)?\s*$/;
 const trimLine = (line) => line.replace(/\r?\n$/, '');
 const walk = async (directory, exclude = new Set()) => (await Promise.all(
@@ -83,13 +91,14 @@ export async function buildDocs({check = false, directory = root} = {}) {
         let ordinal = 0;
         let index = 0;
         while (index < lines.length) {
-            const line = trimLine(lines[index]);
+            const raw = trimLine(lines[index]);
+            const [, line] = stripPrefix(raw);
             const opening = line.match(fencePattern);
             if (!opening) {
                 if (markerLike.test(line)) {
                     let next = index + 1;
                     while (next < lines.length && markerLike.test(trimLine(lines[next]))) next++;
-                    const candidate = trimLine(lines[next]);
+                    const candidate = stripQuote(trimLine(lines[next]));
                     const candidateFence = candidate.match(fencePattern);
                     const codeFollows = candidateFence !== null
                         && Object.values(languages).includes((candidateFence[2] ?? '').toLowerCase());
@@ -99,9 +108,10 @@ export async function buildDocs({check = false, directory = root} = {}) {
                 continue;
             }
             const fence = opening[1];
+            const prefix = stripPrefix(raw)[0]; // container prefix of the whole block
             const closer = new RegExp(`^\\s*${fence[0]}{${fence.length},}\\s*$`);
             let end = index + 1;
-            while (end < lines.length && !closer.test(trimLine(lines[end]))) end++;
+            while (end < lines.length && !closer.test(cutPrefix(trimLine(lines[end]), prefix))) end++;
             if (end >= lines.length) {
                 errors.push(`${document}: unclosed fence`);
                 output.push(...lines.slice(index));
@@ -112,7 +122,11 @@ export async function buildDocs({check = false, directory = root} = {}) {
                 output.push(...lines.slice(index, end + 1)); index = end + 1; continue;
             }
             ordinal++;
-            const markerText = index > 0 ? trimLine(lines[index - 1]) : '';
+            // count consecutive marker lines immediately above the fence
+            let chain = 0;
+            while (index - 1 - chain >= 0 && markerLike.test(stripQuote(trimLine(lines[index - 1 - chain])))) chain++;
+            if (chain > 1) errors.push(`${document}:${index - chain + 1}: duplicate example:file marker`);
+            const markerText = chain ? stripQuote(trimLine(lines[index - 1])) : '';
             const markerMatch = markerText.match(markerPattern);
             const marked = markerLike.test(markerText);
             if (marked && !markerMatch) errors.push(`${document}:${ordinal}: malformed example:file marker`);
@@ -122,19 +136,25 @@ export async function buildDocs({check = false, directory = root} = {}) {
                     if (check && language !== extracted.language) {
                         errors.push(`${document}:${ordinal}: language mismatch (expected ${extracted.language})`);
                     }
-                    const body = lines.slice(index + 1, end).map(trimLine).join('\n');
+                    const body = lines.slice(index + 1, end)
+                        .map((part) => cutPrefix(trimLine(part), prefix)).join('\n');
                     if (check && body !== extracted.code) {
                         errors.push(`${document}:${ordinal}: example content mismatch`);
                     }
                     if (!check) {
                         const ending = lines[end].endsWith('\n') ? '\n' : '';
                         const newline = original.includes('\r\n') ? '\r\n' : '\n';
-                        const fenceInfo = `${fence}${extracted.language}${opening[2]?.slice(language.length) ?? ''}`;
-                        output.push(`${fenceInfo}${newline}`);
+                        // Outlast the longest run of fence characters inside the code.
+                        const runs = extracted.code.match(new RegExp(`\\${fence[0]}+`, 'g')) ?? [];
+                        const run = Math.max(0, ...runs.map((found) => found.length));
+                        const length = Math.max(3, fence.length, run + 1);
+                        const info = opening[2]?.slice(language.length) ?? '';
+                        output.push(`${prefix}${fence[0].repeat(length)}${extracted.language}${info}${newline}`);
                         if (extracted.code) {
-                            output.push(extracted.code.split('\n').map((part) => part + newline).join(''));
+                            output.push(extracted.code.split('\n')
+                                .map((part) => `${prefix}${part}${newline}`).join(''));
                         }
-                        output.push(`${fence}${ending ? newline : ''}`);
+                        output.push(`${prefix}${fence[0].repeat(length)}${ending ? newline : ''}`);
                     } else output.push(...lines.slice(index, end + 1));
                 } catch (error) {
                     const message = error.code === 'ENOENT'

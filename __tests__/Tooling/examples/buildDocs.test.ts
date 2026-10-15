@@ -128,4 +128,88 @@ describe('buildDocs', () => {
             await expect(buildDocs({directory: root, check: true})).rejects.toThrow('dangling or malformed example marker');
         } finally { await rm(root, {recursive: true, force: true}); }
     });
+
+    describe('container prefixes (DB3-01)', () => {
+        test('recognizes blockquote-fenced example markers and preserves the "> " prefix', async () => {
+            const root = await fixture();
+            try {
+                await save(root, 'examples/q.ts', 'export const q = 1;\n');
+                await save(root, 'docs/quote.md', [
+                    '> <!-- example:file examples/q.ts -->', '> ```ts', '> old', '> ```', '',
+                ].join('\n'));
+                await buildDocs({directory: root});
+                const generated = await readFile(join(root, 'docs/quote.md'), 'utf8');
+                expect(generated).toContain('> <!-- example:file examples/q.ts -->');
+                expect(generated).toContain('> ```ts\n> export const q = 1;\n> ```');
+                await buildDocs({directory: root, check: true});
+            } finally { await rm(root, {recursive: true, force: true}); }
+        });
+
+        test('recognizes list-indented fences and preserves the two-space indent', async () => {
+            const root = await fixture();
+            try {
+                await save(root, 'examples/li.ts', 'export const li = 1;\n');
+                await save(root, 'docs/indent.md', [
+                    '  <!-- example:file examples/li.ts -->', '  ```ts', '  old', '  ```', '',
+                ].join('\n'));
+                await buildDocs({directory: root});
+                const generated = await readFile(join(root, 'docs/indent.md'), 'utf8');
+                expect(generated).toContain('  <!-- example:file examples/li.ts -->');
+                expect(generated).toContain('  ```ts\n  export const li = 1;\n  ```');
+                await buildDocs({directory: root, check: true});
+            } finally { await rm(root, {recursive: true, force: true}); }
+        });
+
+        test('strict mode still rejects unmarked target fences inside a blockquote', async () => {
+            const root = await fixture();
+            try {
+                await save(root, 'docs/quoted.md', ['> ```ts', '> x', '> ```', ''].join('\n'));
+                await expect(buildDocs({directory: root, check: true}))
+                    .rejects.toThrow('missing example:file marker');
+            } finally { await rm(root, {recursive: true, force: true}); }
+        });
+    });
+
+    test('rejects a chain of duplicate example markers before a fence (DB3-08)', async () => {
+        const root = await fixture();
+        try {
+            await save(root, 'examples/dup.ts', 'export const dup = 1;\n');
+            await save(root, 'docs/dup.md', [
+                '<!-- example:file examples/dup.ts -->',
+                '<!-- example:file examples/dup.ts -->', '```ts', 'old', '```', '',
+            ].join('\n'));
+            await expect(buildDocs({directory: root, check: true})).rejects.toThrow(/duplicate/);
+        } finally { await rm(root, {recursive: true, force: true}); }
+    });
+
+    test('uses a longer fence when example sources contain a fence line (DB3-04)', async () => {
+        const root = await fixture();
+        try {
+            await save(root, 'examples/fenced.ts', 'const a = 1;\n```\nconst b = 2;\n');
+            await save(root, 'docs/fenced.md', marker('examples/fenced.ts', 'old', 'ts'));
+            await buildDocs({directory: root});
+            const generated = await readFile(join(root, 'docs/fenced.md'), 'utf8');
+            expect(generated).toMatch(/^\u0060{4,}ts$/m);
+            expect(generated).toContain('```\nconst b = 2;');
+            await buildDocs({directory: root, check: true});
+        } finally { await rm(root, {recursive: true, force: true}); }
+    });
+
+    test('quote-prefixed example blocks keep every line prefixed (DB3-05)', async () => {
+        const root = await fixture();
+        try {
+            await save(root, 'examples/two.ts', 'const first = 1;\nconst second = 2;\n');
+            await save(root, 'docs/two.md', [
+                '> <!-- example:file examples/two.ts -->', '> ```ts', '> old', '> ```', '',
+            ].join('\n'));
+            await buildDocs({directory: root});
+            const generated = await readFile(join(root, 'docs/two.md'), 'utf8');
+            const block = generated.split('\n').filter((line) =>
+                line.startsWith('> ') || line.trim() === '');
+            expect(block.join('\n')).toContain('> const first = 1;\n> const second = 2;');
+            for (const line of generated.split('\n')) {
+                if (line.includes('const ')) expect(line.startsWith('> ')).toBe(true);
+            }
+        } finally { await rm(root, {recursive: true, force: true}); }
+    });
 });

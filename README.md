@@ -22,7 +22,6 @@ optimize after the fact: the unnecessary re-renders are never created in the fir
 [Code of Conduct](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CODE_OF_CONDUCT.md)
 
 <!-- example:file examples/readme/Counter.tsx -->
-<!-- example:file examples/readme/Counter.tsx -->
 ```tsx
 import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
 

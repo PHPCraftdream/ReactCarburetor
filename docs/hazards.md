@@ -557,7 +557,7 @@ lifecycle name or `render`.
 
 **Wrong**
 
-<!-- example:file examples/wrong/no-handler-created-in-render/Rows.expected.no-handler-created-in-render.tsx#doc -->
+<!-- example:file examples/wrong/no-handler-created-in-render/Rows.expected.no-handler-created-in-render.x2.tsx#doc -->
 ```tsx
 <>
     <TodoRow onToggle={() => this.toggle(id)}/>
@@ -1101,7 +1101,7 @@ the allocation it avoids, which is why this is a `warn` to judge rather than an 
 
 **Wrong**
 
-<!-- example:file examples/wrong/require-module-function/ModuleFn.expected.require-module-function.tsx#doc -->
+<!-- example:file examples/wrong/require-module-function/ModuleFn.expected.require-module-function.x3.tsx#doc -->
 ```tsx
 class Counter extends Carburetor<{count: number; items: Item[]}> {
     public increment(): void {
