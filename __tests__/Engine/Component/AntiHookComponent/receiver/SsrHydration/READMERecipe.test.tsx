@@ -44,8 +44,10 @@ import {readFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {act} from 'react';
+import {render} from '@testing-library/react';
 import {rstest} from '@rstest/core';
 import {enableReactActEnvironment} from '../../../../../reactActEnvironment';
+import {Counter} from '../../../../../../examples/readme/Counter';
 
 enableReactActEnvironment();
 
@@ -88,6 +90,14 @@ afterEach(() => {
 });
 
 describe('README hydration recipe', () => {
+    test('the actual exported README Counter component renders and increments', async () => {
+        const {container} = render(<Counter/>);
+        const button = container.querySelector('button') as HTMLButtonElement;
+        expect(button.textContent).toBe('0');
+        await act(async () => button.click());
+        expect(button.textContent).toBe('1');
+    });
+
     test('the README block stays in sync with this file', () => {
         const readme = readRecipeBlock(resolve(root, 'README.md'), '<!-- example:compile -->', 'renderRequest');
         expect(normalizeImport(readme)).toEqual(readSelfRecipe());

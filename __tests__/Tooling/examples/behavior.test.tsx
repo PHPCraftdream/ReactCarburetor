@@ -2,43 +2,38 @@ import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {rstest} from '@rstest/core';
-import {AntiHookComponent, Carburetor, ResourceCarburetor, ResourceCache, waitForUpdate} from '@/Carburetor';
+import {Carburetor, ResourceCarburetor, ResourceCache, waitForUpdate, AntiHookComponent} from '@/Carburetor';
+import {AutosaveDraft} from '../../../examples/components/AutosaveDraft';
 
 describe('AutosaveDraft example reads tracked state (docs/examples/components.md)', () => {
-    test('the effect re-runs on text changes and the textarea tracks the draft', () => {
-        const draft = new Carburetor<{text: string}>({text: ''});
-        const saves: string[] = [];
+    test('the exported component tracks text and invokes its injected save callback', () => {
+        rstest.useFakeTimers();
+        try {
+            const draft = new Carburetor<{text: string}>({text: ''});
+            const saves: string[] = [];
+            const {container, unmount} = render(<AutosaveDraft draft={draft} save={(text) => saves.push(text)}/>);
+            expect((container.querySelector('textarea') as HTMLTextAreaElement).value).toEqual('');
+            act(() => {
+                rstest.advanceTimersByTime(500);
+            });
+            expect(saves).toEqual(['']);
 
-        class AutosaveDraft extends AntiHookComponent {
-            protected latestText = '';
+            void act(() => draft.setData({text: 'next'}));
+            expect((container.querySelector('textarea') as HTMLTextAreaElement).value).toEqual('next');
+            act(() => {
+                rstest.advanceTimersByTime(500);
+            });
+            expect(saves).toEqual(['', 'next']);
 
-            public render() {
-                const view = this.useCarburetor(draft);
-                this.latestText = view.text;
-
-                return <textarea value={view.text} readOnly/>;
-            }
-
-            protected useEffects(): void {
-                const autosave = (): (() => void) => {
-                    saves.push(this.latestText);
-
-                    return () => {};
-                };
-
-                this.useEffect('autosave', autosave, [this.latestText]);
-            }
+            void act(() => draft.setData({text: 'pending'}));
+            unmount();
+            act(() => {
+                rstest.advanceTimersByTime(500);
+            });
+            expect(saves).toEqual(['', 'next']);
+        } finally {
+            rstest.useRealTimers();
         }
-
-        const {container} = render(<AutosaveDraft/>);
-        expect((container.querySelector('textarea') as HTMLTextAreaElement).value).toEqual('');
-
-        act(() => {
-            draft.setData({text: 'next'});
-        });
-
-        expect((container.querySelector('textarea') as HTMLTextAreaElement).value).toEqual('next');
-        expect(saves).toEqual(['', 'next']);
     });
 });
 

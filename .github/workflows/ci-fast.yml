@@ -99,6 +99,12 @@ jobs:
       - name: Check examples
         run: npm run check:examples
 
+      - name: Check documentation examples are up to date
+        run: npm run docs:check
+
+      - name: Check example types
+        run: npx tsc --noEmit -p examples/tsconfig.json
+
       - name: Example coverage of the public API
         run: node node_modules/@rstest/core/bin/rstest.js run __tests__/Tooling/examples
 

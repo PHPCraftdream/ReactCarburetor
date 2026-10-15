@@ -55,13 +55,12 @@ describe('affected map coverage', () => {
         }
     });
 
-    it('covers the example checker and its test suite', () => {
-        const script = 'scripts/consumer-fixture/checkExamples.mjs';
-        const tests = '__tests__/Tooling/examples/checkExamples.test.ts';
-        expect(noUnmapped([script, tests])).toEqual([]);
-        const selection = select([script], map);
-        expect(selection.examples).toBe(true);
-        expect(selection.rstest).toContain('__tests__/Tooling/examples');
+    it('covers documentation builder and example suite mapping', () => {
+        const script = 'scripts/tools/buildDocs.mjs';
+        const examples = 'examples/readme/Counter.tsx';
+        expect(noUnmapped([script, examples])).toEqual([]);
+        expect(select([script], map).examples).toBe(true);
+        expect(select([examples], map).rstest).toContain('__tests__/Native/examples.test.ts');
     });
 
     it('every perfArea in the map matches at least one gate id', () => {

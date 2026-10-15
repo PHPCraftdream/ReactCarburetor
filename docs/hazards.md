@@ -99,13 +99,20 @@ The thin host bridge reports native diagnostics. Real fixture and host coverage 
 
 **Wrong**
 
+<!-- example:file examples/wrong/no-get-data-in-render/Counter.tsx -->
 ```tsx
-public render() {
-    const {count} = todoCarburetor.getData();
+import {AntiHookComponent, Carburetor} from 'react-carburetor';
 
-    return <span>{count}</span>;
+const store = new Carburetor({count: 0});
+
+export class WrongCounter extends AntiHookComponent {
+    public render() {
+        const {count} = store.getData();
+        return <span>{count}</span>;
+    }
 }
 ```
+
 
 **Why it is silent.** `getData()` returns the raw state. Nothing is tracked, so the component
 never subscribes. It renders the correct value once and then stays frozen forever — there is no

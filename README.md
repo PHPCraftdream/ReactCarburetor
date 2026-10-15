@@ -21,6 +21,7 @@ optimize after the fact: the unnecessary re-renders are never created in the fir
 [Contributing](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CONTRIBUTING.md) · [Security](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/SECURITY.md) ·
 [Code of Conduct](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CODE_OF_CONDUCT.md)
 
+<!-- example:file examples/readme/Counter.tsx -->
 <!-- example:compile -->
 ```tsx
 import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
@@ -36,7 +37,7 @@ class CounterCarburetor extends Carburetor<{value: number}> {
 const counterCarburetor = new CounterCarburetor({value: 0});
 
 export class Counter extends AntiHookComponent {
-    render() {
+    public render() {
         const {value} = this.useCarburetor(counterCarburetor);
 
         return <button onClick={counterCarburetor.inc}>{value}</button>;

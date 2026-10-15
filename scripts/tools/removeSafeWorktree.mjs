@@ -13,7 +13,7 @@ if (args.length < 1 || options.length > 2 || new Set(options).size !== options.l
     || options.some(option => option !== '--apply' && option !== '--allow-dirty')
     || (allowDirty && !apply)
     || !/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(name)) {
-    throw new Error('Usage: node scripts/removeSafeWorktree.mjs <name> [--apply --allow-dirty]');
+    throw new Error('Usage: node scripts/tools/removeSafeWorktree.mjs <name> [--apply --allow-dirty]');
 }
 
 const samePath = (a, b) => {
@@ -32,7 +32,7 @@ const within = (candidate, parent) => {
         && !path.isAbsolute(relative));
 };
 
-const checkoutRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const checkoutRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const commonGit = execFileSync('git', ['-C', checkoutRoot, 'rev-parse', '--git-common-dir'], {
     encoding: 'utf8',
 }).trim();

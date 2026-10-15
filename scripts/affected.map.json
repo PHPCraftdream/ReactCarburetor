@@ -1,38 +1,233 @@
 {
   "perfGates": "perf/gates",
   "perfScenarios": "perf/scenarios",
-  "exampleSources": ["README.md", "docs/**", "lib/src/Carburetor/**", "lib/src/Interop/**"],
-  "exampleExclusions": ["docs/reviews/**", "docs/checkpoints/**"],
+  "exampleSources": [
+    "README.md",
+    "docs/**",
+    "examples/**",
+    "lib/src/Carburetor/**",
+    "lib/src/Interop/**",
+    "scripts/tools/**"
+  ],
+  "exampleExclusions": [
+    "docs/reviews/**",
+    "docs/checkpoints/**"
+  ],
   "rules": [
-    {"match": "lib/src/Carburetor/**", "full": true, "reason": "carburetor core barrel is shared entry"},
-    {"match": "lib/src/Carburetor/Store/**", "full": true, "reason": "store core affects all consumers"},
-    {"match": "lib/src/Carburetor/Derived/**", "full": true, "reason": "computed core is shared reactive machinery"},
-    {"match": "lib/src/Carburetor/Models/**", "full": true, "reason": "shared models feed every subsystem"},
-    {"match": "lib/src/Carburetor/Tooling/**", "full": true, "reason": "devtools/persistence is cross-cutting"},
-    {"match": "lib/src/Carburetor/Resource/**", "rstest": ["__tests__/Engine/Resource", "__tests__/Engine/Component/AntiHookComponent/lifecycle/deferred-resources.test.tsx", "__tests__/Engine/Component/AntiHookComponent/lifecycle/strict-mode.test.tsx"], "perfAreas": ["resource", "cache"], "reason": "resource subsystem"},
-    {"match": "lib/src/Carburetor/Component/**", "rstest": ["__tests__/Engine/Component", "__tests__/Engine/Resource/ResourceCache/Views", "__tests__/Engine/Resource/ResourceCache/Regressions", "__tests__/Engine/Derived"], "perfAreas": ["hooks", "components"], "reason": "component layer"},
-    {"match": "lib/src/Interop/**", "rstest": ["__tests__/Engine/Derived/Readable/Interop", "__tests__/Engine/Tooling", "__tests__/Engine/Component", "__tests__/Engine/Resource"], "perfAreas": ["hooks", "components", "resource"], "reason": "interop hooks"},
-    {"match": "lib/src/ToDo/**", "rstest": ["__tests__/Demo"], "reason": "demo todo app"},
-    {"match": "lib/src/**", "full": true, "reason": "lib root files are shared entry points"},
-    {"match": "native/**", "native": true, "rstest": [], "reason": "rust addon needs native rebuild, not rstest"},
-    {"match": "plugin/**", "rstest": ["__tests__/Plugin"], "reason": "eslint plugin"},
-    {"match": "docs/**", "docsOnly": true, "reason": "documentation only"},
-    {"match": "*.md", "docsOnly": true, "reason": "documentation only"},
-    {"match": "__tests__/**", "self": true, "reason": "test file maps to itself"},
-    {"match": "perf/harness/**", "full": true, "reason": "perf harness affects all measurements"},
-    {"match": "perf/run.mjs", "full": true, "reason": "perf runner affects all measurements"},
-    {"match": "perf/ci/**", "full": true, "reason": "perf CI driver is cross-cutting"},
-    {"match": "scripts/affected.mjs", "rstest": ["__tests__/Tooling/affected"], "reason": "affected tooling self-test"},
-    {"match": "scripts/affected.map.json", "rstest": ["__tests__/Tooling/affected"], "reason": "affected map self-test"},
-    {"match": "scripts/consumer-fixture/checkExamples.mjs", "rstest": ["__tests__/Tooling/examples"], "examples": true, "reason": "example checker"},
-    {"match": "scripts/**", "full": true, "reason": "build scripts affect everything"},
-    {"match": "package.json", "full": true, "reason": "package manifest affects everything"},
-    {"match": "package-lock.json", "full": true, "reason": "lockfile affects everything"},
-    {"match": "tsconfig*.json", "full": true, "reason": "typescript config affects everything"},
-    {"match": "rstest.config.ts", "full": true, "reason": "test runner config affects everything"},
-    {"match": "rslib.config.ts", "full": true, "reason": "build config affects everything"},
-    {"match": ".oxlintrc.json", "full": true, "reason": "lint config affects everything"},
-    {"match": ".github/workflows/**", "full": true, "reason": "CI workflow is cross-cutting"},
-    {"match": ".github/ISSUE_TEMPLATE/**", "docsOnly": true, "reason": "issue templates are documentation"}
+    {
+      "match": "examples/**",
+      "rstest": [
+        "__tests__/Native/examples.test.ts",
+        "__tests__/Tooling/examples"
+      ],
+      "examples": true,
+      "reason": "documented example source"
+    },
+    {
+      "match": "lib/src/Carburetor/**",
+      "full": true,
+      "reason": "carburetor core barrel is shared entry"
+    },
+    {
+      "match": "lib/src/Carburetor/Store/**",
+      "full": true,
+      "reason": "store core affects all consumers"
+    },
+    {
+      "match": "lib/src/Carburetor/Derived/**",
+      "full": true,
+      "reason": "computed core is shared reactive machinery"
+    },
+    {
+      "match": "lib/src/Carburetor/Models/**",
+      "full": true,
+      "reason": "shared models feed every subsystem"
+    },
+    {
+      "match": "lib/src/Carburetor/Tooling/**",
+      "full": true,
+      "reason": "devtools/persistence is cross-cutting"
+    },
+    {
+      "match": "lib/src/Carburetor/Resource/**",
+      "rstest": [
+        "__tests__/Engine/Resource",
+        "__tests__/Engine/Component/AntiHookComponent/lifecycle/deferred-resources.test.tsx",
+        "__tests__/Engine/Component/AntiHookComponent/lifecycle/strict-mode.test.tsx"
+      ],
+      "perfAreas": [
+        "resource",
+        "cache"
+      ],
+      "reason": "resource subsystem"
+    },
+    {
+      "match": "lib/src/Carburetor/Component/**",
+      "rstest": [
+        "__tests__/Engine/Component",
+        "__tests__/Engine/Resource/ResourceCache/Views",
+        "__tests__/Engine/Resource/ResourceCache/Regressions",
+        "__tests__/Engine/Derived"
+      ],
+      "perfAreas": [
+        "hooks",
+        "components"
+      ],
+      "reason": "component layer"
+    },
+    {
+      "match": "lib/src/Interop/**",
+      "rstest": [
+        "__tests__/Engine/Derived/Readable/Interop",
+        "__tests__/Engine/Tooling",
+        "__tests__/Engine/Component",
+        "__tests__/Engine/Resource"
+      ],
+      "perfAreas": [
+        "hooks",
+        "components",
+        "resource"
+      ],
+      "reason": "interop hooks"
+    },
+    {
+      "match": "lib/src/ToDo/**",
+      "rstest": [
+        "__tests__/Demo"
+      ],
+      "reason": "demo todo app"
+    },
+    {
+      "match": "lib/src/**",
+      "full": true,
+      "reason": "lib root files are shared entry points"
+    },
+    {
+      "match": "native/**",
+      "native": true,
+      "rstest": [],
+      "reason": "rust addon needs native rebuild, not rstest"
+    },
+    {
+      "match": "plugin/**",
+      "rstest": [
+        "__tests__/Plugin"
+      ],
+      "reason": "eslint plugin"
+    },
+    {
+      "match": "docs/**",
+      "docsOnly": true,
+      "reason": "documentation only"
+    },
+    {
+      "match": "*.md",
+      "docsOnly": true,
+      "reason": "documentation only"
+    },
+    {
+      "match": "__tests__/**",
+      "self": true,
+      "reason": "test file maps to itself"
+    },
+    {
+      "match": "perf/harness/**",
+      "full": true,
+      "reason": "perf harness affects all measurements"
+    },
+    {
+      "match": "perf/run.mjs",
+      "full": true,
+      "reason": "perf runner affects all measurements"
+    },
+    {
+      "match": "perf/ci/**",
+      "full": true,
+      "reason": "perf CI driver is cross-cutting"
+    },
+    {
+      "match": "scripts/affected.mjs",
+      "rstest": [
+        "__tests__/Tooling/affected"
+      ],
+      "reason": "affected tooling self-test"
+    },
+    {
+      "match": "scripts/affected.map.json",
+      "rstest": [
+        "__tests__/Tooling/affected"
+      ],
+      "reason": "affected map self-test"
+    },
+    {
+      "match": "examples/**",
+      "rstest": [
+        "__tests__/Native/examples.test.ts",
+        "__tests__/Tooling/examples"
+      ],
+      "examples": true,
+      "reason": "documented example source"
+    },
+    {
+      "match": "scripts/tools/**",
+      "rstest": [
+        "__tests__/Tooling/examples"
+      ],
+      "examples": true,
+      "reason": "documentation builder affects examples"
+    },
+    {
+      "match": "scripts/consumer-fixture/checkExamples.mjs",
+      "rstest": [
+        "__tests__/Tooling/examples"
+      ],
+      "examples": true,
+      "reason": "example checker"
+    },
+    {
+      "match": "scripts/**",
+      "full": true,
+      "reason": "build scripts affect everything"
+    },
+    {
+      "match": "package.json",
+      "full": true,
+      "reason": "package manifest affects everything"
+    },
+    {
+      "match": "package-lock.json",
+      "full": true,
+      "reason": "lockfile affects everything"
+    },
+    {
+      "match": "tsconfig*.json",
+      "full": true,
+      "reason": "typescript config affects everything"
+    },
+    {
+      "match": "rstest.config.ts",
+      "full": true,
+      "reason": "test runner config affects everything"
+    },
+    {
+      "match": "rslib.config.ts",
+      "full": true,
+      "reason": "build config affects everything"
+    },
+    {
+      "match": ".oxlintrc.json",
+      "full": true,
+      "reason": "lint config affects everything"
+    },
+    {
+      "match": ".github/workflows/**",
+      "full": true,
+      "reason": "CI workflow is cross-cutting"
+    },
+    {
+      "match": ".github/ISSUE_TEMPLATE/**",
+      "docsOnly": true,
+      "reason": "issue templates are documentation"
+    }
   ]
 }

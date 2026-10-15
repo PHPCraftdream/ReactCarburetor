@@ -92,6 +92,7 @@ export function select(files, map) {
         const exampleCandidate = map.exampleSources?.some((pattern) => specificity(pattern, file) >= 0)
             && !map.exampleExclusions?.some((pattern) => specificity(pattern, file) >= 0)
             && (file === 'README.md' || file.endsWith('.md')
+                || file.startsWith('examples/') || file.startsWith('scripts/tools/')
                 || file.startsWith('lib/src/Carburetor/') || file.startsWith('lib/src/Interop/'));
         if (exampleCandidate) out.examples = true;
         let rule = null;

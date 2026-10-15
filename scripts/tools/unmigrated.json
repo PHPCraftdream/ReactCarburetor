@@ -1,0 +1,694 @@
+{
+  "entries": [
+    {
+      "path": "README.md",
+      "ordinal": 2,
+      "hash": "fff413980140f26773197a97ad0e5a3867ccb1a8d9d1941af867dc50ae85cc9f"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 3,
+      "hash": "a4691b8c7b5ac11913ded7c7c8561863e80fc1b990b876024e019f78d7502774"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 4,
+      "hash": "f4747bb4329bd71e4f66ef770adea5d4ad1fde240915bb7e5ae57e7ae7b30820"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 5,
+      "hash": "08848fe252f2b16cafb9ed66d7477e572663bf372e0db0be4c6f12bbce5eae97"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 6,
+      "hash": "347cdd5241803b7fb72bf9decb7526cbaa790ccdf9880c8c8988f9211e9d25db"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 7,
+      "hash": "d490d79000aa78847ae0470bda162b3bf01b2d9ba84726264493748d642b4cb0"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 8,
+      "hash": "4c6333b5513332a92a983e4369f552e504f78a4a40e4f563abea9a59eb7f9f4d"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 9,
+      "hash": "67c103a3f4115f4ae3be17f6dd9f0f34d8200272ed1eaa779ac81e8586789791"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 10,
+      "hash": "0899ca2f1c309f39eebcad9488974f60f00beddc8f871de9efa4e6b1de0ba1c4"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 11,
+      "hash": "e0cd82c9f33973dc7230b63db48175f6e584beb2f5bef8449e14aeb8d6b237d4"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 12,
+      "hash": "9fde27fb91da4bb3b9fe601b5d029b5b2053f687f397c934efa34d7e235f9923"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 13,
+      "hash": "171c0df2b4c446cd9a97d13893d4e7209755e09068622b81504794b0fa27a14f"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 14,
+      "hash": "704228642268913cf4689a8c261c1cb495eaf996ce7c338ab399c6451b612f03"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 15,
+      "hash": "b484d878c024c8e2983b22343f4949f31f2795492a8f98a94c215bff4f3fef7b"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 16,
+      "hash": "70cb54f3a6420c7bdb8624478843f54e462ece5c48adbde823699f5724292b17"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 17,
+      "hash": "21b027a89cab554ad62b419feebe786818bb7b2b3a9da4e4481c263bb7e77dff"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 18,
+      "hash": "586ea382fec1ff03c3edc39d5cea52dcd9dbeb52cb86f7b82a6a50e93d450c98"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 19,
+      "hash": "09cfddc03dfb41167a0dadc9786167b845518050ac8e806abda4cb32ef0c6ee4"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 20,
+      "hash": "e539552f05a9f8092ea5f2eec5c623b0faad28f73f3ab4654f825b8da49e7d21"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 21,
+      "hash": "347592011331a0a71358b9d2c9139aea881d8639aeb2d17e0c9d100aeff88132"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 22,
+      "hash": "b7d95ac1461ba28e3425596b82429b4fe9a43cacc24dde5cf343a8c544570631"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 23,
+      "hash": "b4fd9518806cbc2b9b57eb2595db834a7e0058e9ea0469cef90ad3b3d2fa7c17"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 24,
+      "hash": "a7efdcac31164adeb4ea9e4eb4c4aed51201cd5bc43c4a23aa4f0f96a8ad01ee"
+    },
+    {
+      "path": "README.md",
+      "ordinal": 25,
+      "hash": "be80c0ad60fe967caef51b80faa896bc035ead62af7617d9215f0f3171140f61"
+    },
+    {
+      "path": "docs/adopting.md",
+      "ordinal": 1,
+      "hash": "d16a305d7d8de8186c154a535b4731de1bc3a8e0e3b4c65cee4f651e0ca67299"
+    },
+    {
+      "path": "docs/adopting.md",
+      "ordinal": 2,
+      "hash": "af53f0516bac665bb52c834b98ccfc4546f127bce38de945d21bf1a94063217b"
+    },
+    {
+      "path": "docs/adopting.md",
+      "ordinal": 3,
+      "hash": "8c4ddf3334b4940722d5f2acdaaeb69430f7250a026052953635a0060ad1016a"
+    },
+    {
+      "path": "docs/adopting.md",
+      "ordinal": 4,
+      "hash": "f584f04f48e404709839c1a62293e11730c844ee9a85ea23870c437ea5aba3d2"
+    },
+    {
+      "path": "docs/examples/components.md",
+      "ordinal": 1,
+      "hash": "24f7c1882f8f89a3601d49354c12c01f6fce7a8a7e3d39e800df0a69c6b50ea3"
+    },
+    {
+      "path": "docs/examples/components.md",
+      "ordinal": 2,
+      "hash": "0acb4666ba688dda2f8528bd31c00df39bb3603885ab4626983afd5df828dca6"
+    },
+    {
+      "path": "docs/examples/components.md",
+      "ordinal": 3,
+      "hash": "d1e53dd0982090f4ad9f8e739faa6f247e23edb6a6786dfc6779e2bcf3739875"
+    },
+    {
+      "path": "docs/examples/components.md",
+      "ordinal": 4,
+      "hash": "9ba22551b9a6f2abe4c2f4fe602a476131151b4741d0eb7ee5a37e8f05a178ed"
+    },
+    {
+      "path": "docs/examples/components.md",
+      "ordinal": 6,
+      "hash": "0440f1bae0dfdea7d1f15668b3f5c6e2ca1197b5a029921195b2ab98338d8e27"
+    },
+    {
+      "path": "docs/examples/components.md",
+      "ordinal": 7,
+      "hash": "ec3ac14b2dfd27fdaca80c1865244df5af135413b7634687f732bb5d27616946"
+    },
+    {
+      "path": "docs/examples/derived.md",
+      "ordinal": 1,
+      "hash": "760c8e2302666133997cba83d0e91d5bbfb58b86a1ced77263d48315c0844560"
+    },
+    {
+      "path": "docs/examples/derived.md",
+      "ordinal": 2,
+      "hash": "fdce54144f228b3cdf322f7a50bbba3f988230e1ab598f2f6045c21669912393"
+    },
+    {
+      "path": "docs/examples/derived.md",
+      "ordinal": 3,
+      "hash": "a425f14f8b19c571e989b249969a41d154af5bafda4c558ce5254d4c4b41664f"
+    },
+    {
+      "path": "docs/examples/derived.md",
+      "ordinal": 4,
+      "hash": "1951ed4104723c238b85e508dc09c0553c39e5f44a01b0897f9213d01cde924a"
+    },
+    {
+      "path": "docs/examples/derived.md",
+      "ordinal": 5,
+      "hash": "009db5f61e6e537170ce90628c23a61d46ec515fa31635c6749b077b254165fd"
+    },
+    {
+      "path": "docs/examples/derived.md",
+      "ordinal": 6,
+      "hash": "29bc70f496cf03b08ced95794d487febd58eae2884ae3e7fb5c139dcdf3ef797"
+    },
+    {
+      "path": "docs/examples/hooks.md",
+      "ordinal": 1,
+      "hash": "d1e6cfdb76467b4e15c1dbe9e838cba23e2d3e2361e1cf54ff9f37e4971d40fd"
+    },
+    {
+      "path": "docs/examples/hooks.md",
+      "ordinal": 2,
+      "hash": "c95320bbbcfeb01f9461dce10d377467ea54984b4f5e1d3dd4fd0704c62d602f"
+    },
+    {
+      "path": "docs/examples/hooks.md",
+      "ordinal": 3,
+      "hash": "467f1188e7df7a36e63517f7732031e4df8c3bf2d7a684013b3983bfe88a4cac"
+    },
+    {
+      "path": "docs/examples/hooks.md",
+      "ordinal": 4,
+      "hash": "de6e3d62aa0041fbcadbae27936aeab0d74bd7d354206e8c45ae2d1889c07dbf"
+    },
+    {
+      "path": "docs/examples/hooks.md",
+      "ordinal": 5,
+      "hash": "8b463490ed5439e386a52d4c393861b31b052e45d43de659b20fb50df960d9fd"
+    },
+    {
+      "path": "docs/examples/hooks.md",
+      "ordinal": 6,
+      "hash": "69047bb418f8ddc18b638b595b227cd9679b208cd03751eee4908a695619aac0"
+    },
+    {
+      "path": "docs/examples/hooks.md",
+      "ordinal": 7,
+      "hash": "e9c4c19b2a1fe746327b6b59674658af7b7ae317356aa5398edc1723f2614079"
+    },
+    {
+      "path": "docs/examples/hooks.md",
+      "ordinal": 8,
+      "hash": "d8ce38c9c2d2c004bb2121cb6336bd1cadf08c25db51a5a29f86751b8cb60b48"
+    },
+    {
+      "path": "docs/examples/lint.md",
+      "ordinal": 1,
+      "hash": "25cfc8da0987c0200bd38d96726d3071486c32e4f259cc2884e2f98711dd29af"
+    },
+    {
+      "path": "docs/examples/lint.md",
+      "ordinal": 2,
+      "hash": "2810b567ced828d5b0912b9cd48e31e54ae33ecc5b109ff2d1277a5919d8a374"
+    },
+    {
+      "path": "docs/examples/lint.md",
+      "ordinal": 3,
+      "hash": "38c07025ed6077b41892c091f8a2e18916fa16f72b0642fdb43ccca980335da2"
+    },
+    {
+      "path": "docs/examples/lint.md",
+      "ordinal": 4,
+      "hash": "10a18cb04a266eb94771c521f2314133a667265af8531b20ae3753a9a8a435b7"
+    },
+    {
+      "path": "docs/examples/lint.md",
+      "ordinal": 5,
+      "hash": "56fb9a269a36fe866db0e997ed0d5bd1e78bfb9871bca21e4a9779eb288962f7"
+    },
+    {
+      "path": "docs/examples/lint.md",
+      "ordinal": 6,
+      "hash": "ed456c83374d9a3b65dccf77ba7e66860050fc22262debf480bc6953d7d999b6"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 1,
+      "hash": "03d354f3113cdb80d2ca7270551702e6fbbe002ef36672d09641e718d4248f1c"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 2,
+      "hash": "36191fb25e8fba985b74a2c6bfc88a1757793c72af8db26b033c518ed6ac767c"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 3,
+      "hash": "53201f0d97adc6d037e902837441d6d79016a8f797471e9e50eb492aad8f14a2"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 4,
+      "hash": "eef79b33384b9e1970f83eec8f70b6e944f622bd101eddf4fb16bd7bc2be0a6a"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 5,
+      "hash": "f0a83eeb9f8cfc525c83169cd95d9d0367ec7abcf6c508bb0cbf73371019429d"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 6,
+      "hash": "67c5d40216d2d1d3bbe30a486827dd7bbc3143b84937ee95234e5c54959478a8"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 7,
+      "hash": "97bcce709bc619e36d8d8b9b16852f4ea4fcab8c996cfb6b548ecb1a3a160daf"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 8,
+      "hash": "aca8fb036ea7086f7ba82261e4cd0582ed5cb2a21e130821883f42d0eb73e23e"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 9,
+      "hash": "ff5965e55d2c0c1b1fa6ceabef2526d0b8644bebb1f90d3b5004528072ea091c"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 10,
+      "hash": "89a214818c9c95b599223c0b6775b6f3bc2e73baae5f58bbcce7a68654167263"
+    },
+    {
+      "path": "docs/examples/resources.md",
+      "ordinal": 11,
+      "hash": "7b00c00729f4b1e441b1113b5553df88122b2b0e078b7a415154a92af684b0eb"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 1,
+      "hash": "566b8b2084b07b6b0079020552d280fd521fc1585a8a137b4d4c3f85b1c9caaa"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 2,
+      "hash": "be7cb8545449a2c74666541d87aa32062ce44a578c28be11f45a3e2aea45ace8"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 3,
+      "hash": "12d424b91ef9b873de3938abc67e36f7016403c8c05422744c7b794e934167e2"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 4,
+      "hash": "532bf76e8588a2f9e1f062f419470f88384d0fa34406c8911b81137f5d1ce4ad"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 5,
+      "hash": "3fe73085d4722d62dc7beec6f3075f26cba8a5dfdabb06bcf01bf2a7ff1c89f6"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 6,
+      "hash": "e6896c9504190d5539261f2c8da21a38a9e6fbfe0aa3dbf101a7f82cbea9a647"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 7,
+      "hash": "fa91676d41f2a5bab4dd6dd497d75411ce0135e18e7c0f2184da86aa78ab1e27"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 8,
+      "hash": "5c7f23b3d6e3f7f3fc178a48f72bcab7f68aca6a21e719617f052c20910cbf0b"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 9,
+      "hash": "64d245afb7665e018989a69b5ffc9a533bb7af9aa153529e8a96d0e1860b84aa"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 10,
+      "hash": "4c88e078599205ac342ef0d71c2560f46d6b04b818d010079a29bf6089e8495e"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 11,
+      "hash": "cb5ff2d4972c104dd6bc4808b8010eba601d795b634a8e2dc8a7abc7d8b8c161"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 12,
+      "hash": "56539eb914adae1c20e93e4b0f4aa7ce49e486926c8d2bfab1108d25018dae46"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 13,
+      "hash": "46477657bea8d4e67b38f4db02db873dc1e8cc0a8fc60449ed580d7fe4b77d38"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 14,
+      "hash": "840dd21421caf2102d86bd89eece95b21472562ac17e51bf96f6912504982ba1"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 15,
+      "hash": "bb54e4e158bb068ecf62542ba900326c77350fe1d3f5f6d353d3a15e86863387"
+    },
+    {
+      "path": "docs/examples/stores.md",
+      "ordinal": 16,
+      "hash": "01b871f11a49a1f5a60a6f3cfb98f7cc21117a539f5d2c8b0c8ea6583829bd51"
+    },
+    {
+      "path": "docs/examples/tooling.md",
+      "ordinal": 1,
+      "hash": "da46cd04e9502133ee9512a2e729a4eebc1070a5604f65e4ef6b16e239a27216"
+    },
+    {
+      "path": "docs/examples/tooling.md",
+      "ordinal": 2,
+      "hash": "8626312b65bea5cce0a3b68b67161faca7aa358c8d9a37afb50aadffab9529f5"
+    },
+    {
+      "path": "docs/examples/tooling.md",
+      "ordinal": 3,
+      "hash": "3a7c9f7e873c944e2198bd37615fbbce7b3b9c91284b370ac7df6c6b28b598b6"
+    },
+    {
+      "path": "docs/examples/tooling.md",
+      "ordinal": 4,
+      "hash": "3153a4ea87bd0686acace8d973989011baf1f7431f794e7dd091fd707aa4ea34"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 2,
+      "hash": "ec44cd2e2e75d5b758e7a5dc6b7f834bb0e8ab7e4545784452398d986290227f"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 3,
+      "hash": "5eede132ea8880ca004c471ce25773665222a1077fe390ec61f16573f4633779"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 4,
+      "hash": "899279763ca5a6bd8a47374e03723b2435a766a61074a0e28627a4b25cdbe56d"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 5,
+      "hash": "b6bc62f673bef0faebebee8aa3b82f8405ce07cd2bbff56df67b0e38ba74579a"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 6,
+      "hash": "58ed1083c7c5f5eff0a936edac009bfee4e268f26a4fe3fbe804cd7bac431be7"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 7,
+      "hash": "21d9ef3b6e9302ff2412dbd6aac3b9d7c428aa2ea95a43628936f796da31e59c"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 8,
+      "hash": "5525b8ccff45027475f5892d8eafd309037b670b74d5287c4e4864e0593bafa1"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 9,
+      "hash": "e61d74e34dac77801db5f3780b44f96def5447e8394851b6f5b821a4dce8c86a"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 10,
+      "hash": "f32decf68c5a3a7623b624eb9d2573bb59c34dc617d47b5ac9717616772d7fac"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 11,
+      "hash": "e832898ed7f8c01021552e1573d61a2ecdf812b7f87034587cfda6b833582bc2"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 12,
+      "hash": "bbaa84bdab24e226a2ea0f13d3969042412743a624b629954ca03cb3c8bffdf5"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 13,
+      "hash": "7bcc254bf4c86403b50ea3404338f7e4a8c4652a2d3971baa52c736e6488ff06"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 14,
+      "hash": "a88cac80529f3e5dc524e1abe44b199ebda1c07bdbcfbe0ae75176c55d0782bc"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 15,
+      "hash": "4c79f01454156f47a04598c07bf55f4ff8080d9a4d666373e8a419c7d9c406c6"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 16,
+      "hash": "b3b60dd01b7753d413aad232cc6c8154b3fc9c307321c333d46b464621de6fd8"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 17,
+      "hash": "e90248b8ac6bd46164f089fdd6926bcf3e4bd0a8191867c1e77d60ab7ce1dc41"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 18,
+      "hash": "07a1ba828d1fd1c9b2d681133d8555fff3a970edc61439e41a0e63f584f91873"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 19,
+      "hash": "bee331ab039b7bc59d925189bf9d012af76949aab73f7156cc8f4a5833bd42f7"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 20,
+      "hash": "c82edc4260c40c37e005e85ab93b5e02416d00dcaaeec43eec76d32269c4cf1a"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 21,
+      "hash": "432193f22fa6949b5bbb15130e7a93e514adbc510c0a71f13da5064c2268ff7d"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 22,
+      "hash": "5f0d642ee5a4ed587413a31a76a40c474f1fa3d67bd0ac89d3f219e355a70a71"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 23,
+      "hash": "a110f52c09bbcf82012861d41aa1f0b43be9509512259abe1c4c9e2d884924a2"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 24,
+      "hash": "36367a12de7e7b4e1e46f80c066f97cbce021c3ba16e03cb950505af3c2849b2"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 25,
+      "hash": "5a49f839ba0442dd5f9d1ad8e2a7e4c1d3f1ac8f4e55dc64a7d134c3e1711c9e"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 26,
+      "hash": "7e2cbb7012302c6c989bc1910154787a1ceedba10cd68551fafea9555a1001d5"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 27,
+      "hash": "6aa8773f6a90d101205a2cbaecc016d34fe65f93098cd19e1f25ed841dc5ebba"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 28,
+      "hash": "2336dc87c0f6b4654ad081fb5d05fe55e317640a5af22bd3f6787286c7632f3a"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 29,
+      "hash": "2fe4bd17d0c138c4dec0f419ec41a69b609701632a0dc9047c7a3b00b1943080"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 30,
+      "hash": "33210ec62577052e9bb1d603dac5a9da30cdc92686ce8ef8761cb5ce737abbb6"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 31,
+      "hash": "4c0fd9f23f9b14b7a9b09db7e195e0d0dd6d17e2dcf3605ff559ed0f37223503"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 32,
+      "hash": "023a7cb6f81809e5f9b694cc51c3b2d268afe3db6aaaae1ff362d069438cfa1d"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 33,
+      "hash": "5ab7973b395da93addb8f24e17ac1b5300b562edbd82f1cc3c8eab27497ed88f"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 34,
+      "hash": "2db353acbb72b5828ca5e4ad7a3432d96589b72e6b4ad0e52a1ee35bd6b806dc"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 35,
+      "hash": "e09bc3825eeb1a4678bef49123c922220092cc9af0b67318e53b9ffebe871d4a"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 36,
+      "hash": "a57400236fe8c8da7485edbf6733c649418cd5200b64021b00b8aef56a43ee8d"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 37,
+      "hash": "fa548b1862e9392ab7512a773d23b2446093ac8a28699a9640b2fca8512fef60"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 38,
+      "hash": "d4e06c65e044673ac08ac136053bb3d10d612d4ea7c75eeed69fb593c83edb05"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 39,
+      "hash": "9fb39dd91b127485b19d574887e9eb66eacc707e65e89ca8a77a29a58625d335"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 40,
+      "hash": "a38ef26cc9e224fe53c057aa1717be340f398bdb0733386e335167b7a1d1e84d"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 41,
+      "hash": "b1c81444805df8c2cf67df70b696c8aa4c8bda7cbd9ae822cdd337642e49d3d0"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 42,
+      "hash": "d94641510fcd2061f2498a83a22fcf737730c0751ac0614a7a8c81eb5b46e7a9"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 43,
+      "hash": "12e9fad5c16b668aa544bc8f1c7e43e22e378a7a5df32db4e3ece3e939b218a6"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 44,
+      "hash": "531da03652f7da31dbf0010dde66bb094de6e6e380d20c8f1c4a625a7e0a81c7"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 45,
+      "hash": "cfdd672dd34ee44ad5912fe520df0b661b015ac6f4897c934e268fea5457ea30"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 46,
+      "hash": "6ab397a027452b151cda804df29bbbdab6ff2959b5cb4e38d646867cce93d8db"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 47,
+      "hash": "967b9238accae0c904ac6cdadd0664804566183b04807e9b21a438ba713eb80d"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 48,
+      "hash": "823668eb6d56d4f3c7d35006b3a33cc5e545637df716d130ae5980b2cb27ce3e"
+    },
+    {
+      "path": "docs/hazards.md",
+      "ordinal": 49,
+      "hash": "17039936e8b1cce07c10513fc8a95253f821e9e72a52c92d4ce08c32053a2a91"
+    },
+    {
+      "path": "docs/promise-cache.md",
+      "ordinal": 1,
+      "hash": "ff181050f1ffb4d333974b970534bf4d73456bf1e3ee5afdc58f0d0f2a6b5561"
+    },
+    {
+      "path": "docs/promise-cache.md",
+      "ordinal": 2,
+      "hash": "0412fbb88ebca86f6e9ce81faf48afa8bf7336e8d6005117684673c41b70fe55"
+    },
+    {
+      "path": "docs/react-compatibility.md",
+      "ordinal": 1,
+      "hash": "afe6dee31d712aa2e968093af627b9497bcf9a6f2322d239d7f4f9ad21db16d6"
+    },
+    {
+      "path": "docs/rules.md",
+      "ordinal": 1,
+      "hash": "69eadf8ae4055e3cd1373dd4ad73ea33a7075f77f3c8c7657bcca96ef5db285f"
+    },
+    {
+      "path": "docs/rules.md",
+      "ordinal": 2,
+      "hash": "c757057f12357092837985fbfe624b265d7ac501dd029e18e232d0d0d48304a4"
+    }
+  ]
+}

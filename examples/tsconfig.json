@@ -1,0 +1,43 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "lib": [
+      "ES2020",
+      "ES2021.WeakRef",
+      "DOM"
+    ],
+    "paths": {
+      "react-carburetor": [
+        "../lib/src/Carburetor/index.ts"
+      ],
+      "react-carburetor/interop": [
+        "../lib/src/Interop/index.ts"
+      ],
+      "react-carburetor/lint": [
+        "../plugin/lint.d.ts"
+      ],
+      "@/*": [
+        "../lib/src/*"
+      ]
+    },
+    "allowJs": true,
+    "checkJs": true
+  },
+  "include": [
+    "**/*.ts",
+    "**/*.tsx",
+    "**/*.js",
+    "**/*.jsx"
+  ],
+  "exclude": [
+    "wrong/**",
+    "node_modules"
+  ]
+}

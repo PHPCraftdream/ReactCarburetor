@@ -166,42 +166,48 @@ A subclass overrides the protected `useEffects()` method; it runs on mount and a
 committed update. Each effect is declared with `useEffect(name, callBack, deps)`; whatever the
 callback returns is that effect's cleanup, run before the effect runs again and on unmount.
 
-<!-- example:compile -->
+<!-- example:file examples/components/AutosaveDraft.tsx#component -->
 ```tsx
-import {AntiHookComponent, Carburetor, TEffect, TEffectCleanup, TEffectDeps, TTimerHandle} from 'react-carburetor';
+import {
+    AntiHookComponent,
+    Carburetor,
+    TEffect,
+    TEffectCleanup,
+    TEffectDeps,
+    TTimerHandle,
+} from 'react-carburetor';
 
 interface IDraftData {
     text: string;
 }
 
-const draft = new Carburetor<IDraftData>({text: ''});
+interface IAutosaveProps {
+    draft: Carburetor<IDraftData>;
+    save: (text: string) => void;
+}
 
-declare function saveToServer(text: string): void;
+const makeCleanup = (handle: TTimerHandle): TEffectCleanup => (): void => clearTimeout(handle);
 
-const cleanupAutosave = (handle: TTimerHandle | undefined): TEffectCleanup => (): void => {
-    if (handle !== undefined) {
-        clearTimeout(handle);
-    }
+const makeAutosave = (props: IAutosaveProps): TEffect => (): TEffectCleanup => {
+    const handle = setTimeout(() => props.save(props.draft.getData().text), 500);
+    return makeCleanup(handle);
 };
 
-const autosaveEffect: TEffect = (): TEffectCleanup => {
-    let handle: TTimerHandle;
-    handle = setTimeout((): void => saveToServer(draft.getData().text), 500);
-    return cleanupAutosave(handle);
-};
+export class AutosaveDraft extends AntiHookComponent<IAutosaveProps> {
+    private readonly autosave = makeAutosave(this.props);
 
-class AutosaveDraft extends AntiHookComponent {
     public render() {
-        const view = this.useCarburetor(draft);
+        const view = this.useCarburetor(this.props.draft);
         return <textarea value={view.text} readOnly/>;
     }
 
     protected useEffects(): void {
-        const deps: TEffectDeps = [draft.getData().text];
-        this.useEffect('autosave', autosaveEffect, deps);
+        const deps: TEffectDeps = [this.props.draft.getData().text];
+        this.useEffect('autosave', this.autosave, deps);
     }
 }
 ```
+
 
 Pitfall: reads through `getData()` in `render()` record nothing — read through
 `this.useCarburetor(draft)` instead. Reading `draft.getData()` in an effect body is correct, because

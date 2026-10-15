@@ -23,6 +23,9 @@ const shared = {
     },
     resolve: {
         alias: {
+            'react-carburetor$': path.resolve(process.cwd(), 'lib/src/Carburetor/index.ts'),
+            'react-carburetor/interop': path.resolve(process.cwd(), 'lib/src/Interop/index.ts'),
+            'react-carburetor/lint': path.resolve(process.cwd(), 'plugin/lint.d.ts'),
             react$: rootReact,
         },
     },

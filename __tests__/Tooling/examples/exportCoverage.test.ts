@@ -2,71 +2,65 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
-const marker = '<!-- example:compile -->';
 
-/** Names exported by a module file, following `export * from` re-exports. */
+/** Exported names behind `export *` barrels. */
 const exportedNames = (file: string, seen = new Set<string>()): Set<string> => {
-    const names = new Set<string>();
-    if (seen.has(file)) return names;
+    if (seen.has(file)) return new Set();
     seen.add(file);
     const source = fs.readFileSync(file, 'utf8');
-    for (const match of source.matchAll(/^export \* from '(\.[^']+)';/gm)) {
+    const names = new Set<string>();
+    for (const match of source.matchAll(/^export \* from '([^']+)';/gm)) {
         const base = path.resolve(path.dirname(file), match[1]);
         const target = ['.ts', '.tsx', '/index.ts', '/index.tsx'].map(ext => base + ext).find(fs.existsSync);
         if (!target) throw new Error(`cannot resolve ${match[1]} from ${file}`);
         exportedNames(target, seen).forEach(name => names.add(name));
     }
-    const kinds = '(?:const|let|class|function|interface|type|enum)';
-    const declaration = new RegExp(`^export (?:declare )?(?:abstract )?${kinds} ([A-Za-z_$][\\w$]*)`, 'gm');
-    for (const match of source.matchAll(declaration)) names.add(match[1]);
+    const declarations =
+        /^export (?:declare )?(?:abstract )?(?:const|let|class|function|interface|type|enum) ([\w$]+)/g;
+    for (const match of source.matchAll(declarations)) {
+        names.add(match[1]);
+    }
     for (const match of source.matchAll(/^export (?:type )?\{([^}]+)\}/gm)) {
-        for (const part of match[1].split(',')) {
-            const name = part.trim().split(/\s+as\s+/).pop()?.trim();
-            if (name && name !== 'default') names.add(name);
+        for (const name of match[1].split(',')) {
+            const exposed = name.trim().split(/\s+as\s+/).at(-1);
+            if (exposed && exposed !== 'default') names.add(exposed);
         }
     }
+    if (/^export default/m.test(source)) names.add('default');
     return names;
 };
 
-/** The code of every block marked as a self-contained example in README.md and docs/. */
-const markedExamples = (): string[] => {
-    const docs = (directory: string): string[] => fs.readdirSync(directory, {withFileTypes: true})
-        .flatMap(entry => {
+/** Identifiers actually referenced by the proper, runnable examples. */
+const exampleIdentifiers = (): Set<string> => {
+    const result = new Set<string>();
+    const walk = (directory: string): void => {
+        for (const entry of fs.readdirSync(directory, {withFileTypes: true})) {
             const file = path.join(directory, entry.name);
-            if (entry.isDirectory()) return ['reviews', 'checkpoints'].includes(entry.name) ? [] : docs(file);
-            return entry.name.endsWith('.md') ? [file] : [];
-        });
-    const blocks: string[] = [];
-    for (const file of [path.join(root, 'README.md'), ...docs(path.join(root, 'docs'))]) {
-        const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
-        for (let i = 0; i < lines.length; i++) {
-            if (lines[i].trim() !== marker) continue;
-            let start = i + 1;
-            while (start < lines.length && !/^\s*```/.test(lines[start])) start++;
-            let end = start + 1;
-            while (end < lines.length && !/^\s*```\s*$/.test(lines[end])) end++;
-            blocks.push(lines.slice(start + 1, end).join('\n'));
+            if (entry.isDirectory()) walk(file);
+            else if (/\.(?:ts|tsx)$/.test(entry.name) && !file.split(path.sep).includes('wrong')) {
+                for (const identifier of fs.readFileSync(file, 'utf8').matchAll(/\b[A-Za-z_$][\w$]*\b/g)) {
+                    result.add(identifier[0]);
+                }
+            }
         }
-    }
-    return blocks;
+    };
+    walk(path.join(root, 'examples'));
+    return result;
 };
 
-describe('documentation examples cover the shipped API', () => {
-    const examples = markedExamples().join('\n');
+describe('runnable examples cover the public API', () => {
+    const covered = exampleIdentifiers();
     const entryPoints: Array<[string, string]> = [
         ['react-carburetor', 'lib/src/Carburetor/index.ts'],
         ['react-carburetor/interop', 'lib/src/Interop/index.ts'],
         ['react-carburetor/lint', 'plugin/lint.d.ts'],
     ];
-
-    test.each(entryPoints)('every export of %s appears in a marked example', (_entry, file) => {
+    test.each(entryPoints)('every export of %s is used by an example', (_entry, file) => {
         const names = [...exportedNames(path.join(root, file))];
         expect(names.length).toBeGreaterThan(0);
-        const missing = names.filter(name => !new RegExp(`\\b${name.replace(/\$/g, '\\$')}\\b`).test(examples));
-        expect(missing).toEqual([]);
+        expect(names.filter(name => !covered.has(name))).toEqual([]);
     });
-
-    test('control: a name that no example uses is reported missing', () => {
-        expect(/\bNotAnExportedCarburetorName\b/.test(examples)).toBe(false);
+    test('control: an absent API name is not covered', () => {
+        expect(covered.has('NotAnExportedCarburetorName')).toBe(false);
     });
 });

@@ -16,12 +16,12 @@ import {join, relative, sep} from 'node:path';
  */
 const ROOTS = [
     'lib/src', 'plugin/src', 'plugin/internal', 'plugin/__fixtures__',
-    '__tests__', 'native/src', 'native/tests', 'scripts', 'benchmarks', 'perf', 'npm',
+    '__tests__', 'native/src', 'native/tests', 'scripts', 'benchmarks', 'perf', 'npm', 'examples',
 ];
 const STANDALONE_CODE_FILES = [
     'rslib.config.ts', 'rstest.config.ts', 'lib/rsbuild.config.ts', 'plugin/lint.d.ts',
 ];
-const EXPORT_ROOTS = new Set(['lib/src', 'plugin/src', 'plugin/internal', '__tests__']);
+const EXPORT_ROOTS = new Set(['lib/src', 'plugin/src', 'plugin/internal', '__tests__', 'examples']);
 const MAX_ENTRIES = 7;
 // Registries of the perf suite: one flat entry per benchmarked area, unbounded by design.
 const FLAT_REGISTRIES = new Set(['perf/gates', 'perf/scenarios']);

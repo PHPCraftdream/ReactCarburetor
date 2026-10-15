@@ -55,6 +55,15 @@
     "overrides": [
         {
             "files": [
+                "examples/**"
+            ],
+            "rules": {
+                "carburetor-internal/no-parent-import": "off",
+                "carburetor-internal/require-tsdoc": "off"
+            }
+        },
+        {
+            "files": [
                 "__tests__/**"
             ],
             "rules": {
@@ -83,6 +92,7 @@
         "lib/build",
         "lib/node_modules",
         "plugin/__fixtures__",
-        "native/tests/fixtures"
+        "native/tests/fixtures",
+        "examples/wrong/**"
     ]
 }

@@ -32,6 +32,15 @@ jobs:
       - name: Check examples
         run: npm run check:examples
 
+      - name: Check documentation examples are up to date
+        run: npm run docs:check
+
+      - name: Check example types
+        run: npx tsc --noEmit -p examples/tsconfig.json
+
+      - name: Example coverage of the public API
+        run: node node_modules/@rstest/core/bin/rstest.js run __tests__/Tooling/examples/exportCoverage.test.ts
+
       # The carburetor/* rules are a bridge: `npm run lint` calls this binary to check its
       # own tree, so it has to exist before anything below it runs, not only before the tests.
       # ubuntu-latest ships a Rust toolchain already; the crate's own pins decide the rest.
