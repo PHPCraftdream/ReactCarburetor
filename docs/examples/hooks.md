@@ -13,8 +13,10 @@ method you pass around as a value with `@bind`, and write state through
 ## Reading with a selector
 
 `useCarburetorValue(carburetor, select, isEqual?)` subscribes to exactly the paths the
-selector reads. The selector runs on a tracked readonly view, and the component gets back
-a **detached copy** of what the selector read — mutating it does nothing, by design.
+selector reads. The selector runs on a tracked readonly view, and the component gets back a
+borrowed readonly selection: do not mutate it. To edit it, copy first (`{...selected}`) — the
+plain projection is cached for equality comparison, and a mutation can corrupt that comparison
+baseline (see "Selection results and ownership" in the README).
 Use it whenever a function component needs a slice of a store.
 
 <!-- example:compile -->
@@ -141,8 +143,10 @@ comparator such as `Object.is` must decide equality on copies, not live referenc
 `useComputedValue(computed)` reads a `Computed` publication from
 `'react-carburetor'`. Unlike `useCarburetorValue` — which hands you a detached copy —
 the returned value stays **live**: the hook caches a versioned snapshot record and
-detects publications without cloning. Its identity changes only when the computed
-republishes, so you can pass it down to a memoized child freely.
+detects publications without cloning. A scalar result is compared by value, so passing it to a
+memoized child is safe. A mutable or native object result can keep the same identity across
+publications, so a memoized child that receives it as a prop may skip a re-render; pass a
+detached projection of objects and arrays instead (see "Derived lists" in the README).
 
 <!-- example:compile -->
 ```tsx
@@ -179,8 +183,8 @@ function CounterView(): ReactElement {
 `count * 2` unchanged wake nobody.
 
 Prefer `useComputedValue` over selecting the same arithmetic in every component: the
-computation lives in one place, is memoized against the paths it actually reads, and
-keeps a stable identity between publications.
+computation lives in one place, is memoized against the paths it actually reads, and keeps a
+stable identity between publications for scalar or otherwise immutable results.
 
 ## Reading a resource entry
 

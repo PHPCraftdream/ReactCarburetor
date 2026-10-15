@@ -106,8 +106,8 @@ class ConfigErrorBoundary extends Component<{children?: ReactNode}, {error: stri
 
 export class ConfigView extends AntiHookComponent {
     render(): JSX.Element {
-        const value: Config = configResource.suspend(undefined);
-        this.useCarburetor(configResource);
+        const view = this.useCarburetor(configResource);
+        const value: Config = view.data ?? configResource.suspend(undefined);
         return <span className="theme">{value.theme}</span>;
     }
 }
@@ -140,7 +140,7 @@ commit when the entry is stale.
 
 <!-- example:compile -->
 ```tsx
-import {AntiHookComponent, bind, IResourceView, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, bind, ResourceCache} from 'react-carburetor';
 import {Component, type JSX} from 'react';
 
 interface Post {
@@ -169,7 +169,7 @@ class PostListItem extends AntiHookComponent<{postId: string}> {
     }
 
     render(): JSX.Element {
-        const view: IResourceView<Post> = postCache.resolve(this.props.postId).view;
+        const view = this.useResource(postCache, this.props.postId);
         return (
             <li className={view.stale ? 'stale' : undefined}>
                 <button type="button" onClick={this.refresh}>↻</button>
@@ -226,8 +226,8 @@ class AvatarBoundary extends Component<{children?: ReactNode}, {error: unknown}>
 
 export class AvatarImage extends AntiHookComponent<{userId: string}> {
     render(): JSX.Element {
-        const avatar: Avatar = avatarCache.suspend(this.props.userId);
-        this.useResource(avatarCache, this.props.userId);
+        const view = this.useResource(avatarCache, this.props.userId);
+        const avatar: Avatar = view.data ?? avatarCache.suspend(this.props.userId);
         return <img className="avatar" src={avatar.url} alt="" />;
     }
 }
@@ -248,8 +248,10 @@ export const isAvatarError = (view: {isError: boolean}): boolean =>
     view.isError;
 ```
 
-If you skip the `useResource()` call the value renders once but the component never
-re-renders when the entry changes.
+Skipping the `useResource()` call itself is not the hazard — a call whose result is never read
+registers no field reads either. The subscription comes from reading the fields you render
+(`view.data`, `view.stale`) off the result of `useResource`/`useCarburetor`; without such reads
+the component renders once and never updates when the entry reloads or refreshes.
 
 `ttl` and `maxEntries` in `IResourceCacheOptions` give you time-based freshness and
 memory bounds: entries older than `ttl` go stale (refetched after the next commit) and
@@ -454,10 +456,14 @@ export class LabelSource extends Carburetor<ILabelSourceData> implements IResour
     public load(id: string): Promise<void> {
         this.draft.entries[id] = {status: EResourceStatus.Pending, value: undefined};
         this.emitUpdate();
-        return fetchLabel(id).then((label: Label): void => {
-            this.draft.entries[id] = {status: EResourceStatus.Success, value: label};
+        const settle = (status: EResourceStatus, value: Label | undefined): void => {
+            this.draft.entries[id] = {status, value};
             this.emitUpdate();
-        });
+        };
+        return fetchLabel(id).then(
+            (label: Label): void => settle(EResourceStatus.Success, label),
+            (): void => settle(EResourceStatus.Error, undefined),
+        );
     }
 }
 
@@ -474,8 +480,9 @@ export class LabelChip extends AntiHookComponent<{labelId: string}> {
 }
 ```
 
-Your `view` must fill every `IResourceView` field, including the entry flags — a missing
-field shows up only at runtime, not at compile time.
+Your `view` must fill every `IResourceView` field, including the entry flags. For a typed object
+literal the compiler catches a missing field; only JavaScript callers and unsafe casts let one
+slip through to runtime.
 
 ## Types
 
@@ -505,8 +512,9 @@ export function importRates(payload: IResourceSnapshot<Currency>): void {
 }
 ```
 
-A snapshot is a plain tree, so `JSON.stringify`/`parse` round-trips it — no live
-references cross the boundary.
+A snapshot is a plain tree: plain objects and arrays are copied, so `JSON.stringify`/`parse`
+round-trips them. Opaque values — native `Map`/`Set`/`Date` and class instances — stay by
+reference and do not survive a wire format.
 
 `getInitialResourceData()` gives the pristine `IResourceData` shape — handy to reset a
 custom carburetor or to seed your own data structure.

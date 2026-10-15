@@ -14,8 +14,10 @@ The two class rules that keep the engine fast:
 
 ## Reading state in render: `useCarburetor`
 
-`useCarburetor(carburetor)` is the only way to read store state inside `render()`. It returns a
-tracked view: the component re-renders only when the fields it actually read change.
+`useCarburetor(carburetor)` is the direct way to read store state inside `render()`, but it is not
+the only one: `connect` and `connectSelection` below build persistent connections to the same
+tracked view. In every case the component re-renders only when the fields the render actually read
+change.
 
 <!-- example:compile -->
 ```tsx
@@ -89,8 +91,9 @@ as a value is called with `this === undefined`.
 
 ## A persistent connection: `connect`
 
-`connect(source)` builds one view of a store, once, and hands back the exact same object for as
-long as the underlying data object does not change. A field initializer is the intended call
+`connect(source)` builds one view of a store, once, and hands back the exact same object for the
+component's lifetime — the facade is created per connection and stays stable until the component
+dies, independent of what the underlying data object does. A field initializer is the intended call
 site; the returned view is read directly in `render()`.
 
 <!-- example:compile -->
@@ -177,7 +180,8 @@ declare function saveToServer(text: string): void;
 
 class AutosaveDraft extends AntiHookComponent {
     public render() {
-        return <textarea value={draft.getData().text} readOnly/>;
+        const view = this.useCarburetor(draft);
+        return <textarea value={view.text} readOnly/>;
     }
 
     protected useEffects(): void {
@@ -204,6 +208,11 @@ class AutosaveDraft extends AntiHookComponent {
     }
 }
 ```
+
+Pitfall: reads through `getData()` in `render()` record nothing — read through
+`this.useCarburetor(draft)` instead. Reading `draft.getData()` in an effect body is correct, because
+effects re-run after the committed update, and the subscription from `render()` is what re-renders the
+component when `draft.setData(...)` publishes.
 
 Pitfall: two effects sharing one name overwrite each other's deps and cleanup — give every
 effect its own name.

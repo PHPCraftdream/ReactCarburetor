@@ -1404,7 +1404,7 @@ npm start
 npm ci
 npm run build       # Rslib: ESM + CJS, plus pre-stripped production outputs, dts via tsgo
 npm run typecheck   # TypeScript 7
-npm run lint        # oxlint with type-aware rules
+npm run lint        # oxlint with type-aware rules; requires the native binary (see CONTRIBUTING.md, "Getting started")
 npm test            # Rstest + @testing-library/react
 
 npm run bench -- --only match-precision   # path matching, against the built output

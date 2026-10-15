@@ -10,7 +10,7 @@ Yes — `react` (and the optional `@types/react`) are peer dependencies with the
 
 ## How does it fit RSC / Next.js?
 
-State lives outside the React tree, so the engine itself has no tree-shaped state to conflict with a server renderer. For per-request state, create a `CarburetorScope` per request, register stores with `carburetorToken`, and have components resolve them from `ScopedAntiHookComponent`; scope state can be dehydrated server-side and hydrated on the client. The `no-module-level-store` lint rule is off in the recommended preset (fine for client-only apps) and can be turned on for server-rendered codebases so module-level singletons are reported. See [promise-cache.md](promise-cache.md) for the server-rendering and hydration design notes, and [examples/tooling.md](examples/tooling.md) for the scope/SSR plumbing.
+State lives outside the React tree, so the engine itself has no tree-shaped state to conflict with a server renderer. For per-request state, create a `CarburetorScope` per request, register stores with `carburetorToken`, and have components resolve them from `ScopedAntiHookComponent`; scope state can be dehydrated server-side and hydrated on the client. The `no-module-level-store` lint rule is off in the recommended preset (fine for client-only apps) and can be turned on for server-rendered codebases so module-level singletons are reported. See [promise-cache.md](promise-cache.md) for the server-rendering and hydration design notes, and [per-request stores in the README](../README.md#per-request-stores) for the scope/SSR plumbing.
 
 ## Why must a method be decorated with `@bind` to be passed as a callback?
 
@@ -34,7 +34,7 @@ There are no actions, reducers or middleware. State changes are made by calling 
 
 ## How is it different from Zustand?
 
-In React Carburetor, a class component reads a store inside `render()` via `this.useCarburetor`, `connect`, or `connectSelection`, rather than through a hook. A hook reader, `useCarburetorValue(selector)`, exists in the opt-in `react-carburetor/interop` entry point for hooks-first code. Updates are draft-based: a store method mutates a draft inside `update()` rather than replacing state through a setter.
+In React Carburetor, a class component reads a store inside `render()` via `this.useCarburetor`, `connect`, or `connectSelection`, rather than through a hook. A hook reader, `useCarburetorValue(store, selector)`, exists in the opt-in `react-carburetor/interop` entry point for hooks-first code. Updates are draft-based: a store method mutates a draft inside `update()` rather than replacing state through a setter.
 
 ## How is it different from MobX?
 

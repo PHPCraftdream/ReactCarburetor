@@ -154,7 +154,7 @@ stable ABI and oxc's AST types move between releases.
 So the native path is a **binary of our own**, in `native/`, called by the plugin once per lint run
 rather than compiled into the linter. An earlier 22-rule benchmark recorded 20 ms natively against
 270 ms for the JavaScript rule layer — see `native/README.md` for current measurements and why "once
-per run" is achievable in ESLint's multithreaded mode. `plugin/src/Rules/` now contains 25 bridge
+per run" is achievable in ESLint's multithreaded mode. `plugin/src/Rules/` now contains 26 bridge
 rules, registered against the native registry.
 Each bridge is `nativeRule(id, description)` in
 `plugin/src/Utils/Native/nativeRule.mts`, a few lines that read the one shared result and report
@@ -217,7 +217,7 @@ cargo build --release --manifest-path native/Cargo.toml
 npm ci
 npm run build        # Rslib: bundleless library, bundled lint plugin, declarations via tsgo
 npm run typecheck    # TypeScript 7, library and plugin
-npm run lint         # oxlint: native rules, type-aware rules, and this project's own 25 (one opt-in)
+npm run lint         # oxlint: native rules, type-aware rules, and this project's own 26 (one opt-in)
 npm run check:layout # the three structural rules above
 npm test             # Rstest + @testing-library/react
 npm run test:rules   # just the lint rules, when that is what you changed

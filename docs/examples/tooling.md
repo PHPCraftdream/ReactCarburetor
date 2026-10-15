@@ -204,12 +204,16 @@ class UserCarburetor extends Carburetor<{user: User | undefined; loading: boolea
 const store = new UserCarburetor({user: undefined, loading: false});
 
 const run = async (): Promise<void> => {
+    const updated = waitForUpdate(store, 2000);
     void store.load('u1');
-    await waitForUpdate(store, 2000);
+    await updated;
     console.log(store.getData().loading); // true — the first update (loading = true) arrived
 };
 ```
 
 The promise settles once: the first notification resolves it and drops the subscription, so
 the second update in `load` above is not awaited — chain a second `waitForUpdate` call if you
-need the final state.
+need the final state. Create the subscription **before** the write starts: the default scheduler
+delivers synchronously, so a `waitForUpdate` created after `load()` begins misses the first
+publication. To await the final result of `load`, `await store.load(...)` (or the chained
+second `waitForUpdate`) is what you want.

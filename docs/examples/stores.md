@@ -155,10 +155,13 @@ const current = store.getData();        // raw, untracked state — reads subscr
 store.setData({...current, done: true}); // adopts the new root wholesale
 ```
 
-`setData` swaps the whole root and notifies every subscriber; `getData`
-returns the raw state for code outside render. Use them for full
-replacements — hydration, resets — and put subclass methods using `update`
-behind field-level writes that only some subscribers should hear about.
+`setData` swaps the whole root and wakes the readers of the paths that
+actually changed — it diffs the replacement against the old root, so an equal
+replacement wakes nobody; `getData` returns the raw state for code outside
+render. Use them for full replacements — hydration, resets; a deliberate
+write that must wake everyone, including readers of unchanged paths, calls
+the protected `markAllChanged()` inside a store method (see
+["Raw writes and markAllChanged"](#raw-writes-and-markallchanged) above).
 
 ## read: the tracked read API
 

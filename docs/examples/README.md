@@ -1,15 +1,15 @@
 # Examples
 
-This catalog contains runnable, self-contained examples covering the whole public API of the library. Each example is a standalone TypeScript snippet that can be read on its own, without reading the surrounding documentation first. Every TypeScript block marked `<!-- example:compile -->` is typechecked by `npm run check:examples`.
+This catalog contains self-contained typechecked recipes covering the whole public API of the library. Each example is a standalone TypeScript snippet that can be read on its own, without reading the surrounding documentation first; external I/O is declared with `declare`. Every TypeScript block marked `<!-- example:compile -->` is typechecked by `npm run check:examples`, and the behavior of some examples is verified by tests in `__tests__/Tooling/examples`.
 
 ## Examples
 
-- [stores.md](stores.md) — creating stores, draft/update writes, transactions, history/undo, persist.
+- [stores.md](stores.md) — creating stores, draft/update writes, transactions.
 - [derived.md](derived.md) — computed values and factories.
-- [components.md](components.md) — AntiHookComponent/ScopedAntiHookComponent, connect/connectSelection, effects, bind.
+- [components.md](components.md) — AntiHookComponent/ScopedAntiHookComponent, connect/connectSelection, effects, bind, CarburetorScope/per-request stores.
 - [resources.md](resources.md) — ResourceCarburetor and ResourceCache (TTL, limits, hydration).
 - [hooks.md](hooks.md) — the hooks interop layer from 'react-carburetor/interop' (useCarburetorValue, useComputedValue, useResourceValue).
-- [tooling.md](tooling.md) — devtools, waitForUpdate, scope/SSR plumbing.
+- [tooling.md](tooling.md) — devtools, waitForUpdate, history/undo, persist.
 - [lint.md](lint.md) — oxlint/ESLint/standalone CLI setup for the lint rules.
 
 ## Choosing an API
@@ -24,9 +24,9 @@ This catalog contains runnable, self-contained examples covering the whole publi
 | Pass a store method as a callback | decorate it with `@bind` | [components.md](components.md) |
 | Async data with TTL and eviction | `ResourceCache` | [resources.md](resources.md) |
 | Single async resource | `ResourceCarburetor` | [resources.md](resources.md) |
-| Isolate stores per request (SSR/testing) | `CarburetorScope` / `ScopedAntiHookComponent` | [tooling.md](tooling.md) |
-| Undo/redo | `CarburetorHistory` | [stores.md](stores.md) |
-| Durable state | `persist(carburetor, {key, storage})` | [stores.md](stores.md) |
+| Isolate stores per request (SSR/testing) | `CarburetorScope` / `ScopedAntiHookComponent` | [components.md](components.md) |
+| Undo/redo | `CarburetorHistory` | [tooling.md](tooling.md) |
+| Durable state | `persist(carburetor, {key, storage})` | [tooling.md](tooling.md) |
 | Catch state mistakes early | lint presets / `carburetor-lint` | [lint.md](lint.md) |
 
 ## Defaults
@@ -42,4 +42,4 @@ This catalog contains runnable, self-contained examples covering the whole publi
 
 `maxEntries` is an eviction target, not a hard cap (entries with in-flight requests or readers are skipped); freshness is lazy — no timer is installed.
 
-Behavioral examples are verified by tests, not just typechecked.
+Examples are self-contained typechecked recipes; the behavior of some of them is verified by tests in `__tests__/Tooling/examples`.
