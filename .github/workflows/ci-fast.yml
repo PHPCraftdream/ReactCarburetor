@@ -123,9 +123,19 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Only the host binary, not target/: a hit skips the Rust toolchain work entirely.
+      # GitHub evicts caches after 7 idle days — a miss just rebuilds, which is fine.
+      - name: Native binary cache
+        id: native-bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: native/target/release/carburetor-lint
+          key: native-bin-linux-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+
       # The carburetor/* rules are a bridge: `npm run lint` calls this binary, so it has to
       # exist before lint runs. ubuntu-latest ships a Rust toolchain already.
       - name: Cargo cache
+        if: steps.native-bin.outputs.cache-hit != 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -135,6 +145,7 @@ jobs:
           key: cargo-${{ hashFiles('native/Cargo.lock') }}
 
       - name: Build native linter
+        if: steps.native-bin.outputs.cache-hit != 'true'
         working-directory: native
         run: cargo build --release
 

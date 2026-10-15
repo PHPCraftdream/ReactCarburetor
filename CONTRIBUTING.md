@@ -253,6 +253,28 @@ cd lib && npm ci && npm start
 The repository commits both npm lockfiles. Use `npm ci` for a reproducible checkout;
 do not refresh dependencies or versions as part of an unrelated change.
 
+## Native binaries in CI
+
+Rust steps run only when the Rust code changes. Every native cache key is hashed
+from all binary build inputs — `native/src/**`, `native/Cargo.toml`,
+`native/Cargo.lock`, `native/build.rs` and any `rust-toolchain*` file — so a
+JS-only push restores the prebuilt host binary (`native-bin-linux-<hash>`) and
+skips the Rust toolchain, the cargo caches and the compile entirely.
+
+In the full tier (`ci.yml`) the `native` job records a `native-verified-<hash>`
+marker after `cargo test` and `cargo clippy` both pass; later runs on the same
+Rust inputs skip straight through, including the nightly. Dispatching the
+workflow with `force_native: true` reruns them regardless. The six platform
+packages cache their cross binaries under `native-pkg-<target>-<hash>`; the
+smoke and packaging steps still run on a cache hit, so the uploaded
+`carburetor-lint-*` artifacts are identical either way.
+
+GitHub evicts caches after 7 days without use (and caps the total at 10 GB per
+repository), so an evicted entry simply means the affected job rebuilds — a
+miss is slower, never incorrect. `release.yml` is unaffected: it still requires
+a green full-tier run for the exact SHA and downloads the `carburetor-lint-*`
+artifacts from that run.
+
 ## Pull requests
 
 - Keep the checks above green. A failing or flaky test is fixed in the same change,

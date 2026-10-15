@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: '17 2 * * *'   # full tier nightly; runs on the default branch only
   workflow_dispatch:
+    inputs:
+      force_native:
+        description: Run native test + clippy even if this Rust code is already verified
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,6 +34,15 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Only the host binary, not target/: a hit skips the Rust toolchain work entirely.
+      # GitHub evicts caches after 7 idle days — a miss just rebuilds, which is fine.
+      - name: Native binary cache
+        id: native-bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: native/target/release/carburetor-lint
+          key: native-bin-linux-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+
       - name: Check examples
         run: npm run check:examples
 
@@ -45,6 +59,7 @@ jobs:
       # own tree, so it has to exist before anything below it runs, not only before the tests.
       # ubuntu-latest ships a Rust toolchain already; the crate's own pins decide the rest.
       - name: Cargo cache
+        if: steps.native-bin.outputs.cache-hit != 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -54,6 +69,7 @@ jobs:
           key: cargo-${{ hashFiles('native/Cargo.lock') }}
 
       - name: Build native linter
+        if: steps.native-bin.outputs.cache-hit != 'true'
         working-directory: native
         run: cargo build --release
 
@@ -185,7 +201,30 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Only the host binary, not target/: a hit skips the Rust toolchain work entirely.
+      # GitHub evicts caches after 7 idle days — a miss just rebuilds, which is fine.
+      - name: Native binary cache
+        id: native-bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: native/target/release/carburetor-lint
+          key: native-bin-linux-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+
+      # The carburetor/* rules are a bridge: `npm run lint` calls this binary to check its
+      # own tree, so it has to exist before anything below it runs, not only before the tests.
+      # ubuntu-latest ships a Rust toolchain already; the crate's own pins decide the rest.
+      - name: Cargo cache
+        if: steps.native-bin.outputs.cache-hit != 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-${{ hashFiles('native/Cargo.lock') }}
+
       - name: Build native linter for packed lint consumers
+        if: steps.native-bin.outputs.cache-hit != 'true'
         working-directory: native
         run: cargo build --release --locked
 
@@ -217,8 +256,31 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # test + clippy only need to pass once per version of the Rust inputs: the
+      # marker cache records that and later runs skip straight through. GitHub
+      # evicts caches after 7 idle days — a miss just reruns the checks.
+      - name: Verified marker
+        id: marker
+        uses: actions/cache/restore@d4323d4df104b026a6aa633fdb11d772146be0bf # v4
+        with:
+          path: .native-verified
+          key: native-verified-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+
+      # inputs.force_native is empty outside workflow_dispatch, so only an explicit
+      # dispatch with the flag forces a rerun over an existing marker.
+      - name: Decide whether the checks must run
+        id: gate
+        shell: bash
+        run: |
+          if [ "${{ steps.marker.outputs.cache-hit }}" = "true" ] && [ "${{ inputs.force_native }}" != "true" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
       # The toolchain the image ships is enough: the crate pins its dependencies, not rustc.
       - name: Cargo cache
+        if: steps.gate.outputs.run == 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -228,18 +290,35 @@ jobs:
           key: cargo-${{ hashFiles('native/Cargo.lock') }}
 
       - name: Build
+        if: steps.gate.outputs.run == 'true'
         working-directory: native
         run: cargo build --release
 
       # The integration tests run the built binary, so they cover the command line, the walk
       # and the exit codes — the parts a unit test cannot see.
       - name: Test
+        if: steps.gate.outputs.run == 'true'
         working-directory: native
         run: cargo test
 
       - name: Clippy
+        if: steps.gate.outputs.run == 'true'
         working-directory: native
         run: cargo clippy --all-targets -- -D warnings
+
+      - name: Record the verified marker
+        if: steps.gate.outputs.run == 'true'
+        shell: bash
+        run: |
+          mkdir -p .native-verified
+          date > .native-verified/marker
+
+      - name: Save the verified marker
+        if: steps.gate.outputs.run == 'true'
+        uses: actions/cache/save@d4323d4df104b026a6aa633fdb11d772146be0bf # v4
+        with:
+          path: .native-verified
+          key: native-verified-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
 
   # The six published platform packages. Each leg builds one cargo target, then runs the
   # produced binary there — compiling for a target proves nothing about the artefact, running
@@ -281,12 +360,21 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # A cached cross binary skips the toolchain, the cross linker and the compile;
+      # the smoke and pack steps below still run. Cache eviction just rebuilds.
+      - name: Cross binary cache
+        id: pkg-bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}
+          key: native-pkg-${{ matrix.target }}-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+
       # The cross legs need a linker that speaks the target's ABI; qemu-user-static doubles as
       # the way to execute the arm64 artefact, since installing it registers binfmt. Running an
       # aarch64 binary under qemu-user still needs an aarch64 dynamic linker on disk, which is why
       # the arm64 leg also pulls in the multiarch runtime libs.
       - name: Install the cross toolchain
-        if: matrix.apt
+        if: matrix.apt && steps.pkg-bin.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
 
       # qemu-user only needs the arm64 ld.so and libc on disk to execute a foreign binary; a real
@@ -294,7 +382,7 @@ jobs:
       # apt tries to reconcile the whole base system against them. Downloading the .deb and
       # unpacking it with dpkg -x sidesteps the dependency resolver entirely.
       - name: Install the aarch64 runtime libraries
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        if: matrix.target == 'aarch64-unknown-linux-gnu' && steps.pkg-bin.outputs.cache-hit != 'true'
         run: |
           sudo dpkg --add-architecture arm64
           echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main" \
@@ -308,13 +396,15 @@ jobs:
       # Matrix keys cannot be environment variable NAMES, so the linker reaches cargo through
       # the environment file instead.
       - name: Point cargo at the cross linker
-        if: matrix.linker
+        if: matrix.linker && steps.pkg-bin.outputs.cache-hit != 'true'
         run: echo "${{ matrix.linker_var }}=${{ matrix.linker }}" >> "$GITHUB_ENV"
 
       - name: Add the cargo target
+        if: steps.pkg-bin.outputs.cache-hit != 'true'
         run: rustup target add ${{ matrix.target }}
 
       - name: Cargo cache
+        if: steps.pkg-bin.outputs.cache-hit != 'true'
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
@@ -324,6 +414,7 @@ jobs:
           key: cargo-packages-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock') }}
 
       - name: Build
+        if: steps.pkg-bin.outputs.cache-hit != 'true'
         working-directory: native
         run: cargo build --release --target ${{ matrix.target }}
 
