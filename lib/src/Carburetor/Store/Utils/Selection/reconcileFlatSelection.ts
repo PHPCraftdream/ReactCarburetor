@@ -7,6 +7,9 @@ const isArrayIndex = (key: string): boolean => {
     return String(index) === key && Number.isInteger(index) && index >= 0 && index < 0xFFFFFFFF;
 };
 
+const isStringKey = (key: PropertyKey): key is string => typeof key === 'string';
+const isArrayIndexKey = (key: PropertyKey): key is string => typeof key === 'string' && isArrayIndex(key);
+
 /** Detach and compare one-level plain containers containing only primitive own values.
  *
  * @param previous - the prior detached selection, if any.
@@ -21,8 +24,8 @@ export const reconcileFlatSelection = (previous: unknown, fresh: unknown): TFlat
         : proto !== Object.prototype && proto !== null) return undefined;
 
     const keys = (array
-        ? Reflect.ownKeys(fresh).filter((key): key is string => typeof key === 'string' && isArrayIndex(key))
-        : viewKeys(fresh).filter((key): key is string => typeof key === 'string'));
+        ? Reflect.ownKeys(fresh).filter(isArrayIndexKey)
+        : viewKeys(fresh).filter(isStringKey));
     const values: unknown[] = [];
     const descriptors: PropertyDescriptor[] = [];
     for (const key of keys) {
@@ -57,9 +60,7 @@ export const reconcileFlatSelection = (previous: unknown, fresh: unknown): TFlat
         const length = Reflect.get(fresh, 'length') as number;
         if (Array.isArray(previous) && Object.getPrototypeOf(previous) === proto
             && Reflect.get(previous, 'length') === length) {
-            const oldKeys = Reflect.ownKeys(previous).filter(
-                (key): key is string => typeof key === 'string' && isArrayIndex(key)
-            );
+            const oldKeys = Reflect.ownKeys(previous).filter(isArrayIndexKey);
             if (oldKeys.length === keys.length && oldKeys.every((key, index) => key === keys[index])
                 && sameValues(previous)) return {value: previous};
         }

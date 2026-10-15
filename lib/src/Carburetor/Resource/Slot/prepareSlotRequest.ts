@@ -8,6 +8,9 @@ const isRequestField = (field: PropertyKey): boolean =>
     field === 'status' || field === 'data' || field === 'error' || field === 'updatedAt'
     || field === 'isIdle' || field === 'isPending' || field === 'isSuccess' || field === 'isError';
 
+/** Whether a descriptor permits writing, or is absent. */
+const isWritableFlag = (flag: PropertyDescriptor | undefined): boolean => flag?.writable !== false;
+
 /** Prepare a writable operational graph without changing a captured endpoint.
  *
  * @param state - current resource state.
@@ -22,7 +25,7 @@ export const prepareSlotRequest = <T>(state: IResourceData<T>): IResourceData<T>
     );
     if (status?.writable !== false && data?.writable !== false &&
         error?.writable !== false && updatedAt?.writable !== false &&
-        flagDescriptors.every((flag) => flag?.writable !== false) &&
+        flagDescriptors.every(isWritableFlag) &&
         (!status || 'value' in status) && (!data || 'value' in data) &&
         (!error || 'value' in error) && (!updatedAt || 'value' in updatedAt)) {
         return undefined;

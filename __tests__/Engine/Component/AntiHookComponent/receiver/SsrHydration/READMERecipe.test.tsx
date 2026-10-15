@@ -13,11 +13,9 @@ import {
     ResourceCache,
     carburetorToken,
 } from '@/Carburetor';
+const loadUser = async (id: string): Promise<{name: string}> => ({name: `User ${id}`});
 const userToken = carburetorToken(
-    () => new ResourceCache<{name: string}, string>(
-        async (id) => ({name: `User ${id}`}),
-        {ttl: 30_000},
-    ),
+    () => new ResourceCache(loadUser, {ttl: 30_000}),
     'ssr-example-users',
 );
 class UserScreen extends ScopedAntiHookComponent {

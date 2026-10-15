@@ -38,6 +38,8 @@
         "carburetor/no-untrackable-store-data": "warn",
         "carburetor/no-use-carburetor-outside-render": "error",
         "carburetor/require-bind-for-passed-method": "error",
+        "carburetor/no-function-in-render": "warn",
+        "carburetor/no-closure-in-update": "warn",
         "carburetor/require-effect-deps": "warn",
         "carburetor/require-emit-after-draft-write": "error",
         "carburetor/require-method-for-closure": "warn",
@@ -56,7 +58,21 @@
                 "__tests__/**"
             ],
             "rules": {
-                "carburetor-internal/require-tsdoc": "off"
+                "carburetor-internal/require-tsdoc": "off",
+                "carburetor/no-function-in-render": "off",
+                "carburetor/no-closure-in-update": "off",
+                "carburetor/require-module-function": "off"
+            }
+        },
+        {
+            "files": [
+                "perf/**",
+                "scripts/**"
+            ],
+            "rules": {
+                "carburetor/no-function-in-render": "off",
+                "carburetor/no-closure-in-update": "off",
+                "carburetor/require-module-function": "off"
             }
         }
     ],

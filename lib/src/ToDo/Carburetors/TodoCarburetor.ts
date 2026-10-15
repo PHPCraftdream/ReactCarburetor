@@ -57,7 +57,8 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
 
         this.derivationKeptInline = this.hasStoredCounters();
 
-        this.update((draft: ITodoList) => {
+        try {
+            const draft = this.draft;
             // Both read `previous.done` as it was before the write: with a field write
             // mutating the same object `previous` still points at (unlike the old whole-object
             // replacement, which left `previous` referring to the discarded one), they must run
@@ -73,7 +74,9 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
             } else {
                 draft.items[data.id] = data;
             }
-        });
+        } finally {
+            this.emitUpdate();
+        }
     };
 
     /**
@@ -99,12 +102,15 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
 
         this.derivationKeptInline = this.hasStoredCounters();
 
-        this.update((draft: ITodoList) => {
+        try {
+            const draft = this.draft;
             draft.items[todo.id] = todo;
             draft.orderIds.unshift(todo.id);
 
             this.shiftCounters(draft, undefined, false, true);
-        });
+        } finally {
+            this.emitUpdate();
+        }
     };
 
     /** Removes an item and its place in the order, if the id is there at all. */
@@ -117,7 +123,8 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
 
             this.derivationKeptInline = this.hasStoredCounters();
 
-            this.update((draft: ITodoList) => {
+            try {
+                const draft = this.draft;
                 delete draft.items[id];
                 draft.orderIds = this.data.orderIds.filter(filterId);
 
@@ -126,7 +133,9 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
                 } else {
                     draft.activeCount = (draft.activeCount ?? 0) - 1;
                 }
-            });
+            } finally {
+                this.emitUpdate();
+            }
         }
     };
 
@@ -139,11 +148,14 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
             return;
         }
 
-        this.update((draft: ITodoList) => {
+        try {
+            const draft = this.draft;
             open.forEach((id: string) => {
                 draft.items[id].done = true;
             });
-        });
+        } finally {
+            this.emitUpdate();
+        }
     };
 
     /** Removes every done todo in one update. */
@@ -155,12 +167,15 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
             return;
         }
 
-        this.update((draft: ITodoList) => {
+        try {
+            const draft = this.draft;
             done.forEach((id: string) => {
                 delete draft.items[id];
             });
             draft.orderIds = orderIds.filter((id: string) => !done.has(id));
-        });
+        } finally {
+            this.emitUpdate();
+        }
     };
 
     /**

@@ -16,6 +16,8 @@ import {prepareSlotRequest} from "./Slot/prepareSlotRequest";
 import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
 import {resourceStatusFlags} from "@/Carburetor/Resource/Status/resourceStatusFlags";
 
+const noop = (): void => undefined;
+
 const STATUS_FLAGS = ['isIdle', 'isPending', 'isSuccess', 'isError'] as const;
 
 /** The message a failure is stored under: the state has to stay serializable. */
@@ -425,17 +427,20 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
                                 origin: 'operational', owner: request, representation: 'owned-operational',
                             });
                         } else if (this.data === previousState) {
-                            this.update((draft) => {
+                            try {
+                                const draft = this.draft;
                                 applyResourceStatus(draft, previousStatus);
                                 draft.error = previousError;
-                            });
+                            } finally {
+                                this.emitUpdate();
+                            }
                         }
                     } catch {
                         // Preserve the original failure after best-effort visible-state recovery.
                     }
                 }
             }
-            void promise.catch(() => undefined);
+            void promise.catch(noop);
             rejectRequest(error);
             return promise;
         }
@@ -484,12 +489,15 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         const runtime = this[R.ensureRuntime]();
         runtime.request = undefined;
         runtime.answer = {key: request.key, owner: this.data};
-        this.update((draft) => {
+        try {
+            const draft = this.draft;
             applyResourceStatus(draft, EResourceStatus.Success);
             draft.data = data;
             draft.error = undefined;
             draft.updatedAt = Date.now();
-        });
+        } finally {
+            this.emitUpdate();
+        }
     }
 
     /** Store the raw rejection with explicit presence, even when its value is undefined.
@@ -515,11 +523,14 @@ export class ResourceCarburetor<T, TArgs = void> extends Carburetor<IResourceDat
         }
         runtime.request = undefined;
         runtime.answer = {key: request.key, owner: this.data, failure: {value: error, message}};
-        this.update((draft) => {
+        try {
+            const draft = this.draft;
             applyResourceStatus(draft, EResourceStatus.Error);
             draft.error = message;
             draft.updatedAt = Date.now();
-        });
+        } finally {
+            this.emitUpdate();
+        }
         if (thrown) throw thrown.error;
     }
 }

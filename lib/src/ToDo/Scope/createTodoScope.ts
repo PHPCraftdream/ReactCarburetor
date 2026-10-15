@@ -13,6 +13,8 @@ import {todoToken} from "./Tokens/todoToken";
 import {undoToken} from "./Tokens/undoToken";
 import {viewsToken} from "./Tokens/viewsToken";
 
+const noop = (): undefined => undefined;
+
 /**
  * One app instance's stores: a scope per page (or per request, on a server), never module
  * singletons, so two mounted apps or two test cases cannot share state.
@@ -36,7 +38,7 @@ export const createTodoScope = (api: IToDoClientAPI = new MockToDoClientAPI(), s
     scope.set(undoToken, undo);
 
     // Loads what was stored, then mirrors every change back.
-    const stopPersist: TDisposer = storage ? persist(filter, {key: 'todo-demo:filter', storage}) : () => undefined;
+    const stopPersist: TDisposer = storage ? persist(filter, {key: 'todo-demo:filter', storage}) : noop;
 
     // Outside React, a store is observed with subscribe(); no reads means every write.
     const statusSubscriptionId = todos.subscribe(() => {

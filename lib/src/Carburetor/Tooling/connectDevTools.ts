@@ -6,6 +6,8 @@ import {IDevToolsExtension, IDevToolsMessage, IDevToolsOptions} from "@/Carburet
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 
+const noop = (): undefined => undefined;
+
 const findExtension = (): IDevToolsExtension | undefined => {
     const host = globalThis as {__REDUX_DEVTOOLS_EXTENSION__?: IDevToolsExtension};
 
@@ -24,7 +26,7 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
     const extension = options.extension || findExtension();
 
     if (!extension) {
-        return () => undefined;
+        return noop;
     }
 
     const connection = extension.connect({name: options.name || 'React Carburetor'});

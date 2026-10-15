@@ -25,16 +25,19 @@ class Scoped extends ScopedAntiHookComponent {
     }
 }
 
+const selectCount = (data: {readonly count: number}): number => data.count;
+const createScope = (): CarburetorScope => new CarburetorScope();
+
 /** Renders both interop hooks. */
 function Hooks(): React.ReactElement {
-    const count = useCarburetorValue(hooksStore, (data) => data.count);
+    const count = useCarburetorValue(hooksStore, selectCount);
 
     return <span>{`hooks:${count}:${useComputedValue(doubled)}`}</span>;
 }
 
 /** Owns the scope: a class instance cannot cross from a server component as a prop. */
 export function Scope(): React.ReactElement {
-    const [scope] = React.useState(() => new CarburetorScope());
+    const [scope] = React.useState(createScope);
 
     return (
         <CarburetorProvider scope={scope}>

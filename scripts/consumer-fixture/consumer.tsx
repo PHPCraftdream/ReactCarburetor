@@ -147,10 +147,12 @@ export class Scoped extends ScopedAntiHookComponent {
 
 const scope = new CarburetorScope();
 
+const selectCount = (data: TReadonly<{count: number}>): number => data.count;
+
 /** Renders both interop hooks against the module-level store and computed. */
 export function HooksConsumer(): React.ReactElement {
-    const readableCount = useCarburetorValue(readableSource, (data) => data.count);
-    const count = useCarburetorValue(store, (data) => data.count);
+    const readableCount = useCarburetorValue(readableSource, selectCount);
+    const count = useCarburetorValue(store, selectCount);
     const doubled = useComputedValue(computed);
     const readableDoubled = useComputedValue(readableComputed);
 
@@ -187,11 +189,14 @@ resource41Sparse.length = 3;
 resource41Sparse[2] = 'Ada';
 export const resource41Native = {date: new Date(123), map: new Map([['user', {name: 'Ada'}]]),
     set: new Set(['user']), sparse: resource41Sparse};
+const selectNativeName = (view: TReadonly<IResourceView<IResource41Data>>) =>
+    ({...resource41Native, name: view.data!.nested.name});
+
 /** Exercises native detachment through published hook declarations. */
 export function Resource41NativeConsumer({source = resource41}: {
     source?: IResourceSource<IResource41Data, string>;
 }): React.ReactElement {
-    const selected = useResourceValue(source, 'user', view => ({...resource41Native, name: view.data!.nested.name}));
+    const selected = useResourceValue(source, 'user', selectNativeName);
     if (selected.date === resource41Native.date || selected.map === resource41Native.map
         || selected.set === resource41Native.set || 0 in selected.sparse) throw new Error('native detachment');
     return <span>{selected.name}:{selected.date.getTime()}:{selected.map.get('user')!.name}:{selected.set.size}</span>;
@@ -244,6 +249,10 @@ export function Resource41OverrideConsumer(): React.ReactElement {
     return <span>{local.nested.name}</span>;
 }
 
+const selectFreshNatives = () => ({
+    date: new Date(), map: new Map<string, {value: number}>(), set: new Set<string>(), list: [1],
+});
+
 /** Packed declarations must reject omitted selectors, wrong arguments and readonly mutations. */
 const resource41Types = () => {
     // @ts-expect-error selector is required
@@ -255,9 +264,7 @@ const resource41Types = () => {
     data.nested.name = 'unsafe';
     // @ts-expect-error result inference preserves the selected leaf type
     const wrong: number = data.nested.name;
-    const native = useResourceValue(resource41, 'user', () => ({
-        date: new Date(), map: new Map<string, {value: number}>(), set: new Set<string>(), list: [1],
-    }));
+    const native = useResourceValue(resource41, 'user', selectFreshNatives);
     // @ts-expect-error readonly native date
     native.date.setTime(0);
     // @ts-expect-error readonly native map

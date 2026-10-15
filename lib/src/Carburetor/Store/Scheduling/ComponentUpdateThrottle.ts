@@ -5,6 +5,18 @@ import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
+const clearEnclosingBatch = (batch: Map<string, TUpdater>): void => batch.clear();
+
+const reportFlushFailure = (error: unknown): void => {
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        diagnostics.report(
+            'an updater threw while the throttle flushed: ' +
+            (error instanceof Error ? error.message : String(error)) +
+            '. The remaining updaters in the batch were run anyway.'
+        );
+    }
+};
+
 /**
  * A policy for streaming sources: a socket pushing a thousand messages per second,
  * mousemove, presence cursors. There updates arrive in separate ticks and coalescing
@@ -125,7 +137,7 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
                 if (this.flushDepth++ >= this.maxUpdateDepth) {
                     this.updaters.clear();
                     this.flushing?.clear();
-                    this.enclosingFlushes?.forEach((batch) => batch.clear());
+                    this.enclosingFlushes?.forEach(clearEnclosingBatch);
                     throw (this.depthError = new Error(
                         'ComponentUpdateThrottle: exceeded max update depth of ' + this.maxUpdateDepth +
                         '. An updater keeps scheduling new updates — this is an infinite update loop.'
@@ -160,15 +172,7 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
             // The Map callback can assign this field outside TypeScript's local flow analysis.
             const failures = this.flushFailures as unknown[] | undefined;
             this.flushFailures = previousFailures;
-            failures?.forEach((error: unknown) => {
-                if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-                    diagnostics.report(
-                        'an updater threw while the throttle flushed: ' +
-                        (error instanceof Error ? error.message : String(error)) +
-                        '. The remaining updaters in the batch were run anyway.'
-                    );
-                }
-            });
+            failures?.forEach(reportFlushFailure);
 
             // The handle belongs to the flush that just fired: it has to be dropped even
             // when the flush ends abnormally, or setupTimeout() would see it in place and

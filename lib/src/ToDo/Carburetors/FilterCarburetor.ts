@@ -23,8 +23,11 @@ export class FilterCarburetor extends Carburetor<IFilterData> {
             return;
         }
 
-        this.update((draft: IFilterData) => {
+        try {
+            const draft = this.draft;
             draft.filter = filter;
-        });
+        } finally {
+            this.emitUpdate();
+        }
     };
 }

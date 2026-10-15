@@ -25,6 +25,8 @@ import {EvictionLedger} from "@/Carburetor/Resource/Cache/EvictionLedger";
 import {DEFAULT_MAX_ENTRIES, DEFAULT_TTL, ICacheRequest, ICacheRuntime} from "./Models";
 import {trimCacheRuntime} from "./Registry";
 
+const abortCacheRequest = (request: ICacheRequest): void => request.controller.abort();
+
 /** Owns cache root installation, cancellation, invalidation and eviction. */
 export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
     /** Loader retained independently of subclass names. */
@@ -112,7 +114,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         this[R.viewCache].clear();
         this[R.resolution] = undefined;
         this[R.eviction].reset();
-        active.forEach((request) => request.controller.abort());
+        active.forEach(abortCacheRequest);
         if (generation !== this[R.restoreGeneration]) return;
 
         const claim: IStateRestoreClaim | undefined = this[S.patchObservers]?.claimRestore(data);
@@ -273,7 +275,12 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         if (prepared) {
             this[R.installState](prepared, {origin: 'operational', owner: {}, representation: 'owned-operational'});
         } else if (entry.invalidated !== true || entry.failed !== false) {
-            this.update((draft) => applyCacheInvalidation(this.data, draft, key));
+            try {
+                const draft = this.draft;
+                applyCacheInvalidation(this.data, draft, key);
+            } finally {
+                this.emitUpdate();
+            }
         }
     }
 
@@ -289,7 +296,12 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         if (prepared) {
             this[R.installState](prepared, {origin: 'operational', owner: {}, representation: 'owned-operational'});
         } else {
-            this.update((draft) => applyCacheInvalidation(this.data, draft, keys));
+            try {
+                const draft = this.draft;
+                applyCacheInvalidation(this.data, draft, keys);
+            } finally {
+                this.emitUpdate();
+            }
         }
     }
 
@@ -459,12 +471,15 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
         }
         const retryFailed = request.retryingFailure || runtime.answer?.failure !== undefined;
         try {
-            this.update((draft) => {
+            try {
+                const draft = this.draft;
                 if (entry.status === EResourceStatus.Pending)
                     applyResourceStatus(draft.entries[key], EResourceStatus.Idle);
                 else draft.entries[key].refreshing = false;
                 draft.entries[key].failed ||= retryFailed;
-            });
+            } finally {
+                this.emitUpdate();
+            }
         } finally {
             if (originalEntry && this.data === state && this.data.entries[key] === originalEntry &&
                 this[R.runtimeFor](key) === runtime && runtime.generation === request.generation &&

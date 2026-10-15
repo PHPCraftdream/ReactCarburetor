@@ -6,6 +6,16 @@ import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
+const reportBatchFailure = (error: unknown): void => {
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        diagnostics.report(
+            'a carburetor threw while a transaction was being delivered: ' +
+            (error instanceof Error ? error.message : String(error)) +
+            '. The other carburetors in the batch were notified anyway.'
+        );
+    }
+};
+
 /**
  * Collects writes while a transaction is open and delivers one notification pass per
  * carburetor when it closes. Without it a method that writes to several carburetors —
@@ -94,15 +104,7 @@ export class UpdateBatch {
                 });
             }
 
-            failures.forEach((error: unknown) => {
-                if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-                    diagnostics.report(
-                        'a carburetor threw while a transaction was being delivered: ' +
-                        (error instanceof Error ? error.message : String(error)) +
-                        '. The other carburetors in the batch were notified anyway.'
-                    );
-                }
-            });
+            failures.forEach(reportBatchFailure);
         } finally {
             updateWave.end();
         }

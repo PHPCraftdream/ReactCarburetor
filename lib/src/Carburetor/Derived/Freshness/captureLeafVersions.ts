@@ -16,6 +16,15 @@ const snapshotIsNative = (versions: IDict<ILeafVersion>, keys: ReadonlyArray<str
     return true;
 };
 
+const nativeInner = (dependency: IReadSet): IDict<ILeafVersion> | undefined => {
+    const source = dependency.source;
+    const metadata = computedDependencies.nativeVersions.get(source);
+    if ('read' in source || !metadata || computedDependencies.versions.get(source) !== metadata.getter
+        || source.getVersion !== metadata.getVersion
+        || (source as typeof source & {get?: unknown}).get !== metadata.get) return undefined;
+    return metadata.getter();
+};
+
 /** Fills a version snapshot and classifies native epoch coverage. Merged leaves keep their
  * constituent filed pairs, so drift can be asked per part.
  *
@@ -26,14 +35,6 @@ export const captureLeafVersions = (
     dependencies: IDict<IReadSet>
 ): {versions: IDict<ILeafVersion>; allNative: boolean} => {
     const ids = Object.keys(dependencies);
-    const nativeInner = (dependency: IReadSet): IDict<ILeafVersion> | undefined => {
-        const source = dependency.source;
-        const metadata = computedDependencies.nativeVersions.get(source);
-        if ('read' in source || !metadata || computedDependencies.versions.get(source) !== metadata.getter
-            || source.getVersion !== metadata.getVersion
-            || (source as typeof source & {get?: unknown}).get !== metadata.get) return undefined;
-        return metadata.getter();
-    };
     const single = ids.length === 1 ? nativeInner(dependencies[ids[0]]) : undefined;
     const singleRecords = single && computedDependencies.nativeSnapshots.get(single);
     if (single && singleRecords && snapshotIsNative(single, singleRecords)) {

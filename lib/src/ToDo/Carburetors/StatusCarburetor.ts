@@ -14,9 +14,12 @@ export class StatusCarburetor extends Carburetor<IStatusData> {
 
     /** Records when the last update went out, which the demo displays. */
     public setEmittedMessage = (emittedMessage: string): IStatusData => {
-        this.update((draft: IStatusData) => {
+        try {
+            const draft = this.draft;
             draft.emittedMessage = emittedMessage;
-        });
+        } finally {
+            this.emitUpdate();
+        }
 
         return this.data;
     };

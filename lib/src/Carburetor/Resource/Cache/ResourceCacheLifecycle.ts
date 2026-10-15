@@ -11,6 +11,8 @@ import {ResourceCacheState} from "./State/Runtime/ResourceCacheState";
 import {trimCacheRuntime} from "./State/Runtime/Registry";
 import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
 
+const noop = (): void => undefined;
+
 /** Owns cache load, settlement, and Suspense transitions. */
 export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheState<T, TArgs> {
     /** Load an entry unless its current value is fresh.
@@ -47,7 +49,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         this[R.touch](key);
         if (entry && entry.status === EResourceStatus.Success) {
             if (this[R.isStale](entry) && !entry.failed && !this[R.hasRequest](key)) {
-                void this[R.fetch](key, args, true).catch(() => undefined);
+                void this[R.fetch](key, args, true).catch(noop);
             }
             return entry.data as T;
         }
@@ -83,8 +85,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         const priorRefreshing = entry?.refreshing;
         const runtime = this[R.runtimeFor](key, true) as ICacheRuntime<T>;
         const controller = createAbortHandle();
-        let resolveRequest: () => void = () => undefined;
-        let rejectRequest: (error: unknown) => void = () => undefined;
+        let resolveRequest: () => void = noop;
+        let rejectRequest: (error: unknown) => void = noop;
         const promise = new Promise<void>((resolve, reject) => {
             resolveRequest = resolve;
             rejectRequest = reject;
@@ -118,14 +120,17 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
                             this[R.removeEntries]([key], false);
                         } else if (!prepared && this.data === prior && entry &&
                             this.data.entries[key] === entry) {
-                            this.update((draft) => {
+                            try {
+                                const draft = this.draft;
                                 const root = this.data;
                                 const target = draft.entries[key];
                                 const current = () => root.entries[key] === entry ? target : draft.entries[key];
                                 applyResourceStatus(current(), priorStatus as EResourceStatus);
                                 current().error = priorError;
                                 current().refreshing = priorRefreshing as boolean;
-                            });
+                            } finally {
+                                this.emitUpdate();
+                            }
                         }
                     } catch {
                         // Keep the publication failure as the request's rejection.
@@ -133,7 +138,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
                 }
                 this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
             }
-            void promise.catch(() => undefined);
+            void promise.catch(noop);
             rejectRequest(error);
             throw error;
         }
@@ -228,7 +233,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         const invalidated = request.invalidationEpoch !== runtime.invalidationEpoch;
         runtime.answer = undefined;
         if (this[R.isRetentionFree](key)) this[R.eviction].release();
-        this.update((draft: IResourceCacheData<T>) => {
+        try {
+            const draft = this.draft;
             const root = this.data;
             const target = draft.entries[key];
             const current = () => root.entries[key] === entry ? target : draft.entries[key];
@@ -239,7 +245,9 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
             current().refreshing = false;
             current().invalidated = invalidated;
             current().failed = false;
-        });
+        } finally {
+            this.emitUpdate();
+        }
         this[R.runtimeRecords] = trimCacheRuntime(this[R.runtimeRecords], key, runtime);
         this[R.evict]();
     }
@@ -282,7 +290,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         const status = hasData ? entry.status : EResourceStatus.Error;
         runtime.answer = {key, entry, failure: {value: error, message, status}};
         const invalidated = request.invalidationEpoch !== runtime.invalidationEpoch;
-        this.update((draft: IResourceCacheData<T>) => {
+        try {
+            const draft = this.draft;
             const root = this.data;
             const target = draft.entries[key];
             const current = () => root.entries[key] === entry ? target : draft.entries[key];
@@ -290,7 +299,9 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
             current().refreshing = false;
             current().failed = !invalidated;
             if (!hasData) applyResourceStatus(current(), EResourceStatus.Error);
-        });
+        } finally {
+            this.emitUpdate();
+        }
         this[R.evict]();
         if (thrown) throw thrown.error;
     }

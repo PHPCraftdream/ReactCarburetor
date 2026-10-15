@@ -3,6 +3,17 @@ import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
+/** Reports one deferred settlement failure outside production builds. */
+const reportSettlementFailure = (error: unknown): void => {
+    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        diagnostics.report(
+            'a computation threw while a wave was drained: ' +
+            (error instanceof Error ? error.message : String(error)) +
+            '. The remaining deferred computations were settled anyway.'
+        );
+    }
+};
+
 /**
  * The scope of one notification pass. A write is delivered to its subscribers one by one,
  * and each delivery can cascade — a computed wakes its own subscribers inside the same
@@ -68,15 +79,7 @@ export class UpdateWave {
                 });
             }
 
-            failures?.forEach((error: unknown) => {
-                if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-                    diagnostics.report(
-                        'a computation threw while a wave was drained: ' +
-                        (error instanceof Error ? error.message : String(error)) +
-                        '. The remaining deferred computations were settled anyway.'
-                    );
-                }
-            });
+            failures?.forEach(reportSettlementFailure);
         } finally {
             this.depth = 0;
         }

@@ -40,6 +40,8 @@ const estimateOf = (id: string): number => {
     return 5 + hash % 55;
 };
 
+const readTodoList = (): ITodoList => cloneDataObject(todoList);
+
 export class MockToDoClientAPI implements IToDoClientAPI {
     /**
      * Takes how slow the fake network is.
@@ -51,14 +53,14 @@ export class MockToDoClientAPI implements IToDoClientAPI {
 
     /** Returns the stored list, as a network client would. */
     public getTodoList = (signal?: AbortSignal): Promise<ITodoList> => {
-        return this.respond(() => cloneDataObject(todoList), signal);
+        return this.respond(readTodoList, signal);
     };
 
     /** Stores the list and echoes back what was saved. */
     public updateTodoList = (data: ITodoList): Promise<ITodoList> => {
         todoList = cloneDataObject(data);
 
-        return this.respond(() => cloneDataObject(todoList));
+        return this.respond(readTodoList);
     };
 
     /**

@@ -5,6 +5,8 @@ import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 
+const quoteKey = (key: string): string => '"' + key + '"';
+
 /**
  * One set of carburetor instances. Create a scope per server request instead of keeping
  * module-level singletons: a singleton on the server is shared by every request, which
@@ -132,7 +134,7 @@ export class CarburetorScope {
             if (unclaimed.length > 0) {
                 diagnostics.report(
                     'hydrate() was handed state under keys no token claims: ' +
-                    unclaimed.map((key: string) => '"' + key + '"').join(', ') +
+                    unclaimed.map(quoteKey).join(', ') +
                     '. Those entries were ignored; if one of them looks like a token name, the ' +
                     'server and the client declare that token under different names.'
                 );

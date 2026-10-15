@@ -17,6 +17,32 @@ type TShimListener = ((event: IShimEvent) => void) | {handleEvent: (event: IShim
 /** Whether the missing global has been reported, so a long session is not buried in repeats. */
 let reported = false;
 
+const invoke = (listener: TShimListener, event: IShimEvent): void => {
+    if (typeof listener === 'function') {
+        listener(event);
+
+        return;
+    }
+
+    listener.handleEvent(event);
+};
+
+// One listener's exception must not stop the event: native delivery reaches every
+// listener and reports a throwing one without throwing out of abort(), and the engine's
+// cancelInFlight() relies on that to finish its cleanup (R7-03). Development-only, like
+// the report above, so a production bundle drops it.
+const reportListenerError = (error: unknown): void => {
+    if (typeof process === 'undefined' || process.env.NODE_ENV === 'production') {
+        return;
+    }
+
+    diagnostics.report(
+        'an abort listener threw while the stand-in signal was delivering the abort event; ' +
+        'the remaining listeners still ran and the error did not escape abort(): ' +
+        (error instanceof Error ? error.message : String(error))
+    );
+};
+
 /**
  * Builds the abort handle one resource request runs under: the runtime's `AbortController`
  * where it exists, a minimal stand-in where it does not.
@@ -85,16 +111,6 @@ export const createAbortHandle = (): AbortController => {
     // two registrations stay independent exactly as they are natively.
     let onAbort: TShimListener | null = null;
 
-    const invoke = (listener: TShimListener, event: IShimEvent): void => {
-        if (typeof listener === 'function') {
-            listener(event);
-
-            return;
-        }
-
-        listener.handleEvent(event);
-    };
-
     // The native one throws a DOMException named AbortError; without that global — and
     // without pulling in a dependency — an Error carrying the same name is the closest
     // match the advertised floor allows.
@@ -106,22 +122,6 @@ export const createAbortHandle = (): AbortController => {
 
             throw error;
         }
-    };
-
-    // One listener's exception must not stop the event: native delivery reaches every
-    // listener and reports a throwing one without throwing out of abort(), and the engine's
-    // cancelInFlight() relies on that to finish its cleanup (R7-03). Development-only, like
-    // the report above, so a production bundle drops it.
-    const reportListenerError = (error: unknown): void => {
-        if (typeof process === 'undefined' || process.env.NODE_ENV === 'production') {
-            return;
-        }
-
-        diagnostics.report(
-            'an abort listener threw while the stand-in signal was delivering the abort event; ' +
-            'the remaining listeners still ran and the error did not escape abort(): ' +
-            (error instanceof Error ? error.message : String(error))
-        );
     };
 
     // Defined rather than assigned, so the descriptor keeps its defaults and the listener

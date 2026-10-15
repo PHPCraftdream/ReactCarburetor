@@ -16,6 +16,8 @@ const PATCH_HISTORY_CAP = 1_000;
 
 type Patch = Parameters<NonNullable<IStateInstallPort<object>[typeof S.patchPort]['listener']>>[0];
 
+const hasOpaquePatch = (patch: Patch): boolean => typeof patch === 'symbol';
+
 const createPatchCollector = (): {
     patches: Patch[];
     exceeded: () => boolean;
@@ -93,7 +95,7 @@ export const installState = <T extends object>(
         try {
             const listener = store[S.patchPort].listener;
             if (listener !== undefined) {
-                if (transition.wildcard || collected?.exceeded() || collected?.patches.some(patch => typeof patch === 'symbol')) {
+                if (transition.wildcard || collected?.exceeded() || collected?.patches.some(hasOpaquePatch)) {
                     listener(PATCH_OPAQUE);
                 }
                 // R37-02: a throwing observer must not abort the rest of the already-applied

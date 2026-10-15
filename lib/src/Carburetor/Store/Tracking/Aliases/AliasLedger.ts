@@ -195,6 +195,19 @@ const checkStateWalk = (value: unknown, path: TPath, previous: unknown, stack: S
     checkContainer(value, path, previous, stack ?? new Set<object>());
 };
 
+const checkState = (value: unknown, path: TPath, previous?: unknown): void => {
+    checkStateWalk(value, path, previous, undefined);
+};
+
+const checkKey = (container: object, key: string, path: TPath): void => {
+    if (Array.isArray(container) && key !== 'length' && !isArrayIndexKey(key)) {
+        throw new Error(
+            'Carburetor: "' + path + '" is not an index or "length" — an array\'s state is ' +
+            'its elements and length only.'
+        );
+    }
+};
+
 /**
  * The development ledger behind the aliasing contract: the read proxy notes where each branch
  * object was read, and draft complains when it writes into an object that was read somewhere
@@ -243,16 +256,7 @@ export const createAliasLedger = (): TAliasLedger => {
                 seen.delete(value);
             }
         },
-        checkState: (value: unknown, path: TPath, previous?: unknown): void => {
-            checkStateWalk(value, path, previous, undefined);
-        },
-        checkKey: (container: object, key: string, path: TPath): void => {
-            if (Array.isArray(container) && key !== 'length' && !isArrayIndexKey(key)) {
-                throw new Error(
-                    'Carburetor: "' + path + '" is not an index or "length" — an array\'s state is ' +
-                    'its elements and length only.'
-                );
-            }
-        },
+        checkState,
+        checkKey,
     };
 };

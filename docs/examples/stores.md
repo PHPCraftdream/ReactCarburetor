@@ -119,6 +119,7 @@ class UserStore extends Carburetor<IDict<IUser>> {
     public replaceRaw(id: string, user: IUser): void {
         this.draft[id] = {name: 'written through draft'};
         // A write made outside draft does not record a path; publish it deliberately.
+        // carburetor-disable-next-line carburetor/no-external-data-mutation -- deliberate raw write, published by markAllChanged()
         this.getData()[id].name = user.name;
         this.markAllChanged();
         this.emitUpdate();
