@@ -10,6 +10,7 @@ import {noModuleLevelStore} from "./Rules/Boundaries/noModuleLevelStore.mts";
 import {noUntrackableStoreData} from "./Rules/Boundaries/noUntrackableStoreData.mts";
 import {requireSubscriptionDisposal} from "./Rules/Boundaries/requireSubscriptionDisposal.mts";
 import {noAsyncEffect} from "./Rules/Effects/noAsyncEffect.mts";
+import {noClosureInUpdate} from "./Rules/Allocations/noClosureInUpdate.mts";
 import {noDuplicateEffectName} from "./Rules/Effects/noDuplicateEffectName.mts";
 import {requireEffectDeps} from "./Rules/Effects/requireEffectDeps.mts";
 import {noComputedGetInComputed} from "./Rules/Reads/noComputedGetInComputed.mts";
@@ -43,6 +44,7 @@ const plugin: IPlugin = {
     rules: {
         'no-async-effect': noAsyncEffect,
         'no-async-transaction': noAsyncTransaction,
+        'no-closure-in-update': noClosureInUpdate,
         'no-computed-get-in-computed': noComputedGetInComputed,
         'no-computed-get-in-render': noComputedGetInRender,
         'no-direct-data-write': noDirectDataWrite,

@@ -31,6 +31,35 @@ use collect::Collect;
 use dependency::{class_type_parameters, member_class_dependency};
 use scan::{Declarator, Scan, SiteFlags};
 
+/// Checks class-dependent syntax and references in one function against its enclosing class.
+pub(in crate::rules) fn has_class_dependency<'a>(
+    function: &Function<'a>,
+    semantic: &Semantic<'a>,
+) -> bool {
+    let type_parameters = class_type_parameters(semantic, function.node_id());
+    let mut scan = dependency::DependencyScan {
+        type_parameters: &type_parameters,
+        scoping: semantic.scoping(),
+        found: false,
+    };
+    scan.visit_function(function, ScopeFlags::Function);
+    scan.found
+}
+
+/// The same class-dependency check for an arrow function.
+pub(in crate::rules) fn arrow_has_class_dependency<'a>(
+    arrow: &ArrowFunctionExpression<'a>,
+    semantic: &Semantic<'a>,
+) -> bool {
+    let type_parameters = class_type_parameters(semantic, arrow.node_id());
+    let mut scan = dependency::DependencyScan {
+        type_parameters: &type_parameters,
+        scoping: semantic.scoping(),
+        found: false,
+    };
+    scan.visit_arrow_function_expression(arrow);
+    scan.found
+}
 /// The one semantic pass per file both allocation rules share.
 pub fn build_semantic<'a>(program: &'a Program<'a>) -> Semantic<'a> {
     SemanticBuilder::new()

@@ -20,7 +20,11 @@ type Check = fn(&Program<'_>, &Source<'_>) -> Vec<Diagnostic>;
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check); 26] = [
+const REGISTRY: [(&str, Check); 27] = [
+    (
+        allocations::no_closure_in_update::RULE,
+        allocations::no_closure_in_update::check,
+    ),
     (
         allocations::require_method_for_closure::RULE,
         allocations::require_method_for_closure::check,
@@ -167,6 +171,7 @@ pub fn report_with_fix(
         message,
         severity: Severity::Error,
         fix,
+        scope: None,
     }
 }
 
@@ -174,6 +179,7 @@ pub fn report_with_fix(
 ///
 /// Escaped identifiers include a backslash in source spelling, so keep those on the full parse
 /// path instead of risking a false negative in this raw-text fast path.
+#[cfg(test)]
 fn may_contain_component_base(text: &str) -> bool {
     text.contains('\\')
         || crate::rules::support::bases::COMPONENT_BASES
@@ -182,7 +188,8 @@ fn may_contain_component_base(text: &str) -> bool {
 }
 
 /// Runs the rules the configuration leaves on over one parsed file; `keep_overlaps` leaves H31
-/// (no-function-in-render) beside H29/H30 instead of yielding to them at the same spot.
+/// (no-function-in-render) and H32 (no-closure-in-update) beside H29/H30 instead of yielding to
+/// them at a spot the allocation rules reported.
 ///
 /// A rule set to `off` is not merely filtered out of the output — it never runs, so turning rules
 /// off makes the pass cheaper rather than only quieter.
@@ -195,9 +202,10 @@ pub fn run(
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let method_severity = config.severity(allocations::require_method_for_closure::RULE);
     let module_severity = config.severity(allocations::require_module_function::RULE);
-    let allocation_semantic = if (method_severity != Severity::Off
-        || module_severity != Severity::Off)
-        && may_contain_component_base(source.text)
+    let module_scope = config.module_function_scope();
+    // This pass has no component-marker dependency: stores and ordinary classes are in scope too.
+    let allocation_semantic = if method_severity != Severity::Off
+        || module_severity != Severity::Off
     {
         Some(crate::rules::support::closures::build_semantic(program))
     } else {
@@ -224,7 +232,10 @@ pub fn run(
                     .as_ref()
                     .map_or_else(Vec::new, |semantic| {
                         allocations::require_module_function::check_with_semantic(
-                            program, source, semantic,
+                            program,
+                            source,
+                            semantic,
+                            module_scope,
                         )
                     }),
                 _ => check(program, source),
@@ -237,8 +248,9 @@ pub fn run(
         }));
     }
 
-    // H31 repeats the allocation rules' finding with blunter advice, so it yields wherever H29 or
-    // H30 reported at the same spot; when both are off, nothing is collected here and H31 stays.
+    // H31 repeats the allocation rules' finding with blunter advice, and H32 covers a callback
+    // H30 might also reach, so both yield wherever H29 or H30 reported at the same spot; when
+    // keep_overlaps is set, the blunter diagnostics stay beside the allocation rules' own.
     if !keep_overlaps {
         let allocation_spots = diagnostics
             .iter()
@@ -250,8 +262,10 @@ pub fn run(
             .collect::<HashSet<(usize, usize)>>();
 
         diagnostics.retain(|diagnostic| {
-            diagnostic.rule != lifecycle::no_function_in_render::RULE
-                || !allocation_spots.contains(&(diagnostic.line, diagnostic.column))
+            let overlapped = diagnostic.rule == lifecycle::no_function_in_render::RULE
+                || diagnostic.rule == allocations::no_closure_in_update::RULE;
+
+            !overlapped || !allocation_spots.contains(&(diagnostic.line, diagnostic.column))
         });
     }
 
@@ -267,6 +281,7 @@ mod tests {
     use oxc_span::SourceType;
 
     use super::*;
+    use crate::config::ModuleFunctionScope;
 
     fn run_with_overlaps(
         text: &str,
@@ -351,13 +366,18 @@ class Widget extends AntiHookComponent {
             [allocations::require_method_for_closure::RULE]
         );
 
+        // H31 now reports the map arrow too: H30 claims only the class-free `helper` method, at a
+        // different spot, so nothing deduplicates there.
         let module_only = run_with(ALLOCATION_SOURCE, Severity::Off, Severity::Error);
         assert_eq!(
             module_only
                 .iter()
                 .map(|diagnostic| diagnostic.rule.as_str())
                 .collect::<Vec<_>>(),
-            [allocations::require_module_function::RULE]
+            [
+                allocations::require_module_function::RULE,
+                lifecycle::no_function_in_render::RULE,
+            ]
         );
         assert_eq!(module_only[0].severity, Severity::Error);
     }
@@ -413,6 +433,47 @@ class Widget extends AntiHook\u0043omponent {
     }
 
     #[test]
+    fn scope_all_builds_semantic_for_plain_module_files() {
+        let source = r#"
+function work(items: string[]) {
+    return items.map((item) => item.length);
+}
+"#;
+
+        // Default scope (all): the prefilter must not gate the rule on component markers.
+        let all = run_with(source, Severity::Warn, Severity::Warn);
+        assert_eq!(
+            all.iter()
+                .map(|diagnostic| diagnostic.rule.as_str())
+                .collect::<Vec<_>>(),
+            [allocations::require_module_function::RULE]
+        );
+
+        // scope=classes restores the previous gating: nothing without a component base.
+        let mut config = Config::default();
+        config
+            .override_rule(allocations::require_method_for_closure::RULE, Severity::Warn)
+            .unwrap();
+        config
+            .override_rule(allocations::require_module_function::RULE, Severity::Warn)
+            .unwrap();
+        config.set_module_function_scope(ModuleFunctionScope::Classes);
+
+        let allocator = Allocator::default();
+        let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
+        let classes_only = run(
+            &parsed.program,
+            &Source {
+                path: Path::new("fixture.tsx"),
+                text: source,
+            },
+            &config,
+            false,
+        );
+        assert!(classes_only.is_empty());
+    }
+
+    #[test]
     fn allocation_prefilter_skips_files_without_component_markers() {
         let source = r#"
 class Widget {
@@ -458,5 +519,78 @@ class Widget extends AntiHookComponent {
         };
         assert!(on_arrow(lifecycle::no_function_in_render::RULE));
         assert!(on_arrow(allocations::require_method_for_closure::RULE));
+    }
+
+    #[test]
+    fn h32_reports_capturing_update_callbacks_in_stores_alone() {
+        let source = r#"
+class Cart extends Carburetor {
+    add(line: number) {
+        this.update((draft) => {
+            draft.total += line;
+        });
+    }
+}
+"#;
+
+        let deduplicated = run_with_overlaps(source, Severity::Warn, Severity::Warn, false);
+
+        // H30 never reaches a store class, so a capturing callback stays H32's finding alone; the
+        // spot dedup below is the guard for the day the two ever share one.
+        assert_eq!(
+            deduplicated
+                .iter()
+                .map(|diagnostic| diagnostic.rule.as_str())
+                .collect::<Vec<_>>(),
+            [allocations::no_closure_in_update::RULE]
+        );
+        assert_eq!(deduplicated[0].severity, Severity::Warn);
+
+        // keep_overlaps changes nothing here: there is nothing to yield to.
+        let kept = run_with_overlaps(source, Severity::Warn, Severity::Warn, true);
+        assert_eq!(
+            kept.iter()
+                .map(|diagnostic| diagnostic.rule.as_str())
+                .collect::<Vec<_>>(),
+            [allocations::no_closure_in_update::RULE]
+        );
+    }
+
+    #[test]
+    fn a_update_callback_without_captures_is_an_h30_finding_in_a_store() {
+        for scope in [ModuleFunctionScope::All, ModuleFunctionScope::Classes] {
+            let source = r#"
+class Cart extends Carburetor<{count: number}> {
+    inc() {
+        this.update(draft => {
+            draft.count += 1;
+        });
+    }
+}
+"#;
+
+            let mut config = Config::default();
+            config
+                .override_rule(allocations::require_method_for_closure::RULE, Severity::Warn)
+                .unwrap();
+            config
+                .override_rule(allocations::require_module_function::RULE, Severity::Warn)
+                .unwrap();
+            config.set_module_function_scope(scope);
+            let allocator = Allocator::default();
+            let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
+            assert!(parsed.diagnostics.is_empty(), "test source must parse");
+            let diagnostics = run(
+                &parsed.program,
+                &Source { path: Path::new("fixture.tsx"), text: source },
+                &config,
+                false,
+            );
+            assert_eq!(
+                diagnostics.iter().map(|d| d.rule.as_str()).collect::<Vec<_>>(),
+                [allocations::require_module_function::RULE]
+            );
+            assert_eq!(diagnostics[0].severity, Severity::Warn);
+        }
     }
 }

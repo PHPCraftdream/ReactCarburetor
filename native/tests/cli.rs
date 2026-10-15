@@ -71,6 +71,51 @@ fn diagnostics(arguments: &[&str]) -> Vec<Value> {
         .clone()
 }
 
+const MODULEFN_SOURCE: &str = r#"
+export function work(items: string[]) {
+    return items.map((item) => item.length);
+}
+"#;
+
+#[test]
+fn config_scope_classes_suppresses_module_function_reports() {
+    let dir = workspace(&[
+        ("modulefn.tsx", MODULEFN_SOURCE),
+        ("classes.json", r#"{"rules": {"carburetor/require-module-function": ["warn", {"scope": "classes"}]}}"#),
+    ]);
+
+    // The default scope (all) reports the nested arrow (a warning by default); the config
+    // narrows the rule to classes and the file goes clean.
+    let default_run = run_in(&dir, &["--format=json", "--deny-warnings", "modulefn.tsx"]);
+    assert_eq!(code(&default_run), 1);
+    assert!(stdout(&default_run).contains("require-module-function"));
+
+    let classes_run = diagnostics_in(&dir, &["--config=classes.json", "--format=json", "modulefn.tsx"]);
+    assert!(classes_run.is_empty());
+    assert_eq!(code(&run_in(&dir, &["--config=classes.json", "modulefn.tsx"])), 0);
+}
+
+#[test]
+fn json_diagnostic_for_require_module_function_carries_the_scope_field() {
+    let dir = workspace(&[("modulefn.tsx", MODULEFN_SOURCE)]);
+
+    let found = diagnostics_in(&dir, &["--format=json", "modulefn.tsx"]);
+
+    assert_eq!(found.len(), 1);
+    assert_eq!(found[0]["rule"], "carburetor/require-module-function");
+    assert_eq!(found[0]["scope"], "module");
+}
+
+#[test]
+fn an_unknown_scope_value_is_a_broken_config() {
+    let dir = workspace(&[
+        ("modulefn.tsx", MODULEFN_SOURCE),
+        ("bogus.json", r#"{"rules": {"carburetor/require-module-function": ["warn", {"scope": "bogus"}]}}"#),
+    ]);
+
+    assert_eq!(code(&run_in(&dir, &["--config=bogus.json", "modulefn.tsx"])), 2);
+}
+
 #[test]
 fn a_violation_is_reported_and_fails_the_run() {
     let output = run(&["tests/fixtures/offender.tsx"]);
@@ -113,6 +158,18 @@ fn json_carries_exactly_the_conformance_fields() {
     assert_eq!(diagnostic["severity"], "error");
     assert!(diagnostic["message"].as_str().expect("a message").contains("class property"));
     assert!(diagnostic["fix"]["text"].as_str().expect("fix.text").contains("componentDidMount(): void"));
+}
+
+/// The diagnostics of a `--format=json` run inside `cwd`, for the workspace-based tests.
+fn diagnostics_in(cwd: &Path, arguments: &[&str]) -> Vec<Value> {
+    let output = run_in(cwd, arguments);
+    let text = stdout(&output);
+
+    serde_json::from_str::<Value>(&text)
+        .unwrap_or_else(|error| panic!("output is not JSON ({error}): {text}"))
+        .as_array()
+        .expect("the top level is an array")
+        .clone()
 }
 
 #[test]

@@ -16,6 +16,7 @@
 pub const RULE: &str = "carburetor/require-module-function";
 
 mod extract;
+mod module_functions;
 mod references;
 mod statement;
 mod support;
@@ -29,6 +30,7 @@ use oxc_ast::ast::{
 use oxc_semantic::Semantic;
 use oxc_span::Span;
 
+use crate::config::ModuleFunctionScope;
 use crate::fix::Fix;
 use crate::rules::support::bases::RENDER_METHODS;
 use crate::rules::support::closures::{
@@ -277,11 +279,21 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
     }
 }
 
-/// Runs the rule over one parsed file.
+/// Runs the rule over one parsed file, at the default `scope: "all"`.
 pub fn check(program: &Program<'_>, source: &Source<'_>) -> Vec<Diagnostic> {
+    check_with_scope(program, source, ModuleFunctionScope::All)
+}
+
+/// Runs the rule at one `scope` setting: `All` analyzes nested functions throughout the file;
+/// `Classes` limits that analysis to class-contained callbacks, alongside member analysis.
+pub(in crate::rules) fn check_with_scope(
+    program: &Program<'_>,
+    source: &Source<'_>,
+    scope: ModuleFunctionScope,
+) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
 
-    check_with_semantic(program, source, &semantic)
+    check_with_semantic(program, source, &semantic, scope)
 }
 
 /// Runs the rule with a semantic pass shared by the allocation-rule pair.
@@ -289,8 +301,9 @@ pub(in crate::rules) fn check_with_semantic<'a>(
     program: &Program<'a>,
     source: &Source<'_>,
     semantic: &Semantic<'a>,
+    scope: ModuleFunctionScope,
 ) -> Vec<Diagnostic> {
-    walk_rule(
+    let mut diagnostics = walk_rule(
         program,
         Check {
             source,
@@ -300,7 +313,21 @@ pub(in crate::rules) fn check_with_semantic<'a>(
             statements: top_level_class_statements(program),
             diagnostics: Vec::new(),
         },
-    )
+    );
+
+    // The class findings say where they came from, so the bridge can tell the two halves apart.
+    for diagnostic in &mut diagnostics {
+        diagnostic.scope = Some(String::from("class"));
+    }
+
+    diagnostics.extend(module_functions::check(program, semantic, source, scope));
+
+    let mut seen = std::collections::HashSet::new();
+    diagnostics.retain(|diagnostic| {
+        diagnostic.rule != RULE || seen.insert((diagnostic.line, diagnostic.column))
+    });
+
+    diagnostics
 }
 
 #[cfg(test)]
@@ -311,6 +338,7 @@ mod tests {
     use std::path::Path;
 
     use super::*;
+    use crate::config::ModuleFunctionScope;
     use crate::rules::support::testing::{diagnose, lines};
     use oxc_allocator::Allocator;
     use oxc_parser::Parser;
@@ -380,7 +408,24 @@ mod tests {
         text
     }
 
+    /// Runs the rule at one `scope` setting, the way the config selects it.
+    fn reported_with_scope(source: &str, scope: ModuleFunctionScope) -> Vec<Diagnostic> {
+        let allocator = Allocator::default();
+        let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
+        assert!(parsed.diagnostics.is_empty(), "test source must parse");
+
+        check_with_scope(
+            &parsed.program,
+            &Source {
+                path: Path::new("fixture.tsx"),
+                text: source,
+            },
+            scope,
+        )
+    }
+
     mod fix_output;
     mod reporting_boundaries;
     mod reporting_core;
+    mod reporting_module;
 }

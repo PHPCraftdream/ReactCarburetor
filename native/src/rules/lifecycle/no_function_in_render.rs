@@ -1,23 +1,23 @@
-//! H31: a function built in render for a DOM handler or a local.
+//! H31: a function built in render for a DOM handler, a local, or an array callback.
 //!
 //! An arrow, a `function` expression or a `.bind(this)` created while a component renders is a
-//! fresh object every render. For a `<button>` attribute that cost is only an attribute update —
-//! but the pattern spreads: render bodies fill up with per-call helpers and per-item handlers, and
-//! a class that allocates in render allocates everywhere. Declare a method with `@bind`, or move a
-//! per-item handler into a child component that receives the id.
+//! fresh object every render — including one handed to `map`, `filter` and the like, which runs
+//! while the render evaluates. Declare a method with `@bind` and pass it by reference, or move a
+//! per-item case into a child component that receives the id.
 //!
 //! Component props are H21's territory ([`crate::rules::lifecycle::no_handler_created_in_render`]);
 //! this rule covers only what it does not: DOM-element attributes and locals in the render body.
 //! See docs/hazards.md, H31.
 
 use oxc_ast::ast::{
-    Expression, Function, JSXAttribute, JSXAttributeValue, JSXExpression, Program,
+    CallExpression, Expression, Function, JSXAttribute, JSXAttributeValue, JSXExpression, Program,
     VariableDeclarator,
 };
 use oxc_span::Span;
 
 use crate::rules::report;
-use crate::rules::support::names::member_call_name;
+use crate::rules::support::bases::SYNCHRONOUS_CALLBACKS;
+use crate::rules::support::names::{member_call_name, unwrap_expression};
 use crate::rules::support::walk::{walk_rule, Context, Rule};
 use crate::{Diagnostic, Source};
 
@@ -25,9 +25,17 @@ use crate::{Diagnostic, Source};
 pub const RULE: &str = "carburetor/no-function-in-render";
 
 /// The message this rule reports with.
-const MESSAGE: &str = "this handler creates a new function on every render; declare a method with \
-                       @bind, or move a per-item handler into a child component that receives the \
-                       id.";
+const MESSAGE: &str = "this function creates a new function on every render; pass a bound method \
+                       like ids.map(this.renderItem) — declare it with @bind.";
+
+/// The span of the function a synchronous callback argument creates, if it creates one.
+fn fresh_callback(expression: &Expression<'_>) -> Option<Span> {
+    match expression {
+        Expression::ArrowFunctionExpression(arrow) => Some(arrow.span),
+        Expression::FunctionExpression(function) => Some(function.span),
+        _ => None,
+    }
+}
 
 /// Records a span once, so one expression never yields the same diagnostic position twice.
 fn push_once(out: &mut Vec<Span>, span: Span) {
@@ -138,6 +146,27 @@ impl<'a, 's> Rule<'a> for Check<'s> {
         for span in spans {
             self.diagnostics
                 .push(report(self.source, span.start, RULE, MESSAGE.to_string()));
+        }
+    }
+
+    fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
+        // A callback of `map`, `filter` and the like runs while the render evaluates, so it is a
+        // fresh function like any other; one passed by reference is not.
+        if !context.in_render
+            || !member_call_name(&call.callee)
+                .is_some_and(|name| SYNCHRONOUS_CALLBACKS.contains(&name))
+        {
+            return;
+        }
+
+        for argument in &call.arguments {
+            let Some(expression) = argument.as_expression() else {
+                continue;
+            };
+            if let Some(span) = fresh_callback(unwrap_expression(expression)) {
+                self.diagnostics
+                    .push(report(self.source, span.start, RULE, MESSAGE.to_string()));
+            }
         }
     }
 
@@ -287,18 +316,75 @@ mod tests {
     }
 
     #[test]
-    fn a_per_item_handler_inside_a_map_is_reported_once() {
+    fn a_per_item_handler_inside_a_map_is_reported_with_the_map_callback() {
         let source = render(
             "        return items.map(item => <li onClick={() => this.select(item.id)}/>);",
         );
 
-        // The map callback itself runs in place and is not reported; only the inner arrow is.
+        // Both the map callback itself and the inner handler arrow are fresh functions.
+        let diagnostics = diagnose(&source, check);
+        assert_eq!(lines(&diagnostics), [3, 3]);
+    }
+
+    #[test]
+    fn a_map_callback_arrow_is_reported() {
+        let source = render("        return ids.map((id) => <TodoItem key={id} id={id}/>);");
         assert_eq!(lines(&diagnose(&source, check)), [3]);
     }
 
     #[test]
-    fn a_map_callback_without_a_nested_handler_is_not_reported() {
-        let source = render("        return items.map(item => <li key={item}/>);");
+    fn a_map_function_expression_callback_is_reported() {
+        let source = render("        return ids.forEach(function (id) { list(id); });");
+        assert_eq!(lines(&diagnose(&source, check)), [3]);
+    }
+
+    #[test]
+    fn a_sort_comparator_is_reported() {
+        let source = render("        return items.sort((a, b) => a.id - b.id);");
+        assert_eq!(lines(&diagnose(&source, check)), [3]);
+    }
+
+    #[test]
+    fn a_callback_capturing_this_is_deduplicated_with_h29() {
+        let source = render("        return ids.map((id) => <Row label={this.label(id)}/>);");
+
+        let diagnostics = run_rules(&source);
+        assert_eq!(lines(&diagnostics), [3]);
+        assert_eq!(
+            rules_on_line(&diagnostics, 3),
+            vec![require_method_for_closure::RULE],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn a_callback_without_context_is_deduplicated_with_h30() {
+        let source = render("        return ids.map((id) => <TodoItem key={id} id={id}/>);");
+
+        let diagnostics = run_rules(&source);
+        assert_eq!(lines(&diagnostics), [3]);
+        assert_eq!(
+            rules_on_line(&diagnostics, 3),
+            vec![require_module_function::RULE],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn a_method_reference_callback_is_not_reported() {
+        let source = render("        return ids.map(this.renderItem);");
+        assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_local_reference_callback_is_not_reported() {
+        let source = render("        return ids.map(renderRow);");
+        assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_async_callback_is_not_reported() {
+        let source = render("        setTimeout(() => this.tick(), 0);");
         assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
     }
 
@@ -443,7 +529,10 @@ class Widget extends AntiHookComponent {
         let source = render(
             "        return items.map(((item) => <button onClick={() => pick(item.id)}/>) as (item: Item) => JSX.Element);",
         );
-        assert_eq!(lines(&diagnose(&source, check)), [3]);
+
+        // The cast hides the arrow from nothing: the callback and the inner handler both report.
+        let diagnostics = diagnose(&source, check);
+        assert_eq!(lines(&diagnostics), [3, 3]);
     }
 
     #[test]

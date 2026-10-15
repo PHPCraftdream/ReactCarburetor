@@ -75,10 +75,14 @@ class Widget extends AntiHookComponent {
 
     let found = reported(source);
 
-    assert_eq!(lines(&found), [11]);
+    assert_eq!(lines(&found), [11, 4]);
     assert!(
         found[0].fix.is_none(),
         "the rewritten call would hit the local"
+    );
+    assert!(
+        found[1].fix.is_none(),
+        "the nested function has no autofix"
     );
 }
 

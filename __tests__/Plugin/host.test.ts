@@ -2,7 +2,7 @@ import {execFileSync} from "node:child_process";
 import * as path from "node:path";
 
 /**
- * Proves the 22 carburetor rules work in the host that actually runs them.
+ * Proves the 26 carburetor rules work in the host that actually runs them.
  *
  * Detection lives in the native crate now; each rule here is a thin bridge that reports whatever
  * the binary already found (see plugin/src/Utils/Native/nativeBridge.mts). A synthetic RuleTester
@@ -144,7 +144,7 @@ describe('lint plugin in the oxlint host', () => {
         ]);
 
         expect(countOccurrences(output, 'carburetor(require-method-for-closure)')).toEqual(2);
-        // H31 only fires on the per-item handler (25:68); the arrow spots it shares with H29 stay deduplicated.
+        // H31 only fires on the per-item handler (26:68); the arrow spots it shares with H29 stay deduplicated.
         expect(countOccurrences(output, 'carburetor(no-function-in-render)')).toEqual(1);
     });
 
@@ -157,6 +157,54 @@ describe('lint plugin in the oxlint host', () => {
         expect(countOccurrences(output, 'carburetor(no-function-in-render)')).toEqual(1);
         expect(output).not.toContain('require-method-for-closure');
         expect(output).not.toContain('require-module-function');
+    });
+
+    test('H30 covers the uncaptured map callback and H31 yields to it', () => {
+        const output = runOxlint([
+            '-c', 'plugin/__fixtures__/oxlintrc.json',
+            'plugin/__fixtures__/data/allocations.tsx',
+        ]);
+
+        // H30 reports the map callback of DedupCells (64:31); H31 covers the same spot and,
+        // with H30 enabled, reports only its distinct one (26:68).
+        expect(countOccurrences(output, 'carburetor(require-module-function)')).toEqual(5);
+        expect(countOccurrences(output, 'carburetor(no-function-in-render)')).toEqual(1);
+    });
+
+    test('H31 reports the map callback when H30 is off', () => {
+        const output = runOxlint([
+            '-c', 'plugin/__fixtures__/consumer/overlaps/noAllocationRules.oxlintrc.json',
+            'plugin/__fixtures__/data/allocations.tsx',
+        ]);
+
+        // Without H30 the spots would be lost if H31 still yielded, so it reports every one it
+        // covers: the two arrows H29 owns (12:33, 26:31) plus both map callbacks (26:68, 64:31).
+        expect(countOccurrences(output, 'carburetor(no-function-in-render)')).toEqual(4);
+        expect(output).not.toContain('require-module-function');
+    });
+
+    test('H32 fires on the capturing update callback and spares the bare method reference', () => {
+        const output = runOxlint([
+            '-c', 'plugin/__fixtures__/oxlintrc.json',
+            'plugin/__fixtures__/data/allocations.tsx',
+        ]);
+
+        expect(countOccurrences(output, 'carburetor(no-closure-in-update)')).toEqual(1);
+        expect(output).toContain('allocations.tsx:52:21');
+        expect(output).toContain('allocations.tsx:41:21');
+        expect(output).not.toContain('allocations.tsx:52:21: warning: [carburetor(no-closure-in-update)]');
+    });
+
+    test('the scope option narrows H30 to class members', () => {
+        const scoped = runOxlint([
+            '-c', 'plugin/__fixtures__/consumer/overlaps/scope.oxlintrc.json',
+            'plugin/__fixtures__/data/allocations.tsx',
+        ]);
+
+        // The class members stay (16:5, 29:5, 64:31); the module-function one (71:12) is dropped.
+        expect(countOccurrences(scoped, 'carburetor(require-module-function)')).toEqual(4);
+        expect(scoped).toContain('allocations.tsx:64:31');
+        expect(scoped).not.toContain('allocations.tsx:71:12');
     });
 
     test('the repository config loads the plugin', () => {

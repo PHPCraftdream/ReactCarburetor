@@ -93,6 +93,15 @@ export interface IRule {
     create(context: IRuleContext): TRuleVisitor;
 }
 
+/** Extra shape one native-backed rule may carry, on top of the common rule behavior. */
+export interface INativeRuleOptions {
+    /** The options schema, passed to the host verbatim; rules without options omit it. */
+    schema?: readonly unknown[];
+    /** Drops native diagnostics this rule must not report under the host's own options. */
+    filter?(diagnostic: import("#src/Utils/Native/INativeDiagnostic.mts").INativeDiagnostic,
+        options: readonly unknown[]): boolean;
+}
+
 /** A shareable config, in the shape ESLint v9 flat config consumes. */
 export interface IFlatConfig {
     plugins: Record<string, IPlugin>;

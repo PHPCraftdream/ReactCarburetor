@@ -15,6 +15,7 @@
 export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/no-async-effect': 'error',
     'carburetor/no-async-transaction': 'error',
+    'carburetor/no-closure-in-update': 'warn',
     'carburetor/no-computed-get-in-computed': 'error',
     'carburetor/no-computed-get-in-render': 'error',
     'carburetor/no-direct-data-write': 'warn',

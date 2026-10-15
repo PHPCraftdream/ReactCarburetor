@@ -1,0 +1,10 @@
+{
+  "jsPlugins": [
+    "../../../src/index.mts"
+  ],
+  "rules": {
+    "carburetor/no-function-in-render": "error",
+    "carburetor/require-method-for-closure": "off",
+    "carburetor/require-module-function": "off"
+  }
+}

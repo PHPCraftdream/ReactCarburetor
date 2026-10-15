@@ -6,4 +6,6 @@ export interface INativeDiagnostic {
     rule: string;
     message: string;
     severity: 'error' | 'warn' | 'off';
+    /** Only `require-module-function` sets this: which of its two passes found the problem. */
+    scope?: 'class' | 'module';
 }

@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import {offsetAt} from "#src/Utils/Native/offsetAt.mts";
 import {runNativeOnce} from "#src/Utils/Native/nativeBridge.mts";
-import type {IRule, IRuleContext, IRuleMeta, TRuleVisitor} from "#src/Models.mts";
+import type {INativeRuleOptions, IRule, IRuleContext, IRuleMeta, TRuleVisitor} from "#src/Models.mts";
 
 /**
  * A single-point report node. oxlint requires `range`; ESLint derives its message location from
@@ -9,6 +9,17 @@ import type {IRule, IRuleContext, IRuleMeta, TRuleVisitor} from "#src/Models.mts
  * node needs both — verified by running each host over the built plugin, not assumed from either
  * one's docs.
  */
+/**
+ * Which rule yields to which, when both cover the same spot, mirroring native's default dedup:
+ * `no-function-in-render` (H31) yields to both allocation rules, `no-closure-in-update` (H32)
+ * yields to `require-module-function` (H30).
+ */
+const OVERLAPS: Readonly<Record<string, readonly string[]>> = {
+    'carburetor/no-function-in-render':
+        ['carburetor/require-method-for-closure', 'carburetor/require-module-function'],
+    'carburetor/no-closure-in-update': ['carburetor/require-module-function'],
+};
+
 interface IPointNode {
     type: 'Program';
     start: number;
@@ -17,8 +28,6 @@ interface IPointNode {
     loc: {start: {line: number; column: number}; end: {line: number; column: number}};
 }
 
-/** Rules whose diagnostics `no-function-in-render` yields to, mirroring native's default dedup. */
-const ALLOCATION_RULE_IDS = ['carburetor/require-method-for-closure', 'carburetor/require-module-function'];
 
 /** Rules each file's run had enabled, keyed by the shared `sourceCode` both hosts pass to every rule. */
 const enabledRuns = new WeakMap<object, Set<string>>();
@@ -28,9 +37,10 @@ const enabledRuns = new WeakMap<object, Set<string>>();
  *
  * The binary runs once per lint run (see nativeBridge.mts); every rule this produces just reads
  * its own slice of that one result. `meta` is passed in rather than fixed here so each rule keeps
- * its own description — the schema is dropped, though: native does not read options a JS host
- * would validate against one, and accepting options that silently do nothing is worse than
- * accepting none.
+ * its own description. A rule that accepts options passes a `schema` for the host to validate
+ * against and a `filter` that applies them: the binary always reports the full diagnostic set
+ * (see nativeBridge.mts for why), so per-run options can only ever narrow a rule's slice here,
+ * never change what the one shared run produced.
  *
  * The binary runs with `--keep-overlaps`, so diagnostics overlapping another rule's (an
  * allocation rule vs `no-function-in-render`) are not folded away natively. Each rule instead
@@ -41,9 +51,14 @@ const enabledRuns = new WeakMap<object, Set<string>>();
  * `rule` field matches
  * @param description - placed in `meta.docs.description` verbatim, so each produced rule presents
  * as its own rule to the host
+ * @param options - the optional schema and diagnostic filter described above
  */
-export const nativeRule = (id: string, description: string): IRule => ({
-    meta: {type: 'problem', docs: {description}} satisfies IRuleMeta,
+export const nativeRule = (id: string, description: string, options: INativeRuleOptions = {}): IRule => ({
+    meta: {
+        type: 'problem',
+        docs: {description},
+        ...(options.schema ? {schema: options.schema} : {}),
+    } satisfies IRuleMeta,
 
     create(context: IRuleContext): TRuleVisitor {
         // Registration happens in `create`, so only rules the host enabled are recorded, and
@@ -68,15 +83,20 @@ export const nativeRule = (id: string, description: string): IRule => ({
                     // Native walks from `.`, so its paths carry a leading `./` that
                     // `path.relative()` never produces; strip it before comparing.
                     .filter((diagnostic) => diagnostic.file.replace(/^\.\//, '') === file && diagnostic.rule === id)
+                    // Host options narrow the slice the one shared run produced; a rule without
+                    // options keeps everything native found.
+                    .filter((diagnostic) => options.filter?.(diagnostic, context.options) ?? true)
                     .filter((diagnostic) => {
-                        if (id !== 'carburetor/no-function-in-render' || !enabled) {
+                        const overlaps = OVERLAPS[id];
+
+                        if (overlaps === undefined || !enabled) {
                             return true;
                         }
 
                         // An overlap only suppresses us when its rule is really enabled; otherwise
                         // this diagnostic would be lost, as native folds it away but the host
                         // hides the covering rule.
-                        return !ALLOCATION_RULE_IDS.some((overlap) =>
+                        return !overlaps.some((overlap) =>
                             enabled.has(overlap) &&
                             diagnostics.some((other) =>
                                 other.rule === overlap &&

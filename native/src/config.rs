@@ -57,6 +57,26 @@ pub fn parse_severity(text: &str) -> Option<Severity> {
     }
 }
 
+/// Where `carburetor/require-module-function` looks for its finding. `All` — the default —
+/// covers every nested function in every file; `Classes` narrows the rule to class members,
+/// the behavior the rule had before the option existed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModuleFunctionScope {
+    All,
+    Classes,
+}
+
+impl ModuleFunctionScope {
+    /// The spelling a config file writes, and the diagnostics JSON repeats.
+    pub fn parse(text: &str) -> Option<ModuleFunctionScope> {
+        match text {
+            "all" => Some(ModuleFunctionScope::All),
+            "classes" => Some(ModuleFunctionScope::Classes),
+            _ => None,
+        }
+    }
+}
+
 /// One rule's setting: how hard it reports, plus options it may consume.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuleSetting {
@@ -70,6 +90,7 @@ pub struct RuleSetting {
 pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("no-async-effect", Severity::Error),
     ("no-async-transaction", Severity::Error),
+    ("no-closure-in-update", Severity::Warn),
     ("no-computed-get-in-computed", Severity::Error),
     ("no-computed-get-in-render", Severity::Error),
     ("no-direct-data-write", Severity::Warn),
@@ -215,6 +236,37 @@ impl Config {
     pub fn ignores(&self) -> &[String] {
         &self.ignore
     }
+
+    /// `require-module-function`'s one option. `parse` validates the option for this rule, so a
+    /// stored value is always well-formed; the `All` fallback is unreachable outside tests that
+    /// build a `Config` by hand.
+    pub fn module_function_scope(&self) -> ModuleFunctionScope {
+        self.rules
+            .get("require-module-function")
+            .and_then(|setting| setting.options.as_ref())
+            .and_then(|options| options.get("scope"))
+            .and_then(|scope| scope.as_str())
+            .and_then(ModuleFunctionScope::parse)
+            .unwrap_or(ModuleFunctionScope::All)
+    }
+
+    /// Test hook: narrow the scope without going through a config file.
+    #[cfg(test)]
+    pub fn set_module_function_scope(&mut self, scope: ModuleFunctionScope) {
+        let severity = self.severity("require-module-function");
+        self.rules.insert(
+            "require-module-function".to_string(),
+            RuleSetting {
+                severity,
+                options: Some(serde_json::json!({
+                    "scope": match scope {
+                        ModuleFunctionScope::All => "all",
+                        ModuleFunctionScope::Classes => "classes",
+                    }
+                })),
+            },
+        );
+    }
 }
 
 /// The rule id a config entry or command line names, with the presentation prefix stripped.
@@ -236,7 +288,7 @@ fn required_severity(text: &str) -> Result<Severity, ConfigError> {
 
 /// Reads one rule's value: a severity string, or `[severity, options]` ESLint-style. The options
 /// are stored verbatim; no rule consumes them yet, but the schema has to carry them.
-fn parse_setting(value: &serde_json::Value) -> Result<RuleSetting, ConfigError> {
+fn parse_setting(rule: &str, value: &serde_json::Value) -> Result<RuleSetting, ConfigError> {
     match value {
         serde_json::Value::String(text) => {
             Ok(RuleSetting { severity: required_severity(text)?, options: None })
@@ -250,14 +302,47 @@ fn parse_setting(value: &serde_json::Value) -> Result<RuleSetting, ConfigError> 
                 return Err(malformed("the severity in a rule's array form must be a string"));
             };
 
-            let serde_json::Value::Object(_) = options else {
+            let serde_json::Value::Object(map) = options else {
                 return Err(malformed("a rule's options must be a JSON object"));
             };
+
+            // Rules that consume options validate theirs; the rest keep them verbatim, so a
+            // rule can grow a schema without every other rule's config changing meaning.
+            if rule == "require-module-function" {
+                validate_module_function_options(map)?;
+            }
 
             Ok(RuleSetting { severity: required_severity(text)?, options: Some(options.clone()) })
         }
         _ => Err(malformed(
             "a rule's value must be a severity string or a [severity, options] array",
+        )),
+    }
+}
+
+/// The one option `require-module-function` takes: `scope`, spelled "all" or "classes". An
+/// unknown key or value is a config error, not a silently ignored one — a typo'd scope would
+/// otherwise read as the default and change what the rule reports.
+fn validate_module_function_options(
+    map: &serde_json::Map<String, serde_json::Value>,
+) -> Result<(), ConfigError> {
+    for key in map.keys() {
+        if key != "scope" {
+            return Err(malformed(format!(
+                "unknown option {key:?} for require-module-function: expected \"scope\""
+            )));
+        }
+    }
+
+    match map.get("scope") {
+        None => Ok(()),
+        Some(serde_json::Value::String(text)) => ModuleFunctionScope::parse(text).map(|_| ()).ok_or_else(|| {
+            malformed(format!(
+                "unknown scope {text:?} for require-module-function: expected \"all\" or \"classes\""
+            ))
+        }),
+        Some(_) => Err(malformed(
+            "the scope option of require-module-function must be a string",
         )),
     }
 }
@@ -303,7 +388,7 @@ fn parse(text: &str) -> Result<Config, ConfigError> {
                 return Err(malformed(format!("unknown rule {key:?}")));
             }
 
-            config.rules.insert(name.to_string(), parse_setting(value)?);
+            config.rules.insert(name.to_string(), parse_setting(name, value)?);
         }
     }
 
@@ -399,6 +484,42 @@ mod tests {
         let config = parse(r#"{"ignore": ["**/generated/**", "examples/legacy"]}"#).unwrap();
 
         assert_eq!(config.ignores(), ["**/generated/**", "examples/legacy"]);
+    }
+
+    #[test]
+    fn module_function_scope_defaults_to_all_and_parses_both_spellings() {
+        assert_eq!(parse("{}").unwrap().module_function_scope(), ModuleFunctionScope::All);
+
+        let classes = parse(
+            r#"{"rules": {"require-module-function": ["warn", {"scope": "classes"}]}}"#,
+        )
+        .unwrap();
+
+        assert_eq!(classes.module_function_scope(), ModuleFunctionScope::Classes);
+        assert_eq!(classes.severity("require-module-function"), Severity::Warn);
+
+    }
+
+    #[test]
+    fn module_function_scope_rejects_unknown_values_and_keys() {
+        assert!(parse(
+            r#"{"rules": {"require-module-function": ["warn", {"scope": "bogus"}]}}"#
+        )
+        .is_err());
+        assert!(parse(r#"{"rules": {"require-module-function": ["warn", {"unknown": 1}]}}"#).is_err());
+        assert!(parse(r#"{"rules": {"require-module-function": ["warn", "classes"]}}"#).is_err());
+    }
+
+    #[test]
+    fn another_rules_options_stay_verbatim() {
+        let config =
+            parse(r#"{"rules": {"require-effect-deps": ["warn", {"any": {"nested": 1}}]}}"#)
+                .unwrap();
+
+        assert_eq!(
+            config.rules["require-effect-deps"].options,
+            Some(json!({"any": {"nested": 1}}))
+        );
     }
 
     #[test]

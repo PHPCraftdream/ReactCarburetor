@@ -196,6 +196,29 @@ const claimLock = (lock: string): {isRunner: boolean; identity: {dev: number; in
     throw new Error('react-carburetor/lint: could not claim or read the native bridge lock.');
 };
 
+/** A config file that sets nothing, written once and reused: the bridge's shared run must not
+ * inherit a project `.carburetorrc.json` — its per-rule options (say, `require-module-function`'s
+ * `scope`) would narrow the one result every rule filters its own slice from, and a host config
+ * asking for the wider behavior could never get it back. Passing this path explicitly is what
+ * keeps the cache a full, host-independent list; per-run options are applied host-side only.
+ * It lives in its own directory: the bridge directory is swept clean at process exit and its
+ * file scan must see nothing but that run's own lock and result files. */
+const neutralConfig = (): string => {
+    const directory = path.join(os.tmpdir(), 'carburetor-lint-bridge');
+
+    mkdirSync(directory, {recursive: true});
+
+    const config = path.join(directory, 'bridge.carburetorrc.json');
+
+    // Content-stable, so a torn write from a racing first run is impossible: either it is already
+    // there or one writer's atomic rename publishes it.
+    if (!existsSync(config)) {
+        writeAtomic(config, '{}');
+    }
+
+    return config;
+};
+
 /** Runs the binary over `cwd` with every rule forced on, so the host — not native — decides what
  * a rule's own `create()` actually surfaces. `--keep-overlaps` disables native's own
  * deduplication of overlapping rules — a host may have disabled the rule a diagnostic would
@@ -214,7 +237,14 @@ const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinar
     }
 
     const args = ALL_RULE_IDS.flatMap((id) => ['--rule', `${id}=error`]);
-    const result = spawnSync(binary, ['--format=json', '--keep-overlaps', ...args, '.'], {cwd, encoding: 'utf8'});
+    const result = spawnSync(
+        binary,
+        ['--config', neutralConfig(), '--format=json', '--keep-overlaps', ...args, '.'],
+        // The JSON for a whole-project run is far bigger than 's 1 MiB default
+        // buffer once the allocation rules scan every nested function, so the cap is raised
+        // rather than left to fail as an ENOBUFS launch error.
+        {cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024},
+    );
 
     // `spawnSync` never throws; a launch failure (missing file, not executable, bad path) shows up
     // here instead, with `status: null` — checking only `status === 2` would silently swallow it

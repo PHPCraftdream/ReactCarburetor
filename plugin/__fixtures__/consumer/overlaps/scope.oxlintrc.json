@@ -1,0 +1,8 @@
+{
+  "jsPlugins": [
+    "../../../src/index.mts"
+  ],
+  "rules": {
+    "carburetor/require-module-function": ["error", { "scope": "classes" }]
+  }
+}

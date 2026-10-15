@@ -5,6 +5,7 @@
   "rules": {
     "carburetor/no-async-effect": "error",
     "carburetor/no-async-transaction": "error",
+    "carburetor/no-closure-in-update": "error",
     "carburetor/no-computed-get-in-computed": "error",
     "carburetor/no-computed-get-in-render": "error",
     "carburetor/no-direct-data-write": "error",

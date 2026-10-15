@@ -59,6 +59,12 @@ pub struct Diagnostic {
     pub severity: Severity,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub fix: Option<Fix>,
+    /// Which half of `carburetor/require-module-function` reported, spelled the way the config
+    /// option names the scopes: `"class"` for the member analysis, `"module"` for the nested-
+    /// function analysis. `None` for every other rule, so the JSON stays exactly the conformance
+    /// contract for them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub scope: Option<String>,
 }
 
 /// What a rule receives: the parsed file, and where it came from.
@@ -489,6 +495,7 @@ mod tests {
             message: "test".to_string(),
             severity: Severity::Error,
             fix: Some(fix),
+            scope: None,
         }
     }
 
