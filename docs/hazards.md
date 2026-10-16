@@ -76,6 +76,8 @@ arbitrary inheritance chains. Custom component classes should directly inherit
 | H30 | `require-module-function` | allocations | warn | no |
 | H31 | `no-function-in-render` | allocations | warn | no |
 | H32 | `no-closure-in-update` | allocations | warn | no |
+| H33 | `no-memo-over-store-read` | allocations | warn | no |
+| H34 | `no-capturing-hook-selector` | allocations | warn | no |
 
 Three of these overlap with a runtime diagnostic the engine already reports in development
 (H6, H14, H17). The rule is still worth having: it fires on code paths that were never
@@ -85,10 +87,10 @@ All four syntactic forms of a change count wherever a rule looks for one: `x.y =
 `delete x.y`, and an in-place array method (`push`, `splice`, `sort`, …). A rule that handled only
 assignment would miss three quarters of the hazard.
 
-**26 catalogue rules are implemented**, covering H1–H23, H26 and H29–H32: reads (H1–H5), writes (H6–H11),
-lifecycle (H12, H13, H21, H22), effects (H14–H16), boundaries (H17–H20) and allocations (H29–H32),
+**28 catalogue rules are implemented**, covering H1–H23, H26 and H29–H34: reads (H1–H5), writes (H6–H11),
+lifecycle (H12, H13, H21, H22), effects (H14–H16), boundaries (H17–H20) and allocations (H29–H34),
 with H23 and H26 folded into shared rules. H24 and H25 are not implemented; H27 is not a rule.
-The optional `no-react-hooks-in-components` policy brings the registry total to 27; `no-module-level-store`
+The optional `no-react-hooks-in-components` policy brings the registry total to 29; `no-module-level-store`
 remains off in recommended. Detection lives in `native/src/rules/`, tested there with oxc's parser.
 The thin host bridge reports native diagnostics. Real fixture and host coverage live in
 `__tests__/Native/conformance.test.ts` and `__tests__/Plugin/host.test.ts`.
@@ -896,8 +898,9 @@ It releases the history subscriptions. Components' own `useCarburetor` subscript
 **Detection.** A `.subscribe(...)` call whose returned id is discarded — the call is an expression
 statement — and which passed no `id` option. An explicit `{id}` means the caller kept a handle and
 can release or replace the subscription by it, which is exactly how the engine subscribes components
-and computed values. That discriminator is what keeps the rule off the library's own code without
-needing an exemption list.
+and computed values. Options the rule cannot see into — a forwarded parameter, a helper's result,
+an object spreading other options — may carry the caller's id and are not reported. That
+discriminator is what keeps the rule off the library's own code without needing an exemption list.
 
 **False positives.** A deliberately process-long subscription — logging, persistence — is a
 legitimate case, which is why this is a `warn`.
@@ -1196,7 +1199,9 @@ Declare the handler as a method decorated with `@bind`, bound once per instance.
 
 **Rule** `no-function-in-render` — **warn**.
 
-**Detection.** In `render` of a component extending `AntiHookComponent` or `ScopedAntiHookComponent`, report an arrow, function expression, `.bind(...)` call or function declaration created for a DOM-element JSX attribute (including `ref`), a local initializer or a declaration. Conditional/logical expression branches are inspected. Inline arrow/function-expression callbacks of synchronous array methods (`map`, `flatMap`, `filter`, `forEach`, `reduce`, `reduceRight`, `some`, `every`, `find`, `findIndex`, `findLast`, `sort`) are themselves findings; handlers created inside them are separate findings. Parentheses and TypeScript expression wrappers do not hide the callback. Stable references (`ids.map(this.renderItem)`, `ids.map(renderRow)`) are not reported. Component-element props remain H21's territory. At the same source position, H31 yields to H29 or H30; when the covering rule is disabled, H31 reports.
+**Detection.** In `render` of a component extending `AntiHookComponent` or `ScopedAntiHookComponent`, or a recognized function-component render, report an arrow, function expression, `.bind(...)` call or function declaration created for a DOM-element JSX attribute (including `ref`), a local initializer or a declaration. Conditional/logical expression branches are inspected. Inline arrow/function-expression callbacks of synchronous array methods (`map`, `flatMap`, `filter`, `forEach`, `reduce`, `reduceRight`, `some`, `every`, `find`, `findIndex`, `findLast`, `sort`) are themselves findings; handlers created inside them are separate findings. Parentheses and TypeScript expression wrappers do not hide the callback. Stable references (`ids.map(this.renderItem)`, `ids.map(renderRow)`) are not reported. Component-element props remain H21's territory. At the same source position, H31 yields to H29 or H30; when the covering rule is disabled, H31 reports.
+
+Function-component detection is syntactic: a PascalCase function with JSX in its own return/expression body, or a JSX-returning callback passed first to `memo`, `forwardRef`, `React.memo` or `React.forwardRef`. Nested functions end render scope except synchronous array callbacks. `React.createElement` components in `.ts` are not detected.
 
 **False positives.** A callback in an unfamiliar wrapper may execute synchronously but cannot be recognized; the listed built-in array methods are the supported synchronous callback set. A function intentionally created in render may still be reported because the analysis is syntactic. Suppress an intentional case locally.
 
@@ -1279,3 +1284,11 @@ report them.
 - **`getData()` in an event handler, an effect, or outside a component.** That is what it is
   for; only render is the wrong place (H1).
 - **A carburetor method that writes without `draft`** when it calls `setData(...)`: replacement diffing records changed leaves/keys when it can, and may record a replacement path for incompatible or large changes; it is not unconditionally a wildcard invalidation.
+
+## H33 — Manual memoization over a store-hook read
+
+Capturing a component-specific value read by `useCarburetorValue`, `useComputedValue` or `useResourceValue` inside `useMemo` or `useCallback` is warned on: the hook already tracks the read and re-renders when it changes. Prefer deriving in the selector or defining a `Computed` and reading it with `useComputedValue`.
+
+## H34 — A hook selector captures render state
+
+An inline selector that captures props or local render bindings is rebuilt and re-executed during rendering. H34 covers only argument 2 (`select`) of `useCarburetorValue(source, select, isEqual?)` and argument 3 (`select`) of `useResourceValue(source, args, select, isEqual?)`; `useComputedValue(computed)` has no selector and is not covered. Prefer selecting the whole record and picking fields during render. Capture-free selectors remain H30’s concern and are not duplicated by H34.

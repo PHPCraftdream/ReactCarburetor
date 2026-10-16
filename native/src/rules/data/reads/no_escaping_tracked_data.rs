@@ -19,7 +19,7 @@ use oxc_span::Span;
 
 use crate::rules::report;
 use crate::rules::support::names::member_call_name;
-use crate::rules::support::walk::{walk_rule, Context, Rule};
+use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -64,7 +64,7 @@ impl<'a, 's> Rule<'a> for Check<'s> {
     }
 
     fn declarator(&mut self, declarator: &VariableDeclarator<'a>, context: &Context) {
-        if !context.in_render {
+        if !context.in_render || context.render_kind != Some(RenderKind::Class) {
             return;
         }
 

@@ -62,10 +62,17 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
-- `carburetor/no-closure-in-update` (H32, recommended warning) reports inline `this.update` callbacks that capture surrounding member bindings or `this` in recognized store classes. Its advice is to write to `this.draft` and call `emitUpdate()`, preserving `try/finally` publication when mutation can throw. The registry now contains 27 rules.
+- `no-get-data-in-render` (H1) documents render-kind-specific messages and the Server Component
+  exception, including line-level suppression guidance. The recommendation and owner scope clarify
+  when function-hook reads or `AntiHookComponent#useCarburetor` apply.
+
+- `carburetor/no-get-data-in-render` (H1) now extends its recognized render contract to classes extending `AntiHookComponent`.
+- `carburetor/no-closure-in-update` reports inline `this.update` callbacks that capture surrounding member bindings or `this` in recognized store classes. Its advice is to write to `this.draft` and call `emitUpdate()`, preserving `try/finally` publication when mutation can throw. The registry now contains 27 rules.
 - `carburetor/require-module-function` now supports `scope: "all"` (default) and "classes". Nested-function analysis is no longer limited to component callbacks: clean callbacks inside store methods, including `this.update(draft => ...)`, are reported under both scopes. Unknown scope values and option keys are configuration errors.
 - `carburetor/no-function-in-render` now reports inline callbacks of synchronous array methods during render. Stable callback references remain unreported, and H31 yields to H29/H30 at the same diagnostic position.
 - H30 JSON diagnostics include their class/module scope so JavaScript hosts can apply per-rule options while sharing one native run.
+- Render allocation rules H21/H31 now cover JSX-returning function components and memo/forwardRef wrappers, with hook-free extraction advice.
+- Add recommended warnings H33 `no-memo-over-store-read` and H34 `no-capturing-hook-selector` for store-hook interop.
 
 ### Breaking
 
@@ -100,6 +107,12 @@ Entries below record development history in change order; where contracts differ
 
 ### Changed
 
+- The render allocation rules index closure candidates once per file and walk only the queried subtree instead of scanning
+  the whole semantic node list per candidate; the round_four_scale probe (2000 capture-free handlers, debug profile)
+  dropped from ~822 ms to ~71 ms.
+- The registry builds one shared semantic pass for the handler/function/memo/selector rules alongside the
+  allocation rules, and `no-memo-over-store-read` checks its candidates in a single walk with deferred
+  store-set matching.
 - Resource settlement stays consistent when describing a rejection throws: the cache entry or slot becomes a safe
   `Error` state instead of staying `Loading` without a request. Explicit `load()` still rejects with the description
   error and the raw rejection stays in `getFailure`/`getLastError`.
@@ -861,6 +874,22 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- `no-capturing-hook-selector` checks the selector by the hook's argument position — argument 2 of
+  `useCarburetorValue(source, select, isEqual?)` and argument 3 of `useResourceValue(source, args, select, isEqual?)`;
+  `useComputedValue` takes no selector and is not covered. The same `no-memo-over-store-read` rule resolves a
+  memo callback that is a named function declaration, not only an inline arrow or expression.
+- `no-memo-over-store-read` counts only runtime (Read/Write) references: a `typeof value` in a return type is no
+  longer a store read, and a callback declared before the store-hook binding it reads is still reported.
+- `require-subscription-disposal` resolves `undefined` options through semantic scoping — a shadowing local named
+  `undefined` is unknown options — and treats `void 0` as explicit nullish.
+- One allocation reports once: a local handler passed through `useCallback(handler)`/`useMemo(() => handler)` no longer
+  double-reports `no-handler-created-in-render` at the prop — its declaration is covered by `no-function-in-render` when
+  it captures and by `require-module-function` when it does not; module-level advice requires no references to
+  non-module outer bindings, lexical `this` or `arguments`.
+- `no-store-write-in-render` matches store receivers by resolved binding, member chain and owning class instead of
+  source text, so same-named parameters in different components no longer share file-wide evidence.
+- `require-subscription-disposal` reports a discarded subscription whose options are explicitly `undefined` or `null` —
+  with no options object nothing can carry an id.
 - `shallowEqual` no longer treats a key inherited by the right operand as satisfying an own key of the
   left one, so `{equals: shallowEqual}` can no longer suppress the publication of a computed whose
   key set changed; the comparison is symmetric again.

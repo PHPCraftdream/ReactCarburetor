@@ -10,6 +10,9 @@
 
 use std::collections::HashSet;
 
+mod component;
+pub(crate) mod functions;
+
 use oxc_ast::ast::{
     Argument, ArrowFunctionExpression, AssignmentExpression, CallExpression, Class, Expression,
     Function, IdentifierReference, JSXAttribute, JSXElementName, JSXMemberExpression,
@@ -28,7 +31,14 @@ use crate::rules::support::chain::{assignment_root, chain_root, simple_target_ro
 use crate::rules::support::names::{
     extends_any, member_call_name, property_key_name, unwrap_expression,
 };
+use component::discover;
 use crate::Diagnostic;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RenderKind {
+    Class,
+    Function,
+}
 
 /// Where the walk currently is.
 pub struct Context {
@@ -56,6 +66,10 @@ pub struct Context {
     pub update_draft: Option<String>,
     /// The node executes while a component renders — not merely that render encloses it.
     pub in_render: bool,
+    /// Whether this render is a class member or a function component.
+    pub render_kind: Option<RenderKind>,
+    /// The owning component render span, preserved inside synchronous callbacks.
+    pub render_scope: Option<Span>,
     /// The innermost enclosing function, or the whole program at module level.
     ///
     /// A rule that remembers what a name is bound to needs it: with no scope analyser, the span is
@@ -77,6 +91,8 @@ impl Context {
             in_update: false,
             update_draft: None,
             in_render: false,
+            render_kind: None,
+            render_scope: None,
             function: program,
         }
     }
@@ -91,46 +107,33 @@ impl Context {
 pub trait Rule<'a> {
     /// The diagnostics collected during the walk.
     fn finish(self) -> Vec<Diagnostic>;
-
     /// `f(...)`, including every method call.
     fn call(&mut self, _call: &CallExpression<'a>, _context: &Context) {}
-
     /// A mutation in any of its four forms: `x.y = v`, `x.y++`, `delete x.y`, `x.y.push(v)`.
     ///
     /// A write rule that handled only assignment would miss three of them, so the walk normalises
     /// all four into the chain being changed and the node worth reporting on.
     fn mutation(&mut self, _root: &ChainRoot<'_, 'a>, _span: Span, _context: &Context) {}
-
     /// `const x = init`, for a rule that has to remember what a name is bound to.
     fn declarator(&mut self, _declarator: &VariableDeclarator<'a>, _context: &Context) {}
-
     /// Every mention of a name, for a rule that follows where a binding travels.
     fn identifier(&mut self, _identifier: &IdentifierReference<'a>, _context: &Context) {}
-
     /// `a = b` and its compound forms, unnormalised.
     fn assignment(&mut self, _expression: &AssignmentExpression<'a>, _context: &Context) {}
-
     /// `x++`, `--x`.
     fn update(&mut self, _expression: &UpdateExpression<'a>, _context: &Context) {}
-
     /// `delete x`, `!x`, and the rest.
     fn unary(&mut self, _expression: &UnaryExpression<'a>, _context: &Context) {}
-
     /// `object.property`, computed or not.
     fn member(&mut self, _expression: &MemberExpression<'a>, _context: &Context) {}
-
     /// A class property, before its value is walked.
     fn property(&mut self, _property: &PropertyDefinition<'a>, _context: &Context) {}
-
     /// A class method, before its body is walked.
     fn method(&mut self, _method: &MethodDefinition<'a>, _context: &Context) {}
-
     /// A JSX attribute, `onClick={...}` among them.
     fn jsx_attribute(&mut self, _attribute: &JSXAttribute<'a>, _context: &Context) {}
-
     /// A class, once `context.in_component` / `context.in_carburetor` reflect it.
     fn class(&mut self, _class: &Class<'a>, _context: &Context) {}
-
     /// `function inner() {}`, called while the enclosing context is still the render body.
     fn function_declaration(&mut self, _function: &Function<'a>, _context: &Context) {}
 }
@@ -158,21 +161,26 @@ struct Walk<'a, R: Rule<'a>> {
     synchronous: HashSet<Span>,
     /// Spans of functions that *are* a class member's body, which must not count as nesting.
     member_bodies: HashSet<Span>,
+    component_functions: HashSet<Span>,
     marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl<'a, R: Rule<'a>> Walk<'a, R> {
-    /// Enters a function body: render code stops at a function boundary, unless the function is
-    /// the member's own body or runs in place as a synchronous callback. Returns what to restore.
-    fn enter_function(&mut self, span: Span) -> (bool, Span) {
-        let was = (self.context.in_render, self.context.function);
+    /// Enters a function body and returns the context to restore.
+    fn enter_function(&mut self, span: Span) -> (bool, Option<RenderKind>, Span, Option<Span>) {
+        let was = (
+            self.context.in_render,
+            self.context.render_kind,
+            self.context.function,
+            self.context.render_scope,
+        );
 
         if !self.member_bodies.contains(&span) && !self.synchronous.contains(&span) {
             self.context.in_render = false;
+            self.context.render_kind = None;
+            self.context.render_scope = None;
         }
-
         self.context.function = span;
-
         was
     }
 }
@@ -182,17 +190,19 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
         let outer_component = self.context.in_component;
         let outer_carburetor = self.context.in_carburetor;
         let outer_member = self.context.member.take();
-        let outer_class = self.context.class_span;
         let outer_render = self.context.in_render;
+        let outer_kind = self.context.render_kind;
+        let outer_class = self.context.class_span;
+        let outer_scope = self.context.render_scope;
 
         self.context.in_component = extends_any(class, &COMPONENT_BASES);
         self.context.in_carburetor = extends_any(class, &CARBURETOR_BASES);
         self.context.class_span = Some(class.span);
-        // A class body is not render code until one of its render members is entered.
         self.context.in_render = false;
+        self.context.render_kind = None;
+        self.context.render_scope = None;
 
         self.rule.class(class, &self.context);
-
         walk::walk_class(self, class);
 
         self.context.in_component = outer_component;
@@ -200,76 +210,94 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
         self.context.member = outer_member;
         self.context.class_span = outer_class;
         self.context.in_render = outer_render;
+        self.context.render_kind = outer_kind;
+        self.context.render_scope = outer_scope;
     }
 
     fn visit_method_definition(&mut self, method: &MethodDefinition<'a>) {
         let outer_member = self.context.member.take();
         let outer_span = self.context.member_span;
         let outer_render = self.context.in_render;
+        let outer_kind = self.context.render_kind;
+        let outer_scope = self.context.render_scope;
         let name = property_key_name(&method.key).map(str::to_string);
 
         self.context.in_render = self.context.in_component
             && name.as_deref().is_some_and(|name| RENDER_METHODS.contains(&name));
+        self.context.render_kind = self.context.in_render.then_some(RenderKind::Class);
+        self.context.render_scope = self.context.in_render.then_some(method.value.span);
         self.context.member = name;
         self.context.member_span = Some(method.span);
 
         self.rule.method(method, &self.context);
         self.member_bodies.insert(method.value.span);
-
         walk::walk_method_definition(self, method);
 
         self.context.member = outer_member;
         self.context.member_span = outer_span;
         self.context.in_render = outer_render;
+        self.context.render_kind = outer_kind;
+        self.context.render_scope = outer_scope;
     }
 
     fn visit_property_definition(&mut self, property: &PropertyDefinition<'a>) {
         let outer_member = self.context.member.take();
         let outer_span = self.context.member_span;
         let outer_render = self.context.in_render;
+        let outer_kind = self.context.render_kind;
+        let outer_scope = self.context.render_scope;
         let name = property_key_name(&property.key).map(str::to_string);
 
-        // A lifecycle method written as a property is a hazard of its own, but its body is still
-        // the render body as far as every other rule is concerned.
+        // A lifecycle method written as a property is still a render body for other rules.
         self.context.in_render = self.context.in_component
             && name.as_deref().is_some_and(|name| RENDER_METHODS.contains(&name));
+        self.context.render_kind = self.context.in_render.then_some(RenderKind::Class);
         self.context.member = name;
         self.context.member_span = Some(property.span);
-
         self.rule.property(property, &self.context);
 
         if let Some(value) = &property.value {
+            self.context.render_scope = self.context.in_render.then_some(value.span());
             self.member_bodies.insert(value.span());
         }
-
         walk::walk_property_definition(self, property);
 
         self.context.member = outer_member;
         self.context.member_span = outer_span;
         self.context.in_render = outer_render;
+        self.context.render_kind = outer_kind;
+        self.context.render_scope = outer_scope;
     }
 
     fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
-        // A declaration reports against the context it is declared in, so call it before entering.
         if function.is_function_declaration() {
             self.rule.function_declaration(function, &self.context);
         }
-
-        let (render, enclosing) = self.enter_function(function.span);
-
+        let (render, render_kind, enclosing, render_scope) = self.enter_function(function.span);
+        if self.component_functions.contains(&function.span) {
+            self.context.in_render = true;
+            self.context.render_kind = Some(RenderKind::Function);
+            self.context.render_scope = Some(function.span);
+        }
         walk::walk_function(self, function, flags);
-
         self.context.in_render = render;
+        self.context.render_kind = render_kind;
         self.context.function = enclosing;
+        self.context.render_scope = render_scope;
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-        let (render, enclosing) = self.enter_function(arrow.span);
-
+        let (was_render, previous_kind, enclosing, render_scope) = self.enter_function(arrow.span);
+        if self.component_functions.contains(&arrow.span) {
+            self.context.in_render = true;
+            self.context.render_kind = Some(RenderKind::Function);
+            self.context.render_scope = Some(arrow.span);
+        }
         walk::walk_arrow_function_expression(self, arrow);
-
-        self.context.in_render = render;
+        self.context.in_render = was_render;
+        self.context.render_kind = previous_kind;
         self.context.function = enclosing;
+        self.context.render_scope = render_scope;
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
@@ -277,18 +305,14 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
         let outer_update = self.context.in_update;
         let outer_draft = self.context.update_draft.take();
 
-        // `update(draft => ...)` publishes when the callback returns, which several rules have to
-        // know before they look at what the callback does.
         if method == Some("update") {
             self.context.in_update = true;
             self.context.update_draft = callback_parameter(call).map(str::to_string);
         } else {
             self.context.update_draft = outer_draft.clone();
         }
-
         self.rule.call(call, &self.context);
 
-        // `items.push(v)` changes `items`, which no assignment appears anywhere for.
         if let Some(method) = method {
             if ARRAY_MUTATORS.contains(&method) {
                 if let Expression::StaticMemberExpression(member) = &call.callee {
@@ -297,86 +321,65 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
             }
         }
 
-        // A function argument of `map`, `filter` and the like runs while this expression
-        // evaluates, so it inherits whatever the surrounding code is.
         if method.is_some_and(|name| SYNCHRONOUS_CALLBACKS.contains(&name)) {
             for argument in &call.arguments {
                 if let Some(expression) = argument.as_expression() {
-                    // The wrapper's own span would miss the arrow inside, dropping it from the
-                    // render context.
                     self.synchronous.insert(unwrap_expression(expression).span());
                 }
             }
         }
-
         walk::walk_call_expression(self, call);
-
         self.context.in_update = outer_update;
         self.context.update_draft = outer_draft;
     }
 
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
         self.rule.identifier(identifier, &self.context);
-
         walk::walk_identifier_reference(self, identifier);
     }
 
     fn visit_assignment_expression(&mut self, expression: &AssignmentExpression<'a>) {
         self.rule.assignment(expression, &self.context);
-        self.rule
-            .mutation(&assignment_root(&expression.left), expression.span, &self.context);
-
+        self.rule.mutation(&assignment_root(&expression.left), expression.span, &self.context);
         walk::walk_assignment_expression(self, expression);
     }
 
     fn visit_update_expression(&mut self, expression: &UpdateExpression<'a>) {
         self.rule.update(expression, &self.context);
-
-        self.rule
-            .mutation(&simple_target_root(&expression.argument), expression.span, &self.context);
-
+        self.rule.mutation(&simple_target_root(&expression.argument), expression.span, &self.context);
         walk::walk_update_expression(self, expression);
     }
 
     fn visit_unary_expression(&mut self, expression: &UnaryExpression<'a>) {
         self.rule.unary(expression, &self.context);
-
         if expression.operator == UnaryOperator::Delete {
-            self.rule
-                .mutation(&chain_root(&expression.argument), expression.span, &self.context);
+            self.rule.mutation(&chain_root(&expression.argument), expression.span, &self.context);
         }
-
         walk::walk_unary_expression(self, expression);
     }
 
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
         self.rule.declarator(declarator, &self.context);
-
         walk::walk_variable_declarator(self, declarator);
     }
 
     fn visit_member_expression(&mut self, expression: &MemberExpression<'a>) {
         self.rule.member(expression, &self.context);
-
         walk::walk_member_expression(self, expression);
     }
 
     fn visit_jsx_attribute(&mut self, attribute: &JSXAttribute<'a>) {
         self.rule.jsx_attribute(attribute, &self.context);
-
         walk::walk_jsx_attribute(self, attribute);
     }
 
     fn visit_jsx_opening_element(&mut self, element: &oxc_ast::ast::JSXOpeningElement<'a>) {
         let outer = self.context.jsx_element.take();
         let outer_component = self.context.jsx_component;
-
         let (name, component) = jsx_element_name(&element.name);
         self.context.jsx_element = name;
         self.context.jsx_component = component;
-
         walk::walk_jsx_opening_element(self, element);
-
         self.context.jsx_element = outer;
         self.context.jsx_component = outer_component;
     }
@@ -387,13 +390,11 @@ fn jsx_element_name(name: &JSXElementName<'_>) -> (Option<String>, bool) {
         JSXElementName::Identifier(identifier) => {
             let name = identifier.name.to_string();
             let component = name.chars().next().is_some_and(char::is_uppercase);
-
             (Some(name), component)
         }
         JSXElementName::IdentifierReference(identifier) => {
             let name = identifier.name.to_string();
             let component = name.chars().next().is_some_and(char::is_uppercase);
-
             (Some(name), component)
         }
         JSXElementName::MemberExpression(member) => (Some(jsx_member_name(member)), true),
@@ -407,7 +408,6 @@ fn jsx_member_name(member: &JSXMemberExpression<'_>) -> String {
         JSXMemberExpressionObject::MemberExpression(member) => jsx_member_name(member),
         JSXMemberExpressionObject::ThisExpression(_) => String::from("this"),
     };
-
     format!("{object}.{}", member.property.name)
 }
 
@@ -418,10 +418,13 @@ pub fn walk_rule<'a, R: Rule<'a>>(program: &Program<'a>, rule: R) -> Vec<Diagnos
         context: Context::top(program.span),
         synchronous: HashSet::new(),
         member_bodies: HashSet::new(),
+        component_functions: discover(program),
         marker: std::marker::PhantomData,
     };
-
     walk.visit_program(program);
-
     walk.rule.finish()
 }
+
+#[cfg(test)]
+#[path = "tests.rs"]
+mod function_component_tests;

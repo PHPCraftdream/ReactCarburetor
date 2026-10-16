@@ -300,6 +300,7 @@ describe('connectSelection migrates an equal-valued branch switch without a rend
                     switchDuringRender = false;
                     // Equal-valued branch switch fired while this render attempt is open: the
                     // guard must keep this on the re-render path, not re-file mid-render.
+                    // oxlint-disable-next-line no-store-write-in-render -- Intentional render-write control.
                     store.edit((draft) => { draft.useLeft = false; });
                 }
 

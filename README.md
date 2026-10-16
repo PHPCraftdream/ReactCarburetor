@@ -1277,6 +1277,8 @@ presentation overrides belong to the caller, for example
 The separate class `useResource` facade retains local-field behavior and coarser data precision;
 use `connectSelection` alongside `useResource` for detached, precise memo-child projections.
 
+Selector functions should be capture-free where possible. The linter warns about selectors that capture render bindings (H34) and `useMemo`/`useCallback` over values already read by these hooks (H33); prefer selecting the whole record and picking during render, or deriving in the selector or a `Computed`. For capturing handlers, use a child `AntiHookComponent` with props and an `@bind` method, or convert the component; callback memoization is also reported, not recommended.
+
 ## Lint rules
 
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask

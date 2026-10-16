@@ -6,3 +6,7 @@ pub mod no_handler_created_in_render;
 pub mod no_lifecycle_class_property;
 pub mod require_bind_for_passed_method;
 pub mod require_super_in_lifecycle;
+
+#[cfg(test)]
+#[path = "no_function_in_render_tests/mod.rs"]
+mod no_function_in_render_tests;

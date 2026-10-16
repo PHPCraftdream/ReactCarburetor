@@ -20,115 +20,39 @@ type Check = fn(&Program<'_>, &Source<'_>) -> Vec<Diagnostic>;
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check); 27] = [
-    (
-        allocations::no_closure_in_update::RULE,
-        allocations::no_closure_in_update::check,
-    ),
-    (
-        allocations::require_method_for_closure::RULE,
-        allocations::require_method_for_closure::check,
-    ),
-    (
-        allocations::require_module_function::RULE,
-        allocations::require_module_function::check,
-    ),
-    (
-        lifecycle::no_function_in_render::RULE,
-        lifecycle::no_function_in_render::check,
-    ),
-    (
-        allocations::no_react_hooks_in_components::RULE,
-        allocations::no_react_hooks_in_components::check,
-    ),
-    (
-        lifecycle::no_lifecycle_class_property::RULE,
-        lifecycle::no_lifecycle_class_property::check,
-    ),
-    (
-        data::reads::no_computed_get_in_computed::RULE,
-        data::reads::no_computed_get_in_computed::check,
-    ),
-    (
-        data::reads::no_computed_get_in_render::RULE,
-        data::reads::no_computed_get_in_render::check,
-    ),
-    (
-        data::reads::no_escaping_tracked_data::RULE,
-        data::reads::no_escaping_tracked_data::check,
-    ),
-    (
-        data::reads::no_get_data_in_render::RULE,
-        data::reads::no_get_data_in_render::check,
-    ),
-    (
-        data::reads::no_use_carburetor_outside_render::RULE,
-        data::reads::no_use_carburetor_outside_render::check,
-    ),
-    (
-        data::writes::no_direct_data_write::RULE,
-        data::writes::no_direct_data_write::check,
-    ),
-    (
-        data::writes::no_external_data_mutation::RULE,
-        data::writes::no_external_data_mutation::check,
-    ),
-    (
-        data::writes::no_store_write_in_render::RULE,
-        data::writes::no_store_write_in_render::check,
-    ),
-    (
-        data::writes::no_tracked_data_mutation::RULE,
-        data::writes::no_tracked_data_mutation::check,
-    ),
-    (
-        data::writes::no_untrackable_draft_mutation::RULE,
-        data::writes::no_untrackable_draft_mutation::check,
-    ),
-    (
-        data::writes::require_emit_after_draft_write::RULE,
-        data::writes::require_emit_after_draft_write::check,
-    ),
-    (
-        lifecycle::no_handler_created_in_render::RULE,
-        lifecycle::no_handler_created_in_render::check,
-    ),
-    (
-        lifecycle::require_bind_for_passed_method::RULE,
-        lifecycle::require_bind_for_passed_method::check,
-    ),
-    (
-        lifecycle::require_super_in_lifecycle::RULE,
-        lifecycle::require_super_in_lifecycle::check,
-    ),
-    (
-        effects::no_async_effect::RULE,
-        effects::no_async_effect::check,
-    ),
-    (
-        effects::no_duplicate_effect_name::RULE,
-        effects::no_duplicate_effect_name::check,
-    ),
-    (
-        effects::require_effect_deps::RULE,
-        effects::require_effect_deps::check,
-    ),
-    (
-        boundaries::no_async_transaction::RULE,
-        boundaries::no_async_transaction::check,
-    ),
-    (
-        boundaries::no_module_level_store::RULE,
-        boundaries::no_module_level_store::check,
-    ),
-    (
-        boundaries::no_untrackable_store_data::RULE,
-        boundaries::no_untrackable_store_data::check,
-    ),
+const REGISTRY: [(&str, Check); 29] = [
+    (allocations::no_closure_in_update::RULE, allocations::no_closure_in_update::check),
+    (allocations::require_method_for_closure::RULE, allocations::require_method_for_closure::check),
+    (allocations::require_module_function::RULE, allocations::require_module_function::check),
+    (lifecycle::no_function_in_render::RULE, lifecycle::no_function_in_render::check),
+    (allocations::no_react_hooks_in_components::RULE, allocations::no_react_hooks_in_components::check),
+    (lifecycle::no_lifecycle_class_property::RULE, lifecycle::no_lifecycle_class_property::check),
+    (data::reads::no_computed_get_in_computed::RULE, data::reads::no_computed_get_in_computed::check),
+    (data::reads::no_computed_get_in_render::RULE, data::reads::no_computed_get_in_render::check),
+    (data::reads::no_escaping_tracked_data::RULE, data::reads::no_escaping_tracked_data::check),
+    (data::reads::no_get_data_in_render::RULE, data::reads::no_get_data_in_render::check),
+    (data::reads::no_use_carburetor_outside_render::RULE, data::reads::no_use_carburetor_outside_render::check),
+    (data::writes::no_direct_data_write::RULE, data::writes::no_direct_data_write::check),
+    (data::writes::no_external_data_mutation::RULE, data::writes::no_external_data_mutation::check),
+    (data::writes::no_store_write_in_render::RULE, data::writes::no_store_write_in_render::check),
+    (data::writes::no_tracked_data_mutation::RULE, data::writes::no_tracked_data_mutation::check),
+    (data::writes::no_untrackable_draft_mutation::RULE, data::writes::no_untrackable_draft_mutation::check),
+    (data::writes::require_emit_after_draft_write::RULE, data::writes::require_emit_after_draft_write::check),
+    (lifecycle::no_handler_created_in_render::RULE, lifecycle::no_handler_created_in_render::check),
+    (lifecycle::require_bind_for_passed_method::RULE, lifecycle::require_bind_for_passed_method::check),
+    (lifecycle::require_super_in_lifecycle::RULE, lifecycle::require_super_in_lifecycle::check),
+    (effects::no_async_effect::RULE, effects::no_async_effect::check),
+    (effects::no_duplicate_effect_name::RULE, effects::no_duplicate_effect_name::check),
+    (effects::require_effect_deps::RULE, effects::require_effect_deps::check),
+    (boundaries::no_async_transaction::RULE, boundaries::no_async_transaction::check),
+    (boundaries::no_module_level_store::RULE, boundaries::no_module_level_store::check),
+    (boundaries::no_untrackable_store_data::RULE, boundaries::no_untrackable_store_data::check),
     (
         boundaries::require_subscription_disposal::RULE,
         boundaries::require_subscription_disposal::check,
     ),
+    (data::interop::no_memo_over_store_read::RULE, data::interop::no_memo_over_store_read::check),
+    (data::interop::no_capturing_hook_selector::RULE, data::interop::no_capturing_hook_selector::check),
 ];
 
 /// Turns a byte offset into a 1-based line and column, the way an editor counts them.
@@ -202,10 +126,22 @@ pub fn run(
     let mut diagnostics: Vec<Diagnostic> = Vec::new();
     let method_severity = config.severity(allocations::require_method_for_closure::RULE);
     let module_severity = config.severity(allocations::require_module_function::RULE);
+    let handler_severity = config.severity(lifecycle::no_handler_created_in_render::RULE);
+    let function_severity = config.severity(lifecycle::no_function_in_render::RULE);
+    let memo_severity = config.severity(data::interop::no_memo_over_store_read::RULE);
+    let selector_severity = config.severity(data::interop::no_capturing_hook_selector::RULE);
     let module_scope = config.module_function_scope();
     // This pass has no component-marker dependency: stores and ordinary classes are in scope too.
-    let allocation_semantic = if method_severity != Severity::Off
-        || module_severity != Severity::Off
+    let shared_semantic = if [
+        method_severity,
+        module_severity,
+        handler_severity,
+        function_severity,
+        memo_severity,
+        selector_severity,
+    ]
+    .iter()
+    .any(|severity| *severity != Severity::Off)
     {
         Some(crate::rules::support::closures::build_semantic(program))
     } else {
@@ -219,27 +155,21 @@ pub fn run(
             continue;
         }
 
-        let reports =
-            match rule {
-                allocations::require_method_for_closure::RULE => allocation_semantic
-                    .as_ref()
-                    .map_or_else(Vec::new, |semantic| {
-                        allocations::require_method_for_closure::check_with_semantic(
-                            program, source, semantic,
-                        )
-                    }),
-                allocations::require_module_function::RULE => allocation_semantic
-                    .as_ref()
-                    .map_or_else(Vec::new, |semantic| {
-                        allocations::require_module_function::check_with_semantic(
-                            program,
-                            source,
-                            semantic,
-                            module_scope,
-                        )
-                    }),
-                _ => check(program, source),
-            };
+        let reports = match rule {
+            allocations::require_method_for_closure::RULE
+            | allocations::require_module_function::RULE
+            | lifecycle::no_handler_created_in_render::RULE
+            | lifecycle::no_function_in_render::RULE
+            | data::interop::no_memo_over_store_read::RULE
+            | data::interop::no_capturing_hook_selector::RULE => check_with_shared(
+                rule,
+                program,
+                source,
+                shared_semantic.as_ref(),
+                module_scope,
+            ),
+            _ => check(program, source),
+        };
 
         diagnostics.extend(reports.into_iter().map(|mut diagnostic| {
             diagnostic.severity = severity;
@@ -270,6 +200,42 @@ pub fn run(
     }
 
     diagnostics
+}
+
+/// Runs the rules that share one semantic pass; `None` means every one of them is off.
+fn check_with_shared<'a>(
+    rule: &str,
+    program: &'a Program<'a>,
+    source: &Source<'_>,
+    semantic: Option<&'a oxc_semantic::Semantic<'a>>,
+    module_scope: crate::config::ModuleFunctionScope,
+) -> Vec<Diagnostic> {
+    let Some(semantic) = semantic else { return Vec::new() };
+    match rule {
+        allocations::require_method_for_closure::RULE => {
+            allocations::require_method_for_closure::check_with_semantic(program, source, semantic)
+        }
+        allocations::require_module_function::RULE => {
+            allocations::require_module_function::check_with_semantic(
+                program, source, semantic, module_scope,
+            )
+        }
+        lifecycle::no_handler_created_in_render::RULE => {
+            lifecycle::no_handler_created_in_render::check_with_semantic(program, source, semantic)
+        }
+        lifecycle::no_function_in_render::RULE => {
+            lifecycle::no_function_in_render::check_with_semantic(program, source, semantic)
+        }
+        data::interop::no_memo_over_store_read::RULE => {
+            data::interop::no_memo_over_store_read::check_with_semantic(program, source, semantic)
+        }
+        data::interop::no_capturing_hook_selector::RULE => {
+            data::interop::no_capturing_hook_selector::check_with_semantic(
+                program, source, semantic,
+            )
+        }
+        _ => Vec::new(),
+    }
 }
 
 #[cfg(test)]

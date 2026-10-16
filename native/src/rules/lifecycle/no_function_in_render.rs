@@ -9,16 +9,16 @@
 //! this rule covers only what it does not: DOM-element attributes and locals in the render body.
 //! See docs/hazards.md, H31.
 
-use oxc_ast::ast::{
-    CallExpression, Expression, Function, JSXAttribute, JSXAttributeValue, JSXExpression, Program,
-    VariableDeclarator,
-};
+use oxc_ast::ast::{CallExpression, Expression, Function, JSXAttribute, Program, VariableDeclarator};
+use oxc_semantic::Semantic;
 use oxc_span::Span;
 
 use crate::rules::report;
 use crate::rules::support::bases::SYNCHRONOUS_CALLBACKS;
+use crate::rules::support::closures::{build_semantic, CaptureIndex};
 use crate::rules::support::names::{member_call_name, unwrap_expression};
-use crate::rules::support::walk::{walk_rule, Context, Rule};
+use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
+use crate::rules::support::walk::functions::{fresh_attribute_functions, fresh_functions};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -37,98 +37,28 @@ fn fresh_callback(expression: &Expression<'_>) -> Option<Span> {
     }
 }
 
-/// Records a span once, so one expression never yields the same diagnostic position twice.
-fn push_once(out: &mut Vec<Span>, span: Span) {
-    if !out.contains(&span) {
-        out.push(span);
-    }
-}
-
-/// Collects the spans of every function this expression creates, without descending into them.
-///
-/// A conditional or logical can build a function in either branch, so both arms are searched —
-/// but the condition itself only selects, it never allocates a function.
-fn fresh_functions(expression: &Expression<'_>, out: &mut Vec<Span>) {
-    match expression {
-        Expression::ArrowFunctionExpression(arrow) => push_once(out, arrow.span),
-        Expression::FunctionExpression(function) => push_once(out, function.span),
-        Expression::CallExpression(call) => {
-            // A `.bind(this)` call is the function object it returns; the call's own span is where
-            // a fix would land.
-            if member_call_name(&call.callee) == Some("bind") {
-                push_once(out, call.span);
-            }
-        }
-        Expression::ParenthesizedExpression(expression) => {
-            fresh_functions(&expression.expression, out)
-        }
-        Expression::TSAsExpression(expression) => fresh_functions(&expression.expression, out),
-        Expression::TSSatisfiesExpression(expression) => {
-            fresh_functions(&expression.expression, out)
-        }
-        Expression::TSTypeAssertion(expression) => fresh_functions(&expression.expression, out),
-        Expression::TSNonNullExpression(expression) => fresh_functions(&expression.expression, out),
-        Expression::TSInstantiationExpression(expression) => {
-            fresh_functions(&expression.expression, out)
-        }
-        Expression::ConditionalExpression(expression) => {
-            fresh_functions(&expression.consequent, out);
-            fresh_functions(&expression.alternate, out);
-        }
-        Expression::LogicalExpression(expression) => {
-            fresh_functions(&expression.left, out);
-            fresh_functions(&expression.right, out);
-        }
-        _ => {}
-    }
-}
-
-/// Collects the spans of every function the attribute's value creates.
-fn fresh_attribute_functions(value: &Option<JSXAttributeValue<'_>>, out: &mut Vec<Span>) {
-    let Some(JSXAttributeValue::ExpressionContainer(container)) = value else {
-        return;
-    };
-
-    match &container.expression {
-        JSXExpression::ArrowFunctionExpression(arrow) => push_once(out, arrow.span),
-        JSXExpression::FunctionExpression(function) => push_once(out, function.span),
-        JSXExpression::CallExpression(call) => {
-            if member_call_name(&call.callee) == Some("bind") {
-                push_once(out, call.span);
-            }
-        }
-        JSXExpression::ParenthesizedExpression(expression) => {
-            fresh_functions(&expression.expression, out)
-        }
-        JSXExpression::TSAsExpression(expression) => fresh_functions(&expression.expression, out),
-        JSXExpression::TSSatisfiesExpression(expression) => {
-            fresh_functions(&expression.expression, out)
-        }
-        JSXExpression::TSTypeAssertion(expression) => fresh_functions(&expression.expression, out),
-        JSXExpression::TSNonNullExpression(expression) => {
-            fresh_functions(&expression.expression, out)
-        }
-        JSXExpression::TSInstantiationExpression(expression) => {
-            fresh_functions(&expression.expression, out)
-        }
-        JSXExpression::ConditionalExpression(expression) => {
-            fresh_functions(&expression.consequent, out);
-            fresh_functions(&expression.alternate, out);
-        }
-        JSXExpression::LogicalExpression(expression) => {
-            fresh_functions(&expression.left, out);
-            fresh_functions(&expression.right, out);
-        }
-        _ => {}
-    }
-}
-
-struct Check<'s> {
+struct Check<'s, 'a> {
     source: &'s Source<'s>,
+    semantic: &'s Semantic<'a>,
+    index: CaptureIndex<'a>,
     diagnostics: Vec<Diagnostic>,
 }
 
-impl<'a, 's> Rule<'a> for Check<'s> {
+impl Check<'_, '_> {
+    fn message(&self, span: Span, context: &Context) -> String {
+        if context.render_kind == Some(RenderKind::Function)
+            && self.index.captures_non_module(span, self.semantic)
+        {
+            "this function captures values from the render; move it into a child AntiHookComponent that receives the needed props and passes a @bind method, or convert this component to AntiHookComponent.".to_string()
+        } else if context.render_kind == Some(RenderKind::Function) {
+            "this function captures no render values; move it to module scope.".to_string()
+        } else {
+            MESSAGE.to_string()
+        }
+    }
+}
+
+impl<'a, 's> Rule<'a> for Check<'s, 'a> {
     fn finish(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
@@ -145,7 +75,7 @@ impl<'a, 's> Rule<'a> for Check<'s> {
         // The report lands on the function itself, where a method declaration would go.
         for span in spans {
             self.diagnostics
-                .push(report(self.source, span.start, RULE, MESSAGE.to_string()));
+                .push(report(self.source, span.start, RULE, self.message(span, context)));
         }
     }
 
@@ -165,7 +95,7 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             };
             if let Some(span) = fresh_callback(unwrap_expression(expression)) {
                 self.diagnostics
-                    .push(report(self.source, span.start, RULE, MESSAGE.to_string()));
+                    .push(report(self.source, span.start, RULE, self.message(span, context)));
             }
         }
     }
@@ -182,7 +112,7 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
         for span in spans {
             self.diagnostics
-                .push(report(self.source, span.start, RULE, MESSAGE.to_string()));
+                .push(report(self.source, span.start, RULE, self.message(span, context)));
         }
     }
 
@@ -197,17 +127,31 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             self.source,
             function.span.start,
             RULE,
-            MESSAGE.to_string(),
+            self.message(function.span, context),
         ));
     }
 }
 
 /// Runs the rule over one parsed file.
 pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+    let semantic = build_semantic(program);
+
+    check_with_semantic(program, source, &semantic)
+}
+
+/// Runs the rule with a semantic pass shared across rules.
+pub(in crate::rules) fn check_with_semantic<'a, 's>(
+    program: &Program<'a>,
+    source: &'s Source<'s>,
+    semantic: &'s Semantic<'a>,
+) -> Vec<Diagnostic> {
+    let index = CaptureIndex::new(semantic);
     walk_rule(
         program,
         Check {
             source,
+            semantic,
+            index,
             diagnostics: Vec::new(),
         },
     )

@@ -5,9 +5,59 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
-`no-hooks` preset adds a component-architecture policy. The registry contains **27 rules**:
-26 catalogue rules plus the optional `no-react-hooks-in-components` rule. `no-module-level-store`
+`no-hooks` preset adds a component-architecture policy. The registry contains **29 rules**:
+28 catalogue rules plus the optional `no-react-hooks-in-components` rule. `no-module-level-store`
 is off in recommended configuration, so do not equate registry count with enabled rule count.
+
+## Functional component reads
+
+For subscribed client renders, use `useCarburetorValue` for store selections and
+`useComputedValue` for derived values; resource reads use `useResourceValue`. In `AntiHookComponent`
+classes, use `this.useCarburetor`/`this.useComputed` instead. Do not replace functional reads with
+`getData()` or `get()` (H1/H2), and do not start resource work or write stores during render (H11);
+move events to handlers and external synchronization to the appropriate resource/effect API, not
+React effects for synchronous store reads. H33/H34 cover memoization over hook reads and capturing
+hook selectors. H21/H31 also concern function-component render functions; H30 independently covers
+eligible module-function extraction (`scope: "all"` by default). H4/H5/H29 are class-only rules.
+
+| Rule | Applies to function-component render? | Advice |
+|------|----------------------------------------|--------|
+| H1, H2, H11, H21, H30, H31, H33, H34 | Yes | Use subscribed reads; move writes/work to handlers or effects; stabilize/hoist callbacks; derive in selectors and avoid captured selectors. |
+| H4, H5, H29 | No | These are class-only; use the corresponding class API and advice. |
+
+Server Components may make a one-shot `getData()` read because no client subscription exists there;
+prefer the documented line-level suppression example below. In `.ts`, `React.createElement` render detection is not recognized; use TSX when relying on JSX-based render
+recognition.
+
+## no-get-data-in-render (H1)
+
+Use `useCarburetorValue` in function components and `this.useCarburetor` in `AntiHookComponent`
+classes instead of `getData()` during render. Server Components are the exception: they have no
+client subscription, so a one-shot read is appropriate. Explain the exception on the preceding
+JavaScript line when suppressing it:
+
+```text
+// carburetor-disable-next-line carburetor/no-get-data-in-render -- Server Component: one-shot read, no subscription exists on the server
+const data = store.getData();
+```
+
+For an `AntiHookComponent`, the corresponding class API is `this.useCarburetor`; the function API is
+`useCarburetorValue`. To turn off the rule only for known Server Component pages, use a real oxlint
+configuration file and limit the override carefully: a page may be a Client Component.
+
+```json
+{
+  "overrides": [
+    {
+      "files": ["app/server/page.tsx"],
+      "rules": {"carburetor/no-get-data-in-render": "off"}
+    }
+  ]
+}
+```
+
+Only use this override when those matched pages are known Server Components; a `'use client'` page
+can still need the subscription this rule protects.
 
 ## Setup
 
@@ -121,6 +171,8 @@ until your project changes shape.
 | `no-handler-created-in-render` | warn | A handler built in render and passed to a child, which defeats the props gate | [H21](hazards.md) |
 | `no-lifecycle-class-property` | error | A lifecycle method declared as a class property, shadowing the base implementation | [H13](hazards.md) |
 | `no-module-level-store` | off | A store created once per module, which a server shares across requests | [H18](hazards.md) |
+| `no-memo-over-store-read` | warn | `useMemo`/`useCallback` over hook-read values; derive in the selector or a `Computed` | [H33](hazards.md) |
+| `no-capturing-hook-selector` | warn | Inline hook selector captures render state; select whole record then pick, or use `AntiHookComponent#useCarburetor` without a selector | [H34](hazards.md) |
 | `no-react-hooks-in-components` | off | React `use`/`useX` calls in components when the optional hook-free policy is enabled | [Optional policy](#hook-free-components-optional) |
 | `no-store-write-in-render` | error | A write to a store while rendering, which notifies subscribers mid-render | [H11](hazards.md) |
 | `no-tracked-data-mutation` | error | A write to data from `useCarburetor`, which throws | [H9](hazards.md) |
@@ -137,6 +189,8 @@ until your project changes shape.
 
 ## Fixed recognition and configuration
 
+Render detection is syntactic: a PascalCase function whose own return contains JSX, or a callback passed as the first argument to `memo`/`forwardRef` (including `React.`-qualified forms) whose own return contains JSX. Nested functions end that render scope, except synchronous array callbacks. `React.createElement` in `.ts` is not detected; this is not type-aware.
+
 The preset's recognitions are fixed and syntactic:
 
 | Kind | Recognised names |
@@ -151,6 +205,7 @@ transitive. Recognition names cannot be configured. Most rules accept severity o
 Unknown scope values and option keys are malformed configuration. Suppress reports with
 `// carburetor-disable-next-line <rule>` or `// carburetor-disable <rule>`; either directive without
 a rule list silences all Carburetor rules.
+
 
 ### `require-module-function`: `scope`
 
@@ -182,3 +237,15 @@ existing behavior.
 decorator and report correct usage as an error. Switch it off and keep
 `carburetor/require-bind-for-passed-method`, which knows about the decorator and also reports the
 opposite mistake — a method passed as a value *without* it.
+
+### Function-component render allocations
+
+H21 and H31 also recognize function-component render scope syntactically: the function’s own return must contain JSX, or it must be a JSX-returning callback passed to `memo`/`forwardRef` (including React-qualified forms); nested functions end that scope. H21 reports inline functions and `.bind(...)` calls passed to child-component props; H31 reports render-created functions at its documented allocation sites. A locally declared handler passed as `useCallback(handler)` or `useMemo(() => handler)` is not an H21 finding at the prop: its declaration is H31 if it captures a non-module outer binding, or H30 if capture-free. An inline function inside a hook call used as the prop remains H21. Module-level advice for H21/H31 applies only when the function does not reference any non-module outer binding, lexical `this`, or `arguments`; factories and HOCs that capture render state should use a hook-free child component instead.
+
+## no-memo-over-store-read (H33)
+
+This rule warns when `useMemo` or `useCallback` in a recognized function-component render refers to a local binding initialized by `useCarburetorValue`, `useComputedValue` or `useResourceValue` in that same component. It does not report a memo whose callback has no such same-component hook-read binding. Prefer deriving in the selector, or use a `Computed` read with `useComputedValue`; the default severity is `warn`.
+
+## no-capturing-hook-selector (H34)
+
+This rule warns when an inline selector passed as argument 2 to `useCarburetorValue(source, select, isEqual?)` or argument 3 to `useResourceValue(source, args, select, isEqual?)` captures a parameter or local binding from the recognized component render. `useComputedValue(computed)` has no selector and is not covered by H34. It does not report capture-free selectors, which remain H30-only and are not duplicated by H34. Prefer selecting the whole record then picking fields during render; the default severity is `warn`.

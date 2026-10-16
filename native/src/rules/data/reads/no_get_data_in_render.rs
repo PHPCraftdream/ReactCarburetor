@@ -8,16 +8,20 @@
 use oxc_ast::ast::{CallExpression, Program};
 
 use crate::rules::support::names::member_call_name;
-use crate::rules::support::walk::{walk_rule, Context, Rule};
+use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
 use crate::rules::report;
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/no-get-data-in-render";
 
-const MESSAGE: &str = "getData() in render reads the state without subscribing to it, so this \
+const CLASS_MESSAGE: &str = "getData() in render reads the state without subscribing to it, so this \
     component will never re-render when the data changes. Read through \
     this.useCarburetor(carburetor) instead, which subscribes to exactly the fields you read.";
+
+const FUNCTION_MESSAGE: &str = "getData() in render reads the state without subscribing to it, so this \
+    component will never re-render when the data changes. Read through \
+    useCarburetorValue(store, select) instead, which subscribes to exactly the fields you read.";
 
 struct Check<'s> {
     source: &'s Source<'s>,
@@ -34,7 +38,11 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         }
 
-        self.diagnostics.push(report(self.source, call.span.start, RULE, MESSAGE.to_string()));
+        let message = match context.render_kind {
+            Some(RenderKind::Function) => FUNCTION_MESSAGE,
+            _ => CLASS_MESSAGE,
+        };
+        self.diagnostics.push(report(self.source, call.span.start, RULE, message.to_string()));
     }
 }
 

@@ -31,6 +31,16 @@ const countOccurrences = (haystack: string, needle: string): number => {
     return haystack.split(needle).length - 1;
 };
 
+const diagnosticTriples = (output: string): string[] => output.split(String.fromCharCode(10))
+    .filter(line => line.includes('[Error/carburetor(') || line.includes('[Warning/carburetor('))
+    .map(line => {
+        const fields = line.split(':');
+        const rule = line.split('carburetor(')[1].split(')')[0];
+
+        return `${rule},${fields[1]},${fields[2]}`;
+    })
+    .sort();
+
 describe('lint plugin in the oxlint host', () => {
     test('reports the fixture through the real binary', () => {
         const output = runOxlint([
@@ -104,6 +114,52 @@ describe('lint plugin in the oxlint host', () => {
         }
     });
 
+    test('H21 function-component hook callbacks survive H30 overlaps for both scopes', () => {
+        const directory = mkdtempSync(path.join(ROOT, '.tmp-h21-hooks-'));
+        const fixture = path.join(directory, 'view.tsx');
+        const config = path.join(directory, 'oxlintrc.json');
+        const plugin = path.relative(directory, path.join(ROOT, 'plugin', 'src', 'index.mts')).replace(/\\/g, '/');
+
+        try {
+            for (const hookExpression of [
+                'useCallback(() => console.log(1), [])',
+                'useMemo(() => () => console.log(1), [])',
+                'useMemo(() => { return () => console.log(1); }, [])',
+            ]) {
+                writeFileSync(fixture,
+                    `export function Row() { return <Child onSelect={${hookExpression}}/>; }\n`
+                );
+
+                for (const scope of ['all', 'classes']) {
+                    writeFileSync(config, JSON.stringify({
+                    jsPlugins: [plugin],
+                    rules: {
+                        'carburetor/no-handler-created-in-render': 'warn',
+                        'carburetor/require-module-function': ['warn', {scope}],
+                    },
+                }));
+                const hostResult = spawnSync(process.execPath, [OXLINT, '-c', config, '--format', 'json', fixture], {
+                    cwd: directory,
+                    encoding: 'utf8',
+                    env: {...process.env, CARBURETOR_LINT_BIN: path.join(ROOT, 'native', 'target', 'release',
+                        process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint')},
+                });
+                expect(hostResult.status).toBe(0, `${hostResult.stdout || ''}${hostResult.stderr || ''}`);
+                expect(hostResult.stderr).toBe('', `${hostResult.stderr}\\n${hostResult.stdout}`);
+
+                const hostDiagnostics = JSON.parse(hostResult.stdout || '') as {
+                    diagnostics: {code: string}[];
+                };
+
+                expect(hostDiagnostics.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+                    'carburetor(no-handler-created-in-render)',
+                ]);
+                }
+            }
+        } finally {
+            rmSync(directory, {recursive: true, force: true});
+        }
+    });
     test('every rule in the reads group fires on its fixture', () => {
         const output = runOxlint([
             '-c', 'plugin/__fixtures__/oxlintrc.json',
@@ -265,6 +321,112 @@ describe('lint plugin in the oxlint host', () => {
         expect(countOccurrences(scoped, 'carburetor(require-module-function)')).toEqual(4);
         expect(scoped).toContain('allocations.tsx:64:31');
         expect(scoped).not.toContain('allocations.tsx:71:12');
+    });
+
+    test('function-component render allocation and store memo rules reach the host', () => {
+        const output = runOxlint([
+            '-c', 'plugin/__fixtures__/oxlintrc.json',
+            'plugin/__fixtures__/function-components.tsx',
+        ]);
+
+        const expected = [
+            'no-capturing-hook-selector,13,48',
+            'no-memo-over-store-read,12,22',
+            'no-memo-over-store-read,23,21',
+            'no-react-hooks-in-components,12,22',
+            'no-react-hooks-in-components,23,21',
+            'no-function-in-render,10,24',
+            'no-function-in-render,11,19',
+            'no-function-in-render,12,36',
+            'no-handler-created-in-render,14,19',
+            'require-module-function,22,45',
+        ].sort();
+
+        expect(diagnosticTriples(output)).toEqual(expected);
+    });
+
+    test('round three scalar memo prop keeps exactly H30', () => {
+        const directory = mkdtempSync(path.join(ROOT, '.tmp-h30-scalar-'));
+        const fixture = path.join(directory, 'view.tsx');
+        const config = path.join(directory, 'oxlintrc.json');
+        const plugin = path.relative(directory, path.join(ROOT, 'plugin', 'src', 'index.mts')).replace(/\\/g, '/');
+
+        try {
+            const factories = [
+                'useMemo(() => 42, [])',
+                'useMemo(() => { return 42; }, [])',
+            ];
+            writeFileSync(config, JSON.stringify({
+                jsPlugins: [plugin],
+                rules: {
+                    'carburetor/no-handler-created-in-render': 'warn',
+                    'carburetor/require-module-function': ['warn', {scope: 'all'}],
+                    'carburetor/no-function-in-render': 'warn',
+                },
+            }));
+
+            for (const factory of factories) {
+                writeFileSync(fixture, `export function Row() { return <Child value={${factory}}/>; }\n`);
+                const hostResult = spawnSync(process.execPath, [OXLINT, '-c', config, '--format', 'json', fixture], {
+                    cwd: directory,
+                    encoding: 'utf8',
+                    env: {...process.env, CARBURETOR_LINT_BIN: path.join(ROOT, 'native', 'target', 'release',
+                        process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint')},
+                });
+                expect(hostResult.status).toBe(0, `${hostResult.stdout || ''}${hostResult.stderr || ''}`);
+                const hostDiagnostics = JSON.parse(hostResult.stdout || '') as {diagnostics: {code: string}[]};
+
+                expect(hostDiagnostics.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+                    'carburetor(require-module-function)',
+                ]);
+            }
+        } finally {
+            rmSync(directory, {recursive: true, force: true});
+        }
+    });
+
+    test('round four allocation ownership reports the exact rules', () => {
+        const directory = mkdtempSync(path.join(ROOT, '.tmp-round-four-'));
+        const fixture = path.join(directory, 'view.tsx');
+        const config = path.join(directory, 'oxlintrc.json');
+        const plugin = path.relative(directory, path.join(ROOT, 'plugin', 'src', 'index.mts')).replace(/\\/g, '/');
+
+        try {
+            writeFileSync(config, JSON.stringify({
+                jsPlugins: [plugin],
+                rules: {
+                    'carburetor/no-handler-created-in-render': 'warn',
+                    'carburetor/no-function-in-render': 'warn',
+                    'carburetor/require-module-function': ['warn', {scope: 'all'}],
+                },
+            }));
+            const cases: [string, string[]][] = [
+                ['export function Row({id}) { const handler = () => select(id); return <Child onSelect={useCallback(handler, [id])}/>; }', ['carburetor(no-function-in-render)']],
+                ['export function Row({id}) { const handler = () => select(id); return <Child onSelect={useMemo(() => handler, [id])}/>; }', ['carburetor(no-function-in-render)']],
+                ['export function Row() { const handler = () => globalHandler(); return <Child onSelect={useCallback(handler, [])}/>; }', ['carburetor(require-module-function)']],
+                ['export function Row() { const handler = () => globalHandler(); return <Child onSelect={useMemo(() => handler, [])}/>; }', ['carburetor(require-module-function)']],
+                ['export function Row() { return <Child onSelect={useCallback(() => globalHandler(), [])}/>; }', ['carburetor(no-handler-created-in-render)']],
+                ['export function Row() { return <Child onSelect={useMemo(() => () => globalHandler(), [])}/>; }', ['carburetor(no-handler-created-in-render)']],
+                ['export function Row({id}) { return <Child onSelect={() => select(id)}/>; }', ['carburetor(no-handler-created-in-render)']],
+            ];
+
+            for (const [source, expected] of cases) {
+                writeFileSync(fixture, `${source}\n`);
+                const result = spawnSync(process.execPath, [OXLINT, '-c', config, '--format', 'json', fixture], {
+                    cwd: directory,
+                    encoding: 'utf8',
+                    env: {...process.env, CARBURETOR_LINT_BIN: path.join(ROOT, 'native', 'target', 'release',
+                        process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint')},
+                });
+                expect(result.status).toBe(0, `${result.stdout || ''}${result.stderr || ''}`);
+                const diagnostics = JSON.parse(result.stdout || '') as {diagnostics: {code: string}[]};
+                const expectedSet = [...expected].sort();
+
+                expect(diagnostics.diagnostics.map(diagnostic => diagnostic.code).sort()).toEqual(expectedSet);
+            }
+        } finally {
+            rmSync(directory, {recursive: true, force: true});
+        }
     });
 
     test('the repository config loads the plugin', () => {

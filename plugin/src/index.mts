@@ -17,6 +17,8 @@ import {noComputedGetInComputed} from "./Rules/Reads/noComputedGetInComputed.mts
 import {noComputedGetInRender} from "./Rules/Reads/noComputedGetInRender.mts";
 import {noEscapingTrackedData} from "./Rules/Reads/noEscapingTrackedData.mts";
 import {noGetDataInRender} from "./Rules/Reads/noGetDataInRender.mts";
+import {noMemoOverStoreRead} from "./Rules/Reads/noMemoOverStoreRead.mts";
+import {noCapturingHookSelector} from "./Rules/Reads/noCapturingHookSelector.mts";
 import {noHandlerCreatedInRender} from "./Rules/Lifecycle/noHandlerCreatedInRender.mts";
 import {noLifecycleClassProperty} from "./Rules/Lifecycle/noLifecycleClassProperty.mts";
 import {requireBindForPassedMethod} from "./Rules/Lifecycle/requireBindForPassedMethod.mts";
@@ -47,12 +49,14 @@ const plugin: IPlugin = {
         'no-closure-in-update': noClosureInUpdate,
         'no-computed-get-in-computed': noComputedGetInComputed,
         'no-computed-get-in-render': noComputedGetInRender,
+        'no-capturing-hook-selector': noCapturingHookSelector,
+        'no-memo-over-store-read': noMemoOverStoreRead,
+        'no-get-data-in-render': noGetDataInRender,
         'no-direct-data-write': noDirectDataWrite,
         'no-duplicate-effect-name': noDuplicateEffectName,
         'no-escaping-tracked-data': noEscapingTrackedData,
         'no-external-data-mutation': noExternalDataMutation,
         'no-function-in-render': noFunctionInRender,
-        'no-get-data-in-render': noGetDataInRender,
         'no-handler-created-in-render': noHandlerCreatedInRender,
         'no-lifecycle-class-property': noLifecycleClassProperty,
         'no-module-level-store': noModuleLevelStore,

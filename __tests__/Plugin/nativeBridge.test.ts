@@ -30,6 +30,7 @@ const CORPUS: readonly string[] = [
     path.join('plugin', '__fixtures__', 'operations', 'effects.tsx'),
     path.join('plugin', '__fixtures__', 'operations', 'boundaries.ts'),
     path.join('plugin', '__fixtures__', 'lifecycle', 'lifecycleClassProperty.tsx'),
+    path.join('plugin', '__fixtures__', 'function-components.tsx'),
 ];
 
 /** Where the bridge keeps its own lock/result files, mirroring its private `BRIDGE_DIR`. */

@@ -20,6 +20,8 @@
         "carburetor-internal/no-parent-import": "error",
         "carburetor-internal/require-tsdoc": ["error", {"requireParamDocs": true, "requireFieldDocs": true}],
         "carburetor-internal/tsdoc-blank-line-before-tags": "error",
+        "carburetor/no-memo-over-store-read": "warn",
+        "carburetor/no-capturing-hook-selector": "warn",
         "carburetor/no-async-effect": "error",
         "carburetor/no-async-transaction": "error",
         "carburetor/no-computed-get-in-computed": "error",
@@ -68,6 +70,8 @@
             ],
             "rules": {
                 "carburetor-internal/require-tsdoc": "off",
+                "carburetor/no-memo-over-store-read": "off",
+                "carburetor/no-capturing-hook-selector": "off",
                 "carburetor/no-function-in-render": "off",
                 "carburetor/no-closure-in-update": "off",
                 "carburetor/require-module-function": "off"
@@ -79,6 +83,8 @@
                 "scripts/**"
             ],
             "rules": {
+                "carburetor/no-memo-over-store-read": "off",
+                "carburetor/no-capturing-hook-selector": "off",
                 "carburetor/no-function-in-render": "off",
                 "carburetor/no-closure-in-update": "off",
                 "carburetor/require-module-function": "off"

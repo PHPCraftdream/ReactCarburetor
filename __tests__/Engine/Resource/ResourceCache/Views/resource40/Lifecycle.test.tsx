@@ -99,6 +99,7 @@ describe('R40-04 useResourceValue ownership', () => {
         let mounted: ReturnType<typeof render> | undefined;
         const DirectLoader = () => {
             useResourceValue(state.cache, [{id: 0}], view => view.data?.name);
+            // oxlint-disable-next-line no-store-write-in-render -- Intentional render-write control
             void state.cache.load({id: 0});
             return <span>direct load</span>;
         };

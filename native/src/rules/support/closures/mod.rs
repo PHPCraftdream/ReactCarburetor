@@ -23,12 +23,16 @@ use crate::rules::support::names::{extends_any, member_call_name};
 
 mod collect;
 mod dependency;
+mod dependency_capture_extension;
 mod scan;
 #[cfg(test)]
 mod tests;
 
 use collect::Collect;
 use dependency::{class_type_parameters, member_class_dependency};
+
+pub use dependency_capture_extension::captures_outside;
+pub use dependency_capture_extension::CaptureIndex;
 use scan::{Declarator, Scan, SiteFlags};
 
 /// Checks class-dependent syntax and references in one function against its enclosing class.

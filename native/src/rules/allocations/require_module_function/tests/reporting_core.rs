@@ -114,6 +114,28 @@ class View extends AntiHookComponent {
 }
 
 #[test]
+fn jsx_handler_hook_values_are_h21_owned_but_nested_helpers_remain_h30_candidates() {
+    for expression in [
+        "useCallback(() => console.log(1), [])",
+        "React.useCallback(() => console.log(1), [])",
+        "useMemo(() => () => console.log(1), [])",
+        "React.useMemo(() => () => console.log(1), [])",
+    ] {
+        let source = format!("function View() {{ return <Child onClick={{{expression}}}/>; }}");
+        assert!(reported(&source).is_empty(), "{expression}: {:?}", reported(&source));
+    }
+
+    let source = r#"
+function View() {
+    return <Child onClick={useCallback(() => {
+        const helper = () => console.log(1);
+        return helper();
+    }, [])}/>;
+}
+"#;
+    assert_eq!(lines(&reported(source)), [4]);
+}
+#[test]
 fn a_callback_capturing_a_plain_local_is_not_reported() {
     // The local would freeze at closure creation, where a module-level function's parameter
     // would not — the same passability gate the method rule applies.

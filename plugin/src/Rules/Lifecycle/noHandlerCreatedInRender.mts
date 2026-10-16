@@ -10,5 +10,5 @@ import type {IRule} from "#src/Models.mts";
  */
 export const noHandlerCreatedInRender: IRule = nativeRule(
     'carburetor/no-handler-created-in-render',
-    'Pass a stable handler to a child component, bound once with bind.'
+    'Move a handler into a child `AntiHookComponent` that receives the data as props and passes a `@bind` method, or convert this component to `AntiHookComponent`.'
 );

@@ -11,15 +11,19 @@
 use oxc_ast::ast::{CallExpression, Program};
 
 use crate::rules::support::names::member_call_name;
-use crate::rules::support::walk::{walk_rule, Context, Rule};
+use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
 use crate::rules::report;
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/no-computed-get-in-render";
 
-const MESSAGE: &str = "get() in render returns the derived value without subscribing to it, so this \
+const CLASS_MESSAGE: &str = "get() in render returns the derived value without subscribing to it, so this \
     component will not re-render when it changes. Use this.useComputed(computed), which subscribes \
+    to the value rather than to its inputs.";
+
+const FUNCTION_MESSAGE: &str = "get() in render returns the derived value without subscribing to it, so this \
+    component will not re-render when it changes. Use useComputedValue(computed), which subscribes \
     to the value rather than to its inputs.";
 
 struct Check<'s> {
@@ -42,7 +46,11 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         }
 
-        self.diagnostics.push(report(self.source, call.span.start, RULE, MESSAGE.to_string()));
+        let message = match context.render_kind {
+            Some(RenderKind::Function) => FUNCTION_MESSAGE,
+            _ => CLASS_MESSAGE,
+        };
+        self.diagnostics.push(report(self.source, call.span.start, RULE, message.to_string()));
     }
 }
 

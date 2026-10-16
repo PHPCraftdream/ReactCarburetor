@@ -23,6 +23,18 @@ const run = (binary: string, args: string[]): {status: number; output: string} =
 };
 
 describe('packaging the lint rules', () => {
+    test('built plugin publishes H33 and H34 through the recommended preset', () => {
+        const {output, status} = run(path.join('node_modules', 'oxlint', 'bin', 'oxlint'), [
+            '-c', 'dist/lint/recommended.oxlintrc.json',
+            '--format', 'agent',
+            'examples/wrong/no-memo-over-store-read/MemoOverStoreRead.tsx',
+            'examples/wrong/no-capturing-hook-selector/CapturingHookSelector.tsx',
+        ]);
+        expect(status).toBe(0);
+        expect(output).toContain('carburetor(no-memo-over-store-read)');
+        expect(output).toContain('carburetor(no-capturing-hook-selector)');
+    });
+
     test('a consumer oxlint config gets the rules from one extends line', () => {
         // Explicit format: oxlint auto-switches to GitHub-annotation output under CI's own
         // GITHUB_ACTIONS env var, which this process inherits when the test itself runs in CI.

@@ -21,7 +21,7 @@ use super::RULE;
 use crate::rules::report;
 use crate::rules::support::closures::{arrow_has_class_dependency, has_class_dependency};
 use crate::rules::support::bases::{EXCLUDED_CALLBACK_APIS, RENDER_TRACKED_APIS};
-use crate::rules::support::names::member_call_name;
+use crate::rules::support::names::{member_call_name, unwrap_expression};
 use crate::{Diagnostic, Source};
 
 /// Whether `inner` lies within `outer`, spans being the only identity nodes share here.
@@ -38,33 +38,49 @@ fn callee_name<'a>(callee: &'a Expression<'a>) -> Option<&'a str> {
     }
 }
 
+/// Whether this function allocation is a callback represented by a hook call directly in a
+/// component prop expression.
 fn is_component_prop_callback(semantic: &Semantic<'_>, node_id: NodeId) -> bool {
     let nodes = semantic.nodes();
+    if is_component_prop_expression(nodes, node_id) {
+        return true;
+    }
+    let candidate = nodes.kind(node_id).span();
     let mut id = node_id;
-
     loop {
-        match nodes.parent_kind(id) {
-            AstKind::ParenthesizedExpression(_)
-            | AstKind::TSAsExpression(_)
-            | AstKind::TSSatisfiesExpression(_)
-            | AstKind::TSTypeAssertion(_)
-            | AstKind::TSNonNullExpression(_)
-            | AstKind::TSInstantiationExpression(_) => id = nodes.parent_id(id),
-            AstKind::JSXExpressionContainer(_) => {
-                let attribute_id = nodes.parent_id(nodes.parent_id(id));
-                let AstKind::JSXAttribute(_) = nodes.kind(attribute_id) else {
-                    return false;
-                };
-                let opening_id = nodes.parent_id(attribute_id);
-                let AstKind::JSXOpeningElement(opening) = nodes.kind(opening_id) else {
-                    return false;
-                };
+        id = nodes.parent_id(id);
+        match nodes.kind(id) {
+            AstKind::ParenthesizedExpression(_) | AstKind::TSAsExpression(_) | AstKind::TSSatisfiesExpression(_) | AstKind::TSTypeAssertion(_) | AstKind::TSNonNullExpression(_) | AstKind::TSInstantiationExpression(_) => continue,
+            AstKind::CallExpression(call)
+                if matches!(&call.callee, Expression::Identifier(identifier) if matches!(identifier.name.as_str(), "useMemo" | "useCallback"))
+                    || matches!(&call.callee, Expression::StaticMemberExpression(member) if matches!(&member.object, Expression::Identifier(object) if object.name == "React") && matches!(member.property.name.as_str(), "useMemo" | "useCallback")) =>
+            {
+                let mut represented = Vec::new();
+                crate::rules::support::walk::functions::fresh_call(call, &mut represented);
+                let factory = call.arguments.first().and_then(|argument| argument.as_expression()).is_some_and(|argument| unwrap_expression(argument).span() == candidate);
+                if !represented.contains(&candidate) && !(factory && !represented.is_empty()) { continue; }
+                return is_component_prop_expression(nodes, id);
+            }
+            AstKind::Program(_) => return false,
+            _ => continue,
+        }
+    }
+}
 
+fn is_component_prop_expression(nodes: &oxc_semantic::AstNodes<'_>, call_id: NodeId) -> bool {
+    let mut id = call_id;
+    loop {
+        id = nodes.parent_id(id);
+        match nodes.kind(id) {
+            AstKind::ParenthesizedExpression(_) | AstKind::TSAsExpression(_) | AstKind::TSSatisfiesExpression(_) | AstKind::TSTypeAssertion(_) | AstKind::TSNonNullExpression(_) | AstKind::TSInstantiationExpression(_) => continue,
+            AstKind::JSXExpressionContainer(_) => {
+                let attribute_id = nodes.parent_id(id);
+                let AstKind::JSXAttribute(_) = nodes.kind(attribute_id) else { return false; };
+                let opening_id = nodes.parent_id(attribute_id);
+                let AstKind::JSXOpeningElement(opening) = nodes.kind(opening_id) else { return false; };
                 return match &opening.name {
-                    JSXElementName::Identifier(identifier) =>
-                        identifier.name.chars().next().is_some_and(char::is_uppercase),
-                    JSXElementName::IdentifierReference(identifier) =>
-                        identifier.name.chars().next().is_some_and(char::is_uppercase),
+                    JSXElementName::Identifier(identifier) => identifier.name.chars().next().is_some_and(char::is_uppercase),
+                    JSXElementName::IdentifierReference(identifier) => identifier.name.chars().next().is_some_and(char::is_uppercase),
                     JSXElementName::MemberExpression(_) => true,
                     _ => false,
                 };

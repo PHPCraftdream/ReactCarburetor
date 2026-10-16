@@ -68,6 +68,8 @@ function Counter() {
 }
 ```
 
+Functional components can interoperate with the class API, but keep hook selectors capture-free where possible; H34 warns when an inline selector captures render state. H33 warns when `useMemo` or `useCallback` memoizes values already read through these hooks; derive in the selector or a `Computed` instead. For components needing capture-dependent work, use a native `AntiHookComponent` and read with `this.useCarburetor` without a selector, or select a whole record and pick fields during render.
+
 ## 3. Move hot components to classes
 
 Where render cost matters, replace the function component with a class extending

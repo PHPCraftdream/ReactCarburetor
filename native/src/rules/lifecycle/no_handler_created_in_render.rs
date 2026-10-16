@@ -9,99 +9,64 @@
 //! lifetime. DOM elements are not reported: a fresh `onClick` on a `<button>` costs an attribute
 //! update, not a subtree render. See docs/hazards.md, H21.
 
-use oxc_ast::ast::{
-    Expression, JSXAttribute, JSXAttributeValue, JSXExpression, Program,
-};
+use oxc_ast::ast::{JSXAttribute, Program};
+use oxc_semantic::Semantic;
 
 use crate::rules::report;
-use crate::rules::support::names::member_call_name;
-use crate::rules::support::walk::{walk_rule, Context, Rule};
+use crate::rules::support::closures::{build_semantic, CaptureIndex};
+use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
+use crate::rules::support::walk::functions::fresh_attribute_functions;
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/no-handler-created-in-render";
 
-/// Whether the prop's value is a function this render just built.
-fn is_fresh_function(value: &Option<JSXAttributeValue<'_>>) -> bool {
-    let Some(JSXAttributeValue::ExpressionContainer(container)) = value else {
-        return false;
-    };
-
-    match &container.expression {
-        JSXExpression::ArrowFunctionExpression(_) | JSXExpression::FunctionExpression(_) => true,
-        JSXExpression::CallExpression(call) => member_call_name(&call.callee) == Some("bind"),
-        JSXExpression::ParenthesizedExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        JSXExpression::TSAsExpression(expression) => is_fresh_expression(&expression.expression),
-        JSXExpression::TSSatisfiesExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        JSXExpression::TSTypeAssertion(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        JSXExpression::TSNonNullExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        JSXExpression::TSInstantiationExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        _ => false,
-    }
-}
-
-fn is_fresh_expression(expression: &Expression<'_>) -> bool {
-    match expression {
-        Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_) => true,
-        Expression::CallExpression(call) => member_call_name(&call.callee) == Some("bind"),
-        Expression::ParenthesizedExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        Expression::TSAsExpression(expression) => is_fresh_expression(&expression.expression),
-        Expression::TSSatisfiesExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        Expression::TSTypeAssertion(expression) => is_fresh_expression(&expression.expression),
-        Expression::TSNonNullExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        Expression::TSInstantiationExpression(expression) => {
-            is_fresh_expression(&expression.expression)
-        }
-        _ => false,
-    }
-}
-
-struct Check<'s> {
+struct Check<'s, 'a> {
     source: &'s Source<'s>,
+    semantic: &'s Semantic<'a>,
+    index: CaptureIndex<'a>,
     diagnostics: Vec<Diagnostic>,
 }
 
-impl<'a, 's> Rule<'a> for Check<'s> {
+impl<'a, 's> Rule<'a> for Check<'s, 'a> {
     fn finish(self) -> Vec<Diagnostic> {
         self.diagnostics
     }
 
     fn jsx_attribute(&mut self, attribute: &JSXAttribute<'a>, context: &Context) {
-        if !context.in_render || !is_fresh_function(&attribute.value) {
+        if !context.in_render {
+            return;
+        }
+        let mut spans = Vec::new();
+        fresh_attribute_functions(&attribute.value, &mut spans);
+        if spans.is_empty() {
             return;
         }
 
-        // A lowercase name is a DOM element; only a component re-renders a subtree.
         let Some(element) = context.jsx_element.as_deref() else {
             return;
         };
-
         if !context.jsx_component {
             return;
         }
 
-        let message = format!(
-            "this prop is a new function on every render, so <{element}>'s props always compare as \
-             changed and the props gate stops bailing out — the cascade the engine exists to prevent \
-             comes back through the props. Declare the handler as a method with @bind and pass it by \
-             reference."
-        );
+        let capture = spans
+            .iter()
+            .any(|span| self.index.captures_non_module(*span, self.semantic));
+        let message = if context.render_kind == Some(RenderKind::Function) {
+            if capture {
+                format!("this prop is a new function on every render, so <{element}>'s props always compare as changed and the props gate stops bailing out — the cascade the engine exists to prevent comes back through the props. Pass the handler's data as props to a child AntiHookComponent that receives data as props and passes a @bind method, or convert this component to AntiHookComponent.")
+            } else {
+                format!("this prop is a new function on every render, so <{element}>'s props always compare as changed and the props gate stops bailing out — the cascade the engine exists to prevent comes back through the props. Move the handler to a module-level function.")
+            }
+        } else {
+            format!(
+                "this prop is a new function on every render, so <{element}>'s props always compare as \
+                 changed and the props gate stops bailing out — the cascade the engine exists to prevent \
+                 comes back through the props. Declare the handler as a method with @bind and pass it by \
+                 reference."
+            )
+        };
 
         self.diagnostics.push(report(self.source, attribute.span.start, RULE, message));
     }
@@ -109,7 +74,19 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
 /// Runs the rule over one parsed file.
 pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new() })
+    let semantic = build_semantic(program);
+
+    check_with_semantic(program, source, &semantic)
+}
+
+/// Runs the rule with a semantic pass shared across rules.
+pub(in crate::rules) fn check_with_semantic<'a, 's>(
+    program: &Program<'a>,
+    source: &'s Source<'s>,
+    semantic: &'s Semantic<'a>,
+) -> Vec<Diagnostic> {
+    let index = CaptureIndex::new(semantic);
+    walk_rule(program, Check { source, semantic, index, diagnostics: Vec::new() })
 }
 
 #[cfg(test)]

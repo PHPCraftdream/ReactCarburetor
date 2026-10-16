@@ -61,7 +61,7 @@ describe('stale reads through components (D4)', () => {
         }, {ttl: 40});
 
         const Clicker = ({id}: {id: string}) => (
-            <button onClick={() => void slot.load(id)}>{slot.getData().data || slot.getData().status}</button>
+            <button onClick={() => void slot.load(id)}>Load</button>
         );
         class Reader extends AntiHookComponent<{slot: ResourceCarburetor<string, [string]>}> {
             public render() {
