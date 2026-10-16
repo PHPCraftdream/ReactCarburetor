@@ -1,5 +1,11 @@
 /* Consumer check: a keyless (externally set) answer never satisfies earlier arguments. */
-/** Runs inside the generated consumer script; `assert` is node:assert/strict there. */
+/**
+ * Runs inside the generated consumer script.
+ *
+ * @param storeModule - the package entry under test (CommonJS or ESM build)
+ * @param label - the cell label prefixed to assertion messages
+ * @param assert - node:assert/strict from the consumer script
+ */
 export const checkKeylessAnswer = async (storeModule, label, assert) => {
     let loads = 0;
     const manual = new storeModule.ResourceCarburetor(async (key) => {
