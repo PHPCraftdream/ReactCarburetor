@@ -59,7 +59,7 @@ for (const kind of ['cache', 'slot']) for (const style of ['object', 'getter']) 
             }
             await Promise.all(promises); lanes++;
         } finally { owner.unsubscribe(id); }
-        if (kind === 'cache') owner.forgetAll(); else owner.abort();
+        if (kind === 'cache') owner.clear(); else owner.abort();
     }
 }
 emit({lanes, descriptions, loaderCalls, replacementLoaders, capturedControls, done: true});

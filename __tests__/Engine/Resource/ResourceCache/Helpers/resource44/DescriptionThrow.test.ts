@@ -9,8 +9,8 @@ for (const style of ['object', 'getter']) {
         test('thrown description rejects and leaves safe error state', async () => {
             const thrown = new Error('description threw');
             const raw = rejection(style, () => { throw thrown; });
-            const cache = new ResourceCache<string, string>(() => Promise.reject(raw));
-            const slot = new ResourceCarburetor<string, string>(() => Promise.reject(raw));
+            const cache = new ResourceCache<string, [string]>(() => Promise.reject(raw));
+            const slot = new ResourceCarburetor<string, [string]>(() => Promise.reject(raw));
             const cacheRejected = expect(cache.load('a')).rejects.toBe(thrown);
             const slotRejected = expect(slot.load('a')).rejects.toBe(thrown);
             await Promise.all([cacheRejected, slotRejected]);
@@ -37,7 +37,7 @@ describe('resource44 description reentry and throw', () => {
         const sentinel = new Error('description threw');
         const snapshot = {...resourceStatusFlags(S.Success), status: S.Success, data: 'replacement', error: undefined,
             updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false, key: JSON.stringify('b')};
-        const slot = new ResourceCarburetor<string, string>(() => Promise.reject({
+        const slot = new ResourceCarburetor<string, [string]>(() => Promise.reject({
             toString: () => { slot.restore(snapshot); throw sentinel; },
         }));
         await expect(slot.load('a')).rejects.toBe(sentinel);

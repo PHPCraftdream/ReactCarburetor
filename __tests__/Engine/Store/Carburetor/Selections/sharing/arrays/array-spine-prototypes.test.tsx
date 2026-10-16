@@ -81,7 +81,7 @@ for (const [label, prototype] of prototypes) {
             } finally { view.unmount(); }
         });
         test(`R44 resource reader ${label} sparse ${sparse}`, async () => {
-            class Cache extends ResourceCache<Data, string> {
+            class Cache extends ResourceCache<Data, [string]> {
                 /** Mutates the loaded resource row. */
                 edit(): void {
                     const key = this.resolve('rows').key;
@@ -91,8 +91,8 @@ for (const [label, prototype] of prototypes) {
             const cache = new Cache(async () => make(prototype, sparse), {ttl: Infinity});
             await cache.load('rows');
             const resolution = cache.resolve('rows');
-            const reader = createResourceReader<Data, string, TReadonly<Data['rows']>>(cache, resolution.path);
-            const candidate = reader.evaluate('rows', resolution, view => view.data!.rows);
+            const reader = createResourceReader<Data, [string], TReadonly<Data['rows']>>(cache, resolution.path);
+            const candidate = reader.evaluate(['rows'], resolution, view => view.data!.rows);
             reader.commit(candidate);
             let notifications = 0;
             const stop = reader.subscribe(() => notifications++);

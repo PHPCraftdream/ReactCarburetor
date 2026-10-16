@@ -4,11 +4,11 @@ interface TTodo {id: string}
 
 declare function fetchTodo(id: string, signal: AbortSignal): Promise<TTodo>;
 
-const loadTodo: TResourceLoader<TTodo, {id: string}> =
+const loadTodo: TResourceLoader<TTodo, [{id: string}]> =
     async ({id}, signal) => fetchTodo(id, signal);
 
 // #region doc
-class TodoResource extends ResourceCarburetor<TTodo, {id: string}> {
+class TodoResource extends ResourceCarburetor<TTodo, [{id: string}]> {
     constructor() {
         super(loadTodo);
     }

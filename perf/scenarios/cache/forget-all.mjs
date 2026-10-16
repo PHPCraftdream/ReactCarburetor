@@ -1,5 +1,5 @@
 /* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
-// R31-02: settled readonly `forgetAll` prepares one bulk removal instead of N whole-graph clones;
+// R31-02: settled readonly `clear` prepares one bulk removal instead of N whole-graph clones;
 // Controls carry only the writable/mixed removal fallbacks.
 // Args: [count=32] [op=settled|writable|mixed|controls]
 import {emit, loadPath, median, call} from '../../harness/lib.mjs';
@@ -58,7 +58,7 @@ const instrumented = operation => {
         return originalOwnKeys(target);
     };
     try {
-        state.cache.forgetAll();
+        state.cache.clear();
     } finally {
         Reflect.ownKeys = originalOwnKeys;
     }
@@ -78,7 +78,7 @@ const timed = (operation, samples) => {
     for (let sample = 0; sample < samples; sample++) {
         const state = prepare(operation, count);
         const started = performance.now();
-        state.cache.forgetAll();
+        state.cache.clear();
         times.push(performance.now() - started);
         state.settle();
     }

@@ -4,7 +4,7 @@ interface ITodo {id: string}
 
 declare function fetchTodo(id: string, signal: AbortSignal): Promise<ITodo>;
 
-class TodoResource extends ResourceCarburetor<ITodo, {id: string}> {
+class TodoResource extends ResourceCarburetor<ITodo, [{id: string}]> {
     constructor() {
         const fetchWithSignal = fetchTodo;
         super(async ({id}, signal) => fetchWithSignal(id, signal));

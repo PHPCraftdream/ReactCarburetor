@@ -8,7 +8,7 @@ interface Avatar {
 
 declare function fetchAvatar(userId: string): Promise<Avatar>;
 
-const avatarCache = new ResourceCache<Avatar, string>((userId: string) => fetchAvatar(userId));
+const avatarCache = new ResourceCache<Avatar, [string]>((userId: string) => fetchAvatar(userId));
 
 class AvatarBoundary extends Component<{children?: ReactNode}, {error: unknown}> {
     public state = {error: undefined as unknown};

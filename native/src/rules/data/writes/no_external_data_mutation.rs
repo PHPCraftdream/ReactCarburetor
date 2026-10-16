@@ -83,6 +83,17 @@ mod tests {
     }
 
     #[test]
+    fn a_resource_clear_in_a_handler_is_not_a_data_mutation() {
+        // `clear` is a resource handle, not a mutation of what getData() returned: the rule only
+        // follows chains rooted in getData()/getEntry(), so a handler clearing the resource is fine.
+        let source = "class Widget extends AntiHookComponent {\n    render() {\n        \
+                      this.useResource(cache, 1);\n        \
+                      return <b onClick={() => cache.clear()}/>;\n    }\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
     fn reading_is_not_mutating() {
         assert_eq!(lines(&diagnose("const x = store.getData().items;\n", check)), [] as [usize; 0]);
     }

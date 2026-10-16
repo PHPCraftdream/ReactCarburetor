@@ -66,7 +66,7 @@ try {
     const started = performance.now();
     bulk = window(() => {
         if (operation === 'abort') cache.abortAll();
-        else cache.forgetAll();
+        else cache.clear();
     });
     bulk.ms = performance.now() - started;
     const entries = cache.getData().entries;
@@ -79,7 +79,7 @@ try {
     storedCorrect = JSON.stringify(stored) === JSON.stringify(cache.getData());
     repeat = window(() => {
         if (operation === 'abort') cache.abortAll();
-        else cache.forgetAll();
+        else cache.clear();
     });
 } finally {
     dispose();

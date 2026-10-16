@@ -82,7 +82,7 @@ const expectLinked = (state: IAliasedState, value: string, id: string): void => 
     });
 };
 
-class NativeResource extends ResourceCarburetor<Map<object, string>, string> {
+class NativeResource extends ResourceCarburetor<Map<object, string>, [string]> {
     public link(value: string): void {
         const owner = this.getData();
         this.update(draft => {
@@ -92,7 +92,7 @@ class NativeResource extends ResourceCarburetor<Map<object, string>, string> {
     }
 }
 
-class NativeCache extends ResourceCache<Map<object, string>, string> {
+class NativeCache extends ResourceCache<Map<object, string>, [string]> {
     public link(value: string): void {
         const key = this[R.keyOf]('a');
         const owner = this.getData().entries[key];

@@ -10,7 +10,7 @@ interface IUser {
     name: string;
 }
 
-class FieldCache extends ResourceCache<IUser, number> {
+class FieldCache extends ResourceCache<IUser, [number]> {
     /** Publishes an error-only write to test escaped-view tracking. */
     public setError(id: number, error: string): void {
         const key = this.resolve(id).key;

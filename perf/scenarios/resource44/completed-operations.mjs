@@ -23,7 +23,7 @@ for (const capacity of [8, Infinity]) for (const kind of ['primitive', 'object']
     }
     thenMs += performance.now() - start;
     operations += 2 * iterations;
-    cache.forgetAll();
+    cache.clear();
 }
 assert.equal(checksum, 56 * iterations); assert.equal(loaderCalls, 0);
 emit({operations, checksum, loaderCalls, awaitMs, thenMs, done: true});

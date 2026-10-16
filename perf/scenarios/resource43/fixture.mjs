@@ -41,7 +41,7 @@ export function fixture(options = {}) {
         cache.abortAll();
         requests.forEach(r => r.yes('cleanup'));
         await Promise.all(promises);
-        cache.forgetAll();
+        cache.clear();
         assert.equal(Object.keys(cache.getData().entries).length, 0);
     };
     return {cache, requests, promises, start, stored, close};

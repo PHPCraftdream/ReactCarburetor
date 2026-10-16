@@ -15,7 +15,14 @@ export interface IResourceData<T> {
     updatedAt: number | undefined;
 }
 
-export type TResourceLoader<T, TArgs> = (args: TArgs, signal: AbortSignal) => Promise<T>;
+export type TResourceArgs = readonly unknown[];
+
+/** The signal-taking form wins inference; the second covers loaders without a signal. */
+export type TResourceLoader<T, TArgs extends TResourceArgs = []> =
+    | ((...args: [...TArgs, AbortSignal]) => Promise<T>)
+    | ((...args: TArgs) => Promise<T>);
+
+export type TResourceKey<TArgs extends TResourceArgs = []> = (...args: TArgs) => string | number;
 
 /** The resource slot as snapshot() hands it out: the state plus the key the answer settled under. */
 export interface IResourceSnapshot<T> extends IResourceData<T> {
@@ -77,7 +84,10 @@ export interface IResourceView<T> extends IResourceEntry<T> {
     stale: boolean;
 }
 
-export interface IResourceCacheOptions {
+export interface IResourceCacheOptions<TArgs extends TResourceArgs = []> {
+    /** Derives the shared-answer identity; the default key applies when omitted. */
+    key?: TResourceKey<TArgs>;
+
     /** Non-negative milliseconds; fractional values and `Infinity` are valid. `Infinity` never goes stale. */
     ttl?: number;
 
@@ -118,8 +128,8 @@ export interface IResourceResolution<T> {
  * Declared as an interface so `AntiHookComponent` can read a cache without importing one: the
  * component layer depends on this shape, the cache implements it, and neither imports the other.
  */
-export interface IResourceSource<T, TArgs> extends ICarburetorSubscription {
+export interface IResourceSource<T, TArgs extends TResourceArgs = []> extends ICarburetorSubscription {
     /** Resolves one argument set to its key, read path and current view — see `IResourceResolution`. */
-    resolve(args: TArgs): IResourceResolution<T>;
-    load(args: TArgs): Promise<void>;
+    resolve(...args: TArgs): IResourceResolution<T>;
+    load(...args: TArgs): Promise<void>;
 }

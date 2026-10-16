@@ -18,7 +18,7 @@ const serverInterop = await importPart(serverDir, 'Interop');
 const cache = new api.ResourceCache(async () => ({name: 'server'}), {ttl: Infinity});
 await cache.load('x');
 function Server() {
-    return React.createElement('p', null, serverInterop.useResourceValue(cache, 'x', view => view.data?.name));
+    return React.createElement('p', null, serverInterop.useResourceValue(cache, ['x'], view => view.data?.name));
 }
 const markup = renderToString(React.createElement(Server));
 assert.equal(markup, '<p>server</p>', 'SSR selected data must be visible');
@@ -37,7 +37,7 @@ const client = new ResourceCache(() => {
     return request.promise;
 }, {ttl: Infinity});
 client.restore(cache.getData());
-function Client() { return React.createElement('p', null, useResourceValue(client, 'x', view => view.data?.name)); }
+function Client() { return React.createElement('p', null, useResourceValue(client, ['x'], view => view.data?.name)); }
 const container = document.getElementById('root');
 const errors = [];
 let root;

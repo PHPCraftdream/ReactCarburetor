@@ -10,12 +10,12 @@ interface User {
 
 declare function fetchUser(id: number): Promise<User>;
 
-const userCache = new ResourceCache<User, number>(async (id) => fetchUser(id));
+const userCache = new ResourceCache<User, [number]>(async (id) => fetchUser(id));
 
 const selectUserName = (entry: {data?: User}): string | undefined => entry.data?.name;
 
 function UserName({userId}: {userId: number}): ReactElement {
-    const name = useResourceValue(userCache, userId, selectUserName);
+    const name = useResourceValue(userCache, [userId], selectUserName);
     return <span>{name ?? '…'}</span>;
 }
 // #endregion name

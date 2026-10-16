@@ -102,7 +102,7 @@ class Store extends Carburetor<IData> {
 }
 
 export const store = new Store({count: 1});
-export const resource = new ResourceCache<string, number>(async (id: number) => `item-${id}`);
+export const resource = new ResourceCache<string, [number]>(async (id: number) => `item-${id}`);
 export const computed = new Computed<number>((read) => read(store).count * 2);
 
 /** Set by Direct.render(); the harness checks it against its own require/import of React. */
@@ -161,7 +161,7 @@ export function HooksConsumer(): React.ReactElement {
 
 
 interface IResource41Data {nested: {name: string; unread: number}}
-class Resource41Cache extends ResourceCache<IResource41Data, string> {
+class Resource41Cache extends ResourceCache<IResource41Data, [string]> {
     /** Writes precisely one leaf, so unread precision is not confused with restore().
      *
      * @param field - nested leaf to update.
@@ -194,18 +194,18 @@ const selectNativeName = (view: TReadonly<IResourceView<IResource41Data>>) =>
 
 /** Exercises native detachment through published hook declarations. */
 export function Resource41NativeConsumer({source = resource41}: {
-    source?: IResourceSource<IResource41Data, string>;
+    source?: IResourceSource<IResource41Data, [string]>;
 }): React.ReactElement {
-    const selected = useResourceValue(source, 'user', selectNativeName);
+    const selected = useResourceValue(source, ['user'], selectNativeName);
     if (selected.date === resource41Native.date || selected.map === resource41Native.map
         || selected.set === resource41Native.set || 0 in selected.sparse) throw new Error('native detachment');
     return <span>{selected.name}:{selected.date.getTime()}:{selected.map.get('user')!.name}:{selected.set.size}</span>;
 }
 /** Cross-format source and hook combinations retain canonical structural protocols. */
 export function Resource41CrossConsumer({source}: {
-    source: IResourceSource<IResource41Data, string>;
+    source: IResourceSource<IResource41Data, [string]>;
 }): React.ReactElement {
-    const data = useResourceValue(source, 'user', selectResource41);
+    const data = useResourceValue(source, ['user'], selectResource41);
     return <Resource41Child data={data}/>;
 }
 const selectResource41 = (view: TReadonly<IResourceView<IResource41Data>>) => ({
@@ -237,14 +237,14 @@ export function Resource41Consumer({tick}: {tick: number}): React.ReactElement {
     void tick;
     // oxlint-disable-next-line react/immutability, react/globals -- Parent-render counter.
     resource41Counts.parent++;
-    const data = useResourceValue(resource41, 'user', selectResource41);
+    const data = useResourceValue(resource41, ['user'], selectResource41);
     // oxlint-disable-next-line react/globals -- Retain the first packed selection for snapshot assertions.
     resource41Retained ??= data;
     return <Resource41Child data={data}/>;
 }
 /** Local presentation belongs to the caller, not to the readonly hook result. */
 export function Resource41OverrideConsumer(): React.ReactElement {
-    const data = useResourceValue(resource41, 'user', selectResource41);
+    const data = useResourceValue(resource41, ['user'], selectResource41);
     const local = {...data, nested: {...data.nested, name: 'local'}};
     return <span>{local.nested.name}</span>;
 }
@@ -256,15 +256,15 @@ const selectFreshNatives = () => ({
 /** Packed declarations must reject omitted selectors, wrong arguments and readonly mutations. */
 const resource41Types = () => {
     // @ts-expect-error selector is required
-    useResourceValue(resource41, 'user');
+    useResourceValue(resource41, ['user']);
     // @ts-expect-error argument type comes from the source
-    useResourceValue(resource41, 123, selectResource41);
-    const data = useResourceValue(resource41, 'user', selectResource41);
+    useResourceValue(resource41, [123], selectResource41);
+    const data = useResourceValue(resource41, ['user'], selectResource41);
     // @ts-expect-error detached selected graph is readonly
     data.nested.name = 'unsafe';
     // @ts-expect-error result inference preserves the selected leaf type
     const wrong: number = data.nested.name;
-    const native = useResourceValue(resource41, 'user', selectFreshNatives);
+    const native = useResourceValue(resource41, ['user'], selectFreshNatives);
     // @ts-expect-error readonly native date
     native.date.setTime(0);
     // @ts-expect-error readonly native map

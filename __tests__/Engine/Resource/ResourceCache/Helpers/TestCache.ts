@@ -11,12 +11,12 @@ import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
  * them directly, so this subclass exposes them under explicit `expose*` names without widening
  * the shipped class.
  */
-export class TestCache<T, TArgs = void> extends ResourceCache<T, TArgs> {
+export class TestCache<T, TArgs = void> extends ResourceCache<T, [TArgs]> {
     /** The cache key for one argument set, as the key memo derives it.
      *
      * @param args - the loader arguments identifying the entry
      */
-    public exposeKeyOf(args: TArgs): string {
+    public exposeKeyOf(...args: [TArgs]): string {
         return this[R.keyOf](args);
     }
 
@@ -24,8 +24,8 @@ export class TestCache<T, TArgs = void> extends ResourceCache<T, TArgs> {
      *
      * @param args - the loader arguments identifying the entry
      */
-    public exposePathOf(args: TArgs): TPath {
-        return this[R.pathOf](args);
+    public exposePathOf(...args: [TArgs]): TPath {
+        return this[R.pathOf](...args);
     }
 
     /** The read path for an already-derived cache key.

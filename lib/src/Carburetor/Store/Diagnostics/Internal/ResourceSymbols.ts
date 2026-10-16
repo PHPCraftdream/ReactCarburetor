@@ -4,6 +4,10 @@ export class R {
     public static readonly abortKey = Symbol("resource.abortKey");
     /** Internal bulkDepth slot. */
     public static readonly bulkDepth = Symbol("resource.bulkDepth");
+    /** Internal clear slot. */
+    public static readonly clear = Symbol("resource.clear");
+    /** Internal clearToken slot. */
+    public static readonly clearToken = Symbol("resource.clearToken");
     /** Internal cancelInFlight slot. */
     public static readonly cancelInFlight = Symbol("resource.cancelInFlight");
     /** Internal ensureRuntime slot. */
@@ -24,6 +28,8 @@ export class R {
     public static readonly hasRequest = Symbol("resource.hasRequest");
     /** Internal installState slot. */
     public static readonly installState = Symbol("resource.installState");
+    /** Internal isFresh slot. */
+    public static readonly isFresh = Symbol("resource.isFresh");
     /** Internal isCurrent slot. */
     public static readonly isCurrent = Symbol("resource.isCurrent");
     /** Internal isRetentionFree slot. */
@@ -32,10 +38,14 @@ export class R {
     public static readonly isStale = Symbol("resource.isStale");
     /** Internal keyCacheSize slot. */
     public static readonly keyCacheSize = Symbol("resource.keyCacheSize");
+    /** Internal custom key function slot. */
+    public static readonly key = Symbol("resource.key");
     /** Internal keyMutationReported slot. */
     public static readonly keyMutationReported = Symbol("resource.keyMutationReported");
     /** Internal keyOf slot. */
     public static readonly keyOf = Symbol("resource.keyOf");
+    /** Internal slot load entry point slot. */
+    public static readonly load = Symbol("resource.slotLoad");
     /** Internal lastKeyArgsRef slot. */
     public static readonly lastKeyArgsRef = Symbol("resource.lastKeyArgsRef");
     /** Internal lastKeyJson slot. */
@@ -46,6 +56,8 @@ export class R {
     public static readonly loader = Symbol("resource.loader");
     /** Internal markLoading slot. */
     public static readonly markLoading = Symbol("resource.markLoading");
+    /** Internal memoryToken slot. */
+    public static readonly memoryToken = Symbol("resource.memoryToken");
     /** Internal maxEntries slot. */
     public static readonly maxEntries = Symbol("resource.maxEntries");
     /** Internal operationVersion slot. */
@@ -62,6 +74,8 @@ export class R {
     public static readonly primedKeys = Symbol("resource.primedKeys");
     /** Internal primedTail slot. */
     public static readonly primedTail = Symbol("resource.primedTail");
+    /** Internal publishMemory slot. */
+    public static readonly publishMemory = Symbol("resource.publishMemory");
     /** Internal reconcileError slot. */
     public static readonly reconcileError = Symbol("resource.reconcileError");
     /** Internal reconcileFailure slot. */

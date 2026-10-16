@@ -6,7 +6,7 @@ import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 import {useResourceValue} from '@/Interop';
 
 interface Data {left: {name: string}; right: {name: string}}
-class Cache extends ResourceCache<Data, string> {
+class Cache extends ResourceCache<Data, [string]> {
     public rename(branch: 'left' | 'right', name: string): void {
         const key = this.resolve('user').key;
         this.update(draft => { draft.entries[key].data![branch].name = name; });
@@ -24,7 +24,7 @@ describe('R41 resource commit boundaries', () => {
             return <span>{data.name}</span>;
         });
         const Parent = ({branch, suspend = false}: {branch: 'left' | 'right'; suspend?: boolean}) => {
-            const data = useResourceValue(cache, 'user', view => view.data![branch]);
+            const data = useResourceValue(cache, ['user'], view => view.data![branch]);
             if (suspend) throw never;
             return <Child data={data}/>;
         };
@@ -75,7 +75,7 @@ describe('R41 resource commit boundaries', () => {
                 // oxlint-disable-next-line react/immutability, react/globals -- Open loader guard.
                 rendering = true;
                 try {
-                    const name = useResourceValue(cache, 'user', view => view.data!.left.name);
+                    const name = useResourceValue(cache, ['user'], view => view.data!.left.name);
                     return <span data-tick={tick}>{name}</span>;
                 } finally {
                     // oxlint-disable-next-line react/immutability, react/globals -- Always close loader guard.
@@ -122,7 +122,7 @@ describe('R41 resource commit boundaries', () => {
         }, {ttl: Infinity});
         const never = new Promise<void>(() => {});
         const Parent = ({suspend}: {suspend: boolean}) => {
-            const name = useResourceValue(cache, 'user', view => view.data?.left.name);
+            const name = useResourceValue(cache, ['user'], view => view.data?.left.name);
             if (suspend) throw never;
             return <span>{name ?? 'loading'}</span>;
         };
@@ -152,7 +152,7 @@ describe('R41 resource commit boundaries', () => {
             const values: boolean[] = [];
             const select = (view: TReadonly<IResourceView<Data>>) => view.stale;
             const Reader = ({tick}: {tick: number}) => {
-                const stale = useResourceValue(cache, 'user', select);
+                const stale = useResourceValue(cache, ['user'], select);
                 values.push(stale);
                 return <span data-tick={tick}>{String(stale)}</span>;
             };
@@ -178,7 +178,7 @@ describe('R41 resource commit boundaries', () => {
             observations.push({present: cache.resolve('user').present, version: cache.getVersion()});
             return view.data?.left.name;
         };
-        const Reader = () => <span>{useResourceValue(cache, 'user', select) ?? 'loading'}</span>;
+        const Reader = () => <span>{useResourceValue(cache, ['user'], select) ?? 'loading'}</span>;
         const mounted = render(<Reader/>);
         try {
             expect(requests).toHaveLength(1);
@@ -206,7 +206,7 @@ describe('R41 resource commit boundaries', () => {
         }, {ttl: Infinity});
         const values: Array<string | boolean> = [];
         const Reader = () => {
-            const value = useResourceValue(cache, 'user', view => view[field]);
+            const value = useResourceValue(cache, ['user'], view => view[field]);
             values.push(value);
             return <span>{String(value)}</span>;
         };
@@ -235,7 +235,7 @@ describe('R41 resource commit boundaries', () => {
         const current = new Cache(async () => ({left: {name: 'current'}, right: {name: 'other'}}), {ttl: Infinity});
         await current.load('user');
         const Reader = ({source}: {source: Cache}) => <span>{
-            useResourceValue(source, 'user', view => view.data?.left.name) ?? 'loading'
+            useResourceValue(source, ['user'], view => view.data?.left.name) ?? 'loading'
         }</span>;
         const mounted = render(<Reader source={old}/>);
         try {
@@ -259,7 +259,7 @@ describe('R41 resource commit boundaries', () => {
             return request.promise;
         }, {ttl: Infinity});
         const Reader = ({tick}: {tick: number}) => <span data-tick={tick}>{
-            useResourceValue(cache, 'user', view => view.error ?? view.data?.left.name ?? 'loading')
+            useResourceValue(cache, ['user'], view => view.error ?? view.data?.left.name ?? 'loading')
         }</span>;
         const mounted = render(<Reader tick={0}/>);
         try {

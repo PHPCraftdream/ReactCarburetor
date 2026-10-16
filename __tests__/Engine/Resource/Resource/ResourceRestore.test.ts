@@ -1,8 +1,8 @@
 import {EResourceStatus, IResourceData, IResourceSnapshot, ResourceCarburetor} from "@/Carburetor";
 import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
-import {deferred, flush, IDeferred} from "./helpers";
+import {deferred, flush, IDeferred} from "./Keys/helpers";
 
-const thrownBy = (resource: ResourceCarburetor<string, string>, key: string): unknown => {
+const thrownBy = (resource: ResourceCarburetor<string, [string]>, key: string): unknown => {
     try {
         resource.suspend(key);
     } catch (error: unknown) {
@@ -12,7 +12,7 @@ const thrownBy = (resource: ResourceCarburetor<string, string>, key: string): un
     return undefined;
 };
 
-class WritableResource extends ResourceCarburetor<string, string> {
+class WritableResource extends ResourceCarburetor<string, [string]> {
     /** Exposes the ordinary draft/update mutation for resource regression coverage. */
     public change(mutate: (draft: IResourceData<string>) => void): void {
         this.update(mutate);
@@ -25,7 +25,7 @@ describe('ResourceCarburetor', () => {
         const requested: string[] = [];
         const signals: AbortSignal[] = [];
 
-        const resource = new ResourceCarburetor<string, {id: string}>((args, signal) => {
+        const resource = new ResourceCarburetor<string, [{id: string}]>((args, signal) => {
             requested.push(args.id);
             signals.push(signal);
 
@@ -128,7 +128,7 @@ describe('ResourceCarburetor', () => {
 
         // A second start leaves the previous answer's data in place while going Pending —
         // this resource's own existing "refresh" shape (start() clears error, not data).
-        const reload = source.reload();
+        const reload = source.refresh();
 
         expect(source.getData().status).toEqual(EResourceStatus.Pending);
         expect(source.getData().data).toEqual('first');
@@ -147,12 +147,12 @@ describe('ResourceCarburetor', () => {
         await reload;
     });
 
-    test('reload repeats the last request after an abort', async () => {
+    test('refresh repeats the named arguments after an abort', async () => {
         const requested: string[] = [];
         const gates: IDeferred<string>[] = [deferred<string>(), deferred<string>()];
         let calls = 0;
 
-        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+        const resource = new ResourceCarburetor<string, [{id: string}]>((args) => {
             requested.push(args.id);
 
             return gates[calls++].promise;
@@ -167,8 +167,8 @@ describe('ResourceCarburetor', () => {
 
         expect(resource.getData().status).toEqual(EResourceStatus.Idle);
 
-        // abort() cancelled the request but not the memory of what was requested last.
-        const reloaded = resource.reload();
+        // refresh() names these arguments explicitly; abort() kept no hidden last-args state (D3).
+        const reloaded = resource.refresh({id: 'a'});
 
         expect(requested).toEqual(['a', 'a']);
 
@@ -180,7 +180,7 @@ describe('ResourceCarburetor', () => {
         expect(resource.suspend({id: 'a'})).toEqual('a-again');
     });
 
-    test('reload before any load stays an intentional no-op', async () => {
+    test('refresh before any load starts the first request', async () => {
         let calls = 0;
 
         const resource = new ResourceCarburetor<number>(() => {
@@ -189,13 +189,14 @@ describe('ResourceCarburetor', () => {
             return Promise.resolve(calls);
         });
 
-        await resource.reload();
+        // refresh() always restarts: on an empty slot it is the first request (D3, no last-args state).
+        await resource.refresh();
 
-        expect(calls).toEqual(0);
-        expect(resource.getData().status).toEqual(EResourceStatus.Idle);
+        expect(calls).toEqual(1);
+        expect(resource.getData().status).toEqual(EResourceStatus.Success);
     });
 
-    test('a restore into an instance that never loaded leaves reload a no-op', async () => {
+    test('a restore into an instance that never loaded keeps refresh argument-driven', async () => {
         let sourceCalls = 0;
 
         const source = new ResourceCarburetor<string>(() => {
@@ -221,21 +222,21 @@ describe('ResourceCarburetor', () => {
         expect(fresh.getData().status).toEqual(EResourceStatus.Success);
         expect(fresh.suspend(undefined)).toEqual('source-data');
 
-        // The snapshot names the answer's key, not the arguments that produced it: restore
-        // serves the answer but cannot establish what reload would repeat.
-        await fresh.reload();
+        // The snapshot carries no hidden last-args state (D3): refresh() must name its
+        // arguments, and () here means the empty key, which the loader serves.
+        await fresh.refresh();
 
-        expect(freshCalls).toEqual(0);
+        expect(freshCalls).toEqual(1);
         expect(fresh.getData().status).toEqual(EResourceStatus.Success);
-        expect(fresh.getData().data).toEqual('source-data');
+        expect(fresh.getData().data).toEqual('fresh-data');
     });
 
-    test('restore keeps an aborted load replayable by reload', async () => {
+    test('restore keeps an aborted load replayable by refresh', async () => {
         const requested: string[] = [];
         const gates: IDeferred<string>[] = [deferred<string>(), deferred<string>()];
         let calls = 0;
 
-        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+        const resource = new ResourceCarburetor<string, [{id: string}]>((args) => {
             requested.push(args.id);
 
             return gates[calls++].promise;
@@ -258,8 +259,8 @@ describe('ResourceCarburetor', () => {
 
         expect(resource.getData().data).toEqual('restored');
 
-        // reload repeats what THIS instance last requested ('a'), not the restored key.
-        const reloaded = resource.reload();
+        // refresh() names what THIS instance requested ('a'), not the restored key.
+        const reloaded = resource.refresh({id: 'a'});
 
         expect(requested).toEqual(['a', 'a']);
 
@@ -274,7 +275,7 @@ describe('single-slot public replacement', () => {
     test('distinct Success loses its old key before observers, and a read starts the actual loader', async () => {
         const next = deferred<string>();
         const requested: string[] = [];
-        const resource = new ResourceCarburetor<string, string>((key) => {
+        const resource = new ResourceCarburetor<string, [string]>((key) => {
             requested.push(key);
             return requested.length === 1 ? Promise.resolve('network:a') : next.promise;
         });
@@ -293,18 +294,18 @@ describe('single-slot public replacement', () => {
         expect(resource.getData()).toBe(replacement);
         expect(resource.snapshot()).toEqual({...replacement, key: undefined});
         expect(JSON.parse(JSON.stringify(resource))).toEqual(replacement);
-        const waiting = thrownBy(resource, 'a');
-        expect(waiting).toBeInstanceOf(Promise);
-        expect(requested).toEqual(['a', 'a']);
+        // D1: the earlier 'a' answer is still fresh, so the read serves the memory
+        // instead of starting a loader request for the keyless replacement state.
+        expect(resource.suspend('a')).toBe('network:a');
+        expect(requested).toEqual(['a']);
         next.resolve('network:a:again');
-        await (waiting as Promise<void>);
-        expect(resource.suspend('a')).toBe('network:a:again');
+        await next.promise.catch(() => undefined);
     });
 
     test('equal-valued distinct Success publishes key loss once; the current object does not', async () => {
         const next = deferred<string>();
         let calls = 0;
-        const resource = new ResourceCarburetor<string, string>(() => {
+        const resource = new ResourceCarburetor<string, [string]>(() => {
             calls++;
             return calls === 1 ? Promise.resolve('network:a') : next.promise;
         });
@@ -325,19 +326,17 @@ describe('single-slot public replacement', () => {
         expect(seen).toEqual([{...equal, key: undefined}]);
         expect(resource.snapshot()).toEqual({...equal, key: undefined});
         expect(JSON.parse(JSON.stringify(resource))).toEqual(equal);
-        const waiting = thrownBy(resource, 'a');
-        expect(waiting).toBeInstanceOf(Promise);
-        expect(calls).toBe(2);
-        next.resolve('fresh');
-        await (waiting as Promise<void>);
-        expect(resource.suspend('a')).toBe('fresh');
+        // D1: the remembered 'a' answer is still fresh, so the read serves it
+        // without a new request even after the equal-valued replacement.
+        expect(resource.suspend('a')).toBe('network:a');
+        expect(calls).toBe(1);
     });
 
     test('keyless Error replacement reconciles raw cause before publication and refetches old key', async () => {
         const original = new Error('transport-down');
         const next = deferred<string>();
         let calls = 0;
-        const resource = new ResourceCarburetor<string, string>(() => {
+        const resource = new ResourceCarburetor<string, [string]>(() => {
             calls++;
             return calls === 1 ? Promise.reject(original) : next.promise;
         });
@@ -378,7 +377,7 @@ describe('single-slot public replacement', () => {
         const original = new Error('offline');
         const next = deferred<string>();
         let calls = 0;
-        const resource = new ResourceCarburetor<string, string>(() => {
+        const resource = new ResourceCarburetor<string, [string]>(() => {
             calls++;
             return calls === 1 ? Promise.reject(original) : next.promise;
         });
@@ -415,7 +414,7 @@ describe('single-slot public replacement', () => {
 
     test('installing the exact current Error state retains its original raw rejection', async () => {
         const original = new Error('offline');
-        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+        const resource = new ResourceCarburetor<string, [string]>(() => Promise.reject(original));
         await resource.load('a');
         const current = resource.getData();
 
@@ -432,7 +431,7 @@ describe('single-slot public replacement', () => {
         const original = new Error('down');
         const next = deferred<string>();
         let calls = 0;
-        const resource = new ResourceCarburetor<string, string>(() => {
+        const resource = new ResourceCarburetor<string, [string]>(() => {
             calls++;
             return calls === 1 ? Promise.reject(original) : next.promise;
         });
@@ -467,7 +466,7 @@ describe('single-slot public replacement', () => {
         const gate = deferred<string>();
         let calls = 0;
         let signal: AbortSignal | undefined;
-        const resource = new ResourceCarburetor<string, string>((_key, nextSignal) => {
+        const resource = new ResourceCarburetor<string, [string]>((_key, nextSignal) => {
             calls++;
             signal = nextSignal;
             return gate.promise;
@@ -492,7 +491,7 @@ describe('single-slot public replacement', () => {
 
     test('restore and fromJSON reconstruct rejection instead of retaining the previous raw cause', async () => {
         const original = new Error('down');
-        const resource = new ResourceCarburetor<string, string>(() => Promise.reject(original));
+        const resource = new ResourceCarburetor<string, [string]>(() => Promise.reject(original));
         await resource.load('a');
 
         resource.restore({...resource.snapshot(), error: 'restored'});

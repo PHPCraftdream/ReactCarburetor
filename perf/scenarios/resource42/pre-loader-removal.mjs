@@ -11,7 +11,7 @@ const {React} = await setupReact();
 const {createRoot} = await import('react-dom/client');
 const env = {React, createRoot, api: await load(), interop: await load('Interop')};
 let restoredLoading = 0, readyDOM = 0;
-for (const action of ['abort', 'forget', 'restore', 'forgetAll']) {
+for (const action of ['abort', 'forget', 'restore', 'clear']) {
     for (const phase of ['before', 'after', 'replacement']) {
         for (const strict of [false, true]) {
             const result = await checkRemoval(env, {action, phase, strict});
@@ -23,7 +23,7 @@ for (const action of ['abort', 'forget', 'restore', 'forgetAll']) {
 for (const kind of ['hook', 'class']) for (const mode of ['source', 'args', 'unmount']) {
     for (const strict of [false, true]) await checkDisarm(env, {kind, mode, strict});
 }
-for (const action of ['abort', 'forget', 'restore', 'forgetAll']) await checkRefresh(env, 'hook', action);
+for (const action of ['abort', 'forget', 'restore', 'clear']) await checkRefresh(env, 'hook', action);
 let preloaderRetirements = 0, retiredLoads = 0, registrationBalance = 0, activeRegistrations = 0;
 for (const kind of ['hook', 'class']) for (const mode of ['source', 'args', 'unmount']) {
     for (const strict of [false, true]) {

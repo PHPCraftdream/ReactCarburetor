@@ -1,3 +1,4 @@
+import {TSignalLoader} from "@/Carburetor/Resource/Keys/TSignalLoader";
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {
@@ -6,8 +7,13 @@ import {
     IResourceResolution,
     IResourceSource,
     IResourceView,
+    TResourceArgs,
+    TResourceKey,
     TResourceLoader,
 } from "@/Carburetor/Models/Resource";
+import {defaultResourceKey} from "@/Carburetor/Resource/Keys/defaultResourceKey";
+import {encodeResourceKeyValue} from "@/Carburetor/Resource/Keys/encodeResourceKeyValue";
+import {validateResourceKey} from "@/Carburetor/Resource/Keys/validateResourceKey";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
@@ -43,7 +49,8 @@ interface IPrimedKey {
     next: IPrimedKey | undefined;
 }
 
-const validateOptions = (options: IResourceCacheOptions): IResourceCacheOptions => {
+const validateOptions = <TArgs extends TResourceArgs>(
+    options: IResourceCacheOptions<TArgs>): IResourceCacheOptions<TArgs> => {
     if (options.ttl !== undefined && (Number.isNaN(options.ttl) || options.ttl < 0)) {
         throw new RangeError('ResourceCache ttl must be a non-negative number');
     }
@@ -72,8 +79,10 @@ const validateOptions = (options: IResourceCacheOptions): IResourceCacheOptions 
  * precision for free: a component reading one entry is not woken by another entry's answer. See
  * docs/promise-cache.md for the decisions behind the shape, the escaped key and the TTL.
  */
-export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TArgs>
+export class ResourceCache<T, TArgs extends TResourceArgs = []> extends ResourceCacheLifecycle<T, TArgs>
     implements IResourceSource<T, TArgs> {
+    /** Custom key function from options; omitted, the default key derivation applies. */
+    private readonly [R.key]: TResourceKey<TArgs> | undefined;
     /** Weak development-only arguments identity. */
     private [R.lastKeyArgsRef]: WeakRef<object> | undefined = undefined;
     /** Serialized value of the most recently keyed arguments. */
@@ -91,14 +100,33 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
     /** Record-count budget; each memo record also carries its two intrusive LRU links. */
     private readonly [R.keyCacheSize]!: number;
 
-    /** Create a keyed cache for a resource loader.
+    /** Create a keyed cache for a resource loader; the signal-taking loader is matched first.
      *
      * @param loader - Function that loads a resource.
      * @param options - Cache settings, including the primitive key memo budget.
      */
-    constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
-        super(loader, validateOptions(options));
+    public constructor(
+        loader: (...args: [...TArgs, AbortSignal]) => Promise<T>,
+        options?: IResourceCacheOptions<TArgs>,
+    );
+    public constructor(
+        loader: (...args: TArgs) => Promise<T>,
+        options?: IResourceCacheOptions<TArgs>,
+    );
+    /** Loader arguments must be fixed-length without optional members; see `TSignalLoader`. */
+    public constructor(loader: TSignalLoader<T, TArgs>, options?: IResourceCacheOptions<TArgs>);
+    /** Create a keyed cache for a resource loader; the signal-taking loader is matched first.
+     *
+     * @param loader - Function that loads a resource.
+     * @param options - Cache settings, including the primitive key memo budget.
+     */
+    public constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions<TArgs> = {}) {
+        // The union loader type is not directly callable; the runtime always passes the signal.
+        super(loader as (...args: readonly unknown[]) => Promise<T>, validateOptions(options));
         this[R.keyCacheSize] = options.keyCacheSize === undefined ? DEFAULT_KEY_CACHE_SIZE : options.keyCacheSize;
+        this[R.key] = options.key === undefined
+            ? undefined
+            : validateResourceKey(options.key as TResourceKey<never> | undefined) as TResourceKey<TArgs>;
     }
 
     /** Keep replacement bookkeeping current before the shared boundary publishes. */
@@ -183,10 +211,15 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param args - the loader arguments to derive the key from
      */
     private [R.primed](args: TArgs): {key: string; path: TPath} | undefined {
-        if (args !== null && args !== undefined && typeof args !== 'string' && typeof args !== 'number'
-            && typeof args !== 'boolean') return undefined;
+        // A custom key must decide every key: the primitive fast path would bypass its
+        // validation on read paths, and the memo is only a fast path.
+        if (this[R.key] !== undefined) return undefined;
+        // One-shot resolution reuse is keyed by the first argument only; longer lists skip it.
+        if (args.length > 1) return undefined;
+        const primitive = args[0] as TPrimitiveArgs;
+        if (primitive !== null && primitive !== undefined && typeof primitive !== 'string' &&
+            typeof primitive !== 'number' && typeof primitive !== 'boolean') return undefined;
 
-        const primitive = args as TPrimitiveArgs;
         const records = this[R.primedKeys];
         const cached = records?.get(primitive);
 
@@ -195,7 +228,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
             return cached;
         }
 
-        const key = escapeCacheKey(JSON.stringify(args === undefined ? null : args) as string);
+        const key = escapeCacheKey(defaultResourceKey(args));
         const path = joinPath('entries', key);
         if (this[R.keyCacheSize] === 0) {
             return {key, path};
@@ -249,13 +282,22 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      * @param args - the loader arguments to derive the key from
      */
     public [R.keyOf](args: TArgs): string {
+        const keyFn = this[R.key];
+        if (keyFn !== undefined) {
+            return encodeResourceKeyValue(
+                (keyFn as (...a: readonly unknown[]) => string | number)(...args));
+        }
+
         const primed = this[R.primed](args);
 
         if (primed !== undefined) return primed.key;
 
-        const json = JSON.stringify(args === undefined ? null : args) as string;
+        const json = defaultResourceKey(args);
         const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
-        const sameReference = development && this[R.lastKeyArgsRef]?.deref() === args &&
+        // One single argument is tracked by its own identity, as before the variadic migration:
+        // a caller-held object reports its mutation even when each call builds a fresh rest tuple.
+        const reference = args.length === 1 ? args[0] : args;
+        const sameReference = development && this[R.lastKeyArgsRef]?.deref() === reference &&
             this[R.lastKeyValue] !== undefined;
         const unchanged = this[R.lastKeyJson] === json && this[R.lastKeyValue] !== undefined;
         if (unchanged && !development) {
@@ -274,9 +316,9 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
             );
         }
 
-        this[R.lastKeyArgsRef] = development && args !== null &&
-            (typeof args === 'object' || typeof args === 'function')
-            ? sameReference ? this[R.lastKeyArgsRef] : new WeakRef(args as object)
+        this[R.lastKeyArgsRef] = development && reference !== null &&
+            (typeof reference === 'object' || typeof reference === 'function')
+            ? sameReference ? this[R.lastKeyArgsRef] : new WeakRef(reference as object)
             : undefined;
         this[R.lastKeyJson] = json;
         this[R.lastKeyValue] = key;
@@ -289,7 +331,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param args - the loader arguments identifying the entry
      */
-    public [R.pathOf](args: TArgs): TPath {
+    public [R.pathOf](...args: TArgs): TPath {
         const primed = this[R.primed](args);
 
         return primed ? primed.path : this[R.pathOfKey](this[R.keyOf](args));
@@ -309,7 +351,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param args - the loader arguments identifying the entry
      */
-    public getEntry(args: TArgs): IResourceView<T> {
+    public getEntry(...args: TArgs): IResourceView<T> {
         const primed = this[R.primed](args);
 
         return this[R.getEntryByKey](primed ? primed.key : this[R.keyOf](args));
@@ -366,7 +408,8 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param args - the loader arguments identifying the entry
      */
-    public resolve(args: TArgs): IResourceResolution<T> {
+    public resolve(...args: TArgs): IResourceResolution<T> {
+        // Single-argument call sites pass the value itself; key derivation expects that form.
         const primed = this[R.primed](args);
 
         const key = primed !== undefined ? primed.key : this[R.keyOf](args);
@@ -388,7 +431,7 @@ export class ResourceCache<T, TArgs = void> extends ResourceCacheLifecycle<T, TA
      *
      * @param args - the loader arguments identifying the entry
      */
-    public getFailure(args: TArgs): unknown {
+    public getFailure(...args: TArgs): unknown {
         const key = this[R.keyOf](args);
         const runtime = this[R.runtimeFor](key);
         const answer = runtime?.answer;

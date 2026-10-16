@@ -7,9 +7,9 @@ interface Quote {
 
 declare function fetchQuote(symbol: string): Promise<Quote>;
 
-const quoteOptions: IResourceCacheOptions = {ttl: 30_000, maxEntries: 100, keyCacheSize: 256};
+const quoteOptions: IResourceCacheOptions<[string]> = {ttl: 30_000, maxEntries: 100, keyCacheSize: 256};
 
-const quoteCache = new ResourceCache<Quote, string>(
+const quoteCache = new ResourceCache<Quote, [string]>(
     (symbol: string, _signal: AbortSignal) => fetchQuote(symbol),
     quoteOptions
 );

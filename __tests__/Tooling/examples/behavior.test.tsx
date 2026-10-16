@@ -48,6 +48,8 @@ describe('AutosaveDraft example reads tracked state (docs/examples/components.md
 describe('ConfigView example suspends and refreshes (docs/examples/resources.md)', () => {
     const setup = async () => {
         fetchConfig.use(() => Promise.resolve({theme: 'dark'}));
+        // The slot remembers the fresh answer of a previous test; start clean.
+        configResource.clear();
         await act(async () => {
             await configResource.load();
         });
@@ -77,19 +79,19 @@ describe('ConfigView example suspends and refreshes (docs/examples/resources.md)
         return {mounted};
     };
 
-    test('a reload with fresh data re-renders the component', async () => {
+    test('a refresh with fresh data re-renders the component', async () => {
         const {mounted} = await setup();
         expect(mounted.container.querySelector('.theme')?.textContent).toEqual('dark');
 
         fetchConfig.use(() => Promise.resolve({theme: 'light'}));
         await act(async () => {
-            await configResource.reload();
+            await configResource.refresh();
         });
 
         expect(mounted.container.querySelector('.theme')?.textContent).toEqual('light');
     });
 
-    test('a failed reload after a success reaches the error boundary', async () => {
+    test('a failed refresh after a success reaches the error boundary', async () => {
         const {mounted} = await setup();
         expect(mounted.container.querySelector('.theme')?.textContent).toEqual('dark');
 
@@ -97,7 +99,7 @@ describe('ConfigView example suspends and refreshes (docs/examples/resources.md)
         const errors = rstest.spyOn(console, 'error').mockImplementation(() => {});
         fetchConfig.use(() => Promise.reject(new Error('offline')));
         await act(async () => {
-            await configResource.reload().catch(() => undefined);
+            await configResource.refresh().catch(() => undefined);
         });
 
         expect(mounted.container.querySelector('.error')?.textContent).toContain('offline');

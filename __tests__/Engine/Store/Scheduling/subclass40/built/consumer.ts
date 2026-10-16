@@ -17,8 +17,11 @@ class InvalidRoot extends Carburetor<{n: number}> {
     // @ts-expect-error data is the documented accessor exception to ordinary field names
     public data = {n: 1};
 }
-class Cache extends ResourceCache<string, string> { public ttl = 'domain'; public loader = 'domain'; }
-class Slot extends ResourceCarburetor<string, string> { public runtime = 'domain'; public operationVersion = 'domain'; }
+class Cache extends ResourceCache<string, [string]> { public ttl = 'domain'; public loader = 'domain'; }
+class Slot extends ResourceCarburetor<string, [string]> {
+    public runtime = 'domain';
+    public operationVersion = 'domain';
+}
 class Owner extends AntiHookComponent {
     public uid = 'domain';
     public tracked = 'domain';

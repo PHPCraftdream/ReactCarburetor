@@ -98,18 +98,19 @@ explicit re-arm; aborting a retry does not cause an automatic failure loop.
 
 | Member | Purpose |
 |--------|---------|
-| `getEntry(args)` | The entry as it is now, with a `stale` verdict. Does not start anything, and does not write — `Carburetor.read` is the tracked-read API, so this one is named after `getData`. |
-| `load(args)` | Resolves from the cache when fresh, otherwise fetches. Concurrent identical calls share one request. |
-| `refresh(args)` | Always fetches, ignoring freshness. Replaces the entry on success, keeps it on failure. |
+| `getEntry(...args)` | The entry as it is now, with a `stale` verdict. Does not start anything, and does not write — `Carburetor.read` is the tracked-read API, so this one is named after `getData`. |
+| `load(...args)` | Resolves from the cache when fresh, otherwise fetches. Concurrent identical calls share one request. |
+| `refresh(...args)` | Always fetches, ignoring freshness. Replaces the entry on success, keeps it on failure. |
+| `clear()` | Cancels every in-flight request and removes every entry in one publication (replaces `forgetAll`). |
 | `invalidate(args)` | Marks one entry stale without touching its data. Never refetches: entries being read refetch on their next read, and `refresh` fetches one now. Also clears `failed`, re-arming an entry whose last attempt failed. |
 | `invalidateAll()` | Marks every entry stale and re-arms any failed entry, the usual move after a write the server accepted. Never refetches. |
 | `forget(args)` | Removes one entry, cancelling its request first so a late answer cannot resurrect it. |
-| `forgetAll()` | Removes every entry. |
+| `forgetAll()` | Removed; use `clear()`. |
 | `suspend(args)` | Reads for Suspense: a miss or re-armed Error throws its request; a non-invalidated Error throws its failure. Stale Success revalidates with deferred publication and returns the old value. |
 | `abort(args)` | Cancels one entry's in-flight request, leaving whatever data the entry already holds. |
 | `abortAll()` | Cancels every request in flight. |
 
-Each fresh `load(args)` hit resolves through its own fulfilled `Promise<void>` allocation,
+Each fresh `load(...args)` hit resolves through its own fulfilled `Promise<void>` allocation,
 including hits for different keys and repeated hits on the same key. It holds no arguments, entry,
 payload or raw failure, and is not shared across caches. Each caller's `await` or `.then` reaction
 still runs asynchronously; each `.then` creates an independent child promise, so a throwing callback
@@ -122,6 +123,28 @@ loader can run, rejects with `AbortError`. A replacement request keeps its own o
 The one-entry and all-entries variants are separate methods rather than one optional argument:
 arguments can be `void` — `load()` takes none then — so an argument-less `abort()` would be
 genuinely ambiguous between "this one entry" and "all of them".
+
+## Keys and switching entries
+
+By default the key is derived from the arguments: none → the single `void`-style key, one argument
+→ today's rule on it, two or more → their JSON form (trailing `undefined` stripped). The `key`
+option — `(...args) => string | number` at construction — replaces that derivation, which is how
+two different call shapes are made to share one entry. A returned value that is not a finite
+number or string is a `TypeError` at the call.
+
+Loader arguments must be fixed-length and required (no optional, default-value or variable rest
+members): the runtime appends the abort signal right after the loader arguments, so a bare `load()`
+would deliver the signal inside an optional argument. When the argument tuple is inferred,
+TypeScript rejects default-value parameters; optional and rest members are a rule rather than a
+compile error, and with explicit generics even an optional member is accepted — the runtime still
+appends the abort signal after the arguments, so prefer the explicit `id: string | undefined` form.
+Call `load(undefined)` in that case; trailing `undefined` arguments still do not split keys.
+
+"Click shows another record" needs no selection state: the handler calls `load(id)` and the
+component reads `this.useResource(cache, id)` (or `this.useCarburetor(slot)` on a
+`ResourceCarburetor`). A fresh stored answer for the key skips the request; a new key loads that
+entry. On a `ResourceCarburetor`, `ttl`/`maxEntries` additionally let earlier answers per key be
+remembered and reused while fresh.
 
 Eviction is not optional: without it the cache grows by one entry per distinct argument set for the
 lifetime of the process. A maximum entry count is set in the constructor, least-recently-used entries
@@ -142,12 +165,13 @@ import {useResourceValue} from 'react-carburetor/interop';
 
 const selectName = (view: TReadonly<IResourceView<User>>) => view.data?.name;
 function UserName({id}: {id: string}) {
-    const name = useResourceValue(users, id, selectName);
+    const name = useResourceValue(users, [id], selectName);
     return <span>{name ?? 'loading'}</span>;
 }
 ```
 
-`useResourceValue<T, TArgs, R>(source, args, select, isEqual?)` returns `TReadonly<R>`.
+`useResourceValue<T, TArgs, R>(source, args, select, isEqual?)` returns `TReadonly<R>`; the loader
+arguments are an explicit tuple (`[]` for a resource without arguments) and precede the selector.
 The selector is required; there is no two-argument hook or implicit whole-resource selection.
 It is pure and synchronous, borrowing an evaluation-scoped read input. Do not retain that input
 or close deferred callbacks over it. Returning an input branch is supported: capture detaches it

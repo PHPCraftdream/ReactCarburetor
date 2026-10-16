@@ -5,7 +5,7 @@ import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 const controlled = () => {
     const calls: string[] = [];
     const pending: Array<PromiseWithResolvers<string>> = [];
-    const cache = new ResourceCache<string, string>((key) => {
+    const cache = new ResourceCache<string, [string]>((key) => {
         calls.push(key);
         const request = Promise.withResolvers<string>();
         pending.push(request);
@@ -115,7 +115,7 @@ test('undefined raw failure ownership remains distinct from a stale invalidated 
     };
 
     const calls: string[] = [];
-    const cache = new ResourceCache<string, string>((key) => {
+    const cache = new ResourceCache<string, [string]>((key) => {
         calls.push(key);
         return attempts[key].shift()!.promise;
     }, {ttl: Infinity});

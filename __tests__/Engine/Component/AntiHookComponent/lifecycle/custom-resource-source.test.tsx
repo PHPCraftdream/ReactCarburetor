@@ -17,7 +17,7 @@ interface ICustomSourceData {
     entries: IDict<ICustomEntry>;
 }
 
-class MinimalResourceSource extends Carburetor<ICustomSourceData> implements IResourceSource<string, string> {
+class MinimalResourceSource extends Carburetor<ICustomSourceData> implements IResourceSource<string, [string]> {
     public loadCalls: string[] = [];
 
     constructor(private readonly loader: (id: string) => Promise<string>) {

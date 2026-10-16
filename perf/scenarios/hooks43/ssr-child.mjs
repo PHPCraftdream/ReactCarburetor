@@ -67,7 +67,7 @@ try {
     const pickGraph = data => data.nested;
     function StoreGraph() { return h('p', null, interop.useCarburetorValue(graphServer, pickGraph).leaf.n); }
     function ComputedControl() { return h('p', null, interop.useComputedValue(derived)); }
-    function ResourceControl() { return h('p', null, interop.useResourceValue(cache, 'x', view => view.data.n)); }
+    function ResourceControl() { return h('p', null, interop.useResourceValue(cache, ['x'], view => view.data.n)); }
     function Empty() { return h('p', null, 7); }
     function LayoutPositive() { React.useLayoutEffect(() => {}); return h('p', null, 7); }
     const results = Object.fromEntries(Object.entries({empty: Empty, class: ClassControl,

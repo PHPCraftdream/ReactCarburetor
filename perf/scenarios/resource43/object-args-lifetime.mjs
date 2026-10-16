@@ -28,7 +28,7 @@ if (!process.argv.includes('--child')) {
             cache.setData({entries: {[key]: entry('hydrated-' + route)}});
             assert.equal(cache.resolve(query).view.data, 'hydrated-' + route);
             if (route === 'forget') cache.forget(query);
-            else if (route === 'forgetAll') cache.forgetAll();
+            else if (route === 'clear') cache.clear();
             else if (route === 'restore') cache.restore({entries: {}});
             else cache.setData({entries: {}});
         }
@@ -59,7 +59,7 @@ if (!process.argv.includes('--child')) {
             liveArgs: refs(liveQuery), liveData: new WeakRef(liveData)};
     }
     function unreachable() { return refs(graph('unrelated')); }
-    const fixtures = ['miss', 'forget', 'forgetAll', 'restore', 'setData', 'turnover'].map(prepare);
+    const fixtures = ['miss', 'forget', 'clear', 'restore', 'setData', 'turnover'].map(prepare);
     const held = controls(), empty = unreachable();
     async function collect() {
         for (let i = 0; i < 12; i++) { await turn(); globalThis.gc(); }

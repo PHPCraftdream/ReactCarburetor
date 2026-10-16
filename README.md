@@ -572,7 +572,7 @@ deduplication and cancellation:
 ```ts
 const parseProfile = (response: Response): Promise<IProfile> => response.json();
 
-export const profile = new ResourceCarburetor<IProfile, {id: string}>(
+export const profile = new ResourceCarburetor<IProfile, [{id: string}]>(
     ({id}, signal) => fetch(`/api/profile/${id}`, {signal}).then(parseProfile)
 );
 
@@ -624,7 +624,7 @@ render() {
 ```
 
 The subscription covers exactly the fields the render reads off the `useCarburetor`
-result — here `isPending` — so a later `reload()` that publishes a new answer wakes
+result — here `isPending` — so a later `refresh()` that publishes a new answer wakes
 the component again. A call whose result is never read registers no field reads
 and would not wake.
 
@@ -632,6 +632,143 @@ While the request is in flight the nearest `<Suspense>` fallback shows; a failur
 so the nearest error boundary handles it.
 
 ### Cached resources
+
+Both resource classes expose the same three handles, usable directly from an event handler
+(they are bound to their instance and drop an incoming event argument):
+
+| handle | meaning |
+|---|---|
+| `load(...args)` | Loads only when nothing usable is stored for the key of `args`. |
+| `refresh(...args)` | Always requests, even when the key already has a value. |
+| `clear()` | Cancels requests, drops stored answers, status back to `Idle`. |
+
+Loader arguments are variadic `(...args, signal)` and the second generic is the argument tuple:
+`new ResourceCarburetor<User, [id: string]>(...)`; a loader without a signal parameter is accepted
+by the second overload. Known edge: a first parameter typed `unknown`/`any` is taken for the
+signal, so such a resource needs the explicit form `new ResourceCarburetor<T, [unknown]>(...)`.
+Loader arguments must be fixed-length and required (no optional, default-value or variable rest
+members): the runtime appends the signal right after the arguments, so a bare `load()` would hand
+the signal to an optional argument. When the argument tuple is inferred, TypeScript rejects
+default-value parameters; optional and rest members are a rule rather than a compile error, and with
+explicit generics even an optional member is accepted — the runtime still appends the signal after
+the arguments, so prefer the explicit `id: string | undefined` form. Call `load(undefined)` in that
+case; trailing `undefined` arguments still do not split keys.
+
+The `key` option — `(...args) => string | number` at construction — decides which calls share an
+answer; without it the default key matches 0- and 1-argument resources as before. `ResourceCarburetor`
+also accepts `ttl` and `maxEntries`: past `ttl` a stored answer is stale and the next handle call
+requests again, and `maxEntries` bounds how many earlier answers are remembered per key (LRU).
+
+Click-to-switch needs one store and one call: a `@bind` method calls `load(id)` and the component
+reads the store in `render()` — no selection carburetor in between.
+
+<!-- example:file examples/api/resources/resource-carburetor/click-switch.tsx -->
+```tsx
+import {AntiHookComponent, bind, ResourceCarburetor} from 'react-carburetor';
+import {type JSX} from 'react';
+
+interface User {
+    id: string;
+    name: string;
+}
+
+declare function fetchUser(id: string): Promise<User>;
+
+// TArgs is a tuple, `[string]` here. A first `unknown`/`any` parameter would be
+// taken for the signal; that edge needs the explicit `new ResourceCarburetor<T, [unknown]>(...)`.
+const user = new ResourceCarburetor<User, [string]>(
+    (id: string, signal: AbortSignal) => fetchUser(id).then((value: User) => {
+        if (signal.aborted) {
+            throw new Error('aborted');
+        }
+        return value;
+    })
+);
+
+export class UserSwitcher extends AntiHookComponent<{initialId: string}> {
+    // Click-to-switch: one store, one call per click. A load for the key of the
+    // stored answer skips the request; a new key supersedes the active one.
+    @bind
+    private open(id: string): void {
+        void user.load(id);
+    }
+
+    @bind
+    private openNext(): void {
+        void user.load('a2');
+    }
+
+    @bind
+    private retry(): void {
+        void user.refresh(this.props.initialId);
+    }
+
+    render(): JSX.Element {
+        const view = this.useCarburetor(user);
+
+        if (view.isPending) {
+            return <span className="spinner">Loading…</span>;
+        }
+        if (view.isError) {
+            return (
+                <button type="button" onClick={this.retry}>
+                    Retry
+                </button>
+            );
+        }
+        return (
+            <span>
+                <strong>{view.data?.name}</strong>
+                <button type="button" onClick={this.openNext}>Switch user</button>
+            </span>
+        );
+    }
+}
+```
+
+For a resource without parameters the bound handle itself sits in `onClick`:
+
+<!-- example:file examples/api/resources/resource-carburetor/click-load.tsx -->
+```tsx
+import {AntiHookComponent, ResourceCarburetor} from 'react-carburetor';
+import {type JSX} from 'react';
+
+interface Config {
+    theme: string;
+}
+
+declare function fetchConfig(): Promise<Config>;
+
+// A resource without parameters: TArgs is the empty tuple, and the bound handles
+// drop an incoming DOM/React event argument before the loader sees it, so the
+// handle itself can sit in `onClick`.
+const config = new ResourceCarburetor<Config, []>(
+    (signal: AbortSignal) => fetchConfig().then((value: Config) => {
+        if (signal.aborted) {
+            throw new Error('aborted');
+        }
+        return value;
+    })
+);
+
+export class ConfigBadge extends AntiHookComponent {
+    render(): JSX.Element {
+        const view = this.useCarburetor(config);
+
+        if (view.isIdle) {
+            return <button type="button" onClick={config.load}>Load</button>;
+        }
+        if (view.isPending) {
+            return <span className="spinner">Loading…</span>;
+        }
+        if (view.isError) {
+            // refresh is bound the same way: the event it receives is dropped.
+            return <button type="button" onClick={config.refresh}>Retry</button>;
+        }
+        return <span className="theme">{view.data?.theme}</span>;
+    }
+}
+```
 
 `ResourceCarburetor` holds one value. An API layer needs many — the same loader called with different
 arguments, each answer worth keeping — which is what `ResourceCache` is:
@@ -650,7 +787,7 @@ interface User {
     name: string;
 }
 
-const users = new ResourceCache<User, string>(async (id, signal) => {
+const users = new ResourceCache<User, [string]>(async (id, signal) => {
     const response = await fetch(`/api/users/${id}`, {signal});
     if (!response.ok) throw new Error(`User request failed: ${response.status}`);
     return response.json() as Promise<User>;
@@ -742,9 +879,8 @@ count, not a byte budget. A cold query evicts one record rather than flushing al
 Sequential cyclic scans larger than the budget can still miss on every query; choose a larger finite
 budget explicitly when that tradeoff fits the application. Object arguments retain JSON mutation checks.
 
-`forgetAll()` prepares one removal for settled current entries with base per-key hooks, including
-non-configurable slots, without changing held endpoints or splitting native backlinks. Active requests
-and subclass hook overrides retain per-key behavior; locked mixed sets can still repeat graph copies.
+`clear()` drops every entry and cancels every in-flight request in one publication (it replaces
+the removed `forgetAll()`); `forget(args)` still removes a single entry.
 
 `useResource` subscribes the component to the fields of that one entry it actually reads — `data`,
 `status`, `refreshing` and so on — so another user's answer arriving does not re-render this badge, and
@@ -1111,7 +1247,7 @@ const selectUserBadge = (view: TReadonly<IResourceView<User>>) =>
     view.data === undefined ? undefined : {name: view.data.name};
 
 const HookUserBadge = ({id}: {id: string}) => {
-    const user = useResourceValue(users, id, selectUserBadge);
+    const user = useResourceValue(users, [id], selectUserBadge);
 
     return <span>{user?.name ?? '…'}</span>;
 };
@@ -1300,7 +1436,7 @@ do not redeclare it.
 | `computed(body, options?)`                    | Memoized derived value; `options.equals` judges the result by content instead of by reference. |
 | `transaction(body)`                           | One notification pass for a group of writes. |
 | `ComponentUpdateThrottle(ms)`                 | Coalescing for streaming sources.           |
-| `ResourceCarburetor(loader, scheduler?)`      | Async state with status and cancellation.    |
+| `ResourceCarburetor(loader, options?)`        | Async state with status and cancellation; `options` carries `key`, `ttl`, `maxEntries`, `scheduler`. |
 | `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent` | Per-request stores. |
 | `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
 | `diagnostics`, `Diagnostics`                  | [Development warning switch](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): independent instances and engine singleton. |
@@ -1309,7 +1445,7 @@ do not redeclare it.
 | `CarburetorContext`                            | The context a scope is provided through. |
 | `ResourceCache` `load`, `refresh`, `resolve`, `getFailure` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): resource loading, refreshing, resolution and failure access. |
 | `CarburetorHistory` `undo`, `redo`, `canUndo`, `canRedo`, `clear`, `disconnect` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): history navigation and lifecycle. |
-| `ResourceCarburetor` `reload`, `abort` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): resource reload and cancellation. |
+| `ResourceCarburetor` `load`, `refresh`, `clear`, `abort` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): resource loading, refreshing, clearing and cancellation. |
 | `useCarburetorValue`, `useComputedValue`, `useResourceValue` (from `react-carburetor/interop`) | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): three opt-in interop readers. |
 | `deepClone`, `shallowEqual`                   | Building blocks, exported for extensions.    |
 

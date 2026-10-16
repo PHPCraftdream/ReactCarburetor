@@ -28,7 +28,7 @@ const flush = async (): Promise<void> => {
 };
 
 interface ISuspendingProps {
-    cache: ResourceCache<string, string>;
+    cache: ResourceCache<string, [string]>;
     id: string;
 }
 
@@ -46,7 +46,7 @@ class SuspendingUser extends AntiHookComponent<ISuspendingProps> {
 describe('a suspending reader without field reads', () => {
     test('stays subscribed across a refresh only when it reads data from useResource', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
 
         const {container, unmount} = render(
             <React.Suspense fallback={<span className="waiting">waiting</span>}>

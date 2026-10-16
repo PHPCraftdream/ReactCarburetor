@@ -9,7 +9,7 @@ interface Settings {
 declare function fetchSettings(userId: string): Promise<Settings>;
 declare function saveSettings(userId: string, next: Settings): Promise<void>;
 
-const settingsCache = new ResourceCache<Settings, string>((userId: string) => fetchSettings(userId));
+const settingsCache = new ResourceCache<Settings, [string]>((userId: string) => fetchSettings(userId));
 
 export class SettingsPanel extends AntiHookComponent<{userId: string}> {
     @bind

@@ -1,5 +1,5 @@
 import {EResourceStatus as S, ResourceCache} from '@/Carburetor';
-import {deferred} from '../../../Resource/helpers';
+import {deferred} from '../../../Resource/Keys/helpers';
 import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 
 const ready = (data: string) => ({...resourceStatusFlags(S.Success), status: S.Success, data, error: undefined,
@@ -13,7 +13,7 @@ for (const maxEntries of [8, Infinity]) for (const kind of ['primitive', 'object
             let calls = 0;
             let callbacks = 0;
             let reactions = 0;
-            const cache = new ResourceCache<string, typeof args>(async () => { calls++; return 'loaded'; },
+            const cache = new ResourceCache<string, [typeof args]>(async () => { calls++; return 'loaded'; },
                 {ttl: Infinity, maxEntries});
             cache.setData({entries: {[cache.resolve(args).key]: ready('a'), [cache.resolve(other).key]: ready('b')}});
             const id = cache.subscribe(() => { callbacks++; });
@@ -41,8 +41,8 @@ for (const maxEntries of [8, Infinity]) for (const kind of ['primitive', 'object
 
 describe('resource44 ready isolation and real work', () => {
     test('callback throws reject only its child and caches do not share completions', async () => {
-        const first = new ResourceCache<string, string>(async () => 'unexpected', {ttl: Infinity});
-        const second = new ResourceCache<string, string>(async () => 'unexpected', {ttl: Infinity});
+        const first = new ResourceCache<string, [string]>(async () => 'unexpected', {ttl: Infinity});
+        const second = new ResourceCache<string, [string]>(async () => 'unexpected', {ttl: Infinity});
         first.setData({entries: {[first.resolve('a').key]: ready('first')}});
         second.setData({entries: {[second.resolve('a').key]: ready('second')}});
         const completion = first.load('a');
@@ -65,7 +65,7 @@ describe('resource44 ready isolation and real work', () => {
         '%s work has request-owned completions, pending joins and raw failure', async (lane) => {
             const gates = [deferred<string>(), deferred<string>()];
             let calls = 0;
-            const cache = new ResourceCache<string, string>(() => gates[calls++].promise,
+            const cache = new ResourceCache<string, [string]>(() => gates[calls++].promise,
                 {ttl: lane === 'stale' ? 0 : Infinity, maxEntries: 8});
             const a = cache.resolve('a').key;
             const b = cache.resolve('b').key;
@@ -73,7 +73,7 @@ describe('resource44 ready isolation and real work', () => {
                 [b]: {...ready('b'), updatedAt: Date.now() + 60_000}}});
             const completion = cache.load('a');
             await completion;
-            if (lane === 'cold') cache.forgetAll();
+            if (lane === 'cold') cache.clear();
             if (lane === 'stale') cache.setData({entries: {
                 [a]: {...ready('a'), updatedAt: 0}, [b]: {...ready('b'), updatedAt: 0},
             }});

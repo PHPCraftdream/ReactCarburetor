@@ -17,7 +17,7 @@ describe('R40-04 readonly selections with caller-owned overlays', () => {
         async ({replacement, readBefore}) => {
         const original: IUser = {id: 0, name: 'user 0'};
         const calls: number[] = [];
-        const cache = new ResourceCache<IUser, number>(async id => {
+        const cache = new ResourceCache<IUser, [number]>(async id => {
             calls.push(id);
             return original;
         }, {ttl: Infinity});
@@ -26,7 +26,7 @@ describe('R40-04 readonly selections with caller-owned overlays', () => {
         const version = cache.getVersion();
         const selections: Array<{readonly data: Readonly<IUser> | undefined; readonly refreshing: boolean}> = [];
         const Reader = ({overlay}: {overlay: boolean}) => {
-            const selected = useResourceValue(cache, 0, view => ({data: view.data, refreshing: view.refreshing}));
+            const selected = useResourceValue(cache, [0], view => ({data: view.data, refreshing: view.refreshing}));
             selections.push(selected);
             if (readBefore) expect(selected.data).toEqual(original);
             const local = overlay ? {...selected, data: replacement, refreshing: true} : selected;

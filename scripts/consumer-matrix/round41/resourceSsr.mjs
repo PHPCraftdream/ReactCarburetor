@@ -23,6 +23,6 @@ if (mode !== 'missing') {
     if (mode === 'invalidated') cache.invalidate({id: 0});
 }
 const Reader = () => React.createElement('span', null,
-    useResourceValue(cache, {id: 0}, view => view.data?.name) ?? '…');
+    useResourceValue(cache, [{id: 0}], view => view.data?.name) ?? '…');
 const markup = renderToString(React.createElement(Reader));
 console.log(JSON.stringify({markup, data: cache.getData(), calls, subscriptions}));

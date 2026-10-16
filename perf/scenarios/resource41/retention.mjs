@@ -19,7 +19,7 @@ class Cache extends ResourceCache {
 const entry = data => ({status: EResourceStatus.Success, data, error: undefined,
     updatedAt: Date.now(), refreshing: false, invalidated: false, failed: false});
 const payload = label => ({label, bytes: new Uint8Array(1024 * 1024)});
-const routes = ['forget', 'forgetAll', 'setData-remove', 'setData-replace', 'restore',
+const routes = ['forget', 'clear', 'setData-remove', 'setData-replace', 'restore',
     'fromJSON', 'draft-remove', 'draft-replace', 'refresh', 'eviction'];
 const live = [];
 let stableChecks = 0;
@@ -36,7 +36,7 @@ const prepare = async route => {
     if (cache.resolve('old') === resolution) stableChecks++;
     switch (route) {
         case 'forget': cache.forget('old'); break;
-        case 'forgetAll': cache.forgetAll(); break;
+        case 'clear': cache.clear(); break;
         case 'setData-remove': cache.setData({entries: {}}); break;
         case 'setData-replace': cache.setData({entries: {[key]: entry({label: 'new'})}}); break;
         case 'restore': cache.restore({entries: {}}); break;

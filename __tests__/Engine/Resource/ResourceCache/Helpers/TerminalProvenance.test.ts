@@ -1,4 +1,4 @@
-import {createCacheSupersededError} from '@/Carburetor/Resource/createCacheSupersededError';
+import {createCacheSupersededError} from '@/Carburetor/Resource/Slot/createCacheSupersededError';
 import {isCacheSupersededError} from '@/Carburetor/Resource/Cache/Reader/isCacheSupersededError';
 
 describe('R42-R02 exact cache terminal provenance', () => {

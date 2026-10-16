@@ -32,6 +32,7 @@ export * from './Derived/computedFactory';
 
 export * from './Resource/Slot/getInitialResourceData';
 export * from './Resource/ResourceCarburetor';
+export * from './Resource/ResourceOptions';
 export * from './Resource/Cache/ResourceCache';
 
 export * from './Component/AntiHookComponent/index';

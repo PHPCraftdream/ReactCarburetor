@@ -1,9 +1,16 @@
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
-import {IResourceCacheData, IResourceEntry} from "@/Carburetor/Models/Resource";
-import {describeError} from "@/Carburetor/Resource/describeError";
-import {createAbortHandle} from "@/Carburetor/Resource/createAbortHandle";
-import {createCacheSupersededError} from "@/Carburetor/Resource/createCacheSupersededError";
+import {
+    IResourceCacheData,
+    IResourceCacheOptions,
+    IResourceEntry,
+    TResourceArgs,
+    TResourceLoader,
+} from "@/Carburetor/Models/Resource";
+import {describeError} from "@/Carburetor/Resource/Status/describeError";
+import {createAbortHandle} from "@/Carburetor/Resource/Slot/createAbortHandle";
+import {dropEventArgs} from "@/Carburetor/Resource/Slot/dropEventArgs";
+import {createCacheSupersededError} from "@/Carburetor/Resource/Slot/createCacheSupersededError";
 import {getInitialCacheEntry} from "./State/getInitialCacheEntry";
 import {prepareCacheRequest} from "./State/prepareCacheRequest";
 import {ICacheRequest, ICacheRuntime} from "./State/Runtime/Models";
@@ -14,12 +21,26 @@ import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceSta
 const noop = (): void => undefined;
 
 /** Owns cache load, settlement, and Suspense transitions. */
-export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheState<T, TArgs> {
-    /** Load an entry unless its current value is fresh.
+export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> extends ResourceCacheState<T, TArgs> {
+    /** Bound to the instance and drops event arguments, so handlers may adopt it (D2). */
+    public load: (...args: TArgs) => Promise<void>;
+
+    /** Bound to the instance and drops event arguments, so handlers may adopt it (D2). */
+    public refresh: (...args: TArgs) => Promise<void>;
+
+    /** Initializes the loader and cache options for the lifecycle.
      *
-     * @param args - arguments identifying the cache key.
+     * @param loader - the resource loader driving entries.
+     * @param options - cache behavior options.
      */
-    public load(args: TArgs): Promise<void> {
+    protected constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions<TArgs> = {}) {
+        super(loader, options);
+        this.load = (...args: TArgs): Promise<void> => this.runLoad(dropEventArgs(args));
+        this.refresh = (...args: TArgs): Promise<void> => this.runRefresh(dropEventArgs(args));
+    }
+
+    /** Load an entry unless its current value is fresh (the bound `load` body). */
+    private runLoad(args: TArgs): Promise<void> {
         const key = this[R.keyOf](args);
         const entry = this.data.entries[key];
         this[R.touch](key);
@@ -29,11 +50,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         return this[R.fetch](key, args);
     }
 
-    /** Request an entry even when its current value is fresh.
-     *
-     * @param args - arguments identifying the cache key.
-     */
-    public refresh(args: TArgs): Promise<void> {
+    /** Request an entry even when its current value is fresh (the bound `refresh` body). */
+    private runRefresh(args: TArgs): Promise<void> {
         const key = this[R.keyOf](args);
         this[R.touch](key);
         return this[R.fetch](key, args);
@@ -43,7 +61,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
      *
      * @param args - arguments identifying the cache key.
      */
-    public suspend(args: TArgs): T {
+    public suspend(...args: TArgs): T {
         const key = this[R.keyOf](args);
         const entry = this.data.entries[key];
         this[R.touch](key);
@@ -149,7 +167,8 @@ export abstract class ResourceCacheLifecycle<T, TArgs> extends ResourceCacheStat
         }
         let answer: Promise<T>;
         try {
-            answer = this[R.loader](args, controller.signal);
+            // The union loader type is not directly callable; the runtime always passes the signal.
+            answer = (this[R.loader] as (...a: unknown[]) => Promise<T>)(...args, controller.signal);
         } catch (error: unknown) {
             answer = Promise.reject(error);
         }

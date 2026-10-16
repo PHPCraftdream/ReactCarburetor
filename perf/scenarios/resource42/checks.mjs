@@ -10,7 +10,7 @@ import {trackRegistrations} from './boundaries.mjs';
  */
 export function remove(cache, action, args = 'x') {
     if (action === 'restore') cache.restore({entries: {}});
-    else if (action === 'forgetAll') cache.forgetAll();
+    else if (action === 'clear') cache.clear();
     else cache[action](args);
 }
 
@@ -49,7 +49,7 @@ export async function checkRemoval(env, {action, kind = 'hook', phase = 'before'
     const select = view => view.data?.name;
     /** Hook consumer of the selected data field. */
     function Hook() {
-        return React.createElement('p', null, interop.useResourceValue(cache, 'x', select) ?? 'loading');
+        return React.createElement('p', null, interop.useResourceValue(cache, ['x'], select) ?? 'loading');
     }
     class Owner extends api.AntiHookComponent {
         /** Class consumer of the public resource view. */
@@ -111,7 +111,7 @@ export async function checkDisarm(env, {kind = 'hook', mode = 'source', strict =
     await current.load('y');
     /** Hook consumer that can switch its committed source and key. */
     function Hook(props) {
-        const value = interop.useResourceValue(props.source, props.args, view => view.data?.name);
+        const value = interop.useResourceValue(props.source, [props.args], view => view.data?.name);
         return React.createElement('p', null, value ?? 'loading');
     }
     class Owner extends api.AntiHookComponent {
@@ -167,7 +167,7 @@ export async function checkRefresh(env, kind = 'hook', action = 'abort') {
     await initial;
     const select = view => view.error ?? view.data?.name ?? 'loading';
     /** Hook consumer of refresh status and retained data. */
-    function Hook() { return React.createElement('p', null, interop.useResourceValue(cache, 'x', select)); }
+    function Hook() { return React.createElement('p', null, interop.useResourceValue(cache, ['x'], select)); }
     class Owner extends api.AntiHookComponent {
         /** Class consumer of refresh status and retained data. */
         render() {
@@ -215,7 +215,7 @@ export async function checkWarm(env) {
     const select = view => { selections++; return view.data; };
     const Child = React.memo(({value}) => { children++; return React.createElement('p', null, value.name); });
     /** Hook consumer with a stable selector and memo child. */
-    function Hook() { return React.createElement(Child, {value: interop.useResourceValue(cache, 'x', select)}); }
+    function Hook() { return React.createElement(Child, {value: interop.useResourceValue(cache, ['x'], select)}); }
     const container = document.createElement('div');
     const root = createRoot(container);
     let result;

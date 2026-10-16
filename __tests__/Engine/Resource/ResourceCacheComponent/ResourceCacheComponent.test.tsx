@@ -23,7 +23,7 @@ const makeLoader = () => {
 };
 
 /** Exposes the subscriber count, which is protected state, to check nothing is left behind. */
-class ObservableCache extends ResourceCache<string, string> {
+class ObservableCache extends ResourceCache<string, [string]> {
     public subscriberCount = (): number => {
         return Object.keys(this[S.subscribers]).length;
     };
@@ -36,7 +36,7 @@ const flush = async (): Promise<void> => {
 };
 
 interface IRowProps {
-    cache: ResourceCache<string, string>;
+    cache: ResourceCache<string, [string]>;
     id: string;
     onRender?: () => void;
 }
@@ -55,7 +55,7 @@ class Row extends AntiHookComponent<IRowProps> {
 }
 
 interface IQueryProps {
-    cache: ResourceCache<string, {id: string}>;
+    cache: ResourceCache<string, [{id: string}]>;
     query: {id: string};
 }
 
@@ -70,7 +70,7 @@ class QueryRow extends AntiHookComponent<IQueryProps> {
 describe('a component reading a resource cache', () => {
     test('fetches after the commit, not during render', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
         const versions: number[] = [];
 
         class Watcher extends AntiHookComponent<IRowProps> {
@@ -100,7 +100,7 @@ describe('a component reading a resource cache', () => {
 
     test('useResource serializes object args once per render, not once per accessor', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, {id: string}>((args) => loader.load(args.id));
+        const cache = new ResourceCache<string, [{id: string}]>((args) => loader.load(args.id));
 
         // Pre-settled and fresh, so a render neither queues a deferred load nor forces a second
         // render — the stringify count below is attributable to useResource's own read alone.
@@ -133,7 +133,7 @@ describe('a component reading a resource cache', () => {
 
     test('the answer reaches the component that asked for it', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
 
         const {container, unmount} = render(<Row cache={cache} id="a"/>);
 
@@ -149,7 +149,7 @@ describe('a component reading a resource cache', () => {
 
     test('two components reading one entry share a single request', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
 
         const {unmount} = render(
             <div>
@@ -168,7 +168,7 @@ describe('a component reading a resource cache', () => {
 
     test('a component reading one entry does not re-render when another entry answers', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
         let rendersOfA = 0;
 
         const {unmount} = render(
@@ -194,7 +194,7 @@ describe('a component reading a resource cache', () => {
 
     test('a failed entry is not retried from render', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
 
         const {container, rerender, unmount} = render(<Row cache={cache} id="a"/>);
 
@@ -216,7 +216,7 @@ describe('a component reading a resource cache', () => {
 
     test('a failed refresh is not retried from render, but an explicit refresh retries', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
 
         void cache.load('a');
         loader.settle[0]('first');
@@ -268,7 +268,7 @@ describe('a component reading a resource cache', () => {
 
     test('a fresh entry is rendered without asking the loader', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         loader.settle[0]('Ann');
@@ -302,7 +302,7 @@ describe('a component reading a resource cache', () => {
 
     test('a class component suspends per entry and recovers when the answer lands', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
 
         class Suspended extends AntiHookComponent<IRowProps> {
             public render() {
@@ -332,7 +332,7 @@ describe('a component reading a resource cache', () => {
 
     test('hydrated data is rendered as it is, without a request', async () => {
         const loader = makeLoader();
-        const token = carburetorToken(() => new ResourceCache<string, string>(loader.load, {ttl: 60_000}), 'resource-cache-test/cache');
+        const token = carburetorToken(() => new ResourceCache<string, [string]>(loader.load, {ttl: 60_000}), 'resource-cache-test/cache');
 
         const server = new CarburetorScope();
         const serverCache = server.get(token);
@@ -359,7 +359,7 @@ describe('a component reading a resource cache', () => {
     test('delivers loading and completion updates for keys the path builder must escape', async () => {
         for (const id of ['plain', 'a.b', 'a~b']) {
             const loader = makeLoader();
-            const cache = new ResourceCache<string, string>(loader.load);
+            const cache = new ResourceCache<string, [string]>(loader.load);
 
             const {container, unmount} = render(<Row cache={cache} id={id}/>);
 
@@ -377,7 +377,7 @@ describe('a component reading a resource cache', () => {
 
     test('delivers updates when the arguments are objects holding escaped characters', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, {id: string}>(loader.load);
+        const cache = new ResourceCache<string, [{id: string}]>(loader.load);
 
         const {container, unmount} = render(<QueryRow cache={cache} query={{id: 'a.b'}}/>);
 
@@ -393,7 +393,7 @@ describe('a component reading a resource cache', () => {
 
     test('one escaped entry answering does not re-render the reader of another', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
         let rendersOfDot = 0;
 
         const {unmount} = render(
@@ -419,7 +419,7 @@ describe('a component reading a resource cache', () => {
 
     test('hydrated entries survive for keys holding escaped characters', async () => {
         const loader = makeLoader();
-        const token = carburetorToken(() => new ResourceCache<string, string>(loader.load, {ttl: 60_000}), 'resource-cache-test/escaped-cache');
+        const token = carburetorToken(() => new ResourceCache<string, [string]>(loader.load, {ttl: 60_000}), 'resource-cache-test/escaped-cache');
 
         const server = new CarburetorScope();
         const serverCache = server.get(token);
@@ -446,7 +446,7 @@ describe('a component reading a resource cache', () => {
     test('scope hydration normalizes a refreshing+invalidated entry before a reader mounts (R3-04)', async () => {
         const loader = makeLoader();
         const token = carburetorToken(
-            () => new ResourceCache<string, string>(loader.load, {ttl: 60_000}),
+            () => new ResourceCache<string, [string]>(loader.load, {ttl: 60_000}),
             'resource-cache-restore-test/scope-cache'
         );
 
@@ -468,7 +468,7 @@ describe('a component reading a resource cache', () => {
         const clientLoader = makeLoader();
         const client = new CarburetorScope();
 
-        client.set(token, new ResourceCache<string, string>(clientLoader.load, {ttl: 60_000}));
+        client.set(token, new ResourceCache<string, [string]>(clientLoader.load, {ttl: 60_000}));
         client.hydrate(state, [token]);
 
         const clientCache = client.get(token);
@@ -491,7 +491,7 @@ describe('a component reading a resource cache', () => {
     test('a mounted reader refetches a hydrated entry that was refreshing and invalidated (R3-04)', async () => {
         const loader = makeLoader();
         const token = carburetorToken(
-            () => new ResourceCache<string, string>(loader.load, {ttl: 60_000}),
+            () => new ResourceCache<string, [string]>(loader.load, {ttl: 60_000}),
             'resource-cache-restore-test/refreshing-invalidated'
         );
 
@@ -515,7 +515,7 @@ describe('a component reading a resource cache', () => {
         const clientLoader = makeLoader();
         const client = new CarburetorScope();
 
-        client.set(token, new ResourceCache<string, string>(clientLoader.load, {ttl: 60_000}));
+        client.set(token, new ResourceCache<string, [string]>(clientLoader.load, {ttl: 60_000}));
         client.hydrate(state, [token]);
 
         const clientCache = client.get(token);

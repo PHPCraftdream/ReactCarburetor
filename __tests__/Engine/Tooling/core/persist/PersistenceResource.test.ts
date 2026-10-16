@@ -34,7 +34,7 @@ const readThrown = (read: () => unknown): unknown => {
 describe('persist resource serialization (R11-04)', () => {
     test.each([false, true])('restored success keeps its key, other keys load anew (coalesce=%s)', async coalesce => {
         const storage = new MemoryStorage();
-        const source = new ResourceCarburetor<string, string>(async id => `answer-${id}`);
+        const source = new ResourceCarburetor<string, [string]>(async id => `answer-${id}`);
         const stop = persist(source, {key: 'slot', storage, coalesce});
 
         const request = source.load('a');
@@ -52,7 +52,7 @@ describe('persist resource serialization (R11-04)', () => {
         expect(saved.status).toBe(EResourceStatus.Success);
 
         const calls: string[] = [];
-        const fresh = new ResourceCarburetor<string, string>(async id => {
+        const fresh = new ResourceCarburetor<string, [string]>(async id => {
             calls.push(id);
             return `fresh-${id}`;
         });
@@ -71,7 +71,7 @@ describe('persist resource serialization (R11-04)', () => {
 
     test('restored failure is rethrown only for its key; disconnect stops persistence', async () => {
         const storage = new MemoryStorage();
-        const source = new ResourceCarburetor<string, string>(async () => { throw new Error('offline'); });
+        const source = new ResourceCarburetor<string, [string]>(async () => { throw new Error('offline'); });
         const disconnect = persist(source, {key: 'slot', storage, coalesce: false});
         await source.load('a');
         disconnect();
@@ -85,7 +85,7 @@ describe('persist resource serialization (R11-04)', () => {
         expect(JSON.parse(storage.getItem('slot') as string)).toEqual(saved);
 
         const calls: string[] = [];
-        const fresh = new ResourceCarburetor<string, string>(async id => {
+        const fresh = new ResourceCarburetor<string, [string]>(async id => {
             calls.push(id);
             return `online-${id}`;
         });
@@ -104,7 +104,7 @@ describe('persist resource serialization (R11-04)', () => {
     test('a persisted Pending snapshot normalizes to Idle without a phantom request', async () => {
         const storage = new MemoryStorage();
         let resolve!: (answer: string) => void;
-        const source = new ResourceCarburetor<string, string>(() => new Promise<string>(r => { resolve = r; }));
+        const source = new ResourceCarburetor<string, [string]>(() => new Promise<string>(r => { resolve = r; }));
         const disconnect = persist(source, {key: 'slot', storage, coalesce: false});
         const request = source.load('a');
         const saved = JSON.parse(storage.getItem('slot') as string);
@@ -113,7 +113,7 @@ describe('persist resource serialization (R11-04)', () => {
         disconnect();
 
         const calls: string[] = [];
-        const fresh = new ResourceCarburetor<string, string>(async id => {
+        const fresh = new ResourceCarburetor<string, [string]>(async id => {
             calls.push(id);
             return `ready-${id}`;
         });
@@ -132,7 +132,7 @@ describe('persist resource serialization (R11-04)', () => {
 
     test('scope and DevTools still round-trip the keyed answer through toJSON/fromJSON', async () => {
         const token = carburetorToken(
-            () => new ResourceCarburetor<string, string>(async id => `loaded-${id}`),
+            () => new ResourceCarburetor<string, [string]>(async id => `loaded-${id}`),
             'persistence-resource-control'
         );
         const server = new CarburetorScope();

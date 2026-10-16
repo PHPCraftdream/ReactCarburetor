@@ -2,13 +2,13 @@ import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 import {IResourceSnapshot} from "@/Carburetor/Models/Resource";
 import {ResourceCarburetor} from "@/Carburetor/Resource/ResourceCarburetor";
-import {deferred} from "./helpers";
+import {deferred} from "./Keys/helpers";
 
 describe('ResourceCarburetor reentrant loads', () => {
     test('a synchronous subscriber joins the request before the loader runs', async () => {
         const gate = deferred<string>();
         let calls = 0;
-        const resource = new ResourceCarburetor<string, string>(() => {
+        const resource = new ResourceCarburetor<string, [string]>(() => {
             calls++;
 
             return gate.promise;
@@ -39,7 +39,7 @@ describe('ResourceCarburetor reentrant loads', () => {
     test('a distinct key started by a subscriber replaces and aborts the first request', async () => {
         const gates = {a: deferred<string>(), b: deferred<string>()};
         const started: Array<{key: string; signal: AbortSignal}> = [];
-        const resource = new ResourceCarburetor<string, 'a' | 'b'>((key, signal) => {
+        const resource = new ResourceCarburetor<string, ['a' | 'b']>((key, signal) => {
             started.push({key, signal});
 
             return gates[key].promise;
@@ -70,7 +70,7 @@ describe('ResourceCarburetor reentrant loads', () => {
 
     test('abort during notification rejects work that never reached its loader', async () => {
         let calls = 0;
-        const resource = new ResourceCarburetor<string, string>(() => {
+        const resource = new ResourceCarburetor<string, [string]>(() => {
             calls++;
 
             return Promise.resolve('late');
@@ -93,7 +93,7 @@ describe('ResourceCarburetor reentrant loads', () => {
         const gates = [deferred<string>(), deferred<string>()];
         const signals: AbortSignal[] = [];
         let calls = 0;
-        const resource = new ResourceCarburetor<string, string>((_key, signal) => {
+        const resource = new ResourceCarburetor<string, [string]>((_key, signal) => {
             signals.push(signal);
 
             return gates[calls++].promise;
@@ -126,7 +126,7 @@ describe('ResourceCarburetor reentrant loads', () => {
         const gates = [deferred<string>(), deferred<string>(), deferred<string>()];
         const signals: AbortSignal[] = [];
         const keys: string[] = [];
-        const resource = new ResourceCarburetor<string, string>((key, signal) => {
+        const resource = new ResourceCarburetor<string, [string]>((key, signal) => {
             keys.push(key);
             signals.push(signal);
 
@@ -161,7 +161,7 @@ describe('ResourceCarburetor reentrant loads', () => {
         const gates = [deferred<string>(), deferred<string>()];
         const signals: AbortSignal[] = [];
         let calls = 0;
-        const resource = new ResourceCarburetor<string, string>((_key, signal) => {
+        const resource = new ResourceCarburetor<string, [string]>((_key, signal) => {
             signals.push(signal);
 
             return gates[calls++].promise;

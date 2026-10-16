@@ -13,7 +13,7 @@ interface IUser {
     other: string;
 }
 
-class FieldCache extends ResourceCache<IUser, number> {
+class FieldCache extends ResourceCache<IUser, [number]> {
     /** Writes an unread field without invalidating the answer. */
     public setError(id: number, error: string): void {
         const key = this.resolve(id).key;
@@ -46,13 +46,13 @@ const fixture = () => {
     }, {ttl: Infinity});
     const hookRenders = Array.from({length: 50}, () => 0);
     const classRenders = Array.from({length: 50}, () => 0);
-    const source: IResourceSource<IUser, number> = cache;
+    const source: IResourceSource<IUser, [number]> = cache;
 
     const HookBadge = ({id}: {id: number}) => {
         rendering = true;
         try {
             hookRenders[id]++;
-            const name = useResourceValue(source, id, view => view.data?.name);
+            const name = useResourceValue(source, [id], view => view.data?.name);
             return <span>{name ?? '…'}</span>;
         } finally {
             rendering = false;
@@ -156,7 +156,7 @@ describe('R40-04 useResourceValue field readers', () => {
         let renders = 0;
         const OtherReader = () => {
             renders++;
-            const other = useResourceValue(state.cache, 0, view => view.data?.other);
+            const other = useResourceValue(state.cache, [0], view => view.data?.other);
             return <span>{other ?? '…'}</span>;
         };
         const mounted = render(<OtherReader/>);

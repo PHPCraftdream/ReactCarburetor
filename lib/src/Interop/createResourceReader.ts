@@ -1,4 +1,4 @@
-import {IResourceResolution, IResourceSource, IResourceView} from '@/Carburetor/Models/Resource';
+import {IResourceResolution, IResourceSource, IResourceView, TResourceArgs} from '@/Carburetor/Models/Resource';
 import {TReadonly} from '@/Carburetor/Models/Base';
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
 import {TPath} from '@/Carburetor/Models/Paths';
@@ -24,7 +24,7 @@ import {readCoverage} from '@/Carburetor/Store/Paths/Markers/readCoverage';
 import {getUid} from '@/Carburetor/Store/Utils/getUid';
 import {TSelector, TValueComparator} from './Models';
 
-interface IObservation<T, TArgs, R> {
+interface IObservation<T, TArgs extends TResourceArgs, R> {
     args: TArgs;
     select: TSelector<IResourceView<T>, R>;
     isEqual: TValueComparator<R>;
@@ -52,7 +52,8 @@ const rejectInstance = (instance: object): never => {
  * @param source - resource source.
  * @param path - canonical entry path.
  */
-export const createResourceReader = <T, TArgs, R>(source: IResourceSource<T, TArgs>, path: TPath) => {
+export const createResourceReader = <T, TArgs extends TResourceArgs, R>(
+    source: IResourceSource<T, TArgs>, path: TPath) => {
     let committed: IObservation<T, TArgs, R> | undefined;
     let cached: IObservation<T, TArgs, R> | undefined;
     let active: {id: string; reads: TCompletedReads} | undefined;
@@ -228,7 +229,7 @@ export const createResourceReader = <T, TArgs, R>(source: IResourceSource<T, TAr
         do {
             const previous = committed;
             const next = evaluate(
-                previous.args, source.resolve(previous.args), previous.select, previous.isEqual, previous, true
+                previous.args, source.resolve(...previous.args), previous.select, previous.isEqual, previous, true
             );
             committed = next;
             try {
@@ -259,8 +260,12 @@ export const createResourceReader = <T, TArgs, R>(source: IResourceSource<T, TAr
     };
     return {
         path,
-        evaluate(args: TArgs, resolution: IResourceResolution<T>, select: TSelector<IResourceView<T>, R>,
-            isEqual: TValueComparator<R> = sameSelection): IObservation<T, TArgs, R> {
+        evaluate(
+            args: TArgs,
+            resolution: IResourceResolution<T>,
+            select: TSelector<IResourceView<T>, R>,
+            isEqual: TValueComparator<R> = sameSelection,
+        ): IObservation<T, TArgs, R> {
             // Reconciliation policy always starts from the published result when one exists;
             // a speculative comparator may not establish the next committed equality baseline.
             const candidate = evaluate(args, resolution, select, isEqual, committed ?? cached);
@@ -274,7 +279,7 @@ export const createResourceReader = <T, TArgs, R>(source: IResourceSource<T, TAr
         },
         commit(candidate: IObservation<T, TArgs, R>): void {
             // Resolve/capture can throw. Finish the drift recheck before publishing any ownership.
-            const next = evaluate(candidate.args, source.resolve(candidate.args),
+            const next = evaluate(candidate.args, source.resolve(...candidate.args),
                 candidate.select, candidate.isEqual, candidate);
             const previous = committed;
             committed = next;
@@ -306,11 +311,11 @@ export const createResourceReader = <T, TArgs, R>(source: IResourceSource<T, TAr
         load(): void {
             if (!active || !committed) return;
             const current = committed;
-            const resolution = source.resolve(current.args);
+            const resolution = source.resolve(...current.args);
             if (!resourceReader.worthFetching(resolution.view)) return;
             const started = generation;
             const startedArgs = current.args;
-            const loading = source.load(startedArgs);
+            const loading = source.load(...startedArgs);
             if (resolution.fieldView === undefined) {
                 void loading;
                 if (refresh()) notify?.();
@@ -322,7 +327,7 @@ export const createResourceReader = <T, TArgs, R>(source: IResourceSource<T, TAr
                 if (settlement !== loading) return;
                 settlement = undefined;
                 if (started !== generation || !active || !committed) return;
-                const settled = source.resolve(committed.args);
+                const settled = source.resolve(...committed.args);
                 if (settled.path !== path || (superseded
                     && (settled.view.status === EResourceStatus.Pending || settled.view.refreshing))) return;
                 if (!resourceReader.rearm(settled.view)

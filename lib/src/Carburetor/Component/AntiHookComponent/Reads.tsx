@@ -13,7 +13,7 @@ import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComp
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {isCacheSupersededError} from "@/Carburetor/Resource/Cache/Reader/isCacheSupersededError";
 import {resourceReader} from "@/Carburetor/Resource/Cache/Reader/resourceReader";
-import {IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
+import {TResourceArgs, IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
 import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
@@ -373,18 +373,18 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      * after the reader's next commit. A failed refresh keeps Success and its old data, with
      * `failed` preventing an automatic retry until another invalidation or explicit load.
      *
-     * @param source - the cache entry's owner: `resolve(args)` gives the path this render
+     * @param source - the cache entry's owner: `resolve(...args)` gives the path this render
      * subscribes to, and a stale entry queues a `load` for after the commit
-     * @param args - the cache key, identifying the entry read now and targeted by the deferred
-     * `load`; a different value reads a different entry
+     * @param args - the loader arguments, identifying the entry read now and targeted by the
+     * deferred `load`; a different tuple reads a different entry
      */
-    public useResource<T extends unknown, TArgs extends unknown>(
+    public useResource<T, TArgs extends TResourceArgs = []>(
         source: IResourceSource<T, TArgs>,
-        args: TArgs
+        ...args: TArgs
     ): IResourceView<T> {
         // One call: resolve() serializes args once and hands back the key, the read path and
         // the current view together (R16-10(4)), where this used to be three separate calls.
-        const resolution = source.resolve(args);
+        const resolution = source.resolve(...args);
         const {path, view, fieldView} = resolution;
         const attempt = this[C.renderAttempt];
         const entry = this[C.track](source);
@@ -417,18 +417,18 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                     if (!ownsAttempt() || slot?.installed?.carburetor !== source
                         || slot.committed?.carburetor !== source
                         || !slot.committed.resourcePaths?.has(path)) return;
-                    const current = source.resolve(args);
+                    const current = source.resolve(...args);
                     if (current.path !== path || !resourceReader.worthFetching(current.view)
                         || !ownsAttempt() || this[C.tracked]?.get(source) !== slot
                         || slot.installed?.carburetor !== source
                         || !slot.committed?.resourcePaths?.has(path)) return;
                     // Preserve custom-source rejection visibility without allocating terminal metadata.
                     if (fieldView === undefined) {
-                        void source.load(args);
+                        void source.load(...args);
                         return;
                     }
                     const loads = slot.resourceLoads ??= new Map();
-                    const loading = source.load(args);
+                    const loading = source.load(...args);
                     if (loads.get(path) === loading) return;
                     if (slot.resourceLoads === loads) loads.set(path, loading);
                     const finish = (superseded: boolean): void => {
@@ -437,7 +437,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                         if (this[C.tracked]?.get(source) !== slot || slot.installed?.carburetor !== source
                             || slot.committed?.carburetor !== source
                             || !slot.committed.resourcePaths?.has(path)) return;
-                        const settled = source.resolve(args);
+                        const settled = source.resolve(...args);
                         if (this[C.tracked]?.get(source) !== slot || slot.resourceLoads !== loads
                             || loads.has(path) || slot.installed?.carburetor !== source
                             || slot.committed?.carburetor !== source
@@ -460,7 +460,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                     // Observe publication at this start, before another queued load can retire it.
                     // An absent custom load has no lifecycle transition to recover; its rejection
                     // remains owned by the terminal handler above, not an automatic retry.
-                    const started = source.resolve(args);
+                    const started = source.resolve(...args);
                     const publishedLoading = started.path === path && started.present !== false
                         && (started.view.status === EResourceStatus.Pending || started.view.refreshing);
                     // All starts keep the original absent-default wrapper until the entire
@@ -471,7 +471,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                             || slot.installed?.carburetor !== source || committed?.carburetor !== source
                             || !committed.resourcePaths?.has(path)
                             || slot.resourceLoads !== loads || loads.get(path) !== loading) return;
-                        const adopted = source.resolve(args);
+                        const adopted = source.resolve(...args);
                         if (adopted.path !== path || !ownsAttempt()
                             || this[C.tracked]?.get(source) !== slot
                             || slot.committed !== committed || slot.installed?.carburetor !== source
@@ -497,7 +497,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                         // A later start can abort an already-started loader before adoption.
                         // Filing its Idle status cannot recover the notification already missed;
                         // its ordinary promise still waits for the retired loader's answer.
-                        const demand = source.resolve(args);
+                        const demand = source.resolve(...args);
                         if (!ownsAttempt() || this[C.tracked]?.get(source) !== slot
                             || slot.committed !== committed || slot.installed?.carburetor !== source
                             || !committed.resourcePaths?.has(path) || demand.path !== path

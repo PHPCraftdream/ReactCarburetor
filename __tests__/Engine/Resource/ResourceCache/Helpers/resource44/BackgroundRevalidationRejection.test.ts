@@ -5,7 +5,7 @@ describe('resource44 stale background revalidation', () => {
         const sentinel = new Error('description threw');
         const raw = {toString: (): string => { throw sentinel; }};
         let call = 0;
-        const cache = new ResourceCache<string, string>(
+        const cache = new ResourceCache<string, [string]>(
             () => ++call === 1 ? Promise.resolve('value') : Promise.reject(raw), {ttl: 0});
         await cache.load('a');
         await new Promise(done => setImmediate(done));

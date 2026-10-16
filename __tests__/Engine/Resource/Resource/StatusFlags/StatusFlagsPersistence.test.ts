@@ -33,7 +33,7 @@ const memoryStorage = (): {storage: IStorageLike; entries: Map<string, string>} 
 
 describe('resource status flags across persistence', () => {
     test('persist writes a snapshot whose flags match status after load -> success', async () => {
-        const resource = new ResourceCarburetor<string, string>(async () => 'answer');
+        const resource = new ResourceCarburetor<string, [string]>(async () => 'answer');
         const {storage, entries} = memoryStorage();
         const stop = persist(resource, {key: 'slot', storage, coalesce: false});
 
@@ -51,7 +51,7 @@ describe('resource status flags across persistence', () => {
             updatedAt: 1, key: JSON.stringify('a'),
         }));
 
-        const fresh = new ResourceCarburetor<string, string>(async () => 'unused');
+        const fresh = new ResourceCarburetor<string, [string]>(async () => 'unused');
         fresh.fromJSON(JSON.parse(entries.get('slot') as string));
         expectFlags(fresh.getData(), 'isError');
         expect(fresh.getData()).toMatchObject({isError: true, isSuccess: false});
@@ -65,7 +65,7 @@ describe('resource status flags across persistence', () => {
             updatedAt: 2, key: JSON.stringify('a'),
         }));
 
-        const fresh = new ResourceCarburetor<string, string>(async () => 'unused');
+        const fresh = new ResourceCarburetor<string, [string]>(async () => 'unused');
         fresh.fromJSON(JSON.parse(entries.get('slot') as string));
         expectFlags(fresh.getData(), 'isSuccess');
         expect(fresh.getData()).toMatchObject({isSuccess: true, data: 'saved'});
@@ -73,7 +73,7 @@ describe('resource status flags across persistence', () => {
 
     test('persist -> hydrate into a fresh resource restores flags without re-running the loader', async () => {
         const calls: string[] = [];
-        const resource = new ResourceCarburetor<string, string>(async key => {
+        const resource = new ResourceCarburetor<string, [string]>(async key => {
             calls.push(key);
             return `answer-${key}`;
         });
@@ -83,7 +83,7 @@ describe('resource status flags across persistence', () => {
         const saved = entries.get('slot') as string;
         stop();
 
-        const fresh = new ResourceCarburetor<string, string>(async key => {
+        const fresh = new ResourceCarburetor<string, [string]>(async key => {
             calls.push(key);
             return 'nope';
         });

@@ -322,7 +322,7 @@ the unfiltered suite against the default distribution afterward; no product reve
 
 ### Round 41 — Resource selector cutover
 
-`useResourceValue(source, args, select, isEqual?)` requires a pure synchronous selector and returns
+`useResourceValue(source, args, select, isEqual?)` — `args` is a tuple requires a pure synchronous selector and returns
 its detached readonly selection. Dependencies belong to that completed selection, not to later child
 reads. The parent explicitly projects the child's fields; selecting `view.data` captures the whole
 graph and cannot promise unread-leaf precision within it. Hoisted/memoized selectors enable the

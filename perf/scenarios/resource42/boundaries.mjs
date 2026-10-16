@@ -41,7 +41,7 @@ export async function checkSelectorBoundary({React, createRoot, api, interop}) {
     const select = () => { throw expected; };
     /** Hook whose selector fails during render. */
     function Hook() {
-        return React.createElement('p', null, interop.useResourceValue(cache, 'x', select));
+        return React.createElement('p', null, interop.useResourceValue(cache, ['x'], select));
     }
     class Boundary extends React.Component {
         /** Whether React has captured the selector error. */
@@ -97,7 +97,7 @@ export async function checkPreloaderDisarm({React, createRoot, api, interop}, {k
     const root = createRoot(container);
     /** Hook consumer whose generation is retired during Pending publication. */
     function Hook(props) {
-        const value = interop.useResourceValue(props.source, props.args, view => view.data?.name);
+        const value = interop.useResourceValue(props.source, [props.args], view => view.data?.name);
         return React.createElement('p', null, value ?? 'loading');
     }
     class Owner extends api.AntiHookComponent {

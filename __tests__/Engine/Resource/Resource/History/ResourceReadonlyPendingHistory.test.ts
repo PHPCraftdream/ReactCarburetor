@@ -86,7 +86,7 @@ describe('readonly pending resource history', () => {
 
     test('undoing into readonly pending cancels an in-flight request and drops its late answer', async () => {
         let finish!: (value: number) => void;
-        const resource = new ResourceCarburetor<number, string>(() => new Promise<number>(resolve => {
+        const resource = new ResourceCarburetor<number, [string]>(() => new Promise<number>(resolve => {
             finish = resolve;
         }));
         const history = new CarburetorHistory(resource);
@@ -115,8 +115,8 @@ describe('readonly pending resource history', () => {
 
     test('a synchronous abort listener supersedes readonly pending replay and owns its key', async () => {
         let finish!: (value: number) => void;
-        let resource!: ResourceCarburetor<number, string>;
-        resource = new ResourceCarburetor<number, string>((_key, signal) => {
+        let resource!: ResourceCarburetor<number, [string]>;
+        resource = new ResourceCarburetor<number, [string]>((_key, signal) => {
             signal.addEventListener('abort', () => resource.restore({
                 status: EResourceStatus.Success, ...resourceStatusFlags(EResourceStatus.Success),
                 data: 44, error: undefined,

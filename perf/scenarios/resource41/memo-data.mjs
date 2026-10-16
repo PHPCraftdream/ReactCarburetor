@@ -39,7 +39,7 @@ const run = async kind => {
         // oxlint-disable-next-line react/immutability -- Loader guard measures whether loads happen during render.
         rendering = true;
         try {
-            const data = useResourceValue(cache, 'user', kind === 'inline' ? view => select(view) : select);
+            const data = useResourceValue(cache, ['user'], kind === 'inline' ? view => select(view) : select);
             // oxlint-disable-next-line react/immutability -- Retain the first detached selection.
             retained ??= data;
             return React.createElement(Child, {data});
@@ -128,7 +128,7 @@ const run = async kind => {
     let localOverrideText;
     if (kind === 'hook' || kind === 'inline') {
         const Override = () => {
-            const data = useResourceValue(cache, 'user', select);
+            const data = useResourceValue(cache, ['user'], select);
             const local = {...data, nested: {...data.nested, name: 'local'}};
             return React.createElement('span', null, local.nested.name);
         };

@@ -17,13 +17,16 @@ const shadow = (store: object, name: string): void => {
 
 describe('R40-01 resource subclass names', () => {
     test('cache and slot own no string-named engine fields', () => {
-        expect(Object.getOwnPropertyNames(new ResourceCache(async () => 1))).toEqual([]);
-        expect(Object.getOwnPropertyNames(new ResourceCarburetor(async () => 1))).toEqual([]);
+        // D2: bound handles are own instance fields, like the slot's
+        expect(Object.getOwnPropertyNames(new ResourceCache(async () => 1)))
+            .toEqual(["clear", "load", "refresh"]);
+        expect(Object.getOwnPropertyNames(new ResourceCarburetor(async () => 1)))
+            .toEqual(["memory", "keyOption", "load", "refresh", "clear"]);
     });
 
     test.each(cacheNames)('cache shadow %s preserves load, invalidation, history and delivery', async name => {
         let calls = 0;
-        const cache = new ResourceCache<string, string>(async args => `${args}:${++calls}`, {ttl: Infinity});
+        const cache = new ResourceCache<string, [string]>(async args => `${args}:${++calls}`, {ttl: Infinity});
         shadow(cache, name);
         const history = new CarburetorHistory(cache);
         let deliveries = 0;
@@ -49,16 +52,16 @@ describe('R40-01 resource subclass names', () => {
         history.disconnect();
     });
 
-    test.each(slotNames)('slot shadow %s preserves load, reload, history and delivery', async name => {
+    test.each(slotNames)('slot shadow %s preserves load,.refresh(), history and delivery', async name => {
         let calls = 0;
-        const slot = new ResourceCarburetor<string, string>(async args => `${args}:${++calls}`);
+        const slot = new ResourceCarburetor<string, [string]>(async args => `${args}:${++calls}`);
         shadow(slot, name);
         const history = new CarburetorHistory(slot);
         let deliveries = 0;
         const id = slot.subscribe(() => { deliveries++; });
         await slot.load('a');
         expect(slot.getData().data).toBe('a:1');
-        await slot.reload();
+        await slot.refresh('a');
         expect(slot.getData().data).toBe('a:2');
         expect(calls).toBe(2);
         const before = slot.snapshot();

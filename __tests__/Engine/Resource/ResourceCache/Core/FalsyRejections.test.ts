@@ -2,7 +2,7 @@ import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 
 describe('ResourceCache falsy rejections', () => {
     test.each([0, false, '', undefined])('suspend rethrows the raw rejection %p', async (failure: unknown) => {
-        const cache = new ResourceCache<string, string>(() => Promise.reject(failure));
+        const cache = new ResourceCache<string, [string]>(() => Promise.reject(failure));
 
         await cache.load('a');
 

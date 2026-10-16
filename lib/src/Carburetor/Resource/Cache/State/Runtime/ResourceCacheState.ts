@@ -9,6 +9,7 @@ import {
     IResourceEntry,
     IResourceResolution,
     IResourceView,
+    TResourceArgs,
     TResourceLoader,
 } from "@/Carburetor/Models/Resource";
 import {TSubscriber} from "@/Carburetor/Models/Base";
@@ -17,6 +18,7 @@ import {IStateInstallation, IStateRestoreClaim, STATE_PUBLIC_REPLACEMENT} from "
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
+import {dropEventArgs} from "@/Carburetor/Resource/Slot/dropEventArgs";
 import {buildCacheRestore} from "@/Carburetor/Resource/Cache/State/buildCacheRestore";
 import {removeCacheEntries} from "@/Carburetor/Resource/Cache/State/Mutation/removeCacheEntries";
 import {prepareCacheInvalidation} from "@/Carburetor/Resource/Cache/State/Mutation/prepareCacheInvalidation";
@@ -28,7 +30,7 @@ import {trimCacheRuntime} from "./Registry";
 const abortCacheRequest = (request: ICacheRequest): void => request.controller.abort();
 
 /** Owns cache root installation, cancellation, invalidation and eviction. */
-export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceCacheData<T>> {
+export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends Carburetor<IResourceCacheData<T>> {
     /** Loader retained independently of subclass names. */
     public [R.loader]!: TResourceLoader<T, TArgs>;
     /** Changes when an abort listener starts a newer restore or replacement. */
@@ -61,11 +63,13 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      * @param loader - resource producer.
      * @param options - TTL, entry and primitive key capacities, and update scheduler.
      */
-    protected constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions = {}) {
+    protected constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions<TArgs> = {}) {
         super({entries: {}}, options.scheduler);
         this[R.loader] = loader;
         this[R.ttl] = options.ttl === undefined ? DEFAULT_TTL : options.ttl;
         this[R.maxEntries] = options.maxEntries === undefined ? DEFAULT_MAX_ENTRIES : options.maxEntries;
+        // Bound to its instance, so an event handler may adopt it; args drop inside (D2).
+        this.clear = this.clear.bind(this);
     }
 
     /** Lazily obtains the coherent request/answer record for a key.
@@ -241,7 +245,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      *
      * @param args - arguments identifying the cache key.
      */
-    public abort(args: TArgs): void {
+    public abort(...args: TArgs): void {
         this[R.abortKey](this[R.keyOf](args));
     }
 
@@ -265,7 +269,7 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      *
      * @param args - arguments identifying the cache key.
      */
-    public invalidate(args: TArgs): void {
+    public invalidate(...args: TArgs): void {
         const key = this[R.keyOf](args);
         const entry = this.data.entries[key];
         if (!entry) return;
@@ -309,16 +313,20 @@ export abstract class ResourceCacheState<T, TArgs> extends Carburetor<IResourceC
      *
      * @param args - arguments identifying the cache key.
      */
-    public forget(args: TArgs): void {
+    public forget(...args: TArgs): void {
         this[R.forgetKey](this[R.keyOf](args));
     }
 
     /** Forget all entries and cancel their requests in one publication.
      *
+     * Bound to its instance (see the constructor), so an event argument is dropped before
+     * anything else happens.
+     *
      * Settled entries can share one removal preparation only when the per-key forget, abort, and
      * removal hooks are inherited unchanged. Subclasses keep the original per-key call order.
      */
-    public forgetAll(): void {
+    public clear(...args: unknown[]): void {
+        dropEventArgs(args);
         this[R.bulkDepth]++;
         try {
             const keys = Object.keys(this.data.entries);

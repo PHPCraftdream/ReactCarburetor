@@ -27,7 +27,7 @@ class Boundary extends React.Component<{children: React.ReactNode}, {error?: str
 }
 
 const Suspended = ({cache, onRender}: {
-    cache: ResourceCache<string, string>;
+    cache: ResourceCache<string, [string]>;
     onRender?: (rendering: boolean) => void;
 }) => {
     onRender?.(true);
@@ -38,7 +38,7 @@ const Suspended = ({cache, onRender}: {
     }
 };
 
-const content = (cache: ResourceCache<string, string>, key: number, onRender?: (rendering: boolean) => void) =>
+const content = (cache: ResourceCache<string, [string]>, key: number, onRender?: (rendering: boolean) => void) =>
     <Boundary key={key}>
         <React.Suspense fallback={<span className="waiting">waiting</span>}>
             <Suspended cache={cache} onRender={onRender}/>

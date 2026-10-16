@@ -7,7 +7,7 @@ interface Report {
 
 declare function fetchReport(period: string): Promise<Report>;
 
-const reportCache = new ResourceCache<Report, string>((period: string) => fetchReport(period));
+const reportCache = new ResourceCache<Report, [string]>((period: string) => fetchReport(period));
 
 export const describeReportFailure = (period: string): string => {
     const view: IResourceView<Report> = reportCache.getEntry(period);

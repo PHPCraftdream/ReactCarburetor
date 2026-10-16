@@ -1,7 +1,7 @@
 import {EResourceStatus, IResourceData, ResourceCarburetor} from '@/Carburetor';
 import {IResourceSnapshot} from '@/Carburetor/Models/Resource';
 import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
-import {deferred, flush} from '../helpers';
+import {deferred, flush} from '../Keys/helpers';
 
 /** Asserts the slot invariant: exactly one status flag is true and it matches `status`. */
 const assertFlags = (data: IResourceData<unknown>): void => {
@@ -70,7 +70,7 @@ describe('ResourceCarburetor status flags invariant', () => {
         await first;
         expect(resource.getData().isSuccess).toBe(true);
 
-        const second = resource.reload();
+        const second = resource.refresh();
         assertFlags(resource.getData());
         expect(resource.getData().isPending).toBe(true);
         gates[1].resolve('two');

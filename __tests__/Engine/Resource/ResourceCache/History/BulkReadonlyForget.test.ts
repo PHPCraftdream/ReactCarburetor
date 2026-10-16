@@ -14,7 +14,7 @@ interface ILinkedCacheData extends IResourceCacheData<unknown> {
     links: Map<object, object>;
 }
 
-const makeReadonlyGraph = (cache: ResourceCache<unknown, string>, count: number) => {
+const makeReadonlyGraph = (cache: ResourceCache<unknown, [string]>, count: number) => {
     const entries: Record<string, IResourceEntry<unknown>> = {};
     const keys: string[] = [];
     for (let index = 0; index < count; index++) {
@@ -82,7 +82,7 @@ describe('ResourceCache settled readonly bulk forget', () => {
             return ownKeys(target);
         };
         try {
-            cache.forgetAll();
+            cache.clear();
         } finally {
             Reflect.ownKeys = ownKeys;
         }
@@ -111,7 +111,7 @@ describe('ResourceCache settled readonly bulk forget', () => {
         const {keys} = makeReadonlyGraph(cache, 3);
         const held = cache.getData();
 
-        cache.forgetAll();
+        cache.clear();
         expect(Object.keys(cache.getData().entries)).toEqual([]);
         expect(history.undo()).toBe(true);
         const restored = cache.getData();
@@ -126,7 +126,7 @@ describe('ResourceCache settled readonly bulk forget', () => {
     });
 });
 
-describe('ResourceCache active forgetAll reentry', () => {
+describe('ResourceCache active clear reentry', () => {
     test('an abort listener can restore and start a new owner without reviving the cancelled answer', async () => {
         const signals: AbortSignal[] = [];
         const answers: Array<(value: string) => void> = [];
@@ -142,7 +142,7 @@ describe('ResourceCache active forgetAll reentry', () => {
             replacement = cache.load('new');
         });
 
-        cache.forgetAll();
+        cache.clear();
         expect(signals[0].aborted).toBe(true);
         expect(signals[1].aborted).toBe(false);
         if (!replacement) throw new Error('Abort listener did not create a replacement request');
@@ -182,7 +182,7 @@ describe('ResourceCache bulk forget extension hooks', () => {
         let callbacks = 0;
         const subscription = cache.subscribe(() => { callbacks++; });
 
-        cache.forgetAll();
+        cache.clear();
 
         expect(cache.abortedKeys).toEqual(keys);
         expect(cache.removalBatches).toEqual(keys.map((key) => [key]));
@@ -214,7 +214,7 @@ describe('ResourceCache bulk forget extension hooks', () => {
         const subscription = cache.subscribe(() => { callbacks++; });
         cache.throwOnKey = keys[1];
 
-        expect(() => cache.forgetAll()).toThrow('stop');
+        expect(() => cache.clear()).toThrow('stop');
         const partial = cache.getData();
         expectNativeBacklinks(partial, keys.slice(1));
         expect(Object.getOwnPropertyDescriptor(held.entries, keys[0])).toMatchObject({
@@ -224,7 +224,7 @@ describe('ResourceCache bulk forget extension hooks', () => {
         expect(cache.getVersion()).toBe(version + 1);
         expect(callbacks).toBe(1);
 
-        cache.forgetAll();
+        cache.clear();
         expect(Object.keys(cache.getData().entries)).toEqual([]);
         expect(cache.getVersion()).toBe(version + 2);
         expect(callbacks).toBe(2);

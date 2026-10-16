@@ -7,14 +7,15 @@ come from `react-carburetor/interop`. Source links are repository-relative.
 
 | Symbol | Signature | Contract | Link |
 |---|---|---|---|
-| `ResourceCarburetor<T, TArgs = void>` | `(loader: TResourceLoader<T, TArgs>, scheduler?: IUpdateScheduler)` | Single async slot; different arguments supersede the active request. | [`ResourceCarburetor.ts`](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
-| `load` | `(args: TArgs): Promise<void>` | Starts or joins a request for these arguments. | [same](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
-| `reload` | `(): Promise<void>` | Repeats the last load; resolves immediately if none exists. | [same](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
+| `ResourceCarburetor<T, TArgs = []>` | `(loader: TResourceLoader<T, TArgs>, options?: IResourceCarburetorOptions<TArgs>)` | Single async slot; different arguments supersede the active request. Options: `key`, `ttl`, `maxEntries`, `scheduler`. | [`ResourceCarburetor.ts`](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
+| `load` | `(...args: TArgs): Promise<void>` | Starts or joins a request for these arguments; skipped when the stored answer for the key is fresh. | [same](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
+| `refresh` | `(...args: TArgs): Promise<void>` | Always requests, even when the key already has a value; replaces the stored answer on success. | [same](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
+| `clear` | `(): void` | Cancels the request, drops the answer and the per-key answer memory; status back to `Idle`. | [same](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
 | `abort` | `(): void` | Aborts the active resource-wide request; no-op when none is active. Late results are ignored. | [same](../lib/src/Carburetor/Resource/ResourceCarburetor.ts) |
-| `ResourceCache<T, TArgs = void>` | `(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions)` | Multi-entry cache keyed by loader arguments. | [`ResourceCache.ts`](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
-| `load` / `refresh` | `(args: TArgs): Promise<void>` | `load` resolves from the cache when fresh and otherwise fetches, sharing one request among identical calls; `refresh` always fetches and keeps the previous entry on failure. See [promise cache](promise-cache.md). | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
-| `resolve` | `(args: TArgs): IResourceResolution<T>` | Resolves key, subscription path and current view together. | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
-| `getFailure` | `(args: TArgs): unknown` | Raw rejection (including `undefined`), not serialized; check failure presence separately. | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
+| `ResourceCache<T, TArgs = []>` | `(loader: TResourceLoader<T, TArgs>, options?: IResourceCacheOptions<TArgs>)` | Multi-entry cache keyed by loader arguments; the `key` option derives entry identity. | [`ResourceCache.ts`](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
+| `load` / `refresh` / `clear` | `(...args: TArgs): Promise<void>` / `clear(): void` | `load` resolves from the cache when fresh and otherwise fetches, sharing one request among identical calls; `refresh` always fetches and keeps the previous entry on failure; `clear` cancels every request and drops every entry (it replaces `forgetAll`). See [promise cache](promise-cache.md). | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
+| `resolve` | `(...args: TArgs): IResourceResolution<T>` | Resolves key, subscription path and current view together. | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
+| `getFailure` | `(...args: TArgs): unknown` | Raw rejection (including `undefined`), not serialized; check failure presence separately. | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
 
 ## History and tooling
 
@@ -35,7 +36,7 @@ come from `react-carburetor/interop`. Source links are repository-relative.
 |---|---|---|---|
 | `useCarburetorValue<T extends object, R>` | `(carburetor: IReadableCarburetor<T>, select: TSelector<T, R>, isEqual?: TValueComparator<R>): TReadonly<R>` | Tracks selector reads and returns a detached readonly selection. | [`useCarburetorValue.ts`](../lib/src/Interop/useCarburetorValue.ts) |
 | `useComputedValue<R>` | `(computed: IComputed<R>): R` | Returns the live computed value, not a detached result. Mutable results can retain identity; memoized children may not rerender, so pass scalar or detached projections. | [`useComputedValue.ts`](../lib/src/Interop/useComputedValue.ts) |
-| `useResourceValue<T, TArgs, R>` | `(source: IResourceSource<T, TArgs>, args: TArgs, select: TSelector<IResourceView<T>, R & (Extract<R, PromiseLike<unknown>> extends never ? unknown : never)>, isEqual?: TValueComparator<R>): TReadonly<R>` | Required synchronous selector returns a detached readonly value; loading starts after commit. | [`useResourceValue.ts`](../lib/src/Interop/useResourceValue.ts) |
+| `useResourceValue<T, TArgs, R>` | `(source, args: TArgs, select, isEqual?): TReadonly<R>` where `TArgs extends TResourceArgs` — the loader arguments are an explicit tuple (`[]` for a resource without arguments) and precede the required synchronous selector, which returns a detached readonly value; loading starts after commit. | [`useResourceValue.ts`](../lib/src/Interop/useResourceValue.ts) |
 
 ## Types index
 
@@ -60,13 +61,13 @@ The four lint types below come from `react-carburetor/lint`.
 | `IReadableCarburetor<T>` | Extends subscription; `getData(): T; read(record: (path: string) => void): TReadonly<T>` | Raw untracked access and tracked readonly access. | [same](../lib/src/Carburetor/Models/Store.ts) |
 | `ICarburetor<T>` | Extends `IReadableCarburetor<T>`, `IInspectable`; `setData(T): T; snapshot(): T; restore(T): void; watch<R>(select: TSelector<T,R>, onChange: (next: TReadonly<R>, previous: TReadonly<R>) => void): TDisposer` | Writable store; `watch` has no initial callback and fires on changed selections. | [same](../lib/src/Carburetor/Models/Store.ts) |
 | `IResourceData<T>` | `{status: EResourceStatus; isIdle: boolean; isPending: boolean; isSuccess: boolean; isError: boolean; data: T \| undefined; error: string \| undefined; updatedAt: number \| undefined}` | Serializable resource state; error is message only. The four flags are derived from `status` (exactly one is true and matches it) and are always recomputed on restore — stored values are ignored; a restored `Pending` without a live request is normalized to `Idle`. Subscriptions are per-field: reading only `isError` does not re-render on `Pending` → `Success`. | [`Resource.ts`](../lib/src/Carburetor/Models/Resource.ts) |
-| `TResourceLoader<T, TArgs>` | `(args: TArgs, signal: AbortSignal) => Promise<T>` | Async resource loader. | [same](../lib/src/Carburetor/Models/Resource.ts) |
+| `TResourceLoader<T, TArgs extends TResourceArgs = []>` | `(...args: [...TArgs, AbortSignal]) => Promise<T>` — variadic loader arguments followed by the signal; a loader without a signal parameter is accepted by the second overload. `TArgs` is a tuple (`[id: string]`, default `[]`); a first `unknown`/`any` parameter is taken for the signal, which needs the explicit `TArgs`. | Async resource loader. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `IResourceSnapshot<T>` | Extends `IResourceData<T>`; `key?: string \| undefined` | Snapshot carries key of settled answer; absent when no settled answer. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `IResourceEntry<T>` | Extends `IResourceData<T>`; `refreshing: boolean; invalidated: boolean; failed: boolean` | Cache entry with refresh, invalidation and retry bookkeeping state. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `IResourceCacheData<T>` | `{entries: IDict<IResourceEntry<T>>}` | Cache entries by encoded key. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `IResourceView<T>` | Extends `IResourceEntry<T>`; `stale: boolean` | Entry plus freshness verdict. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `IResourceResolution<T>` | `{key: string; path: string; view: IResourceView<T>; present?: boolean; fieldView?: (resolution: IResourceResolution<T>, record: (path: string) => void) => IResourceView<T>}` | Key, subscription path and current view resolved together. | [same](../lib/src/Carburetor/Models/Resource.ts) |
-| `IResourceSource<T, TArgs>` | Extends subscription; `resolve(args: TArgs): IResourceResolution<T>; load(args: TArgs): Promise<void>` | Minimal resource source for readers. | [same](../lib/src/Carburetor/Models/Resource.ts) |
+| `IResourceSource<T, TArgs extends TResourceArgs = []>` | Extends subscription; `resolve(...args: TArgs): IResourceResolution<T>; load(...args: TArgs): Promise<void>` | Minimal resource source for readers. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `ICarburetorToken<T>` | `{id: string; create(): T}` | Stable scope identity and factory. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
 | `TValueComparator<R>` | `(a: TReadonly<R>, b: TReadonly<R>) => boolean` | Interop comparator; imported from `react-carburetor/interop`, not the root entry. | [`Models.ts`](../lib/src/Interop/Models.ts) |
 | `TSeverity` | `'error' \| 'warn' \| 'off'` | Lint-rule severity; from `react-carburetor/lint`. | [`lint.d.ts`](../plugin/lint.d.ts) |
@@ -96,6 +97,7 @@ The four lint types below come from `react-carburetor/lint`.
 | `IDevToolsConnection.send` | `(action: string, state: unknown): void` | Publishes an action and its state. | [same](../lib/src/Carburetor/Models/Tooling.ts) |
 | `IDevToolsConnection.subscribe` | `(listener: (message: IDevToolsMessage) => void) => TDisposer \| void` | Registers a message listener; may return its disposer. | [same](../lib/src/Carburetor/Models/Tooling.ts) |
 | `IDevToolsMessage` | `{type: string; payload?: {type?: string; actionId?: number}; state?: string}` | Message shape consumed by the adapter. | [same](../lib/src/Carburetor/Models/Tooling.ts) |
-| `IResourceCacheOptions` | `{ttl?: number; maxEntries?: number; keyCacheSize?: number; scheduler?: IUpdateScheduler}` | Cache TTL, entry bound, key memo and scheduler options. | [`Resource.ts`](../lib/src/Carburetor/Models/Resource.ts) |
+| `IResourceCacheOptions<TArgs extends TResourceArgs = []>` | `{ttl?: number; maxEntries?: number; keyCacheSize?: number; key?: TResourceKey<TArgs>; scheduler?: IUpdateScheduler}` | Cache TTL, entry bound, key memo, custom key derivation and scheduler options. | [`Resource.ts`](../lib/src/Carburetor/Models/Resource.ts) |
+| `IResourceCarburetorOptions<TArgs extends TResourceArgs = []>` | `{key?: TResourceKey<TArgs>; ttl?: number; maxEntries?: number; scheduler?: IUpdateScheduler}` | Slot options: key derivation, staleness, answer-memory bound and scheduler. | [`ResourceOptions.ts`](../lib/src/Carburetor/Resource/ResourceOptions.ts) |
 | `IDevToolsOptions` | `{name?: string; extension?: IDevToolsExtension}` | Devtools integration options. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
 | `EResourceStatus` | Enum | Resource status. | [`EResourceStatus.ts`](../lib/src/Carburetor/Models/Enums/EResourceStatus.ts) |

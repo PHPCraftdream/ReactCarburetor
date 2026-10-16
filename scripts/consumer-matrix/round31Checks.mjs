@@ -58,7 +58,7 @@ export const runRound31Checks = (runtime, {baseline = false} = {}) => {
             if (Object.hasOwn(object, 'rowId')) rows++;
             return ownKeys(object);
         };
-        try { cache.forgetAll(); } finally { Reflect.ownKeys = ownKeys; cache.unsubscribe(id); }
+        try { cache.clear(); } finally { Reflect.ownKeys = ownKeys; cache.unsubscribe(id); }
         const left = Object.keys(cache.getData().entries).length;
         const heldCount = Object.keys(held.entries).length;
         check('readonly-bulk', {count, roots, rows, publications, left, heldCount},

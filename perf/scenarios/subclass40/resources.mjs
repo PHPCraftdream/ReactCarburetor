@@ -33,7 +33,7 @@ for (const name of ['loader', 'runtime', 'operationVersion', 'start', 'ensureRun
         const id = slot.subscribe(() => { wakes++; });
         try {
             await slot.load('answer');
-            await slot.reload();
+            await slot.refresh('answer');
             const correct = slot.getData().data === 'answer' && wakes === 4;
             if (correct) { if (shadow) slotCorrect++; else controls++; }
         } catch { /* Baseline collisions are verdict failures. */ }

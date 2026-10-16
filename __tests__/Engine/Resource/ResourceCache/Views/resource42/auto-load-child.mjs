@@ -77,7 +77,7 @@ try {
     }
     let expectedError;
     for (const kind of ['hook', 'class']) {
-        for (const action of ['abort', 'forget', 'restore', 'forgetAll']) {
+        for (const action of ['abort', 'forget', 'restore', 'clear']) {
             for (const phase of ['before', 'replacement', 'after']) {
                 await lane(`${kind}/${action}/${phase}`, async () => {
                     const result = await checkRemoval(env, {kind, action, phase});
@@ -112,7 +112,7 @@ try {
                 const container = document.createElement('div');
                 const root = createRoot(container);
                 function Hook() {
-                    const value = interop.useResourceValue(source, 'x', view => view.data?.name);
+                    const value = interop.useResourceValue(source, ['x'], view => view.data?.name);
                     return React.createElement('p', null, value ?? 'loading');
                 }
                 class Owner extends engine.AntiHookComponent {
@@ -164,7 +164,7 @@ try {
                         mounted = true;
                         return () => { mounted = false; };
                     }, []);
-                    const value = interop.useResourceValue(source, 'x', view => view.data?.name);
+                    const value = interop.useResourceValue(source, ['x'], view => view.data?.name);
                     return React.createElement('p', null, value ?? 'loading');
                 }
                 class Owner extends engine.AntiHookComponent {
@@ -204,7 +204,7 @@ try {
             }, 1);
         }
     }
-    for (const action of ['abort', 'forget', 'restore', 'forgetAll']) {
+    for (const action of ['abort', 'forget', 'restore', 'clear']) {
         await lane(`explicit/${action}`, async () => {
             const cache = new engine.ResourceCache(async () => { throw new Error('obsolete loader ran'); });
             let fired = false;

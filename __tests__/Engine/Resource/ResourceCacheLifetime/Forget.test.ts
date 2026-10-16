@@ -23,7 +23,7 @@ const flush = async (): Promise<void> => {
 };
 
 /** Loads several keys and settles them all, leaving a populated cache. */
-const fill = async (cache: ResourceCache<string, string>, loader: ReturnType<typeof makeLoader>, keys: string[]) => {
+const fill = async (cache: ResourceCache<string, [string]>, loader: ReturnType<typeof makeLoader>, keys: string[]) => {
     for (const key of keys) {
         void cache.load(key);
     }
@@ -62,13 +62,13 @@ describe('ResourceCache forget', () => {
         expect(cache.getEntry('a').data).toBeUndefined();
     });
 
-    test('forgetAll empties the cache', async () => {
+    test('clear empties the cache', async () => {
         const loader = makeLoader();
         const cache = new TestCache<string, string>(loader.load);
 
         await fill(cache, loader, ['a', 'b', 'c']);
 
-        cache.forgetAll();
+        cache.clear();
 
         expect(Object.keys(cache.getData().entries)).toEqual([]);
     });
@@ -90,7 +90,7 @@ describe('ResourceCache forget', () => {
         expect(viewCache().has(cache.exposeKeyOf('b'))).toBeTruthy();
     });
 
-    test('forgetAll empties the cached views', async () => {
+    test('clear empties the cached views', async () => {
         const loader = makeLoader();
         const cache = new TestCache<string, string>(loader.load, {ttl: 60_000});
         const viewCache = () => (cache as unknown as {[R.viewCache]: Map<string, unknown>})[R.viewCache];
@@ -99,7 +99,7 @@ describe('ResourceCache forget', () => {
         cache.getEntry('a');
         cache.getEntry('b');
 
-        cache.forgetAll();
+        cache.clear();
 
         expect(viewCache().size).toEqual(0);
     });
@@ -115,16 +115,16 @@ describe('ResourceCache forget', () => {
         cache.forget('a');
         expect(entryCount()).toEqual(2);
 
-        cache.forgetAll();
+        cache.clear();
         expect(entryCount()).toEqual(0);
     });
 
-    test('empty forgetAll is a true no-op', () => {
+    test('empty clear is a true no-op', () => {
         const cache = new TestCache<string, string>(() => Promise.resolve('unused'));
         let callbacks = 0;
 
         const id = cache.subscribe(() => { callbacks++; });
-        cache.forgetAll();
+        cache.clear();
 
         expect(cache.getVersion()).toEqual(0);
         expect(callbacks).toEqual(0);
@@ -153,7 +153,7 @@ describe('ResourceCache forget', () => {
         const detach = cache.attachPatchListener({patch: () => { patches++; }});
         const baseline = cache.getVersion();
 
-        cache.forgetAll();
+        cache.clear();
 
         expect(cache.getVersion() - baseline).toEqual(1);
         expect(Object.keys(cache.getData().entries)).toEqual([]);
@@ -163,7 +163,7 @@ describe('ResourceCache forget', () => {
         ids.forEach((id) => cache.unsubscribe(id));
     });
 
-    test.each([false, true])('forgetAll persists once with coalesce=%s', async (coalesce) => {
+    test.each([false, true])('clear persists once with coalesce=%s', async (coalesce) => {
         const loader = makeLoader();
         const cache = new TestCache<string, string>(loader.load);
 
@@ -177,7 +177,7 @@ describe('ResourceCache forget', () => {
         };
         const dispose = persist(cache, {key: 'entries', storage, coalesce});
 
-        cache.forgetAll();
+        cache.clear();
 
         if (coalesce) {
             expect(values).toHaveLength(0);
@@ -189,7 +189,7 @@ describe('ResourceCache forget', () => {
         dispose();
     });
 
-    test('nested forgetAll and an outer transaction deliver one final state', async () => {
+    test('nested clear and an outer transaction deliver one final state', async () => {
         const loader = makeLoader();
         const cache = new TestCache<string, string>(loader.load);
 
@@ -200,8 +200,8 @@ describe('ResourceCache forget', () => {
         const baseline = cache.getVersion();
 
         transaction(() => {
-            cache.forgetAll();
-            cache.forgetAll();
+            cache.clear();
+            cache.clear();
             expect(seen).toEqual([]);
             expect(cache.getVersion() - baseline).toEqual(1);
         });
@@ -211,11 +211,11 @@ describe('ResourceCache forget', () => {
     });
 
     test('exception after a partial clear publishes the partial state and releases the scope', async () => {
-        class ThrowingCache extends ResourceCache<string, string> {
+        class ThrowingCache extends ResourceCache<string, [string]> {
             public fail = true;
 
             public [R.forgetKey](key: string): void {
-                if (this.fail && key === this[R.keyOf]('b')) {
+                if (this.fail && key === this[R.keyOf](['b'])) {
                     throw new Error('stop');
                 }
 
@@ -232,14 +232,14 @@ describe('ResourceCache forget', () => {
         const id = cache.subscribe(() => { callbacks++; });
         const baseline = cache.getVersion();
 
-        expect(() => cache.forgetAll()).toThrow('stop');
+        expect(() => cache.clear()).toThrow('stop');
         expect(cache.getVersion() - baseline).toEqual(1);
         expect(callbacks).toEqual(1);
         expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
         expect(cache.getEntry('b').data).toEqual('value-b');
 
         cache.fail = false;
-        cache.forgetAll();
+        cache.clear();
 
         expect(cache.getVersion() - baseline).toEqual(2);
         expect(callbacks).toEqual(2);

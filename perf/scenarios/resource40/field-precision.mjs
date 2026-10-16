@@ -31,7 +31,7 @@ const run = async (kind, field) => {
     }
     const HookReader = () => {
         renders++;
-        const value = useResourceValue(cache, 0, read);
+        const value = useResourceValue(cache, [0], read);
         return React.createElement('span', null, value ?? '…');
     };
     flushSync(() => root.render(React.createElement(kind === 'class' ? ClassReader : HookReader)));

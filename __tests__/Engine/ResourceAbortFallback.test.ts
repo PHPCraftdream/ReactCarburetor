@@ -1,6 +1,6 @@
 import {EResourceStatus, ResourceCarburetor} from "@/Carburetor";
 import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
-import {createAbortHandle} from "@/Carburetor/Resource/createAbortHandle";
+import {createAbortHandle} from "@/Carburetor/Resource/Slot/createAbortHandle";
 import {rstest} from '@rstest/core';
 
 const flush = async (): Promise<void> => {
@@ -76,7 +76,7 @@ describe('resource loads without a global AbortController (R5-04)', () => {
 
     test('ResourceCache.load still works without the global', async () => {
         await withoutAbortController(async () => {
-            const cache = new ResourceCache<string, string>(() => Promise.resolve('loaded'));
+            const cache = new ResourceCache<string, [string]>(() => Promise.resolve('loaded'));
 
             await cache.load('a');
 
@@ -89,7 +89,7 @@ describe('resource loads without a global AbortController (R5-04)', () => {
         await withoutAbortController(async () => {
             let resolveLoad: (value: string) => void = () => undefined;
 
-            const cache = new ResourceCache<string, string>((): Promise<string> => {
+            const cache = new ResourceCache<string, [string]>((): Promise<string> => {
                 return new Promise<string>((resolve: (value: string) => void) => {
                     resolveLoad = resolve;
                 });
@@ -123,7 +123,7 @@ describe('the fallback signal satisfies a standard loader (R6-01)', () => {
             expect(resource.getData().status).toEqual(EResourceStatus.Success);
             expect(resource.getData().data).toEqual('loaded');
 
-            const cache = new ResourceCache<string, string>((_args: string, signal: AbortSignal) => {
+            const cache = new ResourceCache<string, [string]>((_args: string, signal: AbortSignal) => {
                 signal.addEventListener('abort', (): void => undefined);
 
                 return Promise.resolve('loaded');
@@ -390,7 +390,7 @@ describe('the fallback signal carries the rest of the advertised surface (R7-04)
             expect(resource.getData().status).toEqual(EResourceStatus.Success);
             expect(resource.getData().data).toEqual('loaded');
 
-            const cache = new ResourceCache<string, string>((_args: string, signal: AbortSignal): Promise<string> => {
+            const cache = new ResourceCache<string, [string]>((_args: string, signal: AbortSignal): Promise<string> => {
                 signal.throwIfAborted();
                 signal.onabort = (): void => undefined;
 

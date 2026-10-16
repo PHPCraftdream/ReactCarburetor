@@ -9,7 +9,7 @@ import {S} from '@/Carburetor/Store/Diagnostics/Internal/StoreIdentity';
 import {createResourceReader} from '@/Interop/createResourceReader';
 
 interface Data {nested: {name: string; unread: number}; alternate: string}
-class Cache extends ResourceCache<Data, string> {
+class Cache extends ResourceCache<Data, [string]> {
     public edit(field: 'name' | 'unread' | 'alternate', value: string | number): void {
         const key = this.resolve('user').key;
         this.update(draft => {
@@ -43,7 +43,7 @@ describe('R41 captured resource data', () => {
         });
         const Parent = ({tick}: {tick: number}) => {
             void tick;
-            return <Child kind="hook" data={useResourceValue(cache, 'user', selectName)}/>;
+            return <Child kind="hook" data={useResourceValue(cache, ['user'], selectName)}/>;
         };
         class Control extends AntiHookComponent<{tick: number}> {
             private readonly selected = this.connectSelection(classCache, view => ({
@@ -70,7 +70,7 @@ describe('R41 captured resource data', () => {
         const second = await loaded('Grace');
         let retained: Data | undefined;
         const Parent = ({cache}: {cache: Cache}) => {
-            const data = useResourceValue(cache, 'user', selectData);
+            const data = useResourceValue(cache, ['user'], selectData);
             // oxlint-disable-next-line react/immutability, react/globals -- Retained-snapshot proof.
             retained ??= data;
             const local = {...data, nested: {...data.nested, name: 'local'}};
@@ -92,7 +92,7 @@ describe('R41 captured resource data', () => {
         const Parent = ({alternate}: {alternate: boolean}) => {
             // oxlint-disable-next-line react/immutability, react/globals -- Intentional actual-render counter.
             parents++;
-            const data = useResourceValue(cache, 'user', view => {
+            const data = useResourceValue(cache, ['user'], view => {
                 if (alternate) {
                     // Touching an old detached result during selection records nothing.
                     expect(retained!.nested.name).toBe('Ada');
@@ -119,21 +119,21 @@ describe('R41 captured resource data', () => {
     test('exceptions close leaked inputs and exact candidate commit ignores a later candidate', async () => {
         const cache = await loaded();
         const resolution = cache.resolve('user');
-        const reader = createResourceReader<Data, string, string>(cache, resolution.path);
+        const reader = createResourceReader<Data, [string], string>(cache, resolution.path);
         let leaked!: TReadonly<IResourceView<Data>>;
-        expect(() => reader.evaluate('user', resolution, view => {
+        expect(() => reader.evaluate(['user'], resolution, view => {
             leaked = view;
             void view.data!.nested.name;
             throw new Error('selector failed');
         })).toThrow('selector failed');
         let leakedUnread: number | undefined;
-        const a = reader.evaluate('user', resolution, view => {
+        const a = reader.evaluate(['user'], resolution, view => {
             // Borrowed inputs are closed recorders, not detached snapshots of raw data.
             leakedUnread = leaked!.data!.nested.unread;
             return view.data!.alternate;
         });
         expect(leakedUnread).toBe(0);
-        const b = reader.evaluate('user', resolution, view => view.data!.nested.name);
+        const b = reader.evaluate(['user'], resolution, view => view.data!.nested.name);
         const deliveries: object[] = [];
         const unsubscribe = reader.subscribe(() => deliveries.push(reader.getSnapshot(a)));
         reader.commit(a);
@@ -146,7 +146,7 @@ describe('R41 captured resource data', () => {
             cache.edit('alternate', 'A-visible');
             expect(deliveries).toHaveLength(1);
             expect(leakedUnread).toBe(1);
-            const latest = reader.evaluate('user', cache.resolve('user'), view => view.data!.alternate);
+            const latest = reader.evaluate(['user'], cache.resolve('user'), view => view.data!.alternate);
             expect(latest.value).toBe('A-visible');
         } finally { unsubscribe(); }
         expect(Object.keys(cache[S.subscribers])).toEqual([]);
@@ -155,15 +155,15 @@ describe('R41 captured resource data', () => {
     test('interleaved synchronous evaluations never retarget closed or outer input recorders', async () => {
         const cache = await loaded();
         const resolution = cache.resolve('user');
-        const reader = createResourceReader<Data, string, string>(cache, resolution.path);
+        const reader = createResourceReader<Data, [string], string>(cache, resolution.path);
         let aInput!: TReadonly<IResourceView<Data>>;
         let bInput!: TReadonly<IResourceView<Data>>;
         let bCandidate!: ReturnType<typeof reader.evaluate>;
         let borrowedName: string | undefined;
         let borrowedUnread: number | undefined;
-        const a = reader.evaluate('user', resolution, view => {
+        const a = reader.evaluate(['user'], resolution, view => {
             aInput = view;
-            bCandidate = reader.evaluate('user', resolution, nested => {
+            bCandidate = reader.evaluate(['user'], resolution, nested => {
                 bInput = nested;
                 borrowedName = aInput!.data!.nested.name;
                 return nested.data!.alternate;
@@ -193,13 +193,13 @@ describe('R41 captured resource data', () => {
     test('failed commit drift capture preserves the previous committed selector and subscription', async () => {
         const cache = await loaded();
         const resolution = cache.resolve('user');
-        const reader = createResourceReader<Data, string, string>(cache, resolution.path);
-        const current = reader.evaluate('user', resolution, view => view.data!.nested.name);
+        const reader = createResourceReader<Data, [string], string>(cache, resolution.path);
+        const current = reader.evaluate(['user'], resolution, view => view.data!.nested.name);
         reader.commit(current);
         const notifications: object[] = [];
         const unsubscribe = reader.subscribe(() => notifications.push(reader.getSnapshot(current)));
         let fail = false;
-        const candidate = reader.evaluate('user', resolution, view => {
+        const candidate = reader.evaluate(['user'], resolution, view => {
             if (fail) throw new Error('commit drift failed');
             return view.data!.alternate;
         });
@@ -220,8 +220,8 @@ describe('R41 captured resource data', () => {
         const cache = await loaded();
         const resolution = cache.resolve('user');
         const select = (view: TReadonly<IResourceView<Data>>) => view.data!.nested.name;
-        const reader = createResourceReader<Data, string, string>(cache, resolution.path);
-        const candidate = reader.evaluate('user', resolution, select);
+        const reader = createResourceReader<Data, [string], string>(cache, resolution.path);
+        const candidate = reader.evaluate(['user'], resolution, select);
         const original = cache.subscribe.bind(cache);
         let attaching = false;
         let attached = false;
@@ -244,7 +244,7 @@ describe('R41 captured resource data', () => {
             reader.commit(candidate);
             expect(attached).toBe(true);
             expect(candidate.value).toBe('Ada');
-            const latest = reader.evaluate('user', cache.resolve('user'), select);
+            const latest = reader.evaluate(['user'], cache.resolve('user'), select);
             expect(latest.value).toBe('written during attachment');
             expect(reader.getSnapshot(candidate)).toBe(latest.token);
             expect(reader.getSnapshot(candidate)).not.toBe(candidate.token);
@@ -257,8 +257,8 @@ describe('R41 captured resource data', () => {
     test('failed subscription attachment releases ownership before propagating its error', async () => {
         const cache = await loaded();
         const resolution = cache.resolve('user');
-        const reader = createResourceReader<Data, string, string>(cache, resolution.path);
-        const candidate = reader.evaluate('user', resolution, view => view.data!.nested.name);
+        const reader = createResourceReader<Data, [string], string>(cache, resolution.path);
+        const candidate = reader.evaluate(['user'], resolution, view => view.data!.nested.name);
         reader.commit(candidate);
         const subscribe = cache.subscribe;
         cache.subscribe = (callback, options) => {
@@ -279,10 +279,10 @@ describe('R41 captured resource data', () => {
     test('equal-result branch migration happens on notification without a React commit', async () => {
         const cache = await loaded('other');
         const key = cache.resolve('user').key;
-        const reader = createResourceReader<Data, string, string>(cache, cache.resolve('user').path);
+        const reader = createResourceReader<Data, [string], string>(cache, cache.resolve('user').path);
         const select = (view: TReadonly<IResourceView<Data>>) => view.data!.nested.unread === 0
             ? view.data!.nested.name : view.data!.alternate;
-        const candidate = reader.evaluate('user', cache.resolve('user'), select);
+        const candidate = reader.evaluate(['user'], cache.resolve('user'), select);
         const notifications: object[] = [];
         reader.commit(candidate);
         const unsubscribe = reader.subscribe(() => notifications.push(reader.getSnapshot(candidate)));

@@ -26,7 +26,7 @@ interface ILabelSourceData {
     entries: IDict<ILabelEntry>;
 }
 
-export class LabelSource extends Carburetor<ILabelSourceData> implements IResourceSource<Label, string> {
+export class LabelSource extends Carburetor<ILabelSourceData> implements IResourceSource<Label, [string]> {
     public constructor() {
         super({entries: {}});
     }

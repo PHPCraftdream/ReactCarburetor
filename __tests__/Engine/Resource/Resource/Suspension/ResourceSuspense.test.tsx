@@ -127,11 +127,11 @@ describe('resource under Suspense', () => {
             message.includes('The above error occurred in the <SuspendingView> component')).length).toEqual(1);
     });
 
-    test('a useCarburetor subscription covering a read field wakes the component on reload', async () => {
+    test('a useCarburetor subscription covering a read field wakes the component on refresh', async () => {
         // Pins that the subscription covers exactly the fields read off the result —
-        // here `status` — so reload's status/data writes wake this component.
+        // here `status` — so refresh's status/data writes wake this component.
         // Loader hands each call its own gate, answering with the current value of
-        // `answer`; reload() re-invokes it, so flipping the variable serves 'second'.
+        // `answer`; refresh() re-invokes it, so flipping the variable serves 'second'.
         let answer = 'first';
         const gates: IDeferred<string>[] = [];
         const resource = new ResourceCarburetor<string>(() => {
@@ -148,7 +148,7 @@ describe('resource under Suspense', () => {
         class ReloadView extends AntiHookComponent<IViewProps> {
             render() {
                 // The subscription covers the fields read — here `status` — so
-                // reload's status/data writes wake this component.
+                // refresh's status/data writes wake this component.
                 const state = this.useCarburetor(this.props.resource);
 
                 return <div className="value" data-status={state.status}>{this.props.resource.suspend(undefined)}</div>;
@@ -180,7 +180,7 @@ describe('resource under Suspense', () => {
         answer = 'second';
 
         await act(async () => {
-            await resource.reload();
+            await resource.refresh();
         });
 
         expect(parentRenders).toEqual(rendersBeforeReload);

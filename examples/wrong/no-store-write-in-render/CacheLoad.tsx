@@ -4,7 +4,7 @@ interface IUser {name: string}
 
 declare function loadUser(id: string): Promise<IUser>;
 
-const userCache = new ResourceCache<IUser, string>(loadUser);
+const userCache = new ResourceCache<IUser, [string]>(loadUser);
 
 class Reader extends AntiHookComponent<{id: string}> {
     public render() {

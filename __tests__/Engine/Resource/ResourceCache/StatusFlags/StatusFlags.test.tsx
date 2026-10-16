@@ -1,7 +1,7 @@
 import {EResourceStatus, ResourceCache} from '@/Carburetor';
 import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
 import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
-import {deferred} from '../../Resource/helpers';
+import {deferred} from '../../Resource/Keys/helpers';
 
 /** Asserts the entry invariant: exactly one status flag is true and it matches `status`. */
 const assertFlags = (entry: IResourceEntry<unknown>): void => {
@@ -17,7 +17,7 @@ const assertFlags = (entry: IResourceEntry<unknown>): void => {
 const fixture = () => {
     const gates: Array<ReturnType<typeof deferred<unknown>>> = [];
     let calls = 0;
-    const cache = new ResourceCache<unknown, string>(() => {
+    const cache = new ResourceCache<unknown, [string]>(() => {
         const gate = deferred<unknown>();
         gates.push(gate);
         calls++;

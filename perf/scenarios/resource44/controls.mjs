@@ -31,7 +31,7 @@ for (const style of ['object', 'getter']) {
         && cache.getEntry('a').error === 'offline') cowOwnershipAccepted++;
     assert.equal(cache.getEntry('a').data, 'held'); assert.equal(cache.getEntry('a').refreshing, false);
     assert.equal(captured.view.error, undefined); assert.equal(captured.view.invalidated, false);
-    cowControls++; cache.forgetAll();
+    cowControls++; cache.clear();
     {
         const requests = [gate(), gate()], signals = []; let calls = 0;
         const owner = new ResourceCache((_args, signal) => {
@@ -52,7 +52,7 @@ for (const style of ['object', 'getter']) {
             && owner.getEntry('a').error === undefined && owner.getFailure('a') === undefined) {
             cancelledGenerationProtected++;
         }
-        assert.equal(owner.getEntry('a').data, undefined); terminalControls++; owner.forgetAll();
+        assert.equal(owner.getEntry('a').data, undefined); terminalControls++; owner.clear();
     }
     for (const kind of ['cache', 'slot']) {
         const pending = gate();
@@ -64,7 +64,7 @@ for (const style of ['object', 'getter']) {
         assert.equal(state.data, 'manual'); assert.equal(state.error, 'offline');
         assert.equal(kind === 'cache' ? owner.getFailure('a') : owner.getLastError(), failure);
         setDataControls++;
-        if (kind === 'cache') owner.forgetAll(); else owner.abort();
+        if (kind === 'cache') owner.clear(); else owner.abort();
     }
     for (const kind of ['cache', 'slot']) {
         const pending = gate(), thrown = new Error('description threw'); let calls = 0;
@@ -75,7 +75,7 @@ for (const style of ['object', 'getter']) {
         pending.no(rejected(style, () => { throw thrown; })); await observed;
         if (kind === 'slot') owner.abort();
         await owner.load('b'); assert.equal(calls, 2); exceptionControls++; terminalControls++;
-        if (kind === 'cache') owner.forgetAll(); else owner.abort();
+        if (kind === 'cache') owner.clear(); else owner.abort();
     }
 }
 for (const raw of [0, false, '', undefined]) for (const kind of ['cache', 'slot']) {
@@ -86,7 +86,7 @@ for (const raw of [0, false, '', undefined]) for (const kind of ['cache', 'slot'
     let threw = false;
     try { owner.suspend('a'); } catch (error) { threw = true; assert.equal(error, raw); }
     assert.equal(threw, true); falsyControls++;
-    if (kind === 'cache') owner.forgetAll(); else owner.abort();
+    if (kind === 'cache') owner.clear(); else owner.abort();
 }
 {
     const raw = new Error('offline'), cache = new ResourceCache(() => Promise.reject(raw), {ttl: Infinity});
@@ -94,7 +94,7 @@ for (const raw of [0, false, '', undefined]) for (const kind of ['cache', 'slot'
     const captured = cache.resolve('a'); await cache.refresh('a');
     assert.equal(cache.getEntry('a').data, 'good'); assert.equal(cache.getEntry('a').failed, true);
     assert.equal(cache.getFailure('a'), raw); assert.equal(captured.view.error, undefined);
-    refreshControls++; cache.forgetAll();
+    refreshControls++; cache.clear();
 }
 for (const shape of ['root', 'entry']) {
     const pending = gate(); let calls = 0;
@@ -115,7 +115,7 @@ for (const shape of ['root', 'entry']) {
     assert.equal(cache.getEntry('a').data, 'replacement'); assert.equal(cache.getEntry('a').error, undefined);
     assert.equal(cache.getEntry('a').failed, false);
     await cache.refresh('a'); assert.equal(calls, 2); assert.equal(cache.getEntry('a').data, 'next');
-    abortControls++; terminalControls++; cache.forgetAll();
+    abortControls++; terminalControls++; cache.clear();
 }
 {
     const pending = gate();

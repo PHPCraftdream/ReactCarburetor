@@ -8,7 +8,7 @@ interface Post {
     title: string;
 }
 
-export const postCache = new ResourceCache<Post, string>((id: string, _signal: AbortSignal) => fetchPost(id));
+export const postCache = new ResourceCache<Post, [string]>((id: string, _signal: AbortSignal) => fetchPost(id));
 
 const renderPost = (id: string): JSX.Element => <PostListItem key={id} postId={id} />;
 

@@ -163,7 +163,7 @@ describe('Carburetor', () => {    test('notifies subscribers synchronously by de
     });
 
     test('resource cache releases eviction state only for registered special ids', () => {
-        class TrackingCache extends ResourceCache<string, string> {
+        class TrackingCache extends ResourceCache<string, [string]> {
             public releases = 0;
 
             constructor() {

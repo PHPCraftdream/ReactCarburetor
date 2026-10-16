@@ -12,7 +12,7 @@ class ManualThrottle extends ComponentUpdateThrottle {
 const fixture = (scheduler?: ManualThrottle) => {
     const calls: number[] = [];
     const state = {renders: 0};
-    const cache = new ResourceCache<{id: number}, number>((id) => {
+    const cache = new ResourceCache<{id: number}, [number]>((id) => {
         calls.push(id);
         return new Promise<{id: number}>(() => undefined);
     }, scheduler ? {scheduler} : {});

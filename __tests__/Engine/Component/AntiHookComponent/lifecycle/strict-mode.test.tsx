@@ -58,9 +58,9 @@ import {
 
         test('a resource cache read receives its answer after the replayed mount', async () => {
             const loader = makeLoader();
-            const cache = new ResourceCache<string, string>(loader.load);
+            const cache = new ResourceCache<string, [string]>(loader.load);
 
-            class Row extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string}> {
+            class Row extends AntiHookComponent<{cache: ResourceCache<string, [string]>; id: string}> {
                 render() {
                     const entry = this.useResource(this.props.cache, this.props.id);
 
@@ -84,7 +84,7 @@ import {
 
         test('a cache write still reaches the component after the replayed mount', async () => {
             const loader = makeLoader();
-            const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+            const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
             // Preloaded, so the mount itself fetches nothing: no write may paper over a
             // subscription the replayed mount lifecycles failed to restore.
@@ -92,7 +92,7 @@ import {
             loader.settle[0]('Ann');
             await flush();
 
-            class Row extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string}> {
+            class Row extends AntiHookComponent<{cache: ResourceCache<string, [string]>; id: string}> {
                 render() {
                     const entry = this.useResource(this.props.cache, this.props.id);
 

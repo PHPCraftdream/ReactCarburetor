@@ -4,7 +4,7 @@ import {ResourceCache} from "@/Carburetor/Resource/Cache/ResourceCache";
 describe('ResourceCache with undefined values', () => {
     test('suspend returns a settled undefined value without fetching again', async () => {
         let calls = 0;
-        const cache = new ResourceCache<string | undefined, string>(() => {
+        const cache = new ResourceCache<string | undefined, [string]>(() => {
             calls++;
 
             return Promise.resolve(undefined);
@@ -20,7 +20,7 @@ describe('ResourceCache with undefined values', () => {
     test('a failed refresh preserves a successful undefined value', async () => {
         let rejectRefresh: (error: Error) => void = () => undefined;
         let calls = 0;
-        const cache = new ResourceCache<string | undefined, string>(() => {
+        const cache = new ResourceCache<string | undefined, [string]>(() => {
             calls++;
 
             if (calls === 1) {

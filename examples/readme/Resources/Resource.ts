@@ -5,7 +5,7 @@ interface IProfile {name: string}
 // #region profile
 const parseProfile = (response: Response): Promise<IProfile> => response.json();
 
-export const profile = new ResourceCarburetor<IProfile, {id: string}>(
+export const profile = new ResourceCarburetor<IProfile, [{id: string}]>(
     ({id}, signal) => fetch(`/api/profile/${id}`, {signal}).then(parseProfile)
 );
 

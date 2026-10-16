@@ -8,7 +8,8 @@ import {renderRequest, hydratePage} from '../../../../../../examples/readme/App/
 import {act} from 'react';
 import {render} from '@testing-library/react';
 import {rstest} from '@rstest/core';
-import {ResourceCache} from '@/Carburetor';
+// `load` is a bound instance field (D2), not a prototype method; its body is the spyable seam.
+import {ResourceCacheLifecycle} from '@/Carburetor/Resource/Cache/ResourceCacheLifecycle';
 import {enableReactActEnvironment} from '../../../../../reactActEnvironment';
 import {Counter} from '../../../../../../examples/readme/Counter';
 
@@ -32,7 +33,7 @@ describe('README hydration recipe', () => {
     });
 
     test('hydration renders the server markup without a mismatch or a second request', async () => {
-        loadSpy = rstest.spyOn(ResourceCache.prototype, 'load');
+        loadSpy = rstest.spyOn(ResourceCacheLifecycle.prototype, 'runLoad');
         const {markup, payload} = await renderRequest();
 
         expect(markup).toContain('User a1');
@@ -60,7 +61,7 @@ describe('README hydration recipe', () => {
     });
 
     test('an empty payload makes the client fetch on its own', async () => {
-        loadSpy = rstest.spyOn(ResourceCache.prototype, 'load');
+        loadSpy = rstest.spyOn(ResourceCacheLifecycle.prototype, 'runLoad');
         const {markup} = await renderRequest();
         const serverCalls = loadSpy.mock.calls.length;
 

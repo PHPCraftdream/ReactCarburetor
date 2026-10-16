@@ -35,7 +35,7 @@ const flush = async (): Promise<void> => {
 };
 
 /** Loads an entry and settles it, so the interesting part of each test starts from fresh data. */
-const withData = async (cache: ResourceCache<string, string>, loader: ReturnType<typeof makeLoader>) => {
+const withData = async (cache: ResourceCache<string, [string]>, loader: ReturnType<typeof makeLoader>) => {
     void cache.load('a');
     loader.pending[0].resolve('first');
     await flush();
@@ -44,7 +44,7 @@ const withData = async (cache: ResourceCache<string, string>, loader: ReturnType
 describe('ResourceCache.refresh', () => {
     test('fetches even when the entry is perfectly fresh', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
         await withData(cache, loader);
 
@@ -58,7 +58,7 @@ describe('ResourceCache.refresh', () => {
 
     test('a successful refresh replaces the data and the timestamp', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
         await withData(cache, loader);
 
@@ -79,7 +79,7 @@ describe('ResourceCache.refresh', () => {
 
     test('a failed refresh keeps the last good answer and reports the failure beside it', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
         await withData(cache, loader);
 
@@ -98,7 +98,7 @@ describe('ResourceCache.refresh', () => {
 
     test('a failed refresh does not reset the data age, so the entry stays as old as its data', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
         await withData(cache, loader);
 
@@ -113,7 +113,7 @@ describe('ResourceCache.refresh', () => {
 
     test('a failure on an entry that never succeeded has nothing to keep', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
 
         const request = cache.refresh('a');
 
@@ -129,7 +129,7 @@ describe('ResourceCache.refresh', () => {
 
     test('a refresh next to a load of the same arguments joins it', () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load);
+        const cache = new ResourceCache<string, [string]>(loader.load);
 
         void cache.load('a');
         void cache.refresh('a');
@@ -140,7 +140,7 @@ describe('ResourceCache.refresh', () => {
 
     test('an aborted refresh does not put its failure on the entry', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
         await withData(cache, loader);
 
@@ -160,7 +160,7 @@ describe('ResourceCache.refresh', () => {
 
     test('refreshing one entry leaves the others alone', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
         void cache.load('a');
         void cache.load('b');
@@ -178,7 +178,7 @@ describe('ResourceCache.refresh', () => {
 
     test('a failed refresh marks the entry failed until an answer or a new invalidation re-arms it', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
         await withData(cache, loader);
 
@@ -202,7 +202,7 @@ describe('ResourceCache.refresh', () => {
 
     test('an explicit refresh after a failed one retries the loader', async () => {
         const loader = makeLoader();
-        const cache = new ResourceCache<string, string>(loader.load, {ttl: 60_000});
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
 
         await withData(cache, loader);
 

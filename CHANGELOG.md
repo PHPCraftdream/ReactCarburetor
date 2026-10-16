@@ -69,6 +69,25 @@ Entries below record development history in change order; where contracts differ
 
 ### Breaking
 
+- **Breaking:** Resource loader arguments are variadic with the signal last —
+  `(...args: [...TArgs, AbortSignal]) => Promise<T>` — and `TArgs` is now a tuple:
+  `ResourceCache<User, string>` becomes `ResourceCache<User, [id: string]>`, the `void` default
+  becomes `[]`, and single-argument reads like `load(id)` are unchanged. A first loader parameter
+  typed `unknown`/`any` is taken for the signal; use the explicit
+  `new ResourceCarburetor<T, [unknown]>(...)`. Applies to `ResourceCarburetor`, `ResourceCache`,
+  `IResourceSource`, `useResource`, `useResourceValue` and `createResourceReader`.
+  Migration: wrap the old generic argument in brackets — `<T, X>` becomes `<T, [X]>`.
+- **Breaking:** `ResourceCarburetor(loader, scheduler?)` takes an options object —
+  `ResourceCarburetor(loader, {scheduler})`; new options `key` (custom answer identity),
+  `ttl` and `maxEntries` (per-key answer memory, LRU-bounded).
+- **Breaking:** `ResourceCarburetor.reload()` is removed; use `refresh(...args)`, passing the
+  arguments explicitly.
+- **Breaking:** `ResourceCache.forgetAll()` is removed; use `clear()`, which cancels every
+  in-flight request and drops every entry in one publication. `forget(args)` is unchanged.
+- **Breaking:** `IResourceSource`, `useResource` and `createResourceReader` are variadic:
+  `resolve(...args)`/`load(...args)` and `useResource(source, ...args)` instead of a single `args`
+  value. `useResourceValue` takes the arguments as an explicit tuple:
+  `useResourceValue(source, [id], select)`.
 - **Breaking:** `useResourceValue(source, args, select, isEqual?)` requires a synchronous selector and
   returns a detached readonly selection. A selector returning a Promise is rejected by the type.
   The two-argument hook and writable hook-result facade are removed; use caller-owned presentation

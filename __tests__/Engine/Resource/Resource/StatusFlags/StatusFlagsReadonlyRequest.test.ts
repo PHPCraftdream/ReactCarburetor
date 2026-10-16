@@ -2,7 +2,7 @@ import {EResourceStatus, IResourceData, ResourceCarburetor} from '@/Carburetor';
 
 describe('ResourceCarburetor status flags capability on request start (F3)', () => {
     test('load succeeds when isIdle is a readonly non-configurable flag', async () => {
-        const resource = new ResourceCarburetor<string, string>(async key => `answer-${key}`);
+        const resource = new ResourceCarburetor<string, [string]>(async key => `answer-${key}`);
 
         // Seed an idle slot whose isIdle flag is frozen: readonly and non-configurable,
         // while every other field stays writable.

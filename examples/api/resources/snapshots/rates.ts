@@ -8,7 +8,7 @@ interface Currency {
 
 declare function fetchRate(code: string): Promise<Currency>;
 
-const rateResource = new ResourceCarburetor<Currency, string>((code: string) => fetchRate(code));
+const rateResource = new ResourceCarburetor<Currency, [string]>((code: string) => fetchRate(code));
 
 export function exportRates(): Array<{id: string; snapshot: IResourceSnapshot<Currency>}> {
     void rateResource.load('EUR');

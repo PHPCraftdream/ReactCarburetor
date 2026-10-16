@@ -15,7 +15,7 @@ import {useResourceValue} from '@/Interop';
 const fixture = () => {
     const gates: Array<PromiseWithResolvers<unknown>> = [];
     const renders = {flag: 0, selector: 0};
-    const cache = new ResourceCache<unknown, string>(() => {
+    const cache = new ResourceCache<unknown, [string]>(() => {
         const gate = Promise.withResolvers<unknown>();
         gates.push(gate);
         return gate.promise;
@@ -34,7 +34,7 @@ const fixture = () => {
     const SelectorBadge = () => {
         // oxlint-disable-next-line react/immutability -- Positive selector render-count control.
         renders.selector++;
-        const isError = useResourceValue(cache, 'a', view => view.isError);
+        const isError = useResourceValue(cache, ['a'], view => view.isError);
         return <span>{isError ? 'error' : 'ok'}</span>;
     };
 

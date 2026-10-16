@@ -1,10 +1,15 @@
 import {
     EResourceStatus, IResourceCacheData, IResourceCacheOptions, IResourceData, IResourceEntry, IResourceResolution,
-    IResourceSnapshot, IResourceSource, IResourceView, ResourceCache, ResourceCarburetor, TResourceLoader,
+    IResourceSnapshot, IResourceSource, IResourceView, ResourceCache, ResourceCarburetor, TResourceArgs,
+    TResourceKey, TResourceLoader,
 } from 'react-carburetor';
 
-const loader: TResourceLoader<string, string> = async key => key.toUpperCase();
-const cache = new ResourceCache<string, string>(loader);
+// Variadic resource arguments: the tuple types and key fn are part of the public surface.
+const toKey: TResourceKey<[string]> = (id) => id;
+const argsOf = (...args: [string]): TResourceArgs => args;
+
+const loader: TResourceLoader<string, [string]> = async (key: string) => key.toUpperCase();
+const cache = new ResourceCache<string, [string]>(loader);
 const options: IResourceCacheOptions = {};
 const loadReady = async (): Promise<string> => 'ready';
 class SingleResource extends ResourceCarburetor<string> {
@@ -25,7 +30,7 @@ const entry: IResourceEntry<string> = {...data, refreshing: false, invalidated: 
 const view: IResourceView<string> = {...entry, stale: false};
 const snapshot: IResourceSnapshot<string> = {...data};
 const resolution: IResourceResolution<string> = {key: 'ready', path: 'entries.ready', view};
-const source: IResourceSource<string, string> = {
+const source: IResourceSource<string, [string]> = {
     getUID: () => 'source',
     getVersion: () => 0,
     subscribe: () => 'id',
@@ -34,4 +39,4 @@ const source: IResourceSource<string, string> = {
     load: async () => undefined,
 };
 const cacheData: IResourceCacheData<string> = {entries: {ready: entry}};
-void [cache, options, resource, snapshot, source, cacheData];
+void [cache, options, resource, snapshot, source, cacheData, toKey, argsOf];

@@ -3,7 +3,7 @@ import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
 
 describe('ResourceCache status flags capability on request start (F3)', () => {
     test('load succeeds when the seeded entry has a readonly non-configurable isIdle', async () => {
-        const cache = new ResourceCache<string, string>(async key => `answer-${key}`, {ttl: Infinity});
+        const cache = new ResourceCache<string, [string]>(async key => `answer-${key}`, {ttl: Infinity});
         const key = cache.resolve('a').key;
 
         // Seed a correct Idle entry whose isIdle flag is frozen: readonly and

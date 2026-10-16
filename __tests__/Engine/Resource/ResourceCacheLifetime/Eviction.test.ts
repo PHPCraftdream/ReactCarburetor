@@ -22,7 +22,7 @@ const flush = async (): Promise<void> => {
 };
 
 /** Loads several keys and settles them all, leaving a populated cache. */
-const fill = async (cache: ResourceCache<string, string>, loader: ReturnType<typeof makeLoader>, keys: string[]) => {
+const fill = async (cache: ResourceCache<string, [string]>, loader: ReturnType<typeof makeLoader>, keys: string[]) => {
     for (const key of keys) {
         void cache.load(key);
     }

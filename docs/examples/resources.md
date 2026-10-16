@@ -24,7 +24,7 @@ interface User {
 
 declare function fetchUser(id: string): Promise<User>;
 
-const userLoader: TResourceLoader<User, string> = (id: string, signal: AbortSignal) =>
+const userLoader: TResourceLoader<User, [string]> = (id: string, signal: AbortSignal) =>
     fetchUser(id).then((user: User) => {
         if (signal.aborted) {
             throw new Error('aborted');
@@ -32,7 +32,7 @@ const userLoader: TResourceLoader<User, string> = (id: string, signal: AbortSign
         return user;
     });
 
-const userResource = new ResourceCarburetor<User, string>(userLoader);
+const userResource = new ResourceCarburetor<User, [string]>(userLoader);
 
 export class UserProfile extends AntiHookComponent<{userId: string}> {
     @bind
@@ -72,12 +72,12 @@ Calling `load()` again with different args aborts the previous request automatic
 For shell-style layouts, `suspend()` reads the value or throws the in-flight promise / the
 raw failure, so a `<Suspense>` boundary and an error boundary handle the waiting and the
 failure. `suspend()` never subscribes on its own, so the component also reads a field off
-`this.useCarburetor(resource)` — here `isPending`, which flips on every reload — and calls
-`suspend()` unconditionally, so a failed reload still reaches the error boundary.
+`this.useCarburetor(resource)` — here `isPending`, which flips on every refresh — and calls
+`suspend()` unconditionally, so a failed refresh still reaches the error boundary.
 
 <!-- example:file examples/api/resources/resource-carburetor/suspend.tsx#suspend -->
 ```tsx
-import {AntiHookComponent, IResourceData, ResourceCarburetor} from 'react-carburetor';
+import {AntiHookComponent, IResourceCarburetorOptions, IResourceData, ResourceCarburetor} from 'react-carburetor';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
 import {fetchConfig} from '../endpoints/config';
 
@@ -85,8 +85,11 @@ interface Config {
     theme: string;
 }
 
-export const configResource = new ResourceCarburetor<Config, void>(
-    (_args: void, _signal: AbortSignal) => fetchConfig()
+const options: IResourceCarburetorOptions = {ttl: 30_000};
+
+export const configResource = new ResourceCarburetor<Config>(
+    (_signal: AbortSignal) => fetchConfig(),
+    options
 );
 
 class ConfigErrorBoundary extends Component<{children?: ReactNode}, {error: string | undefined}> {
@@ -107,7 +110,7 @@ class ConfigErrorBoundary extends Component<{children?: ReactNode}, {error: stri
 export class ConfigView extends AntiHookComponent {
     render(): JSX.Element {
         const view = this.useCarburetor(configResource);
-        const value: Config = configResource.suspend(undefined);
+        const value: Config = configResource.suspend();
         return <span className={view.isPending ? 'theme refreshing' : 'theme'}>{value.theme}</span>;
     }
 }
@@ -129,12 +132,13 @@ export const describeResourceState = (view: IResourceData<Config>): string =>
 ```
 
 While `error` in the state is a string, the raw rejection value stays available through
-`getLastError()` for logging; `reload()` repeats the last `load()` with the same args.
+`getLastError()` for logging; `refresh(...args)` forces a request even when the key already has a
+value, and `clear()` drops the stored answer.
 
 ## ResourceCache
 
 `ResourceCache` keys entries by the `args` you pass, so one cache can serve a whole list.
-`resolve(args)` gives you the key, path and `IResourceView` in one call, and
+`resolve(...args)` gives you the key, path and `IResourceView` in one call, and
 `this.useResource(cache, args)` subscribes to the entry path and triggers the load after
 commit when the entry is stale.
 
@@ -149,7 +153,7 @@ interface Post {
     title: string;
 }
 
-export const postCache = new ResourceCache<Post, string>((id: string, _signal: AbortSignal) => fetchPost(id));
+export const postCache = new ResourceCache<Post, [string]>((id: string, _signal: AbortSignal) => fetchPost(id));
 
 const renderPost = (id: string): JSX.Element => <PostListItem key={id} postId={id} />;
 
@@ -204,7 +208,7 @@ interface Avatar {
 
 declare function fetchAvatar(userId: string): Promise<Avatar>;
 
-const avatarCache = new ResourceCache<Avatar, string>((userId: string) => fetchAvatar(userId));
+const avatarCache = new ResourceCache<Avatar, [string]>((userId: string) => fetchAvatar(userId));
 
 class AvatarBoundary extends Component<{children?: ReactNode}, {error: unknown}> {
     public state = {error: undefined as unknown};
@@ -264,9 +268,9 @@ interface Quote {
 
 declare function fetchQuote(symbol: string): Promise<Quote>;
 
-const quoteOptions: IResourceCacheOptions = {ttl: 30_000, maxEntries: 100, keyCacheSize: 256};
+const quoteOptions: IResourceCacheOptions<[string]> = {ttl: 30_000, maxEntries: 100, keyCacheSize: 256};
 
-const quoteCache = new ResourceCache<Quote, string>(
+const quoteCache = new ResourceCache<Quote, [string]>(
     (symbol: string, _signal: AbortSignal) => fetchQuote(symbol),
     quoteOptions
 );
@@ -309,7 +313,7 @@ interface Settings {
 declare function fetchSettings(userId: string): Promise<Settings>;
 declare function saveSettings(userId: string, next: Settings): Promise<void>;
 
-const settingsCache = new ResourceCache<Settings, string>((userId: string) => fetchSettings(userId));
+const settingsCache = new ResourceCache<Settings, [string]>((userId: string) => fetchSettings(userId));
 
 export class SettingsPanel extends AntiHookComponent<{userId: string}> {
     @bind
@@ -359,7 +363,7 @@ interface Report {
 
 declare function fetchReport(period: string): Promise<Report>;
 
-const reportCache = new ResourceCache<Report, string>((period: string) => fetchReport(period));
+const reportCache = new ResourceCache<Report, [string]>((period: string) => fetchReport(period));
 
 export const describeReportFailure = (period: string): string => {
     const view: IResourceView<Report> = reportCache.getEntry(period);
@@ -373,8 +377,8 @@ export const describeReportFailure = (period: string): string => {
 
 `getFailure` may return `undefined` when the entry has not failed — check `failed` first.
 
-To remove entries entirely (and cancel their in-flight requests), use `forget(args)` and
-`forgetAll()` — for example on logout or when leaving a route.
+To remove entries entirely (and cancel their in-flight requests), use `forget(args)` for one
+entry and `clear()` for all of them — for example on logout or when leaving a route.
 
 <!-- example:file examples/api/resources/resource-cache/forget.ts#forget -->
 ```ts
@@ -386,19 +390,19 @@ interface Draft {
 
 declare function fetchDraft(id: string): Promise<Draft>;
 
-const draftCache = new ResourceCache<Draft, string>((id: string) => fetchDraft(id));
+const draftCache = new ResourceCache<Draft, [string]>((id: string) => fetchDraft(id));
 
 export function dropDraft(id: string): void {
     draftCache.forget(id);
 }
 
 export function dropAllDrafts(): void {
-    draftCache.forgetAll();
+    draftCache.clear();
 }
 ```
 
-`forget` is destructive — invalidated entries refetch on next render, forgotten ones
-reload from scratch (or render `Idle` until a read triggers them again).
+`forget` is destructive — invalidated entries refetch on next render, cleared ones render `Idle`
+until a read triggers them again.
 
 ## Custom resource source
 
@@ -435,7 +439,7 @@ interface ILabelSourceData {
     entries: IDict<ILabelEntry>;
 }
 
-export class LabelSource extends Carburetor<ILabelSourceData> implements IResourceSource<Label, string> {
+export class LabelSource extends Carburetor<ILabelSourceData> implements IResourceSource<Label, [string]> {
     public constructor() {
         super({entries: {}});
     }
@@ -508,7 +512,7 @@ interface Currency {
 
 declare function fetchRate(code: string): Promise<Currency>;
 
-const rateResource = new ResourceCarburetor<Currency, string>((code: string) => fetchRate(code));
+const rateResource = new ResourceCarburetor<Currency, [string]>((code: string) => fetchRate(code));
 
 export function exportRates(): Array<{id: string; snapshot: IResourceSnapshot<Currency>}> {
     void rateResource.load('EUR');

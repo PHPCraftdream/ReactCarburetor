@@ -41,7 +41,7 @@ const run = async kind => {
         rendering = true;
         try {
             return React.createElement('span', {ref: markCommitted},
-                useResourceValue(cache, 0, view => view.data?.name) ?? '…');
+                useResourceValue(cache, [0], view => view.data?.name) ?? '…');
         } finally {
             rendering = false;
         }

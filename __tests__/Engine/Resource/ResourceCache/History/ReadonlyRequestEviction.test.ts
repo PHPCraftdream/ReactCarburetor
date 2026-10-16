@@ -116,7 +116,7 @@ describe('cache request restart and immutable-slot removal', () => {
         cache.forget('a');
         expect(Object.keys(cache.getData().entries)).toEqual([]);
         await cache.load('b');
-        cache.forgetAll();
+        cache.clear();
         expect(Object.keys(cache.getData().entries)).toEqual([]);
         history.disconnect();
     });

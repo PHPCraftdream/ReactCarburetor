@@ -84,7 +84,7 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
      * the list as it was; its status stays on `list` for the interface to show.
      */
     public loadData = (): Promise<void> => {
-        return this.list.load(undefined).then(this.applyLoadedList, this.ignoreSuperseded);
+        return this.list.load().then(this.applyLoadedList, this.ignoreSuperseded);
     };
 
     /** Cancels a load in flight; the list keeps what it had. */

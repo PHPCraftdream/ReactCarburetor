@@ -17,7 +17,7 @@ const caught = (read: () => unknown): unknown => {
 describe('resource wire identity and history', () => {
     test('undo/redo restores a successful answer for its own key, and a new load branches history', async () => {
         const calls: string[] = [];
-        const resource = new ResourceCarburetor<string, string>(async key => {
+        const resource = new ResourceCarburetor<string, [string]>(async key => {
             calls.push(key);
             return `answer-${key}`;
         });
@@ -42,16 +42,16 @@ describe('resource wire identity and history', () => {
         expect(resource.suspend('b')).toBe('answer-b');
         expect(calls).toEqual(['a', 'b']);
 
-        const pending = caught(() => resource.suspend('a'));
-        expect(pending).toBeInstanceOf(Promise);
-        expect(calls).toEqual(['a', 'b', 'a']);
-        await (pending as Promise<void>);
+        // D1: the earlier 'a' answer is remembered while fresh, so switching back to it
+        // publishes the remembered value without a new request.
+        expect(resource.suspend('a')).toBe('answer-a');
+        expect(calls).toEqual(['a', 'b']);
         history.disconnect();
     });
 
     test('a load started by a replay subscriber is a fresh wire-history branch', async () => {
         const calls: string[] = [];
-        const resource = new ResourceCarburetor<string, string>(async key => {
+        const resource = new ResourceCarburetor<string, [string]>(async key => {
             calls.push(key);
             return `answer-${key}`;
         });
@@ -83,7 +83,7 @@ describe('resource wire identity and history', () => {
     });
 
     test('an abort listener that supersedes replay owns its new settled wire answer', async () => {
-        const resource = new ResourceCarburetor<string, string>(async (key, signal) => {
+        const resource = new ResourceCarburetor<string, [string]>(async (key, signal) => {
             if (key === 'slow') {
                 signal.addEventListener('abort', () => {
                     resource.restore({
@@ -121,7 +121,7 @@ describe('resource wire identity and history', () => {
             public flush(): void { this.letsUpdate(); }
         }
         const throttle = new ManualThrottle();
-        const resource = new ResourceCarburetor<string, string>(async (key, signal) => {
+        const resource = new ResourceCarburetor<string, [string]>(async (key, signal) => {
             if (key === 'slow') {
                 signal.addEventListener('abort', () => resource.restore({
                     ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success, data: 'answer-b',
@@ -152,7 +152,7 @@ describe('resource wire identity and history', () => {
 
     test('undo/redo preserves the key of a failed answer and never serves it to other arguments', async () => {
         const calls: string[] = [];
-        const resource = new ResourceCarburetor<string, string>(async key => {
+        const resource = new ResourceCarburetor<string, [string]>(async key => {
             calls.push(key);
             if (key === 'a') {
                 throw new Error('offline');
@@ -175,7 +175,7 @@ describe('resource wire identity and history', () => {
     });
 
     test('opaque resource history preserves array truncation without widening unrelated reads', async () => {
-        class ArrayResource extends ResourceCarburetor<number[], string> {
+        class ArrayResource extends ResourceCarburetor<number[], [string]> {
             /** Publishes a native array truncation through the draft. */
             public truncate(length: number): void {
                 (this.draft.data as number[]).length = length;
@@ -218,7 +218,7 @@ describe('resource wire identity and history', () => {
         {failure: false, coalesce: false}, {failure: false, coalesce: true},
         {failure: true, coalesce: false}, {failure: true, coalesce: true},
     ])('key-only $failure failure, coalesce=$coalesce publishes one wire update', async ({failure, coalesce}) => {
-        const resource = new ResourceCarburetor<string, string>(async () => {
+        const resource = new ResourceCarburetor<string, [string]>(async () => {
             if (failure) {
                 throw new Error('offline');
             }
@@ -265,7 +265,7 @@ describe('resource wire identity and history', () => {
         expect(JSON.parse(entries.get('slot') as string)).toEqual(changed);
 
         const freshCalls: string[] = [];
-        const fresh = new ResourceCarburetor<string, string>(async key => {
+        const fresh = new ResourceCarburetor<string, [string]>(async key => {
             freshCalls.push(key);
             return 'loaded';
         });

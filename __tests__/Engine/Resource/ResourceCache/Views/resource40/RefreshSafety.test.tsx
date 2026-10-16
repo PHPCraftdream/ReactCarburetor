@@ -16,7 +16,7 @@ interface IUser {
 interface IArgs { id: number; }
 type Field = 'name' | 'other' | 'error';
 
-class SafetyCache extends ResourceCache<IUser, IArgs> {
+class SafetyCache extends ResourceCache<IUser, [IArgs]> {
     public get observerCount(): number { return Object.keys(this[S.subscribers]).length; }
 
     public write(id: number, field: Field, value: string): void {
@@ -49,7 +49,7 @@ const fixture = (ttl: number = Infinity) => {
         rendering = true;
         try {
             renders++;
-            const value = useResourceValue(cache, args,
+            const value = useResourceValue(cache, [args],
                 view => field === 'error' ? view.error : view.data?.[field]);
             if (suspend) throw suspend;
             return <span>{value ?? '…'}</span>;

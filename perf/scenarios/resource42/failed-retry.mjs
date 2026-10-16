@@ -18,7 +18,7 @@ export async function checkFailedRetry(env, kind, action) {
     }, {ttl: Infinity});
     /** Hook consumer of failure and recovery data. */
     function Hook() {
-        const value = interop.useResourceValue(cache, 'x', view => view.error ?? view.data?.name ?? 'loading');
+        const value = interop.useResourceValue(cache, ['x'], view => view.error ?? view.data?.name ?? 'loading');
         return React.createElement('p', null, value);
     }
     class Owner extends api.AntiHookComponent {

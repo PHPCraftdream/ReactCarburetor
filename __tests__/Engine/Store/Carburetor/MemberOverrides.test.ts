@@ -56,7 +56,7 @@ describe('Carburetor member overrides', () => {
     });
 
     test('a ResourceCache subclass preEmit() method override runs on every emit', async () => {
-        class LoggingCache extends ResourceCache<string, string> {
+        class LoggingCache extends ResourceCache<string, [string]> {
             public preEmitCalls: number = 0;
 
             protected preEmit(): void {

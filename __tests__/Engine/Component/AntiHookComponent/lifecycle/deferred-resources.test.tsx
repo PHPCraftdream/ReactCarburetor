@@ -3,7 +3,7 @@ import {makeLoader, flush, React, act, render, AntiHookComponent, EResourceStatu
     describe('deferred resource loads (R2-08)', () => {
         test('a suspended update abandons its queued load, and a later commit fetches only its own key', async () => {
             const loader = makeLoader();
-            const cache = new ResourceCache<string, string>(loader.load);
+            const cache = new ResourceCache<string, [string]>(loader.load);
             let resolveGate: (() => void) | undefined;
             let settled = false;
             const gate = new Promise<void>((resolve) => {
@@ -13,7 +13,7 @@ import {makeLoader, flush, React, act, render, AntiHookComponent, EResourceStatu
                 };
             });
 
-            class Gate extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string; block: boolean}> {
+            class Gate extends AntiHookComponent<{cache: ResourceCache<string, [string]>; id: string; block: boolean}> {
                 render() {
                     const entry = this.useResource(this.props.cache, this.props.id);
 
@@ -83,7 +83,7 @@ import {makeLoader, flush, React, act, render, AntiHookComponent, EResourceStatu
 
         test('repeated suspended attempts abandon their queue, and the retried render loads once', async () => {
             const loader = makeLoader();
-            const cache = new ResourceCache<string, string>(loader.load);
+            const cache = new ResourceCache<string, [string]>(loader.load);
             let resolveGate: (() => void) | undefined;
             let settled = false;
             const gate = new Promise<void>((resolve) => {
@@ -93,7 +93,7 @@ import {makeLoader, flush, React, act, render, AntiHookComponent, EResourceStatu
                 };
             });
 
-            class Gate extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string; block: boolean}> {
+            class Gate extends AntiHookComponent<{cache: ResourceCache<string, [string]>; id: string; block: boolean}> {
                 render() {
                     const entry = this.useResource(this.props.cache, this.props.id);
 
@@ -153,9 +153,9 @@ import {makeLoader, flush, React, act, render, AntiHookComponent, EResourceStatu
 
         test('a thrown-error attempt takes its queued load with it, and recovery loads its own key', async () => {
             const loader = makeLoader();
-            const cache = new ResourceCache<string, string>(loader.load);
+            const cache = new ResourceCache<string, [string]>(loader.load);
 
-            class Flaky extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string; fail: boolean}> {
+            class Flaky extends AntiHookComponent<{cache: ResourceCache<string, [string]>; id: string; fail: boolean}> {
                 render() {
                     const entry = this.useResource(this.props.cache, this.props.id);
 
@@ -235,9 +235,9 @@ import {makeLoader, flush, React, act, render, AntiHookComponent, EResourceStatu
 
         test('changing arguments keeps one load per committed read', async () => {
             const loader = makeLoader();
-            const cache = new ResourceCache<string, string>(loader.load);
+            const cache = new ResourceCache<string, [string]>(loader.load);
 
-            class Row extends AntiHookComponent<{cache: ResourceCache<string, string>; id: string}> {
+            class Row extends AntiHookComponent<{cache: ResourceCache<string, [string]>; id: string}> {
                 render() {
                     const entry = this.useResource(this.props.cache, this.props.id);
 
@@ -265,9 +265,9 @@ import {makeLoader, flush, React, act, render, AntiHookComponent, EResourceStatu
 
         test('a useResource call outside a render attempt reports in development and queues nothing', () => {
             const loader = makeLoader();
-            const cache = new ResourceCache<string, string>(loader.load);
+            const cache = new ResourceCache<string, [string]>(loader.load);
 
-            class Outside extends AntiHookComponent<{cache: ResourceCache<string, string>}> {
+            class Outside extends AntiHookComponent<{cache: ResourceCache<string, [string]>}> {
                 // The handler-shaped read: there is no render attempt open, so there is no
                 // attempt to attribute a deferred load to.
                 public readOutside = (): unknown => this.useResource(this.props.cache, 'outside');

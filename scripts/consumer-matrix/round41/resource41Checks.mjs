@@ -80,7 +80,7 @@ try {
     flushSync(() => root.render(React.createElement(fixture.Resource41CrossConsumer, {source: crossSource})));
     check('foreign source current hook', container.textContent === 'cross');
     const ForeignHook = () => React.createElement('span', null,
-        alternateInterop.useResourceValue(resource41, 'user', view => view.data.nested.name));
+        alternateInterop.useResourceValue(resource41, ['user'], view => view.data.nested.name));
     flushSync(() => root.render(React.createElement(ForeignHook)));
     check('current source foreign hook', container.textContent === 'Grace');
 } finally {

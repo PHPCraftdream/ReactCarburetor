@@ -29,7 +29,7 @@ const fixture = (ttl = Infinity, maxEntries = 1) => {
         cache.abortAll();
         requests.forEach(request => request.resolve('cleanup'));
         await Promise.all(promises);
-        cache.forgetAll();
+        cache.clear();
     };
     return {cache, requests, promises, ids, start, kept, keys, close};
 };

@@ -2,7 +2,7 @@ import {CarburetorHistory, EResourceStatus, ResourceCarburetor} from '@/Carburet
 
 describe('owned history replay with a locked status flag', () => {
     test('undo/redo replays without assigning an equal readonly flag', () => {
-        const resource = new ResourceCarburetor<string, string>(async key => `answer-${key}`);
+        const resource = new ResourceCarburetor<string, [string]>(async key => `answer-${key}`);
         const history = new CarburetorHistory(resource);
         const base = {...resource.getData(), updatedAt: 7} as Record<string, unknown>;
         Object.defineProperty(base, 'isIdle', {
@@ -21,7 +21,7 @@ describe('owned history replay with a locked status flag', () => {
     });
 
     test('a locked flag holding a wrong value is corrected in a copy', () => {
-        const resource = new ResourceCarburetor<string, string>(async key => `answer-${key}`);
+        const resource = new ResourceCarburetor<string, [string]>(async key => `answer-${key}`);
         const history = new CarburetorHistory(resource);
         const base = {...resource.getData(), updatedAt: 7} as Record<string, unknown>;
         Object.defineProperty(base, 'isError', {

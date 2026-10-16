@@ -11,7 +11,7 @@ interface User {
     name: string;
 }
 
-const users = new ResourceCache<User, string>(async (id, signal) => {
+const users = new ResourceCache<User, [string]>(async (id, signal) => {
     const response = await fetch(`/api/users/${id}`, {signal});
     if (!response.ok) throw new Error(`User request failed: ${response.status}`);
     return response.json() as Promise<User>;

@@ -1,5 +1,5 @@
 import {EResourceStatus as S, ResourceCache, ResourceCarburetor} from '@/Carburetor';
-import {deferred} from '../../../Resource/helpers';
+import {deferred} from '../../../Resource/Keys/helpers';
 import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 
 const ready = (data: string) => ({...resourceStatusFlags(S.Success), status: S.Success, data, error: undefined,
@@ -12,7 +12,7 @@ for (const style of ['object', 'getter']) {
         test('readonly invalidation COW during description accepts failure on the current entry', async () => {
             const gate = deferred<string>();
             let signal!: AbortSignal;
-            const cache = new ResourceCache<string, string>((_args, requestSignal) => {
+            const cache = new ResourceCache<string, [string]>((_args, requestSignal) => {
                 signal = requestSignal;
                 return gate.promise;
             }, {ttl: Infinity});
@@ -46,8 +46,8 @@ for (const style of ['object', 'getter']) {
         test('setData before settlement preserves active cache and slot failure acceptance', async () => {
             const cacheGate = deferred<string>();
             const slotGate = deferred<string>();
-            const cache = new ResourceCache<string, string>(() => cacheGate.promise, {ttl: Infinity});
-            const slot = new ResourceCarburetor<string, string>(() => slotGate.promise);
+            const cache = new ResourceCache<string, [string]>(() => cacheGate.promise, {ttl: Infinity});
+            const slot = new ResourceCarburetor<string, [string]>(() => slotGate.promise);
             const cacheLoad = cache.load('a');
             const slotLoad = slot.load('a');
             const key = cache.resolve('a').key;
@@ -66,7 +66,7 @@ for (const style of ['object', 'getter']) {
 
         test('setData inside description uses replacement data and status, not captured flags', async () => {
             const gate = deferred<string>();
-            const cache = new ResourceCache<string, string>(() => gate.promise);
+            const cache = new ResourceCache<string, [string]>(() => gate.promise);
             const first = cache.load('a');
             const key = cache.resolve('a').key;
             const raw = rejection(style, () => {
@@ -85,8 +85,8 @@ for (const style of ['object', 'getter']) {
             const cacheGate = deferred<string>();
             const slotGate = deferred<string>();
             let calls = 0;
-            const cache = new ResourceCache<string, string>(() => ++calls === 1 ? cacheGate.promise : Promise.resolve('next'));
-            const slot = new ResourceCarburetor<string, string>(() => slotGate.promise);
+            const cache = new ResourceCache<string, [string]>(() => ++calls === 1 ? cacheGate.promise : Promise.resolve('next'));
+            const slot = new ResourceCarburetor<string, [string]>(() => slotGate.promise);
             const first = cache.load('a');
             const slotFirst = slot.load('a');
             const raw = rejection(style, () => { throw thrown; });
@@ -108,7 +108,7 @@ for (const style of ['object', 'getter']) {
 describe('resource44 terminal controls', () => {
     test('slot abort listener restored root survives late failure', async () => {
         const gate = deferred<string>();
-        const slot = new ResourceCarburetor<string, string>((_args, signal) => {
+        const slot = new ResourceCarburetor<string, [string]>((_args, signal) => {
             signal.addEventListener('abort', () => slot.restore({...ready('replacement'), key: JSON.stringify('b')}),
                 {once: true});
             return gate.promise;
@@ -122,8 +122,8 @@ describe('resource44 terminal controls', () => {
         expect(slot.getLastError()).toBeUndefined();
     });
     test.each([0, false, '', undefined])('raw falsy rejection %s retains explicit presence', async (raw) => {
-        const cache = new ResourceCache<string, string>(() => Promise.reject(raw));
-        const slot = new ResourceCarburetor<string, string>(() => Promise.reject(raw));
+        const cache = new ResourceCache<string, [string]>(() => Promise.reject(raw));
+        const slot = new ResourceCarburetor<string, [string]>(() => Promise.reject(raw));
         await Promise.all([cache.load('a'), slot.load('a')]);
         expect(cache.getEntry('a')).toMatchObject({status: S.Error, error: String(raw), failed: true});
         expect(slot.getData()).toMatchObject({status: S.Error, error: String(raw)});
@@ -139,7 +139,7 @@ describe('resource44 terminal controls', () => {
 
     test('ordinary failed refresh retains good data and captured view', async () => {
         const raw = new Error('offline');
-        const cache = new ResourceCache<string, string>(() => Promise.reject(raw), {ttl: Infinity});
+        const cache = new ResourceCache<string, [string]>(() => Promise.reject(raw), {ttl: Infinity});
         const key = cache.resolve('a').key;
         cache.setData({entries: {[key]: ready('good')}});
         const captured = cache.resolve('a');
@@ -153,7 +153,7 @@ describe('resource44 terminal controls', () => {
         async (shape) => {
         const gates = [deferred<string>(), deferred<string>()];
         let calls = 0;
-        class EditableCache extends ResourceCache<string, string> {
+        class EditableCache extends ResourceCache<string, [string]> {
             /** Replace one entry through the supported subclass action boundary.
              *
              * @param key - encoded entry key.

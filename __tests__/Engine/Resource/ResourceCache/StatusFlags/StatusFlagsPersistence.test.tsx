@@ -1,6 +1,6 @@
 import {EResourceStatus, IStorageLike, persist, ResourceCache} from '@/Carburetor';
 import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
-import {deferred} from '../../Resource/helpers';
+import {deferred} from '../../Resource/Keys/helpers';
 
 /** Asserts exactly one status flag is true and it is the one the explicit table expects. */
 const expectFlags = (
@@ -22,7 +22,7 @@ const expectFlags = (
 
 const fixture = () => {
     const gates: Array<ReturnType<typeof deferred<unknown>>> = [];
-    const cache = new ResourceCache<unknown, string>(() => {
+    const cache = new ResourceCache<unknown, [string]>(() => {
         const gate = deferred<unknown>();
         gates.push(gate);
         return gate.promise;
@@ -76,7 +76,7 @@ describe('ResourceCache status flags across persistence', () => {
             },
         }));
 
-        const fresh = new ResourceCache<unknown, string>(async () => 'unused', {ttl: Infinity});
+        const fresh = new ResourceCache<unknown, [string]>(async () => 'unused', {ttl: Infinity});
         fresh.fromJSON(JSON.parse(entries.get('slot') as string));
         expectFlags(fresh.getEntry('a'), 'isSuccess');
         expect(fresh.getEntry('a')).toMatchObject({isSuccess: true, data: 'saved'});
@@ -94,7 +94,7 @@ describe('ResourceCache status flags across persistence', () => {
             },
         }));
 
-        const fresh = new ResourceCache<unknown, string>(async () => 'unused', {ttl: Infinity});
+        const fresh = new ResourceCache<unknown, [string]>(async () => 'unused', {ttl: Infinity});
         fresh.fromJSON(JSON.parse(entries.get('slot') as string));
         expectFlags(fresh.getEntry('a'), 'isError');
         expect(fresh.getEntry('a')).toMatchObject({isError: true, isSuccess: false, error: 'boom'});

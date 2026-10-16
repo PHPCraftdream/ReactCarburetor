@@ -13,7 +13,7 @@ interface Graph {
     date: Date; map: Map<string, {name: string}>; set: Set<string>;
     alias: {name: string}; cycle?: Graph;
 }
-class Cache extends ResourceCache<Graph, string> {
+class Cache extends ResourceCache<Graph, [string]> {
     public editDate(time: number): void {
         const key = this.resolve('user').key;
         this.update(draft => { draft.entries[key].data!.date.setTime(time); });
@@ -67,7 +67,7 @@ describe('R41 resource graph selections', () => {
         let retained!: TReadonly<Graph>;
         let latest!: TReadonly<Graph>;
         const Reader = () => {
-            const selected = useResourceValue(cache, 'user', selectCyclicGraph);
+            const selected = useResourceValue(cache, ['user'], selectCyclicGraph);
             // oxlint-disable-next-line react/globals -- Retain the first actual selection for snapshot assertions.
             retained ??= selected;
             // oxlint-disable-next-line react/globals -- Capture the actual selection for identity assertions.
@@ -109,7 +109,7 @@ describe('R41 resource graph selections', () => {
         await cache.load('user');
         let retained!: TReadonly<Graph>;
         const Reader = ({tick}: {tick: number}) => {
-            const selected = useResourceValue(cache, 'user', selectGraph);
+            const selected = useResourceValue(cache, ['user'], selectGraph);
             // oxlint-disable-next-line react/globals -- Retain the first actual selection for snapshot assertions.
             retained ??= selected;
             return <span data-tick={tick}>{selected.date.getTime()}:{selected.map.get('user')!.name}</span>;
@@ -137,8 +137,9 @@ describe('R41 resource graph selections', () => {
             return true;
         };
         const select = (view: TReadonly<IResourceView<Graph>>) => view.data!.left;
+        // An explicitly suppressed comparator must mean "no comparator", not a never-equal one.
         const Reader = ({suppress}: {suppress: boolean}) => {
-            const selected = useResourceValue(cache, 'user', select, suppress ? equal : undefined);
+            const selected = useResourceValue(cache, ['user'], select, suppress ? equal : undefined);
             return <span>{selected.name}</span>;
         };
         const mounted = render(<Reader suppress/>);
@@ -163,9 +164,9 @@ describe('R41 resource graph selections', () => {
         const cache = new Cache(async () => graph(), {ttl: Infinity});
         await cache.load('user');
         const resolution = cache.resolve('user');
-        const reader = createResourceReader<Graph, string, unknown>(cache, resolution.path);
-        expect(() => reader.evaluate('user', resolution, () => ({nested: unsupported}))).toThrow();
-        expect(() => reader.evaluate('user', resolution, () => ({nested: unsupported}), () => true)).toThrow();
+        const reader = createResourceReader<Graph, [string], unknown>(cache, resolution.path);
+        expect(() => reader.evaluate(['user'], resolution, () => ({nested: unsupported}))).toThrow();
+        expect(() => reader.evaluate(['user'], resolution, () => ({nested: unsupported}), () => true)).toThrow();
         expect(Object.keys(cache[S.subscribers])).toEqual([]);
     });
 
@@ -181,15 +182,15 @@ describe('R41 resource graph selections', () => {
             const release = acquire();
             return () => { owners--; release(); };
         };
-        const reader = createResourceReader<Graph, string, unknown>(cache, cache.resolve('user').path);
-        const candidate = reader.evaluate('user', cache.resolve('user'), selectGraph);
+        const reader = createResourceReader<Graph, [string], unknown>(cache, cache.resolve('user').path);
+        const candidate = reader.evaluate(['user'], cache.resolve('user'), selectGraph);
         expect(owners).toBe(0);
         reader.commit(candidate);
         expect(owners).toBe(0);
         const unsubscribe = reader.subscribe(() => {});
         try {
             expect(owners).toBe(1);
-            const scalar = reader.evaluate('user', cache.resolve('user'), view => view.data!.left.name);
+            const scalar = reader.evaluate(['user'], cache.resolve('user'), view => view.data!.left.name);
             expect(owners).toBe(1);
             reader.commit(scalar);
             expect(owners).toBe(0);
@@ -213,8 +214,8 @@ describe('R41 resource graph selections', () => {
             if (kind === 'directflatarray') return view.data!.flat;
             return kind === 'flat' ? {name: left.name} : left.name;
         };
-        const reader = createResourceReader<Graph, string, unknown>(cache, cache.resolve('user').path);
-        const candidate = reader.evaluate('user', cache.resolve('user'), select);
+        const reader = createResourceReader<Graph, [string], unknown>(cache, cache.resolve('user').path);
+        const candidate = reader.evaluate(['user'], cache.resolve('user'), select);
         const notifications: object[] = [];
         reader.commit(candidate);
         const unsubscribe = reader.subscribe(() => notifications.push(reader.getSnapshot(candidate)));
@@ -230,7 +231,7 @@ describe('R41 resource graph selections', () => {
             else if (kind === 'directflatarray') cache.editFlatName('active');
             else cache.edit('left', 'active');
             expect(notifications).toHaveLength(1);
-            const latest = reader.evaluate('user', cache.resolve('user'), select).value;
+            const latest = reader.evaluate(['user'], cache.resolve('user'), select).value;
             if (kind === 'graph') {
                 expect((latest as TReadonly<Graph['sparse']>)[2].name).toBe('active');
                 expect((candidate.value as TReadonly<Graph['sparse']>)[2].name).toBe('Ada');
@@ -259,7 +260,7 @@ describe('R41 resource graph selections', () => {
         };
         let retained!: TReadonly<Graph>;
         const Reader = () => {
-            const selected = useResourceValue(source, 'user', selectGraph);
+            const selected = useResourceValue(source, ['user'], selectGraph);
             // oxlint-disable-next-line react/globals -- Retain the first actual selection for snapshot assertions.
             retained ??= selected;
             return <span>{selected.right.name}</span>;
@@ -279,14 +280,15 @@ describe('R41 resource graph selections', () => {
         await cache.load('user');
         const resolution = cache.resolve('user');
         const select = (view: TReadonly<IResourceView<Graph>>) => view.data!.left.name;
-        const reader = createResourceReader<Graph, string, string>(cache, resolution.path);
-        const candidate = reader.evaluate('user', resolution, select);
+        const reader = createResourceReader<Graph, [string], string>(cache, resolution.path);
+        const candidate = reader.evaluate(['user'], resolution, select);
         cache.edit('left', 'between render and attachment');
         const notifications: object[] = [];
         reader.commit(candidate);
         const unsubscribe = reader.subscribe(() => notifications.push(reader.getSnapshot(candidate)));
         try {
-            expect(reader.evaluate('user', cache.resolve('user'), select).value).toBe('between render and attachment');
+            expect(reader.evaluate(['user'], cache.resolve('user'), select).value)
+                .toBe('between render and attachment');
             expect(reader.getSnapshot(candidate)).not.toBe(candidate.token);
             reader.load();
         } finally { unsubscribe(); }

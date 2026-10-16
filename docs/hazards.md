@@ -661,7 +661,7 @@ warns, because returning nothing is also legal.
 
 <!-- example:file examples/hazards/effects/H14/ResourceEffect.tsx#doc -->
 ```tsx
-class TodoResource extends ResourceCarburetor<TTodo, {id: string}> {
+class TodoResource extends ResourceCarburetor<TTodo, [{id: string}]> {
     constructor() {
         super(loadTodo);
     }

@@ -32,7 +32,7 @@ for (const capacity of [8, Infinity]) for (const kind of ['primitive', 'object']
         identities += distinct; resolveCalls += counted;
         if (hits === 0) zeroHitResolveCalls += counted;
         reactions += localReactions; independentChildren += children.length; lanes++;
-    } finally { cache.unsubscribe(id); cache.forgetAll(); }
+    } finally { cache.unsubscribe(id); cache.clear(); }
 }
 const first = new api.ResourceCache(() => { throw new Error('unexpected'); }, {ttl: Infinity});
 const second = new api.ResourceCache(() => { throw new Error('unexpected'); }, {ttl: Infinity});
@@ -47,7 +47,7 @@ const good = completion.then(() => { goodCalls++; return 19; });
 const observed = assert.rejects(bad, error => error === thrown);
 assert.equal(goodCalls, 0); await observed; assert.equal(await good, 19);
 assert.equal(await completion, undefined); assert.notEqual(first.load(args), completion);
-first.forgetAll(); assert.equal(captured.view.data, payload); assert.equal(args.id, 'held');
+first.clear(); assert.equal(captured.view.data, payload); assert.equal(args.id, 'held');
 for (const lane of ['cold', 'forced', 'stale', 'invalidated']) {
     const requests = [gate(), gate()]; let calls = 0;
     const cache = new api.ResourceCache(() => requests[calls++].promise, {ttl: lane === 'stale' ? 0 : Infinity});
@@ -55,7 +55,7 @@ for (const lane of ['cold', 'forced', 'stale', 'invalidated']) {
     cache.setData({entries: {[a]: {...ready('a'), updatedAt: Date.now() + 60_000},
         [b]: {...ready('b'), updatedAt: Date.now() + 60_000}}});
     const readyPromise = cache.load('a'); await readyPromise;
-    if (lane === 'cold') cache.forgetAll();
+    if (lane === 'cold') cache.clear();
     if (lane === 'stale') cache.setData({entries: {[a]: {...ready('a'), updatedAt: 0}, [b]: {...ready('b'), updatedAt: 0}}});
     if (lane === 'invalidated') cache.invalidateAll();
     const p = lane === 'forced' ? cache.refresh('a') : cache.load('a');
@@ -65,13 +65,13 @@ for (const lane of ['cold', 'forced', 'stale', 'invalidated']) {
     const raw = new Error('offline'); requests[0].no(raw); requests[1].yes('current');
     await Promise.all([p, q]); assert.equal(cache.getFailure('a'), raw);
     assert.equal(cache.getEntry('a').failed, true); assert.equal(cache.getEntry('b').data, 'current');
-    realLoaderCalls += calls; realWorkControls++; cache.forgetAll();
+    realLoaderCalls += calls; realWorkControls++; cache.clear();
 }
 const lookup = new api.ResourceCache(() => { loaderCalls++; throw new Error('lookup loader'); });
 const lookupVersion = lookup.getVersion();
 for (let i = 0; i < 8; i++) { assert.equal(lookup.resolve('cold-' + i).present, false); lookupMisses++; }
 assert.equal(lookup.getVersion(), lookupVersion); assert.equal(Object.keys(lookup.getData().entries).length, 0);
-second.forgetAll();
+second.clear();
 emit({lanes, identities, reactions, synchronousReactions, loaderCalls, callbacks, versionDelta,
     resolveCalls, zeroHitResolveCalls, independentChildren, realWorkControls, realLoaderCalls,
     lookupMisses, crossCacheSeparate: true, throwIsolated: true, capturedDataHeld: true, done: true});

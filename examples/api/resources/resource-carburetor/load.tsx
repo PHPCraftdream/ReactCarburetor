@@ -9,7 +9,7 @@ interface User {
 
 declare function fetchUser(id: string): Promise<User>;
 
-const userLoader: TResourceLoader<User, string> = (id: string, signal: AbortSignal) =>
+const userLoader: TResourceLoader<User, [string]> = (id: string, signal: AbortSignal) =>
     fetchUser(id).then((user: User) => {
         if (signal.aborted) {
             throw new Error('aborted');
@@ -17,7 +17,7 @@ const userLoader: TResourceLoader<User, string> = (id: string, signal: AbortSign
         return user;
     });
 
-const userResource = new ResourceCarburetor<User, string>(userLoader);
+const userResource = new ResourceCarburetor<User, [string]>(userLoader);
 
 export class UserProfile extends AntiHookComponent<{userId: string}> {
     @bind

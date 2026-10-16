@@ -91,7 +91,7 @@ describe('ResourceCache reentrant loads', () => {
         expect(cache.getEntry('a').data).toBeUndefined();
     });
 
-    test.each(['abort', 'forget', 'forgetAll', 'restore'] as const)(
+    test.each(['abort', 'forget', 'clear', 'restore'] as const)(
         'a %s during Pending publication rejects the old request without stealing its replacement',
         async (method) => {
             const calls: string[] = [];
@@ -111,8 +111,8 @@ describe('ResourceCache reentrant loads', () => {
                 superseded = true;
                 if (method === 'restore') {
                     cache.restore({entries: {}});
-                } else if (method === 'forgetAll') {
-                    cache.forgetAll();
+                } else if (method === 'clear') {
+                    cache.clear();
                 } else {
                     cache[method]('a');
                 }
@@ -279,7 +279,7 @@ describe('ResourceCache reentrant loads', () => {
         expect(calls).toEqual(2);
     });
 
-    test('forgetAll preserves a same-key request started during cancellation', async () => {
+    test('clear preserves a same-key request started during cancellation', async () => {
         const resolvers: Array<(value: string) => void> = [];
         const signals: AbortSignal[] = [];
         const cache = new TestCache<string, string>((_key, signal) => {
@@ -296,7 +296,7 @@ describe('ResourceCache reentrant loads', () => {
             replacement = cache.load('a');
         });
 
-        cache.forgetAll();
+        cache.clear();
 
         expect(replacement).toBeDefined();
         expect(signals[1].aborted).toBeFalsy();
@@ -309,7 +309,7 @@ describe('ResourceCache reentrant loads', () => {
         expect(cache.getEntry('a').data).toEqual('replacement');
     });
 
-    test('forgetAll aborts pending and refreshing requests and filters their late answers', async () => {
+    test('clear aborts pending and refreshing requests and filters their late answers', async () => {
         const resolvers: Record<string, Array<(value: string) => void>> = {};
         const signals: Record<string, AbortSignal[]> = {};
         const cache = new TestCache<string, string>((key, signal) => {
@@ -330,7 +330,7 @@ describe('ResourceCache reentrant loads', () => {
         const id = cache.subscribe(() => { callbacks++; });
         const baseline = cache.getVersion();
 
-        cache.forgetAll();
+        cache.clear();
 
         expect(signals.ready[1].aborted).toBeTruthy();
         expect(signals.pending[0].aborted).toBeTruthy();
@@ -346,7 +346,7 @@ describe('ResourceCache reentrant loads', () => {
         cache.unsubscribe(id);
     });
 
-    test('forgetAll retains a new cross-key request if its key was absent initially', async () => {
+    test('clear retains a new cross-key request if its key was absent initially', async () => {
         const resolvers: Record<string, (value: string) => void> = {};
         const signals: Record<string, AbortSignal> = {};
         const cache = new TestCache<string, string>((key, signal) => {
@@ -358,7 +358,7 @@ describe('ResourceCache reentrant loads', () => {
         let other: Promise<void> | undefined;
 
         signals.a.addEventListener('abort', () => { other = cache.load('b'); });
-        cache.forgetAll();
+        cache.clear();
 
         expect(signals.a.aborted).toBeTruthy();
         expect(signals.b.aborted).toBeFalsy();
@@ -371,7 +371,7 @@ describe('ResourceCache reentrant loads', () => {
         expect(cache.getEntry('b').data).toEqual('new');
     });
 
-    test('forgetAll still visits a cross-key replacement if that key was in the initial list', async () => {
+    test('clear still visits a cross-key replacement if that key was in the initial list', async () => {
         const resolvers: Record<string, Array<(value: string) => void>> = {};
         const signals: Record<string, AbortSignal[]> = {};
         const cache = new TestCache<string, string>((key, signal) => {
@@ -388,7 +388,7 @@ describe('ResourceCache reentrant loads', () => {
         let replacement: Promise<void> | undefined;
 
         signals.a[0].addEventListener('abort', () => { replacement = cache.refresh('b'); });
-        cache.forgetAll();
+        cache.clear();
 
         expect(signals.b[1].aborted).toBeTruthy();
         expect(Object.keys(cache.getData().entries)).toEqual([]);
@@ -399,7 +399,7 @@ describe('ResourceCache reentrant loads', () => {
         expect(Object.keys(cache.getData().entries)).toEqual([]);
     });
 
-    test('forgetAll consumes a deferred loading emit without a later wildcard', async () => {
+    test('clear consumes a deferred loading emit without a later wildcard', async () => {
         let resolve: (value: string) => void = () => undefined;
         const cache = new TestCache<string, string>(() => new Promise<string>((done) => { resolve = done; }));
         let pending: Promise<void> | undefined;
@@ -412,7 +412,7 @@ describe('ResourceCache reentrant loads', () => {
 
         let callbacks = 0;
         const id = cache.subscribe(() => { callbacks++; });
-        cache.forgetAll();
+        cache.clear();
 
         expect(callbacks).toEqual(1);
         expect(cache.getVersion()).toEqual(1);
@@ -426,7 +426,7 @@ describe('ResourceCache reentrant loads', () => {
         cache.unsubscribe(id);
     });
 
-    test('forgetAll uses fresh draft state after an abort listener replaces the root', async () => {
+    test('clear uses fresh draft state after an abort listener replaces the root', async () => {
         const signals: Record<string, AbortSignal> = {};
         let resolve: (value: string) => void = () => undefined;
         const cache = new TestCache<string, string>((key, signal) => {
@@ -447,7 +447,7 @@ describe('ResourceCache reentrant loads', () => {
             }});
         });
 
-        cache.forgetAll();
+        cache.clear();
 
         expect(cache.getEntry('a').status).toEqual(EResourceStatus.Idle);
         expect(cache.getEntry('new').data).toEqual('restored-new');
@@ -458,7 +458,7 @@ describe('ResourceCache reentrant loads', () => {
         await original;
     });
 
-    test('forgetAll called from an abort listener shares the outer publication', async () => {
+    test('clear called from an abort listener shares the outer publication', async () => {
         let resolve: (value: string) => void = () => undefined;
         let signal: AbortSignal | undefined;
         const cache = new TestCache<string, string>((_key, currentSignal) => {
@@ -470,10 +470,10 @@ describe('ResourceCache reentrant loads', () => {
         let callbacks = 0;
 
         const id = cache.subscribe(() => { callbacks++; });
-        signal?.addEventListener('abort', () => { cache.forgetAll(); });
+        signal?.addEventListener('abort', () => { cache.clear(); });
         const baseline = cache.getVersion();
 
-        cache.forgetAll();
+        cache.clear();
 
         expect(Object.keys(cache.getData().entries)).toEqual([]);
         expect(cache.getVersion() - baseline).toEqual(1);
@@ -484,7 +484,7 @@ describe('ResourceCache reentrant loads', () => {
         cache.unsubscribe(id);
     });
 
-    test('a subscriber reentering after forgetAll gets a separate publication', async () => {
+    test('a subscriber reentering after clear gets a separate publication', async () => {
         const cache = new TestCache<string, string>((key) => key === 'a'
             ? Promise.resolve('ready') : new Promise<string>(() => undefined));
 
@@ -500,7 +500,7 @@ describe('ResourceCache reentrant loads', () => {
         });
         const baseline = cache.getVersion();
 
-        cache.forgetAll();
+        cache.clear();
 
         expect(cache.getVersion() - baseline).toEqual(2);
         expect(callbacks).toEqual(2);

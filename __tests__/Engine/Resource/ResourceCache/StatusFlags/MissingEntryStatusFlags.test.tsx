@@ -7,7 +7,7 @@ import {useResourceValue} from '@/Interop';
 
 const fixture = () => {
     const gates: Array<PromiseWithResolvers<unknown>> = [];
-    const cache = new ResourceCache<unknown, string>(() => {
+    const cache = new ResourceCache<unknown, [string]>(() => {
         const gate = Promise.withResolvers<unknown>();
         gates.push(gate);
         return gate.promise;
@@ -48,7 +48,7 @@ describe('status flags observed from a missing cache entry (default-only creatio
 
     test('hook reader of isPending', async () => {
         const {cache, gates} = fixture();
-        const Badge = () => <span>{useResourceValue(cache, 'a', view => view.isPending) ? 'loading' : 'not'}</span>;
+        const Badge = () => <span>{useResourceValue(cache, ['a'], view => view.isPending) ? 'loading' : 'not'}</span>;
         const mounted = render(<Badge/>);
         await act(async () => {});
         const afterStart = mounted.container.textContent;

@@ -14,7 +14,7 @@ enableReactActEnvironment();
 
 const env = {React, createRoot, api, interop};
 describe('R42-R01 committed loading demand', () => {
-    for (const action of ['abort', 'forget', 'restore', 'forgetAll']) {
+    for (const action of ['abort', 'forget', 'restore', 'clear']) {
         for (const phase of ['before', 'after', 'replacement']) for (const strict of [false, true]) {
             test(`${action} / ${phase}-loader removal / strict=${strict} / no parent rescue`, async () => {
                 await checkRemoval(env, {action, phase, strict});

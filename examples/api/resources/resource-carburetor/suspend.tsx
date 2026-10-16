@@ -1,5 +1,5 @@
 // #region suspend
-import {AntiHookComponent, IResourceData, ResourceCarburetor} from 'react-carburetor';
+import {AntiHookComponent, IResourceCarburetorOptions, IResourceData, ResourceCarburetor} from 'react-carburetor';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
 import {fetchConfig} from '../endpoints/config';
 
@@ -7,8 +7,11 @@ interface Config {
     theme: string;
 }
 
-export const configResource = new ResourceCarburetor<Config, void>(
-    (_args: void, _signal: AbortSignal) => fetchConfig()
+const options: IResourceCarburetorOptions = {ttl: 30_000};
+
+export const configResource = new ResourceCarburetor<Config>(
+    (_signal: AbortSignal) => fetchConfig(),
+    options
 );
 
 class ConfigErrorBoundary extends Component<{children?: ReactNode}, {error: string | undefined}> {
@@ -29,7 +32,7 @@ class ConfigErrorBoundary extends Component<{children?: ReactNode}, {error: stri
 export class ConfigView extends AntiHookComponent {
     render(): JSX.Element {
         const view = this.useCarburetor(configResource);
-        const value: Config = configResource.suspend(undefined);
+        const value: Config = configResource.suspend();
         return <span className={view.isPending ? 'theme refreshing' : 'theme'}>{value.theme}</span>;
     }
 }

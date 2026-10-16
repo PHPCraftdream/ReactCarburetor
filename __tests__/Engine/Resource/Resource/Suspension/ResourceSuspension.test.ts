@@ -1,12 +1,12 @@
 import {EResourceStatus, ResourceCarburetor} from "@/Carburetor";
-import {deferred, flush, IDeferred} from "../helpers";
+import {deferred, flush, IDeferred} from "../Keys/helpers";
 
 describe('ResourceCarburetor', () => {
     test('a suspend for a different key does not serve the stored answer', async () => {
         const gates: Record<string, IDeferred<string>> = {a: deferred<string>(), b: deferred<string>()};
         const requested: string[] = [];
 
-        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+        const resource = new ResourceCarburetor<string, [{id: string}]>((args) => {
             requested.push(args.id);
 
             return gates[args.id].promise;
@@ -43,7 +43,7 @@ describe('ResourceCarburetor', () => {
     test('a suspend for a different key does not rethrow the stored failure', async () => {
         const gates: Record<string, IDeferred<string>> = {a: deferred<string>(), b: deferred<string>()};
 
-        const resource = new ResourceCarburetor<string, {id: string}>((args) => gates[args.id].promise);
+        const resource = new ResourceCarburetor<string, [{id: string}]>((args) => gates[args.id].promise);
 
         gates.a.reject(new Error('a failed'));
         await resource.load({id: 'a'}).catch(() => undefined);
@@ -74,7 +74,7 @@ describe('ResourceCarburetor', () => {
     test('a suspend for the stored key keeps returning the cached answer', async () => {
         let calls = 0;
 
-        const resource = new ResourceCarburetor<number, {id: string}>(() => {
+        const resource = new ResourceCarburetor<number, [{id: string}]>(() => {
             calls++;
 
             return Promise.resolve(calls);
@@ -87,11 +87,11 @@ describe('ResourceCarburetor', () => {
         expect(calls).toEqual(1);
     });
 
-    test('after an aborted replacement load, suspending the old key fetches again', async () => {
+    test('after an aborted replacement load, suspending the old key serves the memory (D1)', async () => {
         const requested: string[] = [];
         const resolvers: Array<(value: string) => void> = [];
 
-        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+        const resource = new ResourceCarburetor<string, [{id: string}]>((args) => {
             requested.push(args.id);
 
             return new Promise<string>((resolve) => {
@@ -115,31 +115,17 @@ describe('ResourceCarburetor', () => {
 
         expect(resource.getData().status).toEqual(EResourceStatus.Idle);
 
-        // The slot holds no answer, so 'a' suspends on a fresh request rather than
-        // trusting what was stored before the abort.
-        let caught: unknown;
-
-        try {
-            resource.suspend({id: 'a'});
-        } catch (error: unknown) {
-            caught = error;
-        }
-
-        expect(caught).toBeInstanceOf(Promise);
-        expect(requested).toEqual(['a', 'b', 'a']);
-
-        resolvers[2]('a-second');
-        await (caught as Promise<void>);
-        await flush();
-
-        expect(resource.getData().data).toEqual('a-second');
-        expect(resource.suspend({id: 'a'})).toEqual('a-second');
+        // D1: 'a' was settled successfully and is still fresh, so suspending it again serves
+        // the remembered answer without a new request, even after the aborted 'b' attempt.
+        expect(resource.suspend({id: 'a'})).toEqual('a-first');
+        expect(requested).toEqual(['a', 'b']);
+        expect(resource.getData().data).toEqual('a-first');
     });
 
     test('an abort with nothing in flight leaves the settled answer in place', async () => {
         let calls = 0;
 
-        const resource = new ResourceCarburetor<number, {id: string}>(() => {
+        const resource = new ResourceCarburetor<number, [{id: string}]>(() => {
             calls++;
 
             return Promise.resolve(calls);
@@ -158,7 +144,7 @@ describe('ResourceCarburetor', () => {
         const gates: Record<string, IDeferred<string>[]> = {a: [], b: []};
         const requested: string[] = [];
 
-        const resource = new ResourceCarburetor<string, {id: string}>((args) => {
+        const resource = new ResourceCarburetor<string, [{id: string}]>((args) => {
             requested.push(args.id);
 
             const gate = deferred<string>();
@@ -182,32 +168,21 @@ describe('ResourceCarburetor', () => {
         expect(resource.getData().status).toEqual(EResourceStatus.Success);
         expect(resource.getData().data).toEqual('a-data');
 
-        // The restored answer is a's, and 'b' was loaded only after the snapshot was taken:
-        // reading b starts a fresh request rather than being handed a's data.
-        let caught: unknown;
-
-        try {
-            resource.suspend({id: 'b'});
-        } catch (error: unknown) {
-            caught = error;
-        }
-
-        expect(caught).toBeInstanceOf(Promise);
-        expect(requested).toEqual(['a', 'b', 'b']);
-
-        gates.b[1].resolve('b-data-2');
-        await (caught as Promise<void>);
+        // The restored answer is a's, and b's own fresh answer is remembered under its key (D1):
+        // reading b serves the remembered b-data without a new request.
+        expect(resource.suspend({id: 'b'})).toEqual('b-data');
+        expect(requested).toEqual(['a', 'b']);
         await flush();
 
         expect(resource.getData().status).toEqual(EResourceStatus.Success);
-        expect(resource.getData().data).toEqual('b-data-2');
-        expect(resource.suspend({id: 'b'})).toEqual('b-data-2');
+        expect(resource.getData().data).toEqual('b-data');
+        expect(resource.suspend({id: 'b'})).toEqual('b-data');
     });
 
     test('a hydrated answer is served for its own key without a new request', async () => {
         let sourceCalls = 0;
 
-        const source = new ResourceCarburetor<string, {id: string}>(() => {
+        const source = new ResourceCarburetor<string, [{id: string}]>(() => {
             sourceCalls++;
 
             return Promise.resolve('a-data');
@@ -218,7 +193,7 @@ describe('ResourceCarburetor', () => {
 
         let freshCalls = 0;
 
-        const fresh = new ResourceCarburetor<string, {id: string}>(() => {
+        const fresh = new ResourceCarburetor<string, [{id: string}]>(() => {
             freshCalls++;
 
             return Promise.resolve('fresh-data');
@@ -245,14 +220,14 @@ describe('ResourceCarburetor', () => {
     test('restoring an error snapshot keeps the failure bound to its key', async () => {
         const gates: Record<string, IDeferred<string>> = {a: deferred<string>(), b: deferred<string>()};
 
-        const source = new ResourceCarburetor<string, {id: string}>(() => gates.a.promise);
+        const source = new ResourceCarburetor<string, [{id: string}]>(() => gates.a.promise);
 
         gates.a.reject(new Error('a failed'));
         await source.load({id: 'a'}).catch(() => undefined);
 
         let freshCalls = 0;
 
-        const fresh = new ResourceCarburetor<string, {id: string}>(() => {
+        const fresh = new ResourceCarburetor<string, [{id: string}]>(() => {
             freshCalls++;
 
             return gates.b.promise;

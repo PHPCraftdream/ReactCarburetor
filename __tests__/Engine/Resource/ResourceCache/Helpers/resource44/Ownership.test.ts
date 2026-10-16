@@ -1,5 +1,5 @@
 import {EResourceStatus as S, ResourceCache, ResourceCarburetor} from '@/Carburetor';
-import {deferred} from '../../../Resource/helpers';
+import {deferred} from '../../../Resource/Keys/helpers';
 import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
 
 const ready = (data: string) => ({...resourceStatusFlags(S.Success), status: S.Success, data, error: undefined,
@@ -11,7 +11,7 @@ for (const style of ['object', 'getter']) {
     describe(`resource44 ownership: ${style}`, () => {
         test.each(['ready', 'empty'] as const)('cache restore %s detaches failure ownership', async (shape) => {
             const gate = deferred<string>();
-            const cache = new ResourceCache<string, string>(() => gate.promise, {ttl: Infinity});
+            const cache = new ResourceCache<string, [string]>(() => gate.promise, {ttl: Infinity});
             const first = cache.load('a');
             const captured = cache.resolve('a');
             const raw = rejection(style, () => {
@@ -29,7 +29,7 @@ for (const style of ['object', 'getter']) {
 
         test.each(['ready', 'empty'] as const)('slot restore %s wins over described failure', async (shape) => {
             const gate = deferred<string>();
-            const slot = new ResourceCarburetor<string, string>(() => gate.promise);
+            const slot = new ResourceCarburetor<string, [string]>(() => gate.promise);
             const first = slot.load('a');
             gate.reject(rejection(style, () => {
                 slot.restore(shape === 'ready' ? {...ready('restored'), key: JSON.stringify('a')}
@@ -47,7 +47,7 @@ for (const style of ['object', 'getter']) {
         test.each(['refresh', 'forget-load'] as const)('cache %s starts a genuine second loader', async (action) => {
             const gates = [deferred<string>(), deferred<string>()];
             let calls = 0;
-            const cache = new ResourceCache<string, string>(() => gates[calls++].promise, {ttl: Infinity});
+            const cache = new ResourceCache<string, [string]>(() => gates[calls++].promise, {ttl: Infinity});
             const first = cache.load('a');
             let second: Promise<void> | undefined;
             const states: string[] = [];
@@ -74,7 +74,7 @@ for (const style of ['object', 'getter']) {
         test('a replacement cancelled inside description still supersedes the old generation', async () => {
             const gates = [deferred<string>(), deferred<string>()];
             let calls = 0;
-            const cache = new ResourceCache<string, string>(() => gates[calls++].promise);
+            const cache = new ResourceCache<string, [string]>(() => gates[calls++].promise);
             const first = cache.load('a');
             let second: Promise<void> | undefined;
             gates[0].reject(rejection(style, () => {
@@ -94,7 +94,7 @@ for (const style of ['object', 'getter']) {
         test('slot new-key loader survives old failure conversion', async () => {
             const gates = [deferred<string>(), deferred<string>()];
             const keys: string[] = [];
-            const slot = new ResourceCarburetor<string, string>((key) => {
+            const slot = new ResourceCarburetor<string, [string]>((key) => {
                 keys.push(key);
                 return gates[keys.length - 1].promise;
             });

@@ -20,7 +20,7 @@ describe('R33-08 internal member visibility', () => {
     });
 
     test('ResourceCache key derivation is not publicly typed', () => {
-        const cache = new ResourceCache<string, string>(() => Promise.resolve('value'));
+        const cache = new ResourceCache<string, [string]>(() => Promise.resolve('value'));
 
         void (
             // @ts-expect-error R33-08: keyOf is protected, resolve() is the public contract

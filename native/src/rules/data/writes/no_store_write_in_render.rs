@@ -155,6 +155,27 @@ mod tests {
     }
 
     #[test]
+    fn a_resource_clear_from_a_handler_is_fine() {
+        // `clear` is a resource handle built for event handlers: outside render it is not a write.
+        // The handler must clear the resource itself, not the view returned by useResource.
+        let source = "class Widget extends AntiHookComponent {\n    render() {\n        \
+                      this.useResource(cache, 1);\n        \
+                      return <b onClick={() => cache.clear()}/>;\n    }\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_resource_clear_in_render_is_still_reported() {
+        // `clear` is not in READ_METHODS: clearing notifies subscribers mid-render, as before.
+        let source = "class Widget extends AntiHookComponent {\n    render() {\n        \
+                      this.useResource(cache, 1);\n        cache.clear();\n        \
+                      return null;\n    }\n}\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [4]);
+    }
+
+    #[test]
     fn a_resource_load_in_render_is_reported() {
         // `useResource` names the cache as tracked, and `load` notifies its subscribers mid-render:
         // the same hazard this rule exists to catch.

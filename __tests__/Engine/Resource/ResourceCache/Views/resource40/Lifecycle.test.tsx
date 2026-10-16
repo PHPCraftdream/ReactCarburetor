@@ -19,7 +19,7 @@ interface IArgs {
     id: number;
 }
 
-class ObservedCache extends ResourceCache<IUser, IArgs> {
+class ObservedCache extends ResourceCache<IUser, [IArgs]> {
     /** Counts live registrations rather than subscribe calls. */
     public get observerCount(): number { return Object.keys(this[S.subscribers]).length; }
 }
@@ -41,7 +41,7 @@ const fixture = () => {
         rendering = true;
         try {
             renders++;
-            const name = useResourceValue(cache, args, view => view.data?.name);
+            const name = useResourceValue(cache, [args], view => view.data?.name);
             return <span>{name ?? '…'}</span>;
         } finally {
             rendering = false;
@@ -62,7 +62,7 @@ const serverFixture = (mode: 'missing' | 'ready' | 'invalidated') => {
     expect(result.stderr).toBe('');
     return JSON.parse(result.stdout) as {
         markup: string;
-        data: ReturnType<ResourceCache<IUser, IArgs>['getData']>;
+        data: ReturnType<ResourceCache<IUser, [IArgs]>['getData']>;
         calls: number[];
         subscriptions: number;
     };
@@ -73,7 +73,7 @@ describe('R40-04 useResourceValue ownership', () => {
         const state = fixture();
         const renderSnapshots: number[] = [];
         const Reader = () => {
-            const name = useResourceValue(state.cache, {id: 0}, view => view.data?.name);
+            const name = useResourceValue(state.cache, [{id: 0}], view => view.data?.name);
             renderSnapshots.push(state.calls.length);
             return <span>{name ?? '…'}</span>;
         };
@@ -98,7 +98,7 @@ describe('R40-04 useResourceValue ownership', () => {
         const reported: string[] = [];
         let mounted: ReturnType<typeof render> | undefined;
         const DirectLoader = () => {
-            useResourceValue(state.cache, {id: 0}, view => view.data?.name);
+            useResourceValue(state.cache, [{id: 0}], view => view.data?.name);
             void state.cache.load({id: 0});
             return <span>direct load</span>;
         };

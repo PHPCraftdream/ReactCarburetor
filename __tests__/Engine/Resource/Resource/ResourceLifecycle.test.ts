@@ -1,6 +1,6 @@
 import {CarburetorHistory, EResourceStatus, ResourceCarburetor} from "@/Carburetor";
 import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
-import {deferred, flush} from "./helpers";
+import {deferred, flush} from "./Keys/helpers";
 
 describe('ResourceCarburetor', () => {
     test('walks idle -> pending -> success', async () => {
@@ -25,7 +25,7 @@ describe('ResourceCarburetor', () => {
         const gate = deferred<string>();
         let calls = 0;
         let signal!: AbortSignal;
-        const resource = new ResourceCarburetor<string, string>((_args, requestSignal) => {
+        const resource = new ResourceCarburetor<string, [string]>((_args, requestSignal) => {
             calls++;
             signal = requestSignal;
             return gate.promise;
@@ -97,7 +97,7 @@ describe('ResourceCarburetor', () => {
         let calls = 0;
         const gate = deferred<number>();
 
-        const resource = new ResourceCarburetor<number, {id: string}>((args: {id: string}) => {
+        const resource = new ResourceCarburetor<number, [{id: string}]>((args: {id: string}) => {
             calls++;
             expect(args.id).toEqual('a');
 
@@ -121,7 +121,7 @@ describe('ResourceCarburetor', () => {
         const secondGate = deferred<string>();
         const signals: AbortSignal[] = [];
 
-        const resource = new ResourceCarburetor<string, {id: string}>((args, signal) => {
+        const resource = new ResourceCarburetor<string, [{id: string}]>((args, signal) => {
             signals.push(signal);
 
             return args.id === 'a' ? firstGate.promise : secondGate.promise;
@@ -158,10 +158,10 @@ describe('ResourceCarburetor', () => {
         expect(resource.getData().data).toEqual(undefined);
     });
 
-    test('reload repeats the last request', async () => {
+    test('refresh repeats the named request', async () => {
         let calls = 0;
 
-        const resource = new ResourceCarburetor<number, {id: string}>(() => {
+        const resource = new ResourceCarburetor<number, [{id: string}]>(() => {
             calls++;
 
             return Promise.resolve(calls);
@@ -170,7 +170,7 @@ describe('ResourceCarburetor', () => {
         await resource.load({id: 'a'});
         expect(resource.getData().data).toEqual(1);
 
-        await resource.reload();
+        await resource.refresh({id: 'a'});
         expect(calls).toEqual(2);
         expect(resource.getData().data).toEqual(2);
     });
@@ -198,7 +198,7 @@ describe('ResourceCarburetor', () => {
     test('loads through an owned readonly Pending replay without mutating captured endpoints', async () => {
         const gate = deferred<number>();
         let calls = 0;
-        const resource = new ResourceCarburetor<number | {map: Map<object, object>}, string>(() => {
+        const resource = new ResourceCarburetor<number | {map: Map<object, object>}, [string]>(() => {
             calls++;
             return gate.promise;
         });
@@ -242,12 +242,12 @@ describe('ResourceCarburetor', () => {
         history.disconnect();
     });
 
-    test('suspend, abort, error and reload settle after readonly replay', async () => {
+    test('suspend, abort, error and refresh settle after readonly replay', async () => {
         const first = deferred<number>();
         const second = deferred<number>();
         const raw = {reason: 'offline'};
         let calls = 0;
-        const resource = new ResourceCarburetor<number, string>(() => {
+        const resource = new ResourceCarburetor<number, [string]>(() => {
             calls++;
             return calls === 1 ? first.promise : calls === 2 ? Promise.reject(raw) : second.promise;
         });
@@ -280,7 +280,7 @@ describe('ResourceCarburetor', () => {
         expect(resource.getData().error).toBe('[object Object]');
         expect(resource.getLastError()).toBe(raw);
         expect(resource.snapshot().key).toBe(JSON.stringify('two'));
-        const reload = resource.reload();
+        const reload = resource.refresh('two');
         second.resolve(99);
         await reload;
         expect(resource.getData().status).toBe(EResourceStatus.Success);
@@ -294,7 +294,7 @@ describe('ResourceCarburetor', () => {
         const gate = deferred<number>();
         let calls = 0;
         let joined: Promise<void> | undefined;
-        const resource = new ResourceCarburetor<number, string>(() => {
+        const resource = new ResourceCarburetor<number, [string]>(() => {
             calls++;
             return gate.promise;
         });
@@ -354,7 +354,7 @@ describe('ResourceCarburetor', () => {
         const first = deferred<string>();
         const failure = new Error('unavailable');
         let calls = 0;
-        const resource = new ResourceCarburetor<typeof payload | string, string>(() => {
+        const resource = new ResourceCarburetor<typeof payload | string, [string]>(() => {
             calls++;
             return calls === 1 ? first.promise
                 : calls === 2 ? Promise.reject(failure) : Promise.resolve('recovered');
@@ -407,7 +407,7 @@ describe('ResourceCarburetor', () => {
         expect(resource.getData().error).toBe('unavailable');
         expect(resource.getLastError()).toBe(failure);
         resource.setData(source);
-        await resource.reload();
+        await resource.refresh('second');
         expect(calls).toBe(3);
         expect(resource.getData().status).toBe(EResourceStatus.Success);
         expect(resource.getData().data).toBe('recovered');
@@ -417,7 +417,7 @@ describe('ResourceCarburetor', () => {
     });
 
     test('a failed Pending publication rejects only its request and restores the old answer', async () => {
-        class ThrowingResource extends ResourceCarburetor<number, string> {
+        class ThrowingResource extends ResourceCarburetor<number, [string]> {
             public failPublication = false;
 
             protected preEmit(): void {
@@ -442,10 +442,13 @@ describe('ResourceCarburetor', () => {
         expect(resource.getData()).toBe(old);
         expect(resource.getData().status).toBe(EResourceStatus.Idle);
         expect(resource.snapshot().key).toBeUndefined();
-        await resource.reload();
-        expect(calls).toBe(0);
-        await resource.load('second');
+        // New API (D3): no hidden last-args state, so a retry names its arguments explicitly.
+        await resource.refresh('first');
+        expect(calls).toBe(1);
         expect(resource.getData().data).toBe(1);
+        expect(resource.snapshot().key).toBe(JSON.stringify('first'));
+        await resource.load('second');
+        expect(resource.getData().data).toBe(2);
         expect(resource.snapshot().key).toBe(JSON.stringify('second'));
     });
 
@@ -453,8 +456,8 @@ describe('ResourceCarburetor', () => {
         const first = deferred<number>();
         const replacement = deferred<number>();
         const calls: string[] = [];
-        let resource!: ResourceCarburetor<number, string>;
-        resource = new ResourceCarburetor<number, string>((key, signal) => {
+        let resource!: ResourceCarburetor<number, [string]>;
+        resource = new ResourceCarburetor<number, [string]>((key, signal) => {
             calls.push(key);
             if (key === 'first') {
                 signal.addEventListener('abort', () => { void resource.load('replacement'); });
@@ -492,7 +495,7 @@ describe('ResourceCarburetor', () => {
         const result = new Payload(2);
         const map = new Map<object, object>();
         const payload = {item: original, map};
-        const resource = new ResourceCarburetor<Payload | typeof payload, string>(async () => result);
+        const resource = new ResourceCarburetor<Payload | typeof payload, [string]>(async () => result);
         const state = {...resourceStatusFlags(EResourceStatus.Idle),
             status: EResourceStatus.Idle, data: payload, error: undefined, updatedAt: 7};
         map.set(state, payload);
@@ -519,7 +522,7 @@ describe('ResourceCarburetor', () => {
     test('a patch observer supersedes deferred readonly Pending before the old loader', async () => {
         const gate = deferred<number>();
         const calls: string[] = [];
-        const resource = new ResourceCarburetor<number, string>(key => {
+        const resource = new ResourceCarburetor<number, [string]>(key => {
             calls.push(key);
             return gate.promise;
         });

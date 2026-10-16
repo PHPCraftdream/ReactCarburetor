@@ -7,7 +7,7 @@ class CounterStore extends Carburetor<Model> {
 }
 const counter = new CounterStore({count: 0});
 const doubled = computed(read => read(counter).count * 2);
-const cache = new ResourceCache<number, string>(async key => key.length);
+const cache = new ResourceCache<number, [string]>(async key => key.length);
 const loadProfile = async (): Promise<{name: string}> => ({name: 'Ada'});
 class ProfileResource extends ResourceCarburetor<{name: string}> {
     constructor() { super(loadProfile); }
