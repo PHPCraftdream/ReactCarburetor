@@ -1,8 +1,11 @@
 /* oxlint-disable carburetor-internal/require-tsdoc */
 import {emit, load} from '../../harness/lib.mjs';
 const {ResourceCache, ResourceCarburetor, CarburetorHistory} = await load();
-const cacheOwn = Object.getOwnPropertyNames(new ResourceCache(async () => 1)).length;
-const slotOwn = Object.getOwnPropertyNames(new ResourceCarburetor(async () => 1)).length;
+// The bound handles are the only public own names (D2); everything else is symbol-keyed.
+const HANDLES = new Set(['clear', 'load', 'refresh']);
+const ownBeyondHandles = (instance) => Object.getOwnPropertyNames(instance).filter(name => !HANDLES.has(name)).length;
+const cacheOwn = ownBeyondHandles(new ResourceCache(async () => 1));
+const slotOwn = ownBeyondHandles(new ResourceCarburetor(async () => 1));
 let cacheCorrect = 0;
 let slotCorrect = 0;
 let controls = 0;
@@ -25,7 +28,7 @@ for (const name of ['ttl', 'loader', 'maxEntries', 'eviction', 'runtimeRecords',
         history.disconnect();
     }
 }
-for (const name of ['loader', 'runtime', 'operationVersion', 'start', 'ensureRuntime']) {
+for (const name of ['loader', 'runtime', 'operationVersion', 'start', 'ensureRuntime', 'memory', 'keyOption']) {
     for (const shadow of [false, true]) {
         const slot = new ResourceCarburetor(async args => args);
         if (shadow) Object.defineProperty(slot, name, {value: 'domain', configurable: true, writable: true});
@@ -41,4 +44,4 @@ for (const name of ['loader', 'runtime', 'operationVersion', 'start', 'ensureRun
     }
 }
 emit({cacheOwn, slotOwn, cacheCorrect, slotCorrect, controls,
-    done: cacheOwn === 0 && slotOwn === 0 && cacheCorrect === 7 && slotCorrect === 5 && controls === 12});
+    done: cacheOwn === 0 && slotOwn === 0 && cacheCorrect === 7 && slotCorrect === 7 && controls === 14});

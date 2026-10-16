@@ -4,7 +4,7 @@ import {MockToDoClientAPI} from "@/ToDo/API/MockToDoClientAPI";
 import {createDetailsCache} from "@/ToDo/Scope/createDetailsCache";
 
 /** Per-todo server details, cached by id, one cache per scope. */
-export const detailsToken = carburetorToken<ResourceCache<ITodoDetails, string>>(
+export const detailsToken = carburetorToken<ResourceCache<ITodoDetails, [id: string]>>(
     () => createDetailsCache(new MockToDoClientAPI()),
     'details'
 );

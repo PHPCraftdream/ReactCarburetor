@@ -19,7 +19,7 @@ const ready = index => ({
 
 const measure = mode => {
     const cache = new ResourceCache(() => Promise.resolve(undefined), {ttl: Infinity, maxEntries: Infinity});
-    const keys = Array.from({length: count}, (_, index) => call(cache, 'keyOf', index));
+    const keys = Array.from({length: count}, (_, index) => call(cache, 'keyOf', [index]));
     const entries = Object.fromEntries(keys.map((key, index) => [key, ready(index)]));
     cache.setData({entries});
     const previous = keys.map(key => call(cache, 'getEntryByKey', key));

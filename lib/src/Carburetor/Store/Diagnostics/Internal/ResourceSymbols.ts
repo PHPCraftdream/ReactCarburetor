@@ -56,6 +56,10 @@ export class R {
     public static readonly loader = Symbol("resource.loader");
     /** Internal markLoading slot. */
     public static readonly markLoading = Symbol("resource.markLoading");
+    /** Internal answer memory slot. */
+    public static readonly memory = Symbol("resource.memory");
+    /** Internal custom key option slot. */
+    public static readonly keyOption = Symbol("resource.keyOption");
     /** Internal memoryToken slot. */
     public static readonly memoryToken = Symbol("resource.memoryToken");
     /** Internal maxEntries slot. */

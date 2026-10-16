@@ -67,7 +67,7 @@ const probe = await measure(() => {
 });
 const entries = cache.getData().entries;
 const done = args.every(key => {
-    const entry = entries[call(cache, 'keyOf', key)];
+    const entry = entries[call(cache, 'keyOf', [key])];
     return entry?.status === EResourceStatus.Success && entry.data === `value-${key}`;
 });
 emit({count, coldDictionaryCalls: cold.dictionaryCalls, coldDictionaryVisits: cold.dictionaryVisits,

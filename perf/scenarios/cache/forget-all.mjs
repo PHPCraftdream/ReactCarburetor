@@ -24,7 +24,7 @@ const prepare = (operation, size) => {
     const cache = new ResourceCache(key => Promise.resolve({key}), {ttl: Infinity, maxEntries: Infinity});
     const entries = Object.create(null);
     for (let index = 0; index < size; index++) {
-        const key = call(cache, 'keyOf', `row-${index}`);
+        const key = call(cache, 'keyOf', [`row-${index}`]);
         const locked = operation !== 'writable' && !(operation === 'mixed' && index === 0);
         Object.defineProperty(entries, key, {
             value: ready(index), enumerable: true, writable: true, configurable: !locked,

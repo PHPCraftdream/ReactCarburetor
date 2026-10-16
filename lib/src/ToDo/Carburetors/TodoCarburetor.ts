@@ -24,8 +24,8 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
      * The request behind the list: its own store with a status, so a component shows loading,
      * failure and cancel without the list itself knowing about requests.
      */
-    public readonly list = new ResourceCarburetor<ITodoList, undefined>(
-        (_args: undefined, signal: AbortSignal) => this.api.getTodoList(signal)
+    public readonly list = new ResourceCarburetor<ITodoList>(
+        (signal: AbortSignal) => this.api.getTodoList(signal)
     );
 
     /**

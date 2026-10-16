@@ -25,7 +25,7 @@ const goldenSeen = [];
 for (const [id, key, path] of GOLDEN) {
     const resolved = await cache.resolve(id);
     goldenSeen.push(resolved.key, resolved.path);
-    goldenOk &&= resolved.key === key && resolved.path === path && call(cache, 'keyOf', id) === key;
+    goldenOk &&= resolved.key === key && resolved.path === path && call(cache, 'keyOf', [id]) === key;
 }
 
 // Warm the key memo so the timed passes measure the cached path.
@@ -35,11 +35,11 @@ for (const id of args) await cache.resolve(id);
 let keysOk = goldenOk;
 for (const id of args) {
     const resolved = await cache.resolve(id);
-    keysOk &&= typeof resolved.key === 'string' && resolved.key.length > 0 && resolved.key === call(cache, 'keyOf', id);
+    keysOk &&= typeof resolved.key === 'string' && resolved.key.length > 0 && resolved.key === call(cache, 'keyOf', [id]);
     keysOk &&= typeof resolved.path === 'string' && resolved.path.length > 0;
 }
 for (const edge of [0, NaN, Infinity, 42, '', 'a.b', 'x~y', true, false, null, undefined]) {
-    const key = call(cache, 'keyOf', edge);
+    const key = call(cache, 'keyOf', [edge]);
     keysOk &&= typeof key === 'string' && key.length > 0;
 }
 

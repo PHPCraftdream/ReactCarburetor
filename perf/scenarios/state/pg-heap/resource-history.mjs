@@ -19,7 +19,7 @@ cache.captureHistory = function (own) {
 };
 const history = new CarburetorHistory(cache);
 for (let n = 0; n < 8; n++) await cache.load(n);
-const key = call(cache, 'keyOf', 0);
+const key = call(cache, 'keyOf', [0]);
 const entries = cache.getData().entries;
 const replacement = {entries: {...entries, [key]: {...entries[key], data: 17}}};
 const measure = fn => {

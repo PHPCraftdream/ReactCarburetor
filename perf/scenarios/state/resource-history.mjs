@@ -92,7 +92,7 @@ for (let round = 0; round < samples; round++) {
     for (let n = 0; n < 8; n++) {
         await cache.load(n);
     }
-    const key = call(cache, 'keyOf', 0);
+    const key = call(cache, 'keyOf', [0]);
     const entries = cache.getData().entries;
     const replacement = {entries: {...entries, [key]: {...entries[key], data: 17}}};
     const originalKeys = Object.keys;

@@ -18,7 +18,7 @@ let identities = 0;
 let nanPreserved = false;
 for (let round = 0; round < samples; round++) {
     const cache = new ResourceCache(async () => NaN, {ttl: Infinity});
-    const key = call(cache, 'keyOf', 'a');
+    const key = call(cache, 'keyOf', ['a']);
     cache.setData({entries: {[key]: entry(NaN)}});
     let previous = cache.getEntry('a');
     let count = 1;
@@ -39,7 +39,7 @@ for (let round = 0; round < samples; round++) {
 
 // A signed-zero change must replace the view (an == comparator would keep it).
 const zero = new ResourceCache(async () => 0, {ttl: Infinity});
-const zeroKey = call(zero, 'keyOf', 'z');
+const zeroKey = call(zero, 'keyOf', ['z']);
 zero.setData({entries: {[zeroKey]: entry(0)}});
 const plusView = zero.getEntry('z');
 zero.setData({entries: {[zeroKey]: entry(-0)}});

@@ -20,8 +20,8 @@ export default [{
     scenario: 'subclass40/resources', args: [],
     gates: [
         {metric: 'cacheOwn', equals: 0}, {metric: 'slotOwn', equals: 0},
-        {metric: 'cacheCorrect', equals: 7}, {metric: 'slotCorrect', equals: 5},
-        {metric: 'controls', equals: 12}, {metric: 'done', equals: true},
+        {metric: 'cacheCorrect', equals: 7}, {metric: 'slotCorrect', equals: 7},
+        {metric: 'controls', equals: 14}, {metric: 'done', equals: true},
     ],
 }, {
     id: 'subclass40/component-delivery', improvement: 'R40-01',

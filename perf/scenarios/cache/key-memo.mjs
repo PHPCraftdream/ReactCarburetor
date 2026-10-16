@@ -52,16 +52,16 @@ if (mode === 'cycle') {
     const capacity = 4096;
     const hotKeys = Array.from({length: 8}, (_, index) => `hot-${index}`);
     const cache = new ResourceCache(() => Promise.resolve(undefined), {ttl: Infinity, maxEntries: Infinity});
-    const hotResults = hotKeys.map(key => call(cache, 'keyOf', key));
-    for (let index = 0; index < capacity - hotKeys.length; index++) call(cache, 'keyOf', `cold-${index}`);
+    const hotResults = hotKeys.map(key => call(cache, 'keyOf', [key]));
+    for (let index = 0; index < capacity - hotKeys.length; index++) call(cache, 'keyOf', [`cold-${index}`]);
     const rehit = () => {
         hotKeys.forEach((key, index) => {
-            if (call(cache, 'keyOf', key) !== hotResults[index]) throw new Error(`hot key changed: ${key}`);
+            if (call(cache, 'keyOf', [key]) !== hotResults[index]) throw new Error(`hot key changed: ${key}`);
         });
         return hotKeys.length;
     };
     const warm = withStringify(rehit);
-    call(cache, 'keyOf', 'crossing-cold-key');
+    call(cache, 'keyOf', ['crossing-cold-key']);
     const hot = withStringify(rehit);
     emit({warmStringifyCalls: warm.calls, hotStringifyCalls: hot.calls, hotKeysRehit: hot.value});
 }

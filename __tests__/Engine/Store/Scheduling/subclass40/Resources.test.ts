@@ -21,7 +21,7 @@ describe('R40-01 resource subclass names', () => {
         expect(Object.getOwnPropertyNames(new ResourceCache(async () => 1)))
             .toEqual(["clear", "load", "refresh"]);
         expect(Object.getOwnPropertyNames(new ResourceCarburetor(async () => 1)))
-            .toEqual(["memory", "keyOption", "load", "refresh", "clear"]);
+            .toEqual(["load", "refresh", "clear"]);
     });
 
     test.each(cacheNames)('cache shadow %s preserves load, invalidation, history and delivery', async name => {

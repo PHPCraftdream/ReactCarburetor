@@ -93,8 +93,8 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         validateResourceLimits(options.ttl, options.maxEntries);
         if (options.key !== undefined) validateResourceKey(options.key);
         super(getInitialResourceData<T>(), options.scheduler);
-        this.memory = createAnswerMemory<T>(options.ttl, options.maxEntries);
-        this.keyOption = options.key;
+        this[R.memory] = createAnswerMemory<T>(options.ttl, options.maxEntries);
+        this[R.keyOption] = options.key;
         // Handles are bound so an event handler may adopt them directly (D2).
         this.load = (...args: TArgs): Promise<void> => this[R.load](args);
         this.refresh = (...args: TArgs): Promise<void> => {
@@ -106,9 +106,9 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
     }
 
     /** Earlier successful answers by key; LRU-bounded, fresh by `ttl`, runtime-only (D1). */
-    private memory: ReturnType<typeof createAnswerMemory<T>>;
+    private [R.memory]!: ReturnType<typeof createAnswerMemory<T>>;
     /** Custom key function from options; omitted, the default key derivation applies. */
-    private readonly keyOption: TResourceKey<TArgs> | undefined;
+    private readonly [R.keyOption]: TResourceKey<TArgs> | undefined;
 
     /** Starts a load, or joins the one already in flight for the same arguments (D2). */
     public load: (...args: TArgs) => Promise<void>;
@@ -130,7 +130,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         // A request in flight for this key (e.g. a refresh) wins over a remembered answer.
         const current = this[R.runtime]?.request;
         if (current?.key === key) return current.promise;
-        const remembered = this.memory.fresh(key);
+        const remembered = this[R.memory].fresh(key);
         if (remembered) {
             // A memory hit takes ownership: the in-flight request of another key must not settle.
             const operationVersion = ++this[R.operationVersion];
@@ -320,7 +320,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         }
         const request = this[R.runtime]?.request;
         if (request?.key === key) throw request.promise;
-        const remembered = this.memory.fresh(key);
+        const remembered = this[R.memory].fresh(key);
         if (remembered) {
             const operationVersion = ++this[R.operationVersion];
             this[R.cancelInFlight]();
@@ -347,7 +347,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         const operationVersion = ++this[R.operationVersion];
         this[R.cancelInFlight]();
         if (this[R.operationVersion] !== operationVersion) return;
-        this.memory.clear();
+        this[R.memory].clear();
         const hadAnswer = this[R.runtime]?.answer !== undefined;
         if (this[R.runtime]) this[R.runtime]!.answer = undefined;
         this[S.commitState](getInitialResourceData<T>(), {
@@ -479,13 +479,14 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
 
     /** The identity of a set of arguments, for telling one request from another. */
     public [R.keyOf](args: TArgs): string {
-        if (this.keyOption) return encodeResourceKeyValue(this.keyOption(...args));
+        const key = this[R.keyOption];
+        if (key) return encodeResourceKeyValue(key(...args));
         return defaultResourceKey(args);
     }
 
     /** Whether an answer at `updatedAt` is still usable without a new request (D4). */
     private [R.isFresh](updatedAt: number | undefined): boolean {
-        return this.memory.isFresh(updatedAt);
+        return this[R.memory].isFresh(updatedAt);
     }
 
     /** Makes a remembered answer the current one, published once; deferred in render.
@@ -552,7 +553,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
             draft.data = data;
             draft.error = undefined;
             draft.updatedAt = now;
-            this.memory.remember(request.key, data, now);
+            this[R.memory].remember(request.key, data, now);
         } finally {
             this.emitUpdate();
         }
@@ -583,7 +584,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         runtime.request = undefined;
         runtime.answer = {key: request.key, owner: this.data, failure: {value: error, message}};
         // A failed answer for this key must not be served from memory again (D4).
-        this.memory.forget(request.key);
+        this[R.memory].forget(request.key);
         try {
             const draft = this.draft;
             applyResourceStatus(draft, EResourceStatus.Error);

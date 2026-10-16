@@ -7,8 +7,8 @@ import {ITodoDetails, IToDoClientAPI} from "@/ToDo/API/Models";
  *
  * @param api - the client the details load through
  */
-export const createDetailsCache = (api: IToDoClientAPI): ResourceCache<ITodoDetails, string> => {
-    return new ResourceCache<ITodoDetails, string>(
+export const createDetailsCache = (api: IToDoClientAPI): ResourceCache<ITodoDetails, [id: string]> => {
+    return new ResourceCache<ITodoDetails, [id: string]>(
         (id: string, signal: AbortSignal) => api.getTodoDetails(id, signal),
         {ttl: 30_000, maxEntries: 50}
     );

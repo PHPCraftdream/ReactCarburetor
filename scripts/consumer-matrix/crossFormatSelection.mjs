@@ -3,6 +3,7 @@ import {join} from 'node:path';
 import {run} from './matrix.mjs';
 import {checkEngineBoundaries} from './engineBoundaryChecks.mjs';
 import {runRound31Checks} from './round31Checks.mjs';
+import {checkKeylessAnswer} from './round41/keylessAnswerChecks.mjs';
 
 /**
  * A packed CJS store's plain-object/Map-key selection and plain/array/native-root
@@ -18,6 +19,7 @@ const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join
 const checkEngineBoundaries = (${checkEngineBoundaries.toString()});
 const engineCases = [];
 const runRound31Checks = (${runRound31Checks.toString()});
+const checkKeylessAnswer = (${checkKeylessAnswer.toString()});
 const round31Cases = [];
 
 (async () => {
@@ -429,25 +431,7 @@ const round31Cases = [];
         resourceHistory.disconnect();
         histories.push(label + ':resource');
 
-        let loads = 0;
-        const manual = new storeModule.ResourceCarburetor(async (key) => {
-            loads++;
-            return 'network-' + key;
-        });
-        await manual.load('a');
-        const settled = manual.getData();
-        manual.setData(settled);
-        assert.equal(manual.snapshot().key, JSON.stringify('a'));
-        let observedKey;
-        manual.subscribe(() => { observedKey = manual.snapshot().key; });
-        manual.setData({...settled});
-        assert.equal(observedKey, undefined, label + ': key loss was visible at publication');
-        let pendingLoad;
-        try { manual.suspend('a'); } catch (value) { pendingLoad = value; }
-        assert.ok(pendingLoad instanceof Promise, label + ': keyless answer must not satisfy old args');
-        await pendingLoad;
-        assert.equal(loads, 2);
-        assert.equal(manual.suspend('a'), 'network-a');
+        await checkKeylessAnswer(storeModule, label, assert);
         histories.push(label + ':keyless-slot');
 
         const rawFailure = new Error('same');
