@@ -1,5 +1,5 @@
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {TPathSet} from "@/Carburetor/Models/Paths";
+import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
 import {IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 
 /**
@@ -54,6 +54,10 @@ export interface IActiveReadSlot {
      * Slot identity is filed only by weak source keys, never by a source back-reference.
      */
     current: IDependency | undefined;
+    /** The source's encoded id, minted once per slot. */
+    key: string;
+    /** The persistent view's recorder for this route, minted once per slot. */
+    recorder: ((path: TPath) => void) | undefined;
 }
 
 /** Module-private engine keys: symbol fields match StoreIdentity without ES2020 private lowering. */

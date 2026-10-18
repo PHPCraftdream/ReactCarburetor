@@ -432,11 +432,13 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
 
         // The path is not memoized here: `Object.keys`/`for...in` pass through for the
         // enumeration check and drop the wrapped value, so memoizing a key they touched is
-        // pure retention — the next true read of the key recomputes the same string.
-        const path = joinPath(this.path, key);
+        // pure retention — the next true read of the key recomputes the same string. It is
+        // also built only when a trackable value actually needs it: primitive keys, the
+        // enumeration majority, allocate no path at all.
         const value: unknown = descriptor.value;
 
         if (isTrackable(value)) {
+            const path = joinPath(this.path, key);
             if (lockedAgainstWrapping(source, key, descriptor)) {
                 if (IS_DEVELOPMENT) {
                     throw lockedError(path);

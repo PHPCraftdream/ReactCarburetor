@@ -7,12 +7,12 @@ import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
 import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
 import {nativeStoreWriteEpoch} from "@/Carburetor/Store/Scheduling/nativeStoreWriteEpoch";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
 import {CARBURETOR_EXTEND, CARBURETOR_SNAPSHOT_VERSION, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {announceIsUnchanged} from "./Freshness/announceIsUnchanged";
-import {reportComputedEscape} from "./reportComputedEscape";
+import {reportComputedEscape} from "./reporting/reportComputedEscape";
+import {reportSubscriberFailure} from "./reporting/reportSubscriberFailure";
 import {captureLeafVersions} from "./Freshness/captureLeafVersions";
 import {driftedSince} from "./Freshness/driftedSince";
 import {ILeafVersion} from "./Freshness/Models";
@@ -23,20 +23,6 @@ import {PersistentViews} from "@/Carburetor/Store/Tracking/Observation/Persisten
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}} | undefined;
-
-/** Reports one isolated subscriber failure outside production builds.
- *
- * @param error - the thrown subscriber error
- */
-const reportSubscriberFailure = (error: unknown): void => {
-    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
-        diagnostics.report(
-            'a subscriber threw while a computed value was delivered: ' +
-            (error instanceof Error ? error.message : String(error)) +
-            '. The remaining subscribers were notified anyway.'
-        );
-    }
-};
 
 /**
  * Maps a live computed's invalidation callback to the call that marks that computed's
@@ -71,6 +57,11 @@ interface IComputedSubscriber {
  * recomputed only when one of them is written — never on every store update. Subscribers
  * are woken only when the derived value actually changed, so a write that does not move
  * the result (editing a title while a counter stays the same) re-renders nobody.
+ *
+ * A body that throws during an observed settlement is not swallowed: the value and its
+ * version stand still, every subscriber is woken once, and their next `get()` rethrows the
+ * failure (into a React error boundary, for a component reader). A later write that stops
+ * the body from throwing resumes normal delivery.
  */
 export class Computed<R> implements IComputed<R> {
     /** This computed's id, which dependencies are subscribed and released under. */
@@ -254,8 +245,14 @@ export class Computed<R> implements IComputed<R> {
     private [C.recompute](wasUnobserved: boolean = this[C.subscribers].size === 0): void {
         const collected: IDict<IDependency> = {};
         const track = (source: IReadableCarburetor<object> | IComputed<unknown>): unknown => {
-            // Encode arbitrary public ids so __proto__ is an ordinary data key.
-            const cuid = ':' + source.getUID();
+            // One slot per source: its encoded id and recorder are minted once, not per call.
+            const readSlots = this[C.readSlots] ??= new WeakMap<object, IActiveReadSlot>();
+            let slot = readSlots.get(source);
+            if (!slot) {
+                slot = {current: undefined, key: ':' + source.getUID(), recorder: undefined};
+                readSlots.set(source, slot);
+            }
+            const cuid = slot.key;
             let dependency = computedDependencies.ownDependency(collected, cuid);
             if (!dependency) {
                 dependency = {
@@ -265,21 +262,14 @@ export class Computed<R> implements IComputed<R> {
                 collected[cuid] = dependency;
             }
             if ('read' in source) {
-                // One persistent view per source, rebuilt only when its data object changed.
-                const readSlots = this[C.readSlots] ??= new WeakMap<object, IActiveReadSlot>();
-                let cached = readSlots.get(source);
-                if (!cached) {
-                    cached = {current: undefined};
-                    readSlots.set(source, cached);
-                }
-                const slot = cached;
                 const active = this[C.activeReads].get(cuid);
                 if (active !== slot) {
                     if (active) active.current = undefined;
                     this[C.activeReads].set(cuid, slot);
                 }
                 slot.current = dependency;
-                return this[C.views].view(source, this[C.createReadRecorder](slot));
+                // One persistent view per source, rebuilt only when its data object changed.
+                return this[C.views].view(source, slot.recorder ??= this[C.createReadRecorder](slot));
             }
 
             // Another computed notifies at the granularity of its whole value — no finer path
@@ -533,20 +523,30 @@ export class Computed<R> implements IComputed<R> {
         }
     };
 
-    /** Bound settlement preserves the independent announcement during active waves. */
+    /**
+     * Bound settlement preserves the independent announcement during active waves, and a
+     * body that throws during settlement is not swallowed: subscribers are woken once and
+     * their next `get()` rethrows the failure until a later write recovers the body.
+     */
     private [C.settle] = (): void => {
         // Queued work from a closed observation must not resurrect its announcement.
         if (this[C.subscribers].size === 0) return;
         const generation = this[C.observationGeneration];
         const previous = this[C.value];
 
-        // A settlement queued while this value was stale can find it already valid by the
-        // time its turn comes: an eager get() elsewhere in the wave — pulled by another
-        // node's own settlement — already reran the body against the same upstream state
-        // this settlement was deferred to wait for. Recomputing again would just repeat
-        // that call for no new input.
+        // A settlement queued while stale can find the value already valid: an eager get()
+        // elsewhere in the wave already reran the body against the same upstream state.
         if (!this[C.valid] || this[C.hasDrifted]()) {
-            this[C.recompute]();
+            try { this[C.recompute](); }
+            catch (error: unknown) {
+                // A failed settlement is not swallowed: the wake below makes each subscriber's
+                // next get() rethrow the body error while value and version stand still; the
+                // error keeps propagating to the wave drain as before.
+                if (generation === this[C.observationGeneration] && this[C.subscribers].size > 0) {
+                    this[C.deliver]();
+                }
+                throw error;
+            }
         }
 
         const announcement = this[C.announced];

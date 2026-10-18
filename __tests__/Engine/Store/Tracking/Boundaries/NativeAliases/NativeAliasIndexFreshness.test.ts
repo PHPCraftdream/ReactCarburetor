@@ -30,6 +30,17 @@ class AliasIndexStore extends Carburetor<IState> {
     }
 }
 
+interface IBranchState {
+    branch: {child: {n: number}};
+    map: Map<string, {n: number}>;
+}
+
+class BranchStore extends Carburetor<IBranchState> {
+    public readNative(): IBranchState['map'] {
+        return this.read(() => undefined).map;
+    }
+}
+
 const ROWS = 32;
 const makeStore = (): {store: AliasIndexStore; root: IState} => {
     const rows = Array.from({length: ROWS}, (_, n) => ({n}));
@@ -84,6 +95,32 @@ describe('native alias index freshness', () => {
             expect(store.readNative().get(4)).toBeDefined();
         });
         expect(facadeVisits).toBeGreaterThan(0);
+    });
+
+    test('an opaque handout rebuilds the index before a raw-handed descendant is mapped', () => {
+        const parent = {child: {n: 0}};
+        const store = new BranchStore({
+            branch: parent, map: new Map<string, {n: number}>([['parent', parent]]),
+        });
+        store.readNative().get('parent');
+        store.update(draft => {
+            const raw = draft.map.get('parent');
+            raw.child = {n: 1};
+            draft.map.set('leaf', raw.child);
+        });
+
+        const changes: number[] = [];
+        const stop = store.watch(
+            data => (data.map.get('leaf') as {n: number}).n,
+            next => { changes.push(next); }
+        );
+        try {
+            expect(changes).toEqual([]);
+            store.update(draft => { draft.branch.child.n = 2; });
+            expect(changes).toEqual([2]);
+        } finally {
+            stop();
+        }
     });
 
     test('aliases recorded after scalar writes still wake a subscribed selection', () => {

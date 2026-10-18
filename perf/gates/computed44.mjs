@@ -11,7 +11,7 @@ export default [
             improvement: ['aliases', 'mixed', 'external'].includes(layout) && K > 1 ? 'R44-C01' : 'control',
             scenario: 'computed44/repeated-flat-snapshot', args: [K, M, layout],
             gates: [{metric: 'initial', equals: initial}, {metric: 'checksum', equals: 3 * initial + 2 + K},
-                {metric: 'inputEdges', equals: K}, {metric: 'keyCalls', equals: layout === 'distinct' ? K : 1},
+                {metric: 'inputEdges', equals: 0}, {metric: 'keyCalls', equals: layout === 'distinct' ? K : 1},
                 {metric: 'keyEntries', equals: layout === 'distinct' ? K * M : M},
                 {metric: 'leafUIDs', equals: layout === 'distinct' ? K * M : M},
                 {metric: 'positiveCalls', equals: edges}, {metric: 'positiveEntries', equals: edges * M},

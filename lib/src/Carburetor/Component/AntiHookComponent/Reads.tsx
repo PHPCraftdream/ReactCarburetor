@@ -182,9 +182,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         let patchable = false;
 
         // R36-02: a write to a path the selection read wakes this connection, not the owner. The
-        // selector re-runs here, outside any render attempt, against the committed props and state;
-        // the owner re-renders only when the snapshot moves; equal snapshots migrate closed reads.
-        // A render in flight, a throw or no committed description takes the plain re-render.
+        // selector re-runs outside any render attempt; the owner re-renders only when the snapshot
+        // moves; equal snapshots migrate closed reads; a throw or no description takes the plain path.
         const connection = declared.connection;
         const selectionUnchanged = (): boolean => {
             const committed = connection.committed;
@@ -207,9 +206,10 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
             try {
                 const next = select(view);
 
-                // The same live view with a write under it has changed: no walk needed to say so.
-                unchanged = !(next === live && next !== null && typeof next === 'object') &&
-                    reconcileSelection(snapshot.value, next, undefined, rejectArraySubclass) === snapshot.value;
+                const movedLive = next === live && next !== null && typeof next === 'object';
+                const flat = movedLive ? undefined : reconcileFlatSelection(snapshot.value, next);
+                unchanged = !movedLive && (flat !== undefined ? flat.value === snapshot.value :
+                    reconcileSelection(snapshot.value, next, undefined, rejectArraySubclass) === snapshot.value);
             } catch {
                 unchanged = false;
             } finally {

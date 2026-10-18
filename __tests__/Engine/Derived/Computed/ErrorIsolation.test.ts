@@ -1,3 +1,7 @@
+import * as React from 'react';
+import {act} from 'react';
+import {render} from '@testing-library/react';
+import {AntiHookComponent} from '@/Carburetor';
 import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 import {computed, diagnostics} from '@/Carburetor';
 import {CounterCarburetor, ExternalComputed, ListCarburetor, getData} from './fixtures';
@@ -34,11 +38,14 @@ describe('computed', () => {
             diagnostics.setEnabled(false);
             try { source.set(2); } finally { diagnostics.setEnabled(true); }
             expect(healthyCalls).toEqual(1);
-            expect(brokenCalls).toEqual(0);
+            // No value was announced; the wake below is the re-read demand that surfaces
+            // the failure to the next read instead of swallowing it.
+            expect(brokenCalls).toEqual(1);
             expect(() => broken.get()).toThrow('external body failed');
             poison = false;
             source.set(3);
-            expect(brokenCalls).toEqual(1);
+            // Recovery delivery plus the wake the failed settlement already made.
+            expect(brokenCalls).toEqual(2);
             expect(healthyCalls).toEqual(2);
             broken.unsubscribe(brokenId);
             healthy.unsubscribe(healthyId);
@@ -123,7 +130,8 @@ describe('computed', () => {
             expect(source.listenerCount).toEqual(1);
             poison = false;
             source.setN(3);
-            expect(oldCalls).toEqual(1);
+            // Recovery delivery plus the wake the failed settlement already made.
+            expect(oldCalls).toEqual(2);
             expect(replacementCalls).toEqual(0);
             value.unsubscribe('chosen');
             expect(source.listenerCount).toEqual(0);
@@ -154,7 +162,8 @@ describe('computed', () => {
             expect(source.listenerCount).toEqual(1);
             adopt = false;
             source.setN(3);
-            expect(oldCalls).toEqual(1);
+            // Recovery delivery plus the wake the failed settlement already made.
+            expect(oldCalls).toEqual(2);
             expect(replacementCalls).toEqual(0);
             adopted.failSubscribe = false;
             adopt = true;
@@ -198,7 +207,8 @@ describe('computed', () => {
 
             expect(later).toEqual(1);
 
-            // The throw is reported through diagnostics, not re-thrown into whoever wrote.
+            // The throw is reported through diagnostics exactly once, not re-thrown into
+            // whoever wrote: the body succeeded, so no settlement failure is involved.
             expect(reported.length).toEqual(1);
             expect(reported[0]).toContain('subscriber threw');
         });
@@ -270,9 +280,10 @@ describe('computed', () => {
                 console.error = original;
             }
 
-            // The independent computed was delivered; the failed one stayed silent.
+            // The independent computed was delivered; the failed one wakes its readers
+            // (no value announced, the version stands still) instead of staying silent.
             expect(healthyNotified).toEqual(1);
-            expect(brokenNotified).toEqual(0);
+            expect(brokenNotified).toEqual(1);
             expect(reported.length).toEqual(1);
 
             // The old value is not announced as a fresh success: the version stands still and
@@ -285,7 +296,8 @@ describe('computed', () => {
 
             carburetor.setDone('b', true);
 
-            expect(brokenNotified).toEqual(1);
+            // Recovery delivery plus the wake the failed settlement already made.
+            expect(brokenNotified).toEqual(2);
             expect(broken.get()).toEqual(3);
         });
 
@@ -341,6 +353,69 @@ describe('computed', () => {
             // made — the failing computation did not strand that queued work.
             expect(healthyNotified).toEqual(2);
             expect(reported.length).toBeGreaterThan(0);
+        });
+
+        test('a failed settlement wakes its readers so the stale value cannot persist', () => {
+            const carburetor = new ListCarburetor(getData());
+            let poison = false;
+            const total = computed<number>((read) => {
+                const {items} = read(carburetor);
+                if (poison) { throw new Error('body failed'); }
+                return items.a.done ? 1 : 0;
+            });
+            let renders = 0;
+            const caught: string[] = [];
+
+            class Reader extends AntiHookComponent {
+                public render() {
+                    renders++;
+                    return React.createElement('div', {className: 'total'}, String(this.useComputed(total)));
+                }
+            }
+
+            class Boundary extends React.Component<{children: React.ReactNode}, {error: unknown}> {
+                public state = {error: undefined as unknown};
+                public static getDerivedStateFromError(error: unknown) { return {error}; }
+                public render() {
+                    if (this.state.error !== undefined) {
+                        caught.push(this.state.error instanceof Error
+                            ? this.state.error.message : JSON.stringify(this.state.error));
+                        return React.createElement('div', {className: 'fallback'});
+                    }
+                    return this.props.children as React.ReactElement;
+                }
+            }
+
+            const view = render(React.createElement(Boundary, null, React.createElement(Reader)));
+            expect(view.container.querySelector('.total')?.textContent).toEqual('0');
+            expect(renders).toEqual(1);
+
+            poison = true;
+            const originalError = console.error;
+            const reported: string[] = [];
+            console.error = (message: string) => reported.push(message);
+            try {
+                act(() => { carburetor.setDone('a', true); });
+            } finally {
+                console.error = originalError;
+            }
+            // The development report plus React's own boundary error log.
+            expect(reported.length).toBeGreaterThan(0);
+
+            // The failed settlement woke the reader, so the next render rethrew into the
+            // boundary instead of leaving the old total on screen indefinitely.
+            // The wake produced a fresh render attempt (mount plus at least one more),
+            // and every boundary catch saw exactly the body's error.
+            expect(renders).toBeGreaterThan(1);
+            expect(new Set(caught)).toEqual(new Set(['body failed']));
+            expect(view.container.querySelector('.fallback')).not.toEqual(null);
+
+            // Clearing the cause lets a fresh reader serve the recomputed value again.
+            poison = false;
+            view.unmount();
+            const restored = render(React.createElement(Reader));
+            expect(restored.container.querySelector('.total')?.textContent).toEqual('1');
+            restored.unmount();
         });
 
         test('delivery stays isolated with diagnostics switched off', () => {

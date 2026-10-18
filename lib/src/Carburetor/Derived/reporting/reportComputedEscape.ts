@@ -1,6 +1,6 @@
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
-import {renderOwner} from "./renderOwner";
+import {renderOwner} from "@/Carburetor/Derived/renderOwner";
 
 /** Computeds already reported once; the escape is a declaration mistake, one complaint names it. */
 const reported: WeakSet<ICarburetorSubscription> = new WeakSet();

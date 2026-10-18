@@ -48,6 +48,18 @@ const impliedBy = (reads: TCompletedReads, marker: TPath): boolean => {
 const covers = (reads: TCompletedReads, path: TPath): boolean =>
     reads.has(path) || (path.endsWith('.~p') && impliedBy(reads, path));
 
+/** One owner slice per path: the branch a direct child read proves. */
+const owners = (reads: ReadonlySet<TPath>): Set<TPath> => {
+    const found = new Set<TPath>();
+    for (const path of reads) {
+        let cut = path.lastIndexOf('.');
+        // Presence covers one level further up; other markers own their branch directly.
+        if (cut > 0 && path.endsWith('.~p')) cut = path.lastIndexOf('.', cut - 1);
+        if (cut > 0) found.add(path.slice(0, cut));
+    }
+    return found;
+};
+
 /** Prunes only markers implied by this collection's own reads. */
 const prune = (reads: TPathSet): void => {
     if (reads.size <= 8) {
@@ -66,8 +78,40 @@ const prune = (reads: TPathSet): void => {
     const markers = [];
     for (const path of reads) if (path.endsWith('.~p')) markers.push(path);
     if (markers.length === 0) return;
-    const branches = prefixes(reads);
-    for (const path of markers) if (branches.has(path.slice(0, -3))) reads.delete(path);
+    const branchOwners = owners(reads);
+    let budget = reads.size * SCAN_ROUNDS;
+    let branches: Set<TPath> | undefined;
+    for (const marker of markers) {
+        const base = marker.slice(0, -3);
+        if (branchOwners.has(base)) {
+            reads.delete(marker);
+            continue;
+        }
+        // No direct-child evidence: the exact scan decides until the shared scan budget
+        // runs out; from then on the once-built prefix set answers the remaining markers.
+        if (branches !== undefined) {
+            if (branches.has(base)) reads.delete(marker);
+            continue;
+        }
+        const below = marker.slice(0, -2);
+        let steps = 0;
+        let implied = false;
+        for (const other of reads) {
+            steps++;
+            if (other !== marker && other.startsWith(below)) {
+                implied = true;
+                break;
+            }
+        }
+        budget -= steps;
+        if (implied) {
+            reads.delete(marker);
+        } else if (budget < 0) {
+            branches = prefixes(reads);
+            cachedPrefixes.set(reads, {size: reads.size, branches});
+            if (branches.has(base)) reads.delete(marker);
+        }
+    }
 };
 
 /** Closes patch scratch and extends retained reads without pruning index-owned paths. */

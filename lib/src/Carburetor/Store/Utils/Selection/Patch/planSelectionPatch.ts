@@ -32,6 +32,7 @@ export const planSelectionPatch = (
 ): IPatchNode | undefined => {
     const budget = Math.max(fullCost, MIN_FULL_COST);
     const root: IPatchNode = {leaf: false, children: undefined};
+    const rootPrefix = rootPath + PATH_SEPARATOR;
     let work = 0;
     for (let index = 0; index < paths.length; index++) {
         const path = paths[index];
@@ -39,7 +40,7 @@ export const planSelectionPatch = (
         if (path === WILDCARD_PATH) return undefined;
         if (rootPath === '') rest = path;
         else if (path === rootPath || rootPath.startsWith(path + PATH_SEPARATOR)) return undefined;
-        else if (path.startsWith(rootPath + PATH_SEPARATOR)) rest = path.slice(rootPath.length + 1);
+        else if (path.startsWith(rootPrefix)) rest = path.slice(rootPrefix.length);
         else continue;
         const segments = rest.split(PATH_SEPARATOR);
         // One unit per segment walked while placing the path, plus one per spine node created.

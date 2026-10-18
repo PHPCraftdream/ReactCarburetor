@@ -216,8 +216,12 @@ describe('computed', () => {
                 console.error = original;
             }
 
-            expect(reported.length).toEqual(1);
-            expect(notified).toEqual(0);
+            // The wave drain still reports the settlement failure, and delivery isolation
+            // reports the outer computed's woken re-read failing on the same body error.
+            expect(reported.length).toEqual(2);
+            // The failure wakes consumers instead of leaving them on the stale value: the
+            // outer computed's listener runs once, and its own next read rethrows.
+            expect(notified).toEqual(1);
             expect(() => inner.get()).toThrow('inner failed');
             // The outer computed must not claim its cached 20 as if it were still current:
             // the dependency it was built from can no longer produce a value.
@@ -228,7 +232,8 @@ describe('computed', () => {
             carburetor.setN(3);
 
             expect(outer.get()).toEqual(40);
-            expect(notified).toEqual(1);
+            // Recovery delivery plus the wake the failed settlement already made.
+            expect(notified).toEqual(2);
         });
     });
 

@@ -281,7 +281,9 @@ describe('computed freshness across observation and deferred delivery', () => {
                 store.changeCount(2);
                 try { source.get(); } catch (error: unknown) { caught = error; }
             });
-            expect(report).toHaveBeenCalledTimes(1);
+            // The drain reports the settlement failure; delivery isolation reports the
+            // woken subscriber's re-reading get() rethrowing the same error.
+            expect(report).toHaveBeenCalledTimes(2);
         } finally {
             report.mockRestore();
         }

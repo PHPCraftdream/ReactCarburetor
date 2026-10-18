@@ -47,11 +47,24 @@ export const reconcileFlatSelection = (previous: unknown, fresh: unknown): TFlat
     };
     const define = (result: object): void => {
         for (let index = 0; index < keys.length; index++) {
-            const property = array && !descriptors[index].enumerable
-                ? descriptors[index] : undefined;
-            Object.defineProperty(result, keys[index], {
-                value: values[index], writable: property?.writable ?? true,
-                enumerable: property?.enumerable ?? true, configurable: property?.configurable ?? true,
+            const key = keys[index];
+            const property = descriptors[index];
+            // Everything but a sparse array's non-enumerable index installs default flags,
+            // which a plain assignment produces exactly — minus own `__proto__`, which must
+            // not set the prototype.
+            if (!array || property.enumerable) {
+                if (key !== '__proto__') {
+                    (result as Record<string, unknown>)[key] = values[index];
+                    continue;
+                }
+                Object.defineProperty(result, key, {
+                    value: values[index], writable: true, enumerable: true, configurable: true,
+                });
+                continue;
+            }
+            Object.defineProperty(result, key, {
+                value: values[index], writable: property.writable,
+                enumerable: property.enumerable, configurable: property.configurable,
             });
         }
     };

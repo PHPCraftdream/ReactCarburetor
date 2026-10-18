@@ -11,5 +11,6 @@
   "history43.mjs": {"sha256": "c7c9800ed4000bcfe6ee9a2921efeb8a7b09ae3a428a4dfe785422be7473cc40", "reason": "updatePublicationMs min:0 removed from every timing entry; the verdict gates are unchanged", "commit": "unreleased"},
   "computed43.mjs": {"sha256": "40aaeb722f563536f5ddb245a03d5a714bb9a4312e7c98c6cc4c95485a4c36b5", "reason": "childTimeoutMs equals 30000 asserted the scenario's own timeout constant", "commit": "unreleased"},
   "readset40.mjs": {"sha256": "628d10a2cc05a35e99ef95e00f24186551bfb5eaf4955b9c585add3a10744f1d", "reason": "completedMs/fullMs ratio dropped: the entry gates the work exactly and hosted-runner timing ratios sit inside A/A noise", "commit": "unreleased"},
-  "store.mjs": {"sha256": "09faef1ba0f54172ab15d9d269ff1a3d0a9880bc7d26d5f7d66eee4d2836769c", "reason": "scopeStringifyMs/dehydrateStringifyMs ratio moved to the informational A/B: expected ~0.5 against a 0.8 bound is inside A/A noise", "commit": "unreleased"}
+  "store.mjs": {"sha256": "09faef1ba0f54172ab15d9d269ff1a3d0a9880bc7d26d5f7d66eee4d2836769c", "reason": "scopeStringifyMs/dehydrateStringifyMs ratio moved to the informational A/B: expected ~0.5 against a 0.8 bound is inside A/A noise", "commit": "unreleased"},
+  "computed44.mjs": {"sha256": "481c8a849539305f6253df31145e714012719e7f719b4a98a0be35f882be7fc6", "reason": "a computed update no longer asks its input edges for their uid: track() keeps each source encoded id per slot, so inputEdges is 0 instead of K; the positive control still pins K calls", "commit": "unreleased"}
 }

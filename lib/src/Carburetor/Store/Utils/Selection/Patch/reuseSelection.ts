@@ -66,7 +66,9 @@ export const reuseSelection = <R>(
         entry.reads = committed.reads as Set<string>;
         entry.sharedReads = true;
     } else {
-        entry.reads = new Set<string>([...committed.reads, ...entry.reads]);
+        const merged = new Set<string>(committed.reads);
+        for (const path of entry.reads) merged.add(path);
+        entry.reads = merged;
     }
 
     return value;

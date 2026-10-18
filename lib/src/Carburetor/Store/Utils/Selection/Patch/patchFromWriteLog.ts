@@ -48,12 +48,12 @@ export const patchFromWriteLog = <R>(
     if (typeof rootPath !== 'string') return undefined;
     const paths = pathsSince.call(source, baselineVersion);
     if (paths === undefined) return undefined;
+    const rootPrefix = rootPath + PATH_SEPARATOR;
     const outsidePaths: TPath[] = [];
     let hasInside = false;
     for (const path of paths) {
         if (path === WILDCARD_PATH) return undefined;
-        const inside = rootPath === '' || path === rootPath
-            || path.startsWith(rootPath + PATH_SEPARATOR);
+        const inside = rootPath === '' || path === rootPath || path.startsWith(rootPrefix);
         if (inside) hasInside = true;
         else outsidePaths.push(path);
     }

@@ -122,8 +122,16 @@ describe('R43-C03 observed equal checkpoint', () => {
             selected = right;
             poison = true;
             gate.update(draft => { draft.tick++; });
-            expectFailure(() => value[C.settle](), failure);
-            expectFailure(() => value[C.settle](), failure);
+            // The settlement wakes the value subscriber, whose re-reading get() rethrows and
+            // is reported by delivery isolation; the error itself keeps propagating here.
+            const original = console.error;
+            console.error = () => undefined;
+            try {
+                expectFailure(() => value[C.settle](), failure);
+                expectFailure(() => value[C.settle](), failure);
+            } finally {
+                console.error = original;
+            }
             expect(value[C.announced]!.value).toBe(baseline);
             expect(Object.values(checkpoint).some(record => record.source === left)).toBe(true);
             if (lane === 'comparator') {

@@ -168,16 +168,7 @@ const reconcileKeyed = (
     let changed = mismatched;
     let result: Record<string, unknown> | undefined;
     let previousMap: Map<string, unknown> | undefined;
-    const cycleEntries: Array<{key: string; value: unknown; raw: object}> = [];
-    const lookup = (key: string): {present: boolean; value: unknown} => {
-        if (previousMap === undefined) {
-            previousMap = new Map<string, unknown>();
-            for (let index = 0; index < previousKeys.length; index++) {
-                previousMap.set(previousKeys[index], previous[previousKeys[index]]);
-            }
-        }
-        return previousMap.has(key) ? {present: true, value: previousMap.get(key)} : {present: false, value: undefined};
-    };
+    let cycleEntries: Array<{key: string; value: unknown; raw: object}> | undefined;
     const ensure = (): Record<string, unknown> => {
         if (result !== undefined) return result;
         const prototype = Object.getPrototypeOf(live);
@@ -192,31 +183,41 @@ const reconcileKeyed = (
         if (changed && result === undefined) ensure();
         const key = freshKeys[index];
         const childLive: unknown = Reflect.get(live, key);
-        const found = mismatched ? lookup(key) : {present: true, value: previous[key]};
-        if (!found.present) {
-            changed = true;
-            assign(ensure(), key, detachOpaqueInto(childLive, ctx.copies,
-                ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing));
-            continue;
+        let childPrevious: unknown = previous[key];
+        if (mismatched) {
+            // Built once a key order mismatch makes the positional guess unusable.
+            if (previousMap === undefined) {
+                previousMap = new Map<string, unknown>();
+                for (let cursor = 0; cursor < previousKeys.length; cursor++) {
+                    previousMap.set(previousKeys[cursor], previous[previousKeys[cursor]]);
+                }
+            }
+            if (!previousMap.has(key)) {
+                changed = true;
+                assign(ensure(), key, detachOpaqueInto(childLive, ctx.copies,
+                    ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing));
+                continue;
+            }
+            childPrevious = previousMap.get(key);
         }
         if (childLive !== null && typeof childLive === 'object') ensure();
         const childRaw = rawOf(childLive);
         const cycleBefore = ctx.cycleCount;
-        const childResult = reconcile(found.value, childLive, childRaw, ctx);
+        const childResult = reconcile(childPrevious, childLive, childRaw, ctx);
         const cycled = ctx.cycleCount !== cycleBefore;
-        if (cycled) cycleEntries.push({key, value: found.value, raw: childRaw});
-        if (cycled && childResult !== found.value && childResult === result) {
+        if (cycled) (cycleEntries ??= []).push({key, value: childPrevious, raw: childRaw});
+        if (cycled && childResult !== childPrevious && childResult === result) {
             // A back edge to this very in-progress copy is not a change by itself: an otherwise
             // unchanged cyclic tree must still reuse the previous snapshot. The equality above
             // also proves `result` is the defined copy to write into.
             const copy = result;
             if (copy !== undefined) assign(copy, key, childResult);
-        } else if (!Object.is(childResult, found.value) || isClassInstance(childLive)) {
+        } else if (!Object.is(childResult, childPrevious) || isClassInstance(childLive)) {
             changed = true;
             assign(ensure(), key, childResult);
         } else if (result !== undefined) assign(result, key, childResult);
     }
-    for (let index = 0; index < cycleEntries.length; index++) {
+    if (cycleEntries !== undefined) for (let index = 0; index < cycleEntries.length; index++) {
         const entry = cycleEntries[index];
         const fixed = ctx.copies.get(entry.raw);
         if (fixed !== undefined && fixed !== entry.value) {
@@ -252,15 +253,21 @@ const reconcileKeyed = (
     return result as Record<string, unknown>;
 };
 
-/** The previous copies this array's members will claim by raw identity, or undefined without a ledger. */
-const claimedByLedger = (live: unknown[], ctx: IReconcileContext): Set<unknown> | undefined => {
+/** The previous copies this array's members claim by raw identity, plus each dense member's
+ * raw resolved once, or undefined without a ledger. */
+const claimedByLedger = (
+    live: unknown[], ctx: IReconcileContext
+): {claimed: Set<unknown>; raws: Array<object | undefined>} | undefined => {
     const ledger = ctx.previousCopies;
     if (ledger === undefined) return undefined;
     let claimed: Set<unknown> | undefined;
+    const raws: Array<object | undefined> = [];
     const claim = (index: number): void => {
         const member: unknown = Reflect.get(live, index);
         if (member === null || typeof member !== 'object') return;
-        const copy = ledger.get(rawOf(member));
+        const memberRaw = rawOf(member);
+        raws[index] = memberRaw;
+        const copy = ledger.get(memberRaw);
         if (copy !== undefined) (claimed ??= new Set<unknown>()).add(copy);
     };
     let index = 0;
@@ -271,7 +278,7 @@ const claimedByLedger = (live: unknown[], ctx: IReconcileContext): Set<unknown> 
             if (isArrayIndex(key) && Number(key) > index) claim(Number(key));
         }
     }
-    return claimed;
+    return {claimed: claimed ?? new Set<unknown>(), raws};
 };
 
 /** Reconciles arrays with a dense fast path and ordered sparse walk. */
@@ -280,22 +287,30 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
     let changed = previous.length !== live.length;
     let result: unknown[] | undefined;
     let densePrefix = 0;
-    const cycleEntries: Array<{index: number; value: unknown; raw: object}> = [];
-    const claimed = claimedByLedger(live, ctx);
+    let cycleEntries: Array<{index: number; value: unknown; raw: object}> | undefined;
+    const ledger = claimedByLedger(live, ctx);
+    const claimed = ledger?.claimed;
+    const denseRaws = ledger?.raws;
+    // One raw resolution per member: the dense pass reuses the ledger pre-pass's answer.
+    const memberRaw = (index: number, childLive: unknown): object =>
+        denseRaws?.[index] ?? rawOf(childLive);
     // A member follows its own raw object's previous copy; the positional copy is a base only
     // when no other member claims it, so a moved row is never also the base of its neighbour.
-    const baseFor = (childLive: unknown, positional: unknown): unknown => {
+    const baseFor = (childLive: unknown, positional: unknown, childRaw: object): unknown => {
         const own = childLive !== null && typeof childLive === 'object'
-            ? ctx.previousCopies?.get(rawOf(childLive)) : undefined;
+            ? ctx.previousCopies?.get(childRaw) : undefined;
         return own ?? (claimed?.has(positional) ? undefined : positional);
     };
     // A member with no positional counterpart still reuses its own raw object's previous copy.
     const appended = (childLive: unknown): unknown => {
-        const own = childLive !== null && typeof childLive === 'object'
-            ? ctx.previousCopies?.get(rawOf(childLive)) : undefined;
+        if (childLive === null || typeof childLive !== 'object') {
+            return detachOpaqueInto(childLive, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing);
+        }
+        const childRaw = rawOf(childLive);
+        const own = ctx.previousCopies?.get(childRaw);
         return own === undefined
             ? detachOpaqueInto(childLive, ctx.copies, ctx.onLiveInstance, ctx.onArraySubclass, ctx.onSharing)
-            : reconcile(own, childLive, rawOf(childLive), ctx);
+            : reconcile(own, childLive, childRaw, ctx);
     };
     const ensure = (): unknown[] => {
         if (result !== undefined) return result;
@@ -316,14 +331,15 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
             break;
         }
         const childLive: unknown = Reflect.get(live, densePrefix);
-        const childPrevious = baseFor(childLive, previous[densePrefix]);
+        const childRaw = memberRaw(densePrefix, childLive);
+        const childPrevious = baseFor(childLive, previous[densePrefix], childRaw);
         let childResult: unknown;
         if (childLive !== null && typeof childLive === 'object') {
             ensure();
             const cycleBefore = ctx.cycleCount;
-            childResult = reconcile(childPrevious, childLive, rawOf(childLive), ctx);
+            childResult = reconcile(childPrevious, childLive, childRaw, ctx);
             if (ctx.cycleCount !== cycleBefore) {
-                cycleEntries.push({index: densePrefix, value: childPrevious, raw: rawOf(childLive)});
+                (cycleEntries ??= []).push({index: densePrefix, value: childPrevious, raw: childRaw});
             }
         } else childResult = Object.is(childPrevious, childLive) ? childPrevious : childLive;
         if (!Object.is(childResult, previous[densePrefix]) || isClassInstance(childLive)) {
@@ -370,14 +386,15 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
         const freshKey = freshKeys[freshIndex] as string;
         if (previousKey === freshKey) {
             const childLive: unknown = Reflect.get(live, freshKey);
-            const childPrevious = baseFor(childLive, previous[Number(previousKey)]);
+            const childRaw = rawOf(childLive);
+            const childPrevious = baseFor(childLive, previous[Number(previousKey)], childRaw);
             let childResult: unknown;
             if (childLive !== null && typeof childLive === 'object') {
                 ensure();
                 const cycleBefore = ctx.cycleCount;
-                childResult = reconcile(childPrevious, childLive, rawOf(childLive), ctx);
+                childResult = reconcile(childPrevious, childLive, childRaw, ctx);
                 if (ctx.cycleCount !== cycleBefore) {
-                    cycleEntries.push({index: Number(freshKey), value: childPrevious, raw: rawOf(childLive)});
+                    (cycleEntries ??= []).push({index: Number(freshKey), value: childPrevious, raw: childRaw});
                 }
             } else childResult = Object.is(childPrevious, childLive) ? childPrevious : childLive;
             if (!Object.is(childResult, previous[Number(previousKey)]) || isClassInstance(childLive)) {
@@ -401,9 +418,9 @@ const reconcileArray = (previous: unknown[], live: unknown[], raw: object, ctx: 
 /** Points array cycle back edges at their changed ancestor copy. */
 const remapArrayCycles = (
     ctx: IReconcileContext, raw: object, result: unknown[] | undefined,
-    cycleEntries: Array<{index: number; value: unknown; raw: object}>
+    cycleEntries: Array<{index: number; value: unknown; raw: object}> | undefined
 ): boolean => {
-    if (result === undefined) return false;
+    if (result === undefined || cycleEntries === undefined) return false;
     let remapped = false;
     for (let index = 0; index < cycleEntries.length; index++) {
         const entry = cycleEntries[index];
