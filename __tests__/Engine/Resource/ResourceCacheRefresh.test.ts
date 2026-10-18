@@ -127,15 +127,41 @@ describe('ResourceCache.refresh', () => {
         expect(entry.error).toEqual('cold start');
     });
 
-    test('a refresh next to a load of the same arguments joins it', () => {
+    test('a refresh next to a load of the same arguments restarts the request', async () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, [string]>(loader.load);
 
-        void cache.load('a');
-        void cache.refresh('a');
+        const loadPromise = cache.load('a');
+        const refreshed = cache.refresh('a');
 
-        // The network is already being asked the same question.
-        expect(loader.calls).toEqual(['a']);
+        // A refresh always asks the network again; the load adopts its outcome.
+        expect(loader.calls).toEqual(['a', 'a']);
+        expect(loader.pending[0].signal.aborted).toBe(true);
+
+        loader.pending[1].resolve('second');
+        await loadPromise;
+        await refreshed;
+
+        expect(cache.getEntry('a').data).toEqual('second');
+    });
+
+    test('an in-flight refresh is restarted by the next refresh, whose promise the first adopts', async () => {
+        const loader = makeLoader();
+        const cache = new ResourceCache<string, [string]>(loader.load, {ttl: 60_000});
+
+        await withData(cache, loader);
+
+        const first = cache.refresh('a');
+        const second = cache.refresh('a');
+
+        expect(loader.calls).toEqual(['a', 'a', 'a']);
+        expect(loader.pending[1].signal.aborted).toBe(true);
+
+        loader.pending[2].resolve('third');
+        await first;
+        await second;
+
+        expect(cache.getEntry('a').data).toEqual('third');
     });
 
     test('an aborted refresh does not put its failure on the entry', async () => {

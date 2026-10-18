@@ -2,6 +2,7 @@ import * as React from 'react';
 import {act} from 'react';
 import {render, fireEvent} from '@testing-library/react';
 import {ResourceCarburetor} from '@/Carburetor';
+import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
 import {enableReactActEnvironment} from '../../../reactActEnvironment';
 
 enableReactActEnvironment();
@@ -80,5 +81,121 @@ describe('event arguments are dropped by the bound handles (D2)', () => {
             Object.defineProperty(globalThis, 'Event', saved);
         }
         expect(loader.callArgs).toHaveLength(2);
+    });
+
+    test('a React Native style synthetic event is dropped where no global Event exists', async () => {
+        const loader = recorded();
+        const resource = new ResourceCarburetor<string>(loader.load);
+        const saved = Object.getOwnPropertyDescriptor(globalThis, 'Event')!;
+        Reflect.deleteProperty(globalThis, 'Event');
+        try {
+            // React Native hands a plain-object synthetic event without any DOM Event around.
+            const press = {
+                nativeEvent: {pageX: 12},
+                isDefaultPrevented: (): boolean => false,
+            };
+            await resource.load(press as unknown as never);
+        } finally {
+            Object.defineProperty(globalThis, 'Event', saved);
+        }
+        expect(loader.callArgs).toHaveLength(1);
+        expect(loader.callArgs[0]).toHaveLength(1);
+        expect(loader.callArgs[0]![0]).toBeInstanceOf(AbortSignal);
+    });
+});
+
+describe('plain-JS subclass prototype overrides reach the handles', () => {
+    test('a prototype load override is not shadowed by the bound handle', async () => {
+        const calls: string[] = [];
+        const overrideCalls: unknown[] = [];
+        class Users extends ResourceCarburetor<string, [string]> {}
+        (Users.prototype as unknown as {load: (...args: unknown[]) => Promise<void>}).load =
+            function (this: ResourceCarburetor<string, [string]>, ...args: unknown[]): Promise<void> {
+                overrideCalls.push(args[0]);
+                return ResourceCarburetor.prototype.load.apply(this, args as [string]);
+            };
+        const users = new Users(async key => {
+            calls.push(key);
+            return `answer-${key}`;
+        });
+
+        expect(typeof users.load).toBe('function');
+        await users.load('a');
+        expect(overrideCalls).toEqual(['a']);
+        expect(calls).toEqual(['a']);
+    });
+
+    test('a prototype refresh override is not shadowed by the bound handle', async () => {
+        const calls: string[] = [];
+        const overrideCalls: unknown[] = [];
+        class Users extends ResourceCarburetor<string, [string]> {}
+        (Users.prototype as unknown as {refresh: (...args: unknown[]) => Promise<void>}).refresh =
+            function (this: ResourceCarburetor<string, [string]>, ...args: unknown[]): Promise<void> {
+                overrideCalls.push(args[0]);
+                return ResourceCarburetor.prototype.refresh.apply(this, args as [string]);
+            };
+        const users = new Users(async key => {
+            calls.push(key);
+            return `answer-${key}`;
+        });
+
+        expect(typeof users.refresh).toBe('function');
+        await users.refresh('a');
+        expect(overrideCalls).toEqual(['a']);
+        expect(calls).toEqual(['a']);
+    });
+
+    test('a detached handle keeps its binding', async () => {
+        const calls: string[] = [];
+        const users = new ResourceCarburetor<string, [string]>(async key => {
+            calls.push(key);
+            return `answer-${key}`;
+        });
+        const {load} = users;
+        await load('b');
+        expect(calls).toEqual(['b']);
+        expect(users.getData().data).toBe('answer-b');
+    });
+});
+
+describe('plain-JS cache subclass prototype overrides reach load and refresh', () => {
+    test('a prototype load override is not shadowed by the bound handle', async () => {
+        const calls: string[] = [];
+        const overrideCalls: unknown[] = [];
+        class Users extends ResourceCache<string, [string]> {}
+        (Users.prototype as unknown as {load: (...args: unknown[]) => Promise<void>}).load =
+            function (this: ResourceCache<string, [string]>, ...args: unknown[]): Promise<void> {
+                overrideCalls.push(args[0]);
+                return ResourceCache.prototype.load.apply(this, args as [string]);
+            };
+        const users = new Users(async key => {
+            calls.push(key);
+            return `answer-${key}`;
+        });
+
+        expect(typeof users.load).toBe('function');
+        await users.load('a');
+        expect(overrideCalls).toEqual(['a']);
+        expect(calls).toEqual(['a']);
+    });
+
+    test('a prototype refresh override is not shadowed by the bound handle', async () => {
+        const calls: string[] = [];
+        const overrideCalls: unknown[] = [];
+        class Users extends ResourceCache<string, [string]> {}
+        (Users.prototype as unknown as {refresh: (...args: unknown[]) => Promise<void>}).refresh =
+            function (this: ResourceCache<string, [string]>, ...args: unknown[]): Promise<void> {
+                overrideCalls.push(args[0]);
+                return ResourceCache.prototype.refresh.apply(this, args as [string]);
+            };
+        const users = new Users(async key => {
+            calls.push(key);
+            return `answer-${key}`;
+        });
+
+        expect(typeof users.refresh).toBe('function');
+        await users.refresh('a');
+        expect(overrideCalls).toEqual(['a']);
+        expect(calls).toEqual(['a']);
     });
 });

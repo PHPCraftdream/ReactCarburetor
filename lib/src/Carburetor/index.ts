@@ -35,6 +35,7 @@ export * from './Resource/Slot/getInitialResourceData';
 export * from './Resource/ResourceCarburetor';
 export * from './Resource/ResourceOptions';
 export * from './Resource/Cache/ResourceCache';
+export * from './Resource/Status/resourceState';
 
 export * from './Component/AntiHookComponent/index';
 export * from './Component/bind';

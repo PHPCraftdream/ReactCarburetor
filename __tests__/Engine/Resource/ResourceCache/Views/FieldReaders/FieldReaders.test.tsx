@@ -83,7 +83,7 @@ describe('R39-07 resource field readers', () => {
         mounted.unmount();
     });
 
-    test('field facades retain writable snapshot fields without mutating the cache', async () => {
+    test('field facades are readonly: writes throw and the cache entry stays untouched', async () => {
         const state = fixture();
         const loaded = state.cache.load(0);
         state.pending[0].resolve({id: 0, name: 'user 0'});
@@ -91,11 +91,12 @@ describe('R39-07 resource field readers', () => {
         const resolved = state.cache.resolve(0);
         const paths: string[] = [];
         const view = resolved.fieldView!(resolved, path => paths.push(path));
-        view.data = {id: 9, name: 'local'};
-        view.refreshing = true;
+        expect(() => { view.data = {id: 9, name: 'local'}; }).toThrow(TypeError);
+        expect(() => { view.refreshing = true; }).toThrow(TypeError);
+        expect(() => { delete view.error; }).toThrow(TypeError);
         expect(paths).toEqual([]);
-        expect(view.data?.name).toBe('local');
-        expect(view.refreshing).toBe(true);
+        expect(view.data?.name).toBe('user 0');
+        expect(view.refreshing).toBe(false);
         expect(state.cache.getEntry(0).data?.name).toBe('user 0');
         expect(resolved.view.refreshing).toBe(false);
     });

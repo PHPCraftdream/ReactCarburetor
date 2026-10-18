@@ -90,7 +90,8 @@ describe('resource wire identity and history', () => {
                         ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success,
                         data: 'answer-b',
                         error: undefined,
-                        updatedAt: 1,
+                        // fresh timestamp: keeps the restored answer inside the default ttl window
+                        updatedAt: Date.now(),
                         key: JSON.stringify('b'),
                     });
                 });
@@ -125,7 +126,9 @@ describe('resource wire identity and history', () => {
             if (key === 'slow') {
                 signal.addEventListener('abort', () => resource.restore({
                     ...resourceStatusFlags(EResourceStatus.Success), status: EResourceStatus.Success, data: 'answer-b',
-                    error: undefined, updatedAt: 1, key: JSON.stringify('b'),
+                    error: undefined,
+                    // fresh timestamp: keeps the restored answer inside the default ttl window
+                    updatedAt: Date.now(), key: JSON.stringify('b'),
                 }));
                 return new Promise<string>(() => {});
             }

@@ -36,6 +36,8 @@ This catalog contains self-contained typechecked recipes covering the whole publ
 | ResourceCache `ttl` | 30_000 ms | [resources.md](resources.md) |
 | ResourceCache `maxEntries` | 100 entries | [resources.md](resources.md) |
 | ResourceCache `keyCacheSize` | 4096 memo records | [resources.md](resources.md) |
+| ResourceCarburetor `ttl` | 30_000 ms | [resources.md](resources.md) |
+| ResourceCarburetor `maxEntries` | 100 answers | [resources.md](resources.md) |
 | Component update throttle (`updateTimeout`) | 40 ms | [components.md](components.md) |
 | CarburetorHistory `limit` | 50 entries | [stores.md](stores.md) |
 | `persist` write coalescing | on (one stringify per microtask) | [stores.md](stores.md) |

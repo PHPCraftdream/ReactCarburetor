@@ -59,10 +59,17 @@ describe('cache operations with native accessor metadata and readonly slots', ()
         cache.setData(root);
 
         const request = cache[method]('a');
-        expect(cache[method]('a')).toBe(request);
-        expect(calls).toBe(1);
+        const repeated = cache[method]('a');
+        if (method === 'load') {
+            expect(repeated).toBe(request);
+            expect(calls).toBe(1);
+        } else {
+            // Refresh aborts the in-flight request and restarts; the old promise adopts the new outcome.
+            expect(repeated).not.toBe(request);
+            expect(calls).toBe(2);
+        }
         pending.resolve('answer');
-        await request;
+        await Promise.all([request, repeated]);
 
         const live = cache.getData();
         expect(live.entries[a]).toMatchObject({status: EResourceStatus.Success, data: 'answer'});

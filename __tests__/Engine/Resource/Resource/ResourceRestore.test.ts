@@ -549,7 +549,8 @@ describe('single-slot subclass mutation', () => {
         expect(resource.snapshot().error).toBe('changed-by-update');
         expect(thrownBy(resource, 'a')).toBe(updated);
 
-        resource.change(draft => { draft.updatedAt = 123; });
+        // fresh timestamp inside the default ttl window; +1 so the draft differs and still publishes
+        resource.change(draft => { draft.updatedAt = Date.now() + 1; });
         expect(resource.getLastError()).toBe(updated);
         expect(thrownBy(resource, 'a')).toBe(updated);
 

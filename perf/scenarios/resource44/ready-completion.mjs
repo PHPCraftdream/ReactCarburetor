@@ -61,7 +61,9 @@ for (const lane of ['cold', 'forced', 'stale', 'invalidated']) {
     const p = lane === 'forced' ? cache.refresh('a') : cache.load('a');
     const q = lane === 'forced' ? cache.refresh('b') : cache.load('b');
     assert.equal(calls, 2); assert.notEqual(p, q); assert.notEqual(p, readyPromise); assert.notEqual(q, readyPromise);
-    assert.equal(cache.refresh('a'), p); assert.equal(cache.refresh('b'), q);
+    // Refresh restarts under the unified handle-promise rule, so only load joins here; the
+    // forced lane's entries are fresh, where load short-circuits instead of joining.
+    if (lane !== 'forced') { assert.equal(cache.load('a'), p); assert.equal(cache.load('b'), q); }
     const raw = new Error('offline'); requests[0].no(raw); requests[1].yes('current');
     await Promise.all([p, q]); assert.equal(cache.getFailure('a'), raw);
     assert.equal(cache.getEntry('a').failed, true); assert.equal(cache.getEntry('b').data, 'current');

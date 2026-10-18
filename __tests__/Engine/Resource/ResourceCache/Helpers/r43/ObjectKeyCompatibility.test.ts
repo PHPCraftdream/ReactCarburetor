@@ -46,11 +46,16 @@ describe('ResourceCache object key compatibility', () => {
             const cases: Array<[unknown, string]> = [
                 ['a.b~c', '"a~1b~0c"'],
                 ['~1.~0', '"~01~1~00"'],
-                [undefined, 'null'], [null, 'null'], [NaN, 'null'],
-                [Infinity, 'null'], [-Infinity, 'null'], [-0, '0'], [0, '0'],
+                [undefined, 'null'], [null, 'null'], [-0, '0'], [0, '0'],
                 [true, 'true'], [false, 'false'],
                 [{id: 'a.b~c'}, '{"id":"a~1b~0c"}'],
             ];
+            // Non-finite numbers (NaN/Infinity/-Infinity) are rejected in development before
+            // derivation, so they no longer participate in byte equality.
+            for (const nonFinite of [NaN, Infinity, -Infinity]) {
+                expect(() => cache.resolve(nonFinite)).toThrow(TypeError);
+                expect(() => cache.exposeKeyOf(nonFinite)).toThrow(TypeError);
+            }
             for (let round = 0; round < 2; round++) {
                 for (const [argument, key] of cases) {
                     const resolved = cache.resolve(argument);

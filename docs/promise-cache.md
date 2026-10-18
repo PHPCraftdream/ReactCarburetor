@@ -70,7 +70,9 @@ which is what the hooks libraries use — would make every read refetch and leav
 but a deduplication layer, which is a surprising thing for something called a cache.
 
 An entry records `updatedAt`. Whether it is stale is computed when someone asks —
-`Date.now() - updatedAt > ttl` — and never by a timer. Timers would mean a handle per entry to leak,
+`Date.now() - updatedAt > ttl` — and never by a timer. The cache treats an answer as stale
+strictly past `ttl`, while the slot answer memory treats `>= ttl` as stale — a documented
+difference. Timers would mean a handle per entry to leak,
 wake-ups in an idle tab, and a cache that keeps the process alive.
 
 `getEntry` only reports staleness. `useResource` starts the refetch after commit, never during render: synchronous publication from render would notify subscribers mid-render (see [hazards.md](hazards.md), H11).
@@ -100,8 +102,8 @@ explicit re-arm; aborting a retry does not cause an automatic failure loop.
 |--------|---------|
 | `getEntry(...args)` | The entry as it is now, with a `stale` verdict. Does not start anything, and does not write — `Carburetor.read` is the tracked-read API, so this one is named after `getData`. |
 | `load(...args)` | Resolves from the cache when fresh, otherwise fetches. Concurrent identical calls share one request. |
-| `refresh(...args)` | Always fetches, ignoring freshness. Replaces the entry on success, keeps it on failure. |
-| `clear()` | Cancels every in-flight request and removes every entry in one publication (replaces `forgetAll`). |
+| `refresh(...args)` | Always fetches, ignoring freshness. Replaces the entry on success, keeps it on failure. An in-flight request for the key is restarted; the earlier handle promise settles with the new request's outcome. |
+| `clear()` | Cancels every in-flight request and removes every entry in one publication (replaces `forgetAll`), including a request whose entry a public replacement removed. |
 | `invalidate(args)` | Marks one entry stale without touching its data. Never refetches: entries being read refetch on their next read, and `refresh` fetches one now. Also clears `failed`, re-arming an entry whose last attempt failed. |
 | `invalidateAll()` | Marks every entry stale and re-arms any failed entry, the usual move after a write the server accepted. Never refetches. |
 | `forget(args)` | Removes one entry, cancelling its request first so a late answer cannot resurrect it. |
@@ -115,7 +117,7 @@ including hits for different keys and repeated hits on the same key. It holds no
 payload or raw failure, and is not shared across caches. Each caller's `await` or `.then` reaction
 still runs asynchronously; each `.then` creates an independent child promise, so a throwing callback
 rejects only that child. Pending joins, forced refreshes and actual loader failures retain their
-request-owned promises.
+request-owned promises. The `load` and `refresh` promises resolve when the loader fails (a failure is state, not a rejection); such a promise rejects with an `AbortError` only when the request is superseded before its loader started.
 
 A request cancelled or superseded synchronously during its Pending publication, before its
 loader can run, rejects with `AbortError`. A replacement request keeps its own ownership.
@@ -189,8 +191,10 @@ result, but never prevents dependency migration. Changing its identity reconside
 Readonly is the library's compile-time immutable-by-contract policy, not deep freezing.
 
 Presentation overrides are caller-owned, for example `{...selected, name: 'local'}`. Assigning,
-defining or deleting hook-result fields is unsupported. The separate class `useResource` field
-facade retains its local-field semantics; use `connectSelection` for detached memo-child values.
+defining or deleting hook-result fields is unsupported. The class `useResource` view is readonly
+(writes throw) and subscribes to the fields it reads — reading `data` subscribes to the whole data
+field; `connectSelection`
+remains the tool for detached memo-child values.
 
 Hook loading starts only after committed publication and subscription attachment, using current
 committed arguments and fresh eligibility. Selected-value equality does not suppress loading

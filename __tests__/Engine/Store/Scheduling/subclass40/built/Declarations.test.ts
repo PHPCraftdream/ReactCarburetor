@@ -25,8 +25,9 @@ describe('R40-01 built subclass contract', () => {
             'AntiHookComponent', 'Carburetor', 'CarburetorContext', 'CarburetorHistory', 'CarburetorProvider',
             'CarburetorScope', 'ComponentUpdateThrottle', 'Computed', 'Diagnostics', 'EDevToolsAction',
             'EDevToolsMessageType', 'EResourceStatus', 'ResourceCache', 'ResourceCarburetor',
-            'ScopedAntiHookComponent', 'UpdateThrottle', 'bind', 'carburetorToken', 'computed', 'connectDevTools', 'deepClone',
-            'diagnostics', 'getInitialResourceData', 'persist', 'shallowEqual', 'transaction', 'waitForUpdate',
+            'ScopedAntiHookComponent', 'UpdateThrottle', 'bind', 'carburetorToken', 'computed', 'connectDevTools',
+            'deepClone', 'diagnostics', 'getInitialResourceData', 'persist', 'resourceState', 'shallowEqual',
+            'transaction', 'waitForUpdate',
         ].sort());
     });
 
@@ -42,7 +43,7 @@ describe('R40-01 built subclass contract', () => {
         }
         expect([...names].sort()).toEqual(['componentDidMount', 'componentDidUpdate', 'componentWillUnmount',
             'connect', 'connectSelection', 'shouldComponentUpdate', 'unUseEffects', 'useCarburetor',
-            'useComputed', 'useEffect', 'useEffects', 'useResource'].sort());
+            'useComputed', 'useEffect', 'useEffects', 'useResource', 'suspendResource'].sort());
     });
 
     test('strict consumer fixture compiles against dist declarations', () => {

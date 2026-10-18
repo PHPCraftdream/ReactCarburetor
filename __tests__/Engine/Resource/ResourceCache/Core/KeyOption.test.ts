@@ -37,10 +37,11 @@ describe('ResourceCache with a custom key option', () => {
         const loader = makeLoader();
         const cache = new ResourceCache<string, [id: string]>(loader.load, {key: () => undefined});
 
-        expect(() => cache.load('a')).toThrow(TypeError);
+        // The handles reject on key failure, read paths still throw.
+        await expect(cache.load('a')).rejects.toThrow(TypeError);
         expect(() => cache.getEntry('a')).toThrow(TypeError);
         expect(() => cache.resolve('a')).toThrow(TypeError);
-        expect(() => cache.refresh('a')).toThrow(TypeError);
+        await expect(cache.refresh('a')).rejects.toThrow(TypeError);
     });
 
     test('a mounted component reading another argument sees the answer loaded under the shared key', async () => {

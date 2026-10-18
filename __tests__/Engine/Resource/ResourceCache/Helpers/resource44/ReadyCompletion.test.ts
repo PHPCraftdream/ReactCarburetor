@@ -63,9 +63,15 @@ describe('resource44 ready isolation and real work', () => {
 
     test.each(['cold', 'forced', 'stale', 'invalidated'] as const)(
         '%s work has request-owned completions, pending joins and raw failure', async (lane) => {
-            const gates = [deferred<string>(), deferred<string>()];
+            const gates: Array<ReturnType<typeof deferred<string>>> = [deferred<string>(), deferred<string>()];
             let calls = 0;
-            const cache = new ResourceCache<string, [string]>(() => gates[calls++].promise,
+            const nextGate = (): Promise<string> => {
+                const gate = gates[calls] ?? deferred<string>();
+                gates[calls] = gate;
+                calls++;
+                return gate.promise;
+            };
+            const cache = new ResourceCache<string, [string]>(nextGate,
                 {ttl: lane === 'stale' ? 0 : Infinity, maxEntries: 8});
             const a = cache.resolve('a').key;
             const b = cache.resolve('b').key;
@@ -84,8 +90,6 @@ describe('resource44 ready isolation and real work', () => {
             expect(first).not.toBe(completion);
             expect(second).not.toBe(completion);
             expect(first).not.toBe(second);
-            expect(cache.refresh('a')).toBe(first);
-            expect(cache.refresh('b')).toBe(second);
             const raw = new Error('offline');
             gates[0].reject(raw);
             gates[1].resolve('current-b');
@@ -94,6 +98,25 @@ describe('resource44 ready isolation and real work', () => {
             expect(cache.getEntry('a')).toMatchObject({error: 'offline', failed: true,
                 status: lane === 'cold' ? S.Error : S.Success});
             expect(cache.getEntry('b')).toMatchObject({status: S.Success, data: 'current-b', error: undefined});
+            // A refresh replaces an ACTIVE request: the second refresh aborts the first
+            // (its gate stays pending forever) and the first promise adopts the second's.
+            // Engine: runLoad/runRefresh on a non-fresh entry call [R.fetch], which returns
+            // known.promise for an in-flight request (ResourceCacheLifecycle.ts runLoad/[R.fetch]).
+            const held = cache.refresh('a');
+            const restarted = cache.refresh('a');
+            expect(restarted).not.toBe(held);
+            // load still joins an in-flight request for the key (fetch returns known.promise)
+            // whenever the entry is not fresh; in the forced lane the entry stays fresh
+            // (Success, ttl Infinity, not invalidated), so runLoad short-circuits before
+            // reaching [R.fetch] and load resolves immediately instead of joining.
+            if (lane !== 'forced') expect(cache.load('a')).toBe(restarted);
+            // gates[2] belongs to the ABORTED first refresh and is never settled;
+            // `restarted` awaits gates[3] (the second refresh's loader call).
+            gates[3].resolve('final');
+            await restarted;
+            await held; // adopted: resolves only because gate[3] settled; gate[2] never settles
+            expect(cache.getEntry('a')).toMatchObject({data: 'final', error: undefined});
+            expect(calls).toBe(4);
         }
     );
 });

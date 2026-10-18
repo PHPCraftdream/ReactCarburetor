@@ -7,15 +7,11 @@ interface User {
     name: string;
 }
 
-declare function fetchUser(id: string): Promise<User>;
+declare function fetchUser(id: string, init?: {signal?: AbortSignal}): Promise<User>;
 
-const userLoader: TResourceLoader<User, [string]> = (id: string, signal: AbortSignal) =>
-    fetchUser(id).then((user: User) => {
-        if (signal.aborted) {
-            throw new Error('aborted');
-        }
-        return user;
-    });
+// The trailing signal cancels the network call; a superseded answer is discarded
+// by the engine, so no aborted-check is needed.
+const userLoader: TResourceLoader<User, [string]> = (id: string, signal) => fetchUser(id, {signal});
 
 const userResource = new ResourceCarburetor<User, [string]>(userLoader);
 

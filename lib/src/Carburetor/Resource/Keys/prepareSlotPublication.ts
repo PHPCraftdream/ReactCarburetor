@@ -3,36 +3,48 @@ import {IResourceData} from "@/Carburetor/Models/Resource";
 import {cloneOwnedGraph} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
 import {resourceStatusFlags} from "@/Carburetor/Resource/Status/resourceStatusFlags";
 
-/** Fields a memory-hit publication owns; the same set a request settles. */
+/** Fields a slot publication owns; the same set a request or memory hit settles. */
 const isPublishField = (field: PropertyKey): boolean =>
     field === 'status' || field === 'data' || field === 'error' || field === 'updatedAt'
     || field === 'isIdle' || field === 'isPending' || field === 'isSuccess' || field === 'isError';
 
-/** Whether a descriptor permits writing, or is absent. */
+/** Whether a descriptor accepts writes: an absent or writable value descriptor does. */
 const isWritableDescriptor = (descriptor: PropertyDescriptor | undefined): boolean =>
-    descriptor?.writable !== false;
+    descriptor === undefined || ('value' in descriptor && descriptor.writable !== false);
 
-/** Prepare a writable graph for a remembered answer, or undefined when the state is writable.
+interface ISlotPublication<T> {
+    status: EResourceStatus;
+    data: T | undefined;
+    error: string | undefined;
+    updatedAt: number | undefined;
+}
+
+/** Prepare an owned writable graph for a publication, or undefined when the state is writable.
  *
- * @param state - The graph a remembered answer is about to be published into.
- * @param remembered - The remembered answer that supplies the new data and timestamp.
+ * @param state - The graph the publication is about to be written into.
+ * @param publication - The status, data, error and timestamp to bake into the owned copy.
  */
-export const prepareMemorySuccess = <T>(
-    state: IResourceData<T>, remembered: {data: T; updatedAt: number},
+export const prepareSlotPublication = <T>(
+    state: IResourceData<T>, publication: ISlotPublication<T>,
 ): IResourceData<T> | undefined => {
     const fields = ['status', 'data', 'error', 'updatedAt',
         'isIdle', 'isPending', 'isSuccess', 'isError'] as const;
+    // cloneOwnedGraph throws for accessors on plain objects, so an accessor state falls back to the legacy draft path.
+    if (fields.some((field) => {
+        const descriptor = Object.getOwnPropertyDescriptor(state, field);
+        return descriptor !== undefined && !('value' in descriptor);
+    })) return undefined;
     const writable = fields.every((field) => isWritableDescriptor(Object.getOwnPropertyDescriptor(state, field)));
     if (writable) return undefined;
 
-    const flags = resourceStatusFlags(EResourceStatus.Success);
+    const flags = resourceStatusFlags(publication.status);
     return cloneOwnedGraph(state, undefined, (source, field, descriptor) => {
         if (source === state && isPublishField(field)) {
             descriptor.writable = true;
-            if (field === 'status') descriptor.value = EResourceStatus.Success;
-            else if (field === 'data') descriptor.value = remembered.data;
-            else if (field === 'error') descriptor.value = undefined;
-            else if (field === 'updatedAt') descriptor.value = remembered.updatedAt;
+            if (field === 'status') descriptor.value = publication.status;
+            else if (field === 'data') descriptor.value = publication.data;
+            else if (field === 'error') descriptor.value = publication.error;
+            else if (field === 'updatedAt') descriptor.value = publication.updatedAt;
             else if (field === 'isIdle') descriptor.value = flags.isIdle;
             else if (field === 'isPending') descriptor.value = flags.isPending;
             else if (field === 'isSuccess') descriptor.value = flags.isSuccess;

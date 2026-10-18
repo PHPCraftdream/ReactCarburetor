@@ -1,5 +1,7 @@
 /** Internal resource state and plumbing; absent from package exports (R40-01). */
 export class R {
+    /** Internal adopt slot. */
+    public static readonly adopt = Symbol("resource.adopt");
     /** Internal abortKey slot. */
     public static readonly abortKey = Symbol("resource.abortKey");
     /** Internal bulkDepth slot. */

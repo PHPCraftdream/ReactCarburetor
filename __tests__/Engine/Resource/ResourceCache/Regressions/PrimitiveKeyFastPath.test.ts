@@ -17,9 +17,9 @@ describe('ResourceCache primitive-args fast path (R30-08)', () => {
             async () => ({id: 0}),
         );
 
-        // -0 and 0 share one entry; NaN, Infinity encode like JSON.stringify does.
+        // Non-finite numbers (NaN/Infinity/-Infinity) are rejected in development before derivation.
         const edges: Array<number | string | boolean | null | undefined> = [
-            0, -0, NaN, Infinity, -Infinity, 42, 1e21, 1.5,
+            0, -0, 42, 1e21, 1.5,
             '', 'a', 'a.b', 'x~y', 'a~1b', '"quoted"', '.', '~', 'ü😀', 'null', '0',
             true, false, null, undefined,
         ];
@@ -28,6 +28,11 @@ describe('ResourceCache primitive-args fast path (R30-08)', () => {
             expect(cache.exposeKeyOf(edge)).toEqual(slowKeyOf(edge));
             expect(cache.exposeKeyOf(edge)).toEqual(cache.exposeKeyOf(edge));
             expect(cache.exposePathOf(edge)).toEqual(joinPath('entries', slowKeyOf(edge)));
+        }
+
+        // Development rejects non-finite numbers before any derivation (they would collide on "null").
+        for (const edge of [NaN, Infinity, -Infinity]) {
+            expect(() => cache.exposeKeyOf(edge)).toThrow(TypeError);
         }
     });
 

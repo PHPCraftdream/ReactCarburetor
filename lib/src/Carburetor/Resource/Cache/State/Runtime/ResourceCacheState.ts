@@ -18,7 +18,6 @@ import {IStateInstallation, IStateRestoreClaim, STATE_PUBLIC_REPLACEMENT} from "
 import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
-import {dropEventArgs} from "@/Carburetor/Resource/Slot/dropEventArgs";
 import {buildCacheRestore} from "@/Carburetor/Resource/Cache/State/buildCacheRestore";
 import {removeCacheEntries} from "@/Carburetor/Resource/Cache/State/Mutation/removeCacheEntries";
 import {prepareCacheInvalidation} from "@/Carburetor/Resource/Cache/State/Mutation/prepareCacheInvalidation";
@@ -68,7 +67,7 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
         this[R.loader] = loader;
         this[R.ttl] = options.ttl === undefined ? DEFAULT_TTL : options.ttl;
         this[R.maxEntries] = options.maxEntries === undefined ? DEFAULT_MAX_ENTRIES : options.maxEntries;
-        // Bound to its instance, so an event handler may adopt it; args drop inside (D2).
+        // Bound to its instance, so an event handler may adopt it (D2).
         this.clear = this.clear.bind(this);
     }
 
@@ -317,23 +316,24 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
         this[R.forgetKey](this[R.keyOf](args));
     }
 
-    /** Forget all entries and cancel their requests in one publication.
+    /** Forgets all entries and cancels their requests in one publication.
      *
-     * Bound to its instance (see the constructor), so an event argument is dropped before
-     * anything else happens.
-     *
-     * Settled entries can share one removal preparation only when the per-key forget, abort, and
-     * removal hooks are inherited unchanged. Subclasses keep the original per-key call order.
+     * Takes no arguments; JS subclasses override `clear` on the prototype and the
+     * dynamic bind keeps the override reachable.
      */
-    public clear(...args: unknown[]): void {
-        dropEventArgs(args);
+    public clear(): void {
         this[R.bulkDepth]++;
         try {
             const keys = Object.keys(this.data.entries);
-            if (keys.length === 0) return;
+            const live: Array<[string, ICacheRequest]> = [];
+            this[R.runtimeRecords]?.forEach((runtime, key) => {
+                if (runtime.request !== undefined) live.push([key, runtime.request]);
+            });
+            if (keys.length === 0 && live.length === 0) return;
 
             const base = ResourceCacheState.prototype;
-            if (this[R.forgetKey] === base[R.forgetKey] && this[R.abortKey] === base[R.abortKey] &&
+            if (live.length === 0 && this[R.forgetKey] === base[R.forgetKey] &&
+                this[R.abortKey] === base[R.abortKey] &&
                 this[R.removeEntries] === base[R.removeEntries]) {
                 // Batch base hooks only when no synchronous abort listener can reenter.
                 let hasActiveRequest = false;
@@ -350,6 +350,21 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
             }
 
             keys.forEach((key: string) => this[R.forgetKey](key));
+            // Every captured request must settle: forgetKey already aborted the ordinary
+            // ones, so this abort only fires for a request forgetKey never reached (its
+            // entry was removed by a public replacement). A reentrant same-key request
+            // from an abort listener is a different object, absent from this capture,
+            // so it survives both.
+            live.forEach(([key, request]: [string, ICacheRequest]) => {
+                if (this[R.runtimeFor](key)?.request === request) {
+                    this[R.abortKey](key);
+                }
+                // Deferred by a microtask: a clear during the request's own Pending
+                // publication must let the fetch frame's superseded AbortError rejection
+                // land first — a synchronous resolve would win that race and swallow it.
+                // Idempotent: an already settled or adopted promise ignores a second settle.
+                void Promise.resolve().then(() => request.resolve());
+            });
         } finally {
             this[R.finishBulk]();
         }

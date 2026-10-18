@@ -637,7 +637,12 @@ the component again. A call whose result is never read registers no field reads
 and would not wake.
 
 While the request is in flight the nearest `<Suspense>` fallback shows; a failure is rethrown
-so the nearest error boundary handles it.
+so the nearest error boundary handles it. In a class component, `this.suspendResource(cache, ...args)`
+is the one-call Suspense read: it subscribes and returns the entry's data, suspending while it loads
+and rethrowing on failure; `suspend()` stays for non-component use.
+
+A stale-but-present answer is not a miss for `suspend()`: it serves the stored answer and
+revalidates in the background instead of suspending again.
 
 ### Cached resources
 
@@ -647,7 +652,7 @@ Both resource classes expose the same three handles, usable directly from an eve
 | handle | meaning |
 |---|---|
 | `load(...args)` | Loads only when nothing usable is stored for the key of `args`. |
-| `refresh(...args)` | Always requests, even when the key already has a value. |
+| `refresh(...args)` | Always requests, even when the key already has a value. An in-flight request for the key is restarted; the earlier handle promise settles with the new request's outcome. |
 | `clear()` | Cancels requests, drops stored answers, status back to `Idle`. |
 
 Loader arguments are variadic `(...args, signal)` and the second generic is the argument tuple:
@@ -665,7 +670,9 @@ case; trailing `undefined` arguments still do not split keys.
 The `key` option — `(...args) => string | number` at construction — decides which calls share an
 answer; without it the default key matches 0- and 1-argument resources as before. `ResourceCarburetor`
 also accepts `ttl` and `maxEntries`: past `ttl` a stored answer is stale and the next handle call
-requests again, and `maxEntries` bounds how many earlier answers are remembered per key (LRU).
+requests again, and `maxEntries` bounds the total number of stored answers across keys — the least
+recently used answers are dropped past it. The defaults: answers stay fresh for 30 s and the memory
+keeps at most 100 answers unless configured otherwise.
 
 Click-to-switch needs one store and one call: a `@bind` method calls `load(id)` and the component
 reads the store in `render()` — no selection carburetor in between.
@@ -680,17 +687,12 @@ interface User {
     name: string;
 }
 
-declare function fetchUser(id: string): Promise<User>;
+declare function fetchUser(id: string, init?: {signal?: AbortSignal}): Promise<User>;
 
 // TArgs is a tuple, `[string]` here. A first `unknown`/`any` parameter would be
 // taken for the signal; that edge needs the explicit `new ResourceCarburetor<T, [unknown]>(...)`.
 const user = new ResourceCarburetor<User, [string]>(
-    (id: string, signal: AbortSignal) => fetchUser(id).then((value: User) => {
-        if (signal.aborted) {
-            throw new Error('aborted');
-        }
-        return value;
-    })
+    (id: string, signal) => fetchUser(id, {signal})
 );
 
 export class UserSwitcher extends AntiHookComponent<{initialId: string}> {
@@ -738,38 +740,37 @@ For a resource without parameters the bound handle itself sits in `onClick`:
 
 <!-- example:file examples/api/resources/resource-carburetor/click-load.tsx -->
 ```tsx
-import {AntiHookComponent, ResourceCarburetor} from 'react-carburetor';
+import {AntiHookComponent, ResourceCarburetor, resourceState} from 'react-carburetor';
 import {type JSX} from 'react';
 
 interface Config {
     theme: string;
 }
 
-declare function fetchConfig(): Promise<Config>;
+declare function fetchConfig(init?: {signal?: AbortSignal}): Promise<Config>;
 
 // A resource without parameters: TArgs is the empty tuple, and the bound handles
 // drop an incoming DOM/React event argument before the loader sees it, so the
 // handle itself can sit in `onClick`.
 const config = new ResourceCarburetor<Config, []>(
-    (signal: AbortSignal) => fetchConfig().then((value: Config) => {
-        if (signal.aborted) {
-            throw new Error('aborted');
-        }
-        return value;
-    })
+    (signal) => fetchConfig({signal})
 );
 
 export class ConfigBadge extends AntiHookComponent {
     render(): JSX.Element {
         const view = this.useCarburetor(config);
 
-        if (view.isIdle) {
+        // resourceState derives the flag view from the raw state fields: loading before the
+        // first answer lands, refreshFailed after a failed refresh.
+        const state = resourceState(view.status, view.data, view.error);
+
+        if (state.isIdle) {
             return <button type="button" onClick={config.load}>Load</button>;
         }
-        if (view.isPending) {
+        if (state.isPending) {
             return <span className="spinner">Loading…</span>;
         }
-        if (view.isError) {
+        if (state.isError) {
             // refresh is bound the same way: the event it receives is dropped.
             return <button type="button" onClick={config.refresh}>Retry</button>;
         }
@@ -1285,8 +1286,10 @@ invalidated state; TTL is checked normally. After commit, a mounted `useResource
 `useResourceValue` reader may refetch a successful entry that is stale or invalidated. Local
 presentation overrides belong to the caller, for example
 `const local = {...user, name: 'local'}`, not assignments, definitions or deletions on hook results.
-The separate class `useResource` facade retains local-field behavior and coarser data precision;
-use `connectSelection` alongside `useResource` for detached, precise memo-child projections.
+The class `useResource` view is readonly (writes throw) and subscribes to the fields it
+reads — reading `data` subscribes to the whole data field; presentation overrides belong to the caller via
+`{...view, name: 'local'}`. `connectSelection` remains the tool for detached memo-child
+projections.
 
 Selector functions should be capture-free where possible. The linter warns about selectors that capture render bindings (H34) and `useMemo`/`useCallback` over values already read by these hooks (H33); prefer selecting the whole record and picking during render, or deriving in the selector or a `Computed`. For capturing handlers, use a child `AntiHookComponent` with props and an `@bind` method, or convert the component; callback memoization is also reported, not recommended.
 

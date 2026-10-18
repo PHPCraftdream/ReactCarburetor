@@ -6,17 +6,12 @@ interface User {
     name: string;
 }
 
-declare function fetchUser(id: string): Promise<User>;
+declare function fetchUser(id: string, init?: {signal?: AbortSignal}): Promise<User>;
 
 // TArgs is a tuple, `[string]` here. A first `unknown`/`any` parameter would be
 // taken for the signal; that edge needs the explicit `new ResourceCarburetor<T, [unknown]>(...)`.
 const user = new ResourceCarburetor<User, [string]>(
-    (id: string, signal: AbortSignal) => fetchUser(id).then((value: User) => {
-        if (signal.aborted) {
-            throw new Error('aborted');
-        }
-        return value;
-    })
+    (id: string, signal) => fetchUser(id, {signal})
 );
 
 export class UserSwitcher extends AntiHookComponent<{initialId: string}> {

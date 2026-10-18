@@ -96,11 +96,14 @@ describe('ResourceCache primitive key memo', () => {
             string | number | boolean | null | undefined | {id: number}
         >(async () => undefined, {keyCacheSize: 1});
         const edges: Array<string | number | boolean | null | undefined> = [
-            null, undefined, NaN, Infinity, -Infinity, -0, 0, true, false, 'text',
+            null, undefined, -0, 0, true, false, 'text',
         ];
         for (const edge of edges) expect(cache.exposeKeyOf(edge)).toBe(slowKeyOf(edge));
         expect(cache.exposeKeyOf(null)).toBe(cache.exposeKeyOf(undefined));
-        expect(cache.exposeKeyOf(NaN)).toBe(cache.exposeKeyOf(Infinity));
+        // Non-finite numbers reject in development instead of colliding on "null".
+        for (const edge of [NaN, Infinity, -Infinity]) {
+            expect(() => cache.exposeKeyOf(edge)).toThrow(TypeError);
+        }
         expect(cache.exposeKeyOf(-0)).toBe(cache.exposeKeyOf(0));
 
         const query = {id: 1};

@@ -17,11 +17,11 @@ const shadow = (store: object, name: string): void => {
 
 describe('R40-01 resource subclass names', () => {
     test('cache and slot own no string-named engine fields', () => {
-        // D2: bound handles are own instance fields, like the slot's
-        expect(Object.getOwnPropertyNames(new ResourceCache(async () => 1)))
-            .toEqual(["clear", "load", "refresh"]);
-        expect(Object.getOwnPropertyNames(new ResourceCarburetor(async () => 1)))
-            .toEqual(["load", "refresh", "clear"]);
+        // D2: bound handles are own instance fields, like the slot's; own-property order is not contractual.
+        expect([...Object.getOwnPropertyNames(new ResourceCache(async () => 1))].sort())
+            .toEqual(['clear', 'load', 'refresh']);
+        expect([...Object.getOwnPropertyNames(new ResourceCarburetor(async () => 1))].sort())
+            .toEqual(['clear', 'load', 'refresh']);
     });
 
     test.each(cacheNames)('cache shadow %s preserves load, invalidation, history and delivery', async name => {

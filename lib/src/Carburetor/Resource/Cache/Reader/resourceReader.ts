@@ -1,7 +1,30 @@
 import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
 import {IResourceResolution, IResourceView} from '@/Carburetor/Models/Resource';
-import {TPathRecorder} from '@/Carburetor/Models/Paths';
+import {TPath, TPathRecorder} from '@/Carburetor/Models/Paths';
 import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
+
+/** Own view fields whose joined paths are memoized per entry path. */
+const FIELD_PATH_FIELDS = ['invalidated', 'failed', 'refreshing', 'updatedAt', 'isIdle', 'status',
+    'data', 'error', 'isPending', 'isSuccess', 'isError', 'stale'];
+
+/** Bounded per-path memo of joined field paths; oldest entry evicted past the cap. */
+const fieldPathCache = new Map<TPath, Record<string, TPath>>();
+const FIELD_PATH_CACHE_CAP = 4096;
+
+/** Returns the frozen per-path record of joined field paths, building it on first use. */
+const fieldPaths = (path: TPath): Record<string, TPath> => {
+    let record = fieldPathCache.get(path);
+    if (record === undefined) {
+        if (fieldPathCache.size >= FIELD_PATH_CACHE_CAP) {
+            fieldPathCache.delete(fieldPathCache.keys().next().value as TPath);
+        }
+        record = Object.freeze(Object.fromEntries(
+            FIELD_PATH_FIELDS.map(field => [field, joinPath(path, field)])
+        )) as Record<string, TPath>;
+        fieldPathCache.set(path, record);
+    }
+    return record;
+};
 
 /** Decisions shared by committed resource readers. */
 export const resourceReader = {
@@ -13,21 +36,32 @@ export const resourceReader = {
     collect<T>(resolution: IResourceResolution<T>, record: TPathRecorder): void {
         const {path, view, fieldView, present} = resolution;
         if (fieldView === undefined) { record(path); return; }
-        record(joinPath(path, 'invalidated'));
-        record(joinPath(path, 'failed'));
+        const paths = fieldPaths(path);
+        record(paths.invalidated);
+        record(paths.failed);
         if (view.invalidated && view.refreshing) {
-            record(joinPath(path, 'refreshing'));
-            record(joinPath(path, 'updatedAt'));
+            record(paths.refreshing);
+            record(paths.updatedAt);
         }
         if (present !== false && view.status === EResourceStatus.Pending) {
             // A Pending reader must wake when the request lands back on Idle (abort or
             // supersede teardown) but not when it settles to Success with data: `isIdle`
             // flips only on the former.
-            record(joinPath(path, 'isIdle'));
+            record(paths.isIdle);
         } else if ((present !== false && view.status !== EResourceStatus.Success)
             || (view.invalidated && view.status === EResourceStatus.Pending)) {
-            record(joinPath(path, 'status'));
+            record(paths.status);
         }
+    },
+
+    /** The memoized `path.field` string for one entry path and own view field.
+     *
+     * @param path - captured entry path.
+     * @param field - own view field name read through a facade get trap.
+     */
+    fieldPath(path: TPath, field: string): TPath {
+        const paths = fieldPaths(path);
+        return paths[field] ?? joinPath(path, field);
     },
 
     /** Builds the class field facade and records the automatic retry dependencies.

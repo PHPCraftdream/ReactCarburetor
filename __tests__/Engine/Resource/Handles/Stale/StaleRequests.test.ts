@@ -1,5 +1,6 @@
 import {ResourceCarburetor} from '@/Carburetor';
 import {ResourceCache} from '@/Carburetor/Resource/Cache/ResourceCache';
+import {flush} from '../../Resource/Keys/helpers';
 
 const sleep = async (ms: number): Promise<void> => {
     await new Promise(resolve => setTimeout(resolve, ms));
@@ -21,26 +22,23 @@ describe('stale entries request again (D4)', () => {
         expect(calls).toEqual(['a', 'a']);
     });
 
-    test('a stale ResourceCarburetor entry suspends on a fresh request', async () => {
+    test('a stale ResourceCarburetor entry suspends with stale data and revalidates', async () => {
         const calls: string[] = [];
         const resource = new ResourceCarburetor<string, [string]>(async key => {
             calls.push(key);
             return `answer-${key}`;
-        }, {ttl: 40});
+        }, {ttl: 200});
 
         await resource.load('a');
-        await sleep(60);
+        await sleep(250);
 
-        let caught: unknown;
-        try {
-            resource.suspend('a');
-        } catch (thrown: unknown) {
-            caught = thrown;
-        }
-
-        expect(caught).toBeInstanceOf(Promise);
+        // SWR: stale Success suspends with the visible answer and revalidates in background.
+        expect(resource.suspend('a')).toBe('answer-a');
         expect(calls).toEqual(['a', 'a']);
-        await (caught as Promise<void>);
+        await flush();
+        await sleep(10);
+        expect(resource.suspend('a')).toBe('answer-a');
+        expect(calls).toEqual(['a', 'a']);
     });
 
     test('a stale ResourceCache entry is reloaded through load and suspend', async () => {
@@ -60,5 +58,32 @@ describe('stale entries request again (D4)', () => {
         expect(cache.suspend('a')).toBe('answer-a');
         await new Promise(done => setImmediate(done));
         expect(calls).toEqual(['a', 'a', 'a']);
+    });
+
+    test('an ongoing background revalidation keeps serving the stale answer', async () => {
+        const calls: string[] = [];
+        let release: (value: string) => void = () => undefined;
+        const resource = new ResourceCarburetor<string, [string]>(async key => {
+            calls.push(key);
+            return new Promise<string>(resolve => { release = resolve; });
+        }, {ttl: 150});
+
+        const loading = resource.load('a');
+        release('answer-a-1');
+        await loading;
+        await sleep(200);
+
+        // SWR: the first suspend serves stale data and starts a background revalidation.
+        expect(resource.suspend('a')).toBe('answer-a-1');
+        await flush();
+        // The background start has run: the slot is Pending, but the second suspend must
+        // still serve the visible stale answer instead of throwing a promise.
+        expect(resource.suspend('a')).toBe('answer-a-1');
+        expect(calls).toEqual(['a', 'a']);
+
+        release('answer-a-2');
+        await flush();
+        expect(resource.suspend('a')).toBe('answer-a-2');
+        expect(calls).toEqual(['a', 'a']);
     });
 });

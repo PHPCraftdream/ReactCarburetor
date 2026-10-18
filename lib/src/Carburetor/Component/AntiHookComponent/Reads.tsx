@@ -47,14 +47,12 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
     /** Live accessor for the recorder built into a cached view, whose call site is long gone. */
     private readonly [C.getRenderAttempt] = (): IRenderAttempt | undefined => this[C.renderAttempt];
 
-    /**
-     * The only way to read state in render: returns tracked data. The component
-     * subscribes to exactly the fields it actually reads, and re-renders only when
-     * those fields change.
+    /** The only way to read state in render: returns tracked data; subscribes to exactly
+     * the fields it actually reads, and re-renders only when those fields change.
      *
-     * The view is the same object across renders while the carburetor and its data object stay
-     * the same; `setData`/`restore` rebuild it. Reads outside the attempt that last called this
-     * method record nothing.
+     * The view is the same object across renders while the carburetor and its data object
+     * stay the same; `setData`/`restore` rebuild it. Reads outside the attempt that last
+     * called this method record nothing.
      */
     public useCarburetor<T extends object>(carburetor: IReadableCarburetor<T>): TReadonly<T> {
         const attempt = this[C.renderAttempt];
@@ -77,8 +75,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         return declareConnection(this[C.connections], this[C.getRenderAttempt], source);
     }
 
-    /**
-     * A persistent view of a carburetor's data, declared once and read directly in render.
+    /** A persistent view of a carburetor's data, declared once and read directly in render.
      *
      * `useCarburetor` also keeps a persistent root view per carburetor (see `buildTrackedView`),
      * rebuilt only when its data object changes — but it is looked up by carburetor identity on
@@ -131,8 +128,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         return buildPersistentView(declared);
     }
 
-    /**
-     * A typed selection of this component's connected data, safe to hand a child gated by
+    /** A typed selection of this component's connected data, safe to hand a child gated by
      * shallow props comparison — an external `React.memo` component, or this base class's own
      * props gate.
      *
@@ -361,19 +357,15 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         return value;
     }
 
-    /**
-     * Reads one entry of a resource cache, and subscribes to that entry alone.
+    /** Reads one entry of a resource cache and subscribes to that entry alone.
+     * A stale entry is not fetched here — the fetch is queued and runs after the commit,
+     * by which time the subscription exists.
      *
-     * A stale entry is not fetched here: a write during render notifies subscribers mid-render, which
-     * is the hazard the rules report. The fetch is queued and runs after the commit, by which time
-     * the subscription exists — so the answer reaches this component.
+     * A failure's own notification must not queue another request:
+     * explicit invalidation clears `failed` and re-arms even an initial Error entry; a failed
+     * refresh keeps Success and its old data until another invalidation or explicit load.
      *
-     * A failure's own notification must not queue another request. Explicit invalidation
-     * clears `failed` and re-arms even an initial Error entry; the retry still starts only
-     * after the reader's next commit. A failed refresh keeps Success and its old data, with
-     * `failed` preventing an automatic retry until another invalidation or explicit load.
-     *
-     * @param source - the cache entry's owner: `resolve(...args)` gives the path this render
+     * @param source - the cache entry's owner; `resolve(...args)` gives the path this render
      * subscribes to, and a stale entry queues a `load` for after the commit
      * @param args - the loader arguments, identifying the entry read now and targeted by the
      * deferred `load`; a different tuple reads a different entry
@@ -381,22 +373,24 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
     public useResource<T, TArgs extends TResourceArgs = []>(
         source: IResourceSource<T, TArgs>,
         ...args: TArgs
-    ): IResourceView<T> {
-        // One call: resolve() serializes args once and hands back the key, the read path and
-        // the current view together (R16-10(4)), where this used to be three separate calls.
+    ): TReadonly<IResourceView<T>> {
         const resolution = source.resolve(...args);
         const {path, view, fieldView} = resolution;
         const attempt = this[C.renderAttempt];
         const entry = this[C.track](source);
         (entry.resourcePaths ??= new Set()).add(path);
-        // The shared reader passes this explicit resolution to its field factory; class facades
-        // still retain their local overrides and whole-data-field dependency semantics.
-        const readerView = resourceReader.view(resolution, (fieldPath) => {
-            if (fieldView === undefined
-                || (attempt !== undefined && this[C.renderAttempt] === attempt && !attempt.abandoned)) {
+        // The guard is evaluated per read: a record lands in this render's entry only while
+        // the attempt that opened before this call is still the live one and not abandoned.
+        const fieldViewRecord = (fieldPath: TPath): void => {
+            if (fieldView === undefined || (attempt !== undefined
+                && this[C.renderAttempt] === attempt && !attempt.abandoned)) {
                 entry.reads.add(fieldPath);
             }
-        });
+        };
+        // The shared reader records the automatic retry dependencies and builds the facade
+        // through the source's own fieldView factory, so a custom factory stays authoritative.
+        const readerView = resourceReader.view(
+            resolution, fieldViewRecord) as unknown as TReadonly<IResourceView<T>>;
         const worthFetching = resourceReader.worthFetching(view);
         // The deferred load belongs to the render attempt that queued it, exactly like the reads
         // do: tentative until the commit that consumes the attempt runs it, discarded with an
@@ -522,20 +516,29 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         return readerView;
     }
 
-    /**
-     * Runs the fetches the committed render queued, now that the subscriptions they need exist.
+    /** Subscribes to the entry and to its `data` field, and returns the data, suspending
+     * while it loads and rethrowing when it failed — the Suspense read in one call.
      *
-     * Only the attempt this commit consumed has its queue drained: it must be the pending
-     * attempt, un-abandoned, and the very attempt `commitSubscriptions` published — identity
-     * that means exactly "this commit had a fresh render behind it". Anything else is left
-     * untouched: an abandoned attempt's queue dies with the attempt, and a commit with no fresh
-     * attempt behind it (a StrictMode-replayed mount, a Suspense hide/reveal) has no new render
-     * to fetch for.
+     * @param source - the cache entry's owner whose `suspend` serves the visible data.
+     * @param args - the loader arguments identifying the entry to read.
+     */
+    public suspendResource<T, TArgs extends TResourceArgs>(
+        source: IResourceSource<T, TArgs> & {suspend(...args: TArgs): T}, ...args: TArgs): T {
+        const view = this.useResource(source, ...args);
+        void view.data;
+        return source.suspend(...args);
+    }
+    /** Runs the fetches the committed render queued, now that the subscriptions they need
+     * exist. Only the pending, un-abandoned, freshly committed attempt has its queue drained.
      *
-     * A replayed StrictMode mount cannot double-load: its second `componentDidMount` finds the
-     * attempt already consumed (it is the committed attempt, so not the fresh one it drained at
-     * the first `componentDidMount`), and the drain above clears the queue before invoking its
-     * loads anyway — every queue is consumed exactly once, so the replay finds it absent.
+     * Identity that means exactly "this commit had a fresh render behind it". Anything else is
+     * left untouched: an abandoned attempt's queue dies with the attempt, and a commit with no
+     * fresh attempt behind it (a StrictMode-replayed mount, a Suspense hide/reveal) has no new
+     * render to fetch for. A replayed StrictMode mount cannot double-load: its second
+     * `componentDidMount` finds the attempt already consumed (it is the committed attempt, so
+     * not the fresh one it drained at the first `componentDidMount`), and the drain above clears
+     * the queue before invoking its loads anyway — every queue is consumed exactly once, so the
+     * replay finds it absent.
      */
     public [C.loadStaleResources](): void {
         const attempt = this[C.pendingAttempt];
@@ -562,8 +565,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         if (adoptions !== undefined) for (const adopt of adoptions) adopt();
     }
 
-    /**
-     * The attempt entry for one source in the current render: created on first use with the
+    /** The attempt entry for one source in the current render: created on first use with the
      * source resolved and the baseline version captured, then only its path set grows.
      *
      * Outside a render attempt there is nothing to attribute a read to; a detached entry is

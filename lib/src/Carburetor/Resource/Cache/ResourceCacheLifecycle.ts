@@ -22,12 +22,6 @@ const noop = (): void => undefined;
 
 /** Owns cache load, settlement, and Suspense transitions. */
 export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> extends ResourceCacheState<T, TArgs> {
-    /** Bound to the instance and drops event arguments, so handlers may adopt it (D2). */
-    public load: (...args: TArgs) => Promise<void>;
-
-    /** Bound to the instance and drops event arguments, so handlers may adopt it (D2). */
-    public refresh: (...args: TArgs) => Promise<void>;
-
     /** Initializes the loader and cache options for the lifecycle.
      *
      * @param loader - the resource loader driving entries.
@@ -35,13 +29,34 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
      */
     protected constructor(loader: TResourceLoader<T, TArgs>, options: IResourceCacheOptions<TArgs> = {}) {
         super(loader, options);
-        this.load = (...args: TArgs): Promise<void> => this.runLoad(dropEventArgs(args));
-        this.refresh = (...args: TArgs): Promise<void> => this.runRefresh(dropEventArgs(args));
+        this.load = this.load.bind(this);
+        this.refresh = this.refresh.bind(this);
+    }
+
+    /** Load an entry unless its current value is fresh.
+     *
+     * @param args - loader arguments; stray event arguments are dropped.
+     */
+    public load(...args: TArgs): Promise<void> {
+        return this.runLoad(dropEventArgs(args));
+    }
+
+    /** Request an entry even when its current value is fresh; always restarts.
+     *
+     * @param args - loader arguments; stray event arguments are dropped.
+     */
+    public refresh(...args: TArgs): Promise<void> {
+        return this.runRefresh(dropEventArgs(args));
     }
 
     /** Load an entry unless its current value is fresh (the bound `load` body). */
     private runLoad(args: TArgs): Promise<void> {
-        const key = this[R.keyOf](args);
+        let key: string;
+        try {
+            key = this[R.keyOf](args);
+        } catch (error: unknown) {
+            return Promise.reject(error);
+        }
         const entry = this.data.entries[key];
         this[R.touch](key);
         if (entry && entry.status === EResourceStatus.Success && !this[R.isStale](entry)) {
@@ -50,11 +65,16 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
         return this[R.fetch](key, args);
     }
 
-    /** Request an entry even when its current value is fresh (the bound `refresh` body). */
+    /** Request an entry even when its current value is fresh; always restarts (the bound `refresh` body). */
     private runRefresh(args: TArgs): Promise<void> {
-        const key = this[R.keyOf](args);
+        let key: string;
+        try {
+            key = this[R.keyOf](args);
+        } catch (error: unknown) {
+            return Promise.reject(error);
+        }
         this[R.touch](key);
-        return this[R.fetch](key, args);
+        return this[R.fetch](key, args, false, true);
     }
 
     /** Return a ready value or throw its pending request or raw failure.
@@ -90,10 +110,14 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
      * @param key - encoded cache key.
      * @param args - loader arguments for the key.
      * @param deferNotification - defer Pending subscribers when called by suspend.
+     * @param force - restart (abort and replace) any known in-flight request for the key.
      */
-    public [R.fetch](key: string, args: TArgs, deferNotification: boolean = false): Promise<void> {
+    public [R.fetch](
+        key: string, args: TArgs, deferNotification: boolean = false, force: boolean = false,
+    ): Promise<void> {
         const known = this[R.runtimeRecords]?.get(key)?.request;
-        if (known) return known.promise;
+        if (known && !force) return known.promise;
+        const superseded = known;
 
         const entry = this.data.entries[key];
         const prepared = prepareCacheRequest(this.data, key, entry);
@@ -103,7 +127,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
         const priorRefreshing = entry?.refreshing;
         const runtime = this[R.runtimeFor](key, true) as ICacheRuntime<T>;
         const controller = createAbortHandle();
-        let resolveRequest: () => void = noop;
+        let resolveRequest: (value: void | PromiseLike<void>) => void = noop;
         let rejectRequest: (error: unknown) => void = noop;
         const promise = new Promise<void>((resolve, reject) => {
             resolveRequest = resolve;
@@ -118,8 +142,11 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
                 entry.status === EResourceStatus.Error || entry.failed || entry.error !== undefined ||
                 runtime.answer?.failure !== undefined
             ),
+            resolve: resolveRequest,
         };
         runtime.request = request;
+        // Any reentrant start from an abort listener then joins this already-registered request.
+        superseded?.controller.abort();
         try {
             this[R.markLoading](key, deferNotification, entry, prepared, request);
             if (this[R.isCurrent](key, request)) this[R.evict](deferNotification);
@@ -162,6 +189,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
         }
 
         if (!this[R.isCurrent](key, request)) {
+            if (superseded) this[R.adopt](superseded, promise);
             rejectRequest(createCacheSupersededError(this, promise));
             return promise;
         }
@@ -176,7 +204,18 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
             (data: T) => this[R.settleSuccess](key, request, data),
             (error: unknown) => this[R.settleFailure](key, request, error)
         ).then(resolveRequest, rejectRequest);
+        if (superseded) this[R.adopt](superseded, promise);
         return promise;
+    }
+
+    /** A replaced request's awaiters observe the successor's outcome.
+     *
+     * @param old - the request that was replaced and is resolving its awaiters through us.
+     * @param successor - the replacement request's promise the old awaiters now observe.
+     */
+    public [R.adopt](old: ICacheRequest, successor: Promise<void>): void {
+        void old.promise.catch(noop);
+        old.resolve(successor);
     }
 
     /** Publish a joinable request with capabilities for eventual settlement.

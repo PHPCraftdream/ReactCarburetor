@@ -1,4 +1,5 @@
 import {CarburetorHistory, EResourceStatus, ResourceCarburetor} from '@/Carburetor';
+import {createAnswerMemory} from '@/Carburetor/Resource/Slot/answerMemory';
 
 const sleep = async (ms: number): Promise<void> => {
     await new Promise(resolve => setTimeout(resolve, ms));
@@ -23,7 +24,7 @@ describe('ResourceCarburetor answer memory (D1)', () => {
         await resource.load('b');
         await resource.load('a');
 
-        // No ttl means a remembered answer never goes stale (D4), so 'a' costs no request.
+        // The default ttl (30 s) keeps a remembered answer fresh (D4), so 'a' costs no request.
         expect(loader.calls).toEqual(['a', 'b']);
         expect(resource.getData().status).toBe(EResourceStatus.Success);
         expect(resource.getData().data).toBe('answer-a');
@@ -60,13 +61,13 @@ describe('ResourceCarburetor answer memory (D1)', () => {
         expect(loader.calls).toEqual(['a', 'b', 'c']);
     });
 
-    test('no ttl serves a repeat from memory, an expired ttl requests again (D4)', async () => {
+    test('by default a repeat is served from memory, an expired ttl requests again (D4)', async () => {
         const freshLoader = recorded();
         const staleLoader = recorded();
         const fresh = new ResourceCarburetor<string, [string]>(freshLoader.load);
         const expiring = new ResourceCarburetor<string, [string]>(staleLoader.load, {ttl: 40});
 
-        // Without a ttl a fresh repeat never reaches the loader.
+        // By default (ttl 30 s) a fresh repeat never reaches the loader.
         await fresh.load('a');
         await sleep(60);
         await fresh.load('a');
@@ -91,6 +92,56 @@ describe('ResourceCarburetor answer memory (D1)', () => {
 
         await resource.load('a');
         expect(loader.calls).toEqual(['a', 'a']);
+    });
+
+    test('the default memory is bounded (LRU) and re-requests evicted keys', async () => {
+        const loader = recorded();
+        const resource = new ResourceCarburetor<string, [string]>(loader.load);
+
+        for (let index = 0; index < 150; index++) await resource.load(`key-${index}`);
+        // 100 is the default budget: key-0 was evicted long ago, key-149 is resident.
+        const seeded = Array.from({length: 150}, (_, index) => `key-${index}`);
+        await resource.load('key-0');
+        expect(loader.calls).toEqual([...seeded, 'key-0']);
+
+        await resource.load('key-149');
+        expect(loader.calls).toEqual([...seeded, 'key-0']);
+    });
+
+    test('a stale entry is purged from the memory on read and on remember', async () => {
+        const loader = recorded();
+        const resource = new ResourceCarburetor<string, [string]>(loader.load, {ttl: 30});
+
+        await resource.load('a');
+        await sleep(60);
+        // Reading 'a' past its ttl must not keep the expired entry alive: it is dropped,
+        // not skipped, so the memory does not accumulate every expired answer.
+        await resource.load('b');
+        await sleep(60);
+        await resource.load('c');
+
+        expect(loader.calls).toEqual(['a', 'b', 'c']);
+        // 'a' and 'b' expired and were never refreshed: nothing may resurrect them.
+        await sleep(60);
+        await resource.load('a');
+        expect(loader.calls).toEqual(['a', 'b', 'c', 'a']);
+    });
+
+    test('explicit maxEntries: Infinity keeps every answer, 0 keeps none', async () => {
+        const loader = recorded();
+        const unlimited = new ResourceCarburetor<string, [string]>(loader.load, {maxEntries: Infinity});
+
+        await unlimited.load('a');
+        await unlimited.load('b');
+        await unlimited.load('a'); // nothing is evicted, so 'a' is still a memory hit
+        expect(loader.calls).toEqual(['a', 'b']);
+
+        const zeroLoader = recorded();
+        const zero = new ResourceCarburetor<string, [string]>(zeroLoader.load, {maxEntries: 0});
+        await zero.load('a');
+        await zero.load('b'); // 'a' is evicted immediately: nothing is remembered
+        await zero.load('a'); // so 'a' costs a new request again
+        expect(zeroLoader.calls).toEqual(['a', 'b', 'a']);
     });
 
     test('snapshot() carries only the current answer, never the memory', async () => {
@@ -148,5 +199,38 @@ describe('ResourceCarburetor answer memory (D1)', () => {
         } finally {
             history.disconnect();
         }
+    });
+});
+
+describe('answer memory retention', () => {
+    test('an expired payload is deleted by the read itself, without a sweep', () => {
+        const realNow = Date.now;
+        let now = 1_000;
+        Date.now = () => now;
+        try {
+            const memory = createAnswerMemory<string>(30, undefined);
+            memory.remember('k1', 'a', now); // fresh at insert
+            memory.remember('k2', 'b', now); // fresh at insert
+            now = 5_000;                     // both expired; no remember has run since
+            expect(memory.fresh('k1')).toBeUndefined();
+            expect(memory.size()).toBe(1);   // deleted by THIS read; k2 untouched
+            expect(memory.fresh('k2')).toBeUndefined();
+            expect(memory.size()).toBe(0);
+        } finally { Date.now = realNow; }
+    });
+
+    test('remember() sweeps every stale entry, including ones past a fresh entry', () => {
+        const memory = createAnswerMemory<string>(30, undefined);
+        memory.remember('e1', 'a', Date.now() - 1000);
+        memory.remember('fresh', 'b', Date.now());
+        memory.remember('e2', 'c', Date.now() - 2000);
+
+        // Another fresh remember runs the sweep: both expired entries must be gone.
+        memory.remember('late', 'd', Date.now());
+
+        expect(memory.size()).toBe(2);
+        expect(memory.fresh('e1')).toBeUndefined();
+        expect(memory.fresh('e2')).toBeUndefined();
+        expect(memory.fresh('fresh')).toEqual({data: 'b', updatedAt: memory.fresh('fresh')!.updatedAt});
     });
 });

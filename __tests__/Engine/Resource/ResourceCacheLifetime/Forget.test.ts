@@ -247,3 +247,78 @@ describe('ResourceCache forget', () => {
         cache.unsubscribe(id);
     });
 });
+
+const makePendingLoader = () => {
+    const pending: Array<{key: string; signal: AbortSignal; resolve: (value: string) => void}> = [];
+    const load = (key: string, signal: AbortSignal): Promise<string> => new Promise((resolve) => {
+        pending.push({key, signal, resolve});
+    });
+
+    return {pending, load};
+};
+
+describe('ResourceCache clear', () => {
+    test('clear aborts a request whose entry a setData replacement removed', () => {
+        const loader = makePendingLoader();
+        const cache = new TestCache<string, string>(loader.load);
+
+        void cache.load('a');
+        cache.setData({entries: {}});
+        cache.clear();
+
+        expect(loader.pending[0].signal.aborted).toBe(true);
+    });
+
+    test('clear types as a zero-argument handle', async () => {
+        const loader = makePendingLoader();
+        const cache = new TestCache<string, string>(loader.load);
+
+        void cache.load('a');
+        void cache.load('b');
+        loader.pending[0].resolve('ann');
+        loader.pending[1].resolve('bob');
+        await flush();
+
+        cache.clear();
+
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+        expect(() => cache.clear()).not.toThrow();
+    });
+
+    test('a detached clear() still clears every entry', async () => {
+        const loader = makePendingLoader();
+        const cache = new TestCache<string, string>(loader.load);
+
+        void cache.load('a');
+        loader.pending[0].resolve('ann');
+        await flush();
+
+        const {clear} = cache;
+        clear();
+
+        expect(Object.keys(cache.getData().entries)).toEqual([]);
+    });
+
+    test('clear settles an orphaned load promise of a loader that ignores the abort signal', async () => {
+        // The loader's promise never settles, even on abort.
+        const cache = new TestCache<string, string>(() => new Promise<string>(() => undefined));
+
+        const pending = cache.load('a');
+        cache.setData({entries: {}});
+        cache.clear();
+
+        // The aborted request resolves (to undefined), so awaiting the load cannot hang.
+        await expect(pending).resolves.toBeUndefined();
+    });
+
+    test('clear settles a live load of an abort-ignoring loader without a prior setData', async () => {
+        // The loader's promise never settles, even on abort, and the entry stays in place.
+        const cache = new TestCache<string, string>(() => new Promise<string>(() => undefined));
+
+        const pending = cache.load('a');
+        cache.clear();
+
+        // The live request resolves (to undefined): awaiting the load cannot hang.
+        await expect(pending).resolves.toBeUndefined();
+    });
+});

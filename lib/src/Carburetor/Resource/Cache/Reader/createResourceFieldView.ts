@@ -1,7 +1,6 @@
 import {IResourceResolution, IResourceView} from '@/Carburetor/Models/Resource';
-import {TPath, TPathRecorder} from '@/Carburetor/Models/Paths';
-import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
-
+import {TPathRecorder} from '@/Carburetor/Models/Paths';
+import {resourceReader} from '@/Carburetor/Resource/Cache/Reader/resourceReader';
 /** A captured field facade with shared traps and own enumerable field values.
  *
  * @param resolution - resource fields and path captured by this resolution.
@@ -9,70 +8,59 @@ import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
  */
 export const createResourceFieldView = <T>(
     resolution: IResourceResolution<T>, record: TPathRecorder
-): IResourceView<T> => new Proxy({...resolution.view}, new FieldHandler(resolution.path, record));
+): IResourceView<T> => new Proxy({...resolution.view}, new FieldHandler(resolution, record));
 
-/** The target is a local copy: overrides never write back into a cache snapshot. */
+/** The target is a local copy: writes are rejected, reads subscribe to whole fields. */
 class FieldHandler<T> implements ProxyHandler<IResourceView<T>> {
-    /** Local override keys, allocated lazily so ordinary field reads need no Set. */
-    private overrides: Set<PropertyKey> | undefined;
 
-    /** Captures the entry path and this facade's recorder.
+    /** Captures the entry resolution and this facade's recorder.
      *
-     * @param path - captured entry path.
+     * @param resolution - resource fields and path captured by this resolution.
      * @param record - records fields read before they are locally overridden.
      */
-    constructor(private readonly path: TPath, private readonly record: TPathRecorder) {}
+    constructor(private readonly resolution: IResourceResolution<T>, private readonly record: TPathRecorder) {}
 
-    /** Assigns a local value without changing the captured cache entry.
+    /** Rejects assignment: a resource view is readonly.
      *
-     * @param target - facade's own field copy.
-     * @param key - field being assigned.
-     * @param value - replacement local value.
+     * @param _target - the facade's own empty target; unused.
+     * @param _key - field being assigned; unused because the trap throws.
      */
-    public set(target: IResourceView<T>, key: string | symbol, value: unknown): boolean {
-        const changed = Reflect.set(target, key, value);
-        if (changed) (this.overrides ??= new Set<PropertyKey>()).add(key);
-        return changed;
+    public set(_target: IResourceView<T>, _key: string | symbol): boolean {
+        throw new TypeError('a resource view is readonly; write the store, not the reader facade.');
     }
 
-    /** Defines a local property while preserving ordinary descriptor semantics.
+    /** Rejects property definition: a resource view is readonly.
      *
-     * @param target - facade's own field copy.
-     * @param key - property being defined.
-     * @param descriptor - requested local descriptor.
+     * @param _target - the facade's own empty target; unused.
+     * @param _key - property being defined; unused because the trap throws.
      */
-    public defineProperty(target: IResourceView<T>, key: string | symbol, descriptor: PropertyDescriptor): boolean {
-        const changed = Reflect.defineProperty(target, key, descriptor);
-        if (changed) (this.overrides ??= new Set<PropertyKey>()).add(key);
-        return changed;
+    public defineProperty(_target: IResourceView<T>, _key: string | symbol): boolean {
+        throw new TypeError('a resource view is readonly; write the store, not the reader facade.');
     }
 
-    /** Deletes only the local field, never the captured cache property.
+    /** Rejects deletion: a resource view is readonly.
      *
-     * @param target - facade's own field copy.
-     * @param key - property being removed.
+     * @param _target - the facade's own empty target; unused.
+     * @param _key - property being removed; unused because the trap throws.
      */
-    public deleteProperty(target: IResourceView<T>, key: string | symbol): boolean {
-        const changed = Reflect.deleteProperty(target, key);
-        if (changed) (this.overrides ??= new Set<PropertyKey>()).add(key);
-        return changed;
+    public deleteProperty(_target: IResourceView<T>, _key: string | symbol): boolean {
+        throw new TypeError('a resource view is readonly; write the store, not the reader facade.');
     }
 
-    /** Reads an own captured field at field-specific dependency precision.
+    /** Reads an own captured field, subscribing to the whole field path.
      *
      * @param target - facade's own field copy.
      * @param key - requested property.
      * @param receiver - receiver forwarded for local accessors.
      */
     public get(target: IResourceView<T>, key: string | symbol, receiver: unknown): unknown {
-        if (typeof key === 'string' && !this.overrides?.has(key)
-            && Object.prototype.hasOwnProperty.call(target, key)) {
+        if (typeof key === 'string' && Object.prototype.hasOwnProperty.call(target, key)) {
             if (key === 'stale') {
-                this.record(joinPath(this.path, 'invalidated'));
-                this.record(joinPath(this.path, 'updatedAt'));
+                this.record(resourceReader.fieldPath(this.resolution.path, 'invalidated'));
+                this.record(resourceReader.fieldPath(this.resolution.path, 'updatedAt'));
             } else {
-                this.record(joinPath(this.path, key));
-                if (key === 'refreshing') this.record(joinPath(this.path, 'updatedAt'));
+                this.record(resourceReader.fieldPath(this.resolution.path, key));
+                if (key === 'refreshing') this.record(resourceReader.fieldPath(this.resolution.path, 'updatedAt'));
             }
         }
         return Reflect.get(target, key, receiver);

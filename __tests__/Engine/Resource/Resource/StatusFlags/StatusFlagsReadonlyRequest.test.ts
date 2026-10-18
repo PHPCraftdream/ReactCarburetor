@@ -27,3 +27,56 @@ describe('ResourceCarburetor status flags capability on request start (F3)', () 
         expect(data.data).toBe('answer-a');
     });
 });
+
+const freezeSnapshot = <T>(state: IResourceData<T>): IResourceData<T> => {
+    const snapshot = {...state};
+    for (const field of ['status', 'data', 'error', 'updatedAt', 'isIdle', 'isPending', 'isSuccess', 'isError']) {
+        Object.defineProperty(snapshot, field, {
+            value: snapshot[field as keyof IResourceData<T>],
+            writable: false, enumerable: true, configurable: true,
+        });
+    }
+    return snapshot;
+};
+
+describe('settlement handles a readonly public replacement', () => {
+    test('a keyless frozen setData does not strand an in-flight success', async () => {
+        let resolveLoader: (value: string) => void = () => undefined;
+        const resource = new ResourceCarburetor<string, []>(
+            () => new Promise<string>(resolve => { resolveLoader = resolve; })
+        );
+        const pending = resource.load();
+        const snapshot = freezeSnapshot(resource.getData());
+        resource.setData(snapshot);
+        resolveLoader('late');
+        await expect(pending).resolves.toBeUndefined();
+        expect(resource.getData().status).toBe(EResourceStatus.Success);
+        expect(resource.getData().data).toBe('late');
+    });
+
+    test('a keyless frozen setData does not break abort', async () => {
+        let resolveLoader: (value: string) => void = () => undefined;
+        const resource = new ResourceCarburetor<string, []>(
+            () => new Promise<string>(resolve => { resolveLoader = resolve; })
+        );
+        const pending = resource.load();
+        resource.setData(freezeSnapshot(resource.getData()));
+        expect(() => resource.abort()).not.toThrow();
+        resolveLoader('late');
+        await expect(pending).resolves.toBeUndefined();
+        expect(resource.getData().status).toBe(EResourceStatus.Idle);
+    });
+
+    test('a keyless frozen setData does not strand an in-flight error', async () => {
+        let rejectLoader: (error: unknown) => void = () => undefined;
+        const resource = new ResourceCarburetor<string, []>(
+            () => new Promise<string>((_, reject) => { rejectLoader = reject; })
+        );
+        const pending = resource.load();
+        resource.setData(freezeSnapshot(resource.getData()));
+        rejectLoader(new Error('boom'));
+        await expect(pending).resolves.toBeUndefined();
+        expect(resource.getData().status).toBe(EResourceStatus.Error);
+        expect(resource.getData().error).toBe('boom');
+    });
+});

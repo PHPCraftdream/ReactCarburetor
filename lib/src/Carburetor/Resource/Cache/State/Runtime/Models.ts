@@ -12,6 +12,8 @@ export interface ICacheRequest {
     controller: AbortController;
     /** The shared answer promise returned by load/refresh and thrown by suspend. */
     promise: Promise<void>;
+    /** Promise capture used to adopt a successor's outcome when this request is replaced. */
+    resolve: (value: void | PromiseLike<void>) => void;
     /** Monotonic owner generation for this key. */
     generation: number;
     /** Invalidation epoch captured when this request started. */
