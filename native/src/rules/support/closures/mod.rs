@@ -19,7 +19,8 @@ use oxc_syntax::scope::ScopeFlags;
 
 use crate::rules::support::bases::*;
 use crate::rules::support::chain::{chain_root, Base};
-use crate::rules::support::names::{extends_any, member_call_name};
+use crate::rules::support::names::{extends_any, member_call_name, unwrap_expression};
+use crate::rules::support::walk::functions::value_branches;
 
 mod collect;
 mod dependency;
@@ -334,34 +335,30 @@ fn expression_function(expression: &Expression<'_>) -> Option<Span> {
     }
 }
 
-fn jsx_expression_function(expression: &JSXExpression<'_>) -> Option<Span> {
-    match expression {
-        JSXExpression::ArrowFunctionExpression(arrow) => Some(arrow.span),
-        JSXExpression::FunctionExpression(function) => Some(function.span),
-        JSXExpression::ParenthesizedExpression(expression) => {
-            expression_function(&expression.expression)
-        }
-        JSXExpression::TSAsExpression(expression) => expression_function(&expression.expression),
-        JSXExpression::TSSatisfiesExpression(expression) => {
-            expression_function(&expression.expression)
-        }
-        JSXExpression::TSTypeAssertion(expression) => expression_function(&expression.expression),
-        JSXExpression::TSNonNullExpression(expression) => {
-            expression_function(&expression.expression)
-        }
-        JSXExpression::TSInstantiationExpression(expression) => {
-            expression_function(&expression.expression)
-        }
-        _ => None,
-    }
-}
-
-fn attribute_function(value: &JSXAttributeValue<'_>) -> Option<Span> {
+/// Every function a component prop hands over: a direct one, or the functions a conditional or
+/// logical arm in the prop selects — the same set the walker's fresh analysis collects.
+fn attribute_functions(value: &JSXAttributeValue<'_>, out: &mut Vec<Span>) {
     let JSXAttributeValue::ExpressionContainer(container) = value else {
-        return None;
+        return;
+    };
+    let Some(expression) = container.expression.as_expression() else {
+        return;
     };
 
-    jsx_expression_function(&container.expression)
+    prop_functions(expression, out);
+}
+
+fn prop_functions(expression: &Expression<'_>, out: &mut Vec<Span>) {
+    let expression = unwrap_expression(expression);
+    if let Some((left, right)) = value_branches(expression) {
+        prop_functions(left, out);
+        prop_functions(right, out);
+        return;
+    }
+
+    if let Some(span) = expression_function(expression) {
+        out.push(span);
+    }
 }
 
 /// Whether an assignment writes a member in all but syntax: `this.f = fn` or `this.#f = fn`.

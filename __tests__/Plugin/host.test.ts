@@ -160,6 +160,51 @@ describe('lint plugin in the oxlint host', () => {
             rmSync(directory, {recursive: true, force: true});
         }
     });
+    test('H21 conditional component-prop handlers survive H30 overlaps for both scopes', () => {
+        const directory = mkdtempSync(path.join(ROOT, '.tmp-h21-conditional-'));
+        const fixture = path.join(directory, 'view.tsx');
+        const config = path.join(directory, 'oxlintrc.json');
+        const plugin = path.relative(directory, path.join(ROOT, 'plugin', 'src', 'index.mts')).replace(/\\/g, '/');
+
+        try {
+            for (const source of [
+                'export function Row() { return <Child onSelect={enabled ? () => act() : undefined}/>;\n}\nconst enabled = true;\nfunction act() {}\n',
+                'export function Row() { return <Child onSelect={enabled && (() => act())}/>;\n}\nconst enabled = true;\nfunction act() {}\n',
+                'export function Row() { return <Child onSelect={(enabled ? () => act() : undefined) as Handler}/>;\n}\ntype Handler = (() => void) | undefined;\nconst enabled = true;\nfunction act() {}\n',
+                'import {AntiHookComponent} from "react-carburetor";\nexport class View extends AntiHookComponent {\n    render() {\n        return <Child onSelect={(enabled ? () => act() : undefined) as Handler}/>;\n    }\n}\ntype Handler = (() => void) | undefined;\nconst enabled = true;\nfunction act() {}\n',
+            ]) {
+                writeFileSync(fixture, source);
+
+                for (const scope of ['all', 'classes']) {
+                    writeFileSync(config, JSON.stringify({
+                        jsPlugins: [plugin],
+                        rules: {
+                            'carburetor/no-handler-created-in-render': 'warn',
+                            'carburetor/require-module-function': ['warn', {scope}],
+                        },
+                    }));
+                    const hostResult = spawnSync(process.execPath, [OXLINT, '-c', config, '--format', 'json', fixture], {
+                        cwd: directory,
+                        encoding: 'utf8',
+                        env: {...process.env, CARBURETOR_LINT_BIN: path.join(ROOT, 'native', 'target', 'release',
+                            process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint')},
+                    });
+                    expect(hostResult.status).toBe(0, `${hostResult.stdout || ''}${hostResult.stderr || ''}`);
+                    expect(hostResult.stderr).toBe('', `${hostResult.stderr}\n${hostResult.stdout}`);
+
+                    const hostDiagnostics = JSON.parse(hostResult.stdout || '') as {
+                        diagnostics: {code: string}[];
+                    };
+
+                    expect(hostDiagnostics.diagnostics.map(diagnostic => diagnostic.code)).toEqual([
+                        'carburetor(no-handler-created-in-render)',
+                    ]);
+                }
+            }
+        } finally {
+            rmSync(directory, {recursive: true, force: true});
+        }
+    });
     test('every rule in the reads group fires on its fixture', () => {
         const output = runOxlint([
             '-c', 'plugin/__fixtures__/oxlintrc.json',

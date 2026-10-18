@@ -70,9 +70,19 @@ fn is_component_prop_callback(semantic: &Semantic<'_>, node_id: NodeId) -> bool 
 fn is_component_prop_expression(nodes: &oxc_semantic::AstNodes<'_>, call_id: NodeId) -> bool {
     let mut id = call_id;
     loop {
+        let child = id;
         id = nodes.parent_id(id);
         match nodes.kind(id) {
             AstKind::ParenthesizedExpression(_) | AstKind::TSAsExpression(_) | AstKind::TSSatisfiesExpression(_) | AstKind::TSTypeAssertion(_) | AstKind::TSNonNullExpression(_) | AstKind::TSInstantiationExpression(_) => continue,
+            // Only the value-bearing branches of a conditional are transparent — the branches
+            // `fresh_functions` walks; its `test` selects between them and hands over nothing.
+            AstKind::ConditionalExpression(conditional) => {
+                let child_span = nodes.kind(child).span();
+                if contains(conditional.consequent.span(), child_span) || contains(conditional.alternate.span(), child_span) { continue; }
+                return false;
+            }
+            // Both operands of a logical expression yield its value, so both stay transparent.
+            AstKind::LogicalExpression(_) => continue,
             AstKind::JSXExpressionContainer(_) => {
                 let attribute_id = nodes.parent_id(id);
                 let AstKind::JSXAttribute(_) = nodes.kind(attribute_id) else { return false; };

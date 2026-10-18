@@ -272,7 +272,9 @@ impl<'a> Visit<'a> for Scan<'a> {
         // render; only a component prop is worth protecting from the other direction.
         if self.jsx_component {
             if let Some(value) = &attribute.value {
-                if let Some(span) = attribute_function(value) {
+                let mut functions = Vec::new();
+                attribute_functions(value, &mut functions);
+                for span in functions {
                     self.jsx_props.insert(span);
                 }
             }

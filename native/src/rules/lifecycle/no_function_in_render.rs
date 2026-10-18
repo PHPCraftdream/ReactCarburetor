@@ -18,7 +18,7 @@ use crate::rules::support::bases::SYNCHRONOUS_CALLBACKS;
 use crate::rules::support::closures::{build_semantic, CaptureIndex};
 use crate::rules::support::names::{member_call_name, unwrap_expression};
 use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
-use crate::rules::support::walk::functions::{fresh_attribute_functions, fresh_functions};
+use crate::rules::support::walk::functions::{fresh_attribute_functions, fresh_declaration_functions};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -107,7 +107,7 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
 
         let mut spans = Vec::new();
         if let Some(init) = &declarator.init {
-            fresh_functions(init, &mut spans);
+            fresh_declaration_functions(init, &mut spans, self.semantic);
         }
 
         for span in spans {

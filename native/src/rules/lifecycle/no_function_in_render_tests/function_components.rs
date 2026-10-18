@@ -350,3 +350,87 @@ fn function_component_this_hook_is_class_only() {
     let source = "function Row() { this.useCarburetor(store); return <div />; }";
     assert!(diagnose(source, crate::rules::data::reads::no_use_carburetor_outside_render::check).is_empty());
 }
+
+#[test]
+fn conditional_and_logical_component_props_report_once_through_the_full_registry() {
+    for source in [
+        "const enabled = true;\nfunction act() {}\nfunction Row() { return <Child onSelect={enabled ? () => act() : undefined}/>;\n}\n",
+        "const enabled = true;\nfunction act() {}\nfunction Row() { return <Child onSelect={enabled && (() => act())}/>;\n}\n",
+        "const enabled = true;\nfunction act() {}\nclass View extends AntiHookComponent {\n    render() {\n        return <Child onSelect={enabled ? () => act() : undefined}/>;\n    }\n}\n",
+    ] {
+        let diagnostics = run_registry(source);
+        assert_eq!(
+            diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(),
+            [no_handler_created_in_render::RULE],
+            "{diagnostics:#?}"
+        );
+    }
+}
+
+#[test]
+fn conditional_prop_handling_keeps_nested_functions_with_h30() {
+    let source = "function act() {}\nconst enabled = true;\nfunction Row() { return <Child onSelect={enabled ? () => { const nested = () => act(); } : undefined}/>;\n}\n";
+    let diagnostics = run_registry(source);
+    let mut rules = diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>();
+    rules.sort_unstable();
+    assert_eq!(rules, [no_handler_created_in_render::RULE, require_module_function::RULE], "{diagnostics:#?}");
+}
+
+#[test]
+fn a_function_a_usememo_factory_builds_and_returns_is_h31s() {
+    for (factory, marker) in [
+        ("useMemo(() => { const fn = () => select(id); return fn; }, [id])", "() => select"),
+        ("useMemo(() => { function inner() { select(id); } return inner; }, [id])", "function inner"),
+        ("useMemo(() => { const fn = () => select(id); if (id) return fn; return undefined; }, [id])", "() => select"),
+    ] {
+        let source = format!("function Row({{ id }}) {{ const handler = {factory}; return <button onClick={{handler}}/>; }}");
+        let diagnostics = diagnose(&source, h31::check);
+        assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
+        assert_eq!(diagnostics[0].rule, h31::RULE);
+        assert_eq!(diagnostics[0].column, source.find(marker).unwrap() + 1, "{source}");
+        let registry = run_registry(&source);
+        assert_eq!(registry.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [h31::RULE], "{registry:#?}");
+    }
+}
+
+#[test]
+fn a_hook_passing_a_render_local_through_stays_with_the_declarator_report() {
+    for factory in ["useMemo(() => handler, [])", "useMemo(() => { return handler; }, [])", "useCallback(handler, [])"] {
+        let source = format!("function Row({{ id }}) {{ const handler = () => select(id); const memo = {factory}; return <button onClick={{memo}}/>; }}");
+        let registry = run_registry(&source);
+        assert_eq!(registry.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [h31::RULE], "{registry:#?}");
+        assert_eq!(registry[0].column, source.find("() => select").unwrap() + 1, "{source}");
+    }
+
+    let module_handler = "function handler() {}\nfunction Row() { const memo = useMemo(() => handler, []); return <button onClick={memo}/>;\n}\n";
+    let registry = run_registry(module_handler);
+    assert_eq!(registry.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [require_module_function::RULE], "{registry:#?}");
+}
+
+#[test]
+fn a_function_in_a_prop_tests_condition_is_not_a_component_prop_allocation() {
+    let source = "function act() {}\nfunction Row() { return <Child value={(() => act()) ? 1 : 2}/>;\n}\n";
+    let diagnostics = run_registry(source);
+    assert_eq!(
+        diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(),
+        [require_module_function::RULE],
+        "{diagnostics:#?}"
+    );
+}
+
+#[test]
+fn wrapped_conditional_component_props_report_once_through_the_full_registry() {
+    for source in [
+        "const enabled = true;\nfunction act() {}\ntype Handler = (() => void) | undefined;\nfunction Row() { return <Child onSelect={(enabled ? () => act() : undefined) as Handler}/>;\n}\n",
+        "const enabled = true;\nfunction act() {}\ntype Handler = (() => void) | undefined;\nfunction Row() { return <Child onSelect={enabled ? (() => act()) as Handler : undefined}/>;\n}\n",
+        "const enabled = true;\nfunction act() {}\ntype Handler = (() => void) | undefined;\nclass View extends AntiHookComponent {\n    render() {\n        return <Child onSelect={(enabled ? () => act() : undefined) as Handler}/>;\n    }\n}\n",
+        "const enabled = true;\nfunction act() {}\ntype Handler = (() => void) | undefined;\nclass View extends AntiHookComponent {\n    render() {\n        return <Child onSelect={enabled ? (() => act()) as Handler : undefined}/>;\n    }\n}\n",
+    ] {
+        let diagnostics = run_registry(source);
+        assert_eq!(
+            diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(),
+            [no_handler_created_in_render::RULE],
+            "{diagnostics:#?}"
+        );
+    }
+}

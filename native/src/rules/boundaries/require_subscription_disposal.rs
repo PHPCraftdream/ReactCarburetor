@@ -10,14 +10,14 @@
 //! release or replace it by that id, which is exactly how the engine subscribes components and
 //! computed values. See docs/hazards.md, H20.
 
-use oxc_ast::ast::{CallExpression, Expression, ObjectPropertyKind, Program, PropertyKey};
+use oxc_ast::ast::{CallExpression, Expression, ObjectPropertyKind, Program};
 use oxc_ast_visit::{walk, Visit};
 use oxc_semantic::{Scoping, Semantic};
 use oxc_span::{GetSpan, Span};
 
 use crate::rules::report;
 use crate::rules::support::closures::build_semantic;
-use crate::rules::support::names::{member_call_name, unwrap_expression};
+use crate::rules::support::names::{member_call_name, property_key_name, unwrap_expression};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -46,23 +46,25 @@ fn is_explicit_nullish(expression: &Expression<'_>, scoping: &Scoping) -> bool {
 /// Whether the subscription was given a stable id, which is a handle to release it by.
 ///
 /// Only an object literal can be inspected; options built elsewhere (a forwarded parameter, a
-/// helper's result) may carry the caller's id, so they are not reported.
+/// helper's result, a trailing spread) may carry the caller's id, so they are not reported.
 fn has_stable_id(call: &CallExpression<'_>, scoping: &Scoping) -> bool {
+    let Some(argument) = call.arguments.last() else {
+        return false;
+    };
+    // A trailing spread hands over options this rule cannot inspect.
+    let Some(options) = argument.as_expression() else {
+        return true;
+    };
     if call.arguments.len() < 2 {
         return false;
     }
-    let Some(options) = call.arguments.last().and_then(|a| a.as_expression()) else {
-        return false;
-    };
     let options = unwrap_expression(options);
     let Expression::ObjectExpression(options) = options else {
         return !is_explicit_nullish(options, scoping);
     };
 
     options.properties.iter().any(|property| match property {
-        ObjectPropertyKind::ObjectProperty(property) => {
-            matches!(&property.key, PropertyKey::StaticIdentifier(identifier) if identifier.name == "id")
-        }
+        ObjectPropertyKind::ObjectProperty(property) => property_key_name(&property.key) == Some("id"),
         // A spread may bring the caller's id along.
         ObjectPropertyKind::SpreadProperty(_) => true,
     })
@@ -196,5 +198,27 @@ mod tests {
         let source = "store.subscribe(callback, {reads: ['a']});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [1]);
+    }
+
+    #[test]
+    fn a_trailing_spread_argument_is_options_built_elsewhere() {
+        for options in ["...options", "...args"] {
+            let source = format!("store.subscribe(callback, {options});\n");
+            assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0], "{options}");
+        }
+        assert_eq!(lines(&diagnose("store.subscribe(...args);\n", check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn quoted_id_keys_are_stable_ids() {
+        for options in ["{\"id\": 'row-1'}", "{'id': 'row-1'}"] {
+            let source = format!("store.subscribe(callback, {options});\n");
+            assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0], "{options}");
+        }
+    }
+
+    #[test]
+    fn a_computed_id_key_stays_unknown() {
+        assert_eq!(lines(&diagnose("store.subscribe(callback, {[key]: 'row-1'});\n", check)), [1]);
     }
 }
