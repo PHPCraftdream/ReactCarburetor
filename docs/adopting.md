@@ -77,7 +77,10 @@ Where render cost matters, replace the function component with a class extending
 `AntiHookComponent` and read through `this.useCarburetor(carburetor)`. There is no selector
 and no dependency array: the read itself records which fields the component touched, and the
 subscription follows those paths. A write to `value` wakes only components that read `value`.
-Methods can go straight to `onClick` — provided they are `@bind`-decorated as in step 1.
+Methods can go straight to `onClick` — provided they are `@bind`-decorated as in step 1. For a
+store fixed for the component's lifetime that the component reads many times, `this.connect(store)`
+is an optimization: declared once as a field initializer, it hands back the same live view object
+across renders.
 
 <!-- example:file examples/interop/adopting/ClassCounter.tsx -->
 ```tsx

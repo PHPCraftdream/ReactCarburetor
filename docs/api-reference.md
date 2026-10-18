@@ -16,6 +16,7 @@ come from `react-carburetor/interop`. Source links are repository-relative.
 | `load` / `refresh` / `clear` | `(...args: TArgs): Promise<void>` / `clear(): void` | `load` resolves from the cache when fresh and otherwise fetches, sharing one request among identical calls; `refresh` always fetches and keeps the previous entry on failure (an in-flight request for the key is restarted; the earlier handle promise settles with the new request's outcome); `clear` cancels every request and drops every entry, including a request whose entry a public replacement removed (it replaces `forgetAll`). Both handle promises resolve on loader failure; they reject with `AbortError` when superseded before start. See [promise cache](promise-cache.md). | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
 | `resolve` | `(...args: TArgs): IResourceResolution<T>` | Resolves key, subscription path and current view together. | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
 | `getFailure` | `(...args: TArgs): unknown` | Raw rejection (including `undefined`), not serialized; check failure presence separately. | [same](../lib/src/Carburetor/Resource/Cache/ResourceCache.ts) |
+| `resourceState` | `(status: EResourceStatus, data?: unknown, error?: string)` | Derives the flag view from the raw state fields: the four status flags plus `isLoading` (no data yet while Idle/Pending) and `refreshFailed` (Success with an error). See [promise cache](promise-cache.md). | [`resourceState.ts`](../lib/src/Carburetor/Resource/Status/resourceState.ts) |
 
 ## History and tooling
 
@@ -101,3 +102,109 @@ The four lint types below come from `react-carburetor/lint`.
 | `IResourceCarburetorOptions<TArgs extends TResourceArgs = []>` | `{key?: TResourceKey<TArgs>; ttl?: number; maxEntries?: number; scheduler?: IUpdateScheduler}` | Slot options: key derivation, staleness, answer-memory bound and scheduler. | [`ResourceOptions.ts`](../lib/src/Carburetor/Resource/ResourceOptions.ts) |
 | `IDevToolsOptions` | `{name?: string; extension?: IDevToolsExtension}` | Devtools integration options. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
 | `EResourceStatus` | Enum | Resource status. | [`EResourceStatus.ts`](../lib/src/Carburetor/Models/Enums/EResourceStatus.ts) |
+
+## Selections, history and replay details
+
+### connectSelection detachment
+
+`connectSelection`'s selector runs on every render — that is what keeps the owner's subscription
+fresh — while the snapshot object itself is reused until the selected content changes.
+
+What the call returns is detached data in the state-model sense: plain objects include own
+enumerable string keys; flags are normalized, symbols and non-enumerable fields are omitted, and
+an own key literally named `__proto__` lands as data. Arrays retain their length, holes and all
+own numeric indices (including non-enumerable ones); extra named and symbol keys are ignored.
+Descriptor flags are not uniformly normalized: some flat or sparse selection paths can preserve
+non-enumerable index flags, but descriptor-only changes are not a stable selection-equality
+guarantee. Sparse selections enumerate present indices after the first hole; adding an own
+`undefined` slot or deleting one still updates the consumer.
+
+Ordinary Maps, Sets and Dates are detached (a Date is its time), comparing only their entries or
+timestamp and ignoring extra own properties; repeated references and Map-key aliases stay shared
+within the copy, including a key selected through a tracked view. Custom instances remain live.
+An accessor's getter runs once, like any plain read, and its value is what the copy keeps. An
+`Array` subclass is rejected — its copy would lack its private state — so select
+`Array.from(value)` or the fields the child needs instead.
+
+Map/Set insertion order participates; changing only that order updates the snapshot. Equal Invalid
+Dates stay stable. Repeated native facades and plain/native value aliases retain their topology
+without bypassing tracked plain reads. Object keys remain conservatively changed, as do class
+instances — including Map, Set and Date subclasses.
+
+A write to what the selector read runs the selector again at notification time, against the
+committed props and state, and the owner re-renders only when the snapshot moved. An equal-valued
+branch switch, such as selecting `left` instead of an equal `right`, re-files the moved read set at
+notification time without a render; writes to the old branch stay quiet, and a value change on the
+new branch wakes the owner.
+
+When the snapshot does change, only the changed spine is copied: unchanged nested objects and
+arrays keep the references they had. Members are matched by their own object where the owner keeps
+the previous pass (`useCarburetorValue`, `watch`, `connectSelection`), so a row that moved keeps the
+copy it had; elsewhere they are matched by position. A related edit inside a selected live list is
+applied from the store's write log instead of re-walking the list, regardless of unrelated writes to
+the same store in between; a write the log cannot attribute costs one full walk. An opaque live
+facade that cannot be detached is reported once per selection in development; project its plain
+fields instead of handing the facade to a gated child.
+
+### Diff thresholds
+
+A kind change (array ↔ object, plain ↔ `Map`/class instance), or a supported object/array prototype
+change, records the replaced path itself. A replacement that changes more than 2000 leaves and more
+than half of the leaves of the replaced branch collapses — the replaced path itself is recorded
+instead. A partial change of a large branch stays leaf-precise at any size: only an almost-complete
+replacement collapses. At the root the top-level keys that differ are recorded instead of the
+wildcard, so unrelated subscribers stay asleep.
+
+An array element that is the same raw object at a different index (moved, or shifted by `filter` or
+a spread insert) records its index path instead of diffing two different rows, as `splice` does.
+Snapshots and history preserve supported null-prototype containers.
+
+### Positional array methods on the draft
+
+`sort`, `reverse`, `splice`, `shift`, `unshift`, `copyWithin` and `fill` run the native method on
+the raw array and record the changed indices. `sort`/`reverse`/`fill`/`copyWithin` return the live
+view (the receiver); `splice`/`shift` return the removed elements raw — detached from the tracked
+graph, like any value read out of the store. A `sort` comparator and a `fill` value therefore see
+raw elements, not tracked views: read tracked paths through the view afterwards, not inside the
+comparator.
+
+### History and replay
+
+History owns ordinary `Map`, `Set` and `Date` endpoints independently of `snapshot()`. Unsupported
+mutable instances and accessor-bearing native values are rejected instead of promising a false
+undo. Undo and redo first reconcile collected writes awaiting a coalesced publication, so time
+travel reverses the latest coherent step and a later flush cannot manufacture a new branch.
+
+`history.clear()` captures the current baseline and discards pre-clear deferred writes; later
+coalesced writes remain undoable from that baseline, and other histories stay independent. Resource
+replay normalizes Pending/refreshing fields on its fresh owned graph. The built-in stores publish
+to history before ordinary subscribers, after transaction/throttle coalescing.
+
+Ordinary plain-tree undo/redo records patches — O(changed values), not O(state). `setData`,
+`restore` and `fromJSON` record their leaf patches too (up to 1000, then one opaque entry). Only
+classes whose wire form differs from their live data override `captureHistory(own)`, passing their
+authoritative raw graph to `own`; custom history sources are not supported.
+
+### Hooks interop detachment
+
+`useCarburetorValue` selections are plain data in the state-model sense: plain objects include own
+enumerable string fields; arrays retain their length, holes and all own numeric indices, including
+non-enumerable ones, while extra named and symbol keys are omitted. Plain-object descriptor flags
+are normalized; array flags are not uniformly normalized, since flat and sparse tracked detachment
+can preserve non-enumerable index flags. Ordinary Dates compare by timestamp, and Maps/Sets by
+entries, ignoring extra own metadata. An accessor's getter runs once and its value is the snapshot.
+Repeated references and cycles stay connected within one detached selection, including a Date used
+both as a Map key and elsewhere in the selected graph.
+
+The third argument defaults to a structural comparison: own enumerable string keys and `Object.is`
+values, recursively through plain objects and arrays, a detached Date by its timestamp (Invalid
+Dates compare equal), and detached Map/Set size, iteration order and entries (object keys count as
+changed). A class instance still always compares as changed, since its fields can mutate in place.
+Pass `Object.is` explicitly for the old, reference-only behavior.
+
+`useResourceValue`'s optional fourth argument compares detached readonly values. Hoisted or
+correctly memoized selectors reuse completed results and read sets on unchanged parent renders; a
+fresh inline selector remains correct but executes again and pays selection/capture costs. The
+server snapshot keeps the server's `updatedAt` and invalidated state; TTL is checked normally.
+After commit, a mounted `useResource` or `useResourceValue` reader may refetch a stale or
+invalidated entry.

@@ -492,7 +492,11 @@ public componentDidMount(): void {
 subscriptions and runs effects, `componentDidUpdate` also re-runs them, `componentWillUnmount`
 releases both, `shouldComponentUpdate` is the props gate. Skipping `super` disables exactly
 one of those, so the component renders correctly on mount and then never updates, or leaks
-every subscription it ever made. No error is raised at any point.
+every subscription it ever made. In a production build nothing reports this. In development a
+diagnostic fires: a `componentDidMount` override that never called `super.componentDidMount()`
+is reported at the next entry into a base lifecycle (the first `componentDidUpdate` or the
+unmount), because checking earlier would fire on discarded concurrent renders; only prototype
+overrides are covered.
 
 **Right**
 
@@ -955,10 +959,13 @@ contract by accident. See `docs/reviews/js-review-round-3-2026-09-23.md`, R3-10.
 userCache.load({id, onDone: () => refresh(id)});
 ```
 
-**Why it is silent.** The key is the arguments serialised as JSON. A function or a symbol disappears,
-so two different argument sets collapse into one key and share an answer; a circular reference throws
-from inside `load` instead. Both look like the cache misbehaving rather than like the arguments being
-wrong.
+**Why it is silent.** The key is the arguments serialised as JSON. In a production build a
+function or a symbol disappears, so two different argument sets collapse into one key and share
+an answer; a circular argument fails JSON serialization and the handle rejects with that error.
+In development the default key derivation rejects such arguments before a request starts:
+`load`/`refresh` return a rejected Promise (the error surfaces on `await`/`.catch`, never as a
+synchronous throw) with a `TypeError` pointing at the `key` option. Either way it looks like the
+cache misbehaving rather than like the arguments being wrong.
 
 **Right.** Pass only data. Callbacks belong to the caller, not to the cache key.
 

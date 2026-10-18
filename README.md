@@ -7,12 +7,9 @@
 
 State lives outside the React tree. Class components read it directly, and each component
 subscribes to **exactly the fields it read** — so a write wakes only the components that
-actually depend on it.
-
-The core API needs no hooks. Path-precise subscriptions avoid unnecessary re-renders
-without dependency arrays. Effects still take one, to control when the effect itself reruns,
-the same as React's `useEffect`. No memoization to maintain, and nothing for a compiler to
-optimize after the fact: the unnecessary re-renders are never created in the first place.
+actually depend on it. The core API needs no hooks and no memoization: path-precise
+subscriptions avoid unnecessary re-renders without dependency arrays, so the unnecessary
+re-renders are never created in the first place.
 
 [Install and try it](#install) · [Core ideas](#core-ideas) · [API](#api) ·
 [Examples](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/examples/README.md) ·
@@ -20,43 +17,6 @@ optimize after the fact: the unnecessary re-renders are never created in the fir
 [Lint rules](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) · [Async cache](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md) ·
 [Contributing](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CONTRIBUTING.md) · [Security](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/SECURITY.md) ·
 [Code of Conduct](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CODE_OF_CONDUCT.md)
-
-<!-- example:file examples/readme/Counter.tsx -->
-```tsx
-import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
-
-const incrementBy = (draft: {value: number}, step: number): void => {
-    draft.value += step;
-};
-
-class CounterCarburetor extends Carburetor<{value: number}> {
-    @bind
-    inc(): void {
-        this.update(incrementBy, 1);
-    }
-}
-
-const counterCarburetor = new CounterCarburetor({value: 0});
-
-export class Counter extends AntiHookComponent {
-    public render() {
-        const {value} = this.useCarburetor(counterCarburetor);
-
-        return <button onClick={counterCarburetor.inc}>{value}</button>;
-    }
-}
-```
-
-## Why
-
-The usual React model keeps state inside the tree, so changing it re-renders a subtree, and
-you spend your time fighting that: dependency arrays, `memo`, `useCallback`, selector
-libraries, auto-memoizing compilers. Those are all mitigations for re-renders that the model
-generates by design.
-
-React Carburetor removes the generator instead. State sits in a plain class outside React.
-A component reads what it needs, that read becomes its subscription, and a write invalidates
-only the intersecting paths.
 
 ## Install
 
@@ -112,6 +72,62 @@ The stand-in is not a native `AbortSignal`, so APIs that require native signal i
 (including `fetch`) may reject it. Provide a compatible `AbortController` in that runtime
 when passing the signal to such APIs; development reports the limitation once.
 
+<!-- example:file examples/readme/Counter.tsx -->
+```tsx
+import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
+
+const incrementBy = (draft: {value: number}, step: number): void => {
+    draft.value += step;
+};
+
+class CounterCarburetor extends Carburetor<{value: number}> {
+    @bind
+    inc(): void {
+        this.update(incrementBy, 1);
+    }
+}
+
+const counterCarburetor = new CounterCarburetor({value: 0});
+
+export class Counter extends AntiHookComponent {
+    public render() {
+        const {value} = this.useCarburetor(counterCarburetor);
+
+        return <button onClick={counterCarburetor.inc}>{value}</button>;
+    }
+}
+```
+
+## Public contract at a glance
+
+- **Reading:** `this.useCarburetor(store)` in render — see
+  [A persistent connection](#a-persistent-connection-connect) and
+  [docs/examples/components.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/examples/components.md);
+  `connect()` is for a store fixed for the component's lifetime.
+- **Writing:** methods on the store call `this.update(mutate, ...args)` — extra arguments are
+  forwarded and the mutator can be a module-level function; see
+  [Read through the carburetor, write through its methods](#read-through-the-carburetor-write-through-its-methods).
+- **Subscriptions:** per-path, established by what the render reads; `watch(select, onChange)`
+  works outside React — see [Precise invalidation](#precise-invalidation) and the
+  [Tooling section](#tooling).
+- **Async resources:** `ResourceCarburetor` (one slot) and `ResourceCache` (many entries;
+  `ttl: 30_000` / `maxEntries: 100` defaults) — see [Async resources](#async-resources) and
+  [docs/promise-cache.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md).
+- **Lint:** 26 core rules plus the optional `no-react-hooks-in-components` — see
+  [Lint rules](#lint-rules) and
+  [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md).
+
+## Why
+
+The usual React model keeps state inside the tree, so changing it re-renders a subtree, and
+you spend your time fighting that: dependency arrays, `memo`, `useCallback`, selector
+libraries, auto-memoizing compilers. Those are all mitigations for re-renders that the model
+generates by design.
+
+React Carburetor removes the generator instead. State sits in a plain class outside React.
+A component reads what it needs, that read becomes its subscription, and a write invalidates
+only the intersecting paths.
+
 ## Core ideas
 
 ### Read through the carburetor, write through its methods
@@ -160,7 +176,7 @@ unsupported live class instances; class connection selections retain their exist
 policy and development diagnostics. Readonly typing does not promise runtime isolation.
 
 When an editable projection is needed, copy the plain branch to edit, for example
-`const editable = {...selected}`. Copy nested branches too before editing them.
+`const editable = {...selected}` (nested branches too, before editing them).
 `store.snapshot()` remains an editable plain-data copy for tooling; native Map/Set/Date values
 and class instances still have its existing shared-reference limits. See the
 [API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md).
@@ -168,16 +184,13 @@ and class instances still have its existing shared-reference limits. See the
 Write the fields that change, or `Object.assign(draft.items[id], patch)`: the no-op check skips
 fields that already hold the value, so only real changes are recorded. Replacing a whole object
 (`draft.items[id] = next`) is precise too — it is diffed against the object it replaces and
-records only the fields that differ — but pays a walk over the replaced object to find them.
-
-Containers built from draft branches are fine to assign back: `draft.rows = draft.rows.filter(...)`,
-`map`, spread or `concat` store the raw rows, never the proxies the draft handed out. The array
-methods `sort`, `reverse`, `splice`, `shift`, `unshift`, `copyWithin` and `fill` run natively on the
-draft's array and are recorded per changed index, so reordering 10 000 rows costs milliseconds; a
-`sort` comparator and a `fill` value see raw elements, and `splice`/`shift` return raw removed ones.
-An assigned array is aligned by element identity: a row that is the same raw object at another index
-records that index path, as `splice` does, so readers before the first changed index stay asleep; a
-genuinely new row object is still diffed field by field.
+records only the fields that differ. Containers built from draft branches are fine to assign back
+(`draft.rows = draft.rows.filter(...)` stores raw rows, never proxies), and the array methods
+`sort`, `reverse`, `splice`, `shift`, `unshift`, `copyWithin` and `fill` are recorded per changed
+index, so reordering 10 000 rows costs milliseconds; a `sort` comparator and a `fill` value see
+raw elements, and `splice`/`shift` return raw removed ones (see the
+[API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md)
+for the details).
 
 `update` mutates through `draft` and publishes in one step. Arguments after the mutator are
 forwarded to it, so the mutator stays a module-level function free of closures. You can also write to `this.draft`
@@ -187,10 +200,14 @@ letting it pass silently.
 
 ### A persistent connection: `connect()`
 
-`connect()` is the default way to read a store: declared once — a field initializer is the
-intended call site — it hands back the same object for the component's whole lifetime.
-`useCarburetor` reads the same way but is called in render, which suits a store chosen per
-render (a prop, a scope lookup) or an array-rooted scoped store:
+Read a store in render with `this.useCarburetor(store)` — it works for every store and every
+source shape. `connect()` is an optimization for a store fixed for the component's lifetime that
+a component reads many times: declared once — a field initializer is the intended call site —
+it hands back the same live view object across renders. Its limitations: the view's object/array
+kind is fixed at declaration, and a source not resolvable at declaration fixes the object kind
+(a later array root fails with a boundary error) — read such stores through `useCarburetor`
+instead. A store chosen per render (a prop, a scope lookup) or an array-rooted scoped store is
+the usual `useCarburetor` case:
 
 <!-- example:file examples/readme/Core/Connect.tsx#connect -->
 ```tsx
@@ -218,20 +235,12 @@ underneath it are reused across renders. `source` can be a carburetor directly, 
 resolving one (as above) so a prop swap re-points the connection at the new store. `setData` and
 `restore` keep working: the same returned view stays live across a whole-data replacement.
 
-The view's object/array kind is decided once, at declaration, from the source's current root: an
-array root gives a view that answers `Array.isArray`, iteration, `Object.keys` and
-`JSON.stringify` as an array. A proxy cannot change kind afterwards, so the kind never changes:
-a source that is not resolvable at declaration time (a scope-backed resolver resolves only after
-React fills context) fixes the view as an object view, and a later root of the other kind fails
-with an explicit boundary error instead of serving a silently wrong view — read an array-rooted
-scoped store through `useCarburetor` in render instead. Descriptor introspection is forwarded
-through the live view; a non-configurable descriptor is reported configurable, which grants
-nothing, because every mutation trap — assignment, deletion, `defineProperty`, prototype and
-extension changes — is rejected.
-
-Views stay live across writes. Branch wrappers are cached per proxy tree in a `WeakMap` keyed by
-the raw branch object, so a branch that a write replaces or deletes takes its wrapper with it: once
-nothing references the old object, both are collectable, with no sweep and no bookkeeping.
+The view's object/array kind is decided once, at declaration, from the source's current root, and a
+proxy cannot change kind afterwards: a source that is not resolvable at declaration time (a
+scope-backed resolver resolves only after React fills context) fixes the view as an object view,
+and a later root of the other kind fails with an explicit boundary error — read an array-rooted
+scoped store through `useCarburetor` in render instead. Views stay live across writes, including
+across a whole-data replacement by `setData` or `restore`.
 
 ### Passing connected data to children
 
@@ -267,41 +276,12 @@ class TodoList extends AntiHookComponent<ITodoProps> {
 ```
 
 `select` reads the same tracked view `connect` hands out, so the owner subscribes to exactly
-the paths the selection touches. What the call returns is detached data in the state-model
-sense: plain objects include own enumerable string keys; flags are normalized, symbols and
-non-enumerable fields are omitted, and an own key literally named `__proto__` lands as data. Arrays
-retain their length, holes and all own numeric indices (including non-enumerable ones); extra named
-and symbol keys are ignored. Descriptor flags are not uniformly normalized: some flat or sparse
-selection paths can preserve non-enumerable index flags, but descriptor-only changes are not a
-stable selection-equality guarantee. Sparse selections enumerate present indices after the first hole; adding an own `undefined` slot or
-deleting one still updates the consumer. Ordinary Maps, Sets and Dates are detached (a Date is its
-time), comparing only their entries or timestamp and ignoring extra own properties; repeated references
-and Map-key aliases stay shared within the copy, including a key selected through a tracked view. Custom instances remain live. An accessor's getter runs
-once, like any plain read, and its value is what the copy keeps. An `Array` subclass is
-rejected — its copy would lack its private state — so select `Array.from(value)` or the
-fields the child needs instead. The snapshot keeps its identity while the selected plain
-content and reference-sharing topology stay the same; a detached `Date`, `Map` or `Set`
-compares by content against the live value. Map/Set insertion order participates; changing only that
-order updates the snapshot. Equal Invalid Dates stay stable. Repeated native facades and plain/native
-value aliases retain their topology without bypassing tracked plain reads. Object keys remain
-conservatively changed, as do class instances — including Map, Set and Date subclasses.
-
-The selector runs on every render — that is what keeps the owner's subscription fresh — while
-the snapshot object itself is reused until the content actually changes. A write to what it read
-runs the selector again at notification time, against the committed props and state, and the owner
-re-renders only when the snapshot moved. An equal-valued branch switch, such as selecting `left`
-instead of an equal `right`, re-files the moved read set at notification time without a render.
-Writes to the old branch stay quiet; a value change on the new branch wakes the owner.
-When the snapshot does change, only
-the changed spine is copied: unchanged nested objects and arrays keep the references they had, so a
-`React.memo` row handed one of them re-renders only if its own content changed. Members are
-matched by their own object where the owner keeps the previous pass (`useCarburetorValue`, `watch`,
-`connectSelection`), so a row that moved keeps the copy it had and a `React.memo` row re-renders only for
-a content change; elsewhere they are matched by position. A related edit inside a selected live list
-is applied from the store's write log instead of re-walking the list, regardless of unrelated writes
-to the same store in between; a write the log cannot attribute costs one full walk. Tracked
-plain-object and array branches are copied safely. An opaque live facade that cannot be detached is reported
-once in development; project its plain fields instead of handing the facade to a gated child.
+the paths the selection touches, and what the call returns is detached plain data: a snapshot
+the child can hold across renders. The snapshot keeps its identity while the selected content
+stays the same, and when it does change only the changed spine is re-copied — so a `React.memo`
+row handed one of its members re-renders only if that member's own content changed. A class
+instance cannot be copied safely: project the plain fields the child needs instead. The full
+detachment rules are in the [API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md).
 
 ### Precise invalidation
 
@@ -332,16 +312,10 @@ Two properties keep this honest:
   re-sorting an already sorted array, invalidates nothing.
 - **Replacements are diffed.** Replacing an object or array with another of the same kind —
   through `draft`, `setData`, `restore`, `fromJSON`, or an undo — records only the leaves that
-  differ, plus the key set where keys were added or removed. A kind change (array ↔ object, plain
-  ↔ `Map`/class instance), or a supported object/array prototype change, records the replaced
-  path itself. So does a replacement that changes more than 2000 leaves and more than half of the
-  leaves of the replaced branch; at the root the top-level keys that differ are recorded instead of the
-  wildcard, so unrelated subscribers stay asleep. A partial change stays leaf-precise at any size.
-  An array element that is the same raw object at a different index (moved, or shifted by `filter` or
-  a spread insert) records its index path instead of diffing two different rows, as `splice` does.
-  Snapshots and history preserve supported null-prototype containers. A branch that is the same object
-  on both sides is skipped without a look, so never mutate what `getData()` returns and hand it
-  back: those edits are invisible to the diff.
+  differ, plus the key set where keys were added or removed; a kind change records the replaced
+  path itself, so unrelated subscribers stay asleep. A branch that is the same object on both
+  sides is skipped without a look — never mutate what `getData()` returns and hand it back:
+  those edits are invisible to the diff. Thresholds and edge cases are in the API reference.
 
 A direct write to `this.data` followed by publication invalidates the whole store only when no
 recorded draft paths are available and the draft was not touched (a no-op draft access suppresses
@@ -350,9 +324,7 @@ write; call `markAllChanged()` to deliberately invalidate the whole store. Prefe
 `setData()` when possible for precise, reliable notifications.
 
 Matching is indexed rather than scanned: read paths and their ancestors are kept in maps, so a
-write looks up the subscribers it concerns instead of comparing itself against all of them. On
-1000 subscribers one changed path costs 0.0009 ms, and a transaction touching 500 paths costs
-0.47 ms — the same cases took 0.39 ms and 110 ms before the index
+write looks up the subscribers it concerns instead of comparing itself against all of them
 (`perf/scenarios/subscribe/match-precision.mjs`, `npm run bench -- --only match-precision`).
 
 ### A parent re-render does not cascade
@@ -425,21 +397,8 @@ render() {
 ```
 
 Editing a todo's title invalidates nothing `activeCount` read, so it does not recompute. Toggling
-`done` does recompute it, and if the count comes out the same, nothing re-renders. A computed stops observing its dependencies once
-its last subscriber leaves. Its observer announcement is released then; the independent
-memoized evaluation remains available for later reads. Last release also clears strong live-read
-filing; weak object-identity recorder slots survive so a cached view can rejoin safely. Publication
-also retires old slots on observed source switches and trims absent ids. Slots have no source
-back-reference: a retained old view need not keep its retired store alive. A later successful
-scalar evaluation replaces its captured versions and permits retired sources to collect.
-Old views of a different source cannot extend a replacement merely because its public id was reused.
-
-`Computed<R>` accepts the same `(body, options)` as `computed()`. Subclasses may add domain
-fields such as `uid`, `version`, `value`, or callbacks without replacing engine storage.
-The reserved public protocol is `get()`, `getUID()`, `getVersion()`, `subscribe(callback, options)`,
-and `unsubscribe(id)`; overriding these methods changes the source contract. There are no
-protected engine-state or settlement hooks. Configure evaluation through the constructor body
-and `equals`, not by accessing internal state.
+`done` does recompute it, and if the count comes out the same, nothing re-renders. A computed
+stops observing its dependencies once its last subscriber leaves.
 
 Computeds compose, as long as you read them through `read` as well:
 
@@ -452,8 +411,6 @@ Calling `activeCount.get()` inside the body instead would register no dependency
 `summary` stale — the reader is what records it.
 
 `get()` reads current dependencies even while a transaction or throttle has deferred delivery.
-That eager read does not consume a subscriber's pending notification: settlement still publishes
-the changed result once. Unchanged primitive results stay unpublished.
 
 A computed's result is live, not a copy: when it returns store data (`read(store).items`), a
 consumer reading deeper fields off it subscribes the computed to those fields too, so an edit
@@ -607,18 +564,9 @@ reads only `isError` is not re-rendered by a `Pending` → `Success` transition.
 
 Concurrent loads with the same arguments share one request; a load with different arguments
 aborts the previous one. The state stays serializable — the failure is stored as a message,
-with the original rejection available through `getLastError()`.
-Public `setData` replacement reconciles the raw rejection before subscribers run: a distinct
-Error-state object gets an Error with its wire message even when that message is unchanged;
-a non-Error state clears the raw cause. Passing the exact current object, or changing unrelated
-fields through a subclass's draft/update action, retains the current Error's original rejection.
-A distinct keyless `setData` replacement also drops the old settled argument key before
-publication, even when its visible fields are equal. It cannot satisfy `suspend(oldArgs)`:
-that read starts the loader again. Exact-object no-ops retain the key; `restore` and
-`fromJSON` retain only the explicit key carried by their wire snapshot.
-Keyless replacement neither invents an argument key nor cancels a current request.
-If a synchronous subscriber or abort listener supersedes a load before its loader starts,
-that load rejects with `AbortError` instead of reporting a successful load that never ran.
+with the original rejection available through `getLastError()`. A `setData` replacement that
+swaps in a distinct state object reconciles the raw rejection before subscribers run; it cannot
+satisfy `suspend(oldArgs)` — that read starts the loader again.
 
 It also works under Suspense, which class components support by throwing the pending promise:
 
@@ -675,109 +623,9 @@ recently used answers are dropped past it. The defaults: answers stay fresh for 
 keeps at most 100 answers unless configured otherwise.
 
 Click-to-switch needs one store and one call: a `@bind` method calls `load(id)` and the component
-reads the store in `render()` — no selection carburetor in between.
-
-<!-- example:file examples/api/resources/resource-carburetor/click-switch.tsx -->
-```tsx
-import {AntiHookComponent, bind, ResourceCarburetor} from 'react-carburetor';
-import {type JSX} from 'react';
-
-interface User {
-    id: string;
-    name: string;
-}
-
-declare function fetchUser(id: string, init?: {signal?: AbortSignal}): Promise<User>;
-
-// TArgs is a tuple, `[string]` here. A first `unknown`/`any` parameter would be
-// taken for the signal; that edge needs the explicit `new ResourceCarburetor<T, [unknown]>(...)`.
-const user = new ResourceCarburetor<User, [string]>(
-    (id: string, signal) => fetchUser(id, {signal})
-);
-
-export class UserSwitcher extends AntiHookComponent<{initialId: string}> {
-    // Click-to-switch: one store, one call per click. A load for the key of the
-    // stored answer skips the request; a new key supersedes the active one.
-    @bind
-    private open(id: string): void {
-        void user.load(id);
-    }
-
-    @bind
-    private openNext(): void {
-        void user.load('a2');
-    }
-
-    @bind
-    private retry(): void {
-        void user.refresh(this.props.initialId);
-    }
-
-    render(): JSX.Element {
-        const view = this.useCarburetor(user);
-
-        if (view.isPending) {
-            return <span className="spinner">Loading…</span>;
-        }
-        if (view.isError) {
-            return (
-                <button type="button" onClick={this.retry}>
-                    Retry
-                </button>
-            );
-        }
-        return (
-            <span>
-                <strong>{view.data?.name}</strong>
-                <button type="button" onClick={this.openNext}>Switch user</button>
-            </span>
-        );
-    }
-}
-```
-
-For a resource without parameters the bound handle itself sits in `onClick`:
-
-<!-- example:file examples/api/resources/resource-carburetor/click-load.tsx -->
-```tsx
-import {AntiHookComponent, ResourceCarburetor, resourceState} from 'react-carburetor';
-import {type JSX} from 'react';
-
-interface Config {
-    theme: string;
-}
-
-declare function fetchConfig(init?: {signal?: AbortSignal}): Promise<Config>;
-
-// A resource without parameters: TArgs is the empty tuple, and the bound handles
-// drop an incoming DOM/React event argument before the loader sees it, so the
-// handle itself can sit in `onClick`.
-const config = new ResourceCarburetor<Config, []>(
-    (signal) => fetchConfig({signal})
-);
-
-export class ConfigBadge extends AntiHookComponent {
-    render(): JSX.Element {
-        const view = this.useCarburetor(config);
-
-        // resourceState derives the flag view from the raw state fields: loading before the
-        // first answer lands, refreshFailed after a failed refresh.
-        const state = resourceState(view.status, view.data, view.error);
-
-        if (state.isIdle) {
-            return <button type="button" onClick={config.load}>Load</button>;
-        }
-        if (state.isPending) {
-            return <span className="spinner">Loading…</span>;
-        }
-        if (state.isError) {
-            // refresh is bound the same way: the event it receives is dropped.
-            return <button type="button" onClick={config.refresh}>Retry</button>;
-        }
-        return <span className="theme">{view.data?.theme}</span>;
-    }
-}
-```
+reads the store in `render()` — no selection carburetor in between. The full component is
+[examples/api/resources/resource-carburetor/click-switch.tsx](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/examples/api/resources/resource-carburetor/click-switch.tsx);
+for a resource without parameters the bound handle itself sits in `onClick`.
 
 `ResourceCarburetor` holds one value. An API layer needs many — the same loader called with different
 arguments, each answer worth keeping — which is what `ResourceCache` is:
@@ -881,12 +729,9 @@ export const UserPage = () => (
 
 To use explicit status handling instead, export `UserBadge` or render it in its own tree.
 
-Primitive argument keys and paths use a bounded LRU memo, separate from the data-entry limit.
-`keyCacheSize` defaults to 4096 records; any non-negative safe integer is accepted, and `0` disables
-primitive memoization. `Infinity` is rejected. Each record also carries LRU links, so this is a record
-count, not a byte budget. A cold query evicts one record rather than flushing all hot keys.
-Sequential cyclic scans larger than the budget can still miss on every query; choose a larger finite
-budget explicitly when that tradeoff fits the application. Object arguments retain JSON mutation checks.
+Primitive argument keys and paths use a bounded LRU memo (`keyCacheSize`, default 4096 records),
+separate from the data-entry limit — see [docs/promise-cache.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md)
+for the details and tradeoffs.
 
 `clear()` drops every entry and cancels every in-flight request in one publication (it replaces
 the removed `forgetAll()`); `forget(args)` still removes a single entry.
@@ -897,6 +742,52 @@ a reader that shows only `data` is not re-rendered for every bookkeeping field t
 it. A stale entry is refetched **after** the commit, never during render — a write from render would
 notify subscribers mid-render.
 
+`resourceState(status, data?, error?)` derives the flag view from the raw state fields: the four
+status flags plus `isLoading` (true while the state is Idle or Pending and no data has landed yet)
+and `refreshFailed` (a Success whose error is set — a failed refresh). Reading `view.status`,
+`view.data` and `view.error` through `useCarburetor` is what subscribes the component.
+
+<!-- example:file examples/api/resources/resource-carburetor/click-load.tsx -->
+```tsx
+import {AntiHookComponent, ResourceCarburetor, resourceState} from 'react-carburetor';
+import {type JSX} from 'react';
+
+interface Config {
+    theme: string;
+}
+
+declare function fetchConfig(init?: {signal?: AbortSignal}): Promise<Config>;
+
+// A resource without parameters: TArgs is the empty tuple, and the bound handles
+// drop an incoming DOM/React event argument before the loader sees it, so the
+// handle itself can sit in `onClick`.
+const config = new ResourceCarburetor<Config, []>(
+    (signal) => fetchConfig({signal})
+);
+
+export class ConfigBadge extends AntiHookComponent {
+    render(): JSX.Element {
+        const view = this.useCarburetor(config);
+
+        // resourceState derives the flag view from the raw state fields: loading before the
+        // first answer lands, refreshFailed after a failed refresh.
+        const state = resourceState(view.status, view.data, view.error);
+
+        if (state.isIdle) {
+            return <button type="button" onClick={config.load}>Load</button>;
+        }
+        if (state.isPending) {
+            return <span className="spinner">Loading…</span>;
+        }
+        if (state.isError) {
+            // refresh is bound the same way: the event it receives is dropped.
+            return <button type="button" onClick={config.refresh}>Retry</button>;
+        }
+        return <span className="theme">{view.data?.theme}</span>;
+    }
+}
+```
+
 Three decisions are worth knowing because they differ from the hooks libraries:
 
 - **A failed refresh keeps the good data.** The entry stays `Success` with what it had, and the error
@@ -906,28 +797,17 @@ Three decisions are worth knowing because they differ from the hooks libraries:
 - **`invalidate` does not refetch.** It marks entries stale; the ones on screen refetch themselves on
   the next render. A cache of two hundred entries should not fire two hundred requests because one
   mutation succeeded.
-  An answer from a request started before the invalidation does not consume it: the answer stays
-  stale, or a failure keeps the explicit retry armed, until a later request settles.
 
-A failed entry is not retried automatically — that would loop, since the failure re-renders the
-component that asked. Call `refresh(args)` to try again, or explicitly `invalidate(args)` /
-`invalidateAll()` to re-arm mounted readers: their retry starts after commit, not during render.
-Aborting a re-armed failed request disarms it again until another explicit invalidation.
-Replacing an entry through `setData` or a subclass's draft/update action drops its old raw rejection
-before subscribers run, even when the new Error has the same wire message. Failure ownership
-belongs to the entry object: a distinct identical-shaped entry cannot inherit it, while unrelated
-writes to the same entry preserve its original rejection. Unchanged entries and in-flight requests
-retain their ownership. The cache is bounded: the least recently used entries are dropped past
-`maxEntries`, never one with a request in flight or one a component is reading.
-
-`suspend(args)` reads per entry: a miss or explicitly re-armed Error throws the current request,
-and a failed, non-invalidated Error throws its rejection without retrying. A stale Success starts
-revalidation with deferred publication and returns its previous value; a Suspense-only consumer
-needs a subsequent parent render to display the refreshed answer unless it also subscribes.
-`scope.dehydrate()` preserves each entry's `updatedAt` and invalidated state, and TTL freshness is
-checked normally after hydration. A mounted reader can therefore find an entry stale and refetch it
-after commit. Standalone serialization uses the cache's own `toJSON()`/`fromJSON()` (wire form) or
-`snapshot()`/`restore()` (detached copy), not `dehydrate`.
+A failed entry is not retried automatically — that would loop. Call `refresh(args)` to try again,
+or `invalidate(args)` / `invalidateAll()` to re-arm mounted readers; their retry starts after
+commit, never during render. `suspend(args)` reads per entry: a miss throws the current request,
+a failed, non-invalidated Error throws its rejection, and a stale-but-present Success returns its
+previous value and starts revalidation in the background. The cache is bounded: entries are dropped
+past `maxEntries`, never one with a request in flight or one a component is reading.
+`scope.dehydrate()` preserves each entry's `updatedAt` and invalidated state; standalone
+serialization uses the cache's own `toJSON()`/`fromJSON()` (wire form) or `snapshot()`/`restore()`
+(detached copy). Failure-ownership details and the lifetime semantics are in
+[docs/promise-cache.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md).
 
 Explicit non-goals, so the shape is clear: no retries with backoff, no refetch on window focus or
 interval, no pagination, no normalisation, no optimistic updates. See
@@ -991,15 +871,14 @@ no token claims is reported in development; in the form without a list such keys
 left unused. A single store can also be seeded directly with
 `scope.set(token, carburetor)`.
 
-`scope.dehydrate()` returns a detached copy that survives later writes for plain-tree data: plain
-objects and arrays are copied, while native `Map`/`Set`/`Date` leaves and class instances are
-carried by reference — the same shared-reference limits `store.snapshot()` documents — so a later
-write to one shows up in the payload. `hydrate(state, tokens)` clones the plain payload the same way
-before `fromJSON` adopts it. Payloads crossing a process boundary go through `JSON.stringify`; a
-native leaf survives that trip only under its own serialization contract. When the payload is
-serialized right away — the usual server case — `JSON.stringify(scope)` produces the same JSON in
-one pass without the copy: `scope.toJSON()` returns each store's wire form, at about half the cost,
-and reflects the state as it is at the time of the call.
+A `ScopedAntiHookComponent` resolves a token with `this.scoped(token)` — `this.resolve(token)`
+delegates to it — so a subclass can override `scoped` to reroute every resolution.
+
+`scope.dehydrate()` returns a detached copy for plain-tree data: plain objects and arrays are
+copied, while native `Map`/`Set`/`Date` leaves and class instances are carried by reference — the
+same shared-reference limits `store.snapshot()` documents. When the payload is serialized right
+away — the usual server case — `scope.toJSON()` produces the same JSON in one pass without the
+copy, at about half the cost.
 
 ## Tooling
 
@@ -1034,84 +913,26 @@ history.disconnect();
 
 Call the returned disposers and `history.disconnect()` when the owner is done; see the [consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md).
 
-`persist` writes `JSON.stringify(store)` — the store's wire form via `toJSON()` — and restores
-parsed JSON through `restore()`. Ordinary stores stringify live data without first cloning a
-snapshot. A subclass with a different wire form overrides `toJSON()` to produce JSON that its
-`restore()` accepts. `ResourceCarburetor` includes its settled argument key, so a restored
+`persist` writes the store's wire form (`toJSON()`) and restores parsed JSON through `restore()`;
+a subclass with a different wire form overrides `toJSON()` to produce JSON its `restore()`
+accepts. `ResourceCarburetor` includes its settled argument key in the wire form, so a restored
 successful or failed answer is reused only for matching arguments; Pending restores as Idle.
-`snapshot()` copies plain containers (wire `toJSON()` does not copy); opaque values remain
-shared by reference.
-Changing only a resource's settled key is still a published change, even when its visible
-status/data/error/timestamp are equal. Resource history records complete wire graphs so
-undo/redo restores the answer's key too; pure plain-tree store history stays patch-based.
-Resource `load`/`suspend` and cache `load`/`refresh` can restart after readonly history replay.
-They reserve mutable lifecycle fields on a detached operational graph before publishing a request;
-held history endpoints keep their descriptors and direct draft writes still respect readonly fields.
-A failed pre-loader publication removes its own request rather than leaving a joinable pending promise.
-Cache eviction and `forget` also remove non-configurable dictionary slots by owned replacement,
-and update capacity bookkeeping only after the key is actually gone.
-Operational copies preserve native `Map`/`Set`/`Date` accessor descriptors without evaluating them;
-unrelated native metadata does not block requests or removals. Actual history capture remains strict
-and rejects native accessors rather than claiming it owns values returned by arbitrary getters.
-Cache `invalidate` and `invalidateAll` reserve readonly invalidation fields before changing live state.
-Bulk invalidation prepares all affected entries before the first write, publishes the complete stale
-state once, and does not fetch. Held replay endpoints stay restricted; already-targeted flags are no-ops.
-History records each published operation before ordinary subscribers run, so a subscriber's
-nested write remains a separate undo step regardless of registration order. Writes caused by
-undo/redo subscribers or superseding abort listeners are fresh branches and invalidate redo;
-only history's own restore installation is suppressed. Transactions and throttles still coalesce
-their writes into one published step. Multiple histories keep independent limits and disposers;
-attaching or replacing a patch-only observer does not disconnect those histories.
+`ResourceCache` exposes its own `toJSON()`/`fromJSON()` (wire form) and `snapshot()`/`restore()`
+(detached copy) for the same purpose. See
+[docs/promise-cache.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md)
+for the resource and cache serialization details.
 
-Pure in-place scalar mutation batches can prove cancellation from existing primitive leaf paths
-without capturing unrelated state. Insertions/deletions, array paths, native/restricted state and
-mixed installations retain full graph proof. An empty-value-diff root install joins already-pending
-store or observer publications as mixed, including deferred descriptor-only replacements; a
-standalone no-value-change replacement remains silent.
+Failed storage reads reach `persist`'s `onError` handler without deleting unread data; without a
+handler, a read failure throws.
 
-Native producers carry explicit installation origin/owner and graph representation through a shared
-commit boundary. A deferred replay followed by a fresh write branches from the installed replay
-state; coalescing cannot turn that fresh write into the recorder's own replay.
-Watch, class selections and hook snapshots transfer completed read sets only after selection,
-comparison and required detachment finish. Live computed dependencies remain deliberately extendable.
-History owns ordinary `Map`, `Set` and `Date` endpoints independently of `snapshot()`.
-Steps that replace, mutate or read a native value through `draft` use complete detached graphs,
-preserving Map-key aliases, native descriptors and backlinks through repeated undo/redo and
-branching. Unsupported mutable instances and accessor-bearing native values are rejected instead
-of promising a false undo.
-`history.clear()` captures the current baseline and discards pre-clear deferred writes;
-later coalesced writes remain undoable from that baseline, and other histories stay independent.
-Undo and redo first reconcile collected writes awaiting a coalesced publication, so time travel
-reverses the latest coherent step and a later flush cannot manufacture a new branch.
-A conservative native read or equal-content operation creates no history step when its owned
-intrinsics, descriptors and alias topology are unchanged; it does not erase valid redo.
-Mixed plain/native history graphs share one copy ledger, without discarding a copied plain prefix.
-Supported array length definitions also record descriptor-only locks. Undo/redo restores the
-length's writable flag and sparse elements; a refused restore before installation preserves
-the cursor for retry.
-Persistent array connections report a writable length descriptor to satisfy their proxy target
-invariants across locks and root replacement. Detached selections retain the raw writable flag.
-Own string-key order is observable: replacement/reinsertion updates enumeration and detached
-selections, and history restores the original order. Positional string-key changes use owned
-graph endpoints; scalar writes, numeric keys and ordinary array operations retain patches.
-Restore checks readonly assignments, deletions and changed locked object references before any
-sibling write, replacing the root when the draft cannot install valid snapshot values. Ordinary
-snapshots remain writable plain copies; owned history replay retains captured restricted descriptors.
-History admits patches only when they can advance its owned baseline; restrictive targets use
-complete owned endpoints before any held snapshot can be mutated.
-Producer patch copies retain restrictions for history classification. A value-changing branch
-that introduces readonly or non-configurable fields uses an owned endpoint, including additions;
-ordinary snapshot normalization and metadata-only no-op publication semantics are unchanged.
-Effective draft paths are attributed before fallible patch delivery. An observer error still
-reaches the caller, but cannot hide an already-applied change from readers or other histories.
-Resource replay normalizes Pending/refreshing fields on its fresh owned graph. Writable and
-configurable fields stay in place; locked changes use one descriptor-aware graph copy before
-restrictions are installed, retaining native aliases and readonly flags. Reentrant request
-entries retain their newer dictionary capabilities and are not overwritten by captured work.
-
-Failed storage reads reach `onError` without deleting unread data; when the handler returns,
-later writes remain subscribed. Without a handler, a read failure throws. Malformed stored
-data is reported before removal, and a removal failure is reported separately.
+`CarburetorHistory` records undo/redo steps for plain-tree stores as patches — O(changed values),
+not O(state) — while steps that replace, mutate or read a native value through `draft` use
+complete detached graphs instead of patches, so undo/redo stays faithful for native `Map`/`Set`/`Date`
+values too. History works with the `Carburetor` family — `Carburetor`, `ResourceCarburetor`,
+`ResourceCache` and their subclasses. `history.clear()` captures the current baseline and discards
+pre-clear deferred writes; other histories stay independent. See the
+[consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md)
+for the options and the replay semantics.
 
 ## Testing your code
 
@@ -1210,33 +1031,16 @@ const NameBadge = () => {
 };
 ```
 
-Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe.
-Selected plain objects, arrays, `Map`, `Set` and `Date` values are detached for a stable
-React snapshot. A class instance cannot be copied safely, so selecting one directly or
-inside another value throws an actionable error; select the fields you render instead. A
-`Map`, `Set` or `Date` subclass counts as a class instance here, not as the built-in.
-A selection is plain data in the state-model sense: plain objects include own enumerable string fields;
-arrays retain their length, holes and all own numeric indices, including non-enumerable ones, while
-extra named and symbol keys are omitted. Plain-object descriptor flags are normalized; array flags are
-not uniformly normalized, since flat and sparse tracked detachment can preserve non-enumerable index
-flags. Descriptor-only changes are not an equality guarantee. Ordinary Dates compare by timestamp,
-and Maps/Sets by entries, ignoring extra own metadata. There is no universal promise to preserve flags.
-An accessor's getter runs once and its value is the snapshot. Repeated references and cycles stay
-connected within one detached selection, including a Date used both as a Map key and elsewhere in the
-selected graph.
-
-The third argument is the equality check that decides whether a recomputed selection
-counts as changed. It defaults to a structural comparison — own enumerable string keys and
-`Object.is` values, recursively through plain objects and arrays, a detached Date by its timestamp
-(Invalid Dates compare equal), and detached Map/Set size, iteration order and entries over primitive
-keys (object keys count as changed) — because selected containers are detached, so
-`Object.is` itself could never call two of them equal: a selector rebuilt on every render,
-or a write that replaces an ancestor of the selected data without changing its content,
-would otherwise re-render every time. A class instance still always compares as changed,
-since its fields can mutate in place. Pass `Object.is` explicitly for the old,
-reference-only behavior.
-A different comparator re-evaluates the current selection even if the previous comparator
-suppressed the latest write. Values truly equal under the new policy keep their snapshot identity.
+Built on `useSyncExternalStore`, so it is tearing-safe and SSR-safe. Selected plain objects,
+arrays, `Map`, `Set` and `Date` values are detached for a stable React snapshot; a class instance
+cannot be copied safely, so selecting one directly or inside another value throws an actionable
+error — select the fields you render instead. The optional third argument is the equality check
+that decides whether a recomputed selection counts as changed. It defaults to a structural
+comparison — own enumerable string keys and `Object.is` values, recursively through plain objects
+and arrays, a detached Date by its timestamp, and detached Map/Set size, iteration order and
+entries — because detached containers would never compare equal by reference: a selector rebuilt
+on every render, or a write that replaces an ancestor without changing its content, would
+otherwise re-render every time. Pass `Object.is` explicitly for the old, reference-only behavior.
 With the default comparison a changed selection keeps the previous references of its unchanged
 nested objects and arrays, so rows of a selected list can be `React.memo` children.
 
@@ -1244,9 +1048,8 @@ A resource cache has a hooks reader too:
 `useResourceValue<T, TArgs, R>(source, args, select, isEqual?)` returns `TReadonly<R>`.
 The selector is **required**; there is no two-argument overload or implicit whole-resource selection.
 A stale entry is loaded **after** committed publication and subscription attachment, never during
-render (development reports a load started in render). Loading lifecycle notifications are separate
-from selected-value equality; invalidation surviving a request can re-arm the committed reader.
-Server rendering selects without loading, subscribing or acquiring write proofs.
+render (development reports a load started in render). Server rendering selects without loading,
+subscribing or acquiring write proofs.
 
 Using the `User` and `users` declarations from the cached-resource example above:
 
@@ -1265,33 +1068,23 @@ const HookUserBadge = ({id}: {id: string}) => {
 };
 ```
 
-The pure synchronous selector borrows an evaluation-scoped read input. Returning an input branch
-is supported: the engine detaches it before returning the result. Do not retain the input or close
-deferred callbacks over it. Only selector reads, capture reads and engine loading dependencies
-subscribe. **Child and effect reads of returned selections do not collect dependencies**: explicitly
-project everything the child consumes. `view => view.data` captures the whole data graph and therefore
-observes its content; a narrow projection ignores excluded leaves.
+The selector must be pure and synchronous; returning an input branch is supported — the engine
+detaches it before returning the result — but do not retain the input or close deferred callbacks
+over it. **Child and effect reads of returned selections do not collect dependencies**: explicitly
+project everything the child consumes. `view => view.data` observes the whole data graph; a narrow
+projection ignores excluded leaves. Hoisted or correctly memoized selectors reuse completed results
+on unchanged parent renders; a fresh inline selector remains correct but executes again.
 
-Results follow the detached selection semantics above, including structural sharing of unchanged
-subtrees, aliases/cycles and ordinary native values; unsupported class/native/array subclasses are
-rejected. The optional fourth argument compares detached readonly values. Returning true promises
-observational equivalence and retains the old result, without suppressing dependency migration.
-Readonly is compile-time and immutable by contract, not a deep-freeze pass or mutation membrane.
-
-Hoisted or correctly memoized selectors reuse completed results and read sets on unchanged parent
-renders. A fresh inline selector remains correct and can retain equal result identity, but executes
-again and pays selection/capture costs. Parent renders still resolve TTL freshness without requiring
-a source write; no timer is installed. The server snapshot keeps the server's `updatedAt` and
-invalidated state; TTL is checked normally. After commit, a mounted `useResource` or
-`useResourceValue` reader may refetch a successful entry that is stale or invalidated. Local
-presentation overrides belong to the caller, for example
-`const local = {...user, name: 'local'}`, not assignments, definitions or deletions on hook results.
-The class `useResource` view is readonly (writes throw) and subscribes to the fields it
-reads — reading `data` subscribes to the whole data field; presentation overrides belong to the caller via
+Selector functions should be capture-free where possible. The linter warns about selectors that
+capture render bindings (H34) and `useMemo`/`useCallback` over values already read by these hooks
+(H33); prefer selecting the whole record and picking during render, or deriving in the selector or
+a `Computed`. For capturing handlers, use a child `AntiHookComponent` with props and an `@bind`
+method, or convert the component. The class `useResource` view is readonly (writes throw for the
+built-in resource sources; a custom `IResourceSource` without a `fieldView` hands out its plain
+view — readonly by type and contract, without runtime protection) and
+subscribes to the fields it reads; presentation overrides belong to the caller via
 `{...view, name: 'local'}`. `connectSelection` remains the tool for detached memo-child
 projections.
-
-Selector functions should be capture-free where possible. The linter warns about selectors that capture render bindings (H34) and `useMemo`/`useCallback` over values already read by these hooks (H33); prefer selecting the whole record and picking during render, or deriving in the selector or a `Computed`. For capturing handlers, use a child `AntiHookComponent` with props and an `@bind` method, or convert the component; callback memoization is also reported, not recommended.
 
 ## Lint rules
 
@@ -1537,21 +1330,12 @@ a test pins the exported surface so one does not slip in by accident.
   concurrent render pass; don't write to stores from render.
 - The props gate means a component that relied on its parent re-rendering to pick up data it
   never read will stop updating. Read what you render, through `useCarburetor`.
-- Ordinary plain-tree undo/redo records patches — O(changed values), not O(state); `setData`, `restore`
-  and `fromJSON` record their leaf patches too (up to 1000, then one opaque entry). A native value
-  elsewhere in the state does not change that: only steps that replace, mutate or read a native
-  through `draft`, opaque writes, positional string-key changes and resource wire identity use owned
-  graphs. Undo and redo install through `restore`, waking changed-path readers; key-only resource
-  restores invalidate the slot. `CarburetorHistory` works with the `Carburetor` family — `Carburetor`,
-  `ResourceCarburetor`, `ResourceCache` and their subclasses. The default `captureHistory` owns the
-  live graph, so a subclass that overrides `snapshot()` for its own view still attaches a history;
-  only classes whose wire form differs from their live data override `captureHistory(own)`, passing
-  their authoritative raw graph to `own` and including private wire metadata without splitting that
-  graph. The built-in stores publish to history before ordinary subscribers, after transaction/throttle
-  coalescing, and claim a restore only for its exact argument, after cancellation listeners can
-  supersede it, adopting a fresh replay-owned graph as-is. `attachPatchListener`, `IPatchSource` and
-  `IPatchObserver` are the engine's internal protocol: they change between versions, are not part of
-  the stable public contract, and custom history sources are not supported.
+- Ordinary plain-tree undo/redo records patches — O(changed values), not O(state). Steps that
+  replace, mutate or read a native value through `draft` use owned detached graphs instead.
+  `CarburetorHistory` works with the `Carburetor` family — `Carburetor`, `ResourceCarburetor`,
+  `ResourceCache` and their subclasses. `attachPatchListener`, `IPatchSource` and
+  `IPatchObserver` are the engine's internal protocol: they change between versions, are not part
+  of the stable public contract, and custom history sources are not supported.
 - Overriding a lifecycle method without calling `super` silently disables effects, subscription
   cleanup or the props gate. Override `useEffects` / `unUseEffects` instead. A `componentDidMount`
   override that skips `super.componentDidMount()` is reported in development — on the next entry

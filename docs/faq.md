@@ -34,7 +34,7 @@ There are no actions, reducers or middleware. State changes are made by calling 
 
 ## How is it different from Zustand?
 
-In React Carburetor, a class component reads a store inside `render()` via `this.useCarburetor`, `connect`, or `connectSelection`, rather than through a hook. A hook reader, `useCarburetorValue(store, selector)`, exists in the opt-in `react-carburetor/interop` entry point for hooks-first code. Updates are draft-based: a store method conducts its write through `update()`, which writes the draft and publishes the changed paths in one step, rather than replacing state through a setter.
+A class component reads a store inside `render()` with `this.useCarburetor(store)` — it works for every store and every source shape. `connect()` is an optimization for a store fixed for the component's lifetime that a component reads many times: declared once (a field initializer is the intended call site), it hands back the same live view object across renders. A hook reader, `useCarburetorValue(store, selector)`, exists in the opt-in `react-carburetor/interop` entry point for hooks-first code. Updates are draft-based: a store method conducts its write through `update()`, which writes the draft and publishes the changed paths in one step, rather than replacing state through a setter.
 
 ## How is it different from MobX?
 

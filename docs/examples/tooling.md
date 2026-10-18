@@ -99,8 +99,12 @@ stop();
 ```
 
 The returned disposer stops persisting and flushes a pending write. Load and write errors
-reach `onError`; without it a failed read throws, and corrupt stored data is removed by
-default — reported through the engine diagnostics in development, silently in production.
+reach `onError`; without it a failed read throws. A malformed entry is removed and reported —
+through the engine diagnostics in development, or the caller's `onError` (in production without
+`onError` the removal is silent). A restore the store rejects is reported too, and the stored
+data is removed only when the culprit is known — a single key or the single stored partition;
+with several partitions every stored entry is kept (the culprit is unknown) and the failure is
+only reported.
 
 Two options bound the cost of mirroring large stores. `throttleMs` sets the minimum time
 between storage writes: the first write still happens right away, later flushes wait out the

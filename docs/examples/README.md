@@ -20,7 +20,7 @@ This catalog contains self-contained typechecked recipes covering the whole publ
 | Read store state in an existing hook-based component | `useCarburetorValue(store, selector)` from 'react-carburetor/interop' | [hooks.md](hooks.md) |
 | Subscribe to a derived value | `Computed` / `this.useComputed(computed)`; hook: `useComputedValue` | [derived.md](derived.md) / [hooks.md](hooks.md) |
 | Precise selection with comparator | `this.connectSelection(...)` | [components.md](components.md) |
-| Declare a one-off connection | `this.connect(...)` | [components.md](components.md) |
+| Read a store fixed for the component's lifetime through one persistent view | `this.connect(...)` | [components.md](components.md) |
 | Pass a store method as a callback | decorate it with `@bind` | [components.md](components.md) |
 | Async data with TTL and eviction | `ResourceCache` | [resources.md](resources.md) |
 | Single async resource | `ResourceCarburetor` | [resources.md](resources.md) |

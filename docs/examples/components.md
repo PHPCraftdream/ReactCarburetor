@@ -91,10 +91,14 @@ as a value is called with `this === undefined`.
 
 ## A persistent connection: `connect`
 
-`connect(source)` builds one view of a store, once, and hands back the exact same object for the
-component's lifetime — the facade is created per connection and stays stable until the component
-dies, independent of what the underlying data object does. A field initializer is the intended call
-site; the returned view is read directly in `render()`.
+`connect(source)` is an optimization for a store fixed for the component's lifetime that a
+component reads many times: it builds one view of a store, once, and hands back the exact same
+object for the component's lifetime — the facade is created per connection and stays stable until
+the component dies, independent of what the underlying data object does. A field initializer is
+the intended call site; the returned view is read directly in `render()`. Its limitations: the
+view's object/array kind is fixed at declaration, and a source not resolvable at declaration
+fixes the object kind (a later array root fails with a boundary error) — read such stores through
+`useCarburetor` instead.
 
 <!-- example:file examples/api/components/connect/Connect.tsx#doc -->
 ```tsx
@@ -273,7 +277,9 @@ const counter = scope.get(counterToken);
 ```
 
 Pitfall: a `ScopedAntiHookComponent` rendered without a `<CarburetorProvider>` above it throws
-on `resolve()` — a missing provider is a wiring mistake, not a default.
+on `resolve()` — a missing provider is a wiring mistake, not a default. Inside the component, `this.scoped(token)`
+is the actual resolution point — it reads the surrounding scope — and `this.resolve(token)` simply delegates
+to it, so a subclass can override `scoped` to reroute every resolution.
 
 ## Publishing a scope outside the provider tree: `CarburetorProvider` and `CarburetorContext`
 

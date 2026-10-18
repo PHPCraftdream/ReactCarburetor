@@ -47,7 +47,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
     /** Live accessor for the recorder built into a cached view, whose call site is long gone. */
     private readonly [C.getRenderAttempt] = (): IRenderAttempt | undefined => this[C.renderAttempt];
 
-    /** The only way to read state in render: returns tracked data; subscribes to exactly
+    /** The general way to read state in render: returns tracked data; subscribes to exactly
      * the fields it actually reads, and re-renders only when those fields change.
      *
      * The view is the same object across renders while the carburetor and its data object

@@ -19,8 +19,11 @@ Entries below record development history in change order; where contracts differ
   sets are copied.
 - **Resources/useResourceValue:** `useResourceValue(source, args, select, isEqual?)` requires a
   synchronous selector and returns a detached readonly selection without a writable facade. Load
-  starts after commit. Class `useResource` is separate and tracks entry fields, but `data` remains
-  a whole-field dependency; sources without a field view use a whole-entry subscription.
+  starts after commit. Class `useResource` is a read-only facade over the entry: assigning, defining or
+  deleting a field on it throws TypeError for the built-in resource sources (the field-view facade);
+  a custom `IResourceSource` without a `fieldView` hands out its plain view — readonly by type and
+  contract, without runtime protection — and it subscribes to the entry fields the reader actually reads
+  (`data` remains a whole-field dependency); sources without a field view use a whole-entry subscription.
   `IResourceSource` requires `resolve(args)` and `load(args)`.
 - **History/snapshot:** Ordinary `snapshot()` copies plain containers and retains native/class
   references. History independently owns supported native graphs and rejects unsupported
@@ -62,6 +65,24 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- `update(mutate, ...args)` forwards the extra arguments to the mutator, so the mutator can be a module-level
+  function without a closure; publication is still guaranteed when the mutator throws.
+- `CarburetorScope.hydrate(state)` without a token list applies the payload lazily on the first `get(token)`;
+  `hydrate(state, tokens)` stays eager.
+- `useEffect(effect, deps)` is keyed by the stable `effect` function itself — a module-level function or a
+  `@bind` method — instead of a name.
+- `ScopedAntiHookComponent.scoped(token)`; `resolve` delegates to it.
+- `new Carburetor(data, {scheduler})` as an options form, and the `UpdateThrottle` export as the preferred
+  name (`ComponentUpdateThrottle` is kept).
+- A development report when a `componentDidMount` override never calls `super.componentDidMount()`.
+- `AntiHookComponent.suspendResource(source, ...args)` and the `resourceState(status, data?, error?)` helper,
+  exported from the package.
+- `persist` options `throttleMs` (bounds the write rate; the trailing write is guaranteed and the disposer
+  flushes) and `partitions` (one storage key per top-level branch under `key.branch`, only dirty branches are
+  rewritten, a fallback to the legacy whole-store key, and the first write seals the baseline). A failed
+  partition write or removal is retried on the next notification and by the disposer; a failed restore is
+  reported in development; with several partitions a rejected restore keeps all stored entries.
+
 - `no-get-data-in-render` (H1) documents render-kind-specific messages and the Server Component
   exception, including line-level suppression guidance. The recommendation and owner scope clarify
   when function-hook reads or `AntiHookComponent#useCarburetor` apply.
@@ -76,6 +97,19 @@ Entries below record development history in change order; where contracts differ
 
 ### Breaking
 
+- **Breaking:** Class `useResource` returns a read-only view of the entry: assigning, defining or deleting a
+  field on it throws TypeError for the built-in resource sources (the field-view facade); a custom
+  `IResourceSource` without a `fieldView` hands out its plain view — readonly by type and contract, without
+  runtime protection — and it subscribes only to the entry fields the reader actually reads.
+- **Breaking:** Handle promises settle with the request that finally owns the key — a `load` displaced by a
+  same-key `refresh` resolves with that refresh. `ResourceCarburetor` defaults `ttl: 30_000` and
+  `maxEntries: 100`, and stale answers are swept from memory. The default resource key in development rejects
+  non-JSON-safe arguments (Map/Set/Date/class instances/functions/symbols/bigint/NaN/Infinity/cycles) with a
+  TypeError pointing at the `key` option, and `load`/`refresh` reject their promise instead of throwing
+  synchronously. `ResourceCarburetor`'s `load`/`refresh` are prototype methods bound in the constructor, so a
+  JavaScript subclass override of either works (`clear` is an own field and cannot be overridden
+  that way); `ResourceCache`'s `load`/`refresh`/`clear` are all prototype methods.
+  `ResourceCarburetor.suspend()` serves the stale answer and revalidates in the background.
 - **Breaking:** Resource loader arguments are variadic with the signal last —
   `(...args: [...TArgs, AbortSignal]) => Promise<T>` — and `TArgs` is now a tuple:
   `ResourceCache<User, string>` becomes `ResourceCache<User, [id: string]>`, the `void` default
@@ -107,6 +141,12 @@ Entries below record development history in change order; where contracts differ
 
 ### Changed
 
+- H32 advice `no-closure-in-update` now points at the module-level mutator form of `update`.
+- `@bind` picks up a subclass override and throws on `#private` methods.
+- `ResourceCache.refresh()` always restarts an in-flight request of the key, and the previous handle promise
+  settles with the new request's outcome.
+- Resource examples use the minimal loader form without `signal.aborted`; the docs state that handle promises
+  resolve on loader failure and reject with `AbortError` only when displaced before start.
 - The render allocation rules index closure candidates once per file and walk only the queried subtree instead of scanning
   the whole semantic node list per candidate; the round_four_scale probe (2000 capture-free handlers, debug profile)
   dropped from ~822 ms to ~71 ms.
@@ -874,6 +914,13 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- `hydrate` no longer loses state for tokens that were not listed.
+- `ResourceCache.clear()` aborts requests whose entries were removed by a state replacement and settles the
+  promises of all requests cancelled by the clear.
+- React Native synthetic events are dropped by resource handles on runtimes without a global `Event`.
+- Resource slot settlement, abort and memory publication prepare an owned graph for readonly value-descriptor
+  replacement.
+- DevTools no longer echoes a time-travel jump back as a new action.
 - `no-capturing-hook-selector` checks the selector by the hook's argument position — argument 2 of
   `useCarburetorValue(source, select, isEqual?)` and argument 3 of `useResourceValue(source, args, select, isEqual?)`;
   `useComputedValue` takes no selector and is not covered. The same `no-memo-over-store-read` rule resolves a

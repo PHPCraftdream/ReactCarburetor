@@ -149,7 +149,8 @@ entry. On a `ResourceCarburetor`, `ttl`/`maxEntries` additionally let earlier an
 remembered and reused while fresh.
 
 Eviction is not optional: without it the cache grows by one entry per distinct argument set for the
-lifetime of the process. A maximum entry count is set in the constructor, least-recently-used entries
+lifetime of the process. A maximum entry count is set in the constructor — `100` entries by
+default, like the slot's answer memory — least-recently-used entries
 go first, and an entry is never evicted while a request for it is in flight or while a component is
 subscribed to it.
 
@@ -192,9 +193,12 @@ Readonly is the library's compile-time immutable-by-contract policy, not deep fr
 
 Presentation overrides are caller-owned, for example `{...selected, name: 'local'}`. Assigning,
 defining or deleting hook-result fields is unsupported. The class `useResource` view is readonly
-(writes throw) and subscribes to the fields it reads — reading `data` subscribes to the whole data
+(writes throw for the built-in cache/slot sources; a custom `IResourceSource` without a `fieldView`
+returns its plain view — readonly by type, no runtime guard) and subscribes to the fields it reads —
+reading `data` subscribes to the whole data
 field; `connectSelection`
-remains the tool for detached memo-child values.
+remains the tool for detached memo-child values. Caching of the class `useResource` facade is a
+known limitation: it is not done, so the facade object is rebuilt rather than reused across reads.
 
 Hook loading starts only after committed publication and subscription attachment, using current
 committed arguments and fresh eligibility. Selected-value equality does not suppress loading
@@ -215,3 +219,18 @@ judges freshness using its own clock. Clock skew can affect that verdict, so hyd
 guarantee freshness. An old timestamp or invalidated entry remains stale, and the normal TTL check
 is `Date.now() - updatedAt > ttl`. A stale entry read by a mounted hook may refetch after commit;
 hydration itself does not refetch every entry.
+
+## Persistence of a store (`persist`)
+
+`persist` is a store tool, not a cache one, but it shares the same wire-form discipline: a
+store is mirrored to any `IStorageLike` (`getItem`/`setItem`/`removeItem`) on every change,
+and the returned disposer stops the mirroring and flushes a state still held back. Two
+options bound its cost. `throttleMs` limits write frequency: the first write is immediate,
+later flushes wait out the window, and the final write is guaranteed — the disposer writes a
+state a throttled flush has not written yet. `partitions` lists top-level branch names stored
+under their own keys (`key + "." + branch`), so a flush stringifies and rewrites only the
+dirty branches; a legacy whole-store key is still read when no partition entries exist, and
+the first write seals the per-branch baseline once. A failed partition write or removal stays
+failed but retryable — the next notification and the disposer both retry it. A failed restore
+is reported in development (the stored data is removed for a single partition, and kept when
+several partitions are configured, since the guilty one is unknown).
