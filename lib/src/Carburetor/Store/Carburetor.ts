@@ -490,13 +490,10 @@ export class Carburetor<T extends object> implements
      *
      * If mutate throws partway through, the writes it already made stay in the data (the draft
      * applies each at once) and are published anyway; the error still reaches the caller. Rolling
-     * back would take a full snapshot before every update — too high a price on the hot path.
+     * back would cost a full snapshot per update. Mutate may be a module-level function taking
+     * `(draft, ...args)`. The name `update` is reserved: a subclass cannot declare it.
      *
-     * Mutate may be a module-level function taking `(draft, ...args)`: the values passed as the
-     * second and further arguments of `update` are forwarded to it. The name `update` is
-     * reserved — a subclass cannot declare a method with this name.
-     *
-     * @param mutate - writes to the draft; receives `args` after the draft
+     * @param mutate - writes to the draft
      * @param args - forwarded to `mutate` after the draft
      */
     protected update<A extends readonly unknown[]>(mutate: (draft: T, ...args: A) => void, ...args: A): void {
