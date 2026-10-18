@@ -29,6 +29,6 @@ export async function renderRequest() {
 }
 export function hydratePage(container: HTMLElement, payload: string) {
     const scope = new CarburetorScope();
-    scope.hydrate(JSON.parse(payload) as Record<string, unknown>, [userToken]);
+    scope.hydrate(JSON.parse(payload) as Record<string, unknown>);
     return hydrateRoot(container, tree(scope));
 }

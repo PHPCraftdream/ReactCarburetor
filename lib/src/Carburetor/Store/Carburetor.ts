@@ -1,12 +1,10 @@
 import {IDict, TDisposer, TReadonly, TSubscriber} from "@/Carburetor/Models/Base";
 import {
-    IPatchObserver, IStateInstallation, IStatePublication, IStateRestoreClaim,
-    PATCH_OPAQUE, STATE_MIXED_PUBLICATION, STATE_MUTATION_PUBLICATION, STATE_PUBLIC_REPLACEMENT,
-    IWritePatch, TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
+    IPatchObserver, IStateInstallation, IStatePublication, IStateRestoreClaim, PATCH_OPAQUE,
+    STATE_MIXED_PUBLICATION, STATE_MUTATION_PUBLICATION, STATE_PUBLIC_REPLACEMENT, IWritePatch,
+    TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
 } from "@/Carburetor/Models/Paths";
-import {
-    ICarburetor, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector,
-} from "@/Carburetor/Models/Store";
+import {ICarburetor, ICarburetorOptions, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector} from "@/Carburetor/Models/Store";
 import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
 import {sameKind} from "./Paths/Diff/Kinds/sameKind";
@@ -35,8 +33,8 @@ import {reportDeliveryFailure} from "./Diagnostics/reportDeliveryFailure";
 import {warnIfAsyncMutate} from "./Diagnostics/warnIfAsyncMutate";
 import {
     CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, CARBURETOR_PATHS_SINCE,
-    CARBURETOR_REPLAY_PATCHES, CARBURETOR_TARGETS_SINCE, CARBURETOR_TRACK_TARGETS, IInternalSubscriptionProtocol,
-    ISubscriberRecord,
+    CARBURETOR_REPLAY_PATCHES, CARBURETOR_TARGETS_SINCE, CARBURETOR_TRACK_TARGETS,
+    IInternalSubscriptionProtocol, ISubscriberRecord,
 } from "./Utils/Models";
 import {S} from "./Diagnostics/Internal/StoreIdentity";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
@@ -57,9 +55,8 @@ export class Carburetor<T extends object> implements
     /** Development alias ledger handed to both proxies; undefined outside development. */
     public [S.aliases]: TAliasLedger = createAliasLedger();
 
-    /** The currently attached patch listener, if any; shared with the write proxy tree (R16-07). */
+    /** The currently attached patch listener, if any; shared with the write proxy tree. */
     public [S.patchPort]: TPatchPort = {};
-
     /** Lazily attached mutation/publication observers, shared by draft and restore paths. */
     public [S.patchObservers]: PatchObserverRegistry | undefined;
     /** The store's identity, minted once at construction. */
@@ -75,9 +72,9 @@ export class Carburetor<T extends object> implements
     public [S.writes]: TPathSet = new Set<TPath>();
     /** The raw objects each pending write mutated, handed to the write log at emit. */
     public [S.writeTargets] = new WriteTargetLedger(false);
-    /** Which paths recent emits touched, bounded and watermarked; feeds the commit drift check (R16-05). */
+    /** Which paths recent emits touched, bounded and watermarked; feeds the commit drift check. */
     public [S.writeLog]: WriteLog = new WriteLog(undefined, false);
-    /** Counts selection consumers that need write proofs (R39-04). */
+    /** Counts selection consumers that need write proofs. */
     private readonly [S.targetOwners] = new TargetOwners(
         this[S.writeTargets], this[S.writeLog], () => this[S.version]);
     /** Whether draft was touched: it tells an empty write set from "nothing changed". */
@@ -115,10 +112,13 @@ export class Carburetor<T extends object> implements
      *
      * @param data - the state the store wraps; reads go through read(), writes through
      * draft, and setData() swaps it wholesale.
-     * @param scheduler - decides when a matched subscriber's callback runs; defaults to immediate delivery.
+     * @param scheduler - either a scheduler itself (positional form) or an options object `{scheduler}`;
+     * omitted means immediate delivery.
      */
-    constructor(data: T, scheduler: IUpdateScheduler = syncUpdateScheduler) {
-        this[S.data] = data; this[S.scheduler] = scheduler;
+    constructor(data: T, scheduler: IUpdateScheduler | ICarburetorOptions = syncUpdateScheduler) {
+        const policy = 'schedule' in scheduler ? scheduler : scheduler.scheduler ?? syncUpdateScheduler;
+
+        this[S.data] = data; this[S.scheduler] = policy;
         this[S.aliases]?.checkState(data, '');
         nativeStoreWriteEpoch.sources.set(this, Carburetor.nativeStoreMethods);
     }
@@ -141,11 +141,11 @@ export class Carburetor<T extends object> implements
         return this[S.version];
     }
 
-    /** The paths written after `baselineVersion` (R36-01); undefined once the write log cannot enumerate them. */
+    /** The paths written after `baselineVersion`; undefined once the write log cannot enumerate them. */
     public [CARBURETOR_PATHS_SINCE](baselineVersion: number): ReadonlyArray<TPath> | undefined {
         return this[S.writeLog].pathsSince(baselineVersion);
     }
-    /** A selection consumer asks for write proofs until it calls the returned release (R39-04). */
+    /** A selection consumer asks for write proofs until it calls the returned release. */
     public [CARBURETOR_TRACK_TARGETS](): () => void { return this[S.targetOwners].acquire(); }
     /** The raw mutation targets behind the paths written after `baselineVersion`. */
     public [CARBURETOR_TARGETS_SINCE](baselineVersion: number): ReadonlyMap<TPath, ReadonlySet<object>> | undefined {
@@ -153,7 +153,7 @@ export class Carburetor<T extends object> implements
     }
 
     /**
-     * The path-precise drift check (R16-05, R33-03): could a write since `baselineVersion` concern
+     * The path-precise drift check: could a write since `baselineVersion` concern
      * `reads`? O(1) for a read set this store filed; otherwise the write log, which says `true`
      * once it cannot answer.
      *
@@ -172,7 +172,7 @@ export class Carburetor<T extends object> implements
     }
 
     /**
-     * History's draft replay of undo/redo patches (R34-03); reached via the internal protocol.
+     * History's draft replay of undo/redo patches; reached via the internal protocol.
      *
      * @param patches - the entry's patches, in recorded order
      * @param inverse - true installs `previous` in reverse; false installs `next`
@@ -229,7 +229,8 @@ export class Carburetor<T extends object> implements
         return deepClone(this[S.data]);
     }
 
-    /** Owns the live graph for history: it is the authoritative raw state (R30-06b).
+    /** Owns the live graph for history: it is the authoritative raw state.
+     * Internal engine protocol (history); not an extension point, no stability guarantee.
      *
      * Classes whose wire state differs from their live data must override this.
      *
@@ -311,9 +312,9 @@ export class Carburetor<T extends object> implements
     }
 
     /**
-     * The type-erased half of `setData`: adopts `value` directly, diffed the same way (R16-02).
+     * The type-erased half of `setData`: adopts `value` directly, diffed the same way.
      * Unlike `restore`, it makes no copy: `value` is expected to be freshly parsed JSON the
-     * caller does not keep (R16-09).
+     * caller does not keep.
      *
      * @param value - the parsed state to install; the cast is the caller's promise about the
      * shape, and the store keeps this exact object as `getData()`'s answer.
@@ -392,7 +393,8 @@ export class Carburetor<T extends object> implements
             delete this[S.subscribers][id];
         }
     }
-    /** Attaches one observer without displacing independent history recorders. */
+    /** Attaches one observer without displacing independent history recorders.
+     * Internal engine protocol (patch observers); not an extension point, no stability guarantee. */
     public attachPatchListener(observer: IPatchObserver): TDisposer {
         const registry = this[S.patchObservers] ??= new PatchObserverRegistry(this[S.patchPort], this[S.scheduler]);
         return registry.attach(observer);
@@ -408,7 +410,7 @@ export class Carburetor<T extends object> implements
     }
 
     /** Delivers one notification pass for a closed write set; called only via the internal
-     * symbol protocol (R32-07), never as a public method. */
+     * symbol protocol, never as a public method. */
     public [CARBURETOR_NOTIFY_WRITES](writes: TPathSet): void {
         updateWave.begin();
 
@@ -489,12 +491,19 @@ export class Carburetor<T extends object> implements
      * If mutate throws partway through, the writes it already made stay in the data (the draft
      * applies each at once) and are published anyway; the error still reaches the caller. Rolling
      * back would take a full snapshot before every update — too high a price on the hot path.
+     *
+     * Mutate may be a module-level function taking `(draft, ...args)`: the values passed as the
+     * second and further arguments of `update` are forwarded to it. The name `update` is
+     * reserved — a subclass cannot declare a method with this name.
+     *
+     * @param mutate - writes to the draft; receives `args` after the draft
+     * @param args - forwarded to `mutate` after the draft
      */
-    protected update(mutate: (draft: T) => void): void {
+    protected update<A extends readonly unknown[]>(mutate: (draft: T, ...args: A) => void, ...args: A): void {
         let result: unknown;
 
         try {
-            result = mutate(this.draft);
+            result = mutate(this.draft, ...args);
         } finally {
             this.emitUpdate();
         }
@@ -503,6 +512,7 @@ export class Carburetor<T extends object> implements
     }
 
     /** Publishes on the next microtask when synchronous delivery is unsafe.
+     * The parameters drive internal engine paths only; call this publicly without arguments.
      *
      * @param installation - the root transition whose facts this deferred write closes
      * @param deferredContinuation - whether an earlier phase already queued the fact
@@ -560,7 +570,7 @@ export class Carburetor<T extends object> implements
 
                     diagnostics.report(
                         'a write went through draft, but emitUpdate() was never called, so no ' +
-                        'subscriber was notified. Prefer this.update(draft => ...), which does both.'
+                        'subscriber was notified. Prefer this.update(mutate, ...args), which writes and publishes in one step.'
                     );
                 };
             }
@@ -573,7 +583,7 @@ export class Carburetor<T extends object> implements
     public [S.recordWrite](path: TPath): void { this[S.writes].add(path); }
     /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
     protected markAllChanged(): void {
-        // Always a real change, unlike emitUpdate()'s own bypass fallback below (R16-07).
+        // Always a real change, unlike emitUpdate()'s own bypass fallback below.
         this[S.recordWrite](WILDCARD_PATH);
         this[S.patchPort].listener?.(PATCH_OPAQUE);
     }
@@ -582,6 +592,7 @@ export class Carburetor<T extends object> implements
     protected preEmit(_changed: ReadonlySet<string>): void {}
 
     /** Closes the completed write set through the shared pre-subscriber publication boundary.
+     * The parameters drive internal engine paths only; call this publicly without arguments.
      *
      * @param installation - an explicit root transition, when this write set installs one
      * @param deferredContinuation - whether its publication fact was already queued

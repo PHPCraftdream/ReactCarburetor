@@ -128,7 +128,7 @@ The native pass also honours oxlint suppression spellings. ESLint disable commen
 
 ## H31: functions built in render
 
-Inline function callbacks passed to synchronous array methods in render are findings, even when they only create elements. Use a module-level function when no `this` is needed or a bound method when it is. A capturing `this.update` callback is H32; write directly to `this.draft` and publish with `emitUpdate()` (use `try/finally` if a mutation can throw). Clean update callbacks belong at module scope under H30.
+Inline function callbacks passed to synchronous array methods in render are findings, even when they only create elements. Use a module-level function when no `this` is needed or a bound method when it is. A capturing `this.update` callback is H32; declare a module-level mutator and pass its values as extra arguments of `this.update`. A body that needs `this` writes to `this.draft` and calls `emitUpdate()` (use `try/finally` when a mutation can throw). A clean inline callback is H30 instead.
 
 <!-- example:file examples/wrong/no-function-in-render/List.expected.no-function-in-render.require-module-function.tsx#doc -->
 ```tsx
@@ -167,7 +167,7 @@ The map callback is a stable module-level reference. The row owns its event hand
 
 ## H32: capturing callbacks passed to `this.update`
 
-A callback that captures a member parameter, local binding, or `this` allocates a closure each time the method runs. Write directly to `this.draft` and publish with `emitUpdate()`; use `try/finally` when a mutation may throw. A clean callback is H30 instead.
+A callback that captures a member parameter, local binding, or `this` allocates a closure each time the method runs. Declare the mutator at module level with the signature `(draft, ...args)` and pass its values as extra arguments of `this.update`; a body that needs `this` uses the hand-written `this.draft` + `emitUpdate()` form (with `try/finally` when a mutation may throw). A clean inline callback is H30 instead.
 
 **Wrong**
 
@@ -195,26 +195,18 @@ import {Carburetor} from 'react-carburetor';
 interface CounterState { count: number; name: string }
 declare function normalizeName(name: string): string;
 
-const increment = (draft: CounterState): void => { draft.count += 1; };
+const incrementBy = (draft: CounterState, step: number): void => { draft.count += step; };
+const renameTo = (draft: CounterState, title: string): void => { draft.name = normalizeName(title); };
 
 class Counter extends Carburetor<CounterState> {
     public bump(step: number): void {
-        this.draft.count += step;
-        this.emitUpdate();
+        this.update(incrementBy, step);
     }
 
     public rename(name: string): void {
-        try {
-            this.draft.name = normalizeName(name);
-        } finally {
-            this.emitUpdate();
-        }
-    }
-
-    public increment(): void {
-        this.update(increment);
+        this.update(renameTo, name);
     }
 }
 ```
 
-A clean inline callback belongs at module scope under H30. `update` publishes in `finally`; direct draft writes should likewise publish in `finally` if an exception can follow a partial mutation.
+A clean inline callback belongs at module scope under H30. `update` publishes in `finally`; the hand-written draft form should likewise publish in `finally` if an exception can follow a partial mutation.

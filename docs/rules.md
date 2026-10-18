@@ -159,7 +159,7 @@ until your project changes shape.
 |------|-------|---------|--------|
 | `no-async-effect` | error | An `async` effect body, whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
 | `no-async-transaction` | error | An `async` body given to `transaction()` (a value import from `react-carburetor`) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
-| `no-closure-in-update` | warn | A capturing inline callback passed to `this.update` in a recognized store member; write to `this.draft` and emit instead | [H32](hazards.md) |
+| `no-closure-in-update` | warn | A capturing inline callback passed to `this.update` in a recognized store member; pass a module-level mutator and its arguments to `this.update` instead | [H32](hazards.md) |
 | `no-computed-get-in-computed` | error | A computed reading a source with `get()`/`getData()` instead of its reader, so it registers no dependency and never invalidates | [H3](hazards.md) |
 | `no-computed-get-in-render` | error | A computed read with `get()` in render, which registers no subscription | [H2](hazards.md) |
 | `no-direct-data-write` | warn | A store writing to `this.data`, which records no path and invalidates everything | [H7](hazards.md) |

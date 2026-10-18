@@ -9,8 +9,9 @@ of them.
 ## 1. Start with one store
 
 Model one slice of state as a class extending `Carburetor<T>`. Methods that write go through
-`this.update((draft) => {...})`; the draft is a mutable view and the changed paths are
-recorded from the assignment. Instantiate one module-level instance — this is right for a
+`this.update(mutate, ...args)`, where `mutate` takes the draft (a module-level function —
+no closures) and the remaining arguments are forwarded to it; the draft is a mutable view and
+the changed paths are recorded from the assignment. Instantiate one module-level instance — this is right for a
 client-only app. If the codebase renders on the server, a module-level store is shared by
 every request; the lint rule `no-module-level-store` exists to flag exactly this, and
 [step 4](#4-scope-per-request-when-rendering-on-the-server) is the fix.

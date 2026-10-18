@@ -129,6 +129,43 @@ describe('@bind', () => {
         expect(childRenders).toEqual(2);
     });
 
+    test('subclass override without its own @bind wins', () => {
+        class Base {
+            @bind
+            public describe(): string {
+                return 'base';
+            }
+        }
+
+        class Child extends Base {
+            public describe(): string {
+                return `override of ${super.describe()}`;
+            }
+        }
+
+        const child = new Child();
+        const detached: () => string = child.describe;
+
+        expect(detached()).toEqual('override of base');
+    });
+
+    test('binding a #private method is rejected loudly', () => {
+        const defineBroken = () => {
+            class Broken {
+                // The type system rejects this; JS callers and casts reach the runtime guard.
+                @bind
+                // @ts-expect-error decorators on private methods are not supported
+                #toggle(): void { // oxlint-disable-line no-unused-private-class-members
+                    return undefined;
+                }
+            }
+
+            return Broken;
+        };
+
+        expect(defineBroken).toThrow(/private/);
+    });
+
     test('applying it to something that is not a method is reported', () => {
         const applyToField = () => {
             // The type system rejects this; JS callers and casts reach the runtime guard.

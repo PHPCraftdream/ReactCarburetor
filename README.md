@@ -25,11 +25,14 @@ optimize after the fact: the unnecessary re-renders are never created in the fir
 ```tsx
 import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
 
+const incrementBy = (draft: {value: number}, step: number): void => {
+    draft.value += step;
+};
+
 class CounterCarburetor extends Carburetor<{value: number}> {
     @bind
     inc(): void {
-        this.draft.value += 1;
-        this.emitUpdate();
+        this.update(incrementBy, 1);
     }
 }
 
@@ -126,15 +129,19 @@ Data returned from `useCarburetor` is deeply read-only where it is plain data: t
 rejects a write, and the proxy throws if you force one past it. Standard native Map/Set mutators
 and Date setters are excluded from the TypeScript view, but native objects are not frozen; writes
 through JavaScript or unsafe casts remain possible. Writes
-belong to the carburetor: write through `this.draft`, then publish with `emitUpdate()` (or hand
-a module-level mutator to `update`, which does both):
+belong to the carburetor: hand a module-level mutator and its arguments to `this.update`, which
+writes to `this.draft` and publishes in one step (a multi-phase write may use `this.draft` and
+`emitUpdate()` by hand):
 
 <!-- example:file examples/readme/Core/TodoStore.ts#renameTodo -->
 ```ts
+const renameTodoItem = (draft: ITodoList, id: string, title: string): void => {
+    draft.items[id].title = title;   // records the changed path: items.<id>.title
+};
+
 export class TodoCarburetor extends Carburetor<ITodoList> {
     public renameTodo(id: string, title: string): void {
-        this.draft.items[id].title = title;   // records the changed path: items.<id>.title
-        this.emitUpdate();                     // publishes it to the readers of that path
+        this.update(renameTodoItem, id, title);   // publishes it to the readers of that path
     }
 }
 ```
@@ -172,7 +179,8 @@ An assigned array is aligned by element identity: a row that is the same raw obj
 records that index path, as `splice` does, so readers before the first changed index stay asleep; a
 genuinely new row object is still diffed field by field.
 
-`update` mutates through `draft` and publishes in one step. You can also write to `this.draft`
+`update` mutates through `draft` and publishes in one step. Arguments after the mutator are
+forwarded to it, so the mutator stays a module-level function free of closures. You can also write to `this.draft`
 directly and call `this.emitUpdate()` yourself, but forgetting the second half changes the data
 while nobody re-renders — so in development the carburetor reports that mistake rather than
 letting it pass silently.
@@ -964,19 +972,22 @@ export async function renderRequest() {
 }
 export function hydratePage(container: HTMLElement, payload: string) {
     const scope = new CarburetorScope();
-    scope.hydrate(JSON.parse(payload) as Record<string, unknown>, [userToken]);
+    scope.hydrate(JSON.parse(payload) as Record<string, unknown>);
     return hydrateRoot(container, tree(scope));
 }
 ```
 
 The server calls `renderRequest` per request, inserts `markup` in the root, and sends `payload` as a JSON data script (already escapes `<`). The client calls `hydratePage(root, payloadScript.textContent)`. Both bundles use the same module token; preloading is explicit because `renderToString` does not await. `scope.hydrate` uses `fromJSON`/`restore`.
 
-`dehydrate` covers every carburetor the scope actually created; `hydrate` instantiates the
-tokens whose state is present and leaves the rest to be created on demand. The token's name is
+`dehydrate` covers every carburetor the scope actually created; `hydrate` without a token list
+applies the payload lazily — each token's state is installed on its first `get`, and tokens without
+payload state are simply created on demand. The `hydrate(state, tokens)` form stays for eager
+installation of the listed tokens. The token's name is
 what the two sides match on, so the same token must be declared with the same name in the server
 and client bundles — the two module graphs can otherwise run in any order, and a counter-based
-id would not survive the trip. Two tokens in one process may not share a name, and a payload key
-no token claims is reported in development. A single store can also be seeded directly with
+id would not survive the trip. Two tokens in one process may not share a name, and in the token-list form a payload key
+no token claims is reported in development; in the form without a list such keys are simply
+left unused. A single store can also be seeded directly with
 `scope.set(token, carburetor)`.
 
 `scope.dehydrate()` returns a detached copy that survives later writes for plain-tree data: plain
@@ -1385,7 +1396,7 @@ require their own write/tooling capabilities.
 
 | member                          | description                                                        |
 |---------------------------------|--------------------------------------------------------------------|
-| `constructor(data, scheduler?)` | Initial data and delivery policy (defaults to immediate delivery).  |
+| `constructor(data, scheduler?)` | Initial data and delivery policy — a scheduler, or `{scheduler}` options (defaults to immediate delivery). |
 | `getData(): T`                  | Untracked data, for code outside render.                           |
 | `read(record)`                  | Tracked, read-only plain data; every read path goes to `record`.   |
 | `setData(data)`                 | Replaces the data (`getData() === data` afterwards) and wakes the readers of what changed; the protected `markAllChanged()` wakes everyone. |
@@ -1396,7 +1407,7 @@ require their own write/tooling capabilities.
 | `getVersion(): number`          | Write counter.                                                     |
 | `subscribe(cb, options?)`       | Subscribes to every write, for tooling. `options.id` reuses a stable id so re-subscribing replaces the previous registration; `options.reads` (with `read(record)`) is the engine's extension contract — its path strings are not a stable user-facing API; the set is copied, so changing it afterwards has no effect. |
 | `unsubscribe(id)`               | Removes the subscription and cancels a pending update.             |
-| `update(mutate)` *(protected)*  | Mutates through `draft` and publishes — the recommended write form. |
+| `update(mutate, ...args)` *(protected)*  | Mutates through `draft` and publishes — the recommended write form. Arguments after `mutate` are forwarded to it. |
 | `draft: T` *(protected)*        | Write proxy that records changed paths.                            |
 | `emitSoon()` *(protected)*      | Publishes on the next microtask, for writes made where notifying now is unsafe. |
 | `preEmit(changed)` *(protected)* | Runs before notification — derive state here. `changed` is the set of paths the emit being closed recorded (empty: nothing was written through `draft`); an override that declares no parameter keeps working. |
@@ -1428,6 +1439,7 @@ do not redeclare it.
 | `useEffects()` *(protected)*      | Declares the component's effects; runs on mount and after every committed update. |
 | `unUseEffects(prevProps)`         | Component-wide teardown, before every `useEffects` pass and on unmount. |
 | `useEffect(name, cb, deps)`       | Runs `cb` when `deps` changed; its return value is that effect's cleanup. |
+| `useEffect(effect, deps)`         | The same, keyed by the stable `effect` function itself (a module-level function or a `@bind` method) instead of a name. |
 | `shouldComponentUpdate(…)`        | The props/state gate. Override only with a `super` call.        |
 | `@bind` *(decorator)*             | Binds a method once per instance, keeping it on the prototype and its reference stable. |
 
@@ -1437,7 +1449,7 @@ do not redeclare it.
 |-----------------------------------------------|---------------------------------------------|
 | `computed(body, options?)`                    | Memoized derived value; `options.equals` judges the result by content instead of by reference. |
 | `transaction(body)`                           | One notification pass for a group of writes. |
-| `ComponentUpdateThrottle(ms)`                 | Coalescing for streaming sources.           |
+| `UpdateThrottle` / `ComponentUpdateThrottle(ms)` | Coalescing for streaming sources; `UpdateThrottle` is the preferred name, the long one is kept. |
 | `ResourceCarburetor(loader, options?)`        | Async state with status and cancellation; `options` carries `key`, `ttl`, `maxEntries`, `scheduler`. |
 | `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent` | Per-request stores. |
 | `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
@@ -1538,7 +1550,11 @@ a test pins the exported surface so one does not slip in by accident.
   `IPatchObserver` are the engine's internal protocol: they change between versions, are not part of
   the stable public contract, and custom history sources are not supported.
 - Overriding a lifecycle method without calling `super` silently disables effects, subscription
-  cleanup or the props gate. Override `useEffects` / `unUseEffects` instead.
+  cleanup or the props gate. Override `useEffects` / `unUseEffects` instead. A `componentDidMount`
+  override that skips `super.componentDidMount()` is reported in development — on the next entry
+  into the base lifecycle, the first `componentDidUpdate` or unmount. Detection covers prototype
+  overrides; a `componentDidMount` assigned in a subclass constructor is not reported — declare
+  overrides as methods.
 
 ## Demo
 

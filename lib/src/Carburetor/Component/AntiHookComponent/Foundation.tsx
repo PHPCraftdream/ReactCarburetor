@@ -27,6 +27,7 @@ const RENDER_KEY = "render";
 const RENDER_RAW: unique symbol = Symbol('carburetor.antiHookComponent.renderRaw');
 const RENDER_BOUNDARY: unique symbol = Symbol('carburetor.antiHookComponent.renderBoundary');
 const RENDER_ASSIGNED: unique symbol = Symbol('carburetor.antiHookComponent.renderAssigned');
+const MOUNT_SUPER_SKIPPED: unique symbol = Symbol('carburetor.antiHookComponent.mountSuperSkipped');
 
 /** Formats an unmount-teardown failure the same way Effects.tsx's own describeFailure does. */
 const describeUnmountFailure = (error: unknown): string =>
@@ -92,6 +93,9 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
 
     /** Whether a constructor assigned `render` directly, rather than leaving it on the prototype. */
     private [RENDER_ASSIGNED] = false;
+
+    /** Dev only: the most-derived `componentDidMount` override never called `super.componentDidMount()`. */
+    private [MOUNT_SUPER_SKIPPED] = false;
 
     /**
      * Installs the render-attempt boundary as a non-configurable own accessor, so the moment
@@ -185,6 +189,48 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         super(props);
 
         this[C.installRenderBoundary]();
+
+        // Development-only mount-super check, for overrides that never call super.
+        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+            const overrides = Reflect.get(
+                Object.getPrototypeOf(this),
+                'componentDidMount',
+                this
+            ) !== AntiHookComponentFoundation.prototype.componentDidMount;
+
+            this[MOUNT_SUPER_SKIPPED] = overrides;
+        }
+    }
+
+    /**
+     * Dev-only check for a `componentDidMount` override that never called `super`:
+     * the mount render closed but its attempt was never consumed by a commit, so the
+     * base's mount work did not run.
+     *
+     * The check applies to components with static `getDerivedStateFromProps` or an
+     * instance-level `getSnapshotBeforeUpdate` too: React still calls `componentDidMount`
+     * for them. Because the mount commit's lifecycle may itself be the one skipped, the
+     * report can only fire at the next entry into a base lifecycle — the first
+     * `componentDidUpdate` or the unmount. Checking earlier (a microtask or timer after
+     * render) would fire on discarded concurrent renders, Suspense siblings and
+     * StrictMode's double render.
+     *
+     * Detection covers prototype overrides; a `componentDidMount` assigned in a subclass
+     * constructor is not reported — declare overrides as methods.
+     */
+    private [C.mountSuperCheck](): void {
+        if (
+            this[MOUNT_SUPER_SKIPPED] &&
+            this[C.committedAttempt] === undefined &&
+            this[C.pendingAttempt] !== undefined && !this[C.pendingAttempt]!.abandoned
+        ) {
+            this[MOUNT_SUPER_SKIPPED] = false;
+            this[C.reportTeardownFailure](
+                'a componentDidMount override did not call super.componentDidMount(), so the ' +
+                'subscriptions, deferred loads and effects of the mount render were never ' +
+                'established; call super.componentDidMount() first (H12).'
+            );
+        }
     }
 
     /**
@@ -214,6 +260,10 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
 
     /** The same commit work as on mount, with the previous props' effects torn down first. */
     public componentDidUpdate(prevProps: Readonly<P>): void {
+        if (this[MOUNT_SUPER_SKIPPED]) {
+            this[C.mountSuperCheck]();
+        }
+
         this[C.commitSubscriptions]();
         this[C.loadStaleResources]();
         this.unUseEffects(prevProps);
@@ -231,6 +281,10 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
      * unmount path.
      */
     public componentWillUnmount(): void {
+        if (this[MOUNT_SUPER_SKIPPED]) {
+            this[C.mountSuperCheck]();
+        }
+
         const failures: string[] = [];
 
         // Each stage is inlined rather than run through a shared helper taking a callback: a

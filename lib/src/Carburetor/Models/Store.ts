@@ -24,6 +24,15 @@ export interface IUpdateScheduler {
     cancel: (uid: string) => void;
 }
 
+/**
+ * Construction options passed as the second constructor argument of a Carburetor.
+ * Omitted fields keep the engine defaults.
+ */
+export interface ICarburetorOptions {
+    /** Decides when a matched subscriber's callback runs; defaults to immediate delivery. */
+    scheduler?: IUpdateScheduler;
+}
+
 export interface ISubscribeOptions {
     /**
      * A stable store-local id of your own. Subscribing again with the same id in that
@@ -33,8 +42,8 @@ export interface ISubscribeOptions {
     /**
      * Paths the subscriber depends on. Omitted means every update reaches it.
      *
-     * Read-only by contract: a path string's own grammar (the separator, the escapes, the
-     * markers R16-01 added) is an engine internal, not a stable format callers should build or
+     * Read-only by contract: a path string's own grammar (the separator, the escapes) is an
+     * engine internal, not a stable format callers should build or
      * parse — `subscribe(callback, {reads})` is documented only as an extension point that reads
      * a path set already produced by `read()`'s recorder. Copied into the store's own Set at
      * subscribe time: the Set passed in is never mutated or kept by reference, so changing it
@@ -82,7 +91,7 @@ export interface IReadableCarburetor<T> extends ICarburetorSubscription {
     /**
      * Tracked data: every field read is reported to `record`. Documented, alongside
      * `subscribe(callback, {reads})`, as the engine's extension contract — building or parsing
-     * the path strings `record` receives is not: R16-01 changed their shape once already.
+     * the path strings `record` receives is not: their shape changed once already.
      */
     read: (record: (path: string) => void) => TReadonly<T>;
 }

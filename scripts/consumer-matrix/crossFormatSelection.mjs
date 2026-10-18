@@ -3,6 +3,7 @@ import {join} from 'node:path';
 import {run} from './matrix.mjs';
 import {checkEngineBoundaries} from './engineBoundaryChecks.mjs';
 import {runRound31Checks} from './round31Checks.mjs';
+import {runWp5ApiChecks} from './round41/wp5ApiChecks.mjs';
 import {checkKeylessAnswer} from './round41/keylessAnswerChecks.mjs';
 
 /**
@@ -20,7 +21,9 @@ const checkEngineBoundaries = (${checkEngineBoundaries.toString()});
 const engineCases = [];
 const runRound31Checks = (${runRound31Checks.toString()});
 const checkKeylessAnswer = (${checkKeylessAnswer.toString()});
+const runWp5ApiChecks = (${runWp5ApiChecks.toString()});
 const round31Cases = [];
+const wp5Cases = [];
 
 (async () => {
     const React = require('react');
@@ -458,10 +461,12 @@ const round31Cases = [];
         round31Cases.push(...runRound31Checks({...storeModule,
             CarburetorHistory: historyModule.CarburetorHistory, computed: historyModule.computed})
             .map(item => label + ':' + item.kind));
+        wp5Cases.push(...runWp5ApiChecks(storeModule).map(item => label + ':' + item.kind));
     }
 
     process.stdout.write(JSON.stringify({
-        selections, nativeInitial, nativeNext, nativeDetached, roots, histories, engineCases, round31Cases
+        selections, nativeInitial, nativeNext, nativeDetached, roots, histories, engineCases,
+        round31Cases, wp5Cases
     }));
 })().catch((error) => {
     process.stderr.write(String((error && error.stack) || error));
@@ -577,6 +582,14 @@ export const runCrossFormatSelection = (installDir) => {
         .flatMap(label => round31Kinds.map(kind => label + ':' + kind));
     if (JSON.stringify(parsed.round31Cases) !== JSON.stringify(expectedRound31)) {
         return {ok: false, stderr: 'round31 consumers incomplete: ' + JSON.stringify(parsed.round31Cases)};
+    }
+
+    const wp5Kinds = ['update-args', 'lazy-hydrate', 'function-effect',
+        'scheduler-options', 'update-throttle-alias'];
+    const expectedWp5 = ['cjs-store/esm-history', 'esm-store/cjs-history']
+        .flatMap(label => wp5Kinds.map(kind => label + ':' + kind));
+    if (JSON.stringify(parsed.wp5Cases) !== JSON.stringify(expectedWp5)) {
+        return {ok: false, stderr: 'wp5 API consumers incomplete: ' + JSON.stringify(parsed.wp5Cases)};
     }
     return {ok: true};
 };

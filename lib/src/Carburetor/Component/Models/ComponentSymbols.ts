@@ -24,6 +24,8 @@ export class C {
     public static readonly ensureEffects = Symbol("component.ensureEffects");
     /** Internal ensureTracked slot. */
     public static readonly ensureTracked = Symbol("component.ensureTracked");
+    /** Internal functionEffects slot. */
+    public static readonly functionEffects = Symbol("component.functionEffects");
     /** Internal getRenderAttempt slot. */
     public static readonly getRenderAttempt = Symbol("component.getRenderAttempt");
     /** Internal installRenderBoundary slot. */
@@ -32,6 +34,8 @@ export class C {
     public static readonly loadStaleResources = Symbol("component.loadStaleResources");
     /** Internal migrateConnectionReads slot. */
     public static readonly migrateConnectionReads = Symbol("component.migrateConnectionReads");
+    /** Internal mountSuperCheck slot. */
+    public static readonly mountSuperCheck = Symbol("component.mountSuperCheck");
     /** Internal onCarburetorUpdate slot. */
     public static readonly onCarburetorUpdate = Symbol("component.onCarburetorUpdate");
     /** Internal openRenderAttempt slot. */
@@ -44,6 +48,8 @@ export class C {
     public static readonly releaseSlot = Symbol("component.releaseSlot");
     /** Internal releaseSubscriptions slot. */
     public static readonly releaseSubscriptions = Symbol("component.releaseSubscriptions");
+    /** Internal runEffect slot. */
+    public static readonly runEffect = Symbol("component.runEffect");
     /** Internal renderAttempt slot. */
     public static readonly renderAttempt = Symbol("component.renderAttempt");
     /** Internal reportTeardownFailure slot. */

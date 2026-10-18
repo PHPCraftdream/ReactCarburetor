@@ -16,11 +16,18 @@ export class CarburetorScope {
     /** The instances created or installed in this scope so far, keyed by token id. */
     protected instances: Map<string, unknown> = new Map<string, unknown>();
 
+    /** Payload remembered by a token-less hydrate() call, applied lazily on first get.
+     *  A repeated lazy hydrate() merges its payload into this (new entries win) and applies
+     *  new values to already created instances via fromJSON. */
+    protected lazyHydration: IDict<unknown> | undefined = undefined;
+
     /**
      * The instance this token stands for, created once per scope on first use.
      *
      * A method, not an arrow field: every overridable member below is, so a subclass override
      * lands on the prototype instead of an own property shadowing it.
+     *
+     * A failed lazy hydration throws and leaves the token uncreated, so the next get() retries.
      */
     public get<T extends unknown>(token: ICarburetorToken<T>): T {
         if (this.instances.has(token.id)) {
@@ -30,6 +37,27 @@ export class CarburetorScope {
         const created = token.create();
         this.instances.set(token.id, created);
 
+        if (this.lazyHydration !== undefined
+            && Object.prototype.hasOwnProperty.call(this.lazyHydration, token.id)
+            && this.isInspectable(created)) {
+            try {
+                // Own keys only: a token named like an Object.prototype member must not match.
+                // Cloned, not adopted — same reason as in the eager hydrate() branch.
+                created.fromJSON(deepClone(this.lazyHydration[token.id]));
+            } catch (error) {
+                // Roll back: an instance that failed to hydrate must not stay in the scope, or
+                // the next get() would silently return it half-hydrated. Identity guard, not a
+                // blind delete: fromJSON() may re-enter get()/set() and replace the slot — only
+                // the instance this call created is removed. The pending entry is kept so the
+                // next get() retries the application.
+                if (this.instances.get(token.id) === created) {
+                    this.instances.delete(token.id);
+                }
+
+                throw error;
+            }
+        }
+
         return created;
     }
 
@@ -37,10 +65,16 @@ export class CarburetorScope {
      * Replaces an instance — useful for tests and for hydrating a prepared store.
      *
      * @param token - names the slot replaced; later `get` calls for it return the new instance
-     * @param instance - stored as-is under the token's id; the factory inside the token never runs
+     * @param instance - stored as-is under the token's id; the factory inside the token never runs;
+     * a pending lazy hydrate() entry for the token is dropped, so `set` wins over the payload
      */
     public set<T extends unknown>(token: ICarburetorToken<T>, instance: T): void {
         this.instances.set(token.id, instance);
+
+        if (this.lazyHydration !== undefined
+            && Object.prototype.hasOwnProperty.call(this.lazyHydration, token.id)) {
+            delete this.lazyHydration[token.id];
+        }
     }
 
     /** Whether this scope already created an instance for the token. */
@@ -96,6 +130,14 @@ export class CarburetorScope {
      * so the client starts from the same data the server rendered; anything not mentioned in
      * the payload is left to be created on demand.
      *
+     * Without `tokens` the payload is kept and applied lazily: the first `get()` of a token
+     * whose key is present in the payload restores its state. A token the client forgot to
+     * list therefore keeps its state instead of silently starting fresh, and payload keys the
+     * client never resolves are simply unused — no development report is made for them in
+     * this mode.
+     *
+     * With `tokens` the listed tokens are restored eagerly, as before.
+     *
      * A payload key matching no token is the reverse case: the server sent data the client has
      * no token for. A client deliberately hydrating a subset makes that legitimate, so it is
      * not an error — but it is also exactly what the server and the client declaring one token
@@ -103,11 +145,44 @@ export class CarburetorScope {
      * silently.
      *
      * @param state - the dehydrate() payload, keyed by token name; keys no token claims are
-     * reported in development and otherwise ignored
-     * @param tokens - the tokens to restore; ones absent from `state` are left to be created
-     * on demand instead
+     * reported in development and otherwise ignored; a second token-less call merges its
+     * payload into the pending one (new entries win) and immediately applies new values to
+     * already created instances via fromJSON()
+     * @param tokens - optional tokens to restore eagerly; without them every payload key is
+     * applied lazily, on the first `get()` of the token it names; absent from `state`, the
+     * listed tokens are left to be created on demand instead
      */
-    public hydrate(state: IDict<unknown>, tokens: ReadonlyArray<ICarburetorToken<unknown>>): void {
+    public hydrate(state: IDict<unknown>, tokens?: ReadonlyArray<ICarburetorToken<unknown>>): void {
+        if (tokens === undefined) {
+            // Cloned, not adopted: `state` is the caller's own payload and may keep being
+            // mutated after the call — the lazy application must not see that.
+            const cloned = deepClone(state);
+
+            if (this.lazyHydration === undefined) {
+                this.lazyHydration = cloned;
+            } else {
+                const pending = this.lazyHydration;
+
+                // Merge: new entries overwrite pending ones for the same key; entries from an
+                // earlier payload under other keys are kept.
+                Object.keys(cloned).forEach((key: string) => {
+                    pending[key] = cloned[key];
+                });
+            }
+
+            // Apply new values to already created instances right away; the pending entry stays
+            // untouched (cloned again) so a later get() of a not-yet-created token still uses it.
+            Object.keys(cloned).forEach((key: string) => {
+                const instance = this.instances.get(key);
+
+                if (instance !== undefined && this.isInspectable(instance)) {
+                    instance.fromJSON(deepClone(cloned[key]));
+                }
+            });
+
+            return;
+        }
+
         const claimed = new Set<string>();
 
         tokens.forEach((token: ICarburetorToken<unknown>) => {
@@ -121,8 +196,8 @@ export class CarburetorScope {
             const instance = this.get(token);
 
             if (this.isInspectable(instance)) {
-                // Cloned, not adopted: fromJSON() now takes ownership of what it is handed
-                // (R16-09), but `state` here is the caller's own payload, possibly hydrated into
+                // Cloned, not adopted: fromJSON() now takes ownership of what it is handed,
+                // but `state` here is the caller's own payload, possibly hydrated into
                 // more than one scope from — independent scopes must not end up sharing it.
                 instance.fromJSON(deepClone(state[token.id]));
             }

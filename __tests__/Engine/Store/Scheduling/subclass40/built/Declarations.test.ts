@@ -25,7 +25,7 @@ describe('R40-01 built subclass contract', () => {
             'AntiHookComponent', 'Carburetor', 'CarburetorContext', 'CarburetorHistory', 'CarburetorProvider',
             'CarburetorScope', 'ComponentUpdateThrottle', 'Computed', 'Diagnostics', 'EDevToolsAction',
             'EDevToolsMessageType', 'EResourceStatus', 'ResourceCache', 'ResourceCarburetor',
-            'ScopedAntiHookComponent', 'bind', 'carburetorToken', 'computed', 'connectDevTools', 'deepClone',
+            'ScopedAntiHookComponent', 'UpdateThrottle', 'bind', 'carburetorToken', 'computed', 'connectDevTools', 'deepClone',
             'diagnostics', 'getInitialResourceData', 'persist', 'shallowEqual', 'transaction', 'waitForUpdate',
         ].sort());
     });

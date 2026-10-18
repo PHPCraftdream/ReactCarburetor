@@ -1,6 +1,10 @@
 import {Carburetor} from "@/Carburetor";
 import {IStatusData} from "./Models";
 
+const applyEmittedMessage = (draft: IStatusData, emittedMessage: string): void => {
+    draft.emittedMessage = emittedMessage;
+};
+
 export class StatusCarburetor extends Carburetor<IStatusData> {
     /** Render counter is demo instrumentation, not state — it does not belong in data. */
     protected renderCount: number = 0;
@@ -14,12 +18,7 @@ export class StatusCarburetor extends Carburetor<IStatusData> {
 
     /** Records when the last update went out, which the demo displays. */
     public setEmittedMessage = (emittedMessage: string): IStatusData => {
-        try {
-            const draft = this.draft;
-            draft.emittedMessage = emittedMessage;
-        } finally {
-            this.emitUpdate();
-        }
+        this.update(applyEmittedMessage, emittedMessage);
 
         return this.data;
     };

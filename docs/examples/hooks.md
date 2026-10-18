@@ -8,7 +8,7 @@ how components read them. All examples are compatible with React 18 and 19.
 
 Reminders that apply to every store below: no arrow-function class fields, decorate any
 method you pass around as a value with `@bind`, and write state through
-`this.update(updater)` where `updater` is a module-level function; use direct draft writes plus `emitUpdate()` if the update needs a member parameter.
+`this.update(updater, ...args)`, where extra arguments are forwarded to the module-level `updater`; hand-written draft writes plus `emitUpdate()` remain for multi-phase writes.
 
 ## Reading with a selector
 

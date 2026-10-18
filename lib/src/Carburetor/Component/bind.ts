@@ -25,6 +25,12 @@
  * child's props always compare as changed and the props gate in `shouldComponentUpdate`
  * stops bailing out — the re-render this engine exists to avoid comes back.
  *
+ * The bound reference is resolved at construction time from the most-derived override:
+ * base-class initializers run before subclass initializers and subclass prototypes already
+ * exist, so an override in a subclass is picked up even without its own `@bind`. Applying
+ * `@bind` to a `#private` method throws: a private name is not reachable as a property, so
+ * no bound reference can be installed.
+ *
  * Requires standard (Stage 3) decorators, supported by TypeScript 5+, SWC, Babel 7.20+ and
  * esbuild 0.21+. This is not the legacy `experimentalDecorators` flavour.
  *
@@ -44,11 +50,24 @@ export const bind = <This, TArgs extends unknown[], TReturn>(
         );
     }
 
+    if (context.private === true) {
+        throw new Error(
+            'Carburetor: @bind cannot bind a private method. A private name is not reachable ' +
+            'as a property, so no bound reference can be installed for it. Use a public or ' +
+            'protected method, or an arrow class property, instead.'
+        );
+    }
+
     context.addInitializer(function (this: This) {
+        // Initializers run in class order and subclass prototypes already exist, so the
+        // lookup resolves the most-derived override; without one it resolves `method`.
+        const target = (this as unknown as Record<string | symbol, unknown>)[context.name];
+        const bound = (typeof target === 'function' ? target : method).bind(this);
+
         // Own property shadowing the prototype method for calls through the instance, while
         // the prototype keeps the original so `super` still resolves.
         Object.defineProperty(this, context.name, {
-            value: method.bind(this),
+            value: bound,
             writable: true,
             configurable: true,
             enumerable: false,

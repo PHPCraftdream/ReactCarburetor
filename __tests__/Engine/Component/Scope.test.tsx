@@ -79,6 +79,30 @@ describe('CarburetorScope', () => {
         unmount();
     });
 
+    test('scoped() and resolve() read the same carburetor from the scope', () => {
+        const scope = new CarburetorScope();
+
+        class BothReads extends ScopedAntiHookComponent {
+            render() {
+                const scoped = this.scoped(counterToken);
+                const resolved = this.resolve(counterToken);
+
+                expect(scoped).toBe(resolved);
+                expect(scoped).toBe(scope.get(counterToken));
+
+                return null;
+            }
+        }
+
+        const {unmount} = render(
+            <CarburetorProvider scope={scope}>
+                <BothReads/>
+            </CarburetorProvider>
+        );
+
+        unmount();
+    });
+
     test('two trees on different scopes stay independent', () => {
         const left = new CarburetorScope();
         const right = new CarburetorScope();
@@ -159,6 +183,85 @@ describe('CarburetorScope', () => {
         scope.hydrate({}, [counterToken]);
 
         expect(scope.has(counterToken)).toBeFalsy();
+    });
+
+    test('hydrate without a token list hydrates lazily on first get', () => {
+        const scope = new CarburetorScope();
+
+        scope.hydrate({[counterToken.id]: {value: 5}});
+
+        expect(scope.get(counterToken).getData().value).toEqual(5);
+    });
+
+    test('the lazy payload is cloned, not adopted', () => {
+        const scope = new CarburetorScope();
+        const payload = {value: 5};
+
+        scope.hydrate({[counterToken.id]: payload});
+
+        payload.value = 9;
+
+        expect(scope.get(counterToken).getData().value).toEqual(5);
+    });
+
+    test('a second lazy hydrate merges payloads for tokens not resolved yet', () => {
+        const scope = new CarburetorScope();
+        const make = (): CounterCarburetor => new CounterCarburetor({value: 0});
+        const aToken = carburetorToken<CounterCarburetor>(make, 'scope-test/merge-a');
+        const bToken = carburetorToken<CounterCarburetor>(make, 'scope-test/merge-b');
+
+        scope.hydrate({[aToken.id]: {value: 1}});
+        scope.hydrate({[bToken.id]: {value: 2}});
+
+        expect(scope.get(aToken).getData().value).toEqual(1);
+        expect(scope.get(bToken).getData().value).toEqual(2);
+    });
+
+    test('a repeated lazy hydrate applies the new value to an already created instance', () => {
+        const scope = new CarburetorScope();
+        const aToken = carburetorToken<CounterCarburetor>(() => new CounterCarburetor({value: 0}), 'scope-test/reapply-a');
+
+        scope.hydrate({[aToken.id]: {value: 1}});
+
+        expect(scope.get(aToken).getData().value).toEqual(1);
+
+        scope.hydrate({[aToken.id]: {value: 3}});
+
+        expect(scope.get(aToken).getData().value).toEqual(3);
+    });
+
+    test('set overrides a pending lazy payload entry', () => {
+        const scope = new CarburetorScope();
+
+        scope.hydrate({[counterToken.id]: {value: 5}});
+        scope.set(counterToken, new CounterCarburetor({value: 7}));
+
+        expect(scope.get(counterToken).getData().value).toEqual(7);
+    });
+
+    test('a failed fromJSON rolls the instance back and allows a fresh attempt', () => {
+        class FailingCarburetor extends CounterCarburetor {
+            public fromJSON(): void {
+                throw new Error('hydrate failed');
+            }
+        }
+
+        const failingToken = carburetorToken<FailingCarburetor>(() => new FailingCarburetor({value: 0}), 'scope-test/failing');
+        const scope = new CarburetorScope();
+
+        scope.hydrate({[failingToken.id]: {value: 5}});
+
+        expect(() => scope.get(failingToken)).toThrow('hydrate failed');
+        expect(scope.has(failingToken)).toBeFalsy();
+        expect(() => scope.get(failingToken)).toThrow('hydrate failed');
+    });
+
+    test('get without a payload key creates normally', () => {
+        const scope = new CarburetorScope();
+
+        scope.hydrate({'stale-name': {value: 5}});
+
+        expect(scope.get(counterToken).getData().value).toEqual(0);
     });
 
     test('a payload key no token claims is reported in development', () => {

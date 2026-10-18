@@ -45,34 +45,106 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
     }
 
     /**
-     * Runs `callBack` when its dependencies changed since the last run.
-     *
-     * Whatever the effect returns is treated as its cleanup and is run before the effect runs
-     * again, and on unmount — so setup and teardown stay paired per effect rather than being
-     * one global hook for the whole component.
-     *
-     * A replaced cleanup is teardown work, so it runs isolated: its failure is reported once the
-     * replacement finished, never thrown at the new run. The record moves to the new deps before
-     * the setup runs and holds no cleanup until the setup returns one, so a setup that throws
-     * leaves the record consistent — new deps, no cleanup — instead of a stale cleanup a later
-     * unmount would run a second time.
-     *
-     * @param name - the key in the per-effect record, so two effects sharing one name would
-     * overwrite each other's deps and cleanup
-     * @param callBack - the effect body; a function it returns becomes the cleanup, run before
-     * the next run and on unmount
-     * @param deps - compared shallowly with the last run's; an equal set skips the run and
-     * leaves the existing cleanup standing
+     * Records of effects keyed by the effect function itself; allocated lazily.
      */
-    protected useEffect(name: string, callBack: TEffect, deps: TEffectDeps): void {
-        const records = this[C.effects];
-        const known = records && Object.prototype.hasOwnProperty.call(records, name)
-            ? records[name] : undefined;
+    private [C.functionEffects]: Map<TEffect, IEffectRecord> | undefined = undefined;
 
-        if (known && shallowEqual(known.deps, deps)) {
+    /**
+     * Runs `callBack` when its dependencies changed since the last run, keyed by name.
+     *
+     * Two effects sharing one name would overwrite each other's deps and cleanup — see the
+     * no-duplicate-effect-name rule. For a stable effect function (module-level or a `@bind`
+     * method), prefer the function-keyed overload below: the function itself is the key, so
+     * no collision is possible.
+     *
+     * @param name - the key in the per-effect record
+     * @param callBack - the effect body
+     * @param deps - compared shallowly with the last run's
+     */
+    protected useEffect(name: string, callBack: TEffect, deps: TEffectDeps): void;
+    /**
+     * Runs a stable effect function when its dependencies changed since the last run.
+     *
+     * The effect function itself is the key, so two different functions never collide, however
+     * they are named. Intended for module-level functions and `@bind` methods; an inline
+     * closure is a new function every render and would re-run every time — use the name-keyed
+     * overload for those.
+     *
+     * Whatever the effect returns is treated as its cleanup, exactly as in the name-keyed form.
+     *
+     * @param effect - the stable effect function, used as its own key
+     * @param deps - compared shallowly with the last run's
+     */
+    protected useEffect(effect: TEffect, deps: TEffectDeps): void;
+    /**
+     * Implementation of both overloads: a string first argument keys the effect by name, a function by itself.
+     *
+     * @param nameOrEffect - the effect name, or the stable effect function used as its own key
+     * @param callBackOrDeps - the effect body in the name-keyed form, the dependencies in the function-keyed one
+     * @param deps - the dependencies in the name-keyed form
+     */
+    protected useEffect(
+        nameOrEffect: string | TEffect,
+        callBackOrDeps?: TEffect | TEffectDeps,
+        deps?: TEffectDeps
+    ): void {
+        if (typeof nameOrEffect === 'string') {
+            const callBack = callBackOrDeps as TEffect;
+
+            const records = this[C.effects];
+            const known = records && Object.prototype.hasOwnProperty.call(records, nameOrEffect)
+                ? records[nameOrEffect] : undefined;
+
+            if (known && shallowEqual(known.deps, deps!)) {
+                return;
+            }
+
+            const record: IEffectRecord = {deps: deps!, cleanup: undefined};
+
+            this[C.ensureEffects]()[nameOrEffect] = record;
+            this[C.runEffect](known, record, callBack!);
+
             return;
         }
 
+        const depsOrNone = deps === undefined ? callBackOrDeps as TEffectDeps : deps;
+        const records = this[C.functionEffects];
+        const known = records && records.get(nameOrEffect);
+
+        if (known && shallowEqual(known.deps, depsOrNone)) {
+            return;
+        }
+
+        let functionRecords = records;
+
+        if (functionRecords === undefined) {
+            functionRecords = new Map<TEffect, IEffectRecord>();
+            this[C.functionEffects] = functionRecords;
+        }
+
+        const record: IEffectRecord = {deps: depsOrNone, cleanup: undefined};
+
+        functionRecords.set(nameOrEffect, record);
+        this[C.runEffect](known, record, nameOrEffect);
+    }
+
+    /**
+     * Runs the replaced cleanup isolated, then the new setup into `record`.
+     *
+     * Shared by both keying forms, which store `record` before calling this: a setup that
+     * throws leaves the new deps standing with no cleanup, and nothing still points at the
+     * cleanup that already ran. A replaced cleanup is teardown work, so its failure is
+     * reported once the replacement finished, never thrown at the new run.
+     *
+     * @param known - the record being replaced, if the effect ran before
+     * @param record - the new record, already stored under its key
+     * @param callBack - the effect body to run
+     */
+    private [C.runEffect](
+        known: IEffectRecord | undefined,
+        record: IEffectRecord,
+        callBack: TEffect
+    ): void {
         // The replaced cleanup is teardown work: it must not cost us the new run, so its
         // failure waits for the report until the replacement finished.
         const failures: unknown[] = [];
@@ -84,13 +156,6 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
                 failures.push(error);
             }
         }
-
-        // A fresh record, so the setup that follows writes deps and cleanup itself: a setup
-        // that throws leaves the new deps standing with no cleanup, and no reference anywhere
-        // still points at the cleanup that already ran.
-        const record: IEffectRecord = {deps, cleanup: undefined};
-
-        this[C.ensureEffects]()[name] = record;
 
         try {
             const cleanup = callBack();
@@ -133,26 +198,47 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
     public [C.releaseEffects](): void {
         const records = this[C.effects];
 
-        if (records === undefined) {
+        this[C.effects] = undefined;
+
+        const functionRecords = this[C.functionEffects];
+
+        this[C.functionEffects] = undefined;
+
+        if (records === undefined && functionRecords === undefined) {
             return;
         }
 
-        this[C.effects] = undefined;
-
         const failures: unknown[] = [];
 
-        Object.keys(records).forEach((name: string) => {
-            const cleanup = records[name].cleanup;
+        if (records !== undefined) {
+            Object.keys(records).forEach((name: string) => {
+                const cleanup = records[name].cleanup;
 
-            if (cleanup) {
-                try {
-                    cleanup();
-                } catch (error: unknown) {
-                    failures.push(error);
+                if (cleanup) {
+                    try {
+                        cleanup();
+                    } catch (error: unknown) {
+                        failures.push(error);
+                    }
                 }
-            }
-        });
+            });
+        }
 
+        if (functionRecords !== undefined) {
+            functionRecords.forEach((record: IEffectRecord) => {
+                const cleanup = record.cleanup;
+
+                if (cleanup) {
+                    try {
+                        cleanup();
+                    } catch (error: unknown) {
+                        failures.push(error);
+                    }
+                }
+            });
+        }
+
+        // One report per teardown, covering both string-keyed and function-keyed cleanups.
         failures.forEach((error: unknown) => this[C.reportTeardownFailure](
             'an effect cleanup threw while a component unmounted: ' +
             describeFailure(error) + '. The teardown completed anyway.'

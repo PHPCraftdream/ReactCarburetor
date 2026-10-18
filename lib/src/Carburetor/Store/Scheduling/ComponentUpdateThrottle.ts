@@ -22,6 +22,9 @@ const reportFlushFailure = (error: unknown): void => {
  * mousemove, presence cursors. There updates arrive in separate ticks and coalescing
  * genuinely helps. Regular UI does not need it — a carburetor delivers updates immediately
  * by default.
+ *
+ * The preferred public name is `UpdateThrottle` (exported as an alias in the package);
+ * this older name is kept.
  */
 export class ComponentUpdateThrottle implements IUpdateScheduler {
     /** Flush rounds letsUpdate() tolerates before it declares an infinite update loop. */

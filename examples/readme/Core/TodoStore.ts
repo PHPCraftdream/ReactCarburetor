@@ -6,10 +6,13 @@ interface ITodoList {orderIds: string[]; activeCount: number; items: Record<stri
 const todoCarburetor = new Carburetor<ITodoList>({orderIds: [], activeCount: 0, items: {}});
 
 // #region renameTodo
+const renameTodoItem = (draft: ITodoList, id: string, title: string): void => {
+    draft.items[id].title = title;   // records the changed path: items.<id>.title
+};
+
 export class TodoCarburetor extends Carburetor<ITodoList> {
     public renameTodo(id: string, title: string): void {
-        this.draft.items[id].title = title;   // records the changed path: items.<id>.title
-        this.emitUpdate();                     // publishes it to the readers of that path
+        this.update(renameTodoItem, id, title);   // publishes it to the readers of that path
     }
 }
 // #endregion renameTodo

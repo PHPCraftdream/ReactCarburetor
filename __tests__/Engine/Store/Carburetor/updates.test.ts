@@ -1,6 +1,27 @@
 import {getTestData, ItemListCarburetor, readsOf, TestCarburetor} from "./fixtures";
+import {IUpdateScheduler} from "@/Carburetor/Models/Store";
+import {TUpdater} from "@/Carburetor/Models/Base";
 
 describe('Carburetor', () => {
+    test('the constructor accepts scheduler options as the second argument', () => {
+        let scheduled = 0;
+        const mine: IUpdateScheduler = {
+            schedule: (uid: string, updater: TUpdater) => {
+                scheduled++;
+                updater();
+            },
+            cancel: () => {}
+        };
+
+        class Counting extends TestCarburetor {}
+
+        const carburetor = new Counting(getTestData(), {scheduler: mine});
+        carburetor.subscribe(() => {}, {id: 'reader'});
+
+        carburetor.setAThroughUpdate(1);
+
+        expect(scheduled).toEqual(1);
+    });
     test('update publishes the writes that landed before the callback threw', async () => {
         const carburetor = new TestCarburetor(getTestData());
         const original = console.error;
@@ -112,6 +133,22 @@ describe('Carburetor', () => {
         expect(calls).toEqual(1);
         expect(carburetor.getData().items[0]).toEqual({n: 9});
         expect(carburetor.getData().items[1]).toBe(second);
+    });
+
+    test('update forwards extra arguments to a module-level mutator', () => {
+        const carburetor = new TestCarburetor(getTestData());
+        let readerOfA = 0;
+        let readerOfB = 0;
+
+        carburetor.subscribe(() => readerOfA++, {id: 'a-reader', reads: readsOf('a')});
+        carburetor.subscribe(() => readerOfB++, {id: 'b-reader', reads: readsOf('b')});
+
+        carburetor.setAandBThroughUpdate(7, 9);
+
+        expect(carburetor.getData().a).toEqual(7);
+        expect(carburetor.getData().b).toEqual(9);
+        expect(readerOfA).toEqual(1);
+        expect(readerOfB).toEqual(1);
     });
 
     test('a getData write alone still wakes everyone', () => {

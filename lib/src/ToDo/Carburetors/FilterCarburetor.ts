@@ -2,6 +2,10 @@ import {Carburetor} from "@/Carburetor";
 import {ETodoFilter} from "@/ToDo/Models/Enums/ETodoFilter";
 import {IFilterData} from "./Models";
 
+const applyFilter = (draft: IFilterData, filter: ETodoFilter): void => {
+    draft.filter = filter;
+};
+
 /** The list's view settings: small, user-owned, worth persisting between visits. */
 export class FilterCarburetor extends Carburetor<IFilterData> {
     /**
@@ -23,11 +27,6 @@ export class FilterCarburetor extends Carburetor<IFilterData> {
             return;
         }
 
-        try {
-            const draft = this.draft;
-            draft.filter = filter;
-        } finally {
-            this.emitUpdate();
-        }
+        this.update(applyFilter, filter);
     };
 }

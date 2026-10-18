@@ -103,6 +103,23 @@ sockets, `mousemove`, presence cursors — where many writes arrive in separate
 ticks and collapsing them into one delivery genuinely helps. Regular UI does
 not need it: the default is immediate delivery.
 
+The same scheduler can be passed through the options-object constructor form,
+where `{scheduler}` carries the identical delivery policy.
+
+<!-- example:file examples/api/stores/construction/scheduler-options.ts#scheduler-options -->
+```ts
+import {Carburetor, ICarburetorOptions, UpdateThrottle} from 'react-carburetor';
+
+interface ICursor {x: number; y: number}
+
+// The options-object form carries the same delivery policy as the positional
+// argument, spelled as construction options.
+const options: ICarburetorOptions = {scheduler: new UpdateThrottle(40)};
+const cursorStore = new Carburetor<ICursor>({x: 0, y: 0}, options);
+
+cursorStore.setData({x: 1, y: 1});
+```
+
 Pitfall: the throttle delivers on a timer, so tests and components must wait
 for the window (at least `updateTimeout` ms) before asserting.
 

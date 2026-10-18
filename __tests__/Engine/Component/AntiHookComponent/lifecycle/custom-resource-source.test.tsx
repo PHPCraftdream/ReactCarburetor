@@ -1,4 +1,4 @@
-import {React, act, render, AntiHookComponent, EResourceStatus, flush} from '../support';
+import {React, act, render, rstest, AntiHookComponent, EResourceStatus, flush} from '../support';
 import {Carburetor, IDict, IResourceResolution, IResourceSource, IResourceView} from '@/Carburetor';
 
 /**
@@ -106,3 +106,205 @@ describe('a custom IResourceSource implementing only resolve()/load()', () => {
         expect(renders).toEqual([]);
     });
 });
+
+    describe('mount-super check', () => {
+        const watchErrors = (): string[] & {restore: () => void} => {
+            const messages: string[] = [];
+            const spy = rstest.spyOn(console, 'error').mockImplementation((...args: unknown[]): void => {
+                messages.push(args.map(String).join(' '));
+            });
+
+            const restore = (): void => spy.mockRestore();
+
+            return Object.assign(messages, {restore}) as string[] & {restore: () => void};
+        };
+
+        test('a componentDidMount override without super is reported in development', () => {
+            const messages = watchErrors();
+
+            try {
+                class Buggy extends AntiHookComponent {
+                    public mountedWithoutSuper = false;
+
+                    // oxlint-disable-next-line carburetor/require-super-in-lifecycle
+                    public componentDidMount(): void {
+                        this.mountedWithoutSuper = true;
+                    }
+
+                    render() {
+                        return <div/>;
+                    }
+                }
+
+                const {unmount} = render(<Buggy />);
+
+                // The base lifecycles run on the next commit/unmount and report the skipped super.
+                unmount();
+
+                expect(
+                    messages.some((message: string) =>
+                        message.includes('componentDidMount') && message.includes('super'))
+                ).toBe(true);
+            } finally {
+                messages.restore();
+            }
+        });
+
+        test('a componentDidMount override that calls super is not reported', () => {
+            const messages = watchErrors();
+
+            try {
+                class WellBehaved extends AntiHookComponent {
+                    public superCalled = false;
+
+                    public componentDidMount(): void {
+                        this.superCalled = true;
+                        super.componentDidMount();
+                    }
+
+                    render() {
+                        return <div/>;
+                    }
+                }
+
+                const {unmount} = render(<WellBehaved />);
+
+                expect(
+                    messages.some((message: string) =>
+                        message.includes('componentDidMount') && message.includes('super'))
+                ).toBe(false);
+
+                unmount();
+
+                expect(
+                    messages.some((message: string) =>
+                        message.includes('componentDidMount') && message.includes('super'))
+                ).toBe(false);
+            } finally {
+                messages.restore();
+            }
+        });
+
+        test('a component that does not override componentDidMount is not reported', () => {
+            const messages = watchErrors();
+
+            try {
+                class Plain extends AntiHookComponent {
+                    render() {
+                        return <div/>;
+                    }
+                }
+
+                const {unmount} = render(<Plain />);
+
+                unmount();
+
+                expect(
+                    messages.some((message: string) =>
+                        message.includes('componentDidMount') && message.includes('super'))
+                ).toBe(false);
+            } finally {
+                messages.restore();
+            }
+        });
+
+        test('an act-driven update also surfaces the report', () => {
+            const messages = watchErrors();
+
+            try {
+                class Buggy extends AntiHookComponent<{tick: number}> {
+                    // oxlint-disable-next-line carburetor/require-super-in-lifecycle
+                    public componentDidMount(): void {
+                        // No super call.
+                    }
+
+                    render() {
+                        return <div>{this.props.tick}</div>;
+                    }
+                }
+
+                const {rerender, unmount} = render(<Buggy tick={0} />);
+
+                act(() => {
+                    rerender(<Buggy tick={1} />);
+                });
+
+                expect(
+                    messages.some((message: string) =>
+                        message.includes('componentDidMount') && message.includes('super'))
+                ).toBe(true);
+
+                unmount();
+            } finally {
+                messages.restore();
+            }
+        });
+
+        test('a subclass member named checkMountSuper does not hijack the check', () => {
+            const messages = watchErrors();
+            let collision = false;
+
+            try {
+                class Hijacker extends AntiHookComponent {
+                    // oxlint-disable-next-line carburetor/require-super-in-lifecycle
+                    public componentDidMount(): void {
+                        // No super call.
+                    }
+
+                    public checkMountSuper(): void {
+                        collision = true;
+                    }
+
+                    render() {
+                        return <div/>;
+                    }
+                }
+
+                const {unmount} = render(<Hijacker />);
+
+                unmount();
+
+                expect(
+                    messages.some((message: string) =>
+                        message.includes('componentDidMount') && message.includes('super'))
+                ).toBe(true);
+                expect(collision).toBe(false);
+            } finally {
+                messages.restore();
+            }
+        });
+
+        test('a static getDerivedStateFromProps does not suppress the check', () => {
+            const messages = watchErrors();
+
+            try {
+                class WithDerived extends AntiHookComponent {
+                    public state = {};
+
+                    public static getDerivedStateFromProps(): null {
+                        return null;
+                    }
+
+                    // oxlint-disable-next-line carburetor/require-super-in-lifecycle
+                    public componentDidMount(): void {
+                        // No super call.
+                    }
+
+                    render() {
+                        return <div/>;
+                    }
+                }
+
+                const {unmount} = render(<WithDerived />);
+
+                unmount();
+
+                expect(
+                    messages.some((message: string) =>
+                        message.includes('componentDidMount') && message.includes('super'))
+                ).toBe(true);
+            } finally {
+                messages.restore();
+            }
+        });
+    });

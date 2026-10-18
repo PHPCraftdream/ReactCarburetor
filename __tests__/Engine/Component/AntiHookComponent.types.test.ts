@@ -159,6 +159,26 @@ const compileAssertions = (): void => {
     void required;
 };
 
+// A module-level mutator: everything past the draft travels through update()'s extra
+// arguments, so the call below is only legal when the generic signature accepts them.
+const applyRenameTyped = (draft: {name: string}, id: string, title: string): void => {
+    void id;
+    draft.name = title;
+};
+
+class TypedUpdateStore extends Carburetor<{name: string}> {
+    public renameThroughUpdate(): void {
+        this.update(applyRenameTyped, 'id', 'title');
+    }
+
+    public rejectsWrongArgumentType(): void {
+        // @ts-expect-error update() forwards extra arguments at the mutator's declared types
+        this.update(applyRenameTyped, 'id', 42);
+    }
+}
+
+void TypedUpdateStore;
+
 describe('connect()/connectSelection() type contracts', () => {
     test('the connect() view contract holds at runtime alongside the compile-time assertions', () => {
         const component = new DirectStoreForm({} as never);

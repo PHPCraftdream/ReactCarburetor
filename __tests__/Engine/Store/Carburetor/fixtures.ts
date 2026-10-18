@@ -12,6 +12,11 @@ export interface ITestData {
     };
 }
 
+export const applyBoth = (draft: ITestData, a: number, b: number): void => {
+    draft.a = a;
+    draft.b = b;
+};
+
 export const getTestData = (): ITestData => ({a: 0, b: 0, nested: {value: 0}});
 
 export class TestCarburetor extends Carburetor<ITestData> {
@@ -38,6 +43,11 @@ export class TestCarburetor extends Carburetor<ITestData> {
         this.update((draft: ITestData) => {
             draft.a = a;
         });
+    };
+
+    /** The recommended form with a module-level mutator and its arguments. */
+    public setAandBThroughUpdate = (a: number, b: number) => {
+        this.update(applyBoth, a, b);
     };
 
     /** A mutation that dies after its first write has already landed. */

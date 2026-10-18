@@ -1,10 +1,13 @@
 import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
 
+const incrementBy = (draft: {value: number}, step: number): void => {
+    draft.value += step;
+};
+
 class CounterCarburetor extends Carburetor<{value: number}> {
     @bind
     inc(): void {
-        this.draft.value += 1;
-        this.emitUpdate();
+        this.update(incrementBy, 1);
     }
 }
 

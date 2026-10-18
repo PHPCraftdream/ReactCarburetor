@@ -1222,6 +1222,23 @@ public bump(step: number): void {
 
 **Right**
 
+Declare the mutator at module level and pass its values to `update` — no closure, and publication is guaranteed even when the mutation throws:
+
+<!-- example:file examples/hazards/allocations/H32/ModuleMutator.tsx#doc -->
+```tsx
+const incrementBy = (draft: {count: number}, step: number): void => {
+    draft.count += step;
+};
+
+class Counter extends Carburetor<{count: number}> {
+    public bump(step: number): void {
+        this.update(incrementBy, step);
+    }
+}
+```
+
+A body that needs `this` — multi-phase writes — publishes by hand:
+
 <!-- example:file examples/hazards/allocations/H32/DirectPublish.tsx#doc -->
 ```tsx
 public bump(step: number): void {
@@ -1243,7 +1260,7 @@ public rename(name: string): void {
 }
 ```
 
-`update` invokes `mutate(this.draft)` and calls `emitUpdate()` in `finally`. Direct draft writes followed by the same publication retain the subscription and transaction behavior. A forgotten publication is checked by `require-emit-after-draft-write`.
+`update` invokes `mutate(this.draft, ...args)` and publishes in `finally`. The module-level mutator form keeps the same subscription and transaction behavior and survives a throw. A forgotten publication of the hand-written form is checked by `require-emit-after-draft-write`.
 
 A callback with no surrounding captures belongs to H30 instead:
 
@@ -1266,7 +1283,7 @@ class Counter extends Carburetor<{count: number}> {
 
 The callback’s own parameters and locals, module-level bindings, imports and globals are not surrounding captures. A clean inline callback is reported by `require-module-function` (H30), including under `scope: "classes"`; H32 stays silent. `this.update(ref)` does not create a function at the call site and is not reported.
 
-**False positives.** Recognition is syntactic, not type-based: an unrelated class using a recognized base name can look like a store, while aliases and unrecognized intermediate bases can be missed. The rule does not prove that a mutation cannot throw; use the `try/finally` spelling whenever publication must survive an exception. Function identity may intentionally be part of a design, so the rule is a warning and can be suppressed locally.
+**False positives.** Recognition is syntactic, not type-based: an unrelated class using a recognized base name can look like a store, while aliases and unrecognized intermediate bases can be missed. The rule does not prove that a mutation cannot throw; the rule only points at the needless closure object, and the general answer is a module-level mutator with arguments, while the hand-written `this.draft` + `emitUpdate()` form remains for multi-phase writes. Function identity may intentionally be part of a design, so the rule is a warning and can be suppressed locally.
 
 ## Not hazards
 

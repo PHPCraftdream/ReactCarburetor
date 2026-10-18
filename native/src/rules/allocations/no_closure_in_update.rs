@@ -1,12 +1,14 @@
 //! H32: a callback handed to `this.update` that captures the surrounding function's bindings.
 //!
 //! Every call of the method builds the callback again, and the capture freezes values the next
-//! call will not see. `update` is exactly `mutate(this.draft)` plus `emitUpdate()` in a finally,
-//! so the callback can be replaced by writes to `this.draft` and a direct `this.emitUpdate()` —
-//! wrapped in try/finally when the body can throw. A forgotten `emitUpdate` is what
-//! `require-emit-after-draft-write` catches, and a callback that uses nothing around it is not
-//! this rule's finding at all: that one is a module-level function, which
-//! `require-module-function` reports.
+//! call will not see. The replacement is a module-level mutator with the signature
+//! `(draft, ...args)`: hand it to `this.update` together with its arguments
+//! (`this.update(applyFoo, foo.id)`), and `update` writes the draft and publishes the changed
+//! paths itself — even when the mutator throws. A body that needs `this` may still write to
+//! `this.draft` and call `this.emitUpdate()` directly, wrapped in try/finally when it can throw;
+//! a forgotten emit is what `require-emit-after-draft-write` catches. A callback that uses
+//! nothing around it is not this rule's finding at all: that one is a module-level function,
+//! which `require-module-function` reports.
 
 use std::collections::HashSet;
 
@@ -45,9 +47,11 @@ fn message(captured: &[String], member: Option<&str>) -> String {
 
     format!(
         "the callback passed to `this.update` is rebuilt {cadence} and captures {names} — \
-         `update` is exactly `mutate(this.draft)` plus `emitUpdate()` in a finally. Write to \
-         `this.draft` directly and call `this.emitUpdate()` afterwards, wrapped in try/finally \
-         when the body can throw; a forgotten emit is what require-emit-after-draft-write catches."
+         declare the mutator as a module-level function with the signature `(draft, ...args)` and \
+         pass its values as extra arguments of `update`, e.g. `this.update(applyFoo, foo.id)`: \
+         `update` writes the draft and publishes even when the mutator throws. A body that needs \
+         `this` may write to `this.draft` and call `this.emitUpdate()`, wrapped in try/finally \
+         when it can throw; a forgotten emit is what require-emit-after-draft-write catches."
     )
 }
 
@@ -273,6 +277,8 @@ fn a_capturing_update_callback_is_reported_with_its_captures_named() {
 
     assert!(message.contains("rebuilt on every call of `rename`"), "{message}");
     assert!(message.contains("captures `this`, `name`"), "{message}");
+    assert!(message.contains("declare the mutator as a module-level function"), "{message}");
+    assert!(message.contains("this.update(applyFoo, foo.id)"), "{message}");
 }
 
 #[test]

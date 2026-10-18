@@ -30,11 +30,11 @@ Only if you make it so. A store is an ordinary object you create — `new Counte
 
 ## How is it different from Redux?
 
-There are no actions, reducers or middleware. State changes are made by calling methods on the store, which mutate a draft inside `update()` and publish the changed paths. Subscriptions are the paths a component actually read during render, recorded automatically. There is no dispatch layer and no middleware pipeline to configure.
+There are no actions, reducers or middleware. State changes are made by calling methods on the store: the write goes through `update()`, which writes the draft and publishes the changed paths in one step. Subscriptions are the paths a component actually read during render, recorded automatically. There is no dispatch layer and no middleware pipeline to configure.
 
 ## How is it different from Zustand?
 
-In React Carburetor, a class component reads a store inside `render()` via `this.useCarburetor`, `connect`, or `connectSelection`, rather than through a hook. A hook reader, `useCarburetorValue(store, selector)`, exists in the opt-in `react-carburetor/interop` entry point for hooks-first code. Updates are draft-based: a store method mutates a draft inside `update()` rather than replacing state through a setter.
+In React Carburetor, a class component reads a store inside `render()` via `this.useCarburetor`, `connect`, or `connectSelection`, rather than through a hook. A hook reader, `useCarburetorValue(store, selector)`, exists in the opt-in `react-carburetor/interop` entry point for hooks-first code. Updates are draft-based: a store method conducts its write through `update()`, which writes the draft and publishes the changed paths in one step, rather than replacing state through a setter.
 
 ## How is it different from MobX?
 

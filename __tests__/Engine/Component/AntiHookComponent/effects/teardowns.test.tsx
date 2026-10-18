@@ -313,4 +313,60 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
             expect(reported.filter((message: string) =>
                 message.includes('cleanup failed') && message.includes('replaced')).length).toEqual(1);
         });
+
+        test('a mixed teardown reports a throwing string cleanup exactly once', () => {
+            const log: string[] = [];
+            const store = new CounterCarburetor(getCounterData());
+
+            const closeA = (): void => {
+                log.push('close:a');
+
+                throw new Error('cleanup a failed');
+            };
+
+            // Module-level function-keyed effect with a healthy cleanup.
+            const healthy = (): (() => void) => {
+                log.push('open:function');
+
+                return () => {
+                    log.push('close:function');
+                };
+            };
+
+            class Mixed extends AntiHookComponent {
+                protected useEffects(): void {
+                    this.useEffect('a', () => {
+                        log.push('open:a');
+
+                        return closeA;
+                    }, []);
+
+                    this.useEffect(healthy, []);
+                }
+
+                render() {
+                    this.useCarburetor(store);
+
+                    return <div/>;
+                }
+            }
+
+            const original = console.error;
+            const reported: string[] = [];
+
+            console.error = (message: string) => reported.push(message);
+
+            try {
+                const {unmount} = render(<Mixed />);
+
+                unmount();
+            } finally {
+                console.error = original;
+            }
+
+            expect(log).toEqual(['open:a', 'open:function', 'close:a', 'close:function']);
+            expect(store.subscriberCount()).toEqual(0);
+            expect(reported.filter((message: string) =>
+                message.includes('cleanup a failed') && message.includes('unmount')).length).toEqual(1);
+        });
     });
