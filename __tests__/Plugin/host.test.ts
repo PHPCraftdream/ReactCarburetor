@@ -183,7 +183,8 @@ describe('lint plugin in the oxlint host', () => {
                             'carburetor/require-module-function': ['warn', {scope}],
                         },
                     }));
-                    const hostResult = spawnSync(process.execPath, [OXLINT, '-c', config, '--format', 'json', fixture], {
+                    const hostArgs = [OXLINT, '-c', config, '--format', 'json', fixture];
+                    const hostResult = spawnSync(process.execPath, hostArgs, {
                         cwd: directory,
                         encoding: 'utf8',
                         env: {...process.env, CARBURETOR_LINT_BIN: path.join(ROOT, 'native', 'target', 'release',
