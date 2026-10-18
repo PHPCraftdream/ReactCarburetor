@@ -141,6 +141,10 @@ Entries below record development history in change order; where contracts differ
 
 ### Changed
 
+- Completing a read set prunes branch markers through one owner slice per path and a once-built fallback prefix set, keeping sibling-heavy read sets linear; wake semantics are unchanged.
+- Flat `connectSelection` wakes verify through the one-level flat walk before the full reconcile; selection reconcile resolves one raw target per member and drops per-key lookup objects.
+- Computed `track()` reuses each source's recorder and encoded id per slot.
+- Read-proxy descriptor probes build paths only for trackable values; flat selection copies assign plain default descriptors; patch planning hoists root-prefix concatenation and merges read sets without spreads.
 - H32 advice `no-closure-in-update` now points at the module-level mutator form of `update`.
 - `@bind` picks up a subclass override and throws on `#private` methods.
 - `ResourceCache.refresh()` always restarts an in-flight request of the key, and the previous handle promise
@@ -914,6 +918,7 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- A computed whose body throws during an observed settlement no longer leaves stale UI: subscribers are woken once while the value and version stand still, the next read rethrows into the error boundary, and delivery resumes once the body recovers.
 - `hydrate` no longer loses state for tokens that were not listed.
 - `ResourceCache.clear()` aborts requests whose entries were removed by a state replacement and settles the
   promises of all requests cancelled by the clear.
