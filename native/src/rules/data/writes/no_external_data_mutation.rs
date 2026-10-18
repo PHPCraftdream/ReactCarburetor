@@ -10,6 +10,7 @@ use oxc_ast::ast::Program;
 use oxc_span::Span;
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::chain::ChainRoot;
 use crate::rules::support::names::member_call_name;
 use crate::rules::support::walk::{walk_rule, Context, Rule};
@@ -30,8 +31,8 @@ struct Check<'s> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn mutation(&mut self, root: &ChainRoot<'_, 'a>, span: Span, _context: &Context) {
@@ -53,13 +54,21 @@ impl<'a, 's> Rule<'a> for Check<'s> {
              changes with it. Add a method to the carburetor and write through draft there."
         );
 
-        self.diagnostics.push(report(self.source, span.start, RULE, message));
+        self.diagnostics
+            .push(report(self.source, span.start, RULE, message));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new() })
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            diagnostics: Vec::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]
@@ -69,17 +78,26 @@ mod tests {
 
     #[test]
     fn a_write_through_get_data_is_reported() {
-        assert_eq!(lines(&diagnose("store.getData().items[id] = todo;\n", check)), [1]);
+        assert_eq!(
+            lines(&diagnose("store.getData().items[id] = todo;\n", check)),
+            [1]
+        );
     }
 
     #[test]
     fn a_push_through_get_data_is_reported() {
-        assert_eq!(lines(&diagnose("store.getData().orderIds.push(id);\n", check)), [1]);
+        assert_eq!(
+            lines(&diagnose("store.getData().orderIds.push(id);\n", check)),
+            [1]
+        );
     }
 
     #[test]
     fn a_write_through_get_entry_is_reported() {
-        assert_eq!(lines(&diagnose("cache.getEntry(args).data.x = 1;\n", check)), [1]);
+        assert_eq!(
+            lines(&diagnose("cache.getEntry(args).data.x = 1;\n", check)),
+            [1]
+        );
     }
 
     #[test]
@@ -95,11 +113,17 @@ mod tests {
 
     #[test]
     fn reading_is_not_mutating() {
-        assert_eq!(lines(&diagnose("const x = store.getData().items;\n", check)), [] as [usize; 0]);
+        assert_eq!(
+            lines(&diagnose("const x = store.getData().items;\n", check)),
+            [] as [usize; 0]
+        );
     }
 
     #[test]
     fn a_write_through_another_call_is_left_alone() {
-        assert_eq!(lines(&diagnose("buildDraft().items[id] = todo;\n", check)), [] as [usize; 0]);
+        assert_eq!(
+            lines(&diagnose("buildDraft().items[id] = todo;\n", check)),
+            [] as [usize; 0]
+        );
     }
 }

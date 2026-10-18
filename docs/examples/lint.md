@@ -1,6 +1,6 @@
 # Lint usage
 
-React Carburetor ships 27 registry rules: 26 catalogue rules plus the optional `no-react-hooks-in-components` policy rule. Recommended includes rules at their configured severities; `no-module-level-store` and the hook policy default to off. The same rules run through oxlint, ESLint, or the standalone binary.
+React Carburetor ships 29 registry rules: 28 catalogue rules plus the optional `no-react-hooks-in-components` policy rule. Recommended includes rules at their configured severities; `no-module-level-store` and the hook policy default to off. The same rules run through oxlint, ESLint, or the standalone binary.
 
 ## oxlint
 
@@ -25,7 +25,7 @@ The direct path works too:
 
 `require-module-function` accepts `scope: "all"` (default) or `"classes"`. The default analyzes clean nested functions throughout a file; `classes` limits nested-function findings to class bodies. Both retain eligible component-member analysis and cover clean callbacks in store classes. Unknown scope values or option keys are configuration errors.
 
-The optional hook-free preset is separate. It enables `carburetor/no-react-hooks-in-components: 'error'`:
+The recommended preset also switches oxlint's `typescript/unbound-method` off: it cannot see `@bind` (see [rules.md](../rules.md)). The optional hook-free preset is separate. It enables `carburetor/no-react-hooks-in-components: 'error'`:
 
 ```json
 {
@@ -92,18 +92,31 @@ npx carburetor-lint --fix-dry-run src   # preview fixes
 npx carburetor-lint --format=json src   # machine-readable output
 ```
 
+A host with an unsaved buffer (an editor integration, a `--fix` pass) lints the in-memory text
+without writing it by piping it in and naming the file it should be analyzed as:
+
+```shell
+cat unsaved.tsx | npx carburetor-lint --stdin src/unsaved.tsx --format=json
+```
+
 `--config` defaults to `./.carburetorrc.json` when present. Exit codes are `0` (clean), `1` (findings), and `2` (missing paths or tool/config/CLI failure). `--fix` and `--fix-dry-run` are mutually exclusive.
 
 ## .carburetorrc.json
 
-Configuration is JSON with `rules` and `ignore` top-level keys; anything else is rejected. Rule names may be bare or prefixed with `carburetor/`:
+Configuration is JSON with `rules`, `ignore`, `componentBases` and `storeBases` top-level keys;
+anything else is rejected. Rule names may be bare or prefixed with `carburetor/`. The two base
+lists add names to the recognised component and store bases (`AntiHookComponent`,
+`ScopedAntiHookComponent`; `Carburetor`, `ResourceCarburetor`, `ResourceCache`), and recognition
+follows same-file `extends` chains through a configured name:
 
 ```json
 {
   "rules": {
     "carburetor/no-escaping-tracked-data": "off",
     "carburetor/require-module-function": ["warn", {"scope": "classes"}]
-  }
+  },
+  "componentBases": ["AppComponent"],
+  "storeBases": ["UsersCache"]
 }
 ```
 

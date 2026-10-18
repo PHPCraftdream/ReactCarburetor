@@ -10,19 +10,22 @@
 
 use oxc_ast::ast::{CallExpression, Program};
 
+use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::names::member_call_name;
 use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
-use crate::rules::report;
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/no-computed-get-in-render";
 
-const CLASS_MESSAGE: &str = "get() in render returns the derived value without subscribing to it, so this \
+const CLASS_MESSAGE: &str =
+    "get() in render returns the derived value without subscribing to it, so this \
     component will not re-render when it changes. Use this.useComputed(computed), which subscribes \
     to the value rather than to its inputs.";
 
-const FUNCTION_MESSAGE: &str = "get() in render returns the derived value without subscribing to it, so this \
+const FUNCTION_MESSAGE: &str =
+    "get() in render returns the derived value without subscribing to it, so this \
     component will not re-render when it changes. Use useComputedValue(computed), which subscribes \
     to the value rather than to its inputs.";
 
@@ -32,8 +35,8 @@ struct Check<'s> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
@@ -50,11 +53,102 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             Some(RenderKind::Function) => FUNCTION_MESSAGE,
             _ => CLASS_MESSAGE,
         };
-        self.diagnostics.push(report(self.source, call.span.start, RULE, message.to_string()));
+        self.diagnostics.push(report(
+            self.source,
+            call.span.start,
+            RULE,
+            message.to_string(),
+        ));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new() })
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            diagnostics: Vec::new(),
+        },
+        bases,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rules::support::testing::{diagnose, lines};
+
+    #[test]
+    fn a_zero_argument_get_in_render_is_reported() {
+        let source = "class Widget extends AntiHookComponent {
+    render() {
+                              return <b>{visibleCount.get()}</b>;
+    }
+}
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [3]);
+    }
+
+    #[test]
+    fn a_keyed_get_in_render_is_somebodys_else_get() {
+        // `Map.get(key)` takes an argument; a computed's `get()` does not, and that is the only
+        // thing separating them without type information.
+        let source = "class Widget extends AntiHookComponent {
+    render() {
+                              return <b>{map.get(key)}</b>;
+    }
+}
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_get_inside_a_handler_is_not_render_code() {
+        let source = "class Widget extends AntiHookComponent {
+    render() {
+                              return <button onClick={() => visibleCount.get()}>go</button>;
+    }
+}
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_get_outside_render_is_fine() {
+        let source = "class Widget extends AntiHookComponent {
+    componentDidMount() {
+                              visibleCount.get();
+    }
+    render() { return null; }
+}
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_get_in_a_plain_class_is_not_render_code() {
+        let source = "class Widget {
+    render() {
+        return visibleCount.get();
+    }
+}
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_zero_argument_get_in_a_function_component_is_reported() {
+        let source = "function Row() {
+    return <b>{visibleCount.get()}</b>;
+}
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [2]);
+    }
 }

@@ -13,9 +13,10 @@ use oxc_ast::ast::{JSXAttribute, Program};
 use oxc_semantic::Semantic;
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::{build_semantic, CaptureIndex};
-use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
 use crate::rules::support::walk::functions::fresh_attribute_functions;
+use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -29,8 +30,8 @@ struct Check<'s, 'a> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s, 'a> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn jsx_attribute(&mut self, attribute: &JSXAttribute<'a>, context: &Context) {
@@ -68,15 +69,16 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
             )
         };
 
-        self.diagnostics.push(report(self.source, attribute.span.start, RULE, message));
+        self.diagnostics
+            .push(report(self.source, attribute.span.start, RULE, message));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
 
-    check_with_semantic(program, source, &semantic)
+    check_with_semantic(program, source, &semantic, bases)
 }
 
 /// Runs the rule with a semantic pass shared across rules.
@@ -84,9 +86,19 @@ pub(in crate::rules) fn check_with_semantic<'a, 's>(
     program: &Program<'a>,
     source: &'s Source<'s>,
     semantic: &'s Semantic<'a>,
+    bases: &'s Bases,
 ) -> Vec<Diagnostic> {
     let index = CaptureIndex::new(semantic);
-    walk_rule(program, Check { source, semantic, index, diagnostics: Vec::new() })
+    walk_rule(
+        program,
+        Check {
+            source,
+            semantic,
+            index,
+            diagnostics: Vec::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]
@@ -103,18 +115,25 @@ mod tests {
         format!("class Widget extends AntiHookComponent {{\n    render() {{\n{body}\n    }}\n}}\n")
     }
 
-    fn run_rules_with_scope(text: &str, scope: crate::config::ModuleFunctionScope) -> Vec<Diagnostic> {
+    fn run_rules_with_scope(
+        text: &str,
+        scope: crate::config::ModuleFunctionScope,
+    ) -> Vec<Diagnostic> {
         let allocator = Allocator::default();
         let parsed = Parser::new(&allocator, text, SourceType::tsx()).parse();
 
-        assert!(parsed.diagnostics.is_empty(), "test source must parse: {:?}", parsed.diagnostics);
+        assert!(
+            parsed.diagnostics.is_empty(),
+            "test source must parse: {:?}",
+            parsed.diagnostics
+        );
 
         let mut config = crate::config::Config::default();
         config.set_module_function_scope(scope);
 
         crate::rules::run(
             &parsed.program,
-            &crate::Source { path: Path::new("fixture.tsx"), text },
+            &crate::Source::new(Path::new("fixture.tsx"), text),
             &config,
             false,
         )
@@ -124,14 +143,15 @@ mod tests {
         let allocator = Allocator::default();
         let parsed = Parser::new(&allocator, text, SourceType::tsx()).parse();
 
-        assert!(parsed.diagnostics.is_empty(), "test source must parse: {:?}", parsed.diagnostics);
+        assert!(
+            parsed.diagnostics.is_empty(),
+            "test source must parse: {:?}",
+            parsed.diagnostics
+        );
 
         crate::rules::run(
             &parsed.program,
-            &crate::Source {
-                path: Path::new("fixture.tsx"),
-                text,
-            },
+            &crate::Source::new(Path::new("fixture.tsx"), text),
             &crate::config::Config::default(),
             false,
         )
@@ -141,7 +161,10 @@ mod tests {
     fn a_fresh_child_handler_reports_once_in_the_full_registry_for_both_scopes() {
         let source = "class View extends AntiHookComponent { render() { return <Child onClick={() => console.log(1)}/>; } }";
 
-        for scope in [crate::config::ModuleFunctionScope::All, crate::config::ModuleFunctionScope::Classes] {
+        for scope in [
+            crate::config::ModuleFunctionScope::All,
+            crate::config::ModuleFunctionScope::Classes,
+        ] {
             let diagnostics = run_rules_with_scope(source, scope);
 
             assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
@@ -154,13 +177,28 @@ mod tests {
         let component = "class View extends AntiHookComponent { render() { return <Child onClick={() => { const nested = () => console.log(1); nested(); }}/>; } }";
         let dom = "class View extends AntiHookComponent { render() { return <button onClick={() => console.log(1)}/>; } }";
 
-        for scope in [crate::config::ModuleFunctionScope::All, crate::config::ModuleFunctionScope::Classes] {
+        for scope in [
+            crate::config::ModuleFunctionScope::All,
+            crate::config::ModuleFunctionScope::Classes,
+        ] {
             let component_diagnostics = run_rules_with_scope(component, scope);
-            assert!(component_diagnostics.iter().any(|diagnostic| diagnostic.rule == RULE));
-            assert!(component_diagnostics.iter().any(|diagnostic| diagnostic.rule == "carburetor/require-module-function"), "{component_diagnostics:#?}");
+            assert!(component_diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.rule == RULE));
+            assert!(
+                component_diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.rule == "carburetor/require-module-function"),
+                "{component_diagnostics:#?}"
+            );
 
             let dom_diagnostics = run_rules_with_scope(dom, scope);
-            assert!(dom_diagnostics.iter().any(|diagnostic| diagnostic.rule == "carburetor/require-module-function"), "{dom_diagnostics:#?}");
+            assert!(
+                dom_diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.rule == "carburetor/require-module-function"),
+                "{dom_diagnostics:#?}"
+            );
         }
     }
 
@@ -227,5 +265,4 @@ mod tests {
 
         assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
     }
-
 }

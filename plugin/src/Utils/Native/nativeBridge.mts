@@ -10,6 +10,7 @@ import {RECOMMENDED} from "#src/recommended.mts";
 import {platformPackageNames} from "#src/Utils/Native/platformPackage.mts";
 import {resolveBinary} from "#src/Utils/Native/resolveBinary.mts";
 import type {INativeDiagnostic} from "#src/Utils/Native/INativeDiagnostic.mts";
+import {cachedFileResult} from "#src/Utils/bufferCache.mts";
 
 /**
  * Runs the native binary once per lint run and hands every rule its own slice of the result.
@@ -260,6 +261,53 @@ const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinar
     return JSON.parse(result.stdout || '[]') as INativeDiagnostic[];
 };
 
+/** Runs the binary over one buffer, as if it were `filename`: the one way a host can have an
+ * unsaved buffer analyzed. The flags mirror `runBinary` exactly — every rule on, overlaps kept,
+ * a neutral config — so a file's in-memory findings are the same set its saved file would earn.
+ *
+ * @param cwd - the project the binary runs in; the file's path is reported relative to it
+ * @param filename - the absolute path the buffer is analyzed as
+ * @param text - the buffer's own text, piped to the binary's standard input
+ * @param resolve - where the binary is; injectable so a test can stage one
+ */
+const runNativeText = (
+    cwd: string,
+    filename: string,
+    text: string,
+    resolve: () => string | undefined = resolveBinary,
+): INativeDiagnostic[] => {
+    const binary = resolve();
+
+    if (!binary) {
+        throw new Error(
+            'react-carburetor/lint: no native binary for this platform. Install it with ' +
+            '"npm install --save-dev carburetor-lint" (its optionalDependencies add the package ' +
+            `this machine needs, ${platformPackageNames()[0]}), or set CARBURETOR_LINT_BIN to a ` +
+            'built binary, or run "cargo build --release" inside native/ in a checkout of this ' +
+            'repository.'
+        );
+    }
+
+    const args = ALL_RULE_IDS.flatMap((id) => ['--rule', `${id}=error`]);
+    const relative = path.relative(cwd, filename).replace(/\\/g, '/');
+    const result = spawnSync(
+        binary,
+        ['--config', neutralConfig(), '--format=json', '--keep-overlaps', ...args, '--stdin', relative],
+        {cwd, encoding: 'utf8', input: text, maxBuffer: 64 * 1024 * 1024},
+    );
+
+    if (result.error) {
+        throw new Error(`react-carburetor/lint: could not run the native binary at ${binary}: ${result.error.message}`);
+    }
+
+    if (result.status === 2) {
+        throw new Error(`react-carburetor/lint: the native binary failed: ${result.stderr}`);
+    }
+
+    return JSON.parse(result.stdout || '[]') as INativeDiagnostic[];
+};
+
+
 /** Filesystem timestamps are coarse (a kernel tick, or seconds on some volumes) and can trail
  * `Date.now()`, so a save moments after a run began may carry an mtime just before its start. */
 const MTIME_SLACK_MS = 2_000;
@@ -277,23 +325,41 @@ const changedSince = (filename: string | undefined, startMs: number): boolean =>
     }
 };
 
+/** The file's saved content, or `undefined` when it has none: a buffer with no file behind it
+ * (or an unreadable one) is always treated as differing, so it takes the in-memory path. */
+const diskText = (filename: string): string | undefined => {
+    try {
+        return readFileSync(filename, 'utf8');
+    } catch {
+        return undefined;
+    }
+};
 /** Runs the native binary once for this process, sharing the result across worker threads.
  * The resolver is injectable so a test can stage an install with no binary.
  *
  * Native reads saved files from disk, so a long-lived host (an editor, a watch run) would keep
  * the first answer forever. A file saved after the cached run began is therefore re-linted: the
  * project is scanned again in this thread alone, with no cross-thread sharing, which is rare
- * and keeps the lock protocol untouched. Unsaved buffers are never analyzed.
+ * and keeps the lock protocol untouched. A buffer whose text differs from its file on disk is
+ * linted on its own through the binary's `--stdin` mode (see `runNativeText`), so an editor's
+ * squiggles describe what is in the editor, not what was last saved.
  *
  * @param cwd - the project the binary lints; its digest also names this run's lock file
  * @param resolve - consulted only by the worker that wins the lock; waiters never resolve
  * @param filename - the file being linted; a save after the cached run forces a fresh scan
+ * @param text - the host's own buffer content, when it may differ from the file on disk
  */
-export const runNativeOnce = (
+export const runNative = (
     cwd: string,
     resolve: () => string | undefined = resolveBinary,
     filename?: string,
+    text?: string,
 ): INativeDiagnostic[] => {
+    if (text !== undefined && filename !== undefined && text !== diskText(filename)) {
+        // One spawn per distinct buffer text, not per rule and not per keystroke.
+        return cachedFileResult(filename, text, () => runNativeText(cwd, filename, text, resolve));
+    }
+
     if (cached && cachedCwd === cwd) {
         if (!changedSince(filename, cachedStartMs)) {
             return cached;

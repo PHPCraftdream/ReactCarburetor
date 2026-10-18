@@ -7,7 +7,8 @@ import * as os from "node:os";
 import * as path from "node:path";
 import {describe, expect, test} from "@rstest/core";
 import {offsetAt} from "@plugin/Utils/Native/offsetAt.mts";
-import {runNativeOnce} from "@plugin/Utils/Native/nativeBridge.mts";
+import {runNative} from "@plugin/Utils/Native/nativeBridge.mts";
+import {cachedFileResult} from "@plugin/Utils/bufferCache.mts";
 import {platformPackageNames} from "@plugin/Utils/Native/platformPackage.mts";
 import {resolveBinary} from "@plugin/Utils/Native/resolveBinary.mts";
 import type {INativeDiagnostic} from "@plugin/Utils/Native/INativeDiagnostic.mts";
@@ -15,12 +16,12 @@ import type {INativeDiagnostic} from "@plugin/Utils/Native/INativeDiagnostic.mts
 /**
  * The bridge end to end: the real host, the real binary, one process for the whole run.
  *
- * `runNativeOnce` and `nativeRule` are not unit-tested directly, because the interesting behaviour
+ * `runNative` and `nativeRule` are not unit-tested directly, because the interesting behaviour
  * — one spawn, correct path matching, a real `context.report` — only exists once oxlint is the one
  * calling them. A synthetic host or a hand-rolled context would test the mock, not the bridge. So
  * this suite runs the actual `oxlint` binary against the actual fixture corpus, the way a consumer
  * would, and inspects the one side effect that reveals how many times the native binary ran: the
- * result file `runNativeOnce` writes in the OS temp directory, one per spawn.
+ * result file `runNative` writes in the OS temp directory, one per spawn.
  */
 const ROOT: string = process.cwd();
 const CORPUS: readonly string[] = [
@@ -41,7 +42,7 @@ mkdirSync(BRIDGE_DIR, {recursive: true});
 /** This process's own start time, exactly as the bridge computes it — public Node APIs only. */
 const processStartMs = (): number => Date.now() - Math.round(process.uptime() * 1000);
 
-/** The lock path `runNativeOnce` would use for `cwd`, computed exactly as `runPaths` does. */
+/** The lock path `runNative` would use for `cwd`, computed exactly as `runPaths` does. */
 const lockPathFor = (cwd: string): string => {
     const digest = createHash('sha256').update(cwd).digest('hex').slice(0, 32);
 
@@ -120,6 +121,47 @@ const runOxlint = (config: string, files: readonly string[]): IOxlintRun => {
     return {output: result.stdout || '', pid: result.pid};
 };
 
+describe('cachedFileResult', () => {
+    test('one computation per distinct buffer text, none for a repeated one', () => {
+        let runs = 0;
+        const compute = (): INativeDiagnostic[] => {
+            runs += 1;
+
+            return [{rule: 'r', file: 'f', line: 1, column: 1, message: 'm', severity: 'error'}];
+        };
+        const result = cachedFileResult('/project/view.tsx', 'const a = 1;', compute);
+
+        expect(cachedFileResult('/project/view.tsx', 'const a = 1;', compute)).toBe(result);
+        expect(runs).toBe(1);
+
+        // A different text in the same file is a different buffer and runs again.
+        cachedFileResult('/project/view.tsx', 'const a = 2;', compute);
+        expect(runs).toBe(2);
+
+        // A different file with the same text is a different buffer too.
+        cachedFileResult('/project/other.tsx', 'const a = 1;', compute);
+        expect(runs).toBe(3);
+    });
+
+    test('the cache stays bounded, so a long-lived host cannot grow it per edit', () => {
+        let runs = 0;
+        const compute = (): INativeDiagnostic[] => {
+            runs += 1;
+
+            return [];
+        };
+        const first = cachedFileResult('/project/old.tsx', 'oldest', compute);
+
+        for (let index = 0; index < 64; index++) {
+            cachedFileResult(`/project/edit-${index}.tsx`, `text ${index}`, compute);
+        }
+
+        // The first entry was evicted: its text computes again, and the value is fresh.
+        expect(cachedFileResult('/project/old.tsx', 'oldest', compute)).not.toBe(first);
+        expect(runs).toBe(66);
+    });
+});
+
 describe('offsetAt', () => {
     test('the first character of the first line is offset 0', () => {
         expect(offsetAt('abc\ndef\n', 1, 1)).toBe(0);
@@ -131,6 +173,18 @@ describe('offsetAt', () => {
 
     test('a column past the first character of a line', () => {
         expect(offsetAt('abc\ndef\n', 2, 3)).toBe(6);
+    });
+
+    test('a column counts an astral character as one, the host text as its two units', () => {
+        // Native counts Unicode scalar values; the host's offsets are UTF-16 indices. Column 2
+        // names the character after the emoji, which sits at string index 2, not 1.
+        expect(offsetAt('\u{1F600}ab', 1, 2)).toBe(2);
+        expect(offsetAt('a\u{1F600}b', 1, 3)).toBe(3);
+    });
+
+    test('a position past the text stops at its end instead of pointing beyond it', () => {
+        expect(offsetAt('abc', 5, 9)).toBe(3);
+        expect(offsetAt('abc\ndef', 2, 99)).toBe(7);
     });
 });
 
@@ -192,7 +246,7 @@ describe('a missing binary fails loudly', () => {
             let failure: unknown;
 
             try {
-                runNativeOnce(cwd, () => undefined);
+                runNative(cwd, () => undefined);
             } catch (error) {
                 failure = error;
             }
@@ -224,7 +278,7 @@ describe('a missing binary fails loudly', () => {
         writeFileSync(result, JSON.stringify({error: 'the staged failure'}));
 
         try {
-            expect(() => runNativeOnce(cwd, () => undefined)).toThrow(/the staged failure/);
+            expect(() => runNative(cwd, () => undefined)).toThrow(/the staged failure/);
         } finally {
             rmSync(lock, {force: true});
             rmSync(result, {force: true});
@@ -247,7 +301,7 @@ describe('a missing binary fails loudly', () => {
             let failure: unknown;
 
             try {
-                runNativeOnce(cwd, () => undefined);
+                runNative(cwd, () => undefined);
             } catch (error) {
                 failure = error;
             }
@@ -262,7 +316,7 @@ describe('a missing binary fails loudly', () => {
         }
     });
 
-    // The next two tests are the only ones in this file where `runNativeOnce` succeeds instead
+    // The next two tests are the only ones in this file where `runNative` succeeds instead
     // of throwing, which latches its module-level `cached` for the rest of this worker's tests —
     // by design, one process runs the binary once, ever. They run last so nothing after them
     // relies on that state still being empty.
@@ -289,7 +343,7 @@ describe('a missing binary fails loudly', () => {
         writeFileSync(genuineResult, JSON.stringify(genuine));
 
         try {
-            expect(runNativeOnce(cwd, () => undefined)).toEqual(genuine);
+            expect(runNative(cwd, () => undefined)).toEqual(genuine);
         } finally {
             rmSync(lock, {force: true});
             rmSync(staleBareResult, {force: true});
@@ -316,7 +370,7 @@ describe('a missing binary fails loudly', () => {
         writeFileSync(result, JSON.stringify(genuine));
 
         try {
-            expect(runNativeOnce(cwd, () => undefined)).toEqual(genuine);
+            expect(runNative(cwd, () => undefined)).toEqual(genuine);
         } finally {
             rmSync(lock, {force: true});
             rmSync(result, {force: true});
@@ -347,7 +401,7 @@ describe('a missing binary fails loudly', () => {
         try {
             // A second election attempt here would spawn a duplicate runner; getting the
             // genuine, already-published result back instead proves the lock was not reclaimed.
-            expect(runNativeOnce(cwd, () => undefined)).toEqual(genuine);
+            expect(runNative(cwd, () => undefined)).toEqual(genuine);
         } finally {
             rmSync(lock, {force: true});
             rmSync(genuineResult, {force: true});

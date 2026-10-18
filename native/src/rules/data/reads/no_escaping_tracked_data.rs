@@ -18,6 +18,7 @@ use oxc_ast::ast::{
 use oxc_span::Span;
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::names::member_call_name;
 use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
 use crate::{Diagnostic, Source};
@@ -54,13 +55,14 @@ impl<'s> Check<'s> {
              replaced. Read the values you need in render, or call getData() where you need them."
         );
 
-        self.diagnostics.push(report(self.source, offset, RULE, message));
+        self.diagnostics
+            .push(report(self.source, offset, RULE, message));
     }
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn declarator(&mut self, declarator: &VariableDeclarator<'a>, context: &Context) {
@@ -78,7 +80,8 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
         // Only a whole binding: a destructured leaf is usually a primitive and carries no proxy.
         if let Some(identifier) = declarator.id.get_binding_identifier() {
-            self.tracked.insert(identifier.name.to_string(), context.function);
+            self.tracked
+                .insert(identifier.name.to_string(), context.function);
         }
     }
 
@@ -120,8 +123,16 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new(), tracked: HashMap::new() })
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            diagnostics: Vec::new(),
+            tracked: HashMap::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]
@@ -146,14 +157,16 @@ mod tests {
 
     #[test]
     fn data_stored_on_the_component_is_reported() {
-        let source = render("        const data = this.useCarburetor(store);\n        this.cache = data;");
+        let source =
+            render("        const data = this.useCarburetor(store);\n        this.cache = data;");
 
         assert_eq!(lines(&diagnose(&source, check)), [4]);
     }
 
     #[test]
     fn reading_it_in_render_is_the_point() {
-        let source = render("        const data = this.useCarburetor(store);\n        return data.name;");
+        let source =
+            render("        const data = this.useCarburetor(store);\n        return data.name;");
 
         assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
     }

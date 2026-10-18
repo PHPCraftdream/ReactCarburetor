@@ -16,6 +16,7 @@ use oxc_semantic::{Scoping, Semantic};
 use oxc_span::{GetSpan, Span};
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::build_semantic;
 use crate::rules::support::names::{member_call_name, property_key_name, unwrap_expression};
 use crate::{Diagnostic, Source};
@@ -23,7 +24,8 @@ use crate::{Diagnostic, Source};
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/require-subscription-disposal";
 
-const MESSAGE: &str = "this subscription's id is discarded, so it can never be released: the store \
+const MESSAGE: &str =
+    "this subscription's id is discarded, so it can never be released: the store \
     keeps the callback, and everything it closed over, for the lifetime of the process. Use \
     watch(select, onChange), which returns a disposer, or keep the id and unsubscribe.";
 
@@ -33,12 +35,14 @@ fn is_explicit_nullish(expression: &Expression<'_>, scoping: &Scoping) -> bool {
     match expression {
         Expression::NullLiteral(_) => true,
         Expression::UnaryExpression(unary) => unary.operator.is_void(),
-        Expression::Identifier(identifier) => identifier.name == "undefined"
-            && identifier
-                .reference_id
-                .get()
-                .and_then(|id| scoping.get_reference(id).symbol_id())
-                .is_none(),
+        Expression::Identifier(identifier) => {
+            identifier.name == "undefined"
+                && identifier
+                    .reference_id
+                    .get()
+                    .and_then(|id| scoping.get_reference(id).symbol_id())
+                    .is_none()
+        }
         _ => false,
     }
 }
@@ -64,7 +68,9 @@ fn has_stable_id(call: &CallExpression<'_>, scoping: &Scoping) -> bool {
     };
 
     options.properties.iter().any(|property| match property {
-        ObjectPropertyKind::ObjectProperty(property) => property_key_name(&property.key) == Some("id"),
+        ObjectPropertyKind::ObjectProperty(property) => {
+            property_key_name(&property.key) == Some("id")
+        }
         // A spread may bring the caller's id along.
         ObjectPropertyKind::SpreadProperty(_) => true,
     })
@@ -91,7 +97,12 @@ impl<'a, 's> Visit<'a> for Check<'s> {
             && member_call_name(&call.callee) == Some("subscribe")
             && !has_stable_id(call, self.semantic.scoping())
         {
-            self.diagnostics.push(report(self.source, call.span.start, RULE, MESSAGE.to_string()));
+            self.diagnostics.push(report(
+                self.source,
+                call.span.start,
+                RULE,
+                MESSAGE.to_string(),
+            ));
         }
 
         walk::walk_call_expression(self, call);
@@ -99,10 +110,14 @@ impl<'a, 's> Visit<'a> for Check<'s> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
-    let mut check =
-        Check { source, semantic: &semantic, diagnostics: Vec::new(), discarded_expression: None };
+    let mut check = Check {
+        source,
+        semantic: &semantic,
+        diagnostics: Vec::new(),
+        discarded_expression: None,
+    };
 
     check.visit_program(program);
 
@@ -128,7 +143,8 @@ mod tests {
 
     #[test]
     fn subscription_nested_in_callback_statement_is_not_discarded() {
-        let source = "outer(() => {\n    const id = store.subscribe(callback);\n    use(id);\n});\n";
+        let source =
+            "outer(() => {\n    const id = store.subscribe(callback);\n    use(id);\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
@@ -137,7 +153,11 @@ mod tests {
     fn round_five_kept_return_with_undefined_and_null_options_is_not_discarded() {
         for value in ["undefined", "null"] {
             let source = format!("const id = store.subscribe(callback, {value});\n");
-            assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0], "{value}");
+            assert_eq!(
+                lines(&diagnose(&source, check)),
+                [] as [usize; 0],
+                "{value}"
+            );
         }
     }
 
@@ -158,23 +178,36 @@ mod tests {
 
     #[test]
     fn round_six_discarded_void_zero_options_are_reported() {
-        assert_eq!(lines(&diagnose("store.subscribe(callback, void 0);\n", check)), [1]);
+        assert_eq!(
+            lines(&diagnose("store.subscribe(callback, void 0);\n", check)),
+            [1]
+        );
     }
 
     #[test]
     fn discarded_subscription_with_unknown_options_or_spread_is_not_reported() {
         for options in ["options", "{...options}"] {
             let source = format!("store.subscribe(callback, {options});\n");
-            assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0], "{options}");
+            assert_eq!(
+                lines(&diagnose(&source, check)),
+                [] as [usize; 0],
+                "{options}"
+            );
         }
     }
 
     #[test]
     fn options_built_elsewhere_may_carry_the_callers_id() {
         for options in ["options", "buildOptions(id)", "{...options}"] {
-            let source = format!("store.subscribe(callback, {options});
-");
-            assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0], "{options}");
+            let source = format!(
+                "store.subscribe(callback, {options});
+"
+            );
+            assert_eq!(
+                lines(&diagnose(&source, check)),
+                [] as [usize; 0],
+                "{options}"
+            );
         }
         let source = "computedDependencies.subscribe(source, callback, options);
 ";
@@ -190,7 +223,10 @@ mod tests {
 
     #[test]
     fn a_kept_return_value_is_a_handle() {
-        assert_eq!(lines(&diagnose("const id = store.subscribe(callback);\n", check)), [] as [usize; 0]);
+        assert_eq!(
+            lines(&diagnose("const id = store.subscribe(callback);\n", check)),
+            [] as [usize; 0]
+        );
     }
 
     #[test]
@@ -204,21 +240,38 @@ mod tests {
     fn a_trailing_spread_argument_is_options_built_elsewhere() {
         for options in ["...options", "...args"] {
             let source = format!("store.subscribe(callback, {options});\n");
-            assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0], "{options}");
+            assert_eq!(
+                lines(&diagnose(&source, check)),
+                [] as [usize; 0],
+                "{options}"
+            );
         }
-        assert_eq!(lines(&diagnose("store.subscribe(...args);\n", check)), [] as [usize; 0]);
+        assert_eq!(
+            lines(&diagnose("store.subscribe(...args);\n", check)),
+            [] as [usize; 0]
+        );
     }
 
     #[test]
     fn quoted_id_keys_are_stable_ids() {
         for options in ["{\"id\": 'row-1'}", "{'id': 'row-1'}"] {
             let source = format!("store.subscribe(callback, {options});\n");
-            assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0], "{options}");
+            assert_eq!(
+                lines(&diagnose(&source, check)),
+                [] as [usize; 0],
+                "{options}"
+            );
         }
     }
 
     #[test]
     fn a_computed_id_key_stays_unknown() {
-        assert_eq!(lines(&diagnose("store.subscribe(callback, {[key]: 'row-1'});\n", check)), [1]);
+        assert_eq!(
+            lines(&diagnose(
+                "store.subscribe(callback, {[key]: 'row-1'});\n",
+                check
+            )),
+            [1]
+        );
     }
 }

@@ -43,7 +43,7 @@ declare module "node:child_process" {
     export function spawnSync(
         command: string,
         args: readonly string[],
-        options: {cwd?: string; encoding: 'utf8'; maxBuffer?: number}
+        options: {cwd?: string; encoding: 'utf8'; maxBuffer?: number; input?: string}
     ): ISpawnResult;
 }
 

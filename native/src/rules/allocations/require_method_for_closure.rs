@@ -20,6 +20,7 @@ use oxc_semantic::Semantic;
 use oxc_span::Span;
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::bases::RENDER_METHODS;
 use crate::rules::support::closures::{
     analyze_field, analyze_method, build_semantic, is_component_class, Candidate, Capture,
@@ -121,6 +122,7 @@ fn message(candidate: &Candidate<'_>, member: Option<&str>) -> String {
 struct Check<'s, 'a> {
     source: &'s Source<'s>,
     semantic: &'s Semantic<'a>,
+    bases: &'s Bases,
     /// Whether each class in the file is a component, keyed by the class's span — the only
     /// identity a class has across the walk's callbacks, and what keeps a nested class's answer
     /// from standing in for its enclosing one.
@@ -167,15 +169,15 @@ impl<'s, 'a> Check<'s, 'a> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s, 'a> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     /// `context.in_component` is direct-extends-only, but the allocation rules' scope is D6: a
     /// same-file subclass of a component counts, which only the semantic walk can see, so the
     /// answer is computed here and keyed by the class's span for the member callbacks to read.
     fn class(&mut self, class: &Class<'a>, _context: &Context) {
-        let component = is_component_class(class, self.semantic);
+        let component = is_component_class(class, self.semantic, self.bases);
 
         self.components.insert(class.span, component);
     }
@@ -210,10 +212,10 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source<'_>) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source<'_>, bases: &Bases) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
 
-    check_with_semantic(program, source, &semantic)
+    check_with_semantic(program, source, &semantic, bases)
 }
 
 /// Runs the rule with a semantic pass shared by the allocation-rule pair.
@@ -221,15 +223,18 @@ pub(in crate::rules) fn check_with_semantic<'a>(
     program: &Program<'a>,
     source: &Source<'_>,
     semantic: &Semantic<'a>,
+    bases: &Bases,
 ) -> Vec<Diagnostic> {
     walk_rule(
         program,
         Check {
             source,
             semantic,
+            bases,
             components: HashMap::new(),
             diagnostics: Vec::new(),
         },
+        bases,
     )
 }
 

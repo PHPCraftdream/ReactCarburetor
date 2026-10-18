@@ -25,14 +25,12 @@ use oxc_syntax::operator::UnaryOperator;
 use oxc_syntax::scope::ScopeFlags;
 
 use crate::rules::support::bases::{
-    ARRAY_MUTATORS, CARBURETOR_BASES, COMPONENT_BASES, RENDER_METHODS, SYNCHRONOUS_CALLBACKS,
+    Bases, ClassChains, ARRAY_MUTATORS, RENDER_METHODS, SYNCHRONOUS_CALLBACKS,
 };
 use crate::rules::support::chain::{assignment_root, chain_root, simple_target_root, ChainRoot};
-use crate::rules::support::names::{
-    extends_any, member_call_name, property_key_name, unwrap_expression,
-};
-use component::discover;
+use crate::rules::support::names::{member_call_name, property_key_name, unwrap_expression};
 use crate::Diagnostic;
+use component::discover;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RenderKind {
@@ -106,7 +104,7 @@ impl Context {
 /// What a rule implements. Every method is optional; a rule overrides the node kinds it is about.
 pub trait Rule<'a> {
     /// The diagnostics collected during the walk.
-    fn finish(self) -> Vec<Diagnostic>;
+    fn finish(&mut self) -> Vec<Diagnostic>;
     /// `f(...)`, including every method call.
     fn call(&mut self, _call: &CallExpression<'a>, _context: &Context) {}
     /// A mutation in any of its four forms: `x.y = v`, `x.y++`, `delete x.y`, `x.y.push(v)`.
@@ -153,9 +151,11 @@ fn callback_parameter<'a>(call: &'a CallExpression<'a>) -> Option<&'a str> {
         .map(|identifier| identifier.name.as_str())
 }
 
-/// Drives a rule over one parsed file, maintaining the context it reads.
-struct Walk<'a, R: Rule<'a>> {
-    rule: R,
+/// Drives rules over one parsed file, maintaining the context they read.
+struct Walk<'a, 'b> {
+    rules: Vec<&'b mut dyn Rule<'a>>,
+    bases: &'a Bases,
+    chains: ClassChains,
     context: Context,
     /// Spans of functions handed to a synchronous-callback method, which therefore run in place.
     synchronous: HashSet<Span>,
@@ -165,7 +165,7 @@ struct Walk<'a, R: Rule<'a>> {
     marker: std::marker::PhantomData<&'a ()>,
 }
 
-impl<'a, R: Rule<'a>> Walk<'a, R> {
+impl<'a, 'b> Walk<'a, 'b> {
     /// Enters a function body and returns the context to restore.
     fn enter_function(&mut self, span: Span) -> (bool, Option<RenderKind>, Span, Option<Span>) {
         let was = (
@@ -185,7 +185,7 @@ impl<'a, R: Rule<'a>> Walk<'a, R> {
     }
 }
 
-impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
+impl<'a, 'b> Visit<'a> for Walk<'a, 'b> {
     fn visit_class(&mut self, class: &Class<'a>) {
         let outer_component = self.context.in_component;
         let outer_carburetor = self.context.in_carburetor;
@@ -195,14 +195,18 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
         let outer_class = self.context.class_span;
         let outer_scope = self.context.render_scope;
 
-        self.context.in_component = extends_any(class, &COMPONENT_BASES);
-        self.context.in_carburetor = extends_any(class, &CARBURETOR_BASES);
+        self.context.in_component = self
+            .chains
+            .reaches(class, |name| self.bases.is_component(name));
+        self.context.in_carburetor = self.chains.reaches(class, |name| self.bases.is_store(name));
         self.context.class_span = Some(class.span);
         self.context.in_render = false;
         self.context.render_kind = None;
         self.context.render_scope = None;
 
-        self.rule.class(class, &self.context);
+        for rule in &mut self.rules {
+            rule.class(class, &self.context);
+        }
         walk::walk_class(self, class);
 
         self.context.in_component = outer_component;
@@ -223,13 +227,17 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
         let name = property_key_name(&method.key).map(str::to_string);
 
         self.context.in_render = self.context.in_component
-            && name.as_deref().is_some_and(|name| RENDER_METHODS.contains(&name));
+            && name
+                .as_deref()
+                .is_some_and(|name| RENDER_METHODS.contains(&name));
         self.context.render_kind = self.context.in_render.then_some(RenderKind::Class);
         self.context.render_scope = self.context.in_render.then_some(method.value.span);
         self.context.member = name;
         self.context.member_span = Some(method.span);
 
-        self.rule.method(method, &self.context);
+        for rule in &mut self.rules {
+            rule.method(method, &self.context);
+        }
         self.member_bodies.insert(method.value.span);
         walk::walk_method_definition(self, method);
 
@@ -250,11 +258,15 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
 
         // A lifecycle method written as a property is still a render body for other rules.
         self.context.in_render = self.context.in_component
-            && name.as_deref().is_some_and(|name| RENDER_METHODS.contains(&name));
+            && name
+                .as_deref()
+                .is_some_and(|name| RENDER_METHODS.contains(&name));
         self.context.render_kind = self.context.in_render.then_some(RenderKind::Class);
         self.context.member = name;
         self.context.member_span = Some(property.span);
-        self.rule.property(property, &self.context);
+        for rule in &mut self.rules {
+            rule.property(property, &self.context);
+        }
 
         if let Some(value) = &property.value {
             self.context.render_scope = self.context.in_render.then_some(value.span());
@@ -271,7 +283,9 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
 
     fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
         if function.is_function_declaration() {
-            self.rule.function_declaration(function, &self.context);
+            for rule in &mut self.rules {
+                rule.function_declaration(function, &self.context);
+            }
         }
         let (render, render_kind, enclosing, render_scope) = self.enter_function(function.span);
         if self.component_functions.contains(&function.span) {
@@ -311,12 +325,16 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
         } else {
             self.context.update_draft = outer_draft.clone();
         }
-        self.rule.call(call, &self.context);
+        for rule in &mut self.rules {
+            rule.call(call, &self.context);
+        }
 
         if let Some(method) = method {
             if ARRAY_MUTATORS.contains(&method) {
                 if let Expression::StaticMemberExpression(member) = &call.callee {
-                    self.rule.mutation(&chain_root(&member.object), call.span, &self.context);
+                    for rule in &mut self.rules {
+                        rule.mutation(&chain_root(&member.object), call.span, &self.context);
+                    }
                 }
             }
         }
@@ -324,7 +342,8 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
         if method.is_some_and(|name| SYNCHRONOUS_CALLBACKS.contains(&name)) {
             for argument in &call.arguments {
                 if let Some(expression) = argument.as_expression() {
-                    self.synchronous.insert(unwrap_expression(expression).span());
+                    self.synchronous
+                        .insert(unwrap_expression(expression).span());
                 }
             }
         }
@@ -334,42 +353,74 @@ impl<'a, R: Rule<'a>> Visit<'a> for Walk<'a, R> {
     }
 
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
-        self.rule.identifier(identifier, &self.context);
+        for rule in &mut self.rules {
+            rule.identifier(identifier, &self.context);
+        }
         walk::walk_identifier_reference(self, identifier);
     }
 
     fn visit_assignment_expression(&mut self, expression: &AssignmentExpression<'a>) {
-        self.rule.assignment(expression, &self.context);
-        self.rule.mutation(&assignment_root(&expression.left), expression.span, &self.context);
+        for rule in &mut self.rules {
+            rule.assignment(expression, &self.context);
+        }
+        for rule in &mut self.rules {
+            rule.mutation(
+                &assignment_root(&expression.left),
+                expression.span,
+                &self.context,
+            );
+        }
         walk::walk_assignment_expression(self, expression);
     }
 
     fn visit_update_expression(&mut self, expression: &UpdateExpression<'a>) {
-        self.rule.update(expression, &self.context);
-        self.rule.mutation(&simple_target_root(&expression.argument), expression.span, &self.context);
+        for rule in &mut self.rules {
+            rule.update(expression, &self.context);
+        }
+        for rule in &mut self.rules {
+            rule.mutation(
+                &simple_target_root(&expression.argument),
+                expression.span,
+                &self.context,
+            );
+        }
         walk::walk_update_expression(self, expression);
     }
 
     fn visit_unary_expression(&mut self, expression: &UnaryExpression<'a>) {
-        self.rule.unary(expression, &self.context);
+        for rule in &mut self.rules {
+            rule.unary(expression, &self.context);
+        }
         if expression.operator == UnaryOperator::Delete {
-            self.rule.mutation(&chain_root(&expression.argument), expression.span, &self.context);
+            for rule in &mut self.rules {
+                rule.mutation(
+                    &chain_root(&expression.argument),
+                    expression.span,
+                    &self.context,
+                );
+            }
         }
         walk::walk_unary_expression(self, expression);
     }
 
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
-        self.rule.declarator(declarator, &self.context);
+        for rule in &mut self.rules {
+            rule.declarator(declarator, &self.context);
+        }
         walk::walk_variable_declarator(self, declarator);
     }
 
     fn visit_member_expression(&mut self, expression: &MemberExpression<'a>) {
-        self.rule.member(expression, &self.context);
+        for rule in &mut self.rules {
+            rule.member(expression, &self.context);
+        }
         walk::walk_member_expression(self, expression);
     }
 
     fn visit_jsx_attribute(&mut self, attribute: &JSXAttribute<'a>) {
-        self.rule.jsx_attribute(attribute, &self.context);
+        for rule in &mut self.rules {
+            rule.jsx_attribute(attribute, &self.context);
+        }
         walk::walk_jsx_attribute(self, attribute);
     }
 
@@ -412,9 +463,26 @@ fn jsx_member_name(member: &JSXMemberExpression<'_>) -> String {
 }
 
 /// Runs one rule over one parsed file.
-pub fn walk_rule<'a, R: Rule<'a>>(program: &Program<'a>, rule: R) -> Vec<Diagnostic> {
+pub fn walk_rule<'a, R: Rule<'a>>(
+    program: &'a Program<'a>,
+    mut rule: R,
+    bases: &'a Bases,
+) -> Vec<Diagnostic> {
+    walk_rules(program, vec![&mut rule], bases)
+}
+
+/// Runs several rules over one parsed file in a single traversal: the shared context is built
+/// once and every hook fans out to each rule, so a file costs one walk however many rules run.
+/// Each rule's findings come back in the order the rules were handed over.
+pub fn walk_rules<'a>(
+    program: &'a Program<'a>,
+    rules: Vec<&mut dyn Rule<'a>>,
+    bases: &'a Bases,
+) -> Vec<Diagnostic> {
     let mut walk = Walk {
-        rule,
+        rules,
+        bases,
+        chains: ClassChains::build(program),
         context: Context::top(program.span),
         synchronous: HashSet::new(),
         member_bodies: HashSet::new(),
@@ -422,7 +490,14 @@ pub fn walk_rule<'a, R: Rule<'a>>(program: &Program<'a>, rule: R) -> Vec<Diagnos
         marker: std::marker::PhantomData,
     };
     walk.visit_program(program);
-    walk.rule.finish()
+
+    let mut all = Vec::new();
+
+    for rule in walk.rules.drain(..) {
+        all.extend(rule.finish());
+    }
+
+    all
 }
 
 #[cfg(test)]

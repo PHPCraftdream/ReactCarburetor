@@ -57,26 +57,6 @@ pub fn parse_severity(text: &str) -> Option<Severity> {
     }
 }
 
-/// Where `carburetor/require-module-function` looks for its finding. `All` — the default —
-/// covers every nested function in every file; `Classes` narrows the rule to class members,
-/// the behavior the rule had before the option existed.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ModuleFunctionScope {
-    All,
-    Classes,
-}
-
-impl ModuleFunctionScope {
-    /// The spelling a config file writes, and the diagnostics JSON repeats.
-    pub fn parse(text: &str) -> Option<ModuleFunctionScope> {
-        match text {
-            "all" => Some(ModuleFunctionScope::All),
-            "classes" => Some(ModuleFunctionScope::Classes),
-            _ => None,
-        }
-    }
-}
-
 /// One rule's setting: how hard it reports, plus options it may consume.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuleSetting {
@@ -124,23 +104,40 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
 #[derive(Debug)]
 pub enum ConfigError {
     /// The config file exists but could not be read.
-    Unreadable { path: PathBuf, source: std::io::Error },
+    Unreadable {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     /// Bad JSON, or semantically invalid: unknown rule, bad severity, bad shape, bad glob,
     /// unknown key. Every one of these must fail loudly — CI's exit code 2 exists for exactly this.
-    Malformed { path: Option<PathBuf>, reason: String },
+    Malformed {
+        path: Option<PathBuf>,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfigError::Unreadable { path, source } => {
-                write!(formatter, "could not read config file {}: {source}", path.display())
+                write!(
+                    formatter,
+                    "could not read config file {}: {source}",
+                    path.display()
+                )
             }
             ConfigError::Malformed { path: None, reason } => {
                 write!(formatter, "invalid configuration: {reason}")
             }
-            ConfigError::Malformed { path: Some(path), reason } => {
-                write!(formatter, "{} is not a valid configuration: {reason}", path.display())
+            ConfigError::Malformed {
+                path: Some(path),
+                reason,
+            } => {
+                write!(
+                    formatter,
+                    "{} is not a valid configuration: {reason}",
+                    path.display()
+                )
             }
         }
     }
@@ -159,22 +156,28 @@ impl ConfigError {
     /// Attaches the file being parsed to a `Malformed` raised by `parse`, which has no path.
     fn with_path(self, path: &Path) -> ConfigError {
         match self {
-            ConfigError::Malformed { reason, .. } => {
-                ConfigError::Malformed { path: Some(path.to_path_buf()), reason }
-            }
+            ConfigError::Malformed { reason, .. } => ConfigError::Malformed {
+                path: Some(path.to_path_buf()),
+                reason,
+            },
             other => other,
         }
     }
 }
 
-/// The parsed configuration: per-rule overrides and extra ignore patterns. An empty `Config` is
-/// pure defaults — `severity` falls back to `DEFAULT_SEVERITIES` for any rule not overridden.
+/// The parsed configuration: per-rule overrides, extra ignore patterns, and extra base classes
+/// the rules recognise components and stores by. An empty `Config` is pure defaults — `severity`
+/// falls back to `DEFAULT_SEVERITIES` for any rule not overridden, and the base lists stay the
+/// built-in ones.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Config {
     // Overrides read from the config file / command line, keyed by BARE rule name (no
     // "carburetor/" prefix); rules absent from here fall back to DEFAULT_SEVERITIES.
     rules: BTreeMap<String, RuleSetting>,
     ignore: Vec<String>,
+    // Extra base class names from "componentBases" / "storeBases", added to the built-ins.
+    component_bases: Vec<String>,
+    store_bases: Vec<String>,
 }
 
 impl Config {
@@ -228,8 +231,12 @@ impl Config {
             return Err(malformed(format!("unknown rule {rule:?}")));
         }
 
-        let options = self.rules.get(name).and_then(|setting| setting.options.clone());
-        self.rules.insert(name.to_string(), RuleSetting { severity, options });
+        let options = self
+            .rules
+            .get(name)
+            .and_then(|setting| setting.options.clone());
+        self.rules
+            .insert(name.to_string(), RuleSetting { severity, options });
 
         Ok(())
     }
@@ -237,6 +244,16 @@ impl Config {
     /// Glob patterns for the walker (from the config's "ignore" key).
     pub fn ignores(&self) -> &[String] {
         &self.ignore
+    }
+
+    /// Component base names the config adds to the built-in list.
+    pub fn extra_component_bases(&self) -> &[String] {
+        &self.component_bases
+    }
+
+    /// Store base names the config adds to the built-in list.
+    pub fn extra_store_bases(&self) -> &[String] {
+        &self.store_bases
     }
 
     /// `require-module-function`'s one option. `parse` validates the option for this rule, so a
@@ -278,13 +295,18 @@ fn bare_name(rule: &str) -> &str {
 
 /// A `Malformed` error from `parse`, which has no file in hand.
 fn malformed(reason: impl Into<String>) -> ConfigError {
-    ConfigError::Malformed { path: None, reason: reason.into() }
+    ConfigError::Malformed {
+        path: None,
+        reason: reason.into(),
+    }
 }
 
 /// Reads one severity string, carrying a user-readable message on failure.
 fn required_severity(text: &str) -> Result<Severity, ConfigError> {
     parse_severity(text).ok_or_else(|| {
-        malformed(format!("unknown severity {text:?}: expected \"error\", \"warn\" or \"off\""))
+        malformed(format!(
+            "unknown severity {text:?}: expected \"error\", \"warn\" or \"off\""
+        ))
     })
 }
 
@@ -292,16 +314,21 @@ fn required_severity(text: &str) -> Result<Severity, ConfigError> {
 /// are stored verbatim; no rule consumes them yet, but the schema has to carry them.
 fn parse_setting(rule: &str, value: &serde_json::Value) -> Result<RuleSetting, ConfigError> {
     match value {
-        serde_json::Value::String(text) => {
-            Ok(RuleSetting { severity: required_severity(text)?, options: None })
-        }
+        serde_json::Value::String(text) => Ok(RuleSetting {
+            severity: required_severity(text)?,
+            options: None,
+        }),
         serde_json::Value::Array(pair) => {
             let [severity, options] = pair.as_slice() else {
-                return Err(malformed("a rule's array form must be exactly [severity, options]"));
+                return Err(malformed(
+                    "a rule's array form must be exactly [severity, options]",
+                ));
             };
 
             let serde_json::Value::String(text) = severity else {
-                return Err(malformed("the severity in a rule's array form must be a string"));
+                return Err(malformed(
+                    "the severity in a rule's array form must be a string",
+                ));
             };
 
             let serde_json::Value::Object(map) = options else {
@@ -314,37 +341,13 @@ fn parse_setting(rule: &str, value: &serde_json::Value) -> Result<RuleSetting, C
                 validate_module_function_options(map)?;
             }
 
-            Ok(RuleSetting { severity: required_severity(text)?, options: Some(options.clone()) })
+            Ok(RuleSetting {
+                severity: required_severity(text)?,
+                options: Some(options.clone()),
+            })
         }
         _ => Err(malformed(
             "a rule's value must be a severity string or a [severity, options] array",
-        )),
-    }
-}
-
-/// The one option `require-module-function` takes: `scope`, spelled "all" or "classes". An
-/// unknown key or value is a config error, not a silently ignored one — a typo'd scope would
-/// otherwise read as the default and change what the rule reports.
-fn validate_module_function_options(
-    map: &serde_json::Map<String, serde_json::Value>,
-) -> Result<(), ConfigError> {
-    for key in map.keys() {
-        if key != "scope" {
-            return Err(malformed(format!(
-                "unknown option {key:?} for require-module-function: expected \"scope\""
-            )));
-        }
-    }
-
-    match map.get("scope") {
-        None => Ok(()),
-        Some(serde_json::Value::String(text)) => ModuleFunctionScope::parse(text).map(|_| ()).ok_or_else(|| {
-            malformed(format!(
-                "unknown scope {text:?} for require-module-function: expected \"all\" or \"classes\""
-            ))
-        }),
-        Some(_) => Err(malformed(
-            "the scope option of require-module-function must be a string",
         )),
     }
 }
@@ -361,17 +364,20 @@ fn is_valid_glob(pattern: &str) -> bool {
 
 /// Parses config text. Factored out of [`Config::load`] so tests need no disk.
 fn parse(text: &str) -> Result<Config, ConfigError> {
-    let value: serde_json::Value = serde_json::from_str(text)
-        .map_err(|error| malformed(format!("invalid JSON: {error}")))?;
+    let value: serde_json::Value =
+        serde_json::from_str(text).map_err(|error| malformed(format!("invalid JSON: {error}")))?;
 
     let Some(object) = value.as_object() else {
         return Err(malformed("the top level must be a JSON object"));
     };
 
     for key in object.keys() {
-        if key != "rules" && key != "ignore" {
+        if !matches!(
+            key.as_str(),
+            "rules" | "ignore" | "componentBases" | "storeBases"
+        ) {
             return Err(malformed(format!(
-                "unknown key {key:?}: expected \"rules\" or \"ignore\""
+                "unknown key {key:?}: expected \"rules\", \"ignore\", \"componentBases\" or \"storeBases\""
             )));
         }
     }
@@ -390,7 +396,9 @@ fn parse(text: &str) -> Result<Config, ConfigError> {
                 return Err(malformed(format!("unknown rule {key:?}")));
             }
 
-            config.rules.insert(name.to_string(), parse_setting(name, value)?);
+            config
+                .rules
+                .insert(name.to_string(), parse_setting(name, value)?);
         }
     }
 
@@ -416,8 +424,24 @@ fn parse(text: &str) -> Result<Config, ConfigError> {
         }
     }
 
+    if let Some(component) = object.get("componentBases") {
+        config.component_bases = parse_bases("componentBases", component)?;
+    }
+
+    if let Some(store) = object.get("storeBases") {
+        config.store_bases = parse_bases("storeBases", store)?;
+    }
+
     Ok(config)
 }
+
+mod bases;
+mod scope;
+
+use bases::parse_bases;
+use scope::validate_module_function_options;
+
+pub use scope::ModuleFunctionScope;
 
 #[cfg(test)]
 mod tests {
@@ -429,9 +453,15 @@ mod tests {
         let config = parse("{}").unwrap();
 
         assert_eq!(config, Config::default());
-        assert_eq!(config.severity("carburetor/no-module-level-store"), Severity::Off);
+        assert_eq!(
+            config.severity("carburetor/no-module-level-store"),
+            Severity::Off
+        );
         assert_eq!(config.severity("require-effect-deps"), Severity::Warn);
-        assert_eq!(config.severity("carburetor/no-async-effect"), Severity::Error);
+        assert_eq!(
+            config.severity("carburetor/no-async-effect"),
+            Severity::Error
+        );
     }
 
     #[test]
@@ -440,7 +470,10 @@ mod tests {
         let bare = parse(r#"{"rules": {"require-effect-deps": "error"}}"#).unwrap();
 
         assert_eq!(prefixed, bare);
-        assert_eq!(prefixed.severity("carburetor/require-effect-deps"), Severity::Error);
+        assert_eq!(
+            prefixed.severity("carburetor/require-effect-deps"),
+            Severity::Error
+        );
     }
 
     #[test]
@@ -490,25 +523,31 @@ mod tests {
 
     #[test]
     fn module_function_scope_defaults_to_all_and_parses_both_spellings() {
-        assert_eq!(parse("{}").unwrap().module_function_scope(), ModuleFunctionScope::All);
+        assert_eq!(
+            parse("{}").unwrap().module_function_scope(),
+            ModuleFunctionScope::All
+        );
 
-        let classes = parse(
-            r#"{"rules": {"require-module-function": ["warn", {"scope": "classes"}]}}"#,
-        )
-        .unwrap();
+        let classes =
+            parse(r#"{"rules": {"require-module-function": ["warn", {"scope": "classes"}]}}"#)
+                .unwrap();
 
-        assert_eq!(classes.module_function_scope(), ModuleFunctionScope::Classes);
+        assert_eq!(
+            classes.module_function_scope(),
+            ModuleFunctionScope::Classes
+        );
         assert_eq!(classes.severity("require-module-function"), Severity::Warn);
-
     }
 
     #[test]
     fn module_function_scope_rejects_unknown_values_and_keys() {
-        assert!(parse(
-            r#"{"rules": {"require-module-function": ["warn", {"scope": "bogus"}]}}"#
-        )
-        .is_err());
-        assert!(parse(r#"{"rules": {"require-module-function": ["warn", {"unknown": 1}]}}"#).is_err());
+        assert!(
+            parse(r#"{"rules": {"require-module-function": ["warn", {"scope": "bogus"}]}}"#)
+                .is_err()
+        );
+        assert!(
+            parse(r#"{"rules": {"require-module-function": ["warn", {"unknown": 1}]}}"#).is_err()
+        );
         assert!(parse(r#"{"rules": {"require-module-function": ["warn", "classes"]}}"#).is_err());
     }
 
@@ -528,13 +567,18 @@ mod tests {
     fn command_line_overrides_win_and_validate() {
         let mut config = parse("{}").unwrap();
 
-        config.override_rule("require-effect-deps", Severity::Error).unwrap();
+        config
+            .override_rule("require-effect-deps", Severity::Error)
+            .unwrap();
         assert_eq!(config.severity("require-effect-deps"), Severity::Error);
 
-        config.override_rule("carburetor/no-module-level-store", Severity::Warn).unwrap();
+        config
+            .override_rule("carburetor/no-module-level-store", Severity::Warn)
+            .unwrap();
         assert_eq!(config.severity("no-module-level-store"), Severity::Warn);
 
-        assert!(config.override_rule("no-such-rule", Severity::Error).is_err());
+        assert!(config
+            .override_rule("no-such-rule", Severity::Error)
+            .is_err());
     }
-
 }

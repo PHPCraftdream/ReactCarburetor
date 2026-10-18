@@ -17,9 +17,10 @@ use oxc_semantic::*;
 use oxc_span::Span;
 use oxc_syntax::scope::ScopeFlags;
 
+use crate::rules::support::bases::Bases;
 use crate::rules::support::bases::*;
 use crate::rules::support::chain::{chain_root, Base};
-use crate::rules::support::names::{extends_any, member_call_name, unwrap_expression};
+use crate::rules::support::names::{member_call_name, super_class_name, unwrap_expression};
 use crate::rules::support::walk::functions::value_branches;
 
 mod collect;
@@ -84,12 +85,26 @@ const MAX_HERITAGE_DEPTH: usize = 8;
 /// The direct check is the one every rule shares. The walk is for a project-local subclass of a
 /// component, whose members are as much render code as the base's own. An imported base stops it,
 /// which is the documented limitation every rule in this crate shares rather than a gap here.
-pub fn is_component_class(class: &Class<'_>, semantic: &Semantic<'_>) -> bool {
-    extends_any(class, &COMPONENT_BASES) || extends_component_class(class, semantic, 0)
+pub fn is_component_class(class: &Class<'_>, semantic: &Semantic<'_>, bases: &Bases) -> bool {
+    heritage_is_component(class, bases) || extends_component_class(class, semantic, bases, 0)
+}
+
+/// Whether the class's own `extends` clause names a recognised component base.
+fn heritage_is_component(class: &Class<'_>, bases: &Bases) -> bool {
+    class
+        .heritage
+        .as_ref()
+        .and_then(|heritage| super_class_name(&heritage.expression))
+        .is_some_and(|name| bases.is_component(name))
 }
 
 /// Whether the class's heritage names a same-file class that is itself a component.
-fn extends_component_class(class: &Class<'_>, semantic: &Semantic<'_>, depth: usize) -> bool {
+fn extends_component_class(
+    class: &Class<'_>,
+    semantic: &Semantic<'_>,
+    bases: &Bases,
+    depth: usize,
+) -> bool {
     if depth >= MAX_HERITAGE_DEPTH {
         return false;
     }
@@ -116,8 +131,8 @@ fn extends_component_class(class: &Class<'_>, semantic: &Semantic<'_>, depth: us
         return false;
     }
 
-    extends_any(base_class, &COMPONENT_BASES)
-        || extends_component_class(base_class, semantic, depth + 1)
+    heritage_is_component(base_class, bases)
+        || extends_component_class(base_class, semantic, bases, depth + 1)
 }
 
 /// What one class member's closures add up to.

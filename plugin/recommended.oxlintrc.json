@@ -29,6 +29,7 @@
     "carburetor/require-method-for-closure": "warn",
     "carburetor/require-module-function": "warn",
     "carburetor/require-subscription-disposal": "warn",
-    "carburetor/require-super-in-lifecycle": "error"
+    "carburetor/require-super-in-lifecycle": "error",
+    "typescript/unbound-method": "off"
   }
 }

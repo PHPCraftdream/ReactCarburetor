@@ -23,6 +23,7 @@ use oxc_span::Span;
 use oxc_syntax::scope::ScopeFlags;
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::build_semantic;
 use crate::rules::support::names::{called_on_this, member_call_name, referenced_symbol};
 use crate::{Diagnostic, Source};
@@ -36,13 +37,19 @@ fn imported_transaction_symbols(program: &Program<'_>) -> HashSet<SymbolId> {
     let mut symbols = HashSet::new();
 
     for statement in &program.body {
-        let Statement::ImportDeclaration(import) = statement else { continue };
-        if import.source.value != "react-carburetor" || import.import_kind != ImportOrExportKind::Value {
+        let Statement::ImportDeclaration(import) = statement else {
+            continue;
+        };
+        if import.source.value != "react-carburetor"
+            || import.import_kind != ImportOrExportKind::Value
+        {
             continue;
         }
 
         for specifier in import.specifiers.iter().flatten() {
-            let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else { continue };
+            let ImportDeclarationSpecifier::ImportSpecifier(specifier) = specifier else {
+                continue;
+            };
             if specifier.import_kind != ImportOrExportKind::Value {
                 continue;
             }
@@ -122,7 +129,8 @@ impl<'a, 's> Check<'a, 's> {
              then {name}() the synchronous writes."
         );
 
-        self.diagnostics.push(report(self.source, span.start, RULE, message));
+        self.diagnostics
+            .push(report(self.source, span.start, RULE, message));
     }
 }
 
@@ -155,7 +163,10 @@ impl<'a, 's> Visit<'a> for Check<'a, 's> {
                     Argument::ArrowFunctionExpression(_) | Argument::FunctionExpression(_)
                 )
             {
-                self.pending_body = Some(Enclosing { span: call.span, name });
+                self.pending_body = Some(Enclosing {
+                    span: call.span,
+                    name,
+                });
             }
 
             self.visit_argument(argument);
@@ -197,11 +208,21 @@ impl<'a, 's> Visit<'a> for Check<'a, 's> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
+
+    check_with_semantic(program, source, &semantic)
+}
+
+/// Runs the rule with a semantic pass shared across rules.
+pub(in crate::rules) fn check_with_semantic<'a>(
+    program: &Program<'a>,
+    source: &Source,
+    semantic: &Semantic<'a>,
+) -> Vec<Diagnostic> {
     let mut check = Check {
         source,
-        semantic: &semantic,
+        semantic,
         diagnostics: Vec::new(),
         reported: HashSet::new(),
         enclosing: None,
@@ -211,7 +232,9 @@ pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
 
     check.visit_program(program);
 
-    check.diagnostics.sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
+    check
+        .diagnostics
+        .sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
 
     check.diagnostics
 }

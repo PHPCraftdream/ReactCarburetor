@@ -21,8 +21,7 @@ use oxc_span::Span;
 use oxc_syntax::scope::ScopeFlags;
 
 use crate::rules::report;
-use crate::rules::support::bases::CARBURETOR_BASES;
-use crate::rules::support::names::extends_any;
+use crate::rules::support::bases::{Bases, ClassChains};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -53,6 +52,8 @@ fn type_reference_name<'a>(name: &'a TSTypeName<'_>) -> Option<&'a str> {
 }
 
 struct Check {
+    bases: Bases,
+    chains: ClassChains,
     /// Names of the interfaces stores in this file are parameterised with.
     data_types: HashSet<String>,
     /// Interface name -> its body, so a reported field can be judged as being inside store data.
@@ -67,7 +68,7 @@ struct Check {
 
 impl<'a> Visit<'a> for Check {
     fn visit_class(&mut self, class: &Class<'a>) {
-        if extends_any(class, &CARBURETOR_BASES) {
+        if self.chains.reaches(class, |name| self.bases.is_store(name)) {
             if let Some(name) = class
                 .heritage
                 .as_ref()
@@ -86,7 +87,8 @@ impl<'a> Visit<'a> for Check {
     }
 
     fn visit_ts_interface_declaration(&mut self, declaration: &TSInterfaceDeclaration<'a>) {
-        self.declarations.insert(declaration.id.name.to_string(), declaration.body.span);
+        self.declarations
+            .insert(declaration.id.name.to_string(), declaration.body.span);
 
         for signature in &declaration.body.body {
             if let TSSignature::TSPropertySignature(property) = signature {
@@ -116,12 +118,19 @@ impl<'a> Visit<'a> for Check {
     }
 
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
-        let name = declarator.id.get_binding_identifier().map(|identifier| identifier.name.as_str());
-        let is_factory_arrow =
-            matches!(&declarator.init, Some(Expression::ArrowFunctionExpression(_)) | Some(Expression::FunctionExpression(_)));
+        let name = declarator
+            .id
+            .get_binding_identifier()
+            .map(|identifier| identifier.name.as_str());
+        let is_factory_arrow = matches!(
+            &declarator.init,
+            Some(Expression::ArrowFunctionExpression(_)) | Some(Expression::FunctionExpression(_))
+        );
 
         if is_factory_arrow {
-            self.visit_named_body(name, |check| walk::walk_variable_declarator(check, declarator));
+            self.visit_named_body(name, |check| {
+                walk::walk_variable_declarator(check, declarator)
+            });
         } else {
             walk::walk_variable_declarator(self, declarator);
         }
@@ -141,7 +150,8 @@ impl<'a> Visit<'a> for Check {
         // reproduced here in full — the factory-body test below is the load-bearing one, since
         // every value the library's own factories return is exactly such a literal.
         if UNTRACKABLE.contains(&name) && self.factory_depth > 0 {
-            self.constructions.push((expression.span.start, name.to_string()));
+            self.constructions
+                .push((expression.span.start, name.to_string()));
         }
 
         walk::walk_new_expression(self, expression);
@@ -160,7 +170,6 @@ impl<'a> Visit<'a> for Check {
             self.factory_depth -= 1;
         }
     }
-
 }
 
 impl Check {
@@ -181,8 +190,10 @@ impl Check {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let mut check = Check {
+        bases: bases.clone(),
+        chains: ClassChains::build(program),
         data_types: HashSet::new(),
         declarations: HashMap::new(),
         annotations: Vec::new(),
@@ -264,7 +275,8 @@ mod tests {
 
     #[test]
     fn a_map_that_is_somebody_elses_cache_is_left_alone() {
-        let source = "class Cache {\n    constructor() {\n        this.entries = new Map();\n    }\n}\n";
+        let source =
+            "class Cache {\n    constructor() {\n        this.entries = new Map();\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }

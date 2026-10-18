@@ -19,6 +19,7 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_span::{GetSpan, Span};
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::chain::{chain_root, Base};
 use crate::rules::support::names::{called_on_this, member_call_name};
 use crate::{Diagnostic, Source};
@@ -102,8 +103,10 @@ impl<'a, 's> Visit<'a> for Check<'s> {
         };
 
         let root = chain_root(&member.object);
-        let reactive =
-            matches!(root.base, Base::This) && root.base_property.is_some_and(|name| REACTIVE_ROOTS.contains(&name));
+        let reactive = matches!(root.base, Base::This)
+            && root
+                .base_property
+                .is_some_and(|name| REACTIVE_ROOTS.contains(&name));
 
         if !reactive {
             walk::walk_member_expression(self, expression);
@@ -126,14 +129,19 @@ impl<'a, 's> Visit<'a> for Check<'s> {
                  the value some other way."
             );
 
-            self.diagnostics.push(report(self.source, expression.span().start, RULE, message));
+            self.diagnostics
+                .push(report(self.source, expression.span().start, RULE, message));
         }
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    let mut check = Check { source, diagnostics: Vec::new(), deps: None };
+pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diagnostic> {
+    let mut check = Check {
+        source,
+        diagnostics: Vec::new(),
+        deps: None,
+    };
 
     check.visit_program(program);
 
@@ -164,7 +172,8 @@ mod tests {
 
     #[test]
     fn a_prop_read_covered_by_deps_is_correct() {
-        let source = "this.useEffect('load', () => {\n    load(this.props.id);\n}, [this.props.id]);\n";
+        let source =
+            "this.useEffect('load', () => {\n    load(this.props.id);\n}, [this.props.id]);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
@@ -192,7 +201,8 @@ mod tests {
 
     #[test]
     fn a_chain_is_reported_once_from_its_outermost_expression() {
-        let source = "this.useEffect('load', () => {\n    load(this.props.user.name.first);\n}, []);\n";
+        let source =
+            "this.useEffect('load', () => {\n    load(this.props.user.name.first);\n}, []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [2]);
     }

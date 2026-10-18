@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use crate::rules::locate;
 use oxc_ast::ast::{Comment, Declaration, ExportDefaultDeclarationKind, Program, Statement};
 use oxc_span::{GetSpan, Span};
 
@@ -86,10 +85,11 @@ pub(super) fn leading_comments(
     source: &str,
     offset: u32,
 ) -> Option<(u32, u32)> {
-    let offset_line = locate(source, offset).0;
+    let lines = crate::rules::LineTable::new(source);
+    let offset_line = lines.line(source, offset);
 
     let ends_above = |comment: &Comment| {
-        let end_line = locate(source, comment.span.end).0;
+        let end_line = lines.line(source, comment.span.end);
 
         end_line + 1 == offset_line
             || (end_line == offset_line
@@ -106,12 +106,12 @@ pub(super) fn leading_comments(
         .map(|comment| comment.span)
         .min_by_key(|span: &Span| span.start)?;
 
-    let mut line = locate(source, closest.start).0;
+    let mut line = lines.line(source, closest.start);
 
     while let Some(comment) = program.comments.iter().find(|comment| {
-        leads_own_line(source, comment) && locate(source, comment.span.end).0 + 1 == line
+        leads_own_line(source, comment) && lines.line(source, comment.span.end) + 1 == line
     }) {
-        line = locate(source, comment.span.start).0;
+        line = lines.line(source, comment.span.start);
         closest = comment.span;
     }
 

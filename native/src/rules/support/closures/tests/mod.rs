@@ -82,7 +82,11 @@ fn method_analysis(text: &str, render: bool, check: impl FnOnce(MemberAnalysis<'
 
 fn component_class(text: &str, name: &str, check: impl FnOnce(bool)) {
     parse(text, |program, semantic| {
-        check(is_component_class(class_named(program, name), semantic));
+        check(is_component_class(
+            class_named(program, name),
+            semantic,
+            &Bases::default(),
+        ));
     });
 }
 

@@ -21,8 +21,8 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_span::Span;
 
 use crate::rules::report;
-use crate::rules::support::bases::COMPONENT_BASES;
-use crate::rules::support::names::{extends_any, property_key_name};
+use crate::rules::support::bases::{Bases, ClassChains};
+use crate::rules::support::names::property_key_name;
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -46,6 +46,8 @@ struct Override {
 
 struct Check<'s> {
     source: &'s Source<'s>,
+    bases: Bases,
+    chains: ClassChains,
     in_component: bool,
     /// The lifecycle override currently enclosing the walk: its span and name.
     current: Option<(Span, &'static str)>,
@@ -60,7 +62,9 @@ impl<'a, 's> Visit<'a> for Check<'s> {
     fn visit_class(&mut self, class: &Class<'a>) {
         let outer = self.in_component;
 
-        self.in_component = extends_any(class, &COMPONENT_BASES);
+        self.in_component = self
+            .chains
+            .reaches(class, |name| self.bases.is_component(name));
 
         walk::walk_class(self, class);
 
@@ -70,12 +74,19 @@ impl<'a, 's> Visit<'a> for Check<'s> {
     fn visit_method_definition(&mut self, method: &MethodDefinition<'a>) {
         let name = property_key_name(&method.key);
         let lifecycle = self.in_component.then_some(name).flatten();
-        let lifecycle = lifecycle.and_then(|name| LIFECYCLE_NAMES.iter().find(|known| **known == name));
+        let lifecycle =
+            lifecycle.and_then(|name| LIFECYCLE_NAMES.iter().find(|known| **known == name));
 
         let outer = self.current.take();
 
         if let Some(name) = lifecycle {
-            self.overrides.insert(method.span, Override { offset: method.span.start, name });
+            self.overrides.insert(
+                method.span,
+                Override {
+                    offset: method.span.start,
+                    name,
+                },
+            );
             self.current = Some((method.span, name));
         }
 
@@ -124,9 +135,11 @@ impl<'a, 's> Visit<'a> for Check<'s> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let mut check = Check {
         source,
+        bases: bases.clone(),
+        chains: ClassChains::build(program),
         in_component: false,
         current: None,
         expecting_kept_value: false,
@@ -177,7 +190,8 @@ mod tests {
 
     #[test]
     fn an_override_that_skips_super_is_reported() {
-        let source = "class Widget extends AntiHookComponent {\n    componentDidMount() {\n        \
+        let source =
+            "class Widget extends AntiHookComponent {\n    componentDidMount() {\n        \
                       this.load();\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [2]);
@@ -185,7 +199,8 @@ mod tests {
 
     #[test]
     fn an_override_that_calls_super_is_correct() {
-        let source = "class Widget extends AntiHookComponent {\n    componentDidMount() {\n        \
+        let source =
+            "class Widget extends AntiHookComponent {\n    componentDidMount() {\n        \
                       super.componentDidMount();\n        this.load();\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
@@ -193,7 +208,8 @@ mod tests {
 
     #[test]
     fn should_component_update_that_discards_the_answer_is_reported() {
-        let source = "class Widget extends AntiHookComponent {\n    shouldComponentUpdate(p, s) {\n        \
+        let source =
+            "class Widget extends AntiHookComponent {\n    shouldComponentUpdate(p, s) {\n        \
                       super.shouldComponentUpdate(p, s);\n        return this.mine;\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [2]);
@@ -201,7 +217,8 @@ mod tests {
 
     #[test]
     fn should_component_update_that_combines_the_answers_is_correct() {
-        let source = "class Widget extends AntiHookComponent {\n    shouldComponentUpdate(p, s) {\n        \
+        let source =
+            "class Widget extends AntiHookComponent {\n    shouldComponentUpdate(p, s) {\n        \
                       return super.shouldComponentUpdate(p, s) || this.mine;\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
@@ -217,7 +234,8 @@ mod tests {
 
     #[test]
     fn a_call_to_a_different_super_method_does_not_stand_in() {
-        let source = "class Widget extends AntiHookComponent {\n    componentDidMount() {\n        \
+        let source =
+            "class Widget extends AntiHookComponent {\n    componentDidMount() {\n        \
                       super.componentWillUnmount();\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [2]);

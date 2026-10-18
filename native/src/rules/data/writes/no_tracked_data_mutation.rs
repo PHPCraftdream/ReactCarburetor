@@ -14,6 +14,7 @@ use oxc_ast::ast::{BindingPattern, Expression, Program, VariableDeclarator};
 use oxc_span::Span;
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::chain::ChainRoot;
 use crate::rules::support::names::{called_on_this, member_call_name};
 use crate::rules::support::walk::{walk_rule, Context, Rule};
@@ -22,7 +23,8 @@ use crate::{Diagnostic, Source};
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/no-tracked-data-mutation";
 
-const MESSAGE: &str = "data read through useCarburetor is read-only: this write throws at runtime, \
+const MESSAGE: &str =
+    "data read through useCarburetor is read-only: this write throws at runtime, \
     and silently does nothing once a cast hides it from the compiler. Call a method on the \
     carburetor, which writes through draft and knows which paths changed.";
 
@@ -48,8 +50,8 @@ struct Check<'s> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn declarator(&mut self, declarator: &VariableDeclarator<'a>, context: &Context) {
@@ -57,7 +59,8 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         };
 
-        if member_call_name(&call.callee) != Some("useCarburetor") || !called_on_this(&call.callee) {
+        if member_call_name(&call.callee) != Some("useCarburetor") || !called_on_this(&call.callee)
+        {
             return;
         }
 
@@ -79,13 +82,22 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         }
 
-        self.diagnostics.push(report(self.source, span.start, RULE, MESSAGE.to_string()));
+        self.diagnostics
+            .push(report(self.source, span.start, RULE, MESSAGE.to_string()));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new(), tracked: HashMap::new() })
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            diagnostics: Vec::new(),
+            tracked: HashMap::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]
@@ -115,14 +127,16 @@ mod tests {
 
     #[test]
     fn a_push_into_tracked_data_is_reported() {
-        let source = render("        const d = this.useCarburetor(store);\n        d.ids.push(id);");
+        let source =
+            render("        const d = this.useCarburetor(store);\n        d.ids.push(id);");
 
         assert_eq!(lines(&diagnose(&source, check)), [4]);
     }
 
     #[test]
     fn a_write_hidden_behind_a_cast_is_still_reported() {
-        let source = render("        const d = this.useCarburetor(store);\n        (d as any).x = 1;");
+        let source =
+            render("        const d = this.useCarburetor(store);\n        (d as any).x = 1;");
 
         assert_eq!(lines(&diagnose(&source, check)), [4]);
     }

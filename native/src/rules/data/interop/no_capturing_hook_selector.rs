@@ -3,6 +3,7 @@
 use oxc_ast::ast::{CallExpression, Expression, Program};
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::{build_semantic, captures_outside};
 use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
 use crate::{Diagnostic, Source};
@@ -19,8 +20,8 @@ struct Check<'a, 's> {
 }
 
 impl<'a> Rule<'a> for Check<'a, '_> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
@@ -59,16 +60,21 @@ impl<'a> Rule<'a> for Check<'a, '_> {
         };
 
         if selector.1 {
-            self.diagnostics.push(report(self.source, selector.0.start, RULE, MESSAGE.to_string()));
+            self.diagnostics.push(report(
+                self.source,
+                selector.0.start,
+                RULE,
+                MESSAGE.to_string(),
+            ));
         }
     }
 }
 
 /// Reports inline store-hook selectors that capture their component's render bindings.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
 
-    check_with_semantic(program, source, &semantic)
+    check_with_semantic(program, source, &semantic, bases)
 }
 
 /// Runs the rule with a semantic pass shared across rules.
@@ -76,8 +82,17 @@ pub(in crate::rules) fn check_with_semantic<'a, 's>(
     program: &Program<'a>,
     source: &'s Source<'s>,
     semantic: &'s oxc_semantic::Semantic<'a>,
+    bases: &'s Bases,
 ) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, semantic, diagnostics: Vec::new() })
+    walk_rule(
+        program,
+        Check {
+            source,
+            semantic,
+            diagnostics: Vec::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]

@@ -9,6 +9,7 @@ use oxc_ast::ast::Program;
 use oxc_span::Span;
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::chain::ChainRoot;
 use crate::rules::support::walk::{walk_rule, Context, Rule};
 use crate::{Diagnostic, Source};
@@ -26,8 +27,8 @@ struct Check<'s> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn mutation(&mut self, root: &ChainRoot<'_, 'a>, span: Span, context: &Context) {
@@ -35,13 +36,21 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         }
 
-        self.diagnostics.push(report(self.source, span.start, RULE, MESSAGE.to_string()));
+        self.diagnostics
+            .push(report(self.source, span.start, RULE, MESSAGE.to_string()));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new() })
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            diagnostics: Vec::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]
@@ -63,7 +72,8 @@ mod tests {
 
     #[test]
     fn a_deep_assignment_through_data_is_reported() {
-        let source = store("    rename(id, name) {\n        this.data.items[id].name = name;\n    }");
+        let source =
+            store("    rename(id, name) {\n        this.data.items[id].name = name;\n    }");
 
         assert_eq!(lines(&diagnose(&source, check)), [3]);
     }
@@ -106,7 +116,8 @@ mod tests {
 
     #[test]
     fn a_class_that_is_not_a_store_is_left_alone() {
-        let source = "class Plain {\n    rename(name) {\n        this.data.name = name;\n    }\n}\n";
+        let source =
+            "class Plain {\n    rename(name) {\n        this.data.name = name;\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }

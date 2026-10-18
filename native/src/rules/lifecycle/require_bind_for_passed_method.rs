@@ -21,8 +21,8 @@ use oxc_ast_visit::{walk, Visit};
 use oxc_span::{GetSpan, Span};
 
 use crate::rules::report;
-use crate::rules::support::bases::COMPONENT_BASES;
-use crate::rules::support::names::{extends_any, property_key_name};
+use crate::rules::support::bases::{Bases, ClassChains};
+use crate::rules::support::names::property_key_name;
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -44,6 +44,8 @@ fn is_bound(decorators: &[Decorator<'_>]) -> bool {
 
 struct Check<'s> {
     source: &'s Source<'s>,
+    bases: Bases,
+    chains: ClassChains,
     /// The classes currently enclosing the walk that are components, span and name-of-method-stack.
     components: Vec<Span>,
     /// The method currently enclosing the walk, name only — `None` outside any method.
@@ -69,7 +71,9 @@ impl<'s> Check<'s> {
 
 impl<'a, 's> Visit<'a> for Check<'s> {
     fn visit_class(&mut self, class: &Class<'a>) {
-        let is_component = extends_any(class, &COMPONENT_BASES);
+        let is_component = self
+            .chains
+            .reaches(class, |name| self.bases.is_component(name));
 
         if is_component {
             self.components.push(class.span);
@@ -149,9 +153,11 @@ impl<'a, 's> Visit<'a> for Check<'s> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let mut check = Check {
         source,
+        bases: bases.clone(),
+        chains: ClassChains::build(program),
         components: Vec::new(),
         methods_stack: Vec::new(),
         facts: HashMap::new(),
@@ -198,7 +204,8 @@ mod tests {
 
     #[test]
     fn a_bound_method_passed_as_a_value_is_correct() {
-        let source = "class Widget extends AntiHookComponent {\n    @bind\n    handleClick() {\n        \
+        let source =
+            "class Widget extends AntiHookComponent {\n    @bind\n    handleClick() {\n        \
                       this.doThing();\n    }\n\n    render() {\n        \
                       return <Row onClick={this.handleClick}/>;\n    }\n}\n";
 

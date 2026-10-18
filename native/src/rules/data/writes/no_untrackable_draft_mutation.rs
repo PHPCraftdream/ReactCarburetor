@@ -10,6 +10,7 @@
 use oxc_ast::ast::{CallExpression, Expression, Program};
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::bases::MUTATING_METHODS;
 use crate::rules::support::chain::chain_root;
 use crate::rules::support::names::member_call_name;
@@ -25,8 +26,8 @@ struct Check<'s> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
@@ -50,8 +51,8 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
         // Either `this.draft.x.set(...)` or the draft an `update(draft => ...)` callback named.
         let through_draft = root.is_this_property("draft");
-        let through_update = root.identifier().is_some()
-            && root.identifier() == context.update_draft.as_deref();
+        let through_update =
+            root.identifier().is_some() && root.identifier() == context.update_draft.as_deref();
 
         if !through_draft && !through_update {
             return;
@@ -63,13 +64,21 @@ impl<'a, 's> Rule<'a> for Check<'s> {
              the value (draft.x = next) or keep plain objects and arrays in the store."
         );
 
-        self.diagnostics.push(report(self.source, call.span.start, RULE, message));
+        self.diagnostics
+            .push(report(self.source, call.span.start, RULE, message));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new() })
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            diagnostics: Vec::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]
@@ -131,7 +140,8 @@ mod tests {
 
     #[test]
     fn outside_a_store_the_rule_says_nothing() {
-        let source = "class Plain {\n    put(k, v) {\n        this.draft.index.set(k, v);\n    }\n}\n";
+        let source =
+            "class Plain {\n    put(k, v) {\n        this.draft.index.set(k, v);\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }

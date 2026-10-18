@@ -9,25 +9,24 @@
 //! JavaScript, and a conformance corpus keeps the two from drifting apart.
 
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use ignore::overrides::{Override, OverrideBuilder};
-use ignore::WalkBuilder;
-use oxc_allocator::Allocator;
-use oxc_parser::Parser;
-use oxc_span::SourceType;
 use rayon::prelude::*;
 use serde::Serialize;
 
 mod config;
 mod fix;
 mod rules;
+mod source;
+mod walk;
 mod suppression;
 
 use config::{parse_severity, Config, Severity};
+use source::{analyze, check_file, Source};
+use walk::collect_files;
 use fix::Fix;
-use suppression::Suppression;
 
 /// Directories never worth walking, whatever the ignore files say: generated output and
 /// dependencies dwarf the sources and hold code nobody in this project is going to fix.
@@ -67,12 +66,6 @@ pub struct Diagnostic {
     pub scope: Option<String>,
 }
 
-/// What a rule receives: the parsed file, and where it came from.
-pub struct Source<'a> {
-    pub path: &'a Path,
-    pub text: &'a str,
-}
-
 #[derive(Debug, PartialEq)]
 enum Format {
     Human,
@@ -98,6 +91,9 @@ struct Options {
     /// Whether no-function-in-render stays beside the allocation rules instead of yielding.
     keep_overlaps: bool,
     fix_mode: FixMode,
+    /// Lint standard input as this file instead of walking any path: the one way a host can
+    /// have an unsaved buffer analyzed. Its diagnostics report under the given path.
+    stdin: Option<PathBuf>,
 }
 
 const USAGE: &str = "\
@@ -110,6 +106,7 @@ carburetor-lint [options] [paths...]
   --keep-overlaps          keep no-function-in-render alongside the allocation rules
   --fix                    write every available fix to disk
   --fix-dry-run            print what --fix would change, without writing it
+  --stdin <path>           lint standard input as this file instead of walking any path
   -h, --help               print this
 
 Exit codes: 0 clean, 1 problems found, 2 the linter itself failed.";
@@ -124,6 +121,7 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
     let mut deny_warnings = false;
     let mut keep_overlaps = false;
     let mut fix_mode = FixMode::Report;
+    let mut stdin: Option<PathBuf> = None;
 
     let mut arguments = arguments.into_iter().skip(1);
 
@@ -152,7 +150,9 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
                 format = match value("--format")?.as_str() {
                     "json" => Format::Json,
                     "human" => Format::Human,
-                    other => return Err(format!("unknown format {other:?}: expected human or json")),
+                    other => {
+                        return Err(format!("unknown format {other:?}: expected human or json"))
+                    }
                 };
             }
             "--config" => config = Some(PathBuf::from(value("--config")?)),
@@ -179,12 +179,27 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
                 return Err("--fix and --fix-dry-run are mutually exclusive".to_string());
             }
             "--fix-dry-run" => fix_mode = FixMode::DryRun,
+            "--stdin" => {
+                let path = PathBuf::from(value("--stdin")?);
+
+                if fix_mode != FixMode::Report {
+                    return Err(
+                        "--stdin cannot be combined with --fix or --fix-dry-run".to_string()
+                    );
+                }
+
+                stdin = Some(path);
+            }
             other if other.starts_with('-') => return Err(format!("unknown option {other}")),
             _ => paths.push(PathBuf::from(argument)),
         }
     }
 
-    if paths.is_empty() {
+    if stdin.is_some() && !paths.is_empty() {
+        return Err("--stdin replaces the paths; pass no directories or files with it".to_string());
+    }
+
+    if paths.is_empty() && stdin.is_none() {
         paths.push(PathBuf::from("."));
     }
 
@@ -196,108 +211,8 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
         deny_warnings,
         keep_overlaps,
         fix_mode,
+        stdin,
     }))
-}
-
-/// The walker's exclusions for one root: the never-walked directories plus the config's patterns.
-fn exclusions(root: &Path, ignores: &[String]) -> Result<Override, String> {
-    let mut builder = OverrideBuilder::new(root);
-
-    // Only negated globs go in, so this stays a blacklist: one positive glob would turn the
-    // override into a whitelist and hide every file that did not match it.
-    for directory in NEVER_WALK {
-        for pattern in [format!("!**/{directory}"), format!("!**/{directory}/**")] {
-            builder.add(&pattern).map_err(|error| error.to_string())?;
-        }
-    }
-
-    for pattern in ignores {
-        builder
-            .add(&format!("!{pattern}"))
-            .map_err(|error| format!("not a valid ignore pattern {pattern:?}: {error}"))?;
-    }
-
-    builder.build().map_err(|error| error.to_string())
-}
-
-/// Files worth parsing: TypeScript and JavaScript, minus what the ignore files and config exclude.
-fn collect_files(paths: &[PathBuf], ignores: &[String]) -> Result<Vec<PathBuf>, String> {
-    let mut files: Vec<PathBuf> = Vec::new();
-
-    for root in paths {
-        let _metadata = fs::metadata(root)
-            .map_err(|error| format!("could not access {}: {error}", root.display()))?;
-
-        let walk = WalkBuilder::new(root)
-            .hidden(false)
-            .overrides(exclusions(root, ignores)?)
-            .build();
-
-        for result in walk {
-            let entry = result.map_err(|error| {
-                format!("could not traverse {}: {error}", root.display())
-            })?;
-            if let Some(error) = entry.error() {
-                return Err(format!("could not traverse {}: {error}", root.display()));
-            }
-            let path = entry.path();
-            let is_file = match entry.file_type() {
-                Some(file_type) if file_type.is_symlink() => fs::metadata(path)
-                    .map_err(|error| format!("could not access {}: {error}", path.display()))?
-                    .is_file(),
-                Some(file_type) => file_type.is_file(),
-                None => fs::metadata(path)
-                    .map_err(|error| format!("could not access {}: {error}", path.display()))?
-                    .is_file(),
-            };
-            if !is_file {
-                continue;
-            }
-
-            let is_source = matches!(
-                path.extension().and_then(|value| value.to_str()),
-                Some("ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs")
-            );
-
-            if is_source {
-                files.push(path.to_path_buf());
-            }
-        }
-    }
-
-    Ok(files)
-}
-
-/// Parses `text` as if it were `path`'s content and runs the rules the config leaves on, dropping
-/// what a directive silences. `None` means the parser could not make sense of it — a half-built
-/// tree is the compiler's problem to report, not ours, and (for `--fix`) a signal that whatever
-/// produced this text broke it and should not be trusted.
-fn analyze(path: &Path, text: &str, config: &Config, keep_overlaps: bool) -> Option<Vec<Diagnostic>> {
-    let source_type = SourceType::from_path(path).unwrap_or_default();
-    let allocator = Allocator::default();
-    let parsed = Parser::new(&allocator, text, source_type).parse();
-
-    if !parsed.diagnostics.is_empty() {
-        return None;
-    }
-
-    let source = Source { path, text };
-    let suppression = Suppression::build(&parsed.program);
-
-    Some(
-        rules::run(&parsed.program, &source, config, keep_overlaps)
-            .into_iter()
-            .filter(|diagnostic| !suppression.silenced(&diagnostic.rule, diagnostic.line))
-            .collect(),
-    )
-}
-
-/// Reads and analyzes one file from disk; read failures retain the path for the run-level error.
-fn check_file(path: &Path, config: &Config, keep_overlaps: bool) -> Result<Vec<Diagnostic>, String> {
-    let text = fs::read_to_string(path)
-        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
-
-    Ok(analyze(path, &text, config, keep_overlaps).unwrap_or_default())
 }
 
 /// One file's outcome after `--fix`'s pass loop: the diagnostics that remain, and — when the text
@@ -320,13 +235,18 @@ fn stabilize(
     let mut diagnostics = compute(&text).unwrap_or_default();
 
     for _ in 0..MAX_FIX_PASSES {
-        let fixes: Vec<&Fix> = diagnostics.iter().filter_map(|diagnostic| diagnostic.fix.as_ref()).collect();
+        let fixes: Vec<&Fix> = diagnostics
+            .iter()
+            .filter_map(|diagnostic| diagnostic.fix.as_ref())
+            .collect();
 
         if fixes.is_empty() {
             break;
         }
 
-        let Some(candidate) = fix::apply(&text, fixes) else { break };
+        let Some(candidate) = fix::apply(&text, fixes) else {
+            break;
+        };
 
         if candidate == text {
             break;
@@ -349,16 +269,25 @@ fn fix_one_file(path: &Path, config: &Config, keep_overlaps: bool) -> Result<Fix
     let original = fs::read_to_string(path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
 
-    let (final_text, diagnostics) =
-        stabilize(original.clone(), |text| analyze(path, text, config, keep_overlaps));
+    let (final_text, diagnostics) = stabilize(original.clone(), |text| {
+        analyze(path, text, config, keep_overlaps)
+    });
     let change = (final_text != original).then_some((original, final_text));
 
-    Ok(FixOutcome { diagnostics, change })
+    Ok(FixOutcome {
+        diagnostics,
+        change,
+    })
 }
 
 /// Runs `--fix`/`--fix-dry-run` over every file: [`Write`](FixMode::Write) publishes each changed
 /// file atomically, [`DryRun`](FixMode::DryRun) prints a diff and touches nothing.
-fn run_fix(files: &[PathBuf], config: &Config, mode: FixMode, keep_overlaps: bool) -> Result<Vec<Diagnostic>, String> {
+fn run_fix(
+    files: &[PathBuf],
+    config: &Config,
+    mode: FixMode,
+    keep_overlaps: bool,
+) -> Result<Vec<Diagnostic>, String> {
     // One task per file, the same reasoning as the plain check: parsing dominates the work.
     let outcomes: Vec<(&PathBuf, FixOutcome)> = files
         .par_iter()
@@ -388,7 +317,8 @@ fn run_fix(files: &[PathBuf], config: &Config, mode: FixMode, keep_overlaps: boo
 
 fn report(diagnostics: &[Diagnostic], format: &Format) {
     if *format == Format::Json {
-        let encoded = serde_json::to_string_pretty(diagnostics).unwrap_or_else(|_| "[]".to_string());
+        let encoded =
+            serde_json::to_string_pretty(diagnostics).unwrap_or_else(|_| "[]".to_string());
 
         println!("{encoded}");
 
@@ -417,7 +347,28 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
     let mut config = Config::load(options.config.as_deref()).map_err(|error| error.to_string())?;
 
     for (rule, severity) in &options.overrides {
-        config.override_rule(rule, *severity).map_err(|error| error.to_string())?;
+        config
+            .override_rule(rule, *severity)
+            .map_err(|error| error.to_string())?;
+    }
+
+    if let Some(path) = &options.stdin {
+        let mut text = String::new();
+
+        std::io::stdin()
+            .read_to_string(&mut text)
+            .map_err(|error| format!("could not read standard input: {error}"))?;
+
+        // A buffer that does not parse is the editor's or compiler's problem to describe;
+        // report nothing rather than half a diagnosis.
+        return Ok(analyze(path, &text, &config, options.keep_overlaps)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|mut diagnostic| {
+                diagnostic.file = path.to_string_lossy().replace('\\', "/");
+                diagnostic
+            })
+            .collect());
     }
 
     let files = collect_files(&options.paths, config.ignores())?;
@@ -437,8 +388,12 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
     };
 
     diagnostics.sort_by(|left, right| {
-        (&left.file, left.line, left.column, &left.rule)
-            .cmp(&(&right.file, right.line, right.column, &right.rule))
+        (&left.file, left.line, left.column, &left.rule).cmp(&(
+            &right.file,
+            right.line,
+            right.column,
+            &right.rule,
+        ))
     });
 
     Ok(diagnostics)
@@ -511,7 +466,11 @@ mod tests {
     fn stabilize_applies_a_fix_and_recomputes_once() {
         let (text, diagnostics) = stabilize("old".to_string(), |current| {
             if current == "old" {
-                Some(vec![diagnostic_with_fix(Fix { start: 0, end: 3, text: "new".to_string() })])
+                Some(vec![diagnostic_with_fix(Fix {
+                    start: 0,
+                    end: 3,
+                    text: "new".to_string(),
+                })])
             } else {
                 Some(Vec::new())
             }
@@ -538,8 +497,15 @@ mod tests {
             })])
         });
 
-        assert_eq!(calls, MAX_FIX_PASSES + 1, "one initial computation, then one per pass");
-        assert!(!diagnostics.is_empty(), "the oscillating rule never actually stabilizes");
+        assert_eq!(
+            calls,
+            MAX_FIX_PASSES + 1,
+            "one initial computation, then one per pass"
+        );
+        assert!(
+            !diagnostics.is_empty(),
+            "the oscillating rule never actually stabilizes"
+        );
         assert!(text == "a" || text == "b");
     }
 
@@ -548,14 +514,22 @@ mod tests {
         let (text, diagnostics) = stabilize("good".to_string(), |current| {
             if current == "good" {
                 // Reports a fix, but validating the candidate ("broken") fails to parse.
-                Some(vec![diagnostic_with_fix(Fix { start: 0, end: 4, text: "broken".to_string() })])
+                Some(vec![diagnostic_with_fix(Fix {
+                    start: 0,
+                    end: 4,
+                    text: "broken".to_string(),
+                })])
             } else {
                 None
             }
         });
 
         assert_eq!(text, "good", "the last text known to parse is kept");
-        assert_eq!(diagnostics.len(), 1, "the pre-fix diagnostics are what gets reported");
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "the pre-fix diagnostics are what gets reported"
+        );
     }
 
     #[test]
@@ -564,10 +538,22 @@ mod tests {
         // first, producing "1Y". Pass 2 offers a fresh, now non-overlapping fix for what is left.
         let (text, diagnostics) = stabilize("XY".to_string(), |current| match current {
             "XY" => Some(vec![
-                diagnostic_with_fix(Fix { start: 0, end: 1, text: "1".to_string() }),
-                diagnostic_with_fix(Fix { start: 0, end: 2, text: "22".to_string() }),
+                diagnostic_with_fix(Fix {
+                    start: 0,
+                    end: 1,
+                    text: "1".to_string(),
+                }),
+                diagnostic_with_fix(Fix {
+                    start: 0,
+                    end: 2,
+                    text: "22".to_string(),
+                }),
             ]),
-            "1Y" => Some(vec![diagnostic_with_fix(Fix { start: 1, end: 2, text: "2".to_string() })]),
+            "1Y" => Some(vec![diagnostic_with_fix(Fix {
+                start: 1,
+                end: 2,
+                text: "2".to_string(),
+            })]),
             _ => Some(Vec::new()),
         });
 

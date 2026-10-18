@@ -9,6 +9,7 @@
 use oxc_ast::ast::{CallExpression, Program};
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::names::{called_on_this, member_call_name};
 use crate::rules::support::walk::{walk_rule, Context, Rule};
 use crate::{Diagnostic, Source};
@@ -25,8 +26,8 @@ struct Check<'s> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
@@ -50,13 +51,21 @@ impl<'a, 's> Rule<'a> for Check<'s> {
              is wanted."
         );
 
-        self.diagnostics.push(report(self.source, call.span.start, RULE, message));
+        self.diagnostics
+            .push(report(self.source, call.span.start, RULE, message));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new() })
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            diagnostics: Vec::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]

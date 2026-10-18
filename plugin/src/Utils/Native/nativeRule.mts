@@ -1,7 +1,8 @@
 import * as path from "node:path";
 import {offsetAt} from "#src/Utils/Native/offsetAt.mts";
-import {runNativeOnce} from "#src/Utils/Native/nativeBridge.mts";
+import {runNative} from "#src/Utils/Native/nativeBridge.mts";
 import type {INativeRuleOptions, IRule, IRuleContext, IRuleMeta, TRuleVisitor} from "#src/Models.mts";
+import type {INativeDiagnostic} from "#src/Utils/Native/INativeDiagnostic.mts";
 
 /**
  * A single-point report node. oxlint requires `range`; ESLint derives its message location from
@@ -61,6 +62,7 @@ export const nativeRule = (id: string, description: string, options: INativeRule
     } satisfies IRuleMeta,
 
     create(context: IRuleContext): TRuleVisitor {
+
         // Registration happens in `create`, so only rules the host enabled are recorded, and
         // before the AST walk — the set is complete by the time any `Program:exit` reads it.
         let enabled = enabledRuns.get(context.sourceCode);
@@ -74,11 +76,10 @@ export const nativeRule = (id: string, description: string, options: INativeRule
 
         return {
             'Program:exit'(): void {
-                const diagnostics = runNativeOnce(process.cwd(), undefined, context.filename);
-                const file = path.relative(process.cwd(), context.filename).replace(/\\/g, '/');
                 const text = context.sourceCode.getText();
+                const diagnostics = runNative(process.cwd(), undefined, context.filename, text);
+                const file = path.relative(process.cwd(), context.filename).replace(/\\/g, '/');
                 const enabled = enabledRuns.get(context.sourceCode);
-
                 diagnostics
                     // Native walks from `.`, so its paths carry a leading `./` that
                     // `path.relative()` never produces; strip it before comparing.

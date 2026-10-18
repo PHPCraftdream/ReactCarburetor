@@ -61,7 +61,16 @@ can still need the subscription this rule protects.
 
 ## Setup
 
-**oxlint** — one line, and the plugin travels next to the preset:
+**oxlint** — one line; the preset travels inside the package, and it also switches oxlint's
+`typescript/unbound-method` off, which cannot see `@bind`:
+
+```json
+{
+  "extends": ["react-carburetor/lint/recommended.oxlintrc.json"]
+}
+```
+
+The direct path works where a host does not resolve package exports:
 
 ```json
 {
@@ -70,7 +79,8 @@ can still need the subscription this rule protects.
 ```
 
 **ESLint v9+** — spread the shareable config. `@typescript-eslint/parser` must be installed in
-lint tooling; this config includes TS/TSX parsing.
+lint tooling and named in `languageOptions`, as below; the shareable config does not configure
+parsing itself.
 
 <!-- example:file examples/api/lint/Recommended.js#doc -->
 ```js
@@ -195,14 +205,25 @@ The preset's recognitions are fixed and syntactic:
 
 | Kind | Recognised names |
 |------|------------------|
-| Store | `Carburetor`, `ResourceCarburetor` |
+| Store | `Carburetor`, `ResourceCarburetor`, `ResourceCache` |
 | Component | `AntiHookComponent`, `ScopedAntiHookComponent` |
 | Render | `render` |
 
-Custom components should directly extend a recognised component base; recognition is not generally
-transitive. Recognition names cannot be configured. Most rules accept severity only: `error`,
-`warn` or `off`; `require-module-function` also accepts the `scope` option (`"all"` or `"classes"`).
-Unknown scope values and option keys are malformed configuration. Suppress reports with
+Recognition follows the `extends` chain within one file: a local `class Rows extends Layout` is
+component (or store) code when `Layout` extends a recognised base in the same file. An imported
+base stops the walk — a project-local base is configured instead, with the `componentBases` and
+`storeBases` keys of `.carburetorrc.json`, which add names to the built-in lists for every rule:
+
+```json
+{
+  "componentBases": ["AppComponent"],
+  "storeBases": ["UsersCache"]
+}
+```
+
+Most rules accept severity only: `error`, `warn` or `off`; `require-module-function` also accepts
+the `scope` option (`"all"` or `"classes"`). Unknown scope values, option keys and base-list
+shapes are malformed configuration. Suppress reports with
 `// carburetor-disable-next-line <rule>` or `// carburetor-disable <rule>`; either directive without
 a rule list silences all Carburetor rules.
 
@@ -236,7 +257,8 @@ existing behavior.
 `typescript/unbound-method`, and `@typescript-eslint/unbound-method`, cannot see the `@bind`
 decorator and report correct usage as an error. Switch it off and keep
 `carburetor/require-bind-for-passed-method`, which knows about the decorator and also reports the
-opposite mistake — a method passed as a value *without* it.
+opposite mistake — a method passed as a value *without* it. The oxlint preset ships with
+`typescript/unbound-method` already off; an ESLint setup switches it off itself.
 
 ### Function-component render allocations
 

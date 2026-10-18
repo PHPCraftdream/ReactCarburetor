@@ -81,7 +81,10 @@ export function work(items: string[]) {
 fn config_scope_classes_suppresses_module_function_reports() {
     let dir = workspace(&[
         ("modulefn.tsx", MODULEFN_SOURCE),
-        ("classes.json", r#"{"rules": {"carburetor/require-module-function": ["warn", {"scope": "classes"}]}}"#),
+        (
+            "classes.json",
+            r#"{"rules": {"carburetor/require-module-function": ["warn", {"scope": "classes"}]}}"#,
+        ),
     ]);
 
     // The default scope (all) reports the nested arrow (a warning by default); the config
@@ -90,9 +93,15 @@ fn config_scope_classes_suppresses_module_function_reports() {
     assert_eq!(code(&default_run), 1);
     assert!(stdout(&default_run).contains("require-module-function"));
 
-    let classes_run = diagnostics_in(&dir, &["--config=classes.json", "--format=json", "modulefn.tsx"]);
+    let classes_run = diagnostics_in(
+        &dir,
+        &["--config=classes.json", "--format=json", "modulefn.tsx"],
+    );
     assert!(classes_run.is_empty());
-    assert_eq!(code(&run_in(&dir, &["--config=classes.json", "modulefn.tsx"])), 0);
+    assert_eq!(
+        code(&run_in(&dir, &["--config=classes.json", "modulefn.tsx"])),
+        0
+    );
 }
 
 #[test]
@@ -110,10 +119,16 @@ fn json_diagnostic_for_require_module_function_carries_the_scope_field() {
 fn an_unknown_scope_value_is_a_broken_config() {
     let dir = workspace(&[
         ("modulefn.tsx", MODULEFN_SOURCE),
-        ("bogus.json", r#"{"rules": {"carburetor/require-module-function": ["warn", {"scope": "bogus"}]}}"#),
+        (
+            "bogus.json",
+            r#"{"rules": {"carburetor/require-module-function": ["warn", {"scope": "bogus"}]}}"#,
+        ),
     ]);
 
-    assert_eq!(code(&run_in(&dir, &["--config=bogus.json", "modulefn.tsx"])), 2);
+    assert_eq!(
+        code(&run_in(&dir, &["--config=bogus.json", "modulefn.tsx"])),
+        2
+    );
 }
 
 #[test]
@@ -149,15 +164,24 @@ fn json_carries_exactly_the_conformance_fields() {
     // native-only (the corpus does not read it) and only present when the violation has one.
     let mut keys: Vec<&str> = diagnostic.keys().map(String::as_str).collect();
     keys.sort_unstable();
-    assert_eq!(keys, ["column", "file", "fix", "line", "message", "rule", "severity"]);
+    assert_eq!(
+        keys,
+        ["column", "file", "fix", "line", "message", "rule", "severity"]
+    );
 
     assert_eq!(diagnostic["file"], "tests/fixtures/offender.tsx");
     assert_eq!(diagnostic["line"], 3);
     assert_eq!(diagnostic["column"], 5);
     assert_eq!(diagnostic["rule"], RULE);
     assert_eq!(diagnostic["severity"], "error");
-    assert!(diagnostic["message"].as_str().expect("a message").contains("class property"));
-    assert!(diagnostic["fix"]["text"].as_str().expect("fix.text").contains("componentDidMount(): void"));
+    assert!(diagnostic["message"]
+        .as_str()
+        .expect("a message")
+        .contains("class property"));
+    assert!(diagnostic["fix"]["text"]
+        .as_str()
+        .expect("fix.text")
+        .contains("componentDidMount(): void"));
 }
 
 /// The diagnostics of a `--format=json` run inside `cwd`, for the workspace-based tests.
@@ -212,7 +236,10 @@ fn a_rule_turned_off_in_the_config_produces_nothing() {
 
 #[test]
 fn a_warning_is_reported_without_failing_the_run() {
-    let arguments = ["--config=tests/fixtures/configs/warn.json", "tests/fixtures/offender.tsx"];
+    let arguments = [
+        "--config=tests/fixtures/configs/warn.json",
+        "tests/fixtures/offender.tsx",
+    ];
 
     let output = run(&arguments);
     assert_eq!(code(&output), 0);
@@ -235,7 +262,10 @@ fn deny_warnings_makes_a_warning_fail_the_run() {
 
 #[test]
 fn a_command_line_override_wins_over_the_defaults() {
-    let warned = run(&[&format!("--rule={RULE}=warn"), "tests/fixtures/offender.tsx"]);
+    let warned = run(&[
+        &format!("--rule={RULE}=warn"),
+        "tests/fixtures/offender.tsx",
+    ]);
     assert_eq!(code(&warned), 0);
 
     let silenced = diagnostics(&[
@@ -259,7 +289,10 @@ fn generated_output_and_dependencies_are_never_walked() {
     // a config pattern excludes it.
     assert_eq!(
         files,
-        ["tests/fixtures/tree/app.tsx", "tests/fixtures/tree/generated/built.tsx"]
+        [
+            "tests/fixtures/tree/app.tsx",
+            "tests/fixtures/tree/generated/built.tsx"
+        ]
     );
 }
 
@@ -280,7 +313,10 @@ fn config_ignore_patterns_exclude_what_they_name() {
 
 #[test]
 fn a_malformed_config_exits_two() {
-    let output = run(&["--config=tests/fixtures/configs/broken.json", "tests/fixtures/offender.tsx"]);
+    let output = run(&[
+        "--config=tests/fixtures/configs/broken.json",
+        "tests/fixtures/offender.tsx",
+    ]);
 
     // Two, not one: CI has to tell "the tool broke" from "the check failed".
     assert_eq!(code(&output), 2);
@@ -289,14 +325,19 @@ fn a_malformed_config_exits_two() {
 
 #[test]
 fn a_config_that_is_not_there_exits_two_when_asked_for_explicitly() {
-    let output = run(&["--config=tests/fixtures/configs/absent.json", "tests/fixtures/clean.tsx"]);
+    let output = run(&[
+        "--config=tests/fixtures/configs/absent.json",
+        "tests/fixtures/clean.tsx",
+    ]);
 
     assert_eq!(code(&output), 2);
 }
 
 #[test]
 fn a_missing_default_config_is_not_an_error() {
-    assert!(!Path::new(env!("CARGO_MANIFEST_DIR")).join(".carburetorrc.json").exists());
+    assert!(!Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join(".carburetorrc.json")
+        .exists());
 
     let output = run(&["tests/fixtures/clean.tsx"]);
 
@@ -313,8 +354,20 @@ fn an_unknown_option_exits_two() {
 
 #[test]
 fn an_unknown_rule_or_severity_on_the_command_line_exits_two() {
-    assert_eq!(code(&run(&["--rule=carburetor/no-such-rule=error", "tests/fixtures/clean.tsx"])), 2);
-    assert_eq!(code(&run(&[&format!("--rule={RULE}=fatal"), "tests/fixtures/clean.tsx"])), 2);
+    assert_eq!(
+        code(&run(&[
+            "--rule=carburetor/no-such-rule=error",
+            "tests/fixtures/clean.tsx"
+        ])),
+        2
+    );
+    assert_eq!(
+        code(&run(&[
+            &format!("--rule={RULE}=fatal"),
+            "tests/fixtures/clean.tsx"
+        ])),
+        2
+    );
     assert_eq!(code(&run(&["--rule", "tests/fixtures/clean.tsx"])), 2);
     assert_eq!(code(&run(&["--format=xml", "tests/fixtures/clean.tsx"])), 2);
 }
@@ -375,7 +428,10 @@ fn fix_leaves_a_violation_with_no_safe_fix_reported_but_unwritten() {
     assert_eq!(code(&output), 1);
     assert!(stdout(&output).contains(RULE));
 
-    assert_eq!(std::fs::read_to_string(dir.join("widget.tsx")).unwrap(), original);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("widget.tsx")).unwrap(),
+        original
+    );
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -390,10 +446,17 @@ fn fix_dry_run_previews_without_writing() {
 
     let printed = stdout(&output);
     assert!(printed.contains("--- "), "{printed}");
-    assert!(printed.contains("- ") && printed.contains("+ "), "{printed}");
+    assert!(
+        printed.contains("- ") && printed.contains("+ "),
+        "{printed}"
+    );
     assert!(printed.contains("no problems found"), "{printed}");
 
-    assert_eq!(std::fs::read_to_string(dir.join("widget.tsx")).unwrap(), original, "dry-run must not write");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("widget.tsx")).unwrap(),
+        original,
+        "dry-run must not write"
+    );
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -410,12 +473,25 @@ fn fix_dry_run_previews_a_module_function_extraction_without_writing() {
 
     let printed = stdout(&output);
     assert!(printed.contains("--- "), "{printed}");
-    assert!(printed.contains("+ function format(value: number): string {"), "{printed}");
-    assert!(printed.contains("- class Widget extends AntiHookComponent {"), "{printed}");
-    assert!(printed.contains("- ") && printed.contains("+ "), "{printed}");
+    assert!(
+        printed.contains("+ function format(value: number): string {"),
+        "{printed}"
+    );
+    assert!(
+        printed.contains("- class Widget extends AntiHookComponent {"),
+        "{printed}"
+    );
+    assert!(
+        printed.contains("- ") && printed.contains("+ "),
+        "{printed}"
+    );
     assert!(printed.contains("no problems found"), "{printed}");
 
-    assert_eq!(std::fs::read_to_string(dir.join("widget.tsx")).unwrap(), original, "dry-run must not write");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("widget.tsx")).unwrap(),
+        original,
+        "dry-run must not write"
+    );
 
     std::fs::remove_dir_all(&dir).unwrap();
 }
@@ -504,5 +580,9 @@ fn keep_overlaps_flag_restores_the_blunter_rule() {
 fn help_lists_the_keep_overlaps_flag() {
     let output = run(&["--help"]);
 
-    assert!(stdout(&output).contains("--keep-overlaps"), "{}", stdout(&output));
+    assert!(
+        stdout(&output).contains("--keep-overlaps"),
+        "{}",
+        stdout(&output)
+    );
 }

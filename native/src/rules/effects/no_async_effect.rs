@@ -11,15 +11,16 @@
 //! — is reported, so parameters, imports, and non-function initializers of the same name are
 //! not. See docs/hazards.md, H14.
 
-use oxc_ast::AstKind;
 use oxc_ast::ast::{
-    Argument, ArrowFunctionBody, CallExpression, Expression,
-    IdentifierReference, Program, Statement,
+    Argument, ArrowFunctionBody, CallExpression, Expression, IdentifierReference, Program,
+    Statement,
 };
+use oxc_ast::AstKind;
 use oxc_ast_visit::{walk, Visit};
 use oxc_semantic::{Semantic, SymbolId};
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::build_semantic;
 use crate::rules::support::names::{called_on_this, member_call_name, referenced_symbol};
 use crate::{Diagnostic, Source};
@@ -27,17 +28,21 @@ use crate::{Diagnostic, Source};
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/no-async-effect";
 
-const MESSAGE: &str = "an async effect body returns a promise, and the engine treats what an effect \
+const MESSAGE: &str =
+    "an async effect body returns a promise, and the engine treats what an effect \
     returns as its cleanup: the promise is not a function, so this effect can never clean up after \
     itself and nothing is aborted on unmount. Start the work in a synchronous body and return a \
     cleanup, for example one that aborts an AbortController.";
 
 /// `() => loadEverything()`, or `() => { return loadEverything(); }` — the identifier the body
 /// hands back, when identifying it at all is possible.
-fn returned_identifier_call<'a>(body: &'a ArrowFunctionBody<'a>) -> Option<&'a IdentifierReference<'a>> {
+fn returned_identifier_call<'a>(
+    body: &'a ArrowFunctionBody<'a>,
+) -> Option<&'a IdentifierReference<'a>> {
     let call = match body {
         ArrowFunctionBody::CallExpression(call) => Some(call.as_ref()),
-        ArrowFunctionBody::FunctionBody(function_body) => match function_body.statements.as_slice() {
+        ArrowFunctionBody::FunctionBody(function_body) => match function_body.statements.as_slice()
+        {
             [Statement::ReturnStatement(statement)] => match &statement.argument {
                 Some(Expression::CallExpression(call)) => Some(call.as_ref()),
                 _ => None,
@@ -59,7 +64,10 @@ fn is_async_binding(semantic: &Semantic<'_>, symbol: SymbolId) -> bool {
     match semantic.symbol_declaration(symbol).kind() {
         AstKind::Function(function) => function.r#async,
         AstKind::VariableDeclarator(declarator) => {
-            declarator.id.get_binding_identifier().is_some_and(|id| id.symbol_id.get() == Some(symbol))
+            declarator
+                .id
+                .get_binding_identifier()
+                .is_some_and(|id| id.symbol_id.get() == Some(symbol))
                 && match &declarator.init {
                     Some(Expression::ArrowFunctionExpression(f)) => f.r#async,
                     Some(Expression::FunctionExpression(f)) => f.r#async,
@@ -81,10 +89,20 @@ impl<'a, 's> Visit<'a> for Check<'a, 's> {
         if called_on_this(&call.callee) && member_call_name(&call.callee) == Some("useEffect") {
             match call.arguments.get(1) {
                 Some(Argument::ArrowFunctionExpression(body)) if body.r#async => {
-                    self.diagnostics.push(report(self.source, body.span.start, RULE, MESSAGE.to_string()));
+                    self.diagnostics.push(report(
+                        self.source,
+                        body.span.start,
+                        RULE,
+                        MESSAGE.to_string(),
+                    ));
                 }
                 Some(Argument::FunctionExpression(body)) if body.r#async => {
-                    self.diagnostics.push(report(self.source, body.span.start, RULE, MESSAGE.to_string()));
+                    self.diagnostics.push(report(
+                        self.source,
+                        body.span.start,
+                        RULE,
+                        MESSAGE.to_string(),
+                    ));
                 }
                 Some(Argument::ArrowFunctionExpression(body)) => {
                     if let Some(callee) = returned_identifier_call(&body.body) {
@@ -92,8 +110,12 @@ impl<'a, 's> Visit<'a> for Check<'a, 's> {
                             // Only a binding declaring an async function is reported; an
                             // unresolved name resolves to no symbol at all and is left alone.
                             if is_async_binding(self.semantic, symbol) {
-                                self.diagnostics
-                                    .push(report(self.source, body.span.start, RULE, MESSAGE.to_string()));
+                                self.diagnostics.push(report(
+                                    self.source,
+                                    body.span.start,
+                                    RULE,
+                                    MESSAGE.to_string(),
+                                ));
                             }
                         }
                     }
@@ -107,13 +129,29 @@ impl<'a, 's> Visit<'a> for Check<'a, 's> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
-    let mut check = Check { source, semantic: &semantic, diagnostics: Vec::new() };
+
+    check_with_semantic(program, source, &semantic)
+}
+
+/// Runs the rule with a semantic pass shared across rules.
+pub(in crate::rules) fn check_with_semantic<'a>(
+    program: &Program<'a>,
+    source: &Source,
+    semantic: &Semantic<'a>,
+) -> Vec<Diagnostic> {
+    let mut check = Check {
+        source,
+        semantic,
+        diagnostics: Vec::new(),
+    };
 
     check.visit_program(program);
 
-    check.diagnostics.sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
+    check
+        .diagnostics
+        .sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
 
     check.diagnostics
 }

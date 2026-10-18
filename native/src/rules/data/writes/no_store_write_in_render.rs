@@ -18,8 +18,9 @@ use oxc_semantic::{Semantic, SymbolId};
 use oxc_span::GetSpan;
 
 use crate::rules::report;
-use crate::rules::support::names::{called_on_this, member_call_name};
+use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::build_semantic;
+use crate::rules::support::names::{called_on_this, member_call_name};
 use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
 use crate::{Diagnostic, Source};
 
@@ -27,7 +28,7 @@ use crate::{Diagnostic, Source};
 pub const RULE: &str = "carburetor/no-store-write-in-render";
 
 /// Calls that only read, and are therefore fine in render.
-const READ_METHODS: [&str; 10] = [
+const READ_METHODS: [&str; 12] = [
     "getData",
     "getVersion",
     "getUID",
@@ -37,6 +38,10 @@ const READ_METHODS: [&str; 10] = [
     "read",
     "get",
     "getEntry",
+    // `getFailure` and `resolve` are the read half of a resource source: neither publishes, so
+    // both are fine in render.
+    "getFailure",
+    "resolve",
     // `suspend()` does write — it starts the request and marks the resource pending — but it is
     // built for exactly this position: the notification is deferred to a microtask precisely
     // because a render must not notify. Reporting it would flag the documented way to use Suspense.
@@ -77,12 +82,24 @@ struct Check<'s> {
 }
 
 impl<'s> Check<'s> {
-    fn store_key(&self, expression: &Expression<'_>, class_span: Option<oxc_span::Span>) -> Option<StoreKey> {
+    fn store_key(
+        &self,
+        expression: &Expression<'_>,
+        class_span: Option<oxc_span::Span>,
+    ) -> Option<StoreKey> {
         match expression {
-            Expression::Identifier(identifier) => identifier.reference_id.get()
+            Expression::Identifier(identifier) => identifier
+                .reference_id
+                .get()
                 .and_then(|id| self.semantic.scoping().get_reference(id).symbol_id())
-                .map(|symbol| StoreKey { root: RootKey::Symbol(symbol), chain: Vec::new() }),
-            Expression::ThisExpression(_) => Some(StoreKey { root: RootKey::This(class_span), chain: Vec::new() }),
+                .map(|symbol| StoreKey {
+                    root: RootKey::Symbol(symbol),
+                    chain: Vec::new(),
+                }),
+            Expression::ThisExpression(_) => Some(StoreKey {
+                root: RootKey::This(class_span),
+                chain: Vec::new(),
+            }),
             Expression::StaticMemberExpression(member) => {
                 let mut key = self.store_key(&member.object, class_span)?;
                 key.chain.push(member.property.name.to_string());
@@ -99,23 +116,30 @@ impl<'s> Check<'s> {
 
     fn unresolved_root(&self, expression: &Expression<'_>) -> bool {
         match expression {
-            Expression::Identifier(identifier) => identifier.reference_id.get()
-                .and_then(|id| self.semantic.scoping().get_reference(id).symbol_id()).is_none(),
+            Expression::Identifier(identifier) => identifier
+                .reference_id
+                .get()
+                .and_then(|id| self.semantic.scoping().get_reference(id).symbol_id())
+                .is_none(),
             Expression::StaticMemberExpression(member) => self.unresolved_root(&member.object),
             _ => false,
         }
     }
-
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
+    fn finish(&mut self) -> Vec<Diagnostic> {
         self.suspects
             .iter()
             .filter(|suspect| {
-                suspect.receiver.as_ref().is_some_and(|receiver| self.stores.contains(receiver))
+                suspect
+                    .receiver
+                    .as_ref()
+                    .is_some_and(|receiver| self.stores.contains(receiver))
                     || (suspect.unresolved_root
-                        && self.unresolved_stores.contains(&(suspect.receiver_text.clone(), None)))
+                        && self
+                            .unresolved_stores
+                            .contains(&(suspect.receiver_text.clone(), None)))
             })
             .map(|suspect| {
                 let advice = if suspect.render_kind == Some(RenderKind::Function) {
@@ -149,7 +173,11 @@ impl<'a, 's> Rule<'a> for Check<'s> {
         if ["useCarburetorValue", "useComputedValue", "useResourceValue"].contains(&method)
             && !called_on_this(&call.callee)
         {
-            if let Some(source) = call.arguments.first().and_then(|argument| argument.as_expression()) {
+            if let Some(source) = call
+                .arguments
+                .first()
+                .and_then(|argument| argument.as_expression())
+            {
                 let key = self.store_key(source, context.class_span);
                 if let Some(key) = key {
                     self.stores.insert(key);
@@ -161,7 +189,11 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
         // Whatever is read as a store is a store, wherever in the file that read happens.
         if TRACKING_READS.contains(&method) {
-            if let Some(source) = call.arguments.first().and_then(|argument| argument.as_expression()) {
+            if let Some(source) = call
+                .arguments
+                .first()
+                .and_then(|argument| argument.as_expression())
+            {
                 if let Some(key) = self.store_key(source, context.class_span) {
                     self.stores.insert(key);
                 } else if self.unresolved_root(source) {
@@ -192,9 +224,30 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
-    walk_rule(program, Check { source, semantic: &semantic, stores: HashSet::new(), unresolved_stores: HashSet::new(), suspects: Vec::new() })
+
+    check_with_semantic(program, source, &semantic, bases)
+}
+
+/// Runs the rule with a semantic pass shared across rules.
+pub(in crate::rules) fn check_with_semantic<'a, 's>(
+    program: &'a Program<'a>,
+    source: &'s Source<'s>,
+    semantic: &'s Semantic<'a>,
+    bases: &Bases,
+) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            semantic,
+            stores: HashSet::new(),
+            unresolved_stores: HashSet::new(),
+            suspects: Vec::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]
@@ -257,6 +310,32 @@ mod tests {
                       return null;\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [4]);
+    }
+
+    #[test]
+    fn a_get_failure_call_is_a_plain_read_in_render() {
+        let source = "class Widget extends AntiHookComponent {
+    render() {
+                              this.useResource(cache, 1);
+        return cache.getFailure(1);
+    }
+}
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_resolve_call_is_a_plain_read_in_render() {
+        let source = "class Widget extends AntiHookComponent {
+    render() {
+                              this.useResource(cache, 1);
+        return cache.resolve(1);
+    }
+}
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]

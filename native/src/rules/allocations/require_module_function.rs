@@ -32,6 +32,7 @@ use oxc_span::Span;
 
 use crate::config::ModuleFunctionScope;
 use crate::fix::Fix;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::bases::RENDER_METHODS;
 use crate::rules::support::closures::{
     analyze_field, analyze_method, build_semantic, is_component_class, MemberAnalysis,
@@ -57,6 +58,7 @@ struct ClassFacts {
 struct Check<'s, 'a> {
     source: &'s Source<'s>,
     semantic: &'s Semantic<'a>,
+    bases: &'s Bases,
     program: &'s Program<'a>,
     /// The class statements a member can be extracted out of, keyed by the class's span.
     statements: HashMap<Span, StatementFix>,
@@ -234,8 +236,8 @@ impl<'s, 'a> Check<'s, 'a> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s, 'a> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     /// `context.in_component` is direct-extends-only, but the allocation rules' scope is D6: a
@@ -243,7 +245,7 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
     /// answer is computed here and keyed by the class's span for the member callbacks to read.
     fn class(&mut self, class: &Class<'a>, _context: &Context) {
         let facts = ClassFacts {
-            component: is_component_class(class, self.semantic),
+            component: is_component_class(class, self.semantic, self.bases),
             implements: !class.implements.is_empty(),
         };
 
@@ -280,8 +282,8 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
 }
 
 /// Runs the rule over one parsed file, at the default `scope: "all"`.
-pub fn check(program: &Program<'_>, source: &Source<'_>) -> Vec<Diagnostic> {
-    check_with_scope(program, source, ModuleFunctionScope::All)
+pub fn check(program: &Program<'_>, source: &Source<'_>, bases: &Bases) -> Vec<Diagnostic> {
+    check_with_scope(program, source, ModuleFunctionScope::All, bases)
 }
 
 /// Runs the rule at one `scope` setting: `All` analyzes nested functions throughout the file;
@@ -290,10 +292,11 @@ pub(in crate::rules) fn check_with_scope(
     program: &Program<'_>,
     source: &Source<'_>,
     scope: ModuleFunctionScope,
+    bases: &Bases,
 ) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
 
-    check_with_semantic(program, source, &semantic, scope)
+    check_with_semantic(program, source, &semantic, scope, bases)
 }
 
 /// Runs the rule with a semantic pass shared by the allocation-rule pair.
@@ -302,6 +305,7 @@ pub(in crate::rules) fn check_with_semantic<'a>(
     source: &Source<'_>,
     semantic: &Semantic<'a>,
     scope: ModuleFunctionScope,
+    bases: &Bases,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = walk_rule(
         program,
@@ -309,10 +313,12 @@ pub(in crate::rules) fn check_with_semantic<'a>(
             source,
             program,
             semantic,
+            bases,
             classes: HashMap::new(),
             statements: top_level_class_statements(program),
             diagnostics: Vec::new(),
         },
+        bases,
     );
 
     // The class findings say where they came from, so the bridge can tell the two halves apart.
@@ -368,10 +374,8 @@ mod tests {
 
         let remaining = check(
             &parsed.program,
-            &Source {
-                path: Path::new("fixture.tsx"),
-                text: &text,
-            },
+            &Source::new(Path::new("fixture.tsx"), &text),
+            &Bases::default(),
         );
         assert!(
             remaining.is_empty(),
@@ -392,10 +396,8 @@ mod tests {
             parsed.diagnostics.is_empty().then(|| {
                 check(
                     &parsed.program,
-                    &Source {
-                        path: Path::new("fixture.tsx"),
-                        text,
-                    },
+                    &Source::new(Path::new("fixture.tsx"), text),
+                    &Bases::default(),
                 )
             })
         });
@@ -416,11 +418,9 @@ mod tests {
 
         check_with_scope(
             &parsed.program,
-            &Source {
-                path: Path::new("fixture.tsx"),
-                text: source,
-            },
+            &Source::new(Path::new("fixture.tsx"), source),
             scope,
+            &Bases::default(),
         )
     }
 

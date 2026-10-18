@@ -1,6 +1,7 @@
-use crate::rules::support::testing::{diagnose, lines};
 use crate::rules::allocations::{require_method_for_closure, require_module_function};
-use crate::rules::lifecycle::{no_handler_created_in_render, no_function_in_render as h31};
+use crate::rules::lifecycle::{no_function_in_render as h31, no_handler_created_in_render};
+use crate::rules::support::bases::Bases;
+use crate::rules::support::testing::{diagnose, lines};
 use crate::{config::Config, Diagnostic, Source};
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
@@ -10,16 +11,25 @@ use std::path::Path;
 fn run_registry(source: &str) -> Vec<Diagnostic> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
-    assert!(parsed.diagnostics.is_empty(), "test source must parse: {:?}", parsed.diagnostics);
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "test source must parse: {:?}",
+        parsed.diagnostics
+    );
     crate::rules::run(
         &parsed.program,
-        &Source { path: Path::new("fixture.tsx"), text: source },
+        &Source::new(Path::new("fixture.tsx"), source),
         &Config::default(),
         false,
     )
 }
 
-fn assert_component_rule(source: &str, check: fn(&oxc_ast::ast::Program<'_>, &Source<'_>) -> Vec<Diagnostic>, expected_rule: &str, expected_line: usize) {
+fn assert_component_rule(
+    source: &str,
+    check: fn(&oxc_ast::ast::Program<'_>, &Source<'_>, &Bases) -> Vec<Diagnostic>,
+    expected_rule: &str,
+    expected_line: usize,
+) {
     let diagnostics = diagnose(source, check);
     assert_eq!(lines(&diagnostics), [expected_line], "{diagnostics:#?}");
     assert_eq!(diagnostics[0].rule, expected_rule, "{diagnostics:#?}");
@@ -48,7 +58,8 @@ fn function_component_h21_reports_fresh_component_props_but_not_dom_props() {
     assert!(diagnose(
         "function Row({ id }) { return <button onClick={() => select(id)}/>; }",
         no_handler_created_in_render::check,
-    ).is_empty());
+    )
+    .is_empty());
 }
 
 #[test]
@@ -56,10 +67,22 @@ fn function_component_capture_free_handlers_recommend_module_function_and_are_h3
     let source = "function Row() { const handler = () => moduleHandler(); return <Child onSelect={handler}/>; }\nfunction moduleHandler() {}";
     assert!(diagnose(source, no_handler_created_in_render::check).is_empty());
     let diagnostics = run_registry(source);
-    assert_eq!(diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [require_module_function::RULE]);
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.rule.as_str())
+            .collect::<Vec<_>>(),
+        [require_module_function::RULE]
+    );
     let local = "function Row() { const handler = () => moduleHandler(); return <button onClick={handler}/>; }\nfunction moduleHandler() {}";
     let diagnostics = run_registry(local);
-    assert_eq!(diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [require_module_function::RULE]);
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.rule.as_str())
+            .collect::<Vec<_>>(),
+        [require_module_function::RULE]
+    );
 }
 
 #[test]
@@ -89,12 +112,19 @@ fn functional_h31_honors_shadowing_and_non_render_function_boundaries() {
     let source = "function Row({ id }) { function nested(id) { return () => id; } return <button onClick={() => select(id)}/>; }";
     let diagnostics = diagnose(source, h31::check);
     assert_eq!(diagnostics.len(), 2, "{diagnostics:#?}");
-    assert!(diagnostics.iter().all(|diagnostic| diagnostic.rule.as_str() == h31::RULE));
-    let module_binding = "const binding = 1; function Row() { return <Child onSelect={() => select(binding)}/>; }";
+    assert!(diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.rule.as_str() == h31::RULE));
+    let module_binding =
+        "const binding = 1; function Row() { return <Child onSelect={() => select(binding)}/>; }";
     let diagnostics = diagnose(module_binding, no_handler_created_in_render::check);
     assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
     assert_eq!(diagnostics[0].rule, no_handler_created_in_render::RULE);
-    assert!(diagnostics[0].message.contains("module-level"), "{}", diagnostics[0].message);
+    assert!(
+        diagnostics[0].message.contains("module-level"),
+        "{}",
+        diagnostics[0].message
+    );
 }
 
 #[test]
@@ -106,10 +136,21 @@ fn hook_wrapped_function_values_are_reported_for_h21_and_h31() {
         "useCallback(select.bind(null, id), [id])",
     ] {
         let child = format!("function Row({{ id }}) {{ return <Child onSelect={{{value}}}/>; }}");
-        assert_component_rule(&child, no_handler_created_in_render::check, no_handler_created_in_render::RULE, 1);
+        assert_component_rule(
+            &child,
+            no_handler_created_in_render::check,
+            no_handler_created_in_render::RULE,
+            1,
+        );
         let local = format!("function Row({{ id }}) {{ const handler = {value}; return <button onClick={{handler}}/>; }}");
         let diagnostics = run_registry(&local);
-        assert_eq!(diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [h31::RULE]);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.rule.as_str())
+                .collect::<Vec<_>>(),
+            [h31::RULE]
+        );
     }
 }
 
@@ -178,9 +219,19 @@ fn round_four_callback_returning_named_handlers_are_not_h21_prop_allocations() {
         "useMemo(() => { return handler; }, [])",
     ] {
         let source = format!("function Row({{ id }}) {{ const handler = () => select(id); return <Child onSelect={{{value}}}/>; }}");
-        assert!(diagnose(&source, no_handler_created_in_render::check).is_empty(), "{source}");
+        assert!(
+            diagnose(&source, no_handler_created_in_render::check).is_empty(),
+            "{source}"
+        );
         let diagnostics = run_registry(&source);
-        assert_eq!(diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [h31::RULE], "{diagnostics:#?}");
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.rule.as_str())
+                .collect::<Vec<_>>(),
+            [h31::RULE],
+            "{diagnostics:#?}"
+        );
         assert_eq!(diagnostics[0].column, source.find("() =>").unwrap() + 1);
     }
     let scalar = "function Row({ id }) { const value = useMemo(() => id + 1, []); return <Child value={value}/>; }";
@@ -198,7 +249,13 @@ fn hook_wrapped_capture_free_child_props_registry_have_exactly_one_h21() {
     ] {
         let source = format!("function Row() {{ return <Child onSelect={{{value}}}/>; }}");
         let diagnostics = run_registry(&source);
-        assert_eq!(diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [no_handler_created_in_render::RULE]);
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|diagnostic| diagnostic.rule.as_str())
+                .collect::<Vec<_>>(),
+            [no_handler_created_in_render::RULE]
+        );
     }
 }
 
@@ -224,7 +281,11 @@ fn h31_map_callback_capturing_only_component_id_uses_child_advice() {
     let diagnostics = diagnose(source, h31::check);
     assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
     assert_eq!(diagnostics[0].rule, h31::RULE);
-    assert!(diagnostics[0].message.contains("child AntiHookComponent"), "{}", diagnostics[0].message);
+    assert!(
+        diagnostics[0].message.contains("child AntiHookComponent"),
+        "{}",
+        diagnostics[0].message
+    );
 }
 
 #[test]
@@ -251,10 +312,28 @@ fn class_component_this_handler_recommends_bound_props_without_hooks() {
     let diagnostics = diagnose(source, h31::check);
     assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
     assert_eq!(diagnostics[0].rule, h31::RULE);
-    assert!(diagnostics[0].message.contains("@bind"), "{}", diagnostics[0].message);
-    assert!(diagnostics[0].message.contains("props"), "{}", diagnostics[0].message);
-    assert!(!diagnostics[0].message.contains("useCallback"), "{}", diagnostics[0].message);
-    assert!(diagnostics[0].message.contains("convert this component to AntiHookComponent"), "{}", diagnostics[0].message);
+    assert!(
+        diagnostics[0].message.contains("@bind"),
+        "{}",
+        diagnostics[0].message
+    );
+    assert!(
+        diagnostics[0].message.contains("props"),
+        "{}",
+        diagnostics[0].message
+    );
+    assert!(
+        !diagnostics[0].message.contains("useCallback"),
+        "{}",
+        diagnostics[0].message
+    );
+    assert!(
+        diagnostics[0]
+            .message
+            .contains("convert this component to AntiHookComponent"),
+        "{}",
+        diagnostics[0].message
+    );
 }
 
 #[test]
@@ -269,9 +348,16 @@ fn round_three_scalar_memo_prop_keeps_exactly_h30() {
         let diagnostics = run_registry(&source);
         assert_eq!(diagnostics.len(), 1, "{diagnostics:#?}");
         assert_eq!(diagnostics[0].rule, require_module_function::RULE);
-        assert!(!diagnostics.iter().any(|diagnostic| diagnostic.rule.as_str() == no_handler_created_in_render::RULE));
-        assert!(!diagnostics.iter().any(|diagnostic| diagnostic.rule.as_str() == h31::RULE));
-        assert_eq!((diagnostics[0].line, diagnostics[0].column), (1, source.find("useMemo(").unwrap() + "useMemo(".len() + 1));
+        assert!(!diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.rule.as_str() == no_handler_created_in_render::RULE));
+        assert!(!diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.rule.as_str() == h31::RULE));
+        assert_eq!(
+            (diagnostics[0].line, diagnostics[0].column),
+            (1, source.find("useMemo(").unwrap() + "useMemo(".len() + 1)
+        );
     }
 }
 
@@ -280,14 +366,18 @@ fn round_four_scale_2000_capture_free_jsx_handlers() {
     use std::time::Instant;
     let mut source = String::from("function Row() { return <div>");
     for index in 0..2000 {
-        source.push_str(&format!("<Child key=\"{index}\" onSelect={{() => globalHandler({index})}}/>"));
+        source.push_str(&format!(
+            "<Child key=\"{index}\" onSelect={{() => globalHandler({index})}}/>"
+        ));
     }
     source.push_str("</div>; }");
     let started = Instant::now();
     let diagnostics = diagnose(&source, no_handler_created_in_render::check);
     eprintln!("round_four_scale: 2000 handlers in {:?}", started.elapsed());
     assert_eq!(diagnostics.len(), 2000, "{diagnostics:#?}");
-    assert!(diagnostics.iter().all(|diagnostic| diagnostic.rule.as_str() == no_handler_created_in_render::RULE));
+    assert!(diagnostics
+        .iter()
+        .all(|diagnostic| diagnostic.rule.as_str() == no_handler_created_in_render::RULE));
 }
 
 #[test]
@@ -315,7 +405,11 @@ fn round_four_copied_sources_exercise_h21_and_h31_advice() {
     let p2 = include_str!("p2.tsx");
     let h21 = diagnose(p2, no_handler_created_in_render::check);
     assert_eq!(h21.len(), 1, "{h21:#?}");
-    assert!(h21[0].message.contains("child AntiHookComponent"), "{}", h21[0].message);
+    assert!(
+        h21[0].message.contains("child AntiHookComponent"),
+        "{}",
+        h21[0].message
+    );
     assert!(h21[0].message.contains("@bind"), "{}", h21[0].message);
     let p3 = include_str!("p3.tsx");
     let h31_diagnostics = diagnose(p3, h31::check);
@@ -348,7 +442,11 @@ fn lexical_this_and_arguments_remain_h21_and_h31() {
 #[test]
 fn function_component_this_hook_is_class_only() {
     let source = "function Row() { this.useCarburetor(store); return <div />; }";
-    assert!(diagnose(source, crate::rules::data::reads::no_use_carburetor_outside_render::check).is_empty());
+    assert!(diagnose(
+        source,
+        crate::rules::data::reads::no_use_carburetor_outside_render::check
+    )
+    .is_empty());
 }
 
 #[test]
@@ -371,9 +469,19 @@ fn conditional_and_logical_component_props_report_once_through_the_full_registry
 fn conditional_prop_handling_keeps_nested_functions_with_h30() {
     let source = "function act() {}\nconst enabled = true;\nfunction Row() { return <Child onSelect={enabled ? () => { const nested = () => act(); } : undefined}/>;\n}\n";
     let diagnostics = run_registry(source);
-    let mut rules = diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>();
+    let mut rules = diagnostics
+        .iter()
+        .map(|diagnostic| diagnostic.rule.as_str())
+        .collect::<Vec<_>>();
     rules.sort_unstable();
-    assert_eq!(rules, [no_handler_created_in_render::RULE, require_module_function::RULE], "{diagnostics:#?}");
+    assert_eq!(
+        rules,
+        [
+            no_handler_created_in_render::RULE,
+            require_module_function::RULE
+        ],
+        "{diagnostics:#?}"
+    );
 }
 
 #[test]
@@ -395,24 +503,50 @@ fn a_function_a_usememo_factory_builds_and_returns_is_h31s() {
 
 #[test]
 fn a_hook_passing_a_render_local_through_stays_with_the_declarator_report() {
-    for factory in ["useMemo(() => handler, [])", "useMemo(() => { return handler; }, [])", "useCallback(handler, [])"] {
+    for factory in [
+        "useMemo(() => handler, [])",
+        "useMemo(() => { return handler; }, [])",
+        "useCallback(handler, [])",
+    ] {
         let source = format!("function Row({{ id }}) {{ const handler = () => select(id); const memo = {factory}; return <button onClick={{memo}}/>; }}");
         let registry = run_registry(&source);
-        assert_eq!(registry.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [h31::RULE], "{registry:#?}");
-        assert_eq!(registry[0].column, source.find("() => select").unwrap() + 1, "{source}");
+        assert_eq!(
+            registry
+                .iter()
+                .map(|diagnostic| diagnostic.rule.as_str())
+                .collect::<Vec<_>>(),
+            [h31::RULE],
+            "{registry:#?}"
+        );
+        assert_eq!(
+            registry[0].column,
+            source.find("() => select").unwrap() + 1,
+            "{source}"
+        );
     }
 
     let module_handler = "function handler() {}\nfunction Row() { const memo = useMemo(() => handler, []); return <button onClick={memo}/>;\n}\n";
     let registry = run_registry(module_handler);
-    assert_eq!(registry.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(), [require_module_function::RULE], "{registry:#?}");
+    assert_eq!(
+        registry
+            .iter()
+            .map(|diagnostic| diagnostic.rule.as_str())
+            .collect::<Vec<_>>(),
+        [require_module_function::RULE],
+        "{registry:#?}"
+    );
 }
 
 #[test]
 fn a_function_in_a_prop_tests_condition_is_not_a_component_prop_allocation() {
-    let source = "function act() {}\nfunction Row() { return <Child value={(() => act()) ? 1 : 2}/>;\n}\n";
+    let source =
+        "function act() {}\nfunction Row() { return <Child value={(() => act()) ? 1 : 2}/>;\n}\n";
     let diagnostics = run_registry(source);
     assert_eq!(
-        diagnostics.iter().map(|diagnostic| diagnostic.rule.as_str()).collect::<Vec<_>>(),
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.rule.as_str())
+            .collect::<Vec<_>>(),
         [require_module_function::RULE],
         "{diagnostics:#?}"
     );

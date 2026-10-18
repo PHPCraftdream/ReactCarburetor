@@ -13,12 +13,11 @@ use oxc_span::GetSpan;
 
 use crate::fix::Fix;
 use crate::rules::report_with_fix;
+use crate::rules::support::bases::{Bases, ClassChains};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/no-lifecycle-class-property";
-
-const COMPONENT_BASES: [&str; 2] = ["AntiHookComponent", "ScopedAntiHookComponent"];
 
 const LIFECYCLE_NAMES: [&str; 7] = [
     "render",
@@ -29,23 +28,6 @@ const LIFECYCLE_NAMES: [&str; 7] = [
     "componentDidCatch",
     "getSnapshotBeforeUpdate",
 ];
-
-/// The name a base class is referenced by, bare or through a namespace.
-fn super_class_name<'a>(expression: &'a Expression<'a>) -> Option<&'a str> {
-    match expression {
-        Expression::Identifier(identifier) => Some(identifier.name.as_str()),
-        Expression::StaticMemberExpression(member) => Some(member.property.name.as_str()),
-        _ => None,
-    }
-}
-
-fn is_component(class: &Class<'_>) -> bool {
-    class
-        .heritage
-        .as_ref()
-        .and_then(|heritage| super_class_name(&heritage.expression))
-        .is_some_and(|name| COMPONENT_BASES.contains(&name))
-}
 
 /// The name a class member is declared under, when it is knowable statically.
 fn member_name<'a>(key: &'a PropertyKey<'a>) -> Option<&'a str> {
@@ -141,12 +123,17 @@ fn fix_for(
 
 struct Visitor<'a> {
     source: &'a Source<'a>,
+    bases: Bases,
+    chains: ClassChains,
     diagnostics: Vec<Diagnostic>,
 }
 
 impl<'a> Visit<'a> for Visitor<'a> {
     fn visit_class(&mut self, class: &Class<'a>) {
-        if is_component(class) {
+        if self
+            .chains
+            .reaches(class, |name| self.bases.is_component(name))
+        {
             for element in &class.body.body {
                 let ClassElement::PropertyDefinition(property) = element else {
                     continue;
@@ -186,9 +173,11 @@ impl<'a> Visit<'a> for Visitor<'a> {
     }
 }
 
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let mut visitor = Visitor {
         source,
+        bases: bases.clone(),
+        chains: ClassChains::build(program),
         diagnostics: Vec::new(),
     };
 
@@ -204,6 +193,7 @@ mod tests {
     use oxc_span::SourceType;
 
     use super::check;
+    use crate::rules::support::bases::Bases;
     use crate::rules::support::testing::diagnose;
     use crate::Source;
 
@@ -224,10 +214,8 @@ mod tests {
 
         let remaining = check(
             &parsed.program,
-            &Source {
-                path: std::path::Path::new("fixture.tsx"),
-                text: &text,
-            },
+            &Source::new(std::path::Path::new("fixture.tsx"), &text),
+            &Bases::default(),
         );
         assert!(
             remaining.is_empty(),
@@ -375,8 +363,7 @@ mod tests {
 
     #[test]
     fn a_render_arrow_property_on_a_scoped_component_is_fixed_into_a_method() {
-        let source =
-            "class C extends ScopedAntiHookComponent {\n    render = () => null;\n}\n";
+        let source = "class C extends ScopedAntiHookComponent {\n    render = () => null;\n}\n";
 
         assert_eq!(
             fixed(source),
@@ -427,7 +414,8 @@ mod tests {
 
     #[test]
     fn a_decorated_render_property_is_reported_without_a_fix() {
-        let source = "class C extends AntiHookComponent {\n    @bind\n    render = () => null;\n}\n";
+        let source =
+            "class C extends AntiHookComponent {\n    @bind\n    render = () => null;\n}\n";
         let diagnostics = diagnose(source, check);
 
         assert_eq!(diagnostics.len(), 1);

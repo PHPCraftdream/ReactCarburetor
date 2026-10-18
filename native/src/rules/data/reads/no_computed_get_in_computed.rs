@@ -14,6 +14,7 @@ use oxc_ast::ast::{Argument, CallExpression, Expression, FormalParameters, Progr
 use oxc_ast_visit::{walk, Visit};
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::names::{call_receiver_name, member_call_name};
 use crate::{Diagnostic, Source};
 
@@ -109,7 +110,13 @@ impl<'s> Check<'s> {
         // Reading through the reader is the correct form and must stay unreported.
         let receiver = call_receiver_name(&call.callee);
 
-        if receiver.is_some() && self.readers.iter().rev().any(|reader| reader.as_deref() == receiver) {
+        if receiver.is_some()
+            && self
+                .readers
+                .iter()
+                .rev()
+                .any(|reader| reader.as_deref() == receiver)
+        {
             return;
         }
 
@@ -119,13 +126,18 @@ impl<'s> Check<'s> {
              the reader instead: computed(read => read(source))."
         );
 
-        self.diagnostics.push(report(self.source, call.span.start, RULE, message));
+        self.diagnostics
+            .push(report(self.source, call.span.start, RULE, message));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    let mut rule = Check { source, diagnostics: Vec::new(), readers: Vec::new() };
+pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diagnostic> {
+    let mut rule = Check {
+        source,
+        diagnostics: Vec::new(),
+        readers: Vec::new(),
+    };
 
     rule.visit_program(program);
 
@@ -162,7 +174,8 @@ mod tests {
 
     #[test]
     fn a_zero_argument_get_on_another_source_is_reported() {
-        let source = "const total = computed((read) => {\n    return other.get() + read(store).x;\n});\n";
+        let source =
+            "const total = computed((read) => {\n    return other.get() + read(store).x;\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [2]);
     }
@@ -176,7 +189,10 @@ mod tests {
 
     #[test]
     fn the_same_read_outside_a_computed_is_left_alone() {
-        assert_eq!(lines(&diagnose("const x = store.getData();\n", check)), [] as [usize; 0]);
+        assert_eq!(
+            lines(&diagnose("const x = store.getData();\n", check)),
+            [] as [usize; 0]
+        );
     }
 
     #[test]

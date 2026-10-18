@@ -6,6 +6,7 @@ use oxc_parser::Parser;
 use oxc_span::{SourceType, Span};
 
 use super::{walk_rule, Context, Rule};
+use crate::rules::support::bases::Bases;
 use crate::Diagnostic;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -35,7 +36,7 @@ impl Observe {
 }
 
 impl<'a> Rule<'a> for Observe {
-    fn finish(self) -> Vec<Diagnostic> {
+    fn finish(&mut self) -> Vec<Diagnostic> {
         Vec::new()
     }
 
@@ -57,32 +58,38 @@ impl<'a> Rule<'a> for Observe {
 fn observations(source: &str, source_type: SourceType) -> Vec<Observation> {
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, source, source_type).parse();
-    assert!(parsed.diagnostics.is_empty(), "test source must parse: {:?}", parsed.diagnostics);
+    assert!(
+        parsed.diagnostics.is_empty(),
+        "test source must parse: {:?}",
+        parsed.diagnostics
+    );
     let observer = Observe::default();
     let observations = Rc::clone(&observer.0);
-    walk_rule(&parsed.program, observer);
-    Rc::try_unwrap(observations).expect("observer dropped").into_inner()
+    walk_rule(&parsed.program, observer, &Bases::default());
+    Rc::try_unwrap(observations)
+        .expect("observer dropped")
+        .into_inner()
 }
 
 fn probe_contexts(source: &str) -> Vec<(bool, bool, Span, Option<super::RenderKind>)> {
     observations(source, SourceType::tsx())
         .into_iter()
         .filter(|observation| observation.kind == "probe")
-        .map(|observation| (
-            observation.in_render,
-            observation.in_component,
-            observation.function,
-            observation.render_kind,
-        ))
+        .map(|observation| {
+            (
+                observation.in_render,
+                observation.in_component,
+                observation.function,
+                observation.render_kind,
+            )
+        })
         .collect()
 }
 
 fn render_flags(source: &str) -> Vec<(bool, bool, Option<super::RenderKind>)> {
     probe_contexts(source)
         .into_iter()
-                .map(|(in_render, in_component, _, render_kind)| {
-            (in_render, in_component, render_kind)
-        })
+        .map(|(in_render, in_component, _, render_kind)| (in_render, in_component, render_kind))
         .collect()
 }
 
@@ -94,7 +101,11 @@ fn pascal_case_function_forms_with_own_jsx_are_render_scopes() {
         "const Row = function () { probe(); return <li/>; };",
         "export default function Row() { probe(); return <li/>; }",
     ] {
-        assert_eq!(render_flags(source), [(true, false, Some(super::RenderKind::Function))], "{source}");
+        assert_eq!(
+            render_flags(source),
+            [(true, false, Some(super::RenderKind::Function))],
+            "{source}"
+        );
     }
 }
 
@@ -113,7 +124,11 @@ fn jsx_must_be_in_the_function_own_body_and_binding_must_be_pascal_case() {
 fn supported_wrappers_recognize_only_the_first_function_argument() {
     for wrapper in ["memo", "forwardRef", "React.memo", "React.forwardRef"] {
         let source = format!("const Row = {wrapper}(() => {{ probe(); return <li/>; }});");
-        assert_eq!(render_flags(&source), [(true, false, Some(super::RenderKind::Function))], "{source}");
+        assert_eq!(
+            render_flags(&source),
+            [(true, false, Some(super::RenderKind::Function))],
+            "{source}"
+        );
     }
 }
 
@@ -130,19 +145,50 @@ fn wrappers_without_jsx_and_functions_in_later_arguments_are_not_components() {
 #[test]
 fn render_member_remains_render_but_component_context_stays_class_only() {
     let source = "class Row extends AntiHookComponent { render() { probe(); return <li/>; } }";
-    assert_eq!(render_flags(source), [(true, true, Some(super::RenderKind::Class))]);
+    assert_eq!(
+        render_flags(source),
+        [(true, true, Some(super::RenderKind::Class))]
+    );
 }
 
 #[test]
 fn nested_component_declaration_gets_outer_context_and_inner_body_owns_its_scope() {
-    let source = "function Outer() { function Inner() { probe(); return <li/>; } probe(); return <div/>; }";
+    let source =
+        "function Outer() { function Inner() { probe(); return <li/>; } probe(); return <div/>; }";
     let observed = observations(source, SourceType::tsx());
-    let declaration = observed.iter().find(|item| item.kind == "declaration").unwrap();
-    assert_eq!((declaration.in_render, declaration.in_component, declaration.render_kind), (true, false, Some(super::RenderKind::Function)));
-    let probes = observed.iter().filter(|item| item.kind == "probe").collect::<Vec<_>>();
+    let declaration = observed
+        .iter()
+        .find(|item| item.kind == "declaration")
+        .unwrap();
+    assert_eq!(
+        (
+            declaration.in_render,
+            declaration.in_component,
+            declaration.render_kind
+        ),
+        (true, false, Some(super::RenderKind::Function))
+    );
+    let probes = observed
+        .iter()
+        .filter(|item| item.kind == "probe")
+        .collect::<Vec<_>>();
     assert_eq!(probes.len(), 2);
-    assert_eq!((probes[0].in_render, probes[0].in_component, probes[0].render_kind), (true, false, Some(super::RenderKind::Function)));
-    assert_eq!((probes[1].in_render, probes[1].in_component, probes[1].render_kind), (true, false, Some(super::RenderKind::Function)));
+    assert_eq!(
+        (
+            probes[0].in_render,
+            probes[0].in_component,
+            probes[0].render_kind
+        ),
+        (true, false, Some(super::RenderKind::Function))
+    );
+    assert_eq!(
+        (
+            probes[1].in_render,
+            probes[1].in_component,
+            probes[1].render_kind
+        ),
+        (true, false, Some(super::RenderKind::Function))
+    );
     assert_ne!(probes[0].function, probes[1].function);
 }
 
@@ -150,7 +196,14 @@ fn nested_component_declaration_gets_outer_context_and_inner_body_owns_its_scope
 fn ordinary_nested_function_is_a_render_boundary_but_array_callback_is_synchronous() {
     let source = "function Row() { function later() { probe(); } items.map(item => probe()); probe(); return <li/>; }";
     let flags = render_flags(source);
-    assert_eq!(flags, [(false, false, None), (true, false, Some(super::RenderKind::Function)), (true, false, Some(super::RenderKind::Function))]);
+    assert_eq!(
+        flags,
+        [
+            (false, false, None),
+            (true, false, Some(super::RenderKind::Function)),
+            (true, false, Some(super::RenderKind::Function))
+        ]
+    );
     let scopes = probe_contexts(source);
     assert_ne!(scopes[0].2, scopes[1].2);
     assert_ne!(scopes[1].2, scopes[2].2);
@@ -166,14 +219,23 @@ fn render_flags_for_ts(source: &str) -> Vec<(bool, bool, Option<super::RenderKin
     observations(source, SourceType::ts())
         .into_iter()
         .filter(|observation| observation.kind == "probe")
-        .map(|observation| (observation.in_render, observation.in_component, observation.render_kind))
+        .map(|observation| {
+            (
+                observation.in_render,
+                observation.in_component,
+                observation.render_kind,
+            )
+        })
         .collect()
 }
 
 #[test]
 fn parenthesized_satisfies_wrapped_jsx_expression_body_is_detected() {
     let source = "const Row = () => (probe(), (<><li/></>)) satisfies JSX.Element;";
-    assert_eq!(render_flags(source), [(true, false, Some(super::RenderKind::Function))]);
+    assert_eq!(
+        render_flags(source),
+        [(true, false, Some(super::RenderKind::Function))]
+    );
 }
 
 #[test]
@@ -184,7 +246,11 @@ fn named_and_anonymous_wrapper_callbacks_ignore_binding_case() {
             "function () { probe(); return <li/>; }",
         ] {
             let source = format!("const row = {wrapper}({callback});");
-            assert_eq!(render_flags(&source), [(true, false, Some(super::RenderKind::Function))], "{source}");
+            assert_eq!(
+                render_flags(&source),
+                [(true, false, Some(super::RenderKind::Function))],
+                "{source}"
+            );
         }
     }
 }
@@ -207,7 +273,10 @@ fn only_supported_wrapper_objects_are_recognized() {
 #[test]
 fn wrapped_first_argument_unwraps_typescript_expression_wrappers() {
     let source = "const row = memo((() => { probe(); return <li/>; }) satisfies Function);";
-    assert_eq!(render_flags(source), [(true, false, Some(super::RenderKind::Function))]);
+    assert_eq!(
+        render_flags(source),
+        [(true, false, Some(super::RenderKind::Function))]
+    );
 }
 
 #[test]

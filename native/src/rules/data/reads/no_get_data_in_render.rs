@@ -7,19 +7,22 @@
 
 use oxc_ast::ast::{CallExpression, Program};
 
+use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::names::member_call_name;
 use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
-use crate::rules::report;
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/no-get-data-in-render";
 
-const CLASS_MESSAGE: &str = "getData() in render reads the state without subscribing to it, so this \
+const CLASS_MESSAGE: &str =
+    "getData() in render reads the state without subscribing to it, so this \
     component will never re-render when the data changes. Read through \
     this.useCarburetor(carburetor) instead, which subscribes to exactly the fields you read.";
 
-const FUNCTION_MESSAGE: &str = "getData() in render reads the state without subscribing to it, so this \
+const FUNCTION_MESSAGE: &str =
+    "getData() in render reads the state without subscribing to it, so this \
     component will never re-render when the data changes. Read through \
     useCarburetorValue(store, select) instead, which subscribes to exactly the fields you read.";
 
@@ -29,8 +32,8 @@ struct Check<'s> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
@@ -42,13 +45,25 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             Some(RenderKind::Function) => FUNCTION_MESSAGE,
             _ => CLASS_MESSAGE,
         };
-        self.diagnostics.push(report(self.source, call.span.start, RULE, message.to_string()));
+        self.diagnostics.push(report(
+            self.source,
+            call.span.start,
+            RULE,
+            message.to_string(),
+        ));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new() })
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            diagnostics: Vec::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]
@@ -98,21 +113,26 @@ mod tests {
 
     #[test]
     fn render_written_as_a_class_property_still_counts() {
-        let source = component("    render = () => {\n        return this.store.getData();\n    };");
+        let source =
+            component("    render = () => {\n        return this.store.getData();\n    };");
 
         assert_eq!(lines(&diagnose(&source, check)), [3]);
     }
 
     #[test]
     fn a_class_that_is_not_a_component_is_left_alone() {
-        let source = "class Plain {\n    render() {\n        return this.store.getData();\n    }\n}\n";
+        let source =
+            "class Plain {\n    render() {\n        return this.store.getData();\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn module_level_code_is_left_alone() {
-        assert_eq!(lines(&diagnose("const x = store.getData();\n", check)), [] as [usize; 0]);
+        assert_eq!(
+            lines(&diagnose("const x = store.getData();\n", check)),
+            [] as [usize; 0]
+        );
     }
 
     #[test]
@@ -128,7 +148,8 @@ mod tests {
 
     #[test]
     fn a_namespaced_base_class_is_recognised() {
-        let source = "class Widget extends carburetor.AntiHookComponent {\n    render() {\n        \
+        let source =
+            "class Widget extends carburetor.AntiHookComponent {\n    render() {\n        \
                       return this.store.getData();\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [3]);

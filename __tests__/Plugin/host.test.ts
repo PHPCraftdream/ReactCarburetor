@@ -1,6 +1,12 @@
 import {execFileSync, spawnSync} from "node:child_process";
+import {readFileSync} from "node:fs";
+import plugin from "@plugin/index.mts";
+import {RECOMMENDED} from "@plugin/recommended.mts";
+import {NO_HOOKS} from "@plugin/noHooks.mts";
 import {mkdtempSync, rmSync, writeFileSync} from "node:fs";
 import * as path from "node:path";
+
+const ROOT: string = process.cwd();
 
 /**
  * Proves the 26 carburetor rules work in the host that actually runs them.
@@ -12,7 +18,6 @@ import * as path from "node:path";
  * native/src/rules/ carries the per-rule edge-case tests; this one is "does it fire, at the right
  * place, through oxlint" for every rule, once each.
  */
-const ROOT: string = process.cwd();
 const OXLINT: string = path.join(ROOT, 'node_modules', 'oxlint', 'bin', 'oxlint');
 const RULE_ID: string = 'carburetor(no-lifecycle-class-property)';
 
@@ -40,6 +45,54 @@ const diagnosticTriples = (output: string): string[] => output.split(String.from
         return `${rule},${fields[1]},${fields[2]}`;
     })
     .sort();
+
+/**
+ * Pins the shareable oxlint presets against the severity maps the ESLint flat config reads.
+ *
+ * `recommended.mts` claims the JSON a consumer extends cannot drift from `RECOMMENDED`; this is
+ * the test that claim promised. Both hosts must ship the same rule set at the same severities,
+ * and every rule the plugin registers needs a preset entry, so adding a rule without wiring its
+ * preset line fails here instead of shipping one rule fewer for oxlint users.
+ */
+const PRESET: string = path.join(ROOT, 'plugin', 'recommended.oxlintrc.json');
+const NO_HOOKS_PRESET: string = path.join(ROOT, 'plugin', 'src', 'no-hooks.oxlintrc.json');
+
+/** The JSON preset's `rules`, keyed exactly as the flat-config map keys them. */
+const presetRules = (file: string): Record<string, string> => {
+    const parsed = JSON.parse(readFileSync(file, 'utf8')) as {rules: Record<string, string>};
+
+    return parsed.rules;
+};
+
+describe('the oxlint presets match the severity maps', () => {
+    test('recommended.oxlintrc.json carries exactly the RECOMMENDED severities', () => {
+        const rules = presetRules(PRESET);
+        const carburetor = Object.fromEntries(Object.entries(rules)
+            .filter(([id]) => id.startsWith('carburetor/')));
+
+        expect(carburetor).toEqual(RECOMMENDED);
+    });
+
+    test('no-hooks.oxlintrc.json carries exactly the NO_HOOKS severities', () => {
+        expect(presetRules(NO_HOOKS_PRESET)).toEqual(NO_HOOKS);
+    });
+
+    test('every registered rule has a recommended entry, and nothing else is preset', () => {
+        const registered = Object.keys(plugin.rules)
+            .map((rule) => `carburetor/${rule}`)
+            .sort();
+        const recommended = Object.keys(RECOMMENDED).sort();
+
+        expect(registered).toEqual(recommended);
+    });
+
+    test('the recommended preset ships only carburetor rules and the oxlint workaround', () => {
+        const extra = Object.keys(presetRules(PRESET)).filter((id) => !id.startsWith('carburetor/'));
+
+        expect(extra).toEqual(['typescript/unbound-method']);
+        expect(presetRules(PRESET)['typescript/unbound-method']).toBe('off');
+    });
+});
 
 describe('lint plugin in the oxlint host', () => {
     test('reports the fixture through the real binary', () => {

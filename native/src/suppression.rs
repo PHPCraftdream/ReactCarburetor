@@ -25,8 +25,6 @@ use std::collections::BTreeMap;
 
 use oxc_ast::ast::Program;
 
-use crate::rules::locate;
-
 /// The "carburetor/" prefix rule ids wear in comments, config files and diagnostics. Directives
 /// are stored and matched by bare name: the prefix is presentation, the bare name is identity.
 const PREFIX: &str = "carburetor/";
@@ -104,10 +102,10 @@ impl Suppression {
     /// Collects suppression directives from one parsed file's comments.
     pub fn build(program: &Program<'_>) -> Suppression {
         let mut suppression = Suppression::default();
+        let lines = crate::rules::LineTable::new(program.source_text);
 
         for comment in &program.comments {
-            let Some(parsed) = parse_directive(&program.source_text[comment.content_span()])
-            else {
+            let Some(parsed) = parse_directive(&program.source_text[comment.content_span()]) else {
                 continue;
             };
 
@@ -115,11 +113,15 @@ impl Suppression {
             // on one line, so their end is on their own line; a MULTI-line block ends at its
             // closing `*/`, so a next-line directive under it silences the first line after the
             // comment ends, not the line below where it opened.
-            let (line, _) = locate(program.source_text, comment.span.end);
+            let line = lines.line(program.source_text, comment.span.end);
 
             match parsed.scope {
                 Scope::NextLine => {
-                    suppression.lines.entry(line + 1).or_default().merge(parsed.rules);
+                    suppression
+                        .lines
+                        .entry(line + 1)
+                        .or_default()
+                        .merge(parsed.rules);
                 }
                 Scope::WholeFile => {
                     suppression.whole_file.merge(parsed.rules);
@@ -140,7 +142,9 @@ impl Suppression {
             return true;
         }
 
-        self.lines.get(&line).is_some_and(|rules| rules.covers(name))
+        self.lines
+            .get(&line)
+            .is_some_and(|rules| rules.covers(name))
     }
 }
 
@@ -164,7 +168,10 @@ fn parse_directive(content: &str) -> Option<Parsed> {
             continue;
         }
 
-        return Some(Parsed { scope, rules: parse_rules(rest) });
+        return Some(Parsed {
+            scope,
+            rules: parse_rules(rest),
+        });
     }
 
     None

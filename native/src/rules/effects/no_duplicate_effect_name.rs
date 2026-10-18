@@ -10,6 +10,7 @@ use std::collections::HashSet;
 use oxc_ast::ast::{CallExpression, Expression, Program};
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::names::{called_on_this, member_call_name};
 use crate::rules::support::walk::{walk_rule, Context, Rule};
 use crate::{Diagnostic, Source};
@@ -25,8 +26,8 @@ struct Check<'s> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
@@ -35,7 +36,8 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         }
 
-        let Some(Expression::StringLiteral(name)) = call.arguments.first().and_then(|a| a.as_expression())
+        let Some(Expression::StringLiteral(name)) =
+            call.arguments.first().and_then(|a| a.as_expression())
         else {
             return;
         };
@@ -65,13 +67,22 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             name.value
         );
 
-        self.diagnostics.push(report(self.source, name.span.start, RULE, message));
+        self.diagnostics
+            .push(report(self.source, name.span.start, RULE, message));
     }
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
-    walk_rule(program, Check { source, diagnostics: Vec::new(), seen: HashSet::new() })
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(
+        program,
+        Check {
+            source,
+            diagnostics: Vec::new(),
+            seen: HashSet::new(),
+        },
+        bases,
+    )
 }
 
 #[cfg(test)]
@@ -81,7 +92,9 @@ mod tests {
 
     /// Wraps a method body in a component, so each test reads as the code it is about.
     fn component(body: &str) -> String {
-        format!("class Widget extends AntiHookComponent {{\n    useEffects() {{\n{body}\n    }}\n}}\n")
+        format!(
+            "class Widget extends AntiHookComponent {{\n    useEffects() {{\n{body}\n    }}\n}}\n"
+        )
     }
 
     #[test]

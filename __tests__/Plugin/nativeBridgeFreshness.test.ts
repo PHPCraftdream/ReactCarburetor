@@ -3,7 +3,7 @@ import {mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync}
 import * as os from "node:os";
 import * as path from "node:path";
 import {describe, expect, rstest, test} from "@rstest/core";
-import {runNativeOnce} from "@plugin/Utils/Native/nativeBridge.mts";
+import {runNative} from "@plugin/Utils/Native/nativeBridge.mts";
 
 type TNativeSpawn = typeof spawnSync;
 
@@ -40,19 +40,19 @@ describe('native bridge freshness', () => {
             writeFileSync(file, 'first');
             utimesSync(file, past, past);
 
-            expect(runNativeOnce(cwd, () => 'stub', file)[0].message).toBe('first');
-            expect(runNativeOnce(cwd, () => 'stub', file)[0].message).toBe('first');
+            expect(runNative(cwd, () => 'stub', file)[0].message).toBe('first');
+            expect(runNative(cwd, () => 'stub', file)[0].message).toBe('first');
             expect(nativeSpawn).toHaveBeenCalledTimes(1);
 
             writeFileSync(file, 'second');
 
-            expect(runNativeOnce(cwd, () => 'stub', file)[0].message).toBe('second');
+            expect(runNative(cwd, () => 'stub', file)[0].message).toBe('second');
             expect(nativeSpawn).toHaveBeenCalledTimes(2);
 
             utimesSync(file, past, past);
 
-            expect(runNativeOnce(cwd, () => 'stub', file)[0].message).toBe('second');
-            expect(runNativeOnce(cwd, () => 'stub')[0].message).toBe('second');
+            expect(runNative(cwd, () => 'stub', file)[0].message).toBe('second');
+            expect(runNative(cwd, () => 'stub')[0].message).toBe('second');
             expect(nativeSpawn).toHaveBeenCalledTimes(2);
 
             // A save whose coarse mtime trails the scan start by a moment still counts as newer.
@@ -60,7 +60,7 @@ describe('native bridge freshness', () => {
             const trailing = new Date(Date.now() - 1_000);
             utimesSync(file, trailing, trailing);
 
-            expect(runNativeOnce(cwd, () => 'stub', file)[0].message).toBe('third');
+            expect(runNative(cwd, () => 'stub', file)[0].message).toBe('third');
             expect(nativeSpawn).toHaveBeenCalledTimes(3);
         } finally {
             rmSync(cwd, {recursive: true, force: true});
@@ -77,16 +77,16 @@ describe('native bridge freshness', () => {
             stubNative(failing);
             writeFileSync(file, 'first');
             utimesSync(file, past, past);
-            runNativeOnce(cwd, () => 'stub', file);
+            runNative(cwd, () => 'stub', file);
             writeFileSync(file, 'second');
             failing.on = true;
 
-            expect(() => runNativeOnce(cwd, () => 'stub', file)).toThrow();
-            expect(() => runNativeOnce(cwd, () => 'stub', file)).toThrow();
+            expect(() => runNative(cwd, () => 'stub', file)).toThrow();
+            expect(() => runNative(cwd, () => 'stub', file)).toThrow();
 
             failing.on = false;
 
-            expect(runNativeOnce(cwd, () => 'stub', file)[0].message).toBe('second');
+            expect(runNative(cwd, () => 'stub', file)[0].message).toBe('second');
         } finally {
             rmSync(cwd, {recursive: true, force: true});
         }
@@ -104,8 +104,8 @@ describe('native bridge freshness', () => {
             writeFileSync(path.join(first, 'a.ts'), 'one');
             writeFileSync(path.join(second, 'a.ts'), 'two');
 
-            expect(runNativeOnce(first, () => 'stub')[0].message).toBe('one');
-            expect(runNativeOnce(second, () => 'stub')[0].message).toBe('two');
+            expect(runNative(first, () => 'stub')[0].message).toBe('one');
+            expect(runNative(second, () => 'stub')[0].message).toBe('two');
         } finally {
             rmSync(parent, {recursive: true, force: true});
         }

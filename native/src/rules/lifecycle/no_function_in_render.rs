@@ -9,16 +9,21 @@
 //! this rule covers only what it does not: DOM-element attributes and locals in the render body.
 //! See docs/hazards.md, H31.
 
-use oxc_ast::ast::{CallExpression, Expression, Function, JSXAttribute, Program, VariableDeclarator};
+use oxc_ast::ast::{
+    CallExpression, Expression, Function, JSXAttribute, Program, VariableDeclarator,
+};
 use oxc_semantic::Semantic;
 use oxc_span::Span;
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::bases::SYNCHRONOUS_CALLBACKS;
 use crate::rules::support::closures::{build_semantic, CaptureIndex};
 use crate::rules::support::names::{member_call_name, unwrap_expression};
+use crate::rules::support::walk::functions::{
+    fresh_attribute_functions, fresh_declaration_functions,
+};
 use crate::rules::support::walk::{walk_rule, Context, RenderKind, Rule};
-use crate::rules::support::walk::functions::{fresh_attribute_functions, fresh_declaration_functions};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -59,8 +64,8 @@ impl Check<'_, '_> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s, 'a> {
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 
     fn jsx_attribute(&mut self, attribute: &JSXAttribute<'a>, context: &Context) {
@@ -74,8 +79,12 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
 
         // The report lands on the function itself, where a method declaration would go.
         for span in spans {
-            self.diagnostics
-                .push(report(self.source, span.start, RULE, self.message(span, context)));
+            self.diagnostics.push(report(
+                self.source,
+                span.start,
+                RULE,
+                self.message(span, context),
+            ));
         }
     }
 
@@ -94,8 +103,12 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
                 continue;
             };
             if let Some(span) = fresh_callback(unwrap_expression(expression)) {
-                self.diagnostics
-                    .push(report(self.source, span.start, RULE, self.message(span, context)));
+                self.diagnostics.push(report(
+                    self.source,
+                    span.start,
+                    RULE,
+                    self.message(span, context),
+                ));
             }
         }
     }
@@ -111,8 +124,12 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
         }
 
         for span in spans {
-            self.diagnostics
-                .push(report(self.source, span.start, RULE, self.message(span, context)));
+            self.diagnostics.push(report(
+                self.source,
+                span.start,
+                RULE,
+                self.message(span, context),
+            ));
         }
     }
 
@@ -133,10 +150,10 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
 
-    check_with_semantic(program, source, &semantic)
+    check_with_semantic(program, source, &semantic, bases)
 }
 
 /// Runs the rule with a semantic pass shared across rules.
@@ -144,6 +161,7 @@ pub(in crate::rules) fn check_with_semantic<'a, 's>(
     program: &Program<'a>,
     source: &'s Source<'s>,
     semantic: &'s Semantic<'a>,
+    bases: &'s Bases,
 ) -> Vec<Diagnostic> {
     let index = CaptureIndex::new(semantic);
     walk_rule(
@@ -154,6 +172,7 @@ pub(in crate::rules) fn check_with_semantic<'a, 's>(
             index,
             diagnostics: Vec::new(),
         },
+        bases,
     )
 }
 
@@ -171,9 +190,7 @@ mod tests {
 
     /// Wraps a render body in a component, so each test reads as the code it is about.
     fn render(body: &str) -> String {
-        format!(
-            "class Widget extends AntiHookComponent {{\n    render() {{\n{body}\n    }}\n}}\n"
-        )
+        format!("class Widget extends AntiHookComponent {{\n    render() {{\n{body}\n    }}\n}}\n")
     }
 
     fn run_rules_with(text: &str, customize: impl FnOnce(&mut Config)) -> Vec<Diagnostic> {
@@ -191,10 +208,7 @@ mod tests {
 
         crate::rules::run(
             &parsed.program,
-            &crate::Source {
-                path: Path::new("fixture.tsx"),
-                text,
-            },
+            &crate::Source::new(Path::new("fixture.tsx"), text),
             &config,
             false,
         )
@@ -261,9 +275,8 @@ mod tests {
 
     #[test]
     fn a_per_item_handler_inside_a_map_is_reported_with_the_map_callback() {
-        let source = render(
-            "        return items.map(item => <li onClick={() => this.select(item.id)}/>);",
-        );
+        let source =
+            render("        return items.map(item => <li onClick={() => this.select(item.id)}/>);");
 
         // Both the map callback itself and the inner handler arrow are fresh functions.
         let diagnostics = diagnose(&source, check);

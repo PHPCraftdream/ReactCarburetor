@@ -11,21 +11,20 @@
 
 use std::collections::HashSet;
 
-use oxc_ast::ast::{
-    ArrowFunctionExpression, Class, Expression, Function, NewExpression, Program,
-};
+use oxc_ast::ast::{ArrowFunctionExpression, Class, Expression, Function, NewExpression, Program};
 use oxc_ast_visit::{walk, Visit};
 use oxc_syntax::scope::ScopeFlags;
 
 use crate::rules::report;
-use crate::rules::support::bases::CARBURETOR_BASES;
-use crate::rules::support::names::extends_any;
+use crate::rules::support::bases::{Bases, ClassChains};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/no-module-level-store";
 
 struct Check {
+    bases: Bases,
+    chains: ClassChains,
     /// Depth of enclosing functions/classes; zero means the expression runs once, at module load.
     scope_depth: u32,
     /// Classes in this file that are stores, so a `new` of them is recognised by evidence.
@@ -35,7 +34,7 @@ struct Check {
 
 impl<'a> Visit<'a> for Check {
     fn visit_class(&mut self, class: &Class<'a>) {
-        if extends_any(class, &CARBURETOR_BASES) {
+        if self.chains.reaches(class, |name| self.bases.is_store(name)) {
             if let Some(id) = &class.id {
                 self.local_stores.insert(id.name.to_string());
             }
@@ -61,7 +60,8 @@ impl<'a> Visit<'a> for Check {
     fn visit_new_expression(&mut self, expression: &NewExpression<'a>) {
         if self.scope_depth == 0 {
             if let Expression::Identifier(callee) = &expression.callee {
-                self.suspects.push((expression.span.start, callee.name.to_string()));
+                self.suspects
+                    .push((expression.span.start, callee.name.to_string()));
             }
         }
 
@@ -70,8 +70,10 @@ impl<'a> Visit<'a> for Check {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let mut check = Check {
+        bases: bases.clone(),
+        chains: ClassChains::build(program),
         scope_depth: 0,
         local_stores: HashSet::new(),
         suspects: Vec::new(),
@@ -84,7 +86,11 @@ pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
     check
         .suspects
         .iter()
-        .filter(|(_, name)| check.local_stores.contains(name) || name.ends_with("Carburetor"))
+        .filter(|(_, name)| {
+            check.local_stores.contains(name)
+                || name.ends_with("Carburetor")
+                || check.bases.is_store(name)
+        })
         .map(|(offset, name)| {
             let message = format!(
                 "{name} is created once per module, so on a server every request shares this \
@@ -125,7 +131,8 @@ mod tests {
 
     #[test]
     fn an_instance_created_per_render_inside_a_class_is_not_module_level() {
-        let source = "class Factory {\n    build() {\n        return new TodoCarburetor(api);\n    }\n}\n";
+        let source =
+            "class Factory {\n    build() {\n        return new TodoCarburetor(api);\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }

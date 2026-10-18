@@ -11,6 +11,7 @@ use oxc_ast::ast::{CallExpression, Expression, Program};
 use oxc_span::Span;
 
 use crate::rules::report;
+use crate::rules::support::bases::Bases;
 use crate::rules::support::chain::ChainRoot;
 use crate::rules::support::names::member_call_name;
 use crate::rules::support::walk::{walk_rule, Context, Rule};
@@ -19,7 +20,8 @@ use crate::{Diagnostic, Source};
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/require-emit-after-draft-write";
 
-const MESSAGE: &str = "this writes through draft but never publishes: the data changes while nobody \
+const MESSAGE: &str =
+    "this writes through draft but never publishes: the data changes while nobody \
     is notified, so the interface keeps showing the previous value. Use this.update(draft => ...), \
     which mutates and publishes in one step, or call this.emitUpdate() before returning.";
 
@@ -65,8 +67,10 @@ impl<'s> Check<'s> {
         let mut exempt_by_class: HashMap<Option<Span>, HashSet<String>> = HashMap::new();
 
         for class in classes {
-            let mut exempt: HashSet<String> =
-                PUBLISHING_CONTEXT.iter().map(|name| name.to_string()).collect();
+            let mut exempt: HashSet<String> = PUBLISHING_CONTEXT
+                .iter()
+                .map(|name| name.to_string())
+                .collect();
             let mut queue: VecDeque<String> = exempt.iter().cloned().collect();
 
             while let Some(name) = queue.pop_front() {
@@ -89,7 +93,7 @@ impl<'s> Check<'s> {
 }
 
 impl<'a, 's> Rule<'a> for Check<'s> {
-    fn finish(self) -> Vec<Diagnostic> {
+    fn finish(&mut self) -> Vec<Diagnostic> {
         let exempt = self.exempt();
         let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
@@ -99,7 +103,9 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             }
 
             let exempted = write.member.as_ref().is_some_and(|name| {
-                exempt.get(&write.class).is_some_and(|names| names.contains(name))
+                exempt
+                    .get(&write.class)
+                    .is_some_and(|names| names.contains(name))
             });
 
             if exempted {
@@ -122,13 +128,11 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             return;
         };
 
-        self.writes
-            .entry(member)
-            .or_insert_with(|| Write {
-                offset: span.start,
-                class: context.class_span,
-                member: context.member.clone(),
-            });
+        self.writes.entry(member).or_insert_with(|| Write {
+            offset: span.start,
+            class: context.class_span,
+            member: context.member.clone(),
+        });
     }
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
@@ -167,7 +171,7 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
     let mut diagnostics = walk_rule(
         program,
         Check {
@@ -176,6 +180,7 @@ pub fn check(program: &Program<'_>, source: &Source) -> Vec<Diagnostic> {
             publishes: HashSet::new(),
             calls_from: HashMap::new(),
         },
+        bases,
     );
 
     // The findings come out of a map, so they are ordered here rather than left to chance: the
@@ -222,8 +227,9 @@ mod tests {
 
     #[test]
     fn emit_soon_counts_as_publishing() {
-        let source =
-            store("    rename(name) {\n        this.draft.name = name;\n        this.emitSoon();\n    }");
+        let source = store(
+            "    rename(name) {\n        this.draft.name = name;\n        this.emitSoon();\n    }",
+        );
 
         assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
     }

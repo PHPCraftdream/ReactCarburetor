@@ -22,6 +22,9 @@ export class Row extends AntiHookComponent<{id: string}> {
         // no-computed-get-in-render
         const count = visibleCount.get();
 
+        // a keyed `get` is somebody else's `get`: the rule's argument guard must keep it silent
+        const keyed = new Map([[1, 'x']]).get(1);
+
         const data = this.useCarburetor(store);
 
         // no-escaping-tracked-data
