@@ -50,6 +50,19 @@ describe('affected select', () => {
         }
     });
 
+    it('an unreachable base commit fails safe with a full run', () => {
+        const run = spawnSync(
+            process.execPath,
+            [join(root, 'scripts', 'affected.mjs'), '--base', '0123456789abcdef0123456789abcdef01234567', '--json'],
+            {cwd: root, encoding: 'utf8'},
+        );
+        expect(run.status).toBe(0);
+        const plan = JSON.parse(run.stdout);
+        expect(plan.full).toBe(true);
+        expect(plan.examples).toBe(true);
+        expect(plan.reasons.join('\n')).toContain('base unreachable');
+    });
+
     it('store file forces full run', () => {
         const r = select(['lib/src/Carburetor/Store/Carburetor.ts'], map);
         expect(r.full).toBe(true);

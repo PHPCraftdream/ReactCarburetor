@@ -151,6 +151,15 @@ function collectFiles(base) {
     return [...new Set(files.map(norm))];
 }
 
+// A rewritten history (force-push) leaves the push's `before` commit missing: fail safe with a full run.
+function baseReachable(base) {
+    return spawnSync('git', ['cat-file', '-e', base + '^{commit}'], {stdio: 'ignore'}).status === 0;
+}
+
+function unreachableBasePlan(base) {
+    return {full: true, docsOnly: false, native: false, rstest: [], perfAreas: [], examples: true, reasons: ['base unreachable: ' + base]};
+}
+
 function defaultBase() {
     try {
         git(['rev-parse', '--verify', '--quiet', 'origin/master']);
@@ -269,8 +278,9 @@ function main() {
         else if (argv[i] === '--files') filesArg = argv[++i];
         else if (argv[i] === '--json') json = true;
     }
-    const files = filesArg ? filesArg.split(',').map((s) => s.trim()).filter(Boolean) : collectFiles(base);
-    const result = select(files, loadMap());
+    const lost = !filesArg && !baseReachable(base);
+    const files = filesArg ? filesArg.split(',').map((s) => s.trim()).filter(Boolean) : lost ? [] : collectFiles(base);
+    const result = lost ? unreachableBasePlan(base) : select(files, loadMap());
     if (json) {
         console.log(JSON.stringify({base, files, ...result}, null, 2));
         return;

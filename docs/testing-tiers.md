@@ -58,7 +58,8 @@ Documentation examples in README and docs Markdown (excluding `docs/reviews/**` 
 checks tier 1 selects, plus lint and typecheck, combined into one unified
 fast-gate check on every push and pull request. Plans are written to the runner's
 external temporary directory; first pushes use the merge-base with `origin/master` (or
-fall back to the parent SHA).
+fall back to the parent SHA). A base commit that is missing after a force-push makes the plan a
+full run.
 
 ## Tier 3 — sprint end (full)
 

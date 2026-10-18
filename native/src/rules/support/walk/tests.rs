@@ -194,7 +194,7 @@ fn default_exported_wrapper_callback_is_a_render_scope() {
     let source = "export default memo(function () { probe(); return <li/>; });";
     let observed = observations(source, SourceType::tsx());
     assert_eq!(observed.len(), 1);
-    assert_eq!(observed[0].in_render, true);
+    assert!(observed[0].in_render);
     assert_eq!(observed[0].render_kind, Some(super::RenderKind::Function));
 }
 
@@ -206,8 +206,8 @@ fn only_supported_wrapper_objects_are_recognized() {
 
 #[test]
 fn wrapped_first_argument_unwraps_typescript_expression_wrappers() {
-    let body = format!("const row = memo((() => {{ probe(); return <li/>; }}) satisfies Function);");
-    assert_eq!(render_flags(&body), [(true, false, Some(super::RenderKind::Function))]);
+    let source = "const row = memo((() => { probe(); return <li/>; }) satisfies Function);";
+    assert_eq!(render_flags(source), [(true, false, Some(super::RenderKind::Function))]);
 }
 
 #[test]
