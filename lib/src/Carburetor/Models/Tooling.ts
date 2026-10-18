@@ -24,7 +24,8 @@ export interface IPersistOptions {
     key: string;
     storage: IStorageLike;
     /** Load/write errors reach this callback. Without it, getItem failures throw;
-     * corrupt stored data is removed by default.
+     * corrupt or unrestorable stored data is still removed: reported through the engine
+     * diagnostics in development, silently in production.
      */
     onError?: (error: unknown) => void;
     /**
@@ -36,6 +37,23 @@ export interface IPersistOptions {
      * The disposer always flushes a write still pending (coalesce true or false).
      */
     coalesce?: boolean;
+    /**
+     * Minimum time in milliseconds between two storage writes. The first write still happens
+     * right away; later flushes wait until the window since the previous write has passed, and
+     * the disposer writes a state still held back. Requires the default coalescing; a negative
+     * or non-finite value throws.
+     */
+    throttleMs?: number;
+    /**
+     * Opt-in partitioned storage: one key per named top-level branch of the wire form
+     * (`key + "." + branch`), each rewritten only when that branch changed, so a flush pays
+     * for the dirty partitions instead of the whole state. The first write seals every
+     * partition once. Restore composes the stored branches over the current state: branches
+     * without a stored entry keep their value, and a legacy whole-store entry is read when no
+     * partition entries exist yet. Branch names must be plain top-level keys of the wire form;
+     * anything else throws.
+     */
+    partitions?: ReadonlyArray<string>;
 }
 
 export interface IHistoryOptions {

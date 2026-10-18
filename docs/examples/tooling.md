@@ -100,14 +100,25 @@ stop();
 
 The returned disposer stops persisting and flushes a pending write. Load and write errors
 reach `onError`; without it a failed read throws, and corrupt stored data is removed by
-default.
+default — reported through the engine diagnostics in development, silently in production.
+
+Two options bound the cost of mirroring large stores. `throttleMs` sets the minimum time
+between storage writes: the first write still happens right away, later flushes wait out the
+window, and the disposer writes a state still held back. `partitions` lists top-level branch
+names to store under their own keys (`todos.items` next to `todos.filters`), rewriting only
+the branches that changed — a flush then pays for the dirty partitions instead of the whole
+state. The first write seals every partition once; restore composes the stored branches over
+the current state, and a legacy single-key entry is still read when no partition entries
+exist yet.
 
 ## Redux DevTools
 
 `connectDevTools` publishes the state of the given carburetors to the Redux DevTools
 extension and applies time travel back onto them. Each key of the object becomes a top-level
 key of the published state; the `extension` option replaces the auto-discovered browser
-extension, which is how tests and non-browser environments inject a stub.
+extension, which is how tests and non-browser environments inject a stub. Every update
+publishes one action per notifying store; a time-travel jump is never published back, even
+when a deferring scheduler delivers the matching update after the jump.
 
 <!-- example:file examples/api/tooling/DevTools.ts -->
 ```ts

@@ -268,6 +268,28 @@ describe('connectDevTools', () => {
         dispose();
     });
 
+    test('a deferred scheduler never publishes time travel as a new action', async () => {
+        const carburetor = new CounterCarburetor(getData(), new ComponentUpdateThrottle(40));
+        const fake = createFakeExtension();
+
+        const dispose = connectDevTools({counter: carburetor}, {extension: fake.extension});
+
+        carburetor.setValue(9);
+        fake.emit({
+            type: EDevToolsMessageType.Dispatch,
+            payload: {type: EDevToolsAction.JumpToAction, actionId: 1},
+            state: JSON.stringify({counter: {value: 1, label: 'start'}}),
+        });
+        expect(carburetor.getData().value).toEqual(1);
+
+        await new Promise(resolve => setTimeout(resolve, 60));
+
+        // The throttled publication of the jump itself must not reach DevTools as an action.
+        expect(fake.sent.length).toEqual(0);
+
+        dispose();
+    });
+
     test('is a no-op when no extension is present', () => {
         const carburetor = new CounterCarburetor(getData());
         const dispose = connectDevTools({counter: carburetor});

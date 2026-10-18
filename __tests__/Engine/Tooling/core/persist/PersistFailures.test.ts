@@ -155,4 +155,30 @@ describe('persist storage failures', () => {
         })).toThrow(userError);
         expect(() => persist(new Carburetor({count: 0}), {key: 'slot', storage: reading})).toThrow('read');
     });
+
+    test('an unrestorable entry without onError is removed loudly in development', () => {
+        const restoreError = new Error('state model rejected the entry');
+        const reported: string[] = [];
+        const original = console.error;
+        console.error = (message: string) => { reported.push(message); };
+        let removed = 0;
+        const storage: IStorageLike = {
+            getItem: () => JSON.stringify({count: 7}),
+            removeItem: () => { removed++; },
+            setItem: () => undefined,
+        };
+        class RejectingStore extends Carburetor<{count: number}> {
+            /** Rejects invalid restored data, retaining the current state. */
+            public restore(): void { throw restoreError; }
+        }
+        try {
+            persist(new RejectingStore({count: 0}), {key: 'slot', storage, coalesce: false});
+        } finally {
+            console.error = original;
+        }
+        expect(removed).toBe(1);
+        expect(reported).toHaveLength(1);
+        expect(reported[0]).toContain('slot');
+        expect(reported[0]).toContain('state model rejected the entry');
+    });
 });

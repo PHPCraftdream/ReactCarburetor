@@ -74,7 +74,8 @@
   "registered": {
     "sha": "unreleased",
     "files": {
-      "dev.mjs": {"hash":"2b72a89573d8f652731ac74c004b65c80eeb50452a5fbb3b61dd903d5583e9ec","manifest":[{"id":"dev/unpublished-draft","improvement":"control","scenario":"dev/unpublished-draft","args":[],"gates":[{"metric":"distinctCallbacks","equals":1},{"metric":"queued","min":1},{"metric":"deliveries","equals":9},{"metric":"warnings","equals":1},{"metric":"finalN","equals":9},{"metric":"done","equals":true}]}]}
+      "dev.mjs": {"hash":"2b72a89573d8f652731ac74c004b65c80eeb50452a5fbb3b61dd903d5583e9ec","manifest":[{"id":"dev/unpublished-draft","improvement":"control","scenario":"dev/unpublished-draft","args":[],"gates":[{"metric":"distinctCallbacks","equals":1},{"metric":"queued","min":1},{"metric":"deliveries","equals":9},{"metric":"warnings","equals":1},{"metric":"finalN","equals":9},{"metric":"done","equals":true}]}]},
+      "persist.mjs": {"hash":"1738ee0fe95b556bc3c932910e15fcf70be92a8bf1130f585730885bac1c781b","manifest":[{"id":"store/r33-persist-partition@10k","improvement":"R2026-10-16","scenario":"store/r33-persist-partition","args":[10000,50],"gates":[{"metric":"wholeKeyWrites","equals":0},{"metric":"sealBranchKeys","equals":10},{"metric":"dirtyFlushKeys","equals":1},{"metric":"contentOk","equals":true}]},{"id":"store/r33-persist-throttle@10k","improvement":"R2026-10-16","scenario":"store/r33-persist-throttle","args":[10000,5],"gates":[{"metric":"burstWrites","equals":1},{"metric":"writesBeforeDispose","equals":2},{"metric":"setItemCalls","equals":2},{"metric":"contentOk","equals":true}]}]}
     }
   }
 }

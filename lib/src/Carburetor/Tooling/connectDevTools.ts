@@ -19,6 +19,10 @@ const findExtension = (): IDevToolsExtension | undefined => {
  * applies time travel back onto them. Returns a disposer; if no extension is available
  * the call is a no-op.
  *
+ * Every update publishes one action per notifying store. A time-travel jump is never
+ * published back, even when a deferring scheduler delivers the matching update after
+ * the jump has been applied.
+ *
  * @param carburetors - keyed by name; each name becomes a top-level key of the published state
  * @param options - `extension` replaces the auto-discovered Redux extension, `name` titles the connection
  */
@@ -33,6 +37,10 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
     const subscriberId = getUid();
     const names = Object.keys(carburetors);
     let applyingTimeTravel = false;
+    // Versions installed by the last jump, per store name: a publication still at that
+    // version is the jump's own echo (a deferred scheduler delivers it after the flag
+    // below has been reset) and must not become a new DevTools action.
+    const jumpedVersions: IDict<number> = Object.create(null);
 
     const snapshots: IDict<{state: unknown; version: number}> = Object.create(null);
 
@@ -64,6 +72,17 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
             return;
         }
 
+        // A publication still at the version the jump installed is the jump's own echo.
+        const jumped = jumpedVersions[name];
+
+        if (jumped !== undefined) {
+            delete jumpedVersions[name];
+
+            if (jumped === carburetors[name].getVersion()) {
+                return;
+            }
+        }
+
         connection.send(name + '/update', composeState());
     };
 
@@ -84,6 +103,7 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
             names.forEach((name: string) => {
                 if (Object.prototype.hasOwnProperty.call(next, name)) {
                     carburetors[name].fromJSON(next[name]);
+                    jumpedVersions[name] = carburetors[name].getVersion();
                 }
             });
         } finally {
