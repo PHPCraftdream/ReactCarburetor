@@ -23,9 +23,12 @@ export interface IStorageLike {
 export interface IPersistOptions {
     key: string;
     storage: IStorageLike;
-    /** Load/write errors reach this callback. Without it, getItem failures throw;
-     * corrupt or unrestorable stored data is still removed: reported through the engine
-     * diagnostics in development, silently in production.
+    /**
+     * Load/write errors reach this callback. Without it, getItem failures throw.
+     *
+     * Corrupt data and an unrestorable single entry are removed and reported (engine diagnostics
+     * in development, silent in production). With several `partitions` a failed restore keeps
+     * every stored entry, since the guilty one is unknown.
      */
     onError?: (error: unknown) => void;
     /**
@@ -50,8 +53,11 @@ export interface IPersistOptions {
      * for the dirty partitions instead of the whole state. The first write seals every
      * partition once. Restore composes the stored branches over the current state: branches
      * without a stored entry keep their value, and a legacy whole-store entry is read when no
-     * partition entries exist yet. Branch names must be plain top-level keys of the wire form;
-     * anything else throws.
+     * partition entries exist yet. A restore the store rejects removes the stored entry only
+     * when the culprit is known — a single key, or the one stored partition; with several
+     * stored partitions the entries are kept and the failure is only reported. A malformed
+     * entry that cannot be parsed is still removed on its own. Branch names must be plain
+     * top-level keys of the wire form; anything else throws.
      */
     partitions?: ReadonlyArray<string>;
 }

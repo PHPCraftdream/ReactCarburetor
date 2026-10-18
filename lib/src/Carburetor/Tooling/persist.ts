@@ -4,8 +4,19 @@ import {IStorageLike, IPersistOptions} from "@/Carburetor/Models/Tooling";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 
-/** Reports a failed restore to onError, or loudly in development when the caller gave none. */
-const reportRestoreFailure = (subject: string, error: unknown, onError: ((error: unknown) => void) | undefined): void => {
+/** Reports a failed restore to onError, or loudly in development when the caller gave none.
+ *
+ * @param subject - the storage key whose stored entry was rejected.
+ * @param error - the thrown parse or restore failure.
+ * @param onError - the caller's handler, absent when none was given.
+ * @param outcome - what happened to the stored data after the report.
+ */
+const reportRestoreFailure = (
+    subject: string,
+    error: unknown,
+    onError: ((error: unknown) => void) | undefined,
+    outcome: string
+): void => {
     if (onError) {
         onError(error);
 
@@ -16,12 +27,16 @@ const reportRestoreFailure = (subject: string, error: unknown, onError: ((error:
         diagnostics.report(
             'persist: stored entry "' + subject + '" could not be restored ('
             + (error instanceof Error ? error.message : String(error))
-            + '); the stored data was removed. Pass onError to handle restore failures yourself.'
+            + '); ' + outcome + '. Pass onError to handle restore failures yourself.'
         );
     }
 };
 
-/** Reports a failed cleanup to onError, or rethrows when there is none — the read-path policy. */
+/** Reports a failed cleanup to onError, or rethrows when there is none — the read-path policy.
+ *
+ * @param onError - the caller's handler, absent when none was given.
+ * @param error - the thrown removal failure.
+ */
 const reportRemovalFailure = (onError: ((error: unknown) => void) | undefined, error: unknown): void => {
     if (onError) {
         onError(error);
@@ -32,9 +47,14 @@ const reportRemovalFailure = (onError: ((error: unknown) => void) | undefined, e
 
 type TPersistOptions = Pick<IPersistOptions, "onError" | "coalesce" | "throttleMs" | "partitions">;
 
-/**
- * The partitioned storage layout: one key per branch (`key + "." + branch`), a legacy
+/** The partitioned storage layout: one key per branch (`key + "." + branch`), a legacy
  * whole-store entry as the read fallback, a sealed first flush as the write baseline.
+ *
+ * @param carburetor - both read and written: stored branches are restored into it, live
+ * branches are stringified on flush.
+ * @param key - the storage key prefix; partition entries live at `key + "." + branch`.
+ * @param storage - the storage adapter holding the partition entries.
+ * @param options - the validated subset of persist options the layout needs.
  */
 const persistPartitions = <T extends object>(
     carburetor: ICarburetor<T>,
@@ -91,7 +111,7 @@ const persistPartitions = <T extends object>(
             parsed[branch] = JSON.parse(entry);
         } catch (error: unknown) {
             delete lastWritten[branch];
-            reportRestoreFailure(branchKey(branch), error, onError);
+            reportRestoreFailure(branchKey(branch), error, onError, 'the stored data was removed');
 
             try {
                 storage.removeItem(branchKey(branch));
@@ -115,14 +135,24 @@ const persistPartitions = <T extends object>(
         try {
             carburetor.restore(target as T);
         } catch (error: unknown) {
-            reportRestoreFailure(key, error, onError);
-            restored.forEach((branch: string) => {
+            if (partitions.length === 1) {
+                // The only configured partition is the known culprit: report, then drop its
+                // entry like a malformed one, so the next connection starts from defaults.
+                const [branch] = partitions;
+
+                reportRestoreFailure(branchKey(branch), error, onError, 'the stored data was removed');
+                delete lastWritten[branch];
+
                 try {
                     storage.removeItem(branchKey(branch));
                 } catch (removeError: unknown) {
                     reportRemovalFailure(onError, removeError);
                 }
-            });
+            } else {
+                // Several partitions are configured: the guilty one is unknown, so no stored
+                // entry is deleted — the next connection can retry once this is fixed.
+                reportRestoreFailure(key, error, onError, 'the stored data is kept');
+            }
         }
     } else {
         let legacy: string | null;
@@ -142,7 +172,7 @@ const persistPartitions = <T extends object>(
             try {
                 carburetor.restore(JSON.parse(legacy) as T);
             } catch (error: unknown) {
-                reportRestoreFailure(key, error, onError);
+                reportRestoreFailure(key, error, onError, 'the stored data was removed');
 
                 try {
                     storage.removeItem(key);
@@ -159,9 +189,15 @@ const persistPartitions = <T extends object>(
     let lastWriteAt = 0;
     let sealed = false;
     const pending: Set<string> = new Set<string>();
+    const failed: Set<string> = new Set<string>();
     let timer: ReturnType<typeof setTimeout> | undefined;
     let queued = false;
+    let disposed = false;
 
+    /** Writes one branch, keeping `lastWritten` truthful and failed attempts retryable.
+     *
+     * @param branch - the partition to stringify and store.
+     */
     const writeBranchDirect = (branch: string): void => {
         let value: string | undefined;
 
@@ -176,34 +212,45 @@ const persistPartitions = <T extends object>(
             return;
         }
 
-        // Mark this version as attempted even on failure: dispose must not retry it.
+        // Version seen: a branch whose write failed stays in `failed` and is retried by itself.
         lastSeenVersion = carburetor.getVersion();
 
         if (value === lastWritten[branch]) {
+            failed.delete(branch);
+
             return;
         }
 
         try {
             if (value === undefined) {
                 if (lastWritten[branch] !== undefined) {
-                    delete lastWritten[branch];
                     storage.removeItem(branchKey(branch));
+                    delete lastWritten[branch];
                 }
+
+                failed.delete(branch);
 
                 return;
             }
 
-            lastWritten[branch] = value;
             storage.setItem(branchKey(branch), value);
+            lastWritten[branch] = value;
             lastWriteAt = Date.now();
+            failed.delete(branch);
         } catch (error: unknown) {
+            // The partition stays failed: the next dispatch (or the disposer) retries it.
+            failed.add(branch);
+
             if (onError) {
                 onError(error);
             }
         }
     };
 
-    // The first write seals the baseline: every partition lands in storage once.
+    /** Writes one branch, sealing the whole baseline on the first call.
+     *
+     * @param branch - the partition the notification named.
+     */
     const writeBranch = (branch: string): void => {
         if (!sealed) {
             sealed = true;
@@ -212,14 +259,26 @@ const persistPartitions = <T extends object>(
             return;
         }
 
-        writeBranchDirect(branch);
+        if (failed.size === 0) {
+            writeBranchDirect(branch);
+
+            return;
+        }
+
+        // Retry every failed partition alongside the notified one; identical content is
+        // skipped and a still-failing partition is reported once per attempt.
+        const batch = new Set(failed);
+
+        batch.add(branch);
+        batch.forEach(writeBranchDirect);
     };
 
     const windowRemainder = (): number =>
         throttleMs === undefined ? 0 : Math.max(0, throttleMs - (Date.now() - lastWriteAt));
 
+    /** Writes every dirty branch once the throttle window allows it. */
     const dispatch = (): void => {
-        if (pending.size === 0) {
+        if (disposed || (pending.size === 0 && failed.size === 0)) {
             return;
         }
 
@@ -241,14 +300,25 @@ const persistPartitions = <T extends object>(
             timer = undefined;
         }
 
-        const batch = sealed ? Array.from(pending) : partitions.slice();
+        const batch = sealed
+            ? Array.from(new Set([...pending, ...failed]))
+            : partitions.slice();
 
         pending.clear();
+        failed.clear();
         sealed = true;
         batch.forEach(writeBranchDirect);
     };
 
+    /** Marks one branch for the next coalesced dispatch.
+     *
+     * @param branch - the partition a notification touched.
+     */
     const markDirty = (branch: string): void => {
+        if (disposed) {
+            return;
+        }
+
         pending.add(branch);
 
         if (!queued && timer === undefined) {
@@ -268,6 +338,7 @@ const persistPartitions = <T extends object>(
     );
 
     return () => {
+        disposed = true;
         ids.forEach(id => carburetor.unsubscribe(id));
 
         if (timer !== undefined) {
@@ -276,16 +347,16 @@ const persistPartitions = <T extends object>(
         }
 
         // Undelivered scheduler publications leave the storage behind; reconcile every
-        // branch — identical ones skip their write, so this is cheap and exact.
-        if (carburetor.getVersion() !== lastSeenVersion || pending.size > 0) {
+        // branch — identical ones skip their write, so this is cheap and exact. Failed
+        // partitions are retried here even without new changes.
+        if (carburetor.getVersion() !== lastSeenVersion || failed.size > 0) {
             sealed = true;
             partitions.forEach(writeBranchDirect);
         }
     };
 };
 
-/**
- * Keeps a carburetor mirrored in a storage: loads the stored state once on connect, then
+/** Keeps a carburetor mirrored in a storage: loads the stored state once on connect, then
  * writes its wire form (`toJSON()`) on every change. Returns a disposer that stops the mirroring.
  *
  * Writes are coalesced by default: one stringify per microtask instead of one per write (R33-07)
@@ -299,7 +370,8 @@ const persistPartitions = <T extends object>(
  * `partitions` stores one key per named top-level branch (`key + "." + branch`) and rewrites
  * only the branches that changed, which keeps a flush proportional to the dirty branches
  * instead of the whole state. The first flush seals every partition once; a flush while a
- * `throttleMs` window is open covers all dirty branches together. Restore composes the stored
+ * `throttleMs` window is open covers all dirty branches together, and a partition whose
+ * write or removal failed is retried by the next flush and by the disposer. Restore composes the stored
  * branches over the current state — branches without a stored entry keep their value, and a
  * legacy whole-store entry is restored when no partition entries exist yet (it stays in place,
  * shadowed by the partition entries). Each partition entry is written atomically on its own,
@@ -309,10 +381,12 @@ const persistPartitions = <T extends object>(
  * A failed storage read is reported without discarding the unread entry; when `onError`
  * returns, the subscription still starts and later writes follow the chosen sync/coalesce
  * policy. Without `onError`, a failed read throws rather than pretending storage was empty.
- * A malformed or unrestorable entry is reported before cleanup; cleanup failures are
- * reported separately. The entry itself is always removed, in production too: without
- * `onError` that removal is silent there, while development reports it through the engine
- * diagnostics.
+ * A malformed entry and a restore the store rejects are reported before cleanup; cleanup
+ * failures are reported separately. The stored data is removed when the culprit is known —
+ * one key, or the single stored partition — in production too: without `onError` that
+ * removal is silent there, while development reports it through the engine diagnostics. A
+ * composite restore over several stored partitions keeps every entry (the culprit is
+ * unknown) and is only reported.
  *
  * @param carburetor - both read and written: its snapshot is stored, stored data is restored into it
  * @param options - `key` and `storage` are required; a failed load or write reaches `onError` when given
@@ -326,7 +400,8 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         }
 
         if (coalesce === false) {
-            throw new Error("persist: throttleMs requires the default write coalescing; coalesce: false writes on every notification");
+            throw new Error("persist: throttleMs requires the default write coalescing;"
+                + " coalesce: false writes on every notification");
         }
     }
 
@@ -343,7 +418,9 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
             throw new RangeError("persist: partitions must not repeat a branch");
         }
 
-        return persistPartitions(carburetor, key, storage, {onError: options.onError, coalesce, throttleMs, partitions});
+        return persistPartitions(carburetor, key, storage, {
+            onError: options.onError, coalesce, throttleMs, partitions,
+        });
     }
 
     let stored: string | null;
@@ -363,7 +440,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         try {
             carburetor.restore(JSON.parse(stored) as T);
         } catch (error: unknown) {
-            reportRestoreFailure(key, error, options.onError);
+            reportRestoreFailure(key, error, options.onError, 'the stored data was removed');
 
             try {
                 storage.removeItem(key);
