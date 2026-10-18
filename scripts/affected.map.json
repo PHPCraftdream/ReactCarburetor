@@ -53,11 +53,23 @@
       "rstest": [
         "__tests__/Engine/Resource",
         "__tests__/Engine/Component/AntiHookComponent/lifecycle/deferred-resources.test.tsx",
-        "__tests__/Engine/Component/AntiHookComponent/lifecycle/strict-mode.test.tsx"
+        "__tests__/Engine/Component/AntiHookComponent/lifecycle/strict-mode.test.tsx",
+        "__tests__/Engine/ResourceAbortFallback.test.ts",
+        "__tests__/Engine/Component/AntiHookComponent/lifecycle/custom-resource-source.test.tsx",
+        "__tests__/Engine/Component/AntiHookComponent/lifecycle/render-attempts.test.tsx",
+        "__tests__/Engine/Component/AntiHookComponent/receiver/SsrHydration/READMERecipe.test.tsx",
+        "__tests__/Engine/Component/AntiHookComponent/receiver/rel4/suspense-refresh.test.tsx",
+        "__tests__/Engine/Component/AntiHookComponent/connect/connect-subscriptions.test.tsx",
+        "__tests__/Engine/Component/Scope.test.tsx",
+        "__tests__/Engine/Tooling/core/persist/PersistenceResource.test.ts",
+        "__tests__/Engine/Tooling/history/HistoryNativeOwnership.test.ts",
+        "__tests__/Engine/Store/Scheduling/subclass40/Resources.test.ts",
+        "__tests__/Tooling/examples/behavior.test.tsx"
       ],
       "perfAreas": [
         "resource",
-        "cache"
+        "cache",
+        "views"
       ],
       "reason": "resource subsystem"
     },
@@ -71,8 +83,13 @@
       ],
       "perfAreas": [
         "hooks",
-        "components"
+        "components",
+        "selection",
+        "readset40",
+        "iterate40",
+        "subclass40"
       ],
+      "react18": true,
       "reason": "component layer"
     },
     {
@@ -88,6 +105,7 @@
         "components",
         "resource"
       ],
+      "react18": true,
       "reason": "interop hooks"
     },
     {
@@ -105,8 +123,10 @@
     {
       "match": "native/**",
       "native": true,
-      "rstest": [],
-      "reason": "rust addon needs native rebuild, not rstest"
+      "rstest": [
+        "__tests__/Native"
+      ],
+      "reason": "rust addon needs native rebuild; also runs JS-side native suites"
     },
     {
       "match": "plugin/**",

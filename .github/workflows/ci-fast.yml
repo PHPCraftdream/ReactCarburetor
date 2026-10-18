@@ -26,6 +26,7 @@ jobs:
       rstest: ${{ steps.plan.outputs.rstest }}
       examples: ${{ steps.plan.outputs.examples }}
       perfAreas: ${{ steps.plan.outputs.perfAreas }}
+      react18: ${{ steps.plan.outputs.react18 }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -66,6 +67,7 @@ jobs:
             const out = process.env.GITHUB_OUTPUT;
             fs.appendFileSync(out, `full=${plan.full}\n`);
             fs.appendFileSync(out, `docsOnly=${plan.docsOnly}\n`);
+            fs.appendFileSync(out, `react18=${plan.react18}\n`);
             fs.appendFileSync(out, `native=${plan.native}\n`);
             fs.appendFileSync(out, `rstest=${(plan.rstest || []).join(" ")}\n`);
             fs.appendFileSync(out, `examples=${plan.examples}\n`);
@@ -73,6 +75,7 @@ jobs:
             let summary = "## Plan\n\n";
             summary += "- full: " + plan.full + "\n";
             summary += "- docsOnly: " + plan.docsOnly + "\n";
+            summary += "- react18: " + plan.react18 + "\n";
             summary += "- native: " + plan.native + "\n";
             summary += "- rstest: " + (plan.rstest || []).join(", ") + "\n";
             summary += "- examples: " + plan.examples + "\n";
@@ -117,6 +120,10 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
+
+      # Pure Node, no install or build: a gate or frozen-file edit needs an amendment (perf/README.md).
+      - name: Gate contract
+        run: node perf/ci/contract/check.mjs
 
       - name: Install
         run: npm ci
@@ -176,6 +183,38 @@ jobs:
       - name: Test affected suites
         if: needs.plan.outputs.full != 'true' && needs.plan.outputs.rstest != ''
         run: npx rstest run ${{ needs.plan.outputs.rstest }}
+
+  # A fast-tier React 18 leg: the swap costs minutes and Interop/Component changes are
+  # exactly the ones that can quietly break the older major.
+  react-18:
+    name: Library on React 18
+    needs: plan
+    if: needs.plan.outputs.full == 'true' || needs.plan.outputs.react18 == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      - name: Install the demo app
+        working-directory: lib
+        run: npm ci
+
+      - name: Swap in React 18
+        run: |
+          npm install --no-save react@18.3.1 react-dom@18.3.1
+          cd lib && npm install --no-save react@18.3.1 react-dom@18.3.1
+
+      - name: Build
+        run: npm run build
+
+      - name: Test
+        run: npx rstest run __tests__/Engine __tests__/Demo __tests__/Tooling/examples
 
   perf:
     name: Performance gates
@@ -249,7 +288,7 @@ jobs:
   # succeed or be deliberately skipped, and plan must never fail.
   fast-gate:
     name: Fast gate
-    needs: [plan, checks, perf, native, examples]
+    needs: [plan, checks, react-18, perf, native, examples]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -258,10 +297,10 @@ jobs:
         run: |
           failed=0
           for result in "${{ needs.plan.result }}" "${{ needs.checks.result }}" \
-            "${{ needs.perf.result }}" "${{ needs.native.result }}" "${{ needs.examples.result }}"; do
+            "${{ needs.react-18.result }}" "${{ needs.perf.result }}" "${{ needs.native.result }}" "${{ needs.examples.result }}"; do
             if [ "$result" = "failure" ] || [ "$result" = "cancelled" ]; then
               failed=1
             fi
           done
-          echo "plan=${{ needs.plan.result }} checks=${{ needs.checks.result }} perf=${{ needs.perf.result }} native=${{ needs.native.result }} examples=${{ needs.examples.result }}"
+          echo "plan=${{ needs.plan.result }} checks=${{ needs.checks.result }} react-18=${{ needs.react-18.result }} perf=${{ needs.perf.result }} native=${{ needs.native.result }} examples=${{ needs.examples.result }}"
           [ "$failed" -eq 0 ] || exit 1

@@ -39,12 +39,20 @@ A failing entry — a crash, a non-zero child, no `@@` metrics line, including a
 lacks an API the scenario needs — is reported as `FAIL <id>` with a short cause, counted as a
 violation, and the run continues; the summary and exit code reflect every violation. An entry whose
 `requires` paths are missing prints `skip <id> (missing <path>)` instead, counts as neither a
-violation nor a failure, and shows up in the summary as skipped. After the baseline is frozen, a
-gate file's contract may legitimately change only via `perf/ci/contract/gate-amendments.json` (recomputed
-`sha256`, mandatory `reason` and `commit`); a wrong hash still fails ("changed without amendment"
-vs "amendment hash mismatch"). Amended files are reported via `amendedGateFiles` and
-GITHUB_STEP_SUMMARY, and their entries are taken from the current file with IDs required to match
-the baseline. Entries
+violation nor a failure, and shows up in the summary as skipped. Gate manifests are frozen by value:
+`node perf/ci/contract/check.mjs` (pure Node, run in CI fast and nightly before anything heavy)
+hashes each gate file's manifest values — ids, scenarios, args, nodeArgs, gates, requires — with
+sorted keys, so comment edits and reformatting do not trip the contract. The committed
+`perf/ci/contract/gate-baseline.json` pins every gate file at the baseline commit
+acfd3e2b8e58210ce1076bf1683f666283216af5 and freezes the six `*44` files at the commit recorded in
+its `frozen.sha`. Any unregistered change fails; a purely tightened bound (lower max, higher min)
+passes without bureaucracy. Everything else requires `perf/ci/contract/gate-amendments.json` with a
+recomputed `sha256`, a mandatory `reason` and a `commit`. Every gate file MUST be registered in the
+freeze contract — an unregistered file fails the check. A new gate file is registered in the same
+commit with `node perf/ci/contract/registerGate.mjs perf/gates/<name>.mjs`. The committed registry
+embeds each original manifest, so the tightening ratchet works without git history. Amended files keep the entry-ID parity check in bench:ci, are reported via
+`amendedGateFiles` and GITHUB_STEP_SUMMARY, and their entries are taken from the current file with
+IDs required to match the baseline. Entries
 sharing the same (scenario, args, nodeArgs) are measured once and share their samples. `--only` still
 measures the `scale.from` source entries a selected entry needs, without printing them as selected.
 
@@ -595,10 +603,16 @@ assertions are unchanged; five samples passed on each build before the final com
 
 ## Outside the suite
 
-`benchmarks/state/unpublishedDraftCheck.mjs` stays outside `perf/` on purpose: it measures the
-unpublished-draft diagnostic, which only exists in development builds — it requires
-`NODE_ENV != production` and `dist/esm`, while this suite always runs production builds
-(`dist/esm-prod`, `NODE_ENV=production`).
+`benchmarks/state/unpublishedDraftCheck.mjs` stays outside `perf/` on purpose: it is the standalone
+paired A/B tool for the unpublished-draft diagnostic, which only exists in development builds — it
+requires `NODE_ENV != production` and two independently built `dist/esm` roots, while this suite
+compares one build per run.
+
+The development build itself is now gated in-suite by `dev/unpublished-draft`: the scenario reads
+the `esm` sibling of the measured dist (`distRoot/../esm`), so any build tree with all formats
+works, and the entry fails loudly when only `esm-prod` exists. It counts queued diagnostic
+callbacks and their identities, so a build that mints one callback per publish cycle instead of
+reusing one fails the `distinctCallbacks === 1` gate by mechanism, not by time.
 
 ## GitHub Actions
 

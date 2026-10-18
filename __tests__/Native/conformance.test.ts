@@ -1,10 +1,14 @@
 import {execFileSync} from "node:child_process";
+import {readFileSync} from "node:fs";
 import * as path from "node:path";
 import {describe, expect, test} from "@rstest/core";
 
 /**
- * Runs both implementations of the 29 carburetor rules over the same fixture corpus and asserts
- * they find the same problems in the same places.
+ * Every JS rule is a `nativeRule` bridge (see plugin/src/Utils/Native/nativeRule.mts) that
+ * delegates to the same native binary, so this suite is a bridge round-trip, not a comparison of
+ * two independent implementations: it pins the bridge's file/line/column mapping and keeps the
+ * corpus covering every catalogue rule. It cannot catch a rule-logic regression, because both
+ * sides are one binary.
  *
  * The corpus is grouped by topic under `plugin/__fixtures__`, written so every rule fires exactly
  * once — the same files the JS plugin's host tests exercise. Comparison is on
@@ -62,6 +66,16 @@ const nativeDiagnostics = (): IDiagnostic[] => {
     }));
 };
 
+/** The rule catalogue, as bare names, straight out of the Rust source's `DEFAULT_SEVERITIES`. */
+const nativeRegistryRules = (): string[] => {
+    const source = readFileSync(path.join(ROOT, 'native', 'src', 'config.rs'), 'utf8');
+    const table = /DEFAULT_SEVERITIES[^=]*=\s*&\[(.*?)\];/s.exec(source);
+
+    expect(table, 'DEFAULT_SEVERITIES is still a slice literal in native/src/config.rs').not.toBeNull();
+
+    return [...(table as RegExpExecArray)[1].matchAll(/\("([^"]+)",\s*Severity::(\w+)\)/g)].map(([, name]) => name);
+};
+
 interface IOxlintSpan {
     labels: {span: {line: number; column: number}}[];
     filename: string;
@@ -94,7 +108,7 @@ const jsDiagnostics = (): IDiagnostic[] => {
     });
 };
 
-describe('conformance: native binary vs the JavaScript plugin', () => {
+describe('bridge round-trip: native binary vs the JavaScript plugin bridge', () => {
     test('both implementations report the same diagnostics over the shared corpus', () => {
         const native = nativeDiagnostics();
         const js = jsDiagnostics();
@@ -108,11 +122,11 @@ describe('conformance: native binary vs the JavaScript plugin', () => {
         expect(nativeKeys).toEqual(jsKeys);
     });
 
-    test('every one of the 29 rules is represented in the corpus', () => {
+    test('every catalogue rule is represented in the corpus', () => {
         const seen = new Set(nativeDiagnostics().map((diagnostic) => diagnostic.rule));
 
         // no-module-level-store is off by default in both implementations but is force-enabled by
         // both configs above specifically so this corpus can prove it fires identically too.
-        expect(seen.size).toBe(29);
+        expect([...seen].sort()).toEqual(nativeRegistryRules().map((name) => 'carburetor/' + name).sort());
     });
 });

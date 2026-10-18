@@ -4,7 +4,7 @@
     "rootDir": ".",
     "types": ["@rstest/core/globals"]
   },
-  "include": [
+  "files": [
     "__tests__/Engine/Component/AntiHookComponent.types.test.ts",
     "__tests__/Engine/Derived/Readable/ReadableCarburetor.types.test.tsx",
     "__tests__/Engine/Store/Paths/TAliasLedger.types.test.ts",
@@ -14,7 +14,8 @@
     "__tests__/Engine/Resource/Resource/Suspension/ResourceTypes.typing.ts",
     "__tests__/Engine/Resource/ResourceCache/Views/resource40/Surface.test.ts",
     "__tests__/Engine/Resource/Handles/EventHandles.typing.ts",
-    "__tests__/Engine/Resource/Handles/CacheD2.test.tsx"
+    "__tests__/Engine/Resource/Handles/CacheD2.test.tsx",
+    "__tests__/Engine/Store/Scheduling/subclass40/Contract.types.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

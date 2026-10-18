@@ -18,36 +18,43 @@ stopping at the first failure:
 files: lib/src/Carburetor/Resource/createAbortHandle.ts
 plan: selective
 rstest: __tests__/Engine/Resource
-       + __tests__/Engine/Component/AntiHookComponent/lifecycle/
-         deferred-resources.test.tsx, strict-mode.test.tsx
-perf areas: resource, cache
+       + the cross-subsystem resource suites (ResourceAbortFallback,
+         AntiHookComponent lifecycle/receiver/connect, Scope.test.tsx,
+         persist/history, subclass40 Resources, Tooling examples behavior)
+perf areas: resource, cache, views
 - resource subsystem
 node scripts/checkLayout.mjs
 node node_modules/@rstest/core/bin/rstest.js run \
   __tests__/Engine/Resource \
-  __tests__/Engine/Component/AntiHookComponent/lifecycle/deferred-resources.test.tsx \
-  __tests__/Engine/Component/AntiHookComponent/lifecycle/strict-mode.test.tsx
+  __tests__/Engine/Component/Scope.test.tsx \
+  ... (and the other cross-subsystem resource suites)
 node perf/run.mjs --only resource --runs 3
 node perf/run.mjs --only cache --runs 3
-check:task OK (4 commands)
+node perf/run.mjs --only views --runs 3
+check:task OK (6 commands)
 ```
 
 Typical change → what runs:
 
 | Changed file | What `check:task` runs |
 |---|---|
-| `lib/src/Carburetor/Resource/x.ts` | layout + rstest `__tests__/Engine/Resource` and the deferred-resources + strict-mode lifecycle tests + perf areas `resource`, `cache` |
-| `lib/src/Carburetor/Component/y.tsx` | layout + rstest `__tests__/Engine/Component`, `__tests__/Engine/Resource/ResourceCache/Views`, `__tests__/Engine/Resource/ResourceCache/Regressions`, `__tests__/Engine/Derived` + perf areas `hooks`, `components` |
+| `lib/src/Carburetor/Resource/x.ts` | layout + rstest `__tests__/Engine/Resource` and the other cross-subsystem resource suites (ResourceAbortFallback, AntiHookComponent lifecycle/receiver/connect resource tests, `Scope.test.tsx`, persist/history, subclass40 Resources, Tooling examples behavior) + perf areas `resource`, `cache`, `views` |
+| `lib/src/Carburetor/Component/y.tsx` | layout + rstest `__tests__/Engine/Component`, `__tests__/Engine/Resource/ResourceCache/Views`, `__tests__/Engine/Resource/ResourceCache/Regressions`, `__tests__/Engine/Derived` + perf areas `hooks`, `components`, `selection`, `readset40`, `iterate40`, `subclass40` |
 | `lib/src/Interop/x.ts` | layout + rstest `__tests__/Engine/Derived/Readable/Interop`, `__tests__/Engine/Tooling`, `__tests__/Engine/Component`, `__tests__/Engine/Resource` + perf areas `hooks`, `components`, `resource` |
 | `perf/scenarios/resource42/*` | its own `resource42` area + transitive importing family `components42` |
 | `perf/scenarios/computed42/*` | its own `computed42` area + transitive importing family `computed43` |
 | `lib/src/Carburetor/Store/z.ts` | **full tier required** — exit code 2, nothing heavy runs locally |
-| `native/src/...` | `cargo test` (with the explicit `--native` flag; otherwise the command is printed as a hint) |
+| `native/src/...` | `cargo test` + the `__tests__/Native` suites (cargo with the explicit `--native` flag; otherwise the command is printed as a hint) |
+| changed test helper (e.g. `__tests__/Engine/Resource/ResourceCache/Helpers/TestCache.ts`) | layout + the dependent suites that import it (transitively) |
+| `__tests__/setupTests.ts` | full tier — the global test setup affects every suite |
 | `docs/*.md` | docsOnly — nothing runs |
 | any unmapped file | full tier (fails safe) |
 
 Perf areas need a production build: without `dist/esm-prod` the gate is skipped
-with a hint instead of failing. `--typecheck` adds `tsc --noEmit`, `--dry`
+with a hint instead of failing. Selected suites that read the build output
+require a fresh `dist/` — `check:task` verifies the build stamp (against
+`lib/src/**` and `rslib.config.ts`) and fails with a build hint when stale.
+`--typecheck` adds `tsc --noEmit`, `--dry`
 prints the plan and the commands without running anything.
 
 Documentation examples in README and docs Markdown (excluding `docs/reviews/**` and `docs/checkpoints/**`) are generated from `examples/` and verified by `npm run docs:check`; changes to the public API source trigger the same check in CI independently of `docsOnly`.
@@ -59,7 +66,10 @@ checks tier 1 selects, plus lint and typecheck, combined into one unified
 fast-gate check on every push and pull request. Plans are written to the runner's
 external temporary directory; first pushes use the merge-base with `origin/master` (or
 fall back to the parent SHA). A base commit that is missing after a force-push makes the plan a
-full run.
+full run. The `Checks` job also runs the pure-Node gate-contract freeze check
+(`node perf/ci/contract/check.mjs`) before anything heavy.
+A `react-18` leg runs when the plan is
+full or when Interop/Component files changed (`react18` output).
 
 ## Tier 3 — sprint end (full)
 

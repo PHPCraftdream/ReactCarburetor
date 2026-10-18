@@ -31,6 +31,10 @@ jobs:
         with:
           node-version: 24
 
+      # Pure Node, no install or build: the freeze check blocks before anything heavy runs.
+      - name: Gate contract
+        run: node perf/ci/contract/check.mjs
+
       - name: Install
         run: npm ci
 
@@ -73,11 +77,8 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Mechanism counters plus a few generous absolute ceilings (for example relatedWriteMs <= 10): gates,
-      # not benchmarks; the A/B timing comparisons live in Performance validation and are informational.
-      - name: Performance gates
-        run: node perf/run.mjs --runs 3
-
+      # The gates run last on purpose: one flaky timing ceiling can no longer hide the
+      # typecheck, lint or test results that come before it.
       - name: Typecheck
         run: npm run typecheck
 
@@ -101,6 +102,13 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # Mechanism counters plus a few generous absolute ceilings (for example relatedWriteMs <= 10): gates,
+      # not benchmarks; the A/B timing comparisons live in Performance validation and are informational.
+      # They run last so a flaky timing ceiling can no longer hide the typecheck, lint or test
+      # results above it.
+      - name: Performance gates
+        run: node perf/run.mjs --runs 3
 
       - name: Install hosted Chrome
         id: chrome
@@ -178,7 +186,7 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: npx rstest run __tests__/Engine __tests__/Demo
+        run: npx rstest run __tests__/Engine __tests__/Demo __tests__/Tooling/examples
 
   # Installs the packed tarball into fresh npm/pnpm consumers on React 18 and 19, ESM and CJS:
   # typecheck, render, instanceof the consumer's own React.Component, duplicate-copy diagnostic.
@@ -253,15 +261,21 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # The image's toolchain is part of the verified state: an upgrade must rerun, not skip.
+      - name: Rust toolchain version
+        id: rustc
+        run: echo "version=$(rustc -V)" >> "$GITHUB_OUTPUT"
+
       # test + clippy only need to pass once per version of the Rust inputs: the
       # marker cache records that and later runs skip straight through. GitHub
-      # evicts caches after 7 idle days — a miss just reruns the checks.
+      # evicts caches after 7 idle days — a miss just reruns the checks. Test-only
+      # changes and toolchain upgrades now rerun too.
       - name: Verified marker
         id: marker
         uses: actions/cache/restore@d4323d4df104b026a6aa633fdb11d772146be0bf # v4
         with:
           path: .native-verified
-          key: native-verified-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+          key: native-verified-${{ steps.rustc.outputs.version }}-${{ hashFiles('native/src/**', 'native/tests/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
 
       # inputs.force_native is empty outside workflow_dispatch, so only an explicit
       # dispatch with the flag forces a rerun over an existing marker.
@@ -315,7 +329,7 @@ jobs:
         uses: actions/cache/save@d4323d4df104b026a6aa633fdb11d772146be0bf # v4
         with:
           path: .native-verified
-          key: native-verified-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+          key: native-verified-${{ steps.rustc.outputs.version }}-${{ hashFiles('native/src/**', 'native/tests/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
 
   # The six published platform packages. Each leg builds one cargo target, then runs the
   # produced binary there — compiling for a target proves nothing about the artefact, running

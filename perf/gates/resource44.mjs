@@ -59,8 +59,6 @@ export default [
             {metric: 'operations', equals: 8192},
             {metric: 'checksum', equals: 57344},
             {metric: 'loaderCalls', equals: 0},
-            {metric: 'awaitMs', min: 0},
-            {metric: 'thenMs', min: 0},
             {metric: 'done', equals: true},
         ],
     },

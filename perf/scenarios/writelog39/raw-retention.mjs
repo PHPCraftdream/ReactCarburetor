@@ -47,7 +47,7 @@ const survivors = alive(refs);
 const storeHeldSurvivors = alive(heldRefs);
 const plainHeldSurvivors = alive(plainHeldRefs);
 const freeSurvivors = alive(freeRefs);
-const trackedPairs = engine(store, 'writeLog')?.targets?.count ?? -1;
+const trackedPairs = engine(store, 'writeLog')?.targets?.count ?? null;
 const rowsLeft = store.getData().rows.length;
 stop();
 emit({

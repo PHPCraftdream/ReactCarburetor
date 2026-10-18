@@ -2,9 +2,9 @@
 import {spawnSync, execFileSync} from 'node:child_process';
 import {appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync} from 'node:fs';
 import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {prepareBaseline} from './contract/baseline.mjs';
-import {gateContractStatus} from './contract/gateContract.mjs';
-import {hashGate} from './contract/hashGate.mjs';
+import {classifyBaselineGate} from './contract/gateContract.mjs';
 import {comparePrevious} from './compare.mjs';
 import {measureControls} from './measure.mjs';
 import {calibrateGains} from './calibrate.mjs';
@@ -53,10 +53,13 @@ if (!baseline || baseline.sha !== sha || !existsSync(resolve(baseline.dist, 'esm
 const amendments = JSON.parse(readFileSync(resolve('perf/ci/contract/gate-amendments.json'), 'utf8'));
 const amendedGateFiles = [];
 for (const [file, expected] of Object.entries(baseline.gateHashes)) {
-    const actual = gateContractStatus(file, expected,
-        hashGate(resolve('perf/gates', file)), amendments[file]?.sha256);
-    if (actual.error) throw new Error(actual.error);
-    if (actual.amended) amendedGateFiles.push({file, reason: amendments[file].reason});
+    const manifest = (await import(pathToFileURL(resolve('perf/gates', file)).href)).default;
+    if (!Array.isArray(manifest)) throw new Error('Invalid gate manifest: ' + file);
+    const decision = classifyBaselineGate({file, expectedHash: expected, baselineManifest: baseline.gateManifests?.[file],
+        manifest, amendmentHash: amendments[file]?.sha256});
+    if (decision.error) throw new Error(decision.error);
+    if (decision.amended || decision.tightened)
+        amendedGateFiles.push({file, reason: decision.tightened ? 'tightened bounds without amendment' : amendments[file].reason});
 }
 const summary = process.env.GITHUB_STEP_SUMMARY;
 if (summary && amendedGateFiles.length) appendFileSync(summary, '\n### Amended baseline gates\n\n' + amendedGateFiles.map(row => `- ${row.file}: ${row.reason}`).join('\n') + '\n');

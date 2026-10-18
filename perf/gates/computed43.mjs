@@ -41,7 +41,6 @@ export default [{
     id: 'computed43/observed-equal-source-lifetime', improvement: 'R43-C03',
     scenario: 'computed43/observed-equal-source-lifetime',
     gates: [{metric: 'caseCount', equals: 6}, {metric: 'gcRounds', equals: 16},
-        {metric: 'childTimeoutMs', equals: 30000},
         ...verdicts(['equalCollected', 'equalPayloadCollected', 'checkpointRetired', 'controlsCorrect',
             'ownersAlive', 'retiredQuiet', 'replacementCorrect', 'releaseCorrect', 'projectionIdentity',
             'heldResultLive', 'done'])],

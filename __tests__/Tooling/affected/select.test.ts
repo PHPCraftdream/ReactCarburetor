@@ -108,6 +108,55 @@ describe('affected select', () => {
         expect(r.rstest).toContain('__tests__/Engine/Resource/ResourceCache/Regressions');
     });
 
+    it('Interop and Component changes select the React 18 leg, full tier implies it, Resource does not', () => {
+        expect(select(['lib/src/Interop/useResourceValue.ts'], map).react18).toBe(true);
+        expect(select(['lib/src/Carburetor/Component/AntiHookComponent/Reads.tsx'], map).react18).toBe(true);
+        expect(select(['lib/src/Carburetor/Store/Carburetor.ts'], map).react18).toBe(true);
+        expect(select(['lib/src/Carburetor/Resource/x.ts'], map).react18).toBe(false);
+    });
+
+    it('global test helpers select the full tier', () => {
+        expect(select(['__tests__/setupTests.ts'], map).full).toBe(true);
+        expect(select(['__tests__/reactActEnvironment.ts'], map).full).toBe(true);
+    });
+
+    it('test helper selects its dependent suites instead of itself', () => {
+        const r = select(['__tests__/Engine/Resource/ResourceCache/Helpers/TestCache.ts'], map);
+        expect(r.full).toBe(false);
+        expect(r.rstest).not.toContain('__tests__/Engine/Resource/ResourceCache/Helpers/TestCache.ts');
+        expect(r.rstest.length).toBeGreaterThanOrEqual(5);
+        expect(r.rstest.every((p) => /\.test\.tsx?$/.test(p))).toBe(true);
+        expect(r.rstest.filter((p) => p.startsWith('__tests__/Engine/Resource/ResourceCache/')).length)
+            .toBeGreaterThanOrEqual(5);
+    });
+
+    it('component test helper selects at least 10 dependent suites', () => {
+        const r = select(['__tests__/Engine/Component/AntiHookComponent/support.tsx'], map);
+        expect(r.full).toBe(false);
+        expect(r.rstest.length).toBeGreaterThanOrEqual(10);
+        expect(r.rstest.every((p) => /\.test\.tsx?$/.test(p))).toBe(true);
+    });
+
+    it('resource rule includes ResourceAbortFallback suite', () => {
+        expect(select(['lib/src/Carburetor/Resource/Slot/createAbortHandle.ts'], map).rstest)
+            .toContain('__tests__/Engine/ResourceAbortFallback.test.ts');
+    });
+
+    it('native changes run the JS-side native suites', () => {
+        expect(select(['native/src/config.rs'], map).rstest).toContain('__tests__/Native');
+    });
+
+    it('resource rule includes views perf area', () => {
+        expect(select(['lib/src/Carburetor/Resource/x.ts'], map).perfAreas).toContain('views');
+    });
+
+    it('component rule includes all component perf areas', () => {
+        const areas = select(['lib/src/Carburetor/Component/y.tsx'], map).perfAreas;
+        for (const a of ['selection', 'readset40', 'iterate40', 'subclass40']) {
+            expect(areas).toContain(a);
+        }
+    });
+
     it('keeps unmapped changes safe and mixed mapped/full selection full', () => {
         const unknown = select(['random/unknown.bin'], map);
         expect(unknown.full).toBe(true);

@@ -15,7 +15,7 @@ export default axes.flatMap(([p, unrelated]) => modes.flatMap(mode => [
         id: `history43/timing@${p}-${unrelated}-${mode}`, improvement: 'R43-S02',
         scenario: 'history43/timing', args: [p, unrelated, mode], gates: [
             {metric: 'completedPublication', equals: true}, {metric: 'uninstrumented', equals: true},
-            {metric: 'samples', equals: 7}, {metric: 'updatePublicationMs', min: 0},
+            {metric: 'samples', equals: 7},
         ],
     },
 ]));

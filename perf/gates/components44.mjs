@@ -10,5 +10,5 @@ export default [
     {id: 'components44/render-commit', improvement: 'R44-A01',
         scenario: 'components44/render-commit', args: [],
         gates: [{metric: 'iterations', equals: 1000}, {metric: 'checksum', equals: 2209},
-            {metric: 'warmChurn', equals: 0}, {metric: 'renderCommitMs', min: 0}]},
+            {metric: 'warmChurn', equals: 0}]},
 ];

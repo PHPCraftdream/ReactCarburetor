@@ -6,7 +6,7 @@
 // Without --files: `git diff --name-only <base>...HEAD` + `git diff --name-only HEAD`
 // + untracked (`git ls-files --others --exclude-standard`). --base defaults to
 // origin/master, falling back to HEAD~1 if that ref is missing.
-// Exports select(files, map) -> {full, docsOnly, native, rstest, perfAreas, examples, reasons}.
+// Exports select(files, map) -> {full, docsOnly, native, react18, rstest, perfAreas, examples, reasons}.
 // rstest: paths for `rstest run <paths>`. perfAreas: substrings passed to
 // `node perf/run.mjs --only <area>` (matched against entry id or area).
 // Any file not covered by a rule => full=true with reason `unmapped: <file>`.
@@ -25,6 +25,61 @@ export function loadMap() {
     return JSON.parse(readFileSync(join(root, 'affected.map.json'), 'utf8'));
 }
 
+// Reverse import graph over __tests__: imported path -> set of test files (transitively) importing it.
+// Cached per map object so select stays pure (the map is never mutated).
+const graphCache = new WeakMap();
+function testDependentsOf(target, map) {
+    let reverse = graphCache.get(map);
+    if (!reverse) {
+        reverse = new Map();
+        const edge = (importer, imported) => {
+            if (!reverse.has(imported)) reverse.set(imported, new Set());
+            reverse.get(imported).add(importer);
+        };
+        const walk = (dir) => {
+            for (const entry of readdirSync(dir, {withFileTypes: true}).sort((a, b) => a.name.localeCompare(b.name))) {
+                const path = join(dir, entry.name);
+                if (entry.isDirectory()) {
+                    if (entry.name === 'node_modules') continue;
+                    walk(path);
+                } else if (entry.isFile() && /\.(?:ts|tsx)$/.test(entry.name)) {
+                    const importer = norm(relative(repo, path));
+                    for (const match of readFileSync(path, 'utf8').matchAll(/\b(?:from\s*|import\s*\(?\s*)['"](\.[^'"]+)['"]/g)) {
+                        const base = resolve(dirname(path), match[1]);
+                        for (const candidate of [base, base + '.ts', base + '.tsx', join(base, 'index.ts'), join(base, 'index.tsx')]) {
+                            if (existsSync(candidate) && statSync(candidate).isFile()) {
+                                edge(importer, norm(relative(repo, candidate)));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        };
+        walk(join(repo, '__tests__'));
+        // Expand direct edges to transitive importers.
+        const direct = reverse;
+        const transitive = new Map();
+        const collect = (file, seen) => {
+            for (const importer of direct.get(file) || []) {
+                if (seen.has(importer)) continue;
+                seen.add(importer);
+                collect(importer, seen);
+            }
+        };
+        for (const imported of direct.keys()) {
+            const seen = new Set();
+            collect(imported, seen);
+            transitive.set(imported, seen);
+        }
+        graphCache.set(map, transitive);
+        reverse = transitive;
+    }
+    return reverse.get(target) || new Set();
+}
+
+const isTestFixture = (file) => /(?:^|\/)(?:__fixtures__|fixtures)\//.test(file);
+
 function specificity(pattern, path) {
     if (pattern === path) return 100;
     if (!pattern.includes('/')) {
@@ -38,7 +93,7 @@ function specificity(pattern, path) {
 }
 
 export function select(files, map) {
-    const out = {full: false, docsOnly: false, native: false, rstest: [], perfAreas: [], examples: false, reasons: []};
+    const out = {full: false, docsOnly: false, native: false, react18: false, rstest: [], perfAreas: [], examples: false, reasons: []};
     if (files.length === 0) {
         out.reasons.push('no changed files');
         return out;
@@ -120,10 +175,28 @@ export function select(files, map) {
             push(out.reasons, rule.reason);
             if (rule.full) out.full = true;
             if (rule.native) out.native = true;
+            if (rule.react18) out.react18 = true;
             if (rule.examples) out.examples = true;
             if (!rule.docsOnly) allDocs = false;
             for (const p of rule.rstest || []) push(out.rstest, p);
-            if (rule.self) push(out.rstest, file);
+            if (rule.self) {
+                const isTest = /\.test\.tsx?$/.test(file);
+                if (!isTest && /\.(?:ts|tsx)$/.test(file) && !isTestFixture(file)) {
+                    if (file === '__tests__/setupTests.ts' || file === '__tests__/reactActEnvironment.ts') {
+                        out.full = true;
+                        push(out.reasons, 'global test helper selects the full tier');
+                    } else {
+                        const dependents = [...testDependentsOf(file, map)].filter((f) => /\.test\.tsx?$/.test(f));
+                        if (dependents.length) {
+                            for (const d of dependents) push(out.rstest, d);
+                            push(out.reasons, 'test helper selects ' + dependents.length + ' dependent suites');
+                        } else {
+                            out.full = true;
+                            push(out.reasons, 'test helper with no dependents fails safe to full');
+                        }
+                    }
+                } else push(out.rstest, file);
+            }
             for (const a of rule.perfAreas || []) push(out.perfAreas, a);
         }
     }
@@ -133,6 +206,7 @@ export function select(files, map) {
         out.native = false;
         out.examples = true;
         out.docsOnly = false;
+        out.react18 = true;
     } else {
         out.docsOnly = allDocs && !out.native && out.rstest.length === 0 && out.perfAreas.length === 0;
     }
@@ -157,7 +231,7 @@ function baseReachable(base) {
 }
 
 function unreachableBasePlan(base) {
-    return {full: true, docsOnly: false, native: false, rstest: [], perfAreas: [], examples: true, reasons: ['base unreachable: ' + base]};
+    return {full: true, docsOnly: false, native: false, react18: false, rstest: [], perfAreas: [], examples: true, reasons: ['base unreachable: ' + base]};
 }
 
 function defaultBase() {
@@ -194,21 +268,60 @@ function printPlan(p) {
     for (const r of p.reasons) console.log('- ' + r);
 }
 
+// Test files/dirs referencing the build output with a path separator (dist/ or dist\).
+function referencesDist(path) {
+    const full = resolve(repo, path);
+    if (!existsSync(full)) return false;
+    // dist with a separator, or 'dist' as a joined path segment (path.join(..., 'dist', ...)).
+    const checkFile = (f) => /(?:dist[/\\]|['"]dist['"],)/.test(readFileSync(f, 'utf8'));
+    if (statSync(full).isFile()) return /\.test\.tsx?$/.test(path) && checkFile(full);
+    const walk = (dir) => {
+        for (const entry of readdirSync(dir, {withFileTypes: true})) {
+            const p = join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (entry.name === 'node_modules') continue;
+                if (walk(p)) return true;
+            } else if (entry.isFile() && /\.test\.tsx?$/.test(entry.name) && checkFile(p)) return true;
+        }
+        return false;
+    };
+    return walk(full);
+}
+
 function buildCommands(p, opts) {
     const cmds = [['node', 'scripts/checkLayout.mjs']];
-    if (p.rstest.length) cmds.push(['node', 'node_modules/@rstest/core/bin/rstest.js', 'run', ...p.rstest]);
+    if (p.rstest.length) {
+        if (p.rstest.some(referencesDist)) cmds.push(['check-dist-fresh']);
+        cmds.push(['node', 'node_modules/@rstest/core/bin/rstest.js', 'run', ...p.rstest]);
+    }
     for (const area of p.perfAreas) cmds.push(['node', 'perf/run.mjs', '--only', area, '--runs', '3']);
     if (opts.typecheck) cmds.push(['node', 'node_modules/typescript/bin/tsc', '--noEmit', '-p', 'tsconfig.json']);
     if (p.native || opts.native) cmds.push(['cargo', 'test']);
     return cmds;
 }
 
-function distProdExists() {
-    try {
-        return existsSync(resolve(repo, 'dist', 'esm-prod')) && statSync(resolve(repo, 'dist', 'esm-prod')).isDirectory();
-    } catch {
-        return false;
+// Freshness covers every format the tests read, not just the production ESM tree.
+const DIST_FORMATS = [['esm', 'Carburetor/index.mjs'], ['esm-prod', 'Carburetor/index.mjs'], ['cjs', 'Carburetor/index.js']];
+
+export function distFreshState(distRoot = resolve(repo, 'dist'), sourcesRoot = resolve(repo, 'lib', 'src')) {
+    let newest = 0;
+    const walk = (dir) => {
+        for (const entry of readdirSync(dir, {withFileTypes: true})) {
+            const p = join(dir, entry.name);
+            if (entry.isDirectory()) walk(p);
+            else if (entry.isFile()) newest = Math.max(newest, statSync(p).mtimeMs);
+        }
+    };
+    walk(sourcesRoot);
+    const rslib = resolve(repo, 'rslib.config.ts');
+    if (existsSync(rslib)) newest = Math.max(newest, statSync(rslib).mtimeMs);
+    const problems = [];
+    for (const [format, marker] of DIST_FORMATS) {
+        const path = resolve(distRoot, format, marker);
+        if (!existsSync(path)) {problems.push(`dist/${format}: missing (${marker})`); continue;}
+        if (statSync(path).mtimeMs < newest) problems.push(`dist/${format}: stale (older than sources)`);
     }
+    return {fresh: problems.length === 0, problems};
 }
 
 function describe(cmd) {
@@ -219,8 +332,24 @@ function runCommands(cmds, opts) {
     let n = 0;
     for (const cmd of cmds) {
         const label = describe(cmd);
-        if (cmd[1] === 'perf/run.mjs' && !distProdExists()) {
+        if (cmd[1] === 'perf/run.mjs' && !existsSync(resolve(repo, 'dist', 'esm-prod', 'Carburetor', 'index.mjs'))) {
             console.log('skip: run npm run build to enable perf gates for ' + cmd[3]);
+            continue;
+        }
+        if (cmd[0] === 'check-dist-fresh') {
+            if (opts.dry) {
+                console.log('would run: verify a fresh dist (npm run build if stale)');
+                n++;
+                continue;
+            }
+            n++;
+            const state = distFreshState();
+            if (!state.fresh) {
+                console.log('FAILED: selected tests read dist/ but the build is missing or stale — run npm run build first (' + state.problems.join('; ') + ')');
+                console.log('check:task FAILED (' + n + ' command' + (n === 1 ? '' : 's') + ' attempted)');
+                return 1;
+            }
+            console.log('dist is fresh');
             continue;
         }
         if (cmd[0] === 'cargo' && !opts.native) {

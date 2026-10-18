@@ -68,10 +68,6 @@ export default [
         gates: [
             {metric: 'operations', equals: 4096},
             {metric: 'checksum', equals: 31744},
-            {metric: 'objectHitMs', min: 0},
-            {metric: 'objectMissMs', min: 0},
-            {metric: 'primitiveHitMs', min: 0},
-            {metric: 'primitiveMissMs', min: 0},
             {metric: 'loaderCalls', equals: 0},
             {metric: 'done', equals: true},
         ],

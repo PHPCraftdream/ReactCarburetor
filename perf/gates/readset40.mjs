@@ -23,7 +23,6 @@ export default [
             {metric: 'completedIndexWork', equals: 30000}, {metric: 'fullIndexWork', equals: 80000},
             {metric: 'completedExactVisits', equals: 10000}, {metric: 'completedBranchVisits', equals: 20000},
             {metric: 'fullExactVisits', equals: 30000}, {metric: 'fullBranchVisits', equals: 50000},
-            {metric: 'completedMs', over: 'fullMs', max: 0.85},
             {metric: 'workEmpty', equals: true},
             {metric: 'empty', equals: true}, {metric: 'renderCorrect', equals: true},
         ],

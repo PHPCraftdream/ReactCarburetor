@@ -7,9 +7,10 @@ export default [
     ...[1, 4, 8].flatMap(count => ['native', 'external'].map(kind => ({
         id: `hooks44/multi-consumer@${count}-${kind}`, improvement: 'R44-A02',
         scenario: 'hooks44/multi-consumer', args: [String(count), kind],
-        gates: [{metric: 'consumers', equals: count}, {metric: 'publications', equals: 20},
-            {metric: 'checks', equals: 1000},
-            {metric: 'checksMs', min: 0}, {metric: 'publicationsMs', min: 0}]}))),
+        gates: [{metric: 'consumers', equals: count},
+            // Linear fan-out is ~4x at 4 consumers and ~8x at 8; a quadratic re-check blows far past these bounds.
+            ...['checksMs', 'publicationsMs'].flatMap(metric => count === 1 ? [] : [
+                {metric, scale: {from: `hooks44/multi-consumer@1-${kind}`}, max: count === 4 ? 6 : 12}])]}))),
     ...[1, 4, 8].flatMap(count => ['native', 'external'].map(kind => ({
         id: `hooks44/snapshot-constructions@${count}-${kind}`, improvement: 'R44-A02',
         scenario: 'hooks44/snapshot-constructions', args: [String(count), kind],

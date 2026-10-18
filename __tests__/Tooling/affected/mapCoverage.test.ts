@@ -63,6 +63,15 @@ describe('affected map coverage', () => {
         expect(select([examples], map).rstest).toContain('__tests__/Native/examples.test.ts');
     });
 
+    it('resource and component perf areas match their gate families', () => {
+        const rule = (m) => map.rules.find((r) => r.match === m);
+        expect(rule('lib/src/Carburetor/Resource/**').perfAreas.every((a) =>
+            ['resource', 'cache', 'views'].includes(a))).toBe(true);
+        for (const a of ['selection', 'readset40', 'iterate40', 'subclass40']) {
+            expect(rule('lib/src/Carburetor/Component/**').perfAreas).toContain(a);
+        }
+    });
+
     it('every perfArea in the map matches at least one gate id', () => {
         const ids = gateIds();
         expect(ids.length).toBeGreaterThan(0);

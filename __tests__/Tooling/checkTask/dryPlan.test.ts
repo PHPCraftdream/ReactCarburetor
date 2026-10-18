@@ -18,6 +18,13 @@ describe('affected.mjs --task dry plan', () => {
         expect(r.stdout).toContain('__tests__/Engine/Resource');
     });
 
+    it('dist-reading test file: dry line mentions npm run build', () => {
+        const r = run(['--dry', '--files', '__tests__/Engine/ClientDirective.test.ts']);
+        expect(r.status).toBe(0);
+        expect(r.stdout).toContain('__tests__/Engine/ClientDirective.test.ts');
+        expect(r.stdout).toContain('npm run build');
+    });
+
     it('store file: dry run exits 0 with the full-tier message', () => {
         const r = run(['--files', 'lib/src/Carburetor/Store/z.ts', '--dry']);
         expect(r.status).toBe(0);

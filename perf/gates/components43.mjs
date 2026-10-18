@@ -10,6 +10,5 @@ export default [
     {id: 'components43/render-commit@1k', improvement: 'R43-A01',
         scenario: 'components43/render-commit', args: [],
         gates: [{metric: 'iterations', equals: 1000}, {metric: 'checksum', equals: 2209},
-            {metric: 'delivered', equals: 1}, {metric: 'warmChurn', equals: 0},
-            {metric: 'renderCommitMs', min: 0}]},
+            {metric: 'delivered', equals: 1}, {metric: 'warmChurn', equals: 0}]},
 ];
