@@ -71,6 +71,8 @@ export interface IRuleContext {
     id: string;
     filename: string;
     options: readonly unknown[];
+    /** The host's settings object; ESLint and oxlint pass it to every rule. Omitted by hosts without one. */
+    settings?: Record<string, unknown>;
     sourceCode: ISourceCode;
     report(diagnostic: IDiagnostic): void;
 }

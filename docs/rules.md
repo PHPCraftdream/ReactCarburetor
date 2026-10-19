@@ -221,8 +221,11 @@ base stops the walk — a project-local base is configured instead, with the `co
 }
 ```
 
-The keys apply to the native CLI. The ESLint/oxlint bridge runs the binary with a neutral configuration, so it
-recognises the built-in names and same-file `extends` chains only.
+The keys apply to the native CLI and to the ESLint/oxlint plugin alike: the plugin takes
+`settings.carburetor.componentBases` / `settings.carburetor.storeBases` from the host config, and
+falls back to the same two keys of `.carburetorrc.json` when the host passes no settings. Other
+keys of `.carburetorrc.json` (per-rule options) never reach the plugin's shared native run; rule
+options are passed through the host instead.
 
 Most rules accept severity only: `error`, `warn` or `off`; `require-module-function` also accepts
 the `scope` option (`"all"` or `"classes"`). Unknown scope values, option keys and base-list
@@ -249,11 +252,12 @@ a rule list silences all Carburetor rules.
 Both modes retain eligible component-member analysis. Module-level declarations are not nested
 function findings. Each H30 JSON diagnostic carries `scope: "class"` or `scope: "module"`. Type-only references, including `typeof x` in a type position, do not count as runtime captures; a callback depending on an enclosing generic type may still need a promoted or generalized signature when moved. Component JSX prop callbacks belong to H21, not H30. The
 JavaScript bridge obtains one complete native result and applies the host's `context.options` when
-reporting it. Its native invocation uses a neutral configuration, so `.carburetorrc.json` cannot
-silently narrow the result requested by an ESLint or oxlint rule option. Direct native CLI
-invocations honor `.carburetorrc.json`. Native configuration rejects an unknown scope or option key
-as malformed configuration and exits with code 2. Options for other native rules retain their
-existing behavior.
+reporting it. Its native invocation carries only the base-class keys (`componentBases` /
+`storeBases`), taken from `settings.carburetor` or the project `.carburetorrc.json`, so the rc
+cannot silently narrow the result requested by an ESLint or oxlint rule option. Direct native CLI
+invocations honor the whole `.carburetorrc.json`. Native configuration rejects an unknown scope or
+option key as malformed configuration and exits with code 2. Options for other native rules retain
+their existing behavior.
 
 ## One rule replaces a built-in
 

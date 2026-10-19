@@ -1,8 +1,7 @@
 import {createHash} from "node:crypto";
 import {spawnSync} from "node:child_process";
 import {
-    closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, renameSync, statSync, unlinkSync,
-    writeFileSync,
+    closeSync, existsSync, mkdirSync, openSync, readdirSync, readFileSync, statSync, unlinkSync,
 } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -11,6 +10,8 @@ import {platformPackageNames} from "#src/Utils/Native/platformPackage.mts";
 import {resolveBinary} from "#src/Utils/Native/resolveBinary.mts";
 import type {INativeDiagnostic} from "#src/Utils/Native/INativeDiagnostic.mts";
 import {cachedFileResult} from "#src/Utils/bufferCache.mts";
+import {writeAtomic} from "#src/Utils/atomicWrite.mts";
+import {basesConfig} from "#src/Utils/NativeBases.mts";
 
 /**
  * Runs the native binary once per lint run and hands every rule its own slice of the result.
@@ -28,6 +29,10 @@ import {cachedFileResult} from "#src/Utils/bufferCache.mts";
  * Writes are published via temp-name-then-`renameSync` so a reader never sees a half written file.
  * Lock and result files live in their own temp subdirectory and are deleted at process exit, once
  * no later-arriving thread could still need them.
+ *
+ * The binary runs with the base-class configuration resolved from the host's settings (see
+ * `basesConfig`), so `componentBases`/`storeBases` act here exactly as on the CLI. Per-rule
+ * options still never reach this run: they are applied host-side, in nativeRule.mts.
  */
 
 /** Every rule id native knows, whatever this project's own config says about severity. */
@@ -53,8 +58,11 @@ const MAX_CLAIM_ATTEMPTS = 5;
 
 let cached: INativeDiagnostic[] | undefined;
 
-/** The project and start time of the run `cached` came from; a file saved after it is not covered. */
+/** The project, start time and base key of the run `cached` came from; two hosts settings with
+ * different base lists in one process must not share a result, and a file saved after the run
+ * it came from is not covered either. */
 let cachedCwd: string | undefined;
+let cachedKey = '';
 let cachedStartMs = 0;
 
 /** This run's own lock/result files, deleted together once nothing can read them anymore. */
@@ -66,9 +74,9 @@ const sleepSync = (milliseconds: number): void => {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 };
 
-/** This run's lock path and cwd digest; the digest also scopes the leftover-file sweep. */
-const runPaths = (cwd: string): {lock: string; digest: string} => {
-    const digest = createHash('sha256').update(cwd).digest('hex').slice(0, 32);
+/** This run's lock path and cwd/base digest; the digest also scopes the leftover-file sweep. */
+const runPaths = (cwd: string, key: string): {lock: string; digest: string} => {
+    const digest = createHash('sha256').update(`${cwd}\u0000${key}`).digest('hex').slice(0, 32);
 
     return {lock: path.join(BRIDGE_DIR, `${process.pid}-${digest}.lock`), digest};
 };
@@ -137,25 +145,6 @@ const scheduleCleanup = (...paths: string[]): void => {
     });
 };
 
-/** Writes `content` so a reader only ever sees it complete: a temp name, then one atomic rename. */
-const writeAtomic = (target: string, content: string): void => {
-    const tmp = `${target}.${process.pid}-${Math.random().toString(36).slice(2)}.tmp`;
-
-    writeFileSync(tmp, content);
-
-    try {
-        renameSync(tmp, target);
-    } catch (error) {
-        try {
-            unlinkSync(tmp);
-        } catch {
-            // Best-effort; the rename failure below is the one that matters.
-        }
-
-        throw error;
-    }
-};
-
 /** True if `lock` predates this process's own start, meaning it cannot belong to any thread of it. */
 const isForeignAndDead = (lock: string): boolean => {
     try {
@@ -197,34 +186,22 @@ const claimLock = (lock: string): {isRunner: boolean; identity: {dev: number; in
     throw new Error('react-carburetor/lint: could not claim or read the native bridge lock.');
 };
 
-/** A config file that sets nothing, written once and reused: the bridge's shared run must not
- * inherit a project `.carburetorrc.json` — its per-rule options (say, `require-module-function`'s
- * `scope`) would narrow the one result every rule filters its own slice from, and a host config
- * asking for the wider behavior could never get it back. Passing this path explicitly is what
- * keeps the cache a full, host-independent list; per-run options are applied host-side only.
- * It lives in its own directory: the bridge directory is swept clean at process exit and its
- * file scan must see nothing but that run's own lock and result files. */
-const neutralConfig = (): string => {
-    const directory = path.join(os.tmpdir(), 'carburetor-lint-bridge');
-
-    mkdirSync(directory, {recursive: true});
-
-    const config = path.join(directory, 'bridge.carburetorrc.json');
-
-    // Content-stable, so a torn write from a racing first run is impossible: either it is already
-    // there or one writer's atomic rename publishes it.
-    if (!existsSync(config)) {
-        writeAtomic(config, '{}');
-    }
-
-    return config;
-};
-
 /** Runs the binary over `cwd` with every rule forced on, so the host — not native — decides what
- * a rule's own `create()` actually surfaces. `--keep-overlaps` disables native's own
- * deduplication of overlapping rules — a host may have disabled the rule a diagnostic would
- * otherwise be folded into; those overlaps are re-deduplicated host-side in nativeRule.mts. */
-const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinary): INativeDiagnostic[] => {
+ * a rule's own `create()` actually surfaces. `config` carries the base-class lists resolved from
+ * the host's settings (`basesConfig`), so custom bases act here as on the CLI. `--keep-overlaps`
+ * disables native's own deduplication of overlapping rules — a host may have disabled the rule a
+ * diagnostic would otherwise be folded into; those overlaps are re-deduplicated host-side in
+ * nativeRule.mts.
+ *
+ * @param cwd - the project the binary runs in
+ * @param config - the path of the base-class config file the binary is started with
+ * @param resolve - where the binary is; injectable so a test can stage one
+ */
+const runBinary = (
+    cwd: string,
+    config: string,
+    resolve: () => string | undefined = resolveBinary,
+): INativeDiagnostic[] => {
     const binary = resolve();
 
     if (!binary) {
@@ -240,7 +217,7 @@ const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinar
     const args = ALL_RULE_IDS.flatMap((id) => ['--rule', `${id}=error`]);
     const result = spawnSync(
         binary,
-        ['--config', neutralConfig(), '--format=json', '--keep-overlaps', ...args, '.'],
+        ['--config', config, '--format=json', '--keep-overlaps', ...args, '.'],
         // The JSON for a whole-project run is far bigger than 's 1 MiB default
         // buffer once the allocation rules scan every nested function, so the cap is raised
         // rather than left to fail as an ENOBUFS launch error.
@@ -263,17 +240,20 @@ const runBinary = (cwd: string, resolve: () => string | undefined = resolveBinar
 
 /** Runs the binary over one buffer, as if it were `filename`: the one way a host can have an
  * unsaved buffer analyzed. The flags mirror `runBinary` exactly — every rule on, overlaps kept,
- * a neutral config — so a file's in-memory findings are the same set its saved file would earn.
+ * the same base-class config — so a file's in-memory findings are the same set its saved file
+ * would earn.
  *
  * @param cwd - the project the binary runs in; the file's path is reported relative to it
  * @param filename - the absolute path the buffer is analyzed as
  * @param text - the buffer's own text, piped to the binary's standard input
+ * @param config - the path of the base-class config file the binary is started with
  * @param resolve - where the binary is; injectable so a test can stage one
  */
 const runNativeText = (
     cwd: string,
     filename: string,
     text: string,
+    config: string,
     resolve: () => string | undefined = resolveBinary,
 ): INativeDiagnostic[] => {
     const binary = resolve();
@@ -292,7 +272,7 @@ const runNativeText = (
     const relative = path.relative(cwd, filename).replace(/\\/g, '/');
     const result = spawnSync(
         binary,
-        ['--config', neutralConfig(), '--format=json', '--keep-overlaps', ...args, '--stdin', relative],
+        ['--config', config, '--format=json', '--keep-overlaps', ...args, '--stdin', relative],
         {cwd, encoding: 'utf8', input: text, maxBuffer: 64 * 1024 * 1024},
     );
 
@@ -348,26 +328,31 @@ const diskText = (filename: string): string | undefined => {
  * @param resolve - consulted only by the worker that wins the lock; waiters never resolve
  * @param filename - the file being linted; a save after the cached run forces a fresh scan
  * @param text - the host's own buffer content, when it may differ from the file on disk
+ * @param settings - the host's settings object; its `carburetor` namespace carries the base
+ * lists that reach the binary (see `basesConfig`), and keys this run's caches
  */
 export const runNative = (
     cwd: string,
     resolve: () => string | undefined = resolveBinary,
     filename?: string,
     text?: string,
+    settings?: Record<string, unknown>,
 ): INativeDiagnostic[] => {
+    const {config, key} = basesConfig(cwd, settings);
+
     if (text !== undefined && filename !== undefined && text !== diskText(filename)) {
         // One spawn per distinct buffer text, not per rule and not per keystroke.
-        return cachedFileResult(filename, text, () => runNativeText(cwd, filename, text, resolve));
+        return cachedFileResult(filename, text, () => runNativeText(cwd, filename, text, config, resolve), key);
     }
 
-    if (cached && cachedCwd === cwd) {
+    if (cached && cachedCwd === cwd && cachedKey === key) {
         if (!changedSince(filename, cachedStartMs)) {
             return cached;
         }
 
         // Adopt the new start only once the scan succeeded, so a failed one cannot make stale results fresh.
         const startMs = Date.now();
-        const fresh = runBinary(cwd, resolve);
+        const fresh = runBinary(cwd, config, resolve);
 
         cachedStartMs = startMs;
         cached = fresh;
@@ -375,7 +360,7 @@ export const runNative = (
         return fresh;
     }
 
-    const {lock, digest} = runPaths(cwd);
+    const {lock, digest} = runPaths(cwd, key);
 
     mkdirSync(BRIDGE_DIR, {recursive: true});
 
@@ -390,7 +375,8 @@ export const runNative = (
         try {
             cachedStartMs = Date.now();
             cachedCwd = cwd;
-            cached = runBinary(cwd, resolve);
+            cachedKey = key;
+            cached = runBinary(cwd, config, resolve);
             writeAtomic(result, JSON.stringify(cached));
 
             return cached;
@@ -427,6 +413,7 @@ export const runNative = (
 
     cached = payload;
     cachedCwd = cwd;
+    cachedKey = key;
     cachedStartMs = statSync(lock).mtimeMs;
 
     return cached;

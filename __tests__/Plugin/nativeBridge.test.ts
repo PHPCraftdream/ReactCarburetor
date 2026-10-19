@@ -42,9 +42,11 @@ mkdirSync(BRIDGE_DIR, {recursive: true});
 /** This process's own start time, exactly as the bridge computes it — public Node APIs only. */
 const processStartMs = (): number => Date.now() - Math.round(process.uptime() * 1000);
 
-/** The lock path `runNative` would use for `cwd`, computed exactly as `runPaths` does. */
+/** The lock path `runNative` would use for `cwd`, computed exactly as `runPaths` does — with the
+ * empty base key, since these tests pass no settings, and the digest folds the key in after a
+ * null separator so two base sets in one project never elect over each other's lock. */
 const lockPathFor = (cwd: string): string => {
-    const digest = createHash('sha256').update(cwd).digest('hex').slice(0, 32);
+    const digest = createHash('sha256').update(`${cwd}\u0000`).digest('hex').slice(0, 32);
 
     return path.join(BRIDGE_DIR, `${process.pid}-${digest}.lock`);
 };

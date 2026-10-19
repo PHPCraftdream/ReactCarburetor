@@ -1,0 +1,4 @@
+{
+  "jsPlugins": ["../../../plugin/src/index.mts"],
+  "rules": {"carburetor/require-super-in-lifecycle": "error"}
+}

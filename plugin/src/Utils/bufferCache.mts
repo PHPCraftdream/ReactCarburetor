@@ -19,13 +19,16 @@ const fileResults = new Map<string, INativeDiagnostic[]>();
  * @param filename - the absolute path the buffer is analyzed as; part of the cache key
  * @param text - the buffer's own text; the rest of the cache key
  * @param compute - produces the findings when neither this text nor this file was seen yet
+ * @param scope - an additional cache-key part separating otherwise identical buffers, e.g. the
+ * base-class configuration the run used
  */
 export const cachedFileResult = (
     filename: string,
     text: string,
     compute: () => INativeDiagnostic[],
+    scope = '',
 ): INativeDiagnostic[] => {
-    const key = `${filename}\u0000${createHash('sha256').update(text).digest('hex')}`;
+    const key = `${scope}\u0000${filename}\u0000${createHash('sha256').update(text).digest('hex')}`;
     const held = fileResults.get(key);
 
     if (held) {

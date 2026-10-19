@@ -1,0 +1,5 @@
+{
+  "jsPlugins": ["../../../plugin/src/index.mts"],
+  "settings": {"carburetor": {"componentBases": ["MyBase"]}},
+  "rules": {"carburetor/require-super-in-lifecycle": "error"}
+}

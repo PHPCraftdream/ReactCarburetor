@@ -76,7 +76,7 @@ export const nativeRule = (id: string, description: string, options: INativeRule
         return {
             'Program:exit'(): void {
                 const text = context.sourceCode.getText();
-                const diagnostics = runNative(process.cwd(), undefined, context.filename, text);
+                const diagnostics = runNative(process.cwd(), undefined, context.filename, text, context.settings);
                 const file = path.relative(process.cwd(), context.filename).replace(/\\/g, '/');
                 const enabled = enabledRuns.get(context.sourceCode);
                 diagnostics
