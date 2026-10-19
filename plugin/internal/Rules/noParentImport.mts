@@ -35,6 +35,10 @@ const resolveFrom = (filename: string, specifier: string): string => {
     return segments.join('/');
 };
 
+/** A string literal in the given quote style, escaping the quote and backslashes in the value. */
+const quoted = (value: string, quote: string): string =>
+    quote + value.replace(/\\/g, '\\\\').split(quote).join(`\\${quote}`) + quote;
+
 /** The aliased form of a resolved path, when it lands inside one of the source roots. */
 const toAlias = (resolved: string, roots: readonly {path: string; prefix: string}[]): string | undefined => {
     for (const root of roots) {
@@ -122,7 +126,7 @@ export const noParentImport: IRule = {
                     + 'which names the module from the root of the source tree and survives the file '
                     + 'being moved.',
                 // Keeps the original quote style, so the fix agrees with whatever formatter owns the file.
-                fix: (fixer: IRuleFixer) => fixer.replaceText(source, `${quote}${alias}${quote}`),
+                fix: (fixer: IRuleFixer) => fixer.replaceText(source, quoted(alias, quote)),
             });
         };
 

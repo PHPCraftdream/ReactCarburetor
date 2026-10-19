@@ -313,13 +313,14 @@ describe('runNative cache separation by base key', () => {
             // The disk content differs from both buffers, so both take the in-memory path.
             writeFileSync(file, 'export const saved = 1;');
 
-            expect(runNative(cwd, () => 'stub', file, 'export const aA = 1;', settingsA)[0].message)
-                .toBe('stub finding A');
-            expect(runNative(cwd, () => 'stub', file, 'export const aB = 1;', settingsB)[0].message)
-                .toBe('stub finding B');
+            const buffer = 'export const unsaved = 1;';
 
-            // One spawn per call: the buffer cache is scoped by the base key, so the second set
-            // re-ran instead of serving the first set's buffer result.
+            expect(runNative(cwd, () => 'stub', file, buffer, settingsA)[0].message).toBe('stub finding A');
+            expect(runNative(cwd, () => 'stub', file, buffer, settingsB)[0].message).toBe('stub finding B');
+            expect(runNative(cwd, () => 'stub', file, buffer, settingsA)[0].message).toBe('stub finding A');
+
+            // Same filename and text: only the base key tells the entries apart, so B re-ran
+            // and the return to A was served from A's own entry.
             expect(nativeSpawn.mock.calls.length).toBe(spawnsBefore + 2);
         } finally {
             rmSync(cwd, {recursive: true, force: true});

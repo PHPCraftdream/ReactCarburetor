@@ -55,6 +55,13 @@ export const registerNoParentImportCases = (): void => {
                 errors: 1,
             },
             {
+                name: 'a quote inside the path is escaped in the kept quote style',
+                filename: 'lib/src/Carburetor/Store/Tracking/createWriteProxy.ts',
+                code: `import value from '../Utils/it\\'s';`,
+                output: `import value from '@/Carburetor/Store/Utils/it\\'s';`,
+                errors: 1,
+            },
+            {
                 name: 'two levels up',
                 filename: 'lib/src/Carburetor/Store/Tracking/createWriteProxy.ts',
                 code: `import {TPath} from "../../Models/Paths";`,

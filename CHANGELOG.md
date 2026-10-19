@@ -65,7 +65,7 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
-- Linter plugin: `settings.carburetor.componentBases` / `storeBases` from the ESLint or oxlint config (or, without settings, the same keys of the project `.carburetorrc.json`) reach the native binary, so custom base classes act in the plugin as on the CLI. An unreadable or malformed rc is an error in the plugin, as in the CLI; a missing rc means empty lists.
+- Linter plugin: `settings.carburetor.componentBases` / `storeBases` from the ESLint or oxlint config (or, without settings, the same keys of the project `.carburetorrc.json`) reach the native binary, so custom base classes act in the plugin as on the CLI. In the plugin an unreadable rc, invalid JSON, a non-object root or malformed base lists are errors, a missing rc means empty lists, and the rc's other keys are ignored there (the CLI validates the whole file).
 - Linter: `componentBases` and `storeBases` in `.carburetorrc.json` add project-local base classes to every rule, and recognition follows same-file `extends` chains (named or anonymous classes); `ResourceCache` counts as a store base. The ESLint/oxlint bridge runs the binary with a neutral configuration and recognises the built-in names and same-file chains only.
 - Native binary: `--stdin <path>` lints a buffer as the named file; the bridge uses it to lint unsaved editor text instead of mapping disk diagnostics onto it.
 - A parity test pins the oxlint presets against the severity maps, and the oxlint preset turns `typescript/unbound-method` off.
@@ -146,7 +146,7 @@ Entries below record development history in change order; where contracts differ
 
 ### Changed
 
-- Linter: every walk-based rule runs in one shared traversal, and the capture and class-dependency facts of `require-module-function` / `require-method-for-closure` come from one bottom-up pass with each member analysed once.
+- Linter: every walk-based rule runs in one shared traversal; the nested-function capture and class-dependency facts of `require-module-function` / `require-method-for-closure` come from one bottom-up pass, and a member's analysis is shared between the rules.
 - Reading a `Date` through a draft no longer publishes a write; the read is checked by time at the next publication and dropped when unchanged.
 - Diff overflow is decided in one counting pass, and the write log evicts its oldest entries in batches instead of one by one (`diff46`, `writelog39`).
 - A re-render whose reads match the committed set adopts that set instead of building a new one (`readset46`).
