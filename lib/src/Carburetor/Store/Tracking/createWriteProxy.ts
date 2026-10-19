@@ -13,6 +13,7 @@ import {IProxyCache, PROXY_CACHE, RAW_TARGET} from "./Models";
 import {isTrackable} from "./isTrackable";
 import {isOpaqueDescriptor} from "./Proxy/Definitions/isOpaqueDescriptor";
 import {forbidSymbolKey} from "./Proxy/Definitions/forbidSymbolKey";
+import {recordNativeAssignment} from "./Aliases/recordNativeAssignment";
 import {nativeAliasIndex} from "./Aliases/NativeAliasIndex";
 import {isOrdinaryDate} from "./Proxy/Definitions/isOrdinaryDate";
 import {dateExposureLedger} from "./Proxy/dateExposureLedger";
@@ -360,13 +361,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         if (!wrote) {
             return false;
         }
-        // Topology refresh: only a container added, replaced or removed shifts raw ownership.
-        if ((isTrackable(previous) || isTrackable(raw)) && previous !== raw
-            && this.cache.nativeAliasRoot !== undefined) {
-            nativeAliasIndex.noteChange(
-                this.cache.nativeAliasRoot, source, key, previous, raw, path
-            );
-        }
+        recordNativeAssignment(this.cache.nativeAliasRoot, source, key, previous, raw, path);
         // A branch replaced or deleted takes its old object's recorded path with it, and a
         // write into an object last read under a different path is the aliasing the ledger
         // exists to report.
