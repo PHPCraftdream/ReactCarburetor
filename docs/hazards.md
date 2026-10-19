@@ -18,6 +18,15 @@ semantics:
 
 ## What the rules can and cannot see
 
+Ordinary `Date` leaves are opaque to tracking: reads subscribe to the raw Date leaf, and raw
+identity is preserved without wrapping reads or writes. A draft Date exposure lasts through the
+synchronous turn; its time value is checked on each publication until microtask cleanup. A net
+change produces an opaque history snapshot; unchanged setters or mutations reverted before the next publication
+produce no Date write. Normal updates publish synchronously; `emitSoon` is deferred, and multiple
+synchronous publications can schedule multiple wakes. Cleanup does not publish automatically: it
+only flushes sinks from an existing later emit. Date subclasses and Dates with own properties use
+conservative immediate exposure.
+
 oxlint's JS plugin API is ESLint's, and neither gives a JS rule the TypeScript type checker.
 Every rule here is therefore **syntactic**: it recognises carburetor code by shape, not by
 type.

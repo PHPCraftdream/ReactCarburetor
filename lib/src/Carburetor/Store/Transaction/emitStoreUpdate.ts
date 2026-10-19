@@ -3,6 +3,7 @@ import {IStateInstallation, PATCH_OPAQUE, TPath, TPathSet,
 import {CARBURETOR_NOTIFY_WRITES} from '@/Carburetor/Store/Utils/Models';
 import {IStorePublicationPort} from '@/Carburetor/Store/Transaction/Models';
 import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
+import {dateExposureLedger} from '@/Carburetor/Store/Tracking/Proxy/dateExposureLedger';
 import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
 import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
 import {nativeStoreWriteEpoch} from '@/Carburetor/Store/Scheduling/nativeStoreWriteEpoch';
@@ -28,6 +29,12 @@ export const emitStoreUpdate = <T extends object>(
     } catch (error: unknown) {
         failed = true;
         firstError = error;
+    }
+    try {
+        dateExposureLedger.flush(store[S.patchPort]);
+    } catch (error: unknown) {
+        if (!failed) firstError = error;
+        failed = true;
     }
     // Raw writes followed by emitUpdate bypass draft traps entirely.
     if (isTrackable(store[S.data]) && !store[S.draftTouched] && store[S.writes].size === 0) {

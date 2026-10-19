@@ -3,7 +3,7 @@
 // way the rule's message claims.
 /* oxlint-disable carburetor/no-untrackable-draft-mutation */
 /* oxlint-disable carburetor/no-untrackable-store-data */
-import {Carburetor} from "@/Carburetor";
+import {Carburetor, CarburetorHistory} from "@/Carburetor";
 import {TPath} from "@/Carburetor/Models/Paths";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 
@@ -26,6 +26,10 @@ const getData = (): IMixedData => ({
     index: new Map<string, number>([['a', 1]]),
     profile: new Profile(),
 });
+
+class InspectedHistory<T extends object> extends CarburetorHistory<T> {
+    public kinds(): string[] { return this.past.map(entry => entry.kind); }
+}
 
 class MixedCarburetor extends Carburetor<IMixedData> {
     public bumpCount = () => {
@@ -55,6 +59,31 @@ class MixedCarburetor extends Carburetor<IMixedData> {
         this.emitUpdate();
     };
 
+    /** Reentrant update while retaining a Date reference from the outer draft. */
+    public nestedDateUpdate = () => {
+        this.update((draft: IMixedData) => {
+            const date = draft.when;
+            this.update(() => {});
+            date.setTime(1000);
+        });
+    };
+
+    /** Reads the Date repeatedly through the draft without changing it.
+     *
+     * @param callback - Receives each raw Date read.
+     */
+    public inspectWhen = (callback: (date: Date) => void) => {
+        this.update((draft: IMixedData) => {
+            callback(draft.when);
+            callback(draft.when);
+        });
+    };
+
+    /**
+     * Sets the Date time through the draft.
+     *
+     * @param time - Unix time in milliseconds.
+     */
     public mutateWhenThroughDraft = (time: number) => {
         this.update((draft: IMixedData) => {
             draft.when.setTime(time);
@@ -109,6 +138,53 @@ describe('tracking boundary', () => {
         expect(isTrackable(null)).toBeFalsy();
         expect(isTrackable(1)).toBeFalsy();
         expect(isTrackable('a')).toBeFalsy();
+    });
+    test('nested update still publishes a retained Date mutation', () => {
+        const carburetor = new MixedCarburetor(getData());
+        let wakes = 0;
+        let observedTime = -1;
+        carburetor.subscribe(() => { wakes++; observedTime = carburetor.getData().when.getTime(); }, {
+            id: 'when-reader', reads: new Set<TPath>(['when']),
+        });
+
+        carburetor.nestedDateUpdate();
+
+        expect(wakes).toBeGreaterThan(0);
+        expect(observedTime).toBe(1000);
+        expect(carburetor.getData().when.getTime()).toBe(1000);
+    });
+
+
+    test('a Date read keeps raw identity and interoperates with native APIs', () => {
+        const carburetor = new MixedCarburetor(getData());
+        let first: Date | undefined;
+        carburetor.inspectWhen((date) => {
+            first ??= date;
+            expect(date).toBe(first);
+        });
+
+        expect(first).toBe(carburetor.getData().when);
+        expect(Object.prototype.toString.call(first)).toBe('[object Date]');
+        expect(first?.toString()).toBe(new Date(0).toString());
+        expect(JSON.stringify(first)).toBe(JSON.stringify(new Date(0)));
+        expect(structuredClone(first)?.getTime()).toBe(0);
+    });
+
+    test('a changed Date remains stable across history undo and redo', () => {
+        const carburetor = new MixedCarburetor({...getData(), profile: {name: 'anonymous'} as Profile});
+        let wakes = 0;
+        carburetor.subscribe(() => wakes++, {id: 'when-reader', reads: new Set<TPath>(['when'])});
+        const history = new InspectedHistory(carburetor);
+
+        carburetor.mutateWhenThroughDraft(1000);
+        expect(wakes).toBe(1);
+        expect(history.kinds().at(-1)).toBe('snapshot');
+        expect(carburetor.getData().when.getTime()).toBe(1000);
+        expect(history.undo()).toBeTruthy();
+        expect(carburetor.getData().when.getTime()).toBe(0);
+        expect(history.redo()).toBeTruthy();
+        expect(carburetor.getData().when.getTime()).toBe(1000);
+        history.disconnect();
     });
 
     test('mutating a Map in place invalidates everything instead of its own path', () => {

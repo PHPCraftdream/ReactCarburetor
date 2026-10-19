@@ -1294,7 +1294,12 @@ a test pins the exported surface so one does not slip in by accident.
   aliases; writes through those plain paths wake readers without changing raw entry identity.
   A native backlink to the store root necessarily subscribes to the whole store.
   `Date`, custom instances and unsupported native subclasses remain raw. Native reads are coarse
-  leaf reads; reaching one through `draft` conservatively marks its path, not fields inside it.
+  leaf reads; ordinary Date raw identity is preserved without read/write wrapping. A Date draft
+  exposure lasts through the synchronous turn; its time value is checked on each publication until
+  microtask cleanup. Net changes produce opaque history snapshots; unchanged setters and mutations
+  reverted before a publication produce no Date write. Date subclasses, Dates with own properties, custom
+  instances and unsupported native subclasses use conservative immediate exposure. Read tracking
+  remains coarse at the raw leaf level.
   Alias answers for such a value are cached and refreshed only by a topological write, so an
   in-place mutation of the value — or of a `Map` behind the facade — keeps its stale alias set
   until then; that is the same invisibility an opaque leaf's contents already have. A topological

@@ -180,8 +180,13 @@ coalesced writes remain undoable from that baseline, and other histories stay in
 replay normalizes Pending/refreshing fields on its fresh owned graph. The built-in stores publish
 to history before ordinary subscribers, after transaction/throttle coalescing.
 
-Ordinary plain-tree undo/redo records patches — O(changed values), not O(state). `setData`,
-`restore` and `fromJSON` record their leaf patches too (up to 1000, then one opaque entry). Only
+Ordinary plain-tree undo/redo records patches — O(changed values), not O(state). Ordinary Date
+raw identity is preserved; reads subscribe coarsely to the raw leaf, without wrapping reads or writes.
+Draft Date exposure lasts through the synchronous turn, checking its time value on each publication
+until microtask cleanup. Net changes create opaque history snapshots; unchanged setters and mutations
+reverted before the next publication create no Date write. Date subclasses and Dates with own properties use
+conservative immediate exposure. `setData`, `restore` and `fromJSON` record their leaf patches too (up to
+1000, then one opaque entry). Only
 classes whose wire form differs from their live data override `captureHistory(own)`, passing their
 authoritative raw graph to `own`; custom history sources are not supported.
 

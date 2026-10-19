@@ -12,9 +12,11 @@ import {clonePatchValue} from "./Proxy/clonePatchValue";
 import {createProxyCache} from "./Proxy/createProxyCache";
 import {IProxyCache, PROXY_CACHE, RAW_TARGET} from "./Models";
 import {isTrackable} from "./isTrackable";
-import {isOpaqueDescriptor} from "./Proxy/isOpaqueDescriptor";
-import {forbidSymbolKey} from "./Proxy/forbidSymbolKey";
+import {isOpaqueDescriptor} from "./Proxy/Definitions/isOpaqueDescriptor";
+import {forbidSymbolKey} from "./Proxy/Definitions/forbidSymbolKey";
 import {nativeAliasIndex} from "./Aliases/NativeAliasIndex";
+import {isOrdinaryDate} from "./Proxy/Definitions/isOrdinaryDate";
+import {dateExposureLedger} from "./Proxy/dateExposureLedger";
 import {liveViews} from "./Proxy/liveViews";
 import {runPositional} from "./Proxy/Positional/positionalArrayMethods";
 import {writeArrayLength} from "./Proxy/Positional/writeArrayLength";
@@ -285,20 +287,16 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         // conservatively publish the owner path, since subsequent in-place mutation would
         // otherwise be invisible. Primitive reads build no path.
         if (value !== null && typeof value === 'object') {
-            // Whatever changes inside it, if anything, cannot be described as a patch: a
-            // history attached to this store falls back to a full snapshot for this change.
-            this.patchPort?.listener?.(PATCH_OPAQUE);
-            // Any handout of an opaque/native draft field marks its effects unknown: methods,
-            // returns, locked values and unseen descendants cannot be attributed exactly.
-            if (this.cache.nativeAliasRoot !== undefined) {
-                nativeAliasIndex.noteChange(
-                    this.cache.nativeAliasRoot, source, key, value, value, this.writtenPath(key, source)
-                );
-            }
             const path = this.writtenPath(key, source);
-            this.record(path, value);
-            this.record(branchPath(path), RAW_EXPOSURE);
-            return liveViews.adaptNativeCollection(value, this.cache, source, key);
+            if (isOrdinaryDate(value)) {
+                if (this.patchPort === undefined) return dateExposureLedger.adapt(value, undefined,
+                    this.cache.nativeAliasRoot, source, key, this.record, path, this.cache);
+                dateExposureLedger.expose(this.patchPort, source, key, value, this.cache.nativeAliasRoot,
+                    this.record, path, this.cache);
+                return value;
+            }
+            return dateExposureLedger.adapt(value, this.patchPort, this.cache.nativeAliasRoot, source, key,
+                this.record, path, this.cache);
         }
         return value;
     }
