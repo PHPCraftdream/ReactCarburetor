@@ -271,7 +271,8 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
 
     match rule {
         allocations::no_closure_in_update::RULE => any(store) && text.contains("update"),
-        lifecycle::no_lifecycle_class_property::RULE => {
+        lifecycle::no_lifecycle_class_property::RULE
+        | lifecycle::require_super_in_lifecycle::RULE => {
             any(component) && LIFECYCLE_MARKERS.iter().any(|marker| text.contains(marker))
         }
         lifecycle::require_bind_for_passed_method::RULE => any(component),
@@ -323,6 +324,13 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
         _ => true,
     }
 }
+
+/// Runs the rules the configuration leaves on over one parsed file; `keep_overlaps` leaves H31
+/// (no-function-in-render) and H32 (no-closure-in-update) beside H29/H30 instead of yielding to
+/// them at a spot the allocation rules reported.
+///
+/// A rule set to `off` is not merely filtered out of the output — it never runs, so turning rules
+/// off makes the pass cheaper rather than only quieter.
 pub fn run(
     program: &Program<'_>,
     source: &Source<'_>,
