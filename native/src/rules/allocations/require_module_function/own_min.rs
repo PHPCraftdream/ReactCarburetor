@@ -115,30 +115,27 @@ pub(super) fn scope_function_depth(
     depth
 }
 
-/// The effective depth of a symbol's declaration: a function or class declaration's name binds in
-/// the enclosing scope, but its span sits inside its own node, so a reference to it counts at the
-/// declared node's own depth — as if the name were declared inside the body, which is what the
-/// span-based probe sees.
+/// The effective depth of a symbol's declaration, counted in the functions that enclose the name on
+/// the current stack. A function declaration's name binds in the enclosing scope but sits inside
+/// its own node, so while that function is live (`live`: the reference is within it) the name
+/// counts one level deeper; from outside it, the function is not on the stack and the name stays
+/// at the enclosing depth.
 pub(super) fn capture_depth(
     semantic: &Semantic<'_>,
     scoping: &Scoping,
     depths: &mut HashMap<ScopeId, usize>,
     symbol: SymbolId,
+    live: bool,
 ) -> usize {
     let scope = scoping.symbol_scope_id(symbol);
-    match semantic.symbol_declaration(symbol).kind() {
-        // Any declaration shape but an expression: its name lies outside its own scope.
-        AstKind::Function(function) if function.r#type != FunctionType::FunctionExpression => {
-            match function.scope_id.get() {
-                Some(own) => scope_function_depth(scoping, depths, own),
-                None => scope_function_depth(scoping, depths, scope),
+    if live {
+        if let AstKind::Function(function) = semantic.symbol_declaration(symbol).kind() {
+            if function.r#type != FunctionType::FunctionExpression {
+                if let Some(own) = function.scope_id.get() {
+                    return scope_function_depth(scoping, depths, own);
+                }
             }
         }
-        // A class declaration's name binds outside the class scope; an expression's binds inside.
-        AstKind::Class(class) => match class.scope_id.get() {
-            Some(own) if own != scope => scope_function_depth(scoping, depths, own),
-            _ => scope_function_depth(scoping, depths, scope),
-        },
-        _ => scope_function_depth(scoping, depths, scope),
     }
+    scope_function_depth(scoping, depths, scope)
 }

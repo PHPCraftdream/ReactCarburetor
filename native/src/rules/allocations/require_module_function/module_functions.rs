@@ -474,11 +474,16 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
                 .get()
                 .and_then(|reference| self.scoping.get_reference(reference).symbol_id());
             if let Some(symbol) = symbol {
-                let depth =
-                    capture_depth(self.semantic, self.scoping, &mut self.scope_depths, symbol);
+                let owner = self.own_names.get(&symbol).copied();
+                let depth = capture_depth(
+                    self.semantic,
+                    self.scoping,
+                    &mut self.scope_depths,
+                    symbol,
+                    owner.is_some(),
+                );
                 // Depth 0 is a module declaration, which never counts as a capture.
                 if depth != 0 {
-                    let owner = self.own_names.get(&symbol).copied();
                     // A reference to the innermost frame's own symbol is its recursion.
                     if owner != self.frames.last().map(|frame| frame.index) {
                         if let Some(frame) = self.frames.last_mut() {
