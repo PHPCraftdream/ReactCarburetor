@@ -27,7 +27,12 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check, bool); 29] = [
+const REGISTRY: [(&str, Check, bool); 30] = [
+    (
+        boundaries::max_render_depth::RULE,
+        boundaries::max_render_depth::check,
+        true,
+    ),
     (
         allocations::no_closure_in_update::RULE,
         allocations::no_closure_in_update::check,
@@ -432,7 +437,15 @@ pub(super) fn run_sequential(
                 module_scope,
                 &bases,
             ),
-            _ => check(program, source, &bases),
+            _ => match rule {
+                boundaries::max_render_depth::RULE => boundaries::max_render_depth::check_with_max(
+                    program,
+                    source,
+                    config.max_render_depth(),
+                    &bases,
+                ),
+                _ => check(program, source, &bases),
+            },
         };
 
         diagnostics.extend(reports.into_iter().map(|mut diagnostic| {

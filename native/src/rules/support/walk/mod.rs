@@ -132,6 +132,12 @@ pub trait Rule<'a> {
     fn method(&mut self, _method: &MethodDefinition<'a>, _context: &Context) {}
     /// A JSX attribute, `onClick={...}` among them.
     fn jsx_attribute(&mut self, _attribute: &JSXAttribute<'a>, _context: &Context) {}
+    /// A JSX element, before its children are walked. `name` is the source spelling of the tag
+    /// (`Row`, `UI.Card`), `component` says whether it counts as a component — an uppercase or
+    /// member name — rather than a lowercase DOM tag.
+    fn jsx_element(&mut self, _span: Span, _name: &str, _component: bool, _context: &Context) {}
+    /// A JSX element, after its children have been walked; one call per [`Rule::jsx_element`].
+    fn leave_jsx_element(&mut self) {}
     /// A class, once `context.in_component` / `context.in_carburetor` reflect it.
     fn class(&mut self, _class: &Class<'a>, _context: &Context) {}
     /// `function inner() {}`, called while the enclosing context is still the render body.
@@ -427,6 +433,18 @@ impl<'a, 'b> Visit<'a> for Walk<'a, 'b> {
             rule.jsx_attribute(attribute, &self.context);
         }
         walk::walk_jsx_attribute(self, attribute);
+    }
+
+    fn visit_jsx_element(&mut self, element: &oxc_ast::ast::JSXElement<'a>) {
+        let (name, component) = jsx_element_name(&element.opening_element.name);
+        let name = name.unwrap_or_default();
+        for rule in &mut self.rules {
+            rule.jsx_element(element.span, &name, component, &self.context);
+        }
+        walk::walk_jsx_element(self, element);
+        for rule in &mut self.rules {
+            rule.leave_jsx_element();
+        }
     }
 
     fn visit_jsx_opening_element(&mut self, element: &oxc_ast::ast::JSXOpeningElement<'a>) {

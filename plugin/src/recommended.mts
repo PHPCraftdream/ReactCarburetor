@@ -27,6 +27,7 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/no-get-data-in-render': 'error',
     'carburetor/no-handler-created-in-render': 'warn',
     'carburetor/no-lifecycle-class-property': 'error',
+    'carburetor/max-render-depth': 'warn',
     'carburetor/no-module-level-store': 'off',
     'carburetor/no-memo-over-store-read': 'warn',
     'carburetor/no-react-hooks-in-components': 'off',

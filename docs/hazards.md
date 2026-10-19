@@ -92,6 +92,7 @@ arbitrary inheritance chains. Custom component classes should directly inherit
 | H32 | `no-closure-in-update` | allocations | warn | no |
 | H33 | `no-memo-over-store-read` | allocations | warn | no |
 | H34 | `no-capturing-hook-selector` | allocations | warn | no |
+| H35 | `max-render-depth` | lifecycle | warn | no |
 
 Three of these overlap with a runtime diagnostic the engine already reports in development
 (H6, H14, H17). The rule is still worth having: it fires on code paths that were never
@@ -1330,3 +1331,34 @@ Capturing a component-specific value read by `useCarburetorValue`, `useComputedV
 ## H34 — A hook selector captures render state
 
 An inline selector that captures props or local render bindings is rebuilt and re-executed during rendering. H34 covers only argument 2 (`select`) of `useCarburetorValue(source, select, isEqual?)` and argument 3 (`select`) of `useResourceValue(source, args, select, isEqual?)`; `useComputedValue(computed)` has no selector and is not covered. Prefer selecting the whole record and picking fields during render. Capture-free selectors remain H30’s concern and are not duplicated by H34.
+
+## H35 — A render's component tree deeper than the limit
+
+Building a deep component tree inside one render hides the redraw boundaries: the whole subtree re-renders as one piece, and the props gate and subscriptions cannot cut into it. A render should assemble a shallow tree of components and move the deeper part into a child component, which then re-renders on its own terms.
+
+Only components count as a level: a PascalCase or member name (`<Child>`, `<UI.Card>`). Lowercase DOM tags and fragments (`<>`, `<Fragment>`, `<React.Fragment>`) are not levels, but nesting continues through them, so `<A><div><B/></div></A>` is two levels. JSX inside attributes (`icon={<Icon/>}`, render props) and inside expression children (`{cond && <B/>}`, `{items.map(() => <Row/>)}`) continues the owning element's depth. JSX inside a nested PascalCase component declaration is a render of its own and is not counted; a camelCase helper function is not a render and is not checked.
+
+**Wrong**
+
+<!-- example:file examples/wrong/max-render-depth/DeepTree.expected.max-render-depth.tsx#doc -->
+```tsx
+<Branch>
+    <Twig>
+        <Leaf/>
+        <Leaf>
+            <Vein/>
+        </Leaf>
+    </Twig>
+</Branch>
+```
+
+**Why it is silent.** Nothing fails at runtime; the component just re-renders more than it needs to, and the cost grows with every nesting level added in the same render.
+
+**Right.** Extract the inner part into a child component so each render stays shallow; the limit is configured with the `max` option (`{"max": 3}` by default, an integer >= 1).
+
+**Rule** `max-render-depth` — **warn**.
+
+**Detection.** In each render — a `render` method of a class extending a component base, or a functional-component render scope (the same syntactic scope H21/H31 use) — count the maximum number of component elements on any root-to-leaf path. One diagnostic is reported on the element that first exceeds the configured limit; its subtree is not reported again.
+
+**False positives.** The rule is a warning about render shape, not a correctness error: a genuinely static deep tree can be fine. Suppress locally or raise `max` if the structure earns its depth.
+

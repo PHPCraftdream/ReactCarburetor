@@ -68,6 +68,7 @@ pub struct RuleSetting {
 /// of truth for strictness — this table exists so the native binary agrees with it by default, and
 /// the conformance corpus is what keeps the two from drifting apart.
 pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
+    ("max-render-depth", Severity::Warn),
     ("no-async-effect", Severity::Error),
     ("no-async-transaction", Severity::Error),
     ("no-closure-in-update", Severity::Warn),
@@ -340,6 +341,9 @@ fn parse_setting(rule: &str, value: &serde_json::Value) -> Result<RuleSetting, C
             if rule == "require-module-function" {
                 validate_module_function_options(map)?;
             }
+            if rule == "max-render-depth" {
+                validate_max_render_depth_options(map)?;
+            }
 
             Ok(RuleSetting {
                 severity: required_severity(text)?,
@@ -436,9 +440,12 @@ fn parse(text: &str) -> Result<Config, ConfigError> {
 }
 
 mod bases;
+mod depth;
 mod scope;
 
 use bases::parse_bases;
+use depth::validate_max_render_depth_options;
+pub(crate) use depth::DEFAULT_MAX;
 use scope::validate_module_function_options;
 
 pub use scope::ModuleFunctionScope;

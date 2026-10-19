@@ -122,6 +122,9 @@ pub(super) fn run(
                         .expect("enabled rule has shared semantics"),
                 ),
             )),
+            boundaries::max_render_depth::RULE => Some(Box::new(
+                boundaries::max_render_depth::make_rule(source, config.max_render_depth()),
+            )),
             lifecycle::no_lifecycle_class_property::RULE => Some(Box::new(
                 lifecycle::no_lifecycle_class_property::make_rule(source),
             )),

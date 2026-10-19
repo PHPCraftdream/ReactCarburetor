@@ -20,6 +20,7 @@ import {noGetDataInRender} from "./Rules/Reads/noGetDataInRender.mts";
 import {noMemoOverStoreRead} from "./Rules/Reads/noMemoOverStoreRead.mts";
 import {noCapturingHookSelector} from "./Rules/Reads/noCapturingHookSelector.mts";
 import {noHandlerCreatedInRender} from "./Rules/Lifecycle/noHandlerCreatedInRender.mts";
+import {maxRenderDepth} from "./Rules/Lifecycle/maxRenderDepth.mts";
 import {noLifecycleClassProperty} from "./Rules/Lifecycle/noLifecycleClassProperty.mts";
 import {requireBindForPassedMethod} from "./Rules/Lifecycle/requireBindForPassedMethod.mts";
 import {requireSuperInLifecycle} from "./Rules/Lifecycle/requireSuperInLifecycle.mts";
@@ -58,6 +59,7 @@ const plugin: IPlugin = {
         'no-external-data-mutation': noExternalDataMutation,
         'no-function-in-render': noFunctionInRender,
         'no-handler-created-in-render': noHandlerCreatedInRender,
+        'max-render-depth': maxRenderDepth,
         'no-lifecycle-class-property': noLifecycleClassProperty,
         'no-module-level-store': noModuleLevelStore,
         'no-react-hooks-in-components': noReactHooksInComponents,

@@ -167,6 +167,7 @@ until your project changes shape.
 
 | Rule | Level | Catches | Hazard |
 |------|-------|---------|--------|
+| `max-render-depth` | warn | A render whose component tree is deeper than the configured limit; configurable depth | [H35](hazards.md) |
 | `no-async-effect` | error | An `async` effect body, whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
 | `no-async-transaction` | error | An `async` body given to `transaction()` (a value import from `react-carburetor`) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
 | `no-closure-in-update` | warn | A capturing inline callback passed to `this.update` in a recognized store member; pass a module-level mutator and its arguments to `this.update` instead | [H32](hazards.md) |
@@ -230,7 +231,8 @@ while one that cannot be read or holds malformed lists is an error, as in the CL
 are passed through the host instead.
 
 Most rules accept severity only: `error`, `warn` or `off`; `require-module-function` also accepts
-the `scope` option (`"all"` or `"classes"`). Unknown scope values, option keys and base-list
+the `scope` option (`"all"` or `"classes"`) and `max-render-depth` accepts `max` (an integer >= 1).
+Unknown option values, option keys and base-list
 shapes are malformed configuration. Suppress reports with
 `// carburetor-disable-next-line <rule>` or `// carburetor-disable <rule>`; either directive without
 a rule list silences all Carburetor rules.
@@ -260,6 +262,26 @@ cannot silently narrow the result requested by an ESLint or oxlint rule option. 
 invocations honor the whole `.carburetorrc.json`. Native configuration rejects an unknown scope or
 option key as malformed configuration and exits with code 2. Options for other native rules retain
 their existing behavior.
+
+### `max-render-depth`: `max`
+
+```json
+{
+  "rules": {
+    "carburetor/max-render-depth": ["warn", {"max": 3}]
+  }
+}
+```
+
+- `3` is the default. A render is reported when the deepest root-to-leaf path holds more than
+  `max` components; one diagnostic lands on the element that first exceeds the limit.
+- Only components count: PascalCase or member names. DOM tags and fragments nest without
+  counting; JSX in attributes and expression children continues the owning element's depth.
+
+Native configuration rejects an unknown option key, a non-integer or a value below 1 as
+malformed configuration and exits with code 2. The option is honored by the native CLI's
+configuration; the ESLint/oxlint bridge runs the binary with a neutral configuration, so the
+default depth of 3 applies there.
 
 ## One rule replaces a built-in
 

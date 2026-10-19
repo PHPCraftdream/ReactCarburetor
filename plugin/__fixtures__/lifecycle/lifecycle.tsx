@@ -32,6 +32,8 @@ export class Row extends AntiHookComponent<{id: string}> {
             <button onClick={this.onToggle}>toggle</button>
             {/* no-handler-created-in-render */}
             <TodoRow onDelete={() => store.deleteTodo(this.props.id)} title={data.title}/>
+            {/* max-render-depth: the fourth component level in this render */}
+            <Branch><Twig><Leaf><Needle/></Leaf></Twig></Branch>
         </div>;
     }
 }

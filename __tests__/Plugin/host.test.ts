@@ -310,6 +310,7 @@ describe('lint plugin in the oxlint host', () => {
             'carburetor(require-super-in-lifecycle)',
             'carburetor(require-bind-for-passed-method)',
             'carburetor(no-handler-created-in-render)',
+            'carburetor(max-render-depth)',
         ];
 
         expected.forEach((ruleId: string) => {

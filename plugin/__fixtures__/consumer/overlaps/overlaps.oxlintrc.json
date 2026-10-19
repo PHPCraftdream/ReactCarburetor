@@ -15,6 +15,7 @@
     "carburetor/no-get-data-in-render": "error",
     "carburetor/no-handler-created-in-render": "error",
     "carburetor/no-lifecycle-class-property": "error",
+    "carburetor/max-render-depth": "error",
     "carburetor/no-module-level-store": "error",
     "carburetor/no-store-write-in-render": "error",
     "carburetor/no-tracked-data-mutation": "error",
