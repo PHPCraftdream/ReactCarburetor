@@ -540,9 +540,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const changesOrderOnInverse = listener && !this.isArray && orderReplayGuard.depth === 0
             && orderedTailMemo.follows(source, key);
         this.aliases?.checkWrite(source, this.basePath);
-        if (!Reflect.deleteProperty(source, key)) {
-            return false;
-        }
+        if (!Reflect.deleteProperty(source, key)) return false;
+        orderedTailMemo.removed(source, key);
         this.aliases?.forget(previous);
         if (isTrackable(previous) && this.cache.nativeAliasRoot !== undefined) {
             nativeAliasIndex.noteChange(
@@ -557,10 +556,11 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         this.record(path, source);
         if (listener) {
             if (changesOrderOnInverse) {
-                const patches: Parameters<TPatchRecorder>[0][] = [];
-                patches.push(PATCH_KEY_ORDER_CHANGE);
-                this.reportPatch(patch => { patches.push(patch); },
-                    key, previous, undefined, true, false);
+                const patches: Parameters<TPatchRecorder>[0][] = [PATCH_KEY_ORDER_CHANGE];
+                this.reportPatch(patch => {
+                    const first = patches.length === 1 && typeof patch === 'object';
+                    patches.push(first ? {...patch, deletionOrder: true} : patch);
+                }, key, previous, undefined, true, false);
                 deliverPatches(listener, patches);
             } else {
                 this.reportPatch(listener, key, previous, undefined, true, false);

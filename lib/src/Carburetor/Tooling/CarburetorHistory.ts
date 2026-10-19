@@ -96,6 +96,8 @@ export class CarburetorHistory<T extends object> {
     protected pendingOpaque: boolean = false;
     /** The pending publication requires adoption of the exact owned endpoint on replay. */
     private pendingOwnedReplay: boolean = false;
+    /** Key-order markers seen and not yet covered by a deletion's order plan; any left means a snapshot. */
+    private pendingOrderMarkers: number = 0;
 
     /** One observer for mutation patches, the closed publication boundary and exact replay ownership. */
     private readonly observer: IPatchObserver = {
@@ -250,10 +252,7 @@ export class CarburetorHistory<T extends object> {
         this.baselineContainsLockedArray = capture.lockedArray;
         this.baselineContainsRestricted = capture.restricted;
         this.baselineShared = false;
-        this.pendingPatches = [];
-        this.pendingPossibleOwnedTarget = false;
-        this.pendingOpaque = false;
-        this.pendingOwnedReplay = false;
+        this.resetPending();
         if (this.pendingReplayOwner !== undefined) this.replayAttempts.delete(this.pendingReplayOwner);
         this.pendingReplayOwner = undefined;
     }
@@ -274,9 +273,10 @@ export class CarburetorHistory<T extends object> {
         if (patch === PATCH_ARRAY_LENGTH_LOCK) {
             this.markPendingOpaque(); this.pendingOwnedReplay = true; return;
         }
-        if (patch === PATCH_KEY_ORDER_CHANGE) return;
+        if (patch === PATCH_KEY_ORDER_CHANGE) { this.pendingOrderMarkers++; return; }
         if (patch === PATCH_OPAQUE) { this.markPendingOpaque(); return; }
         if (this.pendingOpaque) return;
+        if (patch.deletionOrder && this.pendingOrderMarkers > 0) this.pendingOrderMarkers--;
 
         if (this.baselineContainsExotic && (this.baselineContainsLockedArray ||
             this.baselineContainsRestricted || !isSafeScalarPatch(this.baseline, patch))) {
@@ -314,6 +314,12 @@ export class CarburetorHistory<T extends object> {
         }
     }
 
+    /** Forgets everything collected for the publication in flight. */
+    private resetPending(): void {
+        this.pendingPatches = []; this.pendingPossibleOwnedTarget = false; this.pendingOpaque = false;
+        this.pendingOwnedReplay = false; this.pendingOrderMarkers = 0;
+    }
+
     /** Releases unused endpoint ownership as soon as this batch requires authoritative snapshots. */
     private markPendingOpaque(): void {
         this.pendingOpaque = true; this.pendingPatches = []; this.pendingPossibleOwnedTarget = false;
@@ -341,10 +347,7 @@ export class CarburetorHistory<T extends object> {
                 attempt.reconcile = undefined;
                 this.replayAttempts.delete(fact.owner);
             } else this.reconcileBaseline();
-            this.pendingPatches = [];
-            this.pendingPossibleOwnedTarget = false;
-            this.pendingOpaque = false;
-            this.pendingOwnedReplay = false;
+            this.resetPending();
             return;
         }
         if (this.pendingReplayOwner !== undefined) {
@@ -357,20 +360,14 @@ export class CarburetorHistory<T extends object> {
             this.pendingReplayOwner = undefined;
             if (customReplay) {
                 this.reconcileBaseline();
-                this.pendingPatches = [];
-                this.pendingPossibleOwnedTarget = false;
-                this.pendingOpaque = false;
-                this.pendingOwnedReplay = false;
+                this.resetPending();
                 return;
             }
             if (fact !== undefined) this.pendingOpaque = true;
         }
 
         const entry = this.buildEntry(fact);
-        this.pendingPatches = [];
-        this.pendingPossibleOwnedTarget = false;
-        this.pendingOpaque = false;
-        this.pendingOwnedReplay = false;
+        this.resetPending();
         if (entry === undefined) return;
         this.past.push(entry);
         if (this.past.length > this.limit) {
@@ -448,14 +445,17 @@ export class CarburetorHistory<T extends object> {
     }
 
     /**
-     * Attaches each deletion's undo order plan, derived once per container from the baseline.
+     * Turns the writes collected since the last flush into one entry.
      *
-     * Plans land on private copies: the pending patch objects are shared with every other
-     * observer. Undefined means an order the plans cannot reinstate exactly, so the
-     * publication falls back to a full snapshe still falls back to a safe, larger entry.
+     * Patches when every one of them was describable; a full snapshot either side of the change
+     * otherwise. Each deletion gets its undo order plan on a private copy of the patch; a key-order
+     * marker no deletion covers, an order the plans cannot reinstate, or a gap in coverage falls
+     * back to a safe, larger entry.
+     *
+     * @param fact - the closed publication, when the engine reported one.
      */
     protected buildEntry(fact?: IStatePublication): THistoryEntry<T> | undefined {
-        if (this.pendingOpaque || this.pendingPatches.length === 0 ||
+        if (this.pendingOpaque || this.pendingOrderMarkers > 0 || this.pendingPatches.length === 0 ||
             (this.baselineContainsExotic && fact !== undefined && fact.origin !== 'mutation') ||
             (fact !== undefined && fact.origin !== 'mutation' &&
                 !((fact.origin === 'replacement' || fact.origin === 'restore') &&

@@ -22,6 +22,19 @@ class OrderedStore extends Carburetor<{item: Record<string, number>; leaf: numbe
     public changeLeaf(value: number): void {
         this.update(draft => { draft.leaf = value; });
     }
+    public refuseThenRemove(refused: string, removed: string): void {
+        this.update(draft => {
+            Reflect.deleteProperty(draft.item, refused);
+            delete draft.item[removed];
+        });
+    }
+    public removeAroundRawAdd(first: string, added: string): void {
+        this.update(draft => {
+            delete draft.item[first];
+            this.getData().item[added] = 3;
+            delete draft.item[added];
+        });
+    }
 }
 
 describe('ordered own keys in publications', () => {
@@ -141,6 +154,32 @@ describe('ordered own keys in publications', () => {
         numeric.remove('2');
         expect(orderChanges).toBe(1);
         detachNumeric();
+    });
+
+    test('a refused deletion leaves the key-order probe truthful', () => {
+        const item: Record<string, number> = {a: 1};
+        Object.defineProperty(item, 'b', {value: 2, enumerable: true, writable: true, configurable: false});
+        const store = new OrderedStore({item, leaf: 0});
+        let orderChanges = 0;
+        const detach = store.attachPatchListener({patch: value => {
+            if (value === PATCH_KEY_ORDER_CHANGE) orderChanges++;
+        }});
+        store.refuseThenRemove('b', 'a');
+        expect(Object.keys(store.getData().item)).toEqual(['b']);
+        expect(orderChanges).toBe(1);
+        detach();
+    });
+
+    test('a key added behind the proxies is seen by the next deletion', () => {
+        const store = new OrderedStore({item: {a: 1, b: 2}, leaf: 0});
+        let orderChanges = 0;
+        const detach = store.attachPatchListener({patch: value => {
+            if (value === PATCH_KEY_ORDER_CHANGE) orderChanges++;
+        }});
+        store.removeAroundRawAdd('a', 'c');
+        expect(Object.keys(store.getData().item)).toEqual(['b']);
+        expect(orderChanges).toBe(1);
+        detach();
     });
 
     test('branch replacement signals only append-impossible order, not equal or numeric keys', () => {

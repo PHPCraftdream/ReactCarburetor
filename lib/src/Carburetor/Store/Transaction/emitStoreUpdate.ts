@@ -7,6 +7,7 @@ import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasI
 import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
 import {nativeStoreWriteEpoch} from '@/Carburetor/Store/Scheduling/nativeStoreWriteEpoch';
 import {updateBatch} from '@/Carburetor/Store/Transaction/UpdateBatchInstance';
+import {orderedTailMemo} from '@/Carburetor/Store/Paths/Diff/Order/orderedTailMemo';
 
 import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
 
@@ -47,6 +48,7 @@ export const emitStoreUpdate = <T extends object>(
     }
 
     store[S.draftTouched] = false;
+    orderedTailMemo.advance();
 
     // Draft was used, but no value actually changed — there is nobody to wake.
     if (!changed && touched) {

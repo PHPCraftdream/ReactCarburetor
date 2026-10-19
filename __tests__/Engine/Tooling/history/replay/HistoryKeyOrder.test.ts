@@ -463,3 +463,26 @@ describe('positional windows with explicit undefined and coerced arguments', () 
         stableHistory.disconnect();
     });
 });
+
+class ItemStore extends Carburetor<{item: {a: number; b: number; c: number}}> {
+    public replace(next: {a: number; b: number; c: number}): void {
+        this.update(draft => { draft.item = next; });
+    }
+}
+
+describe('a branch replacement that reorders keys and changes a value', () => {
+    test('undo and redo keep the key order of each side', () => {
+        const store = new ItemStore({item: {a: 1, b: 2, c: 3}});
+        const history = new CarburetorHistory(store);
+        store.replace({b: 2, a: 1, c: 4});
+        expect(Object.keys(store.getData().item)).toEqual(['b', 'a', 'c']);
+        for (let i = 0; i < 2; i++) {
+            expect(history.undo()).toBe(true);
+            expect(store.getData().item).toEqual({a: 1, b: 2, c: 3});
+            expect(Object.keys(store.getData().item)).toEqual(['a', 'b', 'c']);
+            expect(history.redo()).toBe(true);
+            expect(Object.keys(store.getData().item)).toEqual(['b', 'a', 'c']);
+        }
+        history.disconnect();
+    });
+});

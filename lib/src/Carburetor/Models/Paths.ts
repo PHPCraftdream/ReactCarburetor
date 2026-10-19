@@ -76,6 +76,8 @@ export interface IWritePatch {
      * ordered string keys from the deleted position on, shared per container per entry.
      */
     orderPlan?: {readonly keys: readonly string[]; readonly from: number};
+    /** The one patch of a deletion whose key-order marker the publication's order plan covers. */
+    deletionOrder?: true;
 }
 
 /** Delivers a field patch, opaque write, or structural transition requiring owned replay. */
