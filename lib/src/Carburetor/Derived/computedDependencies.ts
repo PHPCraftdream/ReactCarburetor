@@ -5,6 +5,7 @@ import {sharedSingleton} from '@/Carburetor/Store/Utils/sharedSingleton';
 import {updateWave} from '@/Carburetor/Store/Scheduling/UpdateWaveInstance';
 import {IDependency, IActiveReadSlot} from './Models';
 import {ILeafVersion} from './Freshness/Models';
+import {leafWatermarks} from '@/Carburetor/Derived/reporting/leafWatermarks';
 
 /** Flattened native metadata shared across module copies. */
 interface IVersion {
@@ -41,6 +42,17 @@ export const computedDependencies = {
     versions,
     nativeVersions,
     nativeSnapshots,
+    /** Records an additional computed leaf read and invalidates read watermarks.
+     *
+     * @param dependency - The dependency whose read set grows.
+     * @param path - The newly read path.
+     */
+    addRead(dependency: IDependency, path: string): void {
+        dependency.reads.add(path);
+        if (dependency.published) {
+            leafWatermarks.grow();
+        }
+    },
     /** Subscribes native edges directly and shares one upstream bridge for external sources.
      *
      * @param source - dependency source.

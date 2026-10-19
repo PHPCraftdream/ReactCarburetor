@@ -316,7 +316,7 @@ export class Computed<R> implements IComputed<R> {
         if (dependency.reads.has(path)) {
             return;
         }
-        dependency.reads.add(path);
+        computedDependencies.addRead(dependency, path);
         if (dependency.published && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
             reportComputedEscape(this, (id: string) => this[C.subscribers].has(id));
         }

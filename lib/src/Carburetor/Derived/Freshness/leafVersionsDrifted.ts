@@ -3,6 +3,7 @@ import {isNativeStoreSource} from '@/Carburetor/Store/Scheduling/isNativeStoreSo
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
 import {ILeafVersion, IReadSet} from './Models';
 import {readStoreData} from './readStoreData';
+import {leafWatermarks} from '@/Carburetor/Derived/reporting/leafWatermarks';
 
 /** Whether one moved leaf really concerns the paths it read; the store answers per filed pair.
  *
@@ -48,12 +49,19 @@ export const leafVersionsDrifted = (
         }
         const recorded = versions[cuid];
 
-        if (recorded.source.getVersion() !== recorded.version) {
+        const currentVersion = recorded.source.getVersion();
+        if (currentVersion !== recorded.version) {
             const dependency = Object.prototype.hasOwnProperty.call(dependencies, cuid)
                 ? dependencies[cuid] : undefined;
-            if (leafDrifted(recorded, dependency)
-                || (liveResult && recorded.data !== undefined && readStoreData(recorded.source) !== recorded.data)) {
+            const liveDataDrifted = liveResult && recorded.data !== undefined
+                && readStoreData(recorded.source) !== recorded.data;
+            if (liveDataDrifted || (!leafWatermarks.proven(versions, cuid, currentVersion)
+                && leafDrifted(recorded, dependency))) {
                 return true;
+            }
+            if (isNativeStoreSource(recorded.source)
+                && (recorded.reads !== undefined || recorded.parts !== undefined)) {
+                leafWatermarks.prove(versions, cuid, currentVersion);
             }
         }
     }
