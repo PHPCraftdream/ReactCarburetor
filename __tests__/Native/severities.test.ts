@@ -18,7 +18,7 @@ const PREFIX = 'carburetor/';
 
 /** The `DEFAULT_SEVERITIES` table in the Rust crate, as a map of bare rule name to severity. */
 const nativeSeverities = (): Record<string, string> => {
-    const source = readFileSync(path.join(ROOT, 'native', 'src', 'config.rs'), 'utf8');
+    const source = readFileSync(path.join(ROOT, 'native', 'src', 'config', 'mod.rs'), 'utf8');
     const table = /DEFAULT_SEVERITIES[^=]*=\s*&\[(.*?)\];/s.exec(source);
 
     expect(table, 'DEFAULT_SEVERITIES is still a slice literal in native/src/config.rs').not.toBeNull();

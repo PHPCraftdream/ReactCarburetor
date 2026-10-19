@@ -30,7 +30,7 @@ export class Row extends AntiHookComponent<{id: string}> {
         // no-escaping-tracked-data
         this.lastData = data;
 
-        return <span onClick={() => console.log(title, count)}>{data.items[this.props.id].title}</span>;
+        return <span onClick={() => console.log(title, count, keyed)}>{data.items[this.props.id].title}</span>;
     }
 }
 

@@ -68,7 +68,7 @@ const nativeDiagnostics = (): IDiagnostic[] => {
 
 /** The rule catalogue, as bare names, straight out of the Rust source's `DEFAULT_SEVERITIES`. */
 const nativeRegistryRules = (): string[] => {
-    const source = readFileSync(path.join(ROOT, 'native', 'src', 'config.rs'), 'utf8');
+    const source = readFileSync(path.join(ROOT, 'native', 'src', 'config', 'mod.rs'), 'utf8');
     const table = /DEFAULT_SEVERITIES[^=]*=\s*&\[(.*?)\];/s.exec(source);
 
     expect(table, 'DEFAULT_SEVERITIES is still a slice literal in native/src/config.rs').not.toBeNull();
