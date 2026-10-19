@@ -116,3 +116,6 @@ fn captures_digest<'a>(candidate: &'a Candidate<'a>) -> Vec<(&'a str, bool, bool
 mod captures;
 mod classes;
 mod closures;
+pub(in crate::rules) mod corpus;
+mod legacy;
+mod oracle_equivalence;

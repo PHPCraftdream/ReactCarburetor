@@ -39,6 +39,8 @@ pub(super) fn run(
         .then(|| support::closures::build_semantic(program));
 
     let mut buckets: Vec<Vec<Diagnostic>> = (0..REGISTRY.len()).map(|_| Vec::new()).collect();
+    // One analysis per member serves both allocation rules; it lives as long as the walk below.
+    let cache = support::closures::MemberCache::default();
     let mut rules: Vec<(usize, Box<dyn Rule<'_> + '_>)> = Vec::new();
     for (index, (rule, check, shared_factory)) in REGISTRY.iter().enumerate() {
         let severity = config.severity(rule);
@@ -61,6 +63,7 @@ pub(super) fn run(
                         .as_ref()
                         .expect("enabled rule has shared semantics"),
                     &bases,
+                    &cache,
                 ),
             )),
             allocations::require_module_function::RULE => {
@@ -71,6 +74,7 @@ pub(super) fn run(
                         .as_ref()
                         .expect("enabled rule has shared semantics"),
                     &bases,
+                    &cache,
                 )))
             }
             lifecycle::no_function_in_render::RULE => {
@@ -121,14 +125,12 @@ pub(super) fn run(
             lifecycle::no_lifecycle_class_property::RULE => Some(Box::new(
                 lifecycle::no_lifecycle_class_property::make_rule(source),
             )),
-            effects::no_async_effect::RULE => Some(Box::new(
-                effects::no_async_effect::make_rule(
-                    source,
-                    semantic
-                        .as_ref()
-                        .expect("enabled rule has shared semantics"),
-                ),
-            )),
+            effects::no_async_effect::RULE => Some(Box::new(effects::no_async_effect::make_rule(
+                source,
+                semantic
+                    .as_ref()
+                    .expect("enabled rule has shared semantics"),
+            ))),
             effects::no_duplicate_effect_name::RULE => Some(Box::new(
                 effects::no_duplicate_effect_name::make_rule(source),
             )),

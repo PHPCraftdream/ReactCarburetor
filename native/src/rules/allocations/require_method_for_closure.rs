@@ -23,8 +23,7 @@ use crate::rules::report;
 use crate::rules::support::bases::Bases;
 use crate::rules::support::bases::RENDER_METHODS;
 use crate::rules::support::closures::{
-    analyze_field, analyze_method, build_semantic, is_component_class, Candidate, Capture,
-    MemberAnalysis, Usage,
+    build_semantic, is_component_class, Candidate, Capture, MemberAnalysis, MemberCache, Usage,
 };
 use crate::rules::support::names::property_key_name;
 use crate::rules::support::walk::{walk_rule, Context, Rule};
@@ -127,6 +126,8 @@ struct Check<'s, 'a> {
     /// identity a class has across the walk's callbacks, and what keeps a nested class's answer
     /// from standing in for its enclosing one.
     components: HashMap<Span, bool>,
+    /// The shared per-member analyses, so the paired rule reuses this one's work.
+    cache: &'s MemberCache<'a>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -146,8 +147,8 @@ impl<'s, 'a> Check<'s, 'a> {
     }
 
     /// Reports the member's candidates whose extraction leaves no per-call allocation behind.
-    fn report_member(&mut self, analysis: MemberAnalysis<'_>, context: &Context) {
-        for candidate in analysis.closures {
+    fn report_member(&mut self, analysis: &MemberAnalysis<'_>, context: &Context) {
+        for candidate in &analysis.closures {
             if !candidate.class_dependency {
                 continue;
             }
@@ -160,7 +161,7 @@ impl<'s, 'a> Check<'s, 'a> {
                 continue;
             }
 
-            let message = message(&candidate, context.member.as_deref());
+            let message = message(candidate, context.member.as_deref());
 
             self.diagnostics
                 .push(report(self.source, candidate.span.start, RULE, message));
@@ -191,10 +192,9 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
         // as much render code as the base's own, so the member name decides here as well.
         let member_is_render = context.in_render || Self::is_render_key(&method.key);
 
-        self.report_member(
-            analyze_method(method, self.semantic, member_is_render),
-            context,
-        );
+        let analysis = self.cache.method(method, self.semantic, member_is_render);
+
+        self.report_member(&analysis, context);
     }
 
     fn property(&mut self, property: &PropertyDefinition<'a>, context: &Context) {
@@ -204,10 +204,9 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
 
         let member_is_render = context.in_render || Self::is_render_key(&property.key);
 
-        self.report_member(
-            analyze_field(property, self.semantic, member_is_render),
-            context,
-        );
+        let analysis = self.cache.field(property, self.semantic, member_is_render);
+
+        self.report_member(&analysis, context);
     }
 }
 
@@ -223,18 +222,28 @@ pub(in crate::rules) fn make_rule<'a>(
     source: &'a Source<'a>,
     semantic: &'a Semantic<'a>,
     bases: &'a Bases,
+    cache: &'a MemberCache<'a>,
 ) -> impl Rule<'a> + 'a {
-    Check { source, semantic, bases, components: HashMap::new(), diagnostics: Vec::new() }
+    Check {
+        source,
+        semantic,
+        bases,
+        components: HashMap::new(),
+        cache,
+        diagnostics: Vec::new(),
+    }
 }
 
 /// Runs the rule with a semantic pass shared by the allocation-rule pair.
-pub(in crate::rules) fn check_with_semantic<'a>(
+pub fn check_with_semantic<'a>(
     program: &Program<'a>,
     source: &Source<'_>,
     semantic: &Semantic<'a>,
     bases: &Bases,
 ) -> Vec<Diagnostic> {
-    walk_rule(program, make_rule(source, semantic, bases), bases)
+    let cache = MemberCache::default();
+
+    walk_rule(program, make_rule(source, semantic, bases, &cache), bases)
 }
 
 #[cfg(test)]

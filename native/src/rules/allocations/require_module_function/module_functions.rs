@@ -8,10 +8,12 @@
 //! independent of the method and class. The class-member pass still owns member roots, avoiding
 //! duplicate reports.
 
-use oxc_ast::AstKind;
+use std::collections::HashMap;
+
 use oxc_ast::ast::*;
+use oxc_ast::AstKind;
 use oxc_ast_visit::{walk, Visit};
-use oxc_semantic::{NodeId, ReferenceFlags, Semantic};
+use oxc_semantic::{NodeId, ReferenceFlags, ScopeId, Semantic, SymbolId};
 use oxc_span::{GetSpan, Span};
 use oxc_syntax::scope::ScopeFlags;
 
@@ -19,7 +21,6 @@ use crate::config::ModuleFunctionScope;
 
 use super::RULE;
 use crate::rules::report;
-use crate::rules::support::closures::{arrow_has_class_dependency, has_class_dependency};
 use crate::rules::support::bases::{EXCLUDED_CALLBACK_APIS, RENDER_TRACKED_APIS};
 use crate::rules::support::names::{member_call_name, unwrap_expression};
 use crate::{Diagnostic, Source};
@@ -50,15 +51,29 @@ fn is_component_prop_callback(semantic: &Semantic<'_>, node_id: NodeId) -> bool 
     loop {
         id = nodes.parent_id(id);
         match nodes.kind(id) {
-            AstKind::ParenthesizedExpression(_) | AstKind::TSAsExpression(_) | AstKind::TSSatisfiesExpression(_) | AstKind::TSTypeAssertion(_) | AstKind::TSNonNullExpression(_) | AstKind::TSInstantiationExpression(_) => continue,
+            AstKind::ParenthesizedExpression(_)
+            | AstKind::TSAsExpression(_)
+            | AstKind::TSSatisfiesExpression(_)
+            | AstKind::TSTypeAssertion(_)
+            | AstKind::TSNonNullExpression(_)
+            | AstKind::TSInstantiationExpression(_) => continue,
             AstKind::CallExpression(call)
-                if matches!(&call.callee, Expression::Identifier(identifier) if matches!(identifier.name.as_str(), "useMemo" | "useCallback"))
-                    || matches!(&call.callee, Expression::StaticMemberExpression(member) if matches!(&member.object, Expression::Identifier(object) if object.name == "React") && matches!(member.property.name.as_str(), "useMemo" | "useCallback")) =>
+                if matches!(&call.callee, Expression::Identifier(identifier) if
+                        matches!(identifier.name.as_str(), "useMemo" | "useCallback"))
+                    || matches!(&call.callee, Expression::StaticMemberExpression(member) if
+                        matches!(&member.object, Expression::Identifier(object) if object.name == "React")
+                            && matches!(member.property.name.as_str(), "useMemo" | "useCallback")) =>
             {
                 let mut represented = Vec::new();
                 crate::rules::support::walk::functions::fresh_call(call, &mut represented);
-                let factory = call.arguments.first().and_then(|argument| argument.as_expression()).is_some_and(|argument| unwrap_expression(argument).span() == candidate);
-                if !represented.contains(&candidate) && !(factory && !represented.is_empty()) { continue; }
+                let factory = call
+                    .arguments
+                    .first()
+                    .and_then(|argument| argument.as_expression())
+                    .is_some_and(|argument| unwrap_expression(argument).span() == candidate);
+                if !represented.contains(&candidate) && !(factory && !represented.is_empty()) {
+                    continue;
+                }
                 return is_component_prop_expression(nodes, id);
             }
             AstKind::Program(_) => return false,
@@ -73,24 +88,45 @@ fn is_component_prop_expression(nodes: &oxc_semantic::AstNodes<'_>, call_id: Nod
         let child = id;
         id = nodes.parent_id(id);
         match nodes.kind(id) {
-            AstKind::ParenthesizedExpression(_) | AstKind::TSAsExpression(_) | AstKind::TSSatisfiesExpression(_) | AstKind::TSTypeAssertion(_) | AstKind::TSNonNullExpression(_) | AstKind::TSInstantiationExpression(_) => continue,
+            AstKind::ParenthesizedExpression(_)
+            | AstKind::TSAsExpression(_)
+            | AstKind::TSSatisfiesExpression(_)
+            | AstKind::TSTypeAssertion(_)
+            | AstKind::TSNonNullExpression(_)
+            | AstKind::TSInstantiationExpression(_) => continue,
             // Only the value-bearing branches of a conditional are transparent — the branches
             // `fresh_functions` walks; its `test` selects between them and hands over nothing.
             AstKind::ConditionalExpression(conditional) => {
                 let child_span = nodes.kind(child).span();
-                if contains(conditional.consequent.span(), child_span) || contains(conditional.alternate.span(), child_span) { continue; }
+                if contains(conditional.consequent.span(), child_span)
+                    || contains(conditional.alternate.span(), child_span)
+                {
+                    continue;
+                }
                 return false;
             }
             // Both operands of a logical expression yield its value, so both stay transparent.
             AstKind::LogicalExpression(_) => continue,
             AstKind::JSXExpressionContainer(_) => {
                 let attribute_id = nodes.parent_id(id);
-                let AstKind::JSXAttribute(_) = nodes.kind(attribute_id) else { return false; };
+                let AstKind::JSXAttribute(_) = nodes.kind(attribute_id) else {
+                    return false;
+                };
                 let opening_id = nodes.parent_id(attribute_id);
-                let AstKind::JSXOpeningElement(opening) = nodes.kind(opening_id) else { return false; };
+                let AstKind::JSXOpeningElement(opening) = nodes.kind(opening_id) else {
+                    return false;
+                };
                 return match &opening.name {
-                    JSXElementName::Identifier(identifier) => identifier.name.chars().next().is_some_and(char::is_uppercase),
-                    JSXElementName::IdentifierReference(identifier) => identifier.name.chars().next().is_some_and(char::is_uppercase),
+                    JSXElementName::Identifier(identifier) => identifier
+                        .name
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_uppercase),
+                    JSXElementName::IdentifierReference(identifier) => identifier
+                        .name
+                        .chars()
+                        .next()
+                        .is_some_and(char::is_uppercase),
                     JSXElementName::MemberExpression(_) => true,
                     _ => false,
                 };
@@ -108,11 +144,12 @@ fn is_protected_callback(semantic: &Semantic<'_>, node_id: NodeId, span: Span) -
         return false;
     };
 
-    callee_name(&call.callee).is_some_and(|name| {
-        name != "update" && EXCLUDED_CALLBACK_APIS.contains(&name)
-    })
+    callee_name(&call.callee)
+        .is_some_and(|name| name != "update" && EXCLUDED_CALLBACK_APIS.contains(&name))
         && call.arguments.iter().any(|argument| {
-            argument.as_expression().is_some_and(|expression| contains(expression.span(), span))
+            argument
+                .as_expression()
+                .is_some_and(|expression| contains(expression.span(), span))
         })
 }
 
@@ -135,7 +172,7 @@ fn is_iife_callee(semantic: &Semantic<'_>, node_id: NodeId, span: Span) -> bool 
 /// The binding the function is known under, when its position gives it one: a declaration's own
 /// name, or the variable a function expression or arrow is assigned to. A recursion on that name
 /// is not a capture — it travels with the function when it moves.
-fn own_symbol(function: Option<&Function<'_>>, parent: AstKind<'_>) -> Option<oxc_semantic::SymbolId> {
+fn own_symbol(function: Option<&Function<'_>>, parent: AstKind<'_>) -> Option<SymbolId> {
     if let Some(function) = function {
         if let Some(id) = &function.id {
             return id.symbol_id.get();
@@ -152,85 +189,105 @@ fn own_symbol(function: Option<&Function<'_>>, parent: AstKind<'_>) -> Option<ox
     None
 }
 
-/// Collects the resolved references of one function that bind to a declaration in an enclosing
-/// function. Unresolved references are globals and imports — exactly what a module-level
-/// function may keep reading — and a declaration inside the function travels with it.
-struct CaptureProbe<'a, 'p> {
-    scoping: &'a oxc_semantic::Scoping,
-    site: Span,
-    enclosing: &'p [Span],
-    own_symbol: Option<oxc_semantic::SymbolId>,
-    found: bool,
-}
-
-impl<'a, 'p> Visit<'a> for CaptureProbe<'a, 'p> {
-    fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
-        let is_runtime_reference = identifier.reference_id.get().is_some_and(|reference| {
-            self.scoping.get_reference(reference).flags()
-                .intersects(ReferenceFlags::Read | ReferenceFlags::Write)
-        });
-
-        if !is_runtime_reference {
-            walk::walk_identifier_reference(self, identifier);
-
-            return;
-        }
-
-        if let Some(symbol) = identifier
-            .reference_id
-            .get()
-            .and_then(|reference| self.scoping.get_reference(reference).symbol_id())
-        {
-            if Some(symbol) != self.own_symbol {
-                let declaration = self.scoping.symbol_span(symbol);
-
-                if !contains(self.site, declaration)
-                    && self.enclosing.iter().any(|span| contains(*span, declaration))
-                {
-                    self.found = true;
-                }
-            }
-        }
-
-        walk::walk_identifier_reference(self, identifier);
-    }
+/// One level of function nesting, carrying everything its exit decision needs.
+struct Frame {
+    /// Whether it is an arrow, whose `this` and marks climb to its enclosure.
+    is_arrow: bool,
+    /// The class depth on entry, which tells the function's own `this` apart from a nested
+    /// class's.
+    class_base: usize,
+    /// Whether the function needs the class it sits in, by class-bound syntax under it.
+    class_dep: bool,
+    /// Whether the function sits inside a tracked-API call's arguments.
+    tracked: bool,
+    /// Whether `this`/`super`/`arguments`/`new.target` below belongs to this chain of arrows.
+    marked: bool,
+    /// The lowest functional depth any runtime reference resolves to, `usize::MAX` if none.
+    min_decl: usize,
+    /// The name the function is bound under, whose references are its recursion, not captures.
+    own_symbol: Option<SymbolId>,
 }
 
 /// One walk over the whole program. A class member is a root rather than a nested-function
 /// candidate, but functions below that root are checked like any other nested function.
 struct ModuleScan<'a, 's> {
     semantic: &'s Semantic<'a>,
+    /// Kept as a field so reference resolution can share the walk's `&mut` borrow.
+    scoping: &'s oxc_semantic::Scoping,
     /// Where a self-sufficient nested function was found, in visit order.
     found: Vec<(Span, bool)>,
-    /// The spans of the enclosing functions, outermost first, including the one being visited.
-    functions: Vec<Span>,
-    /// Whether each frame binds a `this`/`super`/`arguments`/`new.target` from below. Arrows
-    /// pass theirs through, so a mark climbs to and including the first non-arrow frame.
-    dynamic: Vec<bool>,
-    arrows: Vec<bool>,
+    /// The frames of function nesting, innermost last.
+    frames: Vec<Frame>,
+    /// How many tracked-API calls the current position sits inside the arguments of.
+    tracked_depth: usize,
+    /// The functional depth of each scope seen so far, computed once per scope.
+    scope_depths: HashMap<ScopeId, usize>,
     class_depth: usize,
-    class_type_parameters: Vec<Vec<oxc_semantic::SymbolId>>,
+    class_type_parameters: Vec<Vec<SymbolId>>,
     /// Whether findings are restricted to class bodies.
     class_only: bool,
 }
 
 impl<'a, 's> ModuleScan<'a, 's> {
-    /// Marks the frame the occurrence binds to, and every arrow between it and here.
-    fn mark_dynamic(&mut self) {
-        for index in (0..self.dynamic.len()).rev() {
-            self.dynamic[index] = true;
+    /// Enters a function boundary of either shape.
+    fn enter(&mut self, is_arrow: bool, own: Option<SymbolId>) {
+        self.frames.push(Frame {
+            is_arrow,
+            class_base: self.class_depth,
+            class_dep: false,
+            tracked: self.tracked_depth > 0,
+            marked: false,
+            min_decl: usize::MAX,
+            own_symbol: own,
+        });
+    }
 
-            if !self.arrows[index] {
-                break;
+    /// Closes the innermost frame, passing its facts up to the enclosure.
+    fn exit_frame(&mut self) -> Frame {
+        let frame = self.frames.pop().expect("function frame");
+        if let Some(parent) = self.frames.last_mut() {
+            // A nested class between the two already shows up as a different class base.
+            if frame.class_base == parent.class_base {
+                parent.class_dep |= frame.class_dep;
+            }
+            // Only an arrow passes its `this` upward, to and including the first non-arrow.
+            if frame.is_arrow {
+                parent.marked |= frame.marked;
+            }
+            parent.min_decl = parent.min_decl.min(frame.min_decl);
+        }
+        frame
+    }
+
+    /// Marks the innermost frame as needing its class, when the occurrence is not inside a
+    /// nested class — the class depth on entry is what separates the two.
+    fn mark_class_dep(&mut self) {
+        if let Some(frame) = self.frames.last_mut() {
+            if self.class_depth == frame.class_base {
+                frame.class_dep = true;
             }
         }
     }
 
-    /// Enters a function boundary of either shape.
-    fn enter(&mut self, span: Span, is_arrow: bool) {
-        self.functions.push(span);
-        self.dynamic.push(false);
-        self.arrows.push(is_arrow);
+    /// The functional depth of a scope: how many function scopes lie strictly above it. Computed
+    /// by a memoized climb to the root, so each scope is resolved once per file.
+    fn function_depth(&mut self, scope: ScopeId) -> usize {
+        if let Some(depth) = self.scope_depths.get(&scope) {
+            return *depth;
+        }
+        let depth = match self.scoping.scope_parent_id(scope) {
+            None => 0,
+            Some(parent) => {
+                let base = self.function_depth(parent);
+                base + usize::from(
+                    self.scoping
+                        .scope_flags(scope)
+                        .intersects(ScopeFlags::Function),
+                )
+            }
+        };
+        self.scope_depths.insert(scope, depth);
+        depth
     }
 
     /// `scope=classes` is intentionally represented by the same walk and only changes candidate
@@ -248,7 +305,11 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
             .type_parameters
             .as_ref()
             .map_or_else(Vec::new, |declaration| {
-                declaration.params.iter().filter_map(|parameter| parameter.name.symbol_id.get()).collect()
+                declaration
+                    .params
+                    .iter()
+                    .filter_map(|parameter| parameter.name.symbol_id.get())
+                    .collect()
             });
         self.class_depth += 1;
         self.class_type_parameters.push(type_parameters);
@@ -272,88 +333,60 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
             return;
         }
 
-        self.enter(function.span, false);
+        let own = own_symbol(
+            Some(function),
+            self.semantic.nodes().parent_kind(function.node_id()),
+        );
+        self.enter(false, own);
         walk::walk_function(self, function, flags);
+        let frame = self.exit_frame();
 
-        let marked = self.dynamic.pop();
-        self.arrows.pop();
-        let enclosing = self.functions.clone();
-        self.functions.pop();
-
-        let class_dependency = has_class_dependency(function, self.semantic);
         let parent = self.semantic.nodes().parent_kind(function.node_id());
-        let member_root = matches!(parent, AstKind::MethodDefinition(_) | AstKind::PropertyDefinition(_));
-        let tracked = self.semantic.nodes().ancestor_kinds(function.node_id()).any(|kind| {
-            matches!(kind, AstKind::CallExpression(call) if callee_name(&call.callee).is_some_and(|name| RENDER_TRACKED_APIS.contains(&name)))
-        });
+        let member_root = matches!(
+            parent,
+            AstKind::MethodDefinition(_) | AstKind::PropertyDefinition(_)
+        );
         let clean = !member_root
             && !is_component_prop_callback(self.semantic, function.node_id())
-            && !class_dependency
-            && !tracked
-            && marked != Some(true)
-            && !self.functions.is_empty()
+            && !frame.class_dep
+            && !frame.tracked
+            && !frame.marked
+            && !self.frames.is_empty()
             && (!self.class_only || self.class_depth > 0)
             && !is_protected_callback(self.semantic, function.node_id(), function.span)
             && !is_iife_callee(self.semantic, function.node_id(), function.span);
 
-        if clean {
-            let own = own_symbol(Some(function), self.semantic.nodes().parent_kind(function.node_id()));
-            let mut probe = CaptureProbe {
-                scoping: self.semantic.scoping(),
-                site: function.span,
-                enclosing: &enclosing,
-                own_symbol: own,
-                found: false,
-            };
-
-            probe.visit_function(function, ScopeFlags::Function);
-
-            if !probe.found {
-                self.found.push((function.span, self.class_depth > 0));
-            }
+        // A capture is a declaration outside the site and inside one of the enclosing functions:
+        // its scope's depth lands in `1..k`, where `k` is this frame's index plus one. Module
+        // declarations give 0; anything under the function itself gives `k` or more.
+        if clean && frame.min_decl != 0 && frame.min_decl < self.frames.len() + 1 {
+            self.found.push((function.span, self.class_depth > 0));
         }
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-        self.enter(arrow.span, true);
+        let own = own_symbol(None, self.semantic.nodes().parent_kind(arrow.node_id()));
+        self.enter(true, own);
         walk::walk_arrow_function_expression(self, arrow);
+        let frame = self.exit_frame();
 
-        let marked = self.dynamic.pop();
-        self.arrows.pop();
-        let enclosing = self.functions.clone();
-        self.functions.pop();
-
-        let class_dependency = arrow_has_class_dependency(arrow, self.semantic);
         let parent = self.semantic.nodes().parent_kind(arrow.node_id());
-        let member_root = matches!(parent, AstKind::MethodDefinition(_) | AstKind::PropertyDefinition(_));
-        let tracked = self.semantic.nodes().ancestor_kinds(arrow.node_id()).any(|kind| {
-            matches!(kind, AstKind::CallExpression(call) if callee_name(&call.callee).is_some_and(|name| RENDER_TRACKED_APIS.contains(&name)))
-        });
+        let member_root = matches!(
+            parent,
+            AstKind::MethodDefinition(_) | AstKind::PropertyDefinition(_)
+        );
         let clean = !member_root
             && !is_component_prop_callback(self.semantic, arrow.node_id())
-            && !class_dependency
-            && !tracked
-            && marked != Some(true)
-            && !self.functions.is_empty()
+            && !frame.class_dep
+            && !frame.tracked
+            && !frame.marked
+            && !self.frames.is_empty()
             && (!self.class_only || self.class_depth > 0)
             && !is_protected_callback(self.semantic, arrow.node_id(), arrow.span)
             && !is_iife_callee(self.semantic, arrow.node_id(), arrow.span);
 
-        if clean {
-            let own = own_symbol(None, self.semantic.nodes().parent_kind(arrow.node_id()));
-            let mut probe = CaptureProbe {
-                scoping: self.semantic.scoping(),
-                site: arrow.span,
-                enclosing: &enclosing,
-                own_symbol: own,
-                found: false,
-            };
-
-            probe.visit_arrow_function_expression(arrow);
-
-            if !probe.found {
-                self.found.push((arrow.span, self.class_depth > 0));
-            }
+        if clean && frame.min_decl != 0 && frame.min_decl < self.frames.len() + 1 {
+            self.found.push((arrow.span, self.class_depth > 0));
         }
     }
 
@@ -373,16 +406,67 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if callee_name(&call.callee).is_some_and(|name| RENDER_TRACKED_APIS.contains(&name)) {
+        let tracked =
+            callee_name(&call.callee).is_some_and(|name| RENDER_TRACKED_APIS.contains(&name));
+        if tracked {
             self.mark_dynamic();
+            self.tracked_depth += 1;
         }
         walk::walk_call_expression(self, call);
+        if tracked {
+            self.tracked_depth -= 1;
+        }
     }
 
-    /// `this` does; in a function of its own it marks that one.
+    /// Class-bound syntax ties the innermost function to the class, unless a nested class owns
+    /// the occurrence.
+    fn visit_private_field_expression(&mut self, expression: &PrivateFieldExpression<'a>) {
+        self.mark_class_dep();
+        walk::walk_private_field_expression(self, expression);
+    }
+
+    fn visit_private_in_expression(&mut self, expression: &PrivateInExpression<'a>) {
+        self.mark_class_dep();
+        walk::walk_private_in_expression(self, expression);
+    }
+
+    fn visit_ts_this_type(&mut self, expression: &TSThisType) {
+        self.mark_class_dep();
+        walk::walk_ts_this_type(self, expression);
+    }
+
+    fn visit_ts_type_name(&mut self, name: &TSTypeName<'a>) {
+        if matches!(name, TSTypeName::ThisExpression(_)) {
+            self.mark_class_dep();
+        }
+        walk::walk_ts_type_name(self, name);
+    }
+
+    /// A reference to the nearest class's own type parameter names the class itself.
+    fn visit_ts_type_reference(&mut self, reference: &TSTypeReference<'a>) {
+        if let TSTypeName::IdentifierReference(name) = &reference.type_name {
+            let symbol = name
+                .reference_id
+                .get()
+                .and_then(|reference| self.scoping.get_reference(reference).symbol_id());
+            let is_type_parameter = symbol.is_some_and(|symbol| {
+                self.class_type_parameters
+                    .last()
+                    .is_some_and(|parameters| parameters.contains(&symbol))
+            });
+            if is_type_parameter {
+                self.mark_class_dep();
+            }
+        }
+        walk::walk_ts_type_reference(self, reference);
+    }
+
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
+        #[cfg(test)]
+        SCAN_VISITS.with(|count| count.set(count.get() + 1));
+
         let is_runtime_reference = identifier.reference_id.get().is_some_and(|reference| {
-            self.semantic.scoping()
+            self.scoping
                 .get_reference(reference)
                 .flags()
                 .intersects(ReferenceFlags::Read | ReferenceFlags::Write)
@@ -390,20 +474,51 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
 
         let is_implicit_arguments = identifier.name == "arguments"
             && identifier.reference_id.get().is_some_and(|reference| {
-                let resolved = self.semantic.scoping().get_reference(reference);
-                resolved.flags().intersects(ReferenceFlags::Read | ReferenceFlags::Write)
+                let resolved = self.scoping.get_reference(reference);
+                resolved
+                    .flags()
+                    .intersects(ReferenceFlags::Read | ReferenceFlags::Write)
                     && resolved.symbol_id().is_none()
             });
 
-        if is_runtime_reference
-            && is_implicit_arguments
-            && self.functions.iter().any(|span| contains(*span, identifier.span))
-        {
+        if is_runtime_reference && is_implicit_arguments && !self.frames.is_empty() {
             self.mark_dynamic();
+        }
+
+        // Every runtime reference tightens the lowest declaration the frame reaches; the
+        // recursion on the function's own name travels with it and does not count.
+        if is_runtime_reference {
+            let symbol = identifier
+                .reference_id
+                .get()
+                .and_then(|reference| self.scoping.get_reference(reference).symbol_id());
+            let own = self.frames.last().and_then(|frame| frame.own_symbol);
+            if let Some(symbol) = symbol {
+                if Some(symbol) != own {
+                    let depth = self.function_depth(self.scoping.symbol_scope_id(symbol));
+                    if let Some(frame) = self.frames.last_mut() {
+                        frame.min_decl = frame.min_decl.min(depth);
+                    }
+                }
+            }
         }
 
         walk::walk_identifier_reference(self, identifier);
     }
+}
+
+impl ModuleScan<'_, '_> {
+    /// Marks the frame the occurrence binds to; the frame pass on exit climbs the arrow chain.
+    fn mark_dynamic(&mut self) {
+        if let Some(frame) = self.frames.last_mut() {
+            frame.marked = true;
+        }
+    }
+}
+
+#[cfg(test)]
+thread_local! {
+    static SCAN_VISITS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
 }
 
 /// The message for one self-sufficient nested function: what the call costs, and where it goes.
@@ -423,10 +538,11 @@ pub(super) fn check<'a>(
 ) -> Vec<Diagnostic> {
     let mut scan = ModuleScan {
         semantic,
+        scoping: semantic.scoping(),
         found: Vec::new(),
-        functions: Vec::new(),
-        dynamic: Vec::new(),
-        arrows: Vec::new(),
+        frames: Vec::new(),
+        tracked_depth: 0,
+        scope_depths: HashMap::new(),
         class_depth: 0,
         class_type_parameters: Vec::new(),
         class_only: false,
@@ -453,4 +569,21 @@ pub(super) fn check<'a>(
     diagnostics.sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
 
     diagnostics
+}
+
+/// How many identifier references one scan visits, which is the linearity test's yardstick.
+#[cfg(test)]
+pub(in crate::rules) fn scan_reference_visits(text: &str) -> usize {
+    SCAN_VISITS.with(|count| count.set(0));
+    let allocator = oxc_allocator::Allocator::default();
+    let parsed = oxc_parser::Parser::new(&allocator, text, oxc_span::SourceType::tsx()).parse();
+    let semantic = crate::rules::support::closures::build_semantic(&parsed.program);
+    let source = Source::new(std::path::Path::new("test.tsx"), text);
+    let _ = check(
+        &parsed.program,
+        &semantic,
+        &source,
+        ModuleFunctionScope::All,
+    );
+    SCAN_VISITS.with(std::cell::Cell::get)
 }

@@ -1,15 +1,31 @@
+use super::dependency::forwarder;
 use super::*;
 use oxc_span::GetSpan;
 
-/// What the scan decided about one function site.
-pub(super) struct SiteFlags {
+/// What the scan decided about one function site, captures and class ties included.
+pub(super) struct SiteData<'a> {
     /// The member is render code and this site runs while it renders.
     pub(super) executes_in_render: bool,
+    /// Every runtime reference in the site's whole extent, in first-use order.
+    pub(super) entries: Vec<RefEntry<'a>>,
+    /// Whether the site's extent touches the enclosing class.
+    pub(super) class_dep: bool,
+    /// The method an arrow site forwards to, when it forwards to exactly one.
+    pub(super) forwarder: Option<Forwarder<'a>>,
+}
+
+/// One resolved reference a frame saw, as the capture pass records it.
+#[derive(Clone, Copy)]
+pub(super) struct RefEntry<'a> {
+    pub(super) symbol: SymbolId,
+    pub(super) name: &'a str,
+    pub(super) written: bool,
 }
 
 /// One level of function nesting during the scan.
-pub(super) struct Frame {
+pub(super) struct Frame<'a> {
     /// The function's own span.
+    #[allow(dead_code)]
     span: Span,
     /// Whether it is an arrow, whose `this` is the enclosing function's.
     is_arrow: bool,
@@ -23,16 +39,28 @@ pub(super) struct Frame {
     uses_lexical: bool,
     /// This frame calls one of the tracked-data APIs.
     calls_tracked: bool,
+    /// The references seen in this frame's own body and merged up from its children.
+    entries: Vec<RefEntry<'a>>,
+    /// Position of each symbol in `entries`, for deduplication.
+    index: HashMap<SymbolId, usize>,
+    /// Whether this frame's extent needs the class it was written in.
+    class_dep: bool,
+    /// The class-nesting depth this frame was entered at, which gates class-dependency.
+    class_base: usize,
+    /// The method an arrow frame forwards to, when it forwards to exactly one.
+    forwarder: Option<Forwarder<'a>>,
 }
 
 /// One walk over a class member, recording which function sites are candidates and why.
-pub(super) struct Scan<'a> {
+pub(super) struct Scan<'a, 's> {
     /// The member's own body, which is never a candidate of its own.
     pub(super) root_id: NodeId,
     /// The frames of function nesting, innermost last.
-    pub(super) frames: Vec<Frame>,
+    pub(super) frames: Vec<Frame<'a>>,
     /// What the scan decided about each candidate site, keyed by the site's span.
-    pub(super) sites: HashMap<Span, SiteFlags>,
+    pub(super) sites: HashMap<Span, SiteData<'a>>,
+    /// The sites in source order, which is the order candidates are built in.
+    pub(super) order: Vec<Span>,
     /// Functions that are the direct callee of a call, which run where they are written.
     pub(super) iifes: HashSet<Span>,
     /// Functions assigned to `this.<x>` or `this.#x`, which are members in all but syntax.
@@ -51,6 +79,12 @@ pub(super) struct Scan<'a> {
     pub(super) jsx_component: bool,
     /// Whether the node being walked executes while a component renders.
     pub(super) render_executes: bool,
+    /// The class-nesting depth, which is positive inside a nested class expression or declaration.
+    pub(super) class_depth: usize,
+    /// The enclosing class's own type parameters, which name the class without naming it.
+    pub(super) type_parameters: Vec<SymbolId>,
+    /// The semantic model's scopes, for resolving references to captures.
+    pub(super) scoping: &'s Scoping,
 }
 
 /// A declarator in the member, and the binding it introduces.
@@ -61,7 +95,7 @@ pub(super) struct Declarator<'a> {
     pub(super) init: Option<Span>,
 }
 
-impl Scan<'_> {
+impl<'a> Scan<'a, '_> {
     /// Whether another rule needs this body where it sits.
     fn protected(&self, span: Span) -> bool {
         self.iifes.contains(&span)
@@ -73,17 +107,27 @@ impl Scan<'_> {
     /// Enters a function boundary, remembering what to restore on the way out.
     ///
     /// `site` says whether this boundary is a candidate of its own. The member's own body is
-    /// walked as the root, so it is never reported against itself.
-    fn enter_function(&mut self, id: NodeId, span: Span, is_arrow: bool) -> bool {
+    /// walked as the root, so it is never reported against itself, and nothing inside a nested
+    /// class is one either.
+    fn enter_function(
+        &mut self,
+        id: NodeId,
+        span: Span,
+        is_arrow: bool,
+        arrow: Option<&ArrowFunctionExpression<'a>>,
+    ) -> bool {
         let is_root = id == self.root_id;
         let enclosing_render = self.render_executes;
         // Render code stops at a function boundary, unless the function runs in place as a
         // synchronous callback of one that evaluates during the render.
-        if !is_root && !self.synchronous.contains(&span) {
+        if !is_root && self.class_depth == 0 && !self.synchronous.contains(&span) {
             self.render_executes = false;
         }
 
-        let site = !is_root && !self.protected(span);
+        let site = !is_root && self.class_depth == 0 && !self.protected(span);
+        // The forwarder check is a pure function of the arrow, so it is answered once here and
+        // only reported if the site survives.
+        let forwarder = arrow.and_then(|arrow| forwarder(arrow, self.scoping));
 
         self.frames.push(Frame {
             span,
@@ -93,34 +137,74 @@ impl Scan<'_> {
             uses_this: false,
             uses_lexical: false,
             calls_tracked: false,
+            entries: Vec::new(),
+            index: HashMap::new(),
+            class_dep: false,
+            class_base: self.class_depth,
+            forwarder,
         });
 
         if site {
             self.sites.insert(
                 span,
-                SiteFlags {
+                SiteData {
                     executes_in_render: self.render_executes,
+                    entries: Vec::new(),
+                    class_dep: false,
+                    forwarder,
                 },
             );
+            self.order.push(span);
         }
 
         site
     }
 
-    /// Leaves a function boundary, carrying what the frame learned into the site's decision.
-    fn leave_function(&mut self, span: Span) {
-        let frame = self.frames.pop().expect("a frame was pushed on entry");
+    /// Leaves a function boundary: merges the frame's captures and class tie upward, then carries
+    /// what it learned into the site's decision.
+    fn leave_function(&mut self, span: Span, is_site: bool) {
+        let Frame {
+            is_arrow,
+            enclosing_render,
+            render,
+            uses_this,
+            uses_lexical,
+            calls_tracked,
+            entries,
+            class_dep,
+            class_base,
+            forwarder,
+            ..
+        } = self.frames.pop().expect("a frame was pushed on entry");
 
-        self.render_executes = frame.enclosing_render;
+        if is_site {
+            self.render_executes = enclosing_render;
+        }
 
-        if !self.sites.contains_key(&span) {
+        if let Some(parent) = self.frames.last_mut() {
+            if class_base == parent.class_base {
+                parent.class_dep |= class_dep;
+            }
+
+            for entry in &entries {
+                match parent.index.get(&entry.symbol) {
+                    Some(&index) => parent.entries[index].written |= entry.written,
+                    None => {
+                        parent.index.insert(entry.symbol, parent.entries.len());
+                        parent.entries.push(*entry);
+                    }
+                }
+            }
+        }
+
+        if !is_site {
             return;
         }
 
         // A closure that runs during render and touches tracked data has to stay in render: moving
         // it out would hide the access from the render rules and make the hook rule report a false
         // positive for the access it left behind.
-        if frame.calls_tracked && frame.render {
+        if calls_tracked && render {
             self.sites.remove(&span);
 
             return;
@@ -128,43 +212,88 @@ impl Scan<'_> {
 
         // A function expression binds its own `this`, so lifting one that uses it would change what
         // the body sees; neither `arguments` nor `new.target` survives a move at all.
-        if frame.uses_lexical || (frame.uses_this && !frame.is_arrow) {
+        if uses_lexical || (uses_this && !is_arrow) {
             self.sites.remove(&span);
+
+            return;
+        }
+
+        if let Some(data) = self.sites.get_mut(&span) {
+            data.entries = entries;
+            data.class_dep = class_dep;
+            data.forwarder = forwarder;
+        }
+    }
+
+    /// Marks the innermost frame as class-dependent, when the node sits at its own class depth.
+    fn mark_class_dep(&mut self) {
+        if let Some(frame) = self.frames.last_mut() {
+            if self.class_depth == frame.class_base {
+                frame.class_dep = true;
+            }
         }
     }
 }
 
-impl<'a> Visit<'a> for Scan<'a> {
-    fn visit_class(&mut self, _: &Class<'a>) {}
+impl<'a> Visit<'a> for Scan<'a, '_> {
+    fn visit_class(&mut self, class: &Class<'a>) {
+        self.class_depth += 1;
+
+        walk::walk_class(self, class);
+
+        self.class_depth -= 1;
+    }
 
     fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
         let is_site = function.r#type == FunctionType::FunctionExpression
             && !function.generator
-            && self.enter_function(function.node_id(), function.span, false);
+            && self.enter_function(function.node_id(), function.span, false, None);
 
         walk::walk_function(self, function, flags);
 
-        if is_site {
-            self.leave_function(function.span);
-        }
+        self.leave_function(function.span, is_site);
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         // A member's own body is always a `Function`, so an arrow is never the root.
-        let site = self.enter_function(arrow.node_id(), arrow.span, true);
+        let site = self.enter_function(arrow.node_id(), arrow.span, true, Some(arrow));
 
         walk::walk_arrow_function_expression(self, arrow);
 
-        if site {
-            self.leave_function(arrow.span);
-        }
+        self.leave_function(arrow.span, site);
     }
 
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
-        if identifier.name == "arguments" {
+        if identifier.name == "arguments" && self.class_depth == 0 {
             // Each function owns its own `arguments`, so only the innermost frame is affected.
             if let Some(frame) = self.frames.last_mut() {
                 frame.uses_lexical = true;
+            }
+        }
+
+        // Every runtime reference is a capture candidate of the innermost frame, wherever it sits.
+        if let Some(reference_id) = identifier.reference_id.get() {
+            let reference = self.scoping.get_reference(reference_id);
+            let flags = reference.flags();
+
+            if flags.intersects(ReferenceFlags::Read | ReferenceFlags::Write) {
+                if let Some(symbol) = reference.symbol_id() {
+                    let written = flags.contains(ReferenceFlags::Write);
+
+                    if let Some(frame) = self.frames.last_mut() {
+                        match frame.index.get(&symbol) {
+                            Some(&index) => frame.entries[index].written |= written,
+                            None => {
+                                frame.index.insert(symbol, frame.entries.len());
+                                frame.entries.push(RefEntry {
+                                    symbol,
+                                    name: identifier.name.as_str(),
+                                    written,
+                                });
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -172,25 +301,77 @@ impl<'a> Visit<'a> for Scan<'a> {
     }
 
     fn visit_this_expression(&mut self, expression: &ThisExpression) {
-        // An arrow's `this` is the enclosing function's, so every frame up to and including the
-        // first dynamic one owns this occurrence.
-        for frame in self.frames.iter_mut().rev() {
-            frame.uses_this = true;
+        if self.class_depth == 0 {
+            // An arrow's `this` is the enclosing function's, so every frame up to and including the
+            // first dynamic one owns this occurrence.
+            for frame in self.frames.iter_mut().rev() {
+                frame.uses_this = true;
 
-            if !frame.is_arrow {
-                break;
+                if !frame.is_arrow {
+                    break;
+                }
             }
+
+            self.mark_class_dep();
         }
 
         walk::walk_this_expression(self, expression);
     }
 
     fn visit_new_target(&mut self, expression: &NewTarget) {
-        if let Some(frame) = self.frames.last_mut() {
-            frame.uses_lexical = true;
+        if self.class_depth == 0 {
+            if let Some(frame) = self.frames.last_mut() {
+                frame.uses_lexical = true;
+            }
         }
 
         walk::walk_new_target(self, expression);
+    }
+
+    fn visit_super(&mut self, expression: &Super) {
+        self.mark_class_dep();
+
+        walk::walk_super(self, expression);
+    }
+
+    fn visit_private_field_expression(&mut self, expression: &PrivateFieldExpression<'a>) {
+        self.mark_class_dep();
+
+        walk::walk_private_field_expression(self, expression);
+    }
+
+    fn visit_private_in_expression(&mut self, expression: &PrivateInExpression<'a>) {
+        self.mark_class_dep();
+
+        walk::walk_private_in_expression(self, expression);
+    }
+
+    fn visit_ts_this_type(&mut self, expression: &TSThisType) {
+        self.mark_class_dep();
+
+        walk::walk_ts_this_type(self, expression);
+    }
+
+    fn visit_ts_type_name(&mut self, name: &TSTypeName<'a>) {
+        if matches!(name, TSTypeName::ThisExpression(_)) {
+            self.mark_class_dep();
+        }
+
+        walk::walk_ts_type_name(self, name);
+    }
+
+    fn visit_ts_type_reference(&mut self, reference: &TSTypeReference<'a>) {
+        if let TSTypeName::IdentifierReference(name) = &reference.type_name {
+            let symbol = name
+                .reference_id
+                .get()
+                .and_then(|reference| self.scoping.get_reference(reference).symbol_id());
+            if symbol.is_some_and(|symbol| self.type_parameters.contains(&symbol)) {
+                self.mark_class_dep();
+            }
+        }
+
+        walk::walk_ts_type_reference(self, reference);
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
@@ -198,7 +379,9 @@ impl<'a> Visit<'a> for Scan<'a> {
             for argument in &call.arguments {
                 if let Some(expression) = argument.as_expression() {
                     if let Some(span) = expression_function(expression) {
-                        self.protected_callbacks.insert(span);
+                        if self.class_depth == 0 {
+                            self.protected_callbacks.insert(span);
+                        }
                     }
                 }
             }
@@ -207,12 +390,14 @@ impl<'a> Visit<'a> for Scan<'a> {
         // An IIFE runs where it is written, so its body is not an allocation the render pays for.
         // The callee is almost always parenthesized (`(() => {})()`), so the site's own span —
         // what `enter_function` records it under — is the unwrapped expression's, not the callee's.
-        if is_function_site(&call.callee) {
+        if is_function_site(&call.callee) && self.class_depth == 0 {
             self.iifes.insert(unwrap_parens(&call.callee).span());
         }
 
         // A closure that runs during render and reads or writes tracked data belongs in render.
-        if callee_name(&call.callee).is_some_and(|name| RENDER_TRACKED_APIS.contains(&name)) {
+        if callee_name(&call.callee).is_some_and(|name| RENDER_TRACKED_APIS.contains(&name))
+            && self.class_depth == 0
+        {
             if let Some(frame) = self.frames.last_mut() {
                 frame.calls_tracked = true;
             }
@@ -225,7 +410,9 @@ impl<'a> Visit<'a> for Scan<'a> {
             for argument in &call.arguments {
                 if let Some(expression) = argument.as_expression() {
                     if let Some(span) = expression_function(expression) {
-                        self.synchronous.insert(span);
+                        if self.class_depth == 0 {
+                            self.synchronous.insert(span);
+                        }
                     }
                 }
             }
@@ -235,7 +422,10 @@ impl<'a> Visit<'a> for Scan<'a> {
     }
 
     fn visit_assignment_expression(&mut self, expression: &AssignmentExpression<'a>) {
-        if is_this_target(&expression.left) && is_function_site(&expression.right) {
+        if is_this_target(&expression.left)
+            && is_function_site(&expression.right)
+            && self.class_depth == 0
+        {
             self.this_assigned.insert(expression.right.span());
         }
 
@@ -270,7 +460,7 @@ impl<'a> Visit<'a> for Scan<'a> {
     fn visit_jsx_attribute(&mut self, attribute: &JSXAttribute<'a>) {
         // A lowercase name is a DOM element, whose attribute update costs less than a subtree
         // render; only a component prop is worth protecting from the other direction.
-        if self.jsx_component {
+        if self.jsx_component && self.class_depth == 0 {
             if let Some(value) = &attribute.value {
                 let mut functions = Vec::new();
                 attribute_functions(value, &mut functions);
@@ -292,20 +482,22 @@ impl<'a> Visit<'a> for Scan<'a> {
     }
 
     fn visit_variable_declarator(&mut self, declarator: &VariableDeclarator<'a>) {
-        let kind = self
-            .kinds
-            .last()
-            .copied()
-            .unwrap_or(VariableDeclarationKind::Var);
+        if self.class_depth == 0 {
+            let kind = self
+                .kinds
+                .last()
+                .copied()
+                .unwrap_or(VariableDeclarationKind::Var);
 
-        if let Some(identifier) = declarator.id.get_binding_identifier() {
-            if let Some(symbol) = identifier.symbol_id.get() {
-                self.declarators.push(Declarator {
-                    kind,
-                    symbol,
-                    name: identifier.name.as_str(),
-                    init: declarator.init.as_ref().map(GetSpan::span),
-                });
+            if let Some(identifier) = declarator.id.get_binding_identifier() {
+                if let Some(symbol) = identifier.symbol_id.get() {
+                    self.declarators.push(Declarator {
+                        kind,
+                        symbol,
+                        name: identifier.name.as_str(),
+                        init: declarator.init.as_ref().map(GetSpan::span),
+                    });
+                }
             }
         }
 

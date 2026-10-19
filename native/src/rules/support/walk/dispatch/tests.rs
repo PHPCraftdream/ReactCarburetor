@@ -6,7 +6,7 @@ use oxc_span::SourceType;
 
 use crate::config::{Config, ModuleFunctionScope, Severity};
 use crate::rules::{
-    allocations, data, run_internal,
+    allocations, boundaries, data, run_internal,
     support::{closures, walk},
 };
 use crate::Source;
@@ -73,6 +73,54 @@ fn shared_dispatch_matches_sequential_serialized_diagnostics() {
             serialized(source, &all_scope, false, false)
         );
     }
+}
+
+#[test]
+fn require_emit_after_draft_write_orders_its_reports_the_same_on_both_dispatch_paths() {
+    let text = "class Store extends Carburetor {\n  first() { this.draft.x = 1; }\n  second() { this.draft.y = 2; }\n}";
+    let mut config = Config::default();
+    for (rule, _, _) in super::REGISTRY {
+        config.override_rule(rule, Severity::Off).unwrap();
+    }
+    config
+        .override_rule(
+            data::writes::require_emit_after_draft_write::RULE,
+            Severity::Warn,
+        )
+        .unwrap();
+    let shared = serialized(text, &config, false, true);
+    let sequential = serialized(text, &config, false, false);
+    assert_eq!(shared, sequential);
+    assert!(
+        shared.contains("\"line\":2"),
+        "first report on line 2: {shared}"
+    );
+    assert!(
+        shared.contains("\"line\":3"),
+        "second report on line 3: {shared}"
+    );
+}
+
+#[test]
+fn require_subscription_disposal_reports_the_same_on_both_dispatch_paths() {
+    let text = "store.subscribe(callback);\n";
+    let mut config = Config::default();
+    for (rule, _, _) in super::REGISTRY {
+        config.override_rule(rule, Severity::Off).unwrap();
+    }
+    config
+        .override_rule(
+            boundaries::require_subscription_disposal::RULE,
+            Severity::Warn,
+        )
+        .unwrap();
+    let shared = serialized(text, &config, false, true);
+    let sequential = serialized(text, &config, false, false);
+    assert_eq!(shared, sequential);
+    assert!(
+        shared.contains("require-subscription-disposal"),
+        "rule reports: {shared}"
+    );
 }
 
 #[test]

@@ -23,21 +23,26 @@ use crate::rules::support::chain::{chain_root, Base};
 use crate::rules::support::names::{member_call_name, super_class_name, unwrap_expression};
 use crate::rules::support::walk::functions::value_branches;
 
+mod cache;
 mod collect;
 mod dependency;
 mod dependency_capture_extension;
 mod scan;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+pub(in crate::rules) use tests::corpus::CORPUS;
 
 use collect::Collect;
 use dependency::{class_type_parameters, member_class_dependency};
 
+pub use cache::MemberCache;
 pub use dependency_capture_extension::captures_outside;
 pub use dependency_capture_extension::CaptureIndex;
-use scan::{Declarator, Scan, SiteFlags};
+use scan::{Declarator, Scan, SiteData};
 
 /// Checks class-dependent syntax and references in one function against its enclosing class.
+#[cfg(test)]
 pub(in crate::rules) fn has_class_dependency<'a>(
     function: &Function<'a>,
     semantic: &Semantic<'a>,
@@ -53,6 +58,7 @@ pub(in crate::rules) fn has_class_dependency<'a>(
 }
 
 /// The same class-dependency check for an arrow function.
+#[cfg(test)]
 pub(in crate::rules) fn arrow_has_class_dependency<'a>(
     arrow: &ArrowFunctionExpression<'a>,
     semantic: &Semantic<'a>,
@@ -199,6 +205,7 @@ pub enum Usage<'a> {
 }
 
 /// A closure that is nothing but forwarding to a method: `() => this.m(a, b)`.
+#[derive(Clone, Copy)]
 pub struct Forwarder<'a> {
     /// The method forwarded to — `m` in `() => this.m(a, b)`.
     pub method: &'a str,
@@ -277,17 +284,18 @@ impl<'a> Root<'a> {
 }
 
 /// Scans one member and builds a candidate out of every function site the scan leaves standing.
-fn analyze<'a>(
-    root: Root<'a>,
+fn analyze<'m, 'a>(
+    root: Root<'m>,
     member_span: Span,
     member_id: NodeId,
-    semantic: &Semantic<'_>,
+    semantic: &Semantic<'a>,
     member_is_render: bool,
-) -> MemberAnalysis<'a> {
+) -> MemberAnalysis<'m> {
     let mut scan = Scan {
         root_id: root.id(),
         frames: Vec::new(),
         sites: HashMap::new(),
+        order: Vec::new(),
         iifes: HashSet::new(),
         this_assigned: HashSet::new(),
         jsx_props: HashSet::new(),
@@ -297,22 +305,32 @@ fn analyze<'a>(
         kinds: Vec::new(),
         jsx_component: false,
         render_executes: member_is_render,
+        class_depth: 0,
+        type_parameters: class_type_parameters(semantic, member_id),
+        scoping: semantic.scoping(),
     };
 
     root.visit(&mut scan);
 
+    // One lookup per candidate instead of a linear search over every declarator.
+    let usage: HashMap<Span, Declarator> = scan
+        .declarators
+        .drain(..)
+        .filter_map(|declarator| declarator.init.map(|init| (init, declarator)))
+        .collect();
+    let order = std::mem::take(&mut scan.order);
+
     MemberAnalysis {
         closures: Collect {
-            root_id: root.id(),
             sites: &scan.sites,
-            declarators: &scan.declarators,
+            order: &order,
+            usage: &usage,
             member_span,
-            type_parameters: class_type_parameters(semantic, member_id),
             member_is_render,
             semantic,
             closures: Vec::new(),
         }
-        .collect(&root),
+        .collect(),
         class_dependency: member_class_dependency(&root, member_id, semantic),
     }
 }

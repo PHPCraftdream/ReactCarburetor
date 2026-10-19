@@ -1,130 +1,77 @@
-use super::dependency::{
-    forwarder, this_derived, written_after_init, CaptureCollector, DependencyScan,
-};
+use super::dependency::{this_derived, written_after_init};
 use super::*;
 use oxc_span::GetSpan;
 
-/// The node a candidate was found at, which is what every later pass walks.
-enum Site<'n, 'a> {
-    /// `() => ...`, whose `this` is the enclosing function's.
-    Arrow(&'n ArrowFunctionExpression<'a>),
-    /// `function () {}`, which binds a `this` of its own.
-    Expression(&'n Function<'a>),
-}
-
-impl<'n, 'a> Site<'n, 'a> {
-    fn span(&self) -> Span {
-        match self {
-            Site::Arrow(arrow) => arrow.span,
-            Site::Expression(function) => function.span,
-        }
-    }
-
-    /// Runs a visitor over the site's whole extent, nested functions included.
-    fn walk_into<V: Visit<'a>>(&self, visitor: &mut V) {
-        match self {
-            Site::Arrow(arrow) => visitor.visit_arrow_function_expression(arrow),
-            Site::Expression(function) => visitor.visit_function(function, ScopeFlags::Function),
-        }
-    }
-}
-
-/// Builds a candidate out of every function site the scan left standing.
+/// Builds a candidate out of every function site the scan left standing, without walking again.
 pub(super) struct Collect<'a, 's> {
-    /// The member's own body, which is never a candidate of its own.
-    pub(super) root_id: NodeId,
-    pub(super) sites: &'s HashMap<Span, SiteFlags>,
-    pub(super) declarators: &'s [Declarator<'a>],
+    /// What the scan decided about each candidate site, keyed by the site's span.
+    pub(super) sites: &'s HashMap<Span, SiteData<'a>>,
+    /// The sites in source order, which is the order candidates are built in.
+    pub(super) order: &'s [Span],
+    /// The declarators keyed by their initialiser's span, for telling a helper from a callback.
+    pub(super) usage: &'s HashMap<Span, Declarator<'a>>,
     pub(super) member_span: Span,
-    pub(super) type_parameters: Vec<SymbolId>,
     pub(super) member_is_render: bool,
     pub(super) semantic: &'s Semantic<'s>,
     pub(super) closures: Vec<Candidate<'a>>,
 }
 
 impl<'a, 's> Collect<'a, 's> {
-    /// Walks the member and returns the candidates, in source order.
-    pub(super) fn collect(mut self, root: &Root<'a>) -> Vec<Candidate<'a>> {
-        root.visit(&mut self);
+    /// Builds the candidates, in source order.
+    pub(super) fn collect(mut self) -> Vec<Candidate<'a>> {
+        for &span in self.order {
+            if let Some(data) = self.sites.get(&span) {
+                self.collect_site(span, data);
+            }
+        }
 
         self.closures
     }
 
-    fn collect_site(&mut self, site: &Site<'_, 'a>) {
-        let span = site.span();
-        let Some(flags) = self.sites.get(&span) else {
-            return;
-        };
-
-        let captures = self.captures(site);
+    fn collect_site(&mut self, span: Span, data: &SiteData<'a>) {
+        let captures = self.captures(span, data);
         let class_dependency =
-            self.depends_on_class(site) || captures.iter().any(|capture| capture.this_derived);
+            data.class_dep || captures.iter().any(|capture| capture.this_derived);
 
         self.closures.push(Candidate {
             span,
             captures,
             class_dependency,
             usage: self.usage(span),
-            forwarder: self.forwarder(site),
-            executes_in_render: self.member_is_render && flags.executes_in_render,
+            forwarder: data.forwarder,
+            executes_in_render: self.member_is_render && data.executes_in_render,
         });
     }
 
-    /// What the closure reads out of the member it was written in.
-    fn captures(&self, site: &Site<'_, 'a>) -> Vec<Capture<'a>> {
-        let mut collector = CaptureCollector {
-            scoping: self.semantic.scoping(),
-            symbols: Vec::new(),
-            names: Vec::new(),
-            written: Vec::new(),
-        };
+    /// What the closure reads out of the member it was written in, from the scan's own records.
+    fn captures(&self, span: Span, data: &SiteData<'a>) -> Vec<Capture<'a>> {
+        data.entries
+            .iter()
+            .filter_map(|entry| {
+                let declaration = self.semantic.scoping().symbol_span(entry.symbol);
 
-        site.walk_into(&mut collector);
+                // A binding the closure declares itself, or one from outside the member that it
+                // merely passes through, is not a capture of the member.
+                if contains(span, declaration) || !contains(self.member_span, declaration) {
+                    return None;
+                }
 
-        let mut captures = Vec::new();
+                let written_after_init =
+                    written_after_init(entry.symbol, self.semantic, self.member_span);
 
-        for (index, symbol) in collector.symbols.iter().enumerate() {
-            let declaration = self.semantic.scoping().symbol_span(*symbol);
-
-            // A binding the closure declares itself, or one from outside the member that it merely
-            // passes through, is not a capture of the member.
-            if contains(site.span(), declaration) || !contains(self.member_span, declaration) {
-                continue;
-            }
-
-            let written_after_init = written_after_init(*symbol, self.semantic, self.member_span);
-
-            captures.push(Capture {
-                name: collector.names[index],
-                this_derived: this_derived(*symbol, self.semantic, written_after_init),
-                written_by_closure: collector.written[index],
-                written_after_init,
-            });
-        }
-
-        captures
-    }
-
-    /// Whether the closure's whole extent needs the class it was written in.
-    fn depends_on_class(&self, site: &Site<'_, 'a>) -> bool {
-        let mut scan = DependencyScan {
-            type_parameters: &self.type_parameters,
-            scoping: self.semantic.scoping(),
-            found: false,
-        };
-
-        site.walk_into(&mut scan);
-
-        scan.found
+                Some(Capture {
+                    name: entry.name,
+                    this_derived: this_derived(entry.symbol, self.semantic, written_after_init),
+                    written_by_closure: entry.written,
+                    written_after_init,
+                })
+            })
+            .collect()
     }
 
     /// Whether the closure is bound to a name that is only ever called.
     fn usage(&self, span: Span) -> Usage<'a> {
-        let Some(declarator) = self
-            .declarators
-            .iter()
-            .find(|declarator| declarator.init == Some(span))
-        else {
+        let Some(declarator) = self.usage.get(&span) else {
             return Usage::Callback;
         };
 
@@ -162,33 +109,5 @@ impl<'a, 's> Collect<'a, 's> {
         } else {
             Usage::Callback
         }
-    }
-
-    /// The method the closure forwards to, when it forwards to exactly one.
-    fn forwarder(&self, site: &Site<'_, 'a>) -> Option<Forwarder<'a>> {
-        let Site::Arrow(arrow) = site else {
-            return None;
-        };
-
-        forwarder(arrow, self.semantic.scoping())
-    }
-}
-
-impl<'a, 's> Visit<'a> for Collect<'a, 's> {
-    fn visit_class(&mut self, _: &Class<'a>) {}
-
-    fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
-        if function.node_id() != self.root_id && function.r#type == FunctionType::FunctionExpression
-        {
-            self.collect_site(&Site::Expression(function));
-        }
-
-        walk::walk_function(self, function, flags);
-    }
-
-    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-        self.collect_site(&Site::Arrow(arrow));
-
-        walk::walk_arrow_function_expression(self, arrow);
     }
 }

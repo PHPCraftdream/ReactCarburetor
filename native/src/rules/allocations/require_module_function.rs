@@ -35,7 +35,7 @@ use crate::fix::Fix;
 use crate::rules::support::bases::Bases;
 use crate::rules::support::bases::RENDER_METHODS;
 use crate::rules::support::closures::{
-    analyze_field, analyze_method, build_semantic, is_component_class, MemberAnalysis,
+    build_semantic, is_component_class, MemberAnalysis, MemberCache,
 };
 use crate::rules::support::walk::{walk_rule, Context, Rule};
 use crate::rules::{report, report_with_fix};
@@ -66,6 +66,8 @@ struct Check<'s, 'a> {
     /// has across the walk's callbacks, and what keeps a nested class's answer from standing in
     /// for its enclosing one.
     classes: HashMap<Span, ClassFacts>,
+    /// The shared per-member analyses, so the paired rule reuses this one's work.
+    cache: &'s MemberCache<'a>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -105,8 +107,8 @@ impl<'s, 'a> Check<'s, 'a> {
 
     /// Reports the member's closures that need nothing from the class — the mirror image of
     /// `require-method-for-closure`'s condition, which takes the class-dependent ones.
-    fn report_closures(&mut self, analysis: MemberAnalysis<'_>, context: &Context) {
-        for candidate in analysis.closures {
+    fn report_closures(&mut self, analysis: &MemberAnalysis<'_>, context: &Context) {
+        for candidate in &analysis.closures {
             if candidate.class_dependency {
                 continue;
             }
@@ -119,7 +121,7 @@ impl<'s, 'a> Check<'s, 'a> {
                 continue;
             }
 
-            let message = closure_message(&candidate, context.member.as_deref());
+            let message = closure_message(candidate, context.member.as_deref());
 
             self.diagnostics
                 .push(report(self.source, candidate.span.start, RULE, message));
@@ -261,10 +263,10 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
         // as much render code as the base's own, so the member name decides here as well.
         let member_is_render = context.in_render || Self::is_render_key(&method.key);
 
-        let analysis = analyze_method(method, self.semantic, member_is_render);
+        let analysis = self.cache.method(method, self.semantic, member_is_render);
 
         self.report_method(method, analysis.class_dependency, facts, context);
-        self.report_closures(analysis, context);
+        self.report_closures(&analysis, context);
     }
 
     fn property(&mut self, property: &PropertyDefinition<'a>, context: &Context) {
@@ -274,10 +276,10 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
 
         let member_is_render = context.in_render || Self::is_render_key(&property.key);
 
-        let analysis = analyze_field(property, self.semantic, member_is_render);
+        let analysis = self.cache.field(property, self.semantic, member_is_render);
 
         self.report_field(property, analysis.class_dependency, facts, context);
-        self.report_closures(analysis, context);
+        self.report_closures(&analysis, context);
     }
 }
 
@@ -305,6 +307,7 @@ pub(in crate::rules) fn make_rule<'a>(
     source: &'a Source<'a>,
     semantic: &'a Semantic<'a>,
     bases: &'a Bases,
+    cache: &'a MemberCache<'a>,
 ) -> impl Rule<'a> + 'a {
     Check {
         source,
@@ -313,6 +316,7 @@ pub(in crate::rules) fn make_rule<'a>(
         bases,
         classes: HashMap::new(),
         statements: top_level_class_statements(program),
+        cache,
         diagnostics: Vec::new(),
     }
 }
@@ -325,10 +329,12 @@ pub(in crate::rules) fn check_with_semantic<'a>(
     scope: ModuleFunctionScope,
     bases: &Bases,
 ) -> Vec<Diagnostic> {
+    let cache = MemberCache::default();
+
     finish_rule(
         walk_rule(
             program,
-            make_rule(program, source, semantic, bases),
+            make_rule(program, source, semantic, bases, &cache),
             bases,
         ),
         program,
@@ -450,7 +456,9 @@ mod tests {
     }
 
     mod fix_output;
+    mod oracle_scan;
     mod reporting_boundaries;
     mod reporting_core;
     mod reporting_module;
+    mod scaling;
 }

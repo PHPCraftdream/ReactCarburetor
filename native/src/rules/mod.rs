@@ -380,6 +380,7 @@ pub(super) fn run_sequential(
     let effect_severity = config.severity(effects::no_async_effect::RULE);
     let hooks_severity = config.severity(allocations::no_react_hooks_in_components::RULE);
     let store_write_severity = config.severity(data::writes::no_store_write_in_render::RULE);
+    let disposal_severity = config.severity(boundaries::require_subscription_disposal::RULE);
     // One semantic pass for every rule that reads scopes or symbols; stores and ordinary
     // classes are in its scope too, so no component-marker dependency applies.
     let shared_semantic = if [
@@ -394,6 +395,7 @@ pub(super) fn run_sequential(
         effect_severity,
         hooks_severity,
         store_write_severity,
+        disposal_severity,
     ]
     .iter()
     .any(|severity| *severity != Severity::Off)

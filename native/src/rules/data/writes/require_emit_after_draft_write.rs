@@ -115,6 +115,10 @@ impl<'a, 's> Rule<'a> for Check<'s> {
             diagnostics.push(report(self.source, write.offset, RULE, MESSAGE.to_string()));
         }
 
+        // The findings come out of a map, so they are ordered here rather than left to chance: the
+        // whole-run sort is by file and line, which would leave two reports in one file arbitrary.
+        diagnostics.sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
+
         diagnostics
     }
 
@@ -172,18 +176,18 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
 /// Runs the rule over one parsed file.
 pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
-    let mut diagnostics = walk_rule(program, make_rule(source), bases);
-
-    // The findings come out of a map, so they are ordered here rather than left to chance: the
-    // whole-run sort is by file and line, which would leave two reports in one file arbitrary.
-    diagnostics.sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
-
-    diagnostics
+    // `finish` emits an ordered result, so no extra sort is needed here.
+    walk_rule(program, make_rule(source), bases)
 }
 
 /// Builds the rule state for the given source.
 pub(in crate::rules) fn make_rule<'a, 's>(source: &'s Source<'s>) -> impl Rule<'a> + 's {
-    Check { source, writes: HashMap::new(), publishes: HashSet::new(), calls_from: HashMap::new() }
+    Check {
+        source,
+        writes: HashMap::new(),
+        publishes: HashSet::new(),
+        calls_from: HashMap::new(),
+    }
 }
 
 #[cfg(test)]
