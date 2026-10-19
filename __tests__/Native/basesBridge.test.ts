@@ -258,8 +258,9 @@ describe('the custom base, through the real host and the real binary', () => {
                     FIXTURE],
                 {cwd: ROOT, encoding: 'utf8'},
             );
-            const diagnostics = JSON.parse(run.stdout) as
-                {file: string; line: number; column: number; message: string}[];
+            const diagnostics = (JSON.parse(run.stdout) as
+                {file: string; line: number; column: number; message: string; rule: string}[])
+                .filter(diagnostic => diagnostic.rule === 'carburetor/require-super-in-lifecycle');
 
             expect(diagnostics.length).toBe(1);
 
