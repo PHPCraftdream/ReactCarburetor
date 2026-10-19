@@ -101,6 +101,17 @@ impl Context {
     }
 }
 
+/// How a JSX element's tag classifies: only [`JsxTag::Component`] counts as a nesting level.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum JsxTag {
+    /// A lowercase DOM tag, a namespaced name — anything that is not a component.
+    Dom,
+    /// The `Fragment` / `React.Fragment` spellings, which nest without counting.
+    Fragment,
+    /// An uppercase identifier or member name — a level in the tree.
+    Component,
+}
+
 /// What a rule implements. Every method is optional; a rule overrides the node kinds it is about.
 pub trait Rule<'a> {
     /// The diagnostics collected during the walk.
@@ -132,12 +143,16 @@ pub trait Rule<'a> {
     fn method(&mut self, _method: &MethodDefinition<'a>, _context: &Context) {}
     /// A JSX attribute, `onClick={...}` among them.
     fn jsx_attribute(&mut self, _attribute: &JSXAttribute<'a>, _context: &Context) {}
-    /// A JSX element, before its children are walked. `name` is the source spelling of the tag
-    /// (`Row`, `UI.Card`), `component` says whether it counts as a component — an uppercase or
-    /// member name — rather than a lowercase DOM tag.
-    fn jsx_element(&mut self, _span: Span, _name: &str, _component: bool, _context: &Context) {}
+    /// A JSX element, before its children are walked. `tag` classifies the opening name: a DOM
+    /// tag, a fragment, or a component that counts as a level.
+    fn jsx_element(&mut self, _span: Span, _tag: JsxTag, _context: &Context) {}
     /// A JSX element, after its children have been walked; one call per [`Rule::jsx_element`].
     fn leave_jsx_element(&mut self) {}
+    /// Whether the rule listens to the JSX element hooks; the walk skips the per-element tag
+    /// classification and fan-out entirely when no rule does.
+    fn uses_jsx_elements(&self) -> bool {
+        false
+    }
     /// A class, once `context.in_component` / `context.in_carburetor` reflect it.
     fn class(&mut self, _class: &Class<'a>, _context: &Context) {}
     /// `function inner() {}`, called while the enclosing context is still the render body.
@@ -170,6 +185,8 @@ struct Walk<'a, 'b> {
     /// Spans of functions that *are* a class member's body, which must not count as nesting.
     member_bodies: HashSet<Span>,
     component_functions: HashSet<Span>,
+    /// Whether any rule consumes the JSX element hooks; when none does, elements cost no tag work.
+    jsx_consumers: bool,
     marker: std::marker::PhantomData<&'a ()>,
 }
 
@@ -436,14 +453,17 @@ impl<'a, 'b> Visit<'a> for Walk<'a, 'b> {
     }
 
     fn visit_jsx_element(&mut self, element: &oxc_ast::ast::JSXElement<'a>) {
-        let (name, component) = jsx_element_name(&element.opening_element.name);
-        let name = name.unwrap_or_default();
-        for rule in &mut self.rules {
-            rule.jsx_element(element.span, &name, component, &self.context);
+        if self.jsx_consumers {
+            let tag = jsx_tag(&element.opening_element.name);
+            for rule in &mut self.rules {
+                rule.jsx_element(element.span, tag, &self.context);
+            }
         }
         walk::walk_jsx_element(self, element);
-        for rule in &mut self.rules {
-            rule.leave_jsx_element();
+        if self.jsx_consumers {
+            for rule in &mut self.rules {
+                rule.leave_jsx_element();
+            }
         }
     }
 
@@ -473,6 +493,41 @@ fn jsx_element_name(name: &JSXElementName<'_>) -> (Option<String>, bool) {
         }
         JSXElementName::MemberExpression(member) => (Some(jsx_member_name(member)), true),
         _ => (None, false),
+    }
+}
+
+/// Whether a member tag is one of the fragment spellings, `React.Fragment` exactly.
+fn is_fragment_member(member: &JSXMemberExpression<'_>) -> bool {
+    matches!(
+        &member.object,
+        JSXMemberExpressionObject::IdentifierReference(identifier) if identifier.name == "React"
+    ) && member.property.name == "Fragment"
+}
+
+/// Classifies an opening tag without allocating a name: DOM, fragment, or component level.
+fn jsx_tag(name: &JSXElementName<'_>) -> JsxTag {
+    match name {
+        JSXElementName::Identifier(identifier) => jsx_identifier_tag(&identifier.name),
+        JSXElementName::IdentifierReference(identifier) => jsx_identifier_tag(&identifier.name),
+        JSXElementName::MemberExpression(member) => {
+            if is_fragment_member(member) {
+                JsxTag::Fragment
+            } else {
+                JsxTag::Component
+            }
+        }
+        _ => JsxTag::Dom,
+    }
+}
+
+/// Classifies a bare identifier tag; `Fragment` nests without counting, whatever its case.
+fn jsx_identifier_tag(name: &str) -> JsxTag {
+    if name == "Fragment" {
+        JsxTag::Fragment
+    } else if name.chars().next().is_some_and(char::is_uppercase) {
+        JsxTag::Component
+    } else {
+        JsxTag::Dom
     }
 }
 
@@ -521,6 +576,7 @@ pub fn walk_rules<'a>(
         let (walks, rule_count) = counts.get();
         counts.set((walks + 1, rule_count + rules.len()));
     });
+    let jsx_consumers = rules.iter().any(|rule| rule.uses_jsx_elements());
     let mut walk = Walk {
         rules,
         bases,
@@ -529,6 +585,7 @@ pub fn walk_rules<'a>(
         synchronous: HashSet::new(),
         member_bodies: HashSet::new(),
         component_functions: discover(program),
+        jsx_consumers,
         marker: std::marker::PhantomData,
     };
     walk.visit_program(program);

@@ -17,15 +17,21 @@ use oxc_span::Span;
 use crate::config::DEFAULT_MAX;
 use crate::rules::report;
 use crate::rules::support::bases::Bases;
-use crate::rules::support::walk::{walk_rule, Context, Rule};
+use crate::rules::support::walk::{walk_rule, Context, JsxTag, Rule};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
 pub const RULE: &str = "carburetor/max-render-depth";
 
-/// Fragment spellings that nest without counting as a component level.
-fn is_fragment(name: &str) -> bool {
-    name == "Fragment" || name == "React.Fragment"
+/// One open element: the depth, suppression and scope to restore on leaving it, and whether the
+/// element hangs structurally on the render being counted.
+struct Frame {
+    depth: u32,
+    suppressed: bool,
+    scope: Option<Span>,
+    /// The element continues an enclosing render's tree, even once `in_render` is no longer set —
+    /// JSX in an attribute or expression child of the render's own elements belongs to it.
+    linked: bool,
 }
 
 struct Check<'s, 'a> {
@@ -35,28 +41,36 @@ struct Check<'s, 'a> {
     /// The render scope the current depth belongs to; a new render resets the count.
     scope: Option<Span>,
     depth: u32,
-    /// Per open element, the depth and suppression state to restore on leaving it.
-    stack: Vec<(u32, bool)>,
+    /// Per open element, the depth, suppression and scope to restore on leaving it.
+    stack: Vec<Frame>,
     /// Whether the subtree under the current element is already reported past.
     suppressed: bool,
     marker: std::marker::PhantomData<&'a ()>,
 }
 
 impl Check<'_, '_> {
-    fn enter(&mut self, span: Span, name: &str, component: bool, context: &Context) {
-        self.stack.push((self.depth, self.suppressed));
+    fn enter(&mut self, span: Span, tag: JsxTag, context: &Context) {
+        let linked = if context.in_render {
+            if self.scope != context.render_scope {
+                // A new render (a nested component function) starts counting from zero.
+                self.scope = context.render_scope;
+                self.depth = 0;
+                self.suppressed = false;
+            }
+            true
+        } else {
+            // Not in a render, but still structurally under one: a render-prop arrow, a JSX
+            // attribute expression. It continues the nearest enclosing element's render.
+            self.stack.last().is_some_and(|frame| frame.linked)
+        };
+        self.stack.push(Frame {
+            depth: self.depth,
+            suppressed: self.suppressed,
+            scope: self.scope,
+            linked,
+        });
 
-        if !context.in_render {
-            return;
-        }
-        if self.scope != context.render_scope {
-            // A new render (a nested component function) starts counting from zero.
-            self.scope = context.render_scope;
-            self.depth = 0;
-            self.suppressed = false;
-        }
-
-        if !component || is_fragment(name) {
+        if !linked || tag != JsxTag::Component {
             return;
         }
 
@@ -77,9 +91,10 @@ impl Check<'_, '_> {
     }
 
     fn leave(&mut self) {
-        if let Some((depth, suppressed)) = self.stack.pop() {
-            self.depth = depth;
-            self.suppressed = suppressed;
+        if let Some(frame) = self.stack.pop() {
+            self.depth = frame.depth;
+            self.suppressed = frame.suppressed;
+            self.scope = frame.scope;
         }
     }
 }
@@ -89,12 +104,16 @@ impl<'a, 's> Rule<'a> for Check<'s, 'a> {
         std::mem::take(&mut self.diagnostics)
     }
 
-    fn jsx_element(&mut self, span: Span, name: &str, component: bool, context: &Context) {
-        self.enter(span, name, component, context);
+    fn jsx_element(&mut self, span: Span, tag: JsxTag, context: &Context) {
+        self.enter(span, tag, context);
     }
 
     fn leave_jsx_element(&mut self) {
         self.leave();
+    }
+
+    fn uses_jsx_elements(&self) -> bool {
+        true
     }
 }
 
@@ -215,12 +234,14 @@ mod tests {
     }
 
     #[test]
-    fn a_nested_pascal_case_component_is_its_own_render() {
+    fn a_nested_pascal_case_component_is_reported_in_its_own_render() {
         let inner = "            return <A><B><C><D/></C></B></A>;";
         let source = render(&format!(
             "        function Inner() {{\n{inner}\n        }}\n        return <Inner/>;"
         ));
-        assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+        // Inner is a PascalCase function returning JSX, so it is its own render; its depth-four
+        // return on line 3 reports once, and the outer `<Inner/>` alone does not.
+        assert_eq!(lines(&diagnose(&source, check)), [3]);
     }
 
     #[test]
@@ -256,6 +277,47 @@ mod tests {
 
         let diagnostics = diagnose(&source, check);
 
+        // Exactly three levels: the DOM `div` does not count, so nothing reports.
+        assert_eq!(lines(&diagnostics), [] as [usize; 0], "{diagnostics:#?}");
+    }
+
+    #[test]
+    fn independent_sibling_branches_report_separately() {
+        let source =
+            render("        return <div><A><B><C><D/></C></B></A><E><F><G><H/></G></F></E></div>;");
+
+        let diagnostics = diagnose(&source, check);
+
+        // Each branch over the limit reports at its own fourth component, on line 3 (columns
+        // 1-based, as `report` fills them in).
+        assert_eq!(
+            diagnostics
+                .iter()
+                .map(|diagnostic| (diagnostic.line, diagnostic.column))
+                .collect::<Vec<_>>(),
+            [(3, 30), (3, 55)],
+            "{diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn a_memo_callback_is_its_own_render_and_the_owner_continues_counting() {
+        let source = render("        return <A><B><C child={memo(() => <X/>)}><D/></C></B></A>;");
+
+        let diagnostics = diagnose(&source, check);
+
+        // The memo callback's `<X/>` counts in a fresh render, and afterwards `<D/>` is the
+        // owner's fourth component.
         assert_eq!(lines(&diagnostics), [3], "{diagnostics:#?}");
+    }
+
+    #[test]
+    fn jsx_in_a_render_prop_continues_the_owner_depth() {
+        let concise = render("        return <A render={() => <B><C><D/></C></B>}/>;");
+        assert_eq!(lines(&diagnose(&concise, check)), [3]);
+
+        let block_bodied =
+            render("        return <A render={() => { return <B><C><D/></C></B>; }}/>;");
+        assert_eq!(lines(&diagnose(&block_bodied, check)), [3]);
     }
 }

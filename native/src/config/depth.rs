@@ -7,21 +7,26 @@ pub(crate) const DEFAULT_MAX: u32 = 3;
 
 impl super::Config {
     /// `max-render-depth`'s one option. `parse` validates the option for this rule, so a stored
-    /// value is always a well-formed integer; the default fallback is unreachable outside tests
-    /// that build a `Config` by hand.
+    /// value is always an integer the `u32` depth counter can hold; the default fallback is
+    /// unreachable outside tests that build a `Config` by hand.
     pub fn max_render_depth(&self) -> u32 {
-        self.rules
+        match self
+            .rules
             .get("max-render-depth")
             .and_then(|setting| setting.options.as_ref())
             .and_then(|options| options.get("max"))
             .and_then(|max| max.as_u64())
-            .map_or(DEFAULT_MAX, |limit| limit as u32)
+        {
+            // Checked, not `as u32`: a wider value would otherwise wrap to a small limit.
+            Some(limit) if limit <= u32::MAX as u64 => limit as u32,
+            _ => DEFAULT_MAX,
+        }
     }
 }
 
-/// The one option `max-render-depth` takes: `max`, an integer >= 1. An unknown key or an invalid
-/// value is a config error, not a silently ignored one — a typo'd limit would otherwise read as
-/// the default and change what the rule reports.
+/// The one option `max-render-depth` takes: `max`, an integer from 1 to `u32::MAX`. An unknown key
+/// or an invalid value is a config error, not a silently ignored one — a typo'd limit would
+/// otherwise read as the default and change what the rule reports.
 pub(super) fn validate_max_render_depth_options(
     map: &serde_json::Map<String, serde_json::Value>,
 ) -> Result<(), ConfigError> {
@@ -36,13 +41,13 @@ pub(super) fn validate_max_render_depth_options(
     match map.get("max") {
         None => Ok(()),
         Some(value @ serde_json::Value::Number(_)) => match value.as_u64() {
-            Some(limit) if limit >= 1 => Ok(()),
+            Some(limit) if (1..=u32::MAX as u64).contains(&limit) => Ok(()),
             _ => Err(malformed(
-                "the max option of max-render-depth must be an integer >= 1",
+                "the max option of max-render-depth must be an integer from 1 to 4294967295",
             )),
         },
         Some(_) => Err(malformed(
-            "the max option of max-render-depth must be an integer >= 1",
+            "the max option of max-render-depth must be an integer from 1 to 4294967295",
         )),
     }
 }
@@ -69,5 +74,19 @@ mod tests {
         assert!(parse(r#"{"rules": {"max-render-depth": ["warn", {"max": -1}]}}"#).is_err());
         assert!(parse(r#"{"rules": {"max-render-depth": ["warn", {"max": "many"}]}}"#).is_err());
         assert!(parse(r#"{"rules": {"max-render-depth": ["warn", {"depth": 3}]}}"#).is_err());
+    }
+
+    #[test]
+    fn the_largest_u32_max_is_accepted() {
+        let config =
+            parse(r#"{"rules": {"max-render-depth": ["warn", {"max": 4294967295}]}}"#).unwrap();
+        assert_eq!(config.max_render_depth(), 4294967295);
+    }
+
+    #[test]
+    fn a_max_beyond_u32_is_rejected() {
+        assert!(
+            parse(r#"{"rules": {"max-render-depth": ["warn", {"max": 4294967296}]}}"#).is_err()
+        );
     }
 }

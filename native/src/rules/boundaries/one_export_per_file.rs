@@ -1,21 +1,29 @@
 //! At most one runtime-value export per file.
 //!
-//! Every top-level runtime export after the first is reported: bindings, functions, classes,
-//! enums, namespaces, default exports and `export =` all count. Type exports (`export type`,
-//! `export interface`, `export type {..}`, type-only specifiers) are unlimited, ambient
-//! `declare` forms are not runtime values, re-exports and barrels do not declare anything
-//! here, and whole `.d.ts` files are exempt. The fix is always the same shape: give each value
-//! its own module.
+//! Every top-level runtime-value export after the first is reported: bindings, functions,
+//! classes, enums, namespaces, `export import A = B.C`, default exports and `export =` all
+//! count. Overload groups — including `export default` overloads — count once. Type-only
+//! default exports (`export default interface`) do not count. A local `export {X}` counts only
+//! when `X` resolves to a runtime value declared or imported at the top level: a parent
+//! `import type` and ambient `declare` forms make it type-only, while a value wins over a
+//! same-named type. Type exports (`export type`, `export interface`, `export type {..}`,
+//! type-only specifiers) are unlimited, re-exports and barrels do not declare anything here,
+//! and whole `.d.ts` files are exempt. The fix is always the same shape: give each value its
+//! own module.
+//!
+//! The classification is a linear pre-pass over the module body: phase 1 collects the set of
+//! top-level names bound to runtime values, phase 2 walks the exports in order, so no
+//! per-specifier symbol lookup is needed.
 
 use std::collections::HashSet;
 
 use oxc_ast::ast::{
-    Declaration, ExportDefaultDeclarationKind, ExportSpecifier, ImportOrExportKind,
-    ModuleExportName, Program, Statement, TSNamespaceDeclaration, TSNamespaceDeclarationBody,
+    Declaration, ExportDefaultDeclarationKind, ExportSpecifier, ImportDeclarationSpecifier,
+    ImportOrExportKind, ModuleExportName, Program, Statement, TSNamespaceDeclaration,
+    TSNamespaceDeclarationBody,
 };
-use oxc_ast::AstKind;
 use oxc_semantic::Semantic;
-use oxc_span::{GetSpan, Span};
+use oxc_span::Span;
 
 use crate::rules::report;
 use crate::rules::support::bases::Bases;
@@ -61,43 +69,6 @@ fn statement_is_type_only(statement: &Statement<'_>) -> bool {
     }
 }
 
-/// Whether the symbol a local `export {name}` names carries only a type into this file, by the
-/// kind of its declaration; a name that resolves to nothing counts as a value.
-fn specifier_is_type_only(name: &str, semantic: &Semantic<'_>) -> bool {
-    let scoping = semantic.scoping();
-    let Some(symbol) = scoping.find_binding(scoping.root_scope_id(), name.into()) else {
-        return false;
-    };
-
-    match semantic.symbol_declaration(symbol).kind() {
-        AstKind::TSInterfaceDeclaration(_) | AstKind::TSTypeAliasDeclaration(_) => true,
-        AstKind::ImportSpecifier(specifier) => specifier.import_kind == ImportOrExportKind::Type,
-        // `import type X from ...` puts its kind on the declaration, not the specifier.
-        AstKind::ImportDefaultSpecifier(specifier) => import_is_type_only(semantic, specifier.span),
-        AstKind::ImportNamespaceSpecifier(specifier) => {
-            import_is_type_only(semantic, specifier.span)
-        }
-        _ => false,
-    }
-}
-
-/// Whether the import declaration holding `specifier_span` was written `import type`.
-fn import_is_type_only(semantic: &Semantic<'_>, specifier_span: Span) -> bool {
-    let node = semantic
-        .nodes()
-        .iter()
-        .find(|node| node.kind().span() == specifier_span);
-
-    let Some(node) = node else {
-        return false;
-    };
-
-    matches!(
-        semantic.nodes().parent_node(node.id()).kind(),
-        AstKind::ImportDeclaration(import) if import.import_kind == ImportOrExportKind::Type
-    )
-}
-
 /// The exported name of one local `export {..}` specifier, when it spells a plain identifier.
 fn specifier_name<'a>(specifier: &ExportSpecifier<'a>) -> Option<&'a str> {
     match &specifier.local {
@@ -107,19 +78,104 @@ fn specifier_name<'a>(specifier: &ExportSpecifier<'a>) -> Option<&'a str> {
     }
 }
 
+/// The set of top-level names in this module bound to a runtime value.
+fn collect_values<'a>(program: &'a Program<'a>) -> HashSet<&'a str> {
+    let mut values = HashSet::new();
+
+    for statement in &program.body {
+        match statement {
+            Statement::ImportDeclaration(import) => {
+                if import.import_kind == ImportOrExportKind::Type {
+                    continue;
+                }
+
+                for specifier in import.specifiers.iter().flatten() {
+                    match specifier {
+                        ImportDeclarationSpecifier::ImportSpecifier(specifier) => {
+                            if specifier.import_kind != ImportOrExportKind::Type {
+                                values.insert(specifier.local.name.as_str());
+                            }
+                        }
+                        ImportDeclarationSpecifier::ImportDefaultSpecifier(specifier) => {
+                            values.insert(specifier.local.name.as_str());
+                        }
+                        ImportDeclarationSpecifier::ImportNamespaceSpecifier(specifier) => {
+                            values.insert(specifier.local.name.as_str());
+                        }
+                    }
+                }
+            }
+            Statement::TSImportEqualsDeclaration(imp) => {
+                if imp.import_kind != ImportOrExportKind::Type {
+                    values.insert(imp.id.name.as_str());
+                }
+            }
+            Statement::ExportDeclaration(export) => {
+                collect_declaration_value(&export.declaration, &mut values);
+            }
+            _ => {}
+        }
+    }
+
+    values
+}
+
+/// Inserts the name a top-level `export <declaration>` binds, when it is a runtime value.
+fn collect_declaration_value<'a>(declaration: &Declaration<'a>, values: &mut HashSet<&'a str>) {
+    match declaration {
+        Declaration::VariableDeclaration(variable) if !variable.declare => {
+            for declarator in &variable.declarations {
+                for identifier in declarator.id.get_binding_identifiers() {
+                    values.insert(identifier.name.as_str());
+                }
+            }
+        }
+        Declaration::FunctionDeclaration(function) if !function.declare => {
+            if let Some(id) = &function.id {
+                values.insert(id.name.as_str());
+            }
+        }
+        Declaration::ClassDeclaration(class) if !class.declare => {
+            if let Some(id) = &class.id {
+                values.insert(id.name.as_str());
+            }
+        }
+        Declaration::TSEnumDeclaration(enumeration) if !enumeration.declare => {
+            values.insert(enumeration.id.name.as_str());
+        }
+        Declaration::TSNamespaceDeclaration(namespace)
+            if !namespace.declare && !namespace_is_type_only(namespace) =>
+        {
+            values.insert(namespace.id.name.as_str());
+        }
+        Declaration::TSImportEqualsDeclaration(imp)
+            if imp.import_kind != ImportOrExportKind::Type =>
+        {
+            values.insert(imp.id.name.as_str());
+        }
+        // Type shapes, declare forms and ambient modules are not runtime values.
+        _ => {}
+    }
+}
+
 struct Check<'a, 's> {
     source: &'s Source<'s>,
-    semantic: &'s Semantic<'a>,
     diagnostics: Vec<Diagnostic>,
     /// The name of the first runtime export, quoted in every later report.
     first: Option<&'a str>,
-    /// Function names already exported, so TypeScript overloads count once.
-    functions: HashSet<&'a str>,
+    /// Export names already seen, so overload groups and repeated names count once.
+    exported: HashSet<&'a str>,
+    /// Top-level names bound to runtime values, from the linear pre-pass.
+    values: HashSet<&'a str>,
 }
 
 impl<'a, 's> Check<'a, 's> {
     /// Records one runtime export and reports it when it is not the first.
     fn count(&mut self, span: Span, name: &'a str) {
+        if !name.is_empty() && !self.exported.insert(name) {
+            return;
+        }
+
         let Some(first) = self.first.as_ref() else {
             self.first = Some(name);
 
@@ -136,21 +192,14 @@ impl<'a, 's> Check<'a, 's> {
                 self.visit_export_declaration(&export.declaration);
             }
             Statement::ExportDefaultDeclaration(export) => {
-                let (span, name) = match &export.declaration {
-                    ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
-                        let span = function.id.as_ref().map_or(export.span, |id| id.span);
+                if matches!(
+                    &export.declaration,
+                    ExportDefaultDeclarationKind::TSInterfaceDeclaration(_)
+                ) {
+                    return;
+                }
 
-                        (span, "default")
-                    }
-                    ExportDefaultDeclarationKind::ClassDeclaration(class) => {
-                        let span = class.id.as_ref().map_or(export.span, |id| id.span);
-
-                        (span, "default")
-                    }
-                    _ => (export.span, "default"),
-                };
-
-                self.count(span, name);
+                self.count(export.span, "default");
             }
             Statement::ExportNamedDeclaration(export) => {
                 if export.export_kind == ImportOrExportKind::Type {
@@ -169,7 +218,7 @@ impl<'a, 's> Check<'a, 's> {
                         continue;
                     };
 
-                    if !specifier_is_type_only(name, self.semantic) {
+                    if self.values.contains(name) {
                         self.count(specifier.span, name);
                     }
                 }
@@ -205,11 +254,6 @@ impl<'a, 's> Check<'a, 's> {
                     return;
                 };
 
-                // Overloads share a name; only the first occurrence is an export of its own.
-                if !self.functions.insert(id.name.as_str()) {
-                    return;
-                }
-
                 self.count(id.span, id.name.as_str());
             }
             Declaration::ClassDeclaration(class) => {
@@ -235,6 +279,11 @@ impl<'a, 's> Check<'a, 's> {
 
                 self.count(namespace.id.span, namespace.id.name.as_str());
             }
+            Declaration::TSImportEqualsDeclaration(imp)
+                if imp.import_kind != ImportOrExportKind::Type =>
+            {
+                self.count(imp.id.span, imp.id.name.as_str());
+            }
             // Type shapes and ambient modules are unlimited; `export declare const x: number`
             // never reaches the emitted module at all.
             _ => {}
@@ -253,7 +302,7 @@ pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diag
 pub(in crate::rules) fn check_with_semantic<'a>(
     program: &Program<'a>,
     source: &Source,
-    semantic: &Semantic<'a>,
+    _semantic: &Semantic<'a>,
 ) -> Vec<Diagnostic> {
     // Declaration files only ever contain type shapes; there is nothing to limit in one.
     if source
@@ -267,10 +316,10 @@ pub(in crate::rules) fn check_with_semantic<'a>(
 
     let mut check = Check {
         source,
-        semantic,
         diagnostics: Vec::new(),
         first: None,
-        functions: HashSet::new(),
+        exported: HashSet::new(),
+        values: collect_values(program),
     };
 
     for statement in &program.body {
@@ -343,6 +392,76 @@ mod tests {
                       export function f(x: any): any { return x; }\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn default_function_overloads_count_once() {
+        let source = "export default function f(x: string): string;\n\
+                      export default function f(x: number): number;\n\
+                      export default function f(x: any): any { return x; }\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn default_overloads_then_a_second_export() {
+        let source = "export default function f(x: string): string;\n\
+                      export default function f(x: number): number;\n\
+                      export default function f(x: any): any { return x; }\n\
+                      export const value = 1;\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [4]);
+    }
+
+    #[test]
+    fn a_default_interface_is_not_a_value_export() {
+        let source = "export default interface Shape {}\nexport const value = 1;\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_export_import_equals_is_a_runtime_export() {
+        let source = "namespace B { export const C = 1; }\nexport import A = B.C;\nexport const value = 2;\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [3]);
+    }
+
+    #[test]
+    fn a_type_only_import_equals_is_not_a_runtime_export() {
+        let source = "namespace B { export const C = 1; }\nexport import type A = B.C;\nexport const value = 2;\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_parent_import_type_specifier_is_not_a_value() {
+        let source = "import type {X} from \"types\";\nexport {X};\nexport const value = 1;\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_type_only_namespace_name_is_not_a_value() {
+        let source =
+            "namespace Types { export interface X {} }\nexport {Types};\nexport const value = 1;\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_ambient_name_is_not_a_value() {
+        let source =
+            "declare const external: number;\nexport {external};\nexport const value = 1;\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_value_wins_over_a_same_named_type() {
+        let source = "const X = 1;\ntype X = number;\nexport {X};\nexport const y = 2;\n";
+
+        assert_eq!(lines(&diagnose(source, check)), [4]);
     }
 
     #[test]
