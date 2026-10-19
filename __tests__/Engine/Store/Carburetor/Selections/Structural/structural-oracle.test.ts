@@ -89,6 +89,8 @@ const open = (forced: boolean): ISide => {
 };
 
 /** Where each member of `next` came from in `previous`: the same copy, a reused nested copy, or new.
+ * A copy older than `previous` counts as new: a re-added raw row may get its earlier copy back on the
+ * patched side (see structural-readd.test.ts) while the oracle copies afresh; values are still compared.
  *
  * @param previous - the earlier snapshot
  * @param next - the later snapshot

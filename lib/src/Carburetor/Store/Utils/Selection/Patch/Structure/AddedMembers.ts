@@ -53,6 +53,7 @@ export class AddedMembers {
      */
     public detach(member: unknown): unknown {
         if (member === null || typeof member !== 'object') return member;
+        // A removed row keeps its entry: the full reconcile reuses that copy when its content is unchanged.
         if (this.ledger.has(liveViews.readTarget(member) ?? member)) {
             this.refused = true;
             return undefined;
