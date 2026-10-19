@@ -19,7 +19,7 @@ use oxc_syntax::scope::ScopeFlags;
 
 use crate::config::ModuleFunctionScope;
 
-use super::own_min::{Frame, MinDecl};
+use super::own_min::{capture_depth, Frame, MinDecl};
 use super::RULE;
 use crate::rules::report;
 use crate::rules::support::bases::{EXCLUDED_CALLBACK_APIS, RENDER_TRACKED_APIS};
@@ -263,27 +263,6 @@ impl<'a, 's> ModuleScan<'a, 's> {
         }
     }
 
-    /// The functional depth of a scope: how many function scopes lie strictly above it. Computed
-    /// by a memoized climb to the root, so each scope is resolved once per file.
-    fn function_depth(&mut self, scope: ScopeId) -> usize {
-        if let Some(depth) = self.scope_depths.get(&scope) {
-            return *depth;
-        }
-        let depth = match self.scoping.scope_parent_id(scope) {
-            None => 0,
-            Some(parent) => {
-                let base = self.function_depth(parent);
-                base + usize::from(
-                    self.scoping
-                        .scope_flags(scope)
-                        .intersects(ScopeFlags::Function),
-                )
-            }
-        };
-        self.scope_depths.insert(scope, depth);
-        depth
-    }
-
     /// `scope=classes` is intentionally represented by the same walk and only changes candidate
     /// filtering, not traversal: nested functions still need their enclosing scopes visited.
     fn visit_classes(&mut self, program: &'a Program<'a>) {
@@ -495,7 +474,8 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
                 .get()
                 .and_then(|reference| self.scoping.get_reference(reference).symbol_id());
             if let Some(symbol) = symbol {
-                let depth = self.function_depth(self.scoping.symbol_scope_id(symbol));
+                let depth =
+                    capture_depth(self.semantic, self.scoping, &mut self.scope_depths, symbol);
                 // Depth 0 is a module declaration, which never counts as a capture.
                 if depth != 0 {
                     let owner = self.own_names.get(&symbol).copied();

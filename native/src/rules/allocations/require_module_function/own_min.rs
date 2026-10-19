@@ -10,7 +10,12 @@
 //! ordinary code, worst case O(N·D) only under deep mutual recursion (as for the old
 //! `CaptureProbe`, which re-walked the whole subtree per function).
 
-use oxc_semantic::SymbolId;
+use std::collections::HashMap;
+
+use oxc_ast::ast::FunctionType;
+use oxc_ast::AstKind;
+use oxc_semantic::{ScopeId, Scoping, Semantic, SymbolId};
+use oxc_syntax::scope::ScopeFlags;
 
 /// One level of function nesting, carrying everything its exit decision needs.
 pub(super) struct Frame {
@@ -86,5 +91,54 @@ impl MinDecl {
 impl Default for MinDecl {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// The functional depth of a scope — how many function scopes lie strictly above it — computed by
+/// a memoized climb to the root, so each scope is resolved once per file.
+pub(super) fn scope_function_depth(
+    scoping: &Scoping,
+    depths: &mut HashMap<ScopeId, usize>,
+    scope: ScopeId,
+) -> usize {
+    if let Some(depth) = depths.get(&scope) {
+        return *depth;
+    }
+    let depth = match scoping.scope_parent_id(scope) {
+        None => 0,
+        Some(parent) => {
+            let base = scope_function_depth(scoping, depths, parent);
+            base + usize::from(scoping.scope_flags(scope).intersects(ScopeFlags::Function))
+        }
+    };
+    depths.insert(scope, depth);
+    depth
+}
+
+/// The effective depth of a symbol's declaration: a function or class declaration's name binds in
+/// the enclosing scope, but its span sits inside its own node, so a reference to it counts at the
+/// declared node's own depth — as if the name were declared inside the body, which is what the
+/// span-based probe sees.
+pub(super) fn capture_depth(
+    semantic: &Semantic<'_>,
+    scoping: &Scoping,
+    depths: &mut HashMap<ScopeId, usize>,
+    symbol: SymbolId,
+) -> usize {
+    let scope = scoping.symbol_scope_id(symbol);
+    match semantic.symbol_declaration(symbol).kind() {
+        // Any declaration shape but an expression: its name lies outside its own scope.
+        AstKind::Function(function) if function.r#type != FunctionType::FunctionExpression => {
+            match function.scope_id.get() {
+                Some(own) => scope_function_depth(scoping, depths, own),
+                None => scope_function_depth(scoping, depths, scope),
+            }
+        }
+        // A class declaration's name binds outside the class scope; an expression's binds inside.
+        AstKind::Class(class) => match class.scope_id.get() {
+            Some(own) if own != scope => scope_function_depth(scoping, depths, own),
+            _ => scope_function_depth(scoping, depths, scope),
+        },
+        _ => scope_function_depth(scoping, depths, scope),
     }
 }

@@ -61,7 +61,7 @@ pub(in crate::rules) const CORPUS: &[&str] = &[
     // Function pyramid, depth 8.
     "function f1() { function f2() { function f3() { function f4() { function f5() { \
      function f6() { function f7() { function f8() { return 0; } return f8; } return f7; } \
-     return f6; } return f5; } return f4; } return f3; } return f2; } return f1; }",
+     return f6; } return f5; } return f4; } return f3; } return f2; }",
     // An IIFE, whose callee is excluded but whose insides are not.
     "const result = (() => { const f = () => 1; return f; })();",
     // A tracked-API call inside a function.
