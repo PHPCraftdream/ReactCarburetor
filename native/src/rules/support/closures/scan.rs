@@ -47,6 +47,9 @@ pub(super) struct Frame<'a> {
     class_dep: bool,
     /// The class-nesting depth this frame was entered at, which gates class-dependency.
     class_base: usize,
+    /// Whether this frame is a candidate of its own; only site frames are marked and closed out.
+    /// Non-site frames are transparent: their marks land on the nearest site frame above.
+    site: bool,
     /// The method an arrow frame forwards to, when it forwards to exactly one.
     forwarder: Option<Forwarder<'a>>,
 }
@@ -106,32 +109,40 @@ impl<'a> Scan<'a, '_> {
 
     /// Enters a function boundary, remembering what to restore on the way out.
     ///
-    /// `site` says whether this boundary is a candidate of its own. The member's own body is
-    /// walked as the root, so it is never reported against itself, and nothing inside a nested
-    /// class is one either.
+    /// Every visited function gets a frame, so entry and exit stay symmetric. `candidate` says
+    /// whether this boundary could be a candidate of its own; the returned `site` says whether it
+    /// actually is one. The member's own body is walked as the root, so it is never reported
+    /// against itself, and nothing inside a nested class is one either.
     fn enter_function(
         &mut self,
         id: NodeId,
         span: Span,
         is_arrow: bool,
         arrow: Option<&ArrowFunctionExpression<'a>>,
+        candidate: bool,
     ) -> bool {
         let is_root = id == self.root_id;
+        let site = candidate && !is_root && self.class_depth == 0 && !self.protected(span);
         let enclosing_render = self.render_executes;
-        // Render code stops at a function boundary, unless the function runs in place as a
-        // synchronous callback of one that evaluates during the render.
-        if !is_root && self.class_depth == 0 && !self.synchronous.contains(&span) {
+        // Render code stops at a site boundary, unless the function runs in place as a
+        // synchronous callback of one that evaluates during the render. Non-site frames are
+        // transparent and leave the state alone.
+        if site && !self.synchronous.contains(&span) {
             self.render_executes = false;
         }
 
-        let site = !is_root && self.class_depth == 0 && !self.protected(span);
         // The forwarder check is a pure function of the arrow, so it is answered once here and
         // only reported if the site survives.
-        let forwarder = arrow.and_then(|arrow| forwarder(arrow, self.scoping));
+        let forwarder = if site {
+            arrow.and_then(|arrow| forwarder(arrow, self.scoping))
+        } else {
+            None
+        };
 
         self.frames.push(Frame {
             span,
             is_arrow,
+            site,
             enclosing_render,
             render: self.render_executes,
             uses_this: false,
@@ -165,6 +176,7 @@ impl<'a> Scan<'a, '_> {
     fn leave_function(&mut self, span: Span, is_site: bool) {
         let Frame {
             is_arrow,
+            site: _,
             enclosing_render,
             render,
             uses_this,
@@ -177,6 +189,7 @@ impl<'a> Scan<'a, '_> {
             ..
         } = self.frames.pop().expect("a frame was pushed on entry");
 
+        // Only a site boundary restores the render state, mirroring the reset on entry.
         if is_site {
             self.render_executes = enclosing_render;
         }
@@ -233,6 +246,12 @@ impl<'a> Scan<'a, '_> {
             }
         }
     }
+
+    /// The innermost frame that is a candidate of its own. Non-site frames are transparent:
+    /// marks meant for "the function this occurrence belongs to" land on the nearest one.
+    fn innermost_site_frame(&mut self) -> Option<&mut Frame<'a>> {
+        self.frames.iter_mut().rev().find(|frame| frame.site)
+    }
 }
 
 impl<'a> Visit<'a> for Scan<'a, '_> {
@@ -245,9 +264,11 @@ impl<'a> Visit<'a> for Scan<'a, '_> {
     }
 
     fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
-        let is_site = function.r#type == FunctionType::FunctionExpression
-            && !function.generator
-            && self.enter_function(function.node_id(), function.span, false, None);
+        // Only a non-generator function expression is a candidate of its own; declarations,
+        // generators and methods still get a frame, so entry and exit stay symmetric.
+        let candidate = function.r#type == FunctionType::FunctionExpression && !function.generator;
+        let is_site =
+            self.enter_function(function.node_id(), function.span, false, None, candidate);
 
         walk::walk_function(self, function, flags);
 
@@ -256,7 +277,7 @@ impl<'a> Visit<'a> for Scan<'a, '_> {
 
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         // A member's own body is always a `Function`, so an arrow is never the root.
-        let site = self.enter_function(arrow.node_id(), arrow.span, true, Some(arrow));
+        let site = self.enter_function(arrow.node_id(), arrow.span, true, Some(arrow), true);
 
         walk::walk_arrow_function_expression(self, arrow);
 
@@ -265,8 +286,8 @@ impl<'a> Visit<'a> for Scan<'a, '_> {
 
     fn visit_identifier_reference(&mut self, identifier: &IdentifierReference<'a>) {
         if identifier.name == "arguments" && self.class_depth == 0 {
-            // Each function owns its own `arguments`, so only the innermost frame is affected.
-            if let Some(frame) = self.frames.last_mut() {
+            // Each function owns its own `arguments`, so only the nearest site frame is affected.
+            if let Some(frame) = self.innermost_site_frame() {
                 frame.uses_lexical = true;
             }
         }
@@ -302,9 +323,14 @@ impl<'a> Visit<'a> for Scan<'a, '_> {
 
     fn visit_this_expression(&mut self, expression: &ThisExpression) {
         if self.class_depth == 0 {
-            // An arrow's `this` is the enclosing function's, so every frame up to and including the
-            // first dynamic one owns this occurrence.
+            // An arrow's `this` is the enclosing function's, so every site frame up to and
+            // including the first non-arrow one owns this occurrence; non-site frames in between
+            // are transparent.
             for frame in self.frames.iter_mut().rev() {
+                if !frame.site {
+                    continue;
+                }
+
                 frame.uses_this = true;
 
                 if !frame.is_arrow {
@@ -320,7 +346,7 @@ impl<'a> Visit<'a> for Scan<'a, '_> {
 
     fn visit_new_target(&mut self, expression: &NewTarget) {
         if self.class_depth == 0 {
-            if let Some(frame) = self.frames.last_mut() {
+            if let Some(frame) = self.innermost_site_frame() {
                 frame.uses_lexical = true;
             }
         }
@@ -398,7 +424,7 @@ impl<'a> Visit<'a> for Scan<'a, '_> {
         if callee_name(&call.callee).is_some_and(|name| RENDER_TRACKED_APIS.contains(&name))
             && self.class_depth == 0
         {
-            if let Some(frame) = self.frames.last_mut() {
+            if let Some(frame) = self.innermost_site_frame() {
                 frame.calls_tracked = true;
             }
         }

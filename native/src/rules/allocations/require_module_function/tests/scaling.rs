@@ -52,16 +52,25 @@ fn matches_oracle_on_corpus() {
     }
 }
 
-/// An arrow pyramid of the given depth, capturing nothing but its own chain.
+/// An arrow pyramid of the given depth, each level reading the module constant `base`.
 fn arrow_pyramid(depth: usize) -> String {
-    format!("const p = {}0;", "() => ".repeat(depth))
+    let mut text = String::from("const base = 0; const p = ");
+    for _ in 0..depth {
+        text.push_str("() => { base; return ");
+    }
+    text.push_str("0;");
+    for _ in 0..depth {
+        text.push_str(" }");
+    }
+    text.push(';');
+    text
 }
 
-/// A function pyramid of the given depth, each level returning the next.
+/// A function pyramid of the given depth, each level reading `base` and returning the next.
 fn function_pyramid(depth: usize) -> String {
-    let mut text = String::new();
+    let mut text = String::from("const base = 0; ");
     for level in 1..=depth {
-        text.push_str(&format!("function f{level}() {{ "));
+        text.push_str(&format!("function f{level}() {{ base; "));
     }
     text.push_str("return 0; ");
     for level in (1..depth).rev() {
@@ -73,17 +82,26 @@ fn function_pyramid(depth: usize) -> String {
 
 #[test]
 fn visits_grow_linearly_with_depth() {
-    let small_arrows = scan_reference_visits(&arrow_pyramid(4));
-    let large_arrows = scan_reference_visits(&arrow_pyramid(12));
-    let small_functions = scan_reference_visits(&function_pyramid(4));
-    let large_functions = scan_reference_visits(&function_pyramid(12));
+    for (name, pyramid) in [
+        ("arrow", arrow_pyramid as fn(usize) -> String),
+        ("function", function_pyramid),
+    ] {
+        let visits = |depth: usize| scan_reference_visits(&pyramid(depth));
+        let small = visits(4);
+        let medium = visits(8);
+        let large = visits(12);
 
-    assert!(
-        large_arrows < 6 * small_arrows,
-        "arrow pyramid: {large_arrows} vs 6 x {small_arrows}"
-    );
-    assert!(
-        large_functions < 6 * small_functions,
-        "function pyramid: {large_functions} vs 6 x {small_functions}"
-    );
+        assert!(
+            small > 0,
+            "{name} pyramid: no references visited at depth 4"
+        );
+        assert!(
+            large < 6 * small,
+            "{name} pyramid: {large} at depth 12 vs 6 x {small} at depth 4"
+        );
+        assert!(
+            small <= medium && medium <= large,
+            "{name} pyramid: {small} / {medium} / {large} is not monotone"
+        );
+    }
 }

@@ -103,4 +103,24 @@ pub(in crate::rules) const CORPUS: &[&str] = &[
     "class C { m() { return 1; } h = () => { const f = () => this.m(); return f; }; }",
     // A field arrow whose nested arrow writes a `let` after its initialiser.
     "class C { h = () => { let c = 0; const g = () => { c = c + 1; return c; }; return g; }; }",
+    // A decorator on a method, with an arrow inside it.
+    "class C { @dec m() { const f = () => 1; return f; } }",
+    // A computed method key, capturing its parameter from an arrow.
+    "class C { ['k'](v: number) { const f = () => v; return f; } }",
+    // A static block holding an arrow.
+    "class C { static s = 1; static { const f = () => 1; } }",
+    // An exported default function with an arrow inside.
+    "export default function outer() { const f = () => 1; return f; }",
+    // A capture through a parameter's default value.
+    "function outer(a: number) { const f = (b = a) => b; return f; }",
+    // A local component used as a JSX tag, capturing from its prop callback.
+    "function Outer() { const name = 1; const Foo = () => name; return <Foo />; }",
+    // A named function expression recursing on its inner name.
+    "const handler = function named(n: number): number { return n <= 1 ? 1 : named(n - 1); };",
+    // A block scope inside a function: scope depth is not function depth.
+    "function outer() { { let x = 1; const g = () => x; } return 0; }",
+    // A catch parameter shadowing the enclosure's parameter, captured by an arrow.
+    "function outer(e: number) { try {} catch (e) { const f = () => e; } }",
+    // A `let` written after its initialiser, with a read in the writer.
+    "function outer() { let c = 0; const f = () => (c += 1); return f; }",
 ];

@@ -202,7 +202,7 @@ struct Frame {
     tracked: bool,
     /// Whether `this`/`super`/`arguments`/`new.target` below belongs to this chain of arrows.
     marked: bool,
-    /// The lowest functional depth any runtime reference resolves to, `usize::MAX` if none.
+    /// The lowest nonzero functional depth any runtime reference reaches, `usize::MAX` if none.
     min_decl: usize,
     /// The name the function is bound under, whose references are its recursion, not captures.
     own_symbol: Option<SymbolId>,
@@ -328,6 +328,9 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
     }
 
     fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
+        #[cfg(test)]
+        SCAN_VISITS.with(|count| count.set(count.get() + 1));
+
         // A signature without a body is a declaration (`declare`, an overload), not code to move.
         if function.body.is_none() {
             return;
@@ -356,15 +359,17 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
             && !is_protected_callback(self.semantic, function.node_id(), function.span)
             && !is_iife_callee(self.semantic, function.node_id(), function.span);
 
-        // A capture is a declaration outside the site and inside one of the enclosing functions:
-        // its scope's depth lands in `1..k`, where `k` is this frame's index plus one. Module
-        // declarations give 0; anything under the function itself gives `k` or more.
-        if clean && frame.min_decl != 0 && frame.min_decl < self.frames.len() + 1 {
+        // No capture means no runtime reference resolves into `1..k`, where `k` is this frame's
+        // index plus one: enclosing-function declarations, and module ones (depth 0) pass.
+        if clean && frame.min_decl > self.frames.len() {
             self.found.push((function.span, self.class_depth > 0));
         }
     }
 
     fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        #[cfg(test)]
+        SCAN_VISITS.with(|count| count.set(count.get() + 1));
+
         let own = own_symbol(None, self.semantic.nodes().parent_kind(arrow.node_id()));
         self.enter(true, own);
         walk::walk_arrow_function_expression(self, arrow);
@@ -385,18 +390,21 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
             && !is_protected_callback(self.semantic, arrow.node_id(), arrow.span)
             && !is_iife_callee(self.semantic, arrow.node_id(), arrow.span);
 
-        if clean && frame.min_decl != 0 && frame.min_decl < self.frames.len() + 1 {
+        // Same criterion as the function branch above.
+        if clean && frame.min_decl > self.frames.len() {
             self.found.push((arrow.span, self.class_depth > 0));
         }
     }
 
-    /// A `this` below binds to the nearest frame at or above here that is not an arrow.
+    /// A `this` below ties the nearest non-arrow frame, and the class, to this occurrence.
     fn visit_this_expression(&mut self, _: &ThisExpression) {
+        self.mark_class_dep();
         self.mark_dynamic();
     }
 
-    /// `new.target` belongs to the nearest function and does not survive a move.
+    /// `new.target` does not survive a move, and `super` ties the frame to the class.
     fn visit_super(&mut self, expression: &Super) {
+        self.mark_class_dep();
         self.mark_dynamic();
         walk::walk_super(self, expression);
     }
@@ -496,8 +504,11 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
             if let Some(symbol) = symbol {
                 if Some(symbol) != own {
                     let depth = self.function_depth(self.scoping.symbol_scope_id(symbol));
-                    if let Some(frame) = self.frames.last_mut() {
-                        frame.min_decl = frame.min_decl.min(depth);
+                    // Depth 0 is a module declaration, which never counts as a capture.
+                    if depth != 0 {
+                        if let Some(frame) = self.frames.last_mut() {
+                            frame.min_decl = frame.min_decl.min(depth);
+                        }
                     }
                 }
             }
