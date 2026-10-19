@@ -8,12 +8,12 @@ use oxc_ast::ast::{
     ArrowFunctionBody, ArrowFunctionExpression, Class, ClassElement, Expression, Program,
     PropertyDefinition, PropertyKey, TSAccessibility,
 };
-use oxc_ast_visit::Visit;
 use oxc_span::GetSpan;
 
 use crate::fix::Fix;
 use crate::rules::report_with_fix;
-use crate::rules::support::bases::{Bases, ClassChains};
+use crate::rules::support::bases::Bases;
+use crate::rules::support::walk::{walk_rule, Context, Rule};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -121,69 +121,62 @@ fn fix_for(
     })
 }
 
-struct Visitor<'a> {
-    source: &'a Source<'a>,
-    bases: Bases,
-    chains: ClassChains,
+struct Check<'s> {
+    source: &'s Source<'s>,
     diagnostics: Vec<Diagnostic>,
 }
 
-impl<'a> Visit<'a> for Visitor<'a> {
-    fn visit_class(&mut self, class: &Class<'a>) {
-        if self
-            .chains
-            .reaches(class, |name| self.bases.is_component(name))
-        {
-            for element in &class.body.body {
-                let ClassElement::PropertyDefinition(property) = element else {
-                    continue;
-                };
+impl<'a, 's> Rule<'a> for Check<'s> {
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
 
-                if property.r#static {
-                    continue;
-                }
-
-                let Some(name) = member_name(&property.key) else {
-                    continue;
-                };
-
-                if !LIFECYCLE_NAMES.contains(&name) {
-                    continue;
-                }
-
-                let fix = match &property.value {
-                    Some(Expression::ArrowFunctionExpression(arrow)) => {
-                        fix_for(property, arrow, self.source.text)
-                    }
-                    _ => None,
-                };
-
-                self.diagnostics.push(report_with_fix(
-                    self.source,
-                    property.span.start,
-                    RULE,
-                    message_for(name),
-                    fix,
-                ));
-            }
+    fn class(&mut self, class: &Class<'a>, context: &Context) {
+        if !context.in_component {
+            return;
         }
 
-        // Keep walking: a class can hold another class, and a class expression can sit anywhere.
-        oxc_ast_visit::walk::walk_class(self, class);
+        for element in &class.body.body {
+            let ClassElement::PropertyDefinition(property) = element else {
+                continue;
+            };
+
+            if property.r#static {
+                continue;
+            }
+
+            let Some(name) = member_name(&property.key) else {
+                continue;
+            };
+
+            if !LIFECYCLE_NAMES.contains(&name) {
+                continue;
+            }
+
+            let fix = match &property.value {
+                Some(Expression::ArrowFunctionExpression(arrow)) => {
+                    fix_for(property, arrow, self.source.text)
+                }
+                _ => None,
+            };
+
+            self.diagnostics.push(report_with_fix(
+                self.source,
+                property.span.start,
+                RULE,
+                message_for(name),
+                fix,
+            ));
+        }
     }
 }
 
 pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
-    let mut visitor = Visitor {
-        source,
-        bases: bases.clone(),
-        chains: ClassChains::build(program),
-        diagnostics: Vec::new(),
-    };
+    walk_rule(program, make_rule(source), bases)
+}
 
-    visitor.visit_program(program);
-
-    visitor.diagnostics
+pub(in crate::rules) fn make_rule<'a, 's>(source: &'s Source<'s>) -> impl Rule<'a> + 's {
+    Check { source, diagnostics: Vec::new() }
 }
 
 #[cfg(test)]

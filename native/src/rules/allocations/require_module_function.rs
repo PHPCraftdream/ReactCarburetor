@@ -299,6 +299,24 @@ pub(in crate::rules) fn check_with_scope(
     check_with_semantic(program, source, &semantic, scope, bases)
 }
 
+/// Builds this rule's walk state without traversing the program.
+pub(in crate::rules) fn make_rule<'a>(
+    program: &'a Program<'a>,
+    source: &'a Source<'a>,
+    semantic: &'a Semantic<'a>,
+    bases: &'a Bases,
+) -> impl Rule<'a> + 'a {
+    Check {
+        source,
+        program,
+        semantic,
+        bases,
+        classes: HashMap::new(),
+        statements: top_level_class_statements(program),
+        diagnostics: Vec::new(),
+    }
+}
+
 /// Runs the rule with a semantic pass shared by the allocation-rule pair.
 pub(in crate::rules) fn check_with_semantic<'a>(
     program: &Program<'a>,
@@ -307,20 +325,27 @@ pub(in crate::rules) fn check_with_semantic<'a>(
     scope: ModuleFunctionScope,
     bases: &Bases,
 ) -> Vec<Diagnostic> {
-    let mut diagnostics = walk_rule(
-        program,
-        Check {
-            source,
+    finish_rule(
+        walk_rule(
             program,
-            semantic,
+            make_rule(program, source, semantic, bases),
             bases,
-            classes: HashMap::new(),
-            statements: top_level_class_statements(program),
-            diagnostics: Vec::new(),
-        },
-        bases,
-    );
+        ),
+        program,
+        source,
+        semantic,
+        scope,
+    )
+}
 
+/// Completes the class walk with module-function findings and deduplicates reports.
+pub(in crate::rules) fn finish_rule<'a>(
+    mut diagnostics: Vec<Diagnostic>,
+    program: &Program<'a>,
+    source: &Source<'_>,
+    semantic: &Semantic<'a>,
+    scope: ModuleFunctionScope,
+) -> Vec<Diagnostic> {
     // The class findings say where they came from, so the bridge can tell the two halves apart.
     for diagnostic in &mut diagnostics {
         diagnostic.scope = Some(String::from("class"));

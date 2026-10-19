@@ -12,17 +12,16 @@
 //! not. See docs/hazards.md, H14.
 
 use oxc_ast::ast::{
-    Argument, ArrowFunctionBody, CallExpression, Expression, IdentifierReference, Program,
-    Statement,
+    Argument, ArrowFunctionBody, CallExpression, Expression, IdentifierReference, Program, Statement,
 };
 use oxc_ast::AstKind;
-use oxc_ast_visit::{walk, Visit};
 use oxc_semantic::{Semantic, SymbolId};
 
 use crate::rules::report;
 use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::build_semantic;
 use crate::rules::support::names::{called_on_this, member_call_name, referenced_symbol};
+use crate::rules::support::walk::{Context, Rule};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -84,8 +83,8 @@ struct Check<'a, 's> {
     diagnostics: Vec<Diagnostic>,
 }
 
-impl<'a, 's> Visit<'a> for Check<'a, 's> {
-    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+impl<'a, 's> Rule<'a> for Check<'a, 's> {
+    fn call(&mut self, call: &CallExpression<'a>, _context: &Context) {
         if called_on_this(&call.callee) && member_call_name(&call.callee) == Some("useEffect") {
             match call.arguments.get(1) {
                 Some(Argument::ArrowFunctionExpression(body)) if body.r#async => {
@@ -123,8 +122,10 @@ impl<'a, 's> Visit<'a> for Check<'a, 's> {
                 _ => {}
             }
         }
+    }
 
-        walk::walk_call_expression(self, call);
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
     }
 }
 
@@ -141,19 +142,23 @@ pub(in crate::rules) fn check_with_semantic<'a>(
     source: &Source,
     semantic: &Semantic<'a>,
 ) -> Vec<Diagnostic> {
-    let mut check = Check {
+    crate::rules::support::walk::walk_rule(
+        program,
+        make_rule(source, semantic),
+        &Bases::default(),
+    )
+}
+
+/// Creates the rule for use in a shared walk.
+pub(in crate::rules) fn make_rule<'a, 's>(
+    source: &'s Source<'s>,
+    semantic: &'s Semantic<'a>,
+) -> impl Rule<'a> + 's {
+    Check {
         source,
         semantic,
         diagnostics: Vec::new(),
-    };
-
-    check.visit_program(program);
-
-    check
-        .diagnostics
-        .sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
-
-    check.diagnostics
+    }
 }
 
 #[cfg(test)]

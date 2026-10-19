@@ -74,15 +74,12 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
 /// Runs the rule over one parsed file.
 pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
-    walk_rule(
-        program,
-        Check {
-            source,
-            diagnostics: Vec::new(),
-            seen: HashSet::new(),
-        },
-        bases,
-    )
+    walk_rule(program, make_rule(source), bases)
+}
+
+/// Builds the rule state for the given source.
+pub(in crate::rules) fn make_rule<'a, 's>(source: &'s Source<'s>) -> impl Rule<'a> + 's {
+    Check { source, diagnostics: Vec::new(), seen: HashSet::new() }
 }
 
 #[cfg(test)]

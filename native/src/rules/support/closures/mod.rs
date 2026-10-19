@@ -66,8 +66,25 @@ pub(in crate::rules) fn arrow_has_class_dependency<'a>(
     scan.visit_arrow_function_expression(arrow);
     scan.found
 }
+#[cfg(test)]
+thread_local! {
+    static SEMANTIC_BUILDS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+pub(in crate::rules) fn reset_semantic_test_count() {
+    SEMANTIC_BUILDS.with(|count| count.set(0));
+}
+
+#[cfg(test)]
+pub(in crate::rules) fn semantic_test_count() -> usize {
+    SEMANTIC_BUILDS.with(std::cell::Cell::get)
+}
+
 /// The one semantic pass per file both allocation rules share.
 pub fn build_semantic<'a>(program: &'a Program<'a>) -> Semantic<'a> {
+    #[cfg(test)]
+    SEMANTIC_BUILDS.with(|count| count.set(count.get() + 1));
     SemanticBuilder::new()
         .with_build_nodes(true)
         .build(program)

@@ -107,6 +107,8 @@ pub trait Rule<'a> {
     fn finish(&mut self) -> Vec<Diagnostic>;
     /// `f(...)`, including every method call.
     fn call(&mut self, _call: &CallExpression<'a>, _context: &Context) {}
+    /// A call after its arguments and callback bodies have been walked.
+    fn leave_call(&mut self, _call: &CallExpression<'a>, _context: &Context) {}
     /// A mutation in any of its four forms: `x.y = v`, `x.y++`, `delete x.y`, `x.y.push(v)`.
     ///
     /// A write rule that handled only assignment would miss three of them, so the walk normalises
@@ -348,6 +350,9 @@ impl<'a, 'b> Visit<'a> for Walk<'a, 'b> {
             }
         }
         walk::walk_call_expression(self, call);
+        for rule in &mut self.rules {
+            rule.leave_call(call, &self.context);
+        }
         self.context.in_update = outer_update;
         self.context.update_draft = outer_draft;
     }
@@ -462,7 +467,21 @@ fn jsx_member_name(member: &JSXMemberExpression<'_>) -> String {
     format!("{object}.{}", member.property.name)
 }
 
-/// Runs one rule over one parsed file.
+#[cfg(test)]
+thread_local! {
+    static WALK_COUNTS: std::cell::Cell<(usize, usize)> = const { std::cell::Cell::new((0, 0)) };
+}
+
+#[cfg(test)]
+pub(in crate::rules) fn reset_test_counts() {
+    WALK_COUNTS.with(|counts| counts.set((0, 0)));
+}
+
+#[cfg(test)]
+pub(in crate::rules) fn test_counts() -> (usize, usize) {
+    WALK_COUNTS.with(std::cell::Cell::get)
+}
+
 pub fn walk_rule<'a, R: Rule<'a>>(
     program: &'a Program<'a>,
     mut rule: R,
@@ -479,6 +498,11 @@ pub fn walk_rules<'a>(
     rules: Vec<&mut dyn Rule<'a>>,
     bases: &'a Bases,
 ) -> Vec<Diagnostic> {
+    #[cfg(test)]
+    WALK_COUNTS.with(|counts| {
+        let (walks, rule_count) = counts.get();
+        counts.set((walks + 1, rule_count + rules.len()));
+    });
     let mut walk = Walk {
         rules,
         bases,

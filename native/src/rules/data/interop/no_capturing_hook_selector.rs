@@ -84,15 +84,15 @@ pub(in crate::rules) fn check_with_semantic<'a, 's>(
     semantic: &'s oxc_semantic::Semantic<'a>,
     bases: &'s Bases,
 ) -> Vec<Diagnostic> {
-    walk_rule(
-        program,
-        Check {
-            source,
-            semantic,
-            diagnostics: Vec::new(),
-        },
-        bases,
-    )
+    walk_rule(program, make_rule(source, semantic), bases)
+}
+
+/// Builds the rule state for a shared semantic pass.
+pub(in crate::rules) fn make_rule<'a, 's>(
+    source: &'s Source<'s>,
+    semantic: &'s oxc_semantic::Semantic<'a>,
+) -> impl Rule<'a> + 's {
+    Check { source, semantic, diagnostics: Vec::new() }
 }
 
 #[cfg(test)]

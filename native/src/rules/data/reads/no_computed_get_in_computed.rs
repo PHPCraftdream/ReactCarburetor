@@ -6,16 +6,14 @@
 //! real bug in this engine's own history and is the most silent hazard in the catalogue: the value
 //! is correct the first time and wrong forever after. See docs/hazards.md, H3.
 //!
-//! This rule keeps its own walk rather than using the shared one: what it needs to know is which
-//! `computed(...)` call encloses a node and what that body named its reader, and nothing about
-//! renders.
+//! This rule tracks which `computed(...)` call encloses a node and what that body named its reader.
 
 use oxc_ast::ast::{Argument, CallExpression, Expression, FormalParameters, Program};
-use oxc_ast_visit::{walk, Visit};
 
 use crate::rules::report;
 use crate::rules::support::bases::Bases;
 use crate::rules::support::names::{call_receiver_name, member_call_name};
+use crate::rules::support::walk::{walk_rule, Context, Rule};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -69,19 +67,21 @@ struct Check<'s> {
     readers: Vec<Option<String>>,
 }
 
-impl<'a, 's> Visit<'a> for Check<'s> {
-    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        let entered = is_computed_factory(&call.callee);
+impl<'a, 's> Rule<'a> for Check<'s> {
+    fn finish(&mut self) -> Vec<Diagnostic> {
+        std::mem::take(&mut self.diagnostics)
+    }
 
-        if entered {
+    fn call(&mut self, call: &CallExpression<'a>, _context: &Context) {
+        if is_computed_factory(&call.callee) {
             self.readers.push(reader_name(call).map(str::to_string));
         } else {
             self.check(call);
         }
+    }
 
-        walk::walk_call_expression(self, call);
-
-        if entered {
+    fn leave_call(&mut self, call: &CallExpression<'a>, _context: &Context) {
+        if is_computed_factory(&call.callee) {
             self.readers.pop();
         }
     }
@@ -132,16 +132,17 @@ impl<'s> Check<'s> {
 }
 
 /// Runs the rule over one parsed file.
-pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diagnostic> {
-    let mut rule = Check {
+pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
+    walk_rule(program, make_rule(source), bases)
+}
+
+/// Creates the rule's per-file state for a shared walk.
+pub(in crate::rules) fn make_rule<'s>(source: &'s Source<'s>) -> impl Rule<'s> + 's {
+    Check {
         source,
         diagnostics: Vec::new(),
         readers: Vec::new(),
-    };
-
-    rule.visit_program(program);
-
-    rule.diagnostics
+    }
 }
 
 #[cfg(test)]

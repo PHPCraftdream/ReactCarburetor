@@ -5,13 +5,18 @@ use std::collections::HashSet;
 use oxc_ast::ast::Program;
 
 use crate::config::{Config, Severity};
-use crate::rules::support::bases::Bases;
 use crate::fix::Fix;
+use crate::rules::support::bases::Bases;
 use crate::{Diagnostic, Source};
 
 mod allocations;
 mod boundaries;
 mod data;
+#[path = "support/walk/dispatch/mod.rs"]
+mod dispatch;
+#[cfg(test)]
+#[path = "support/walk/dispatch/tests.rs"]
+mod dispatch_tests;
 mod effects;
 mod lifecycle;
 mod support;
@@ -22,122 +27,151 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check); 29] = [
+const REGISTRY: [(&str, Check, bool); 29] = [
     (
         allocations::no_closure_in_update::RULE,
         allocations::no_closure_in_update::check,
+        true,
     ),
     (
         allocations::require_method_for_closure::RULE,
         allocations::require_method_for_closure::check,
+        true,
     ),
     (
         allocations::require_module_function::RULE,
         allocations::require_module_function::check,
+        true,
     ),
     (
         lifecycle::no_function_in_render::RULE,
         lifecycle::no_function_in_render::check,
+        true,
     ),
     (
         allocations::no_react_hooks_in_components::RULE,
         allocations::no_react_hooks_in_components::check,
+        false,
     ),
     (
         lifecycle::no_lifecycle_class_property::RULE,
         lifecycle::no_lifecycle_class_property::check,
+        true,
     ),
     (
         data::reads::no_computed_get_in_computed::RULE,
         data::reads::no_computed_get_in_computed::check,
+        true,
     ),
     (
         data::reads::no_computed_get_in_render::RULE,
         data::reads::no_computed_get_in_render::check,
+        true,
     ),
     (
         data::reads::no_escaping_tracked_data::RULE,
         data::reads::no_escaping_tracked_data::check,
+        true,
     ),
     (
         data::reads::no_get_data_in_render::RULE,
         data::reads::no_get_data_in_render::check,
+        true,
     ),
     (
         data::reads::no_use_carburetor_outside_render::RULE,
         data::reads::no_use_carburetor_outside_render::check,
+        true,
     ),
     (
         data::writes::no_direct_data_write::RULE,
         data::writes::no_direct_data_write::check,
+        true,
     ),
     (
         data::writes::no_external_data_mutation::RULE,
         data::writes::no_external_data_mutation::check,
+        true,
     ),
     (
         data::writes::no_store_write_in_render::RULE,
         data::writes::no_store_write_in_render::check,
+        true,
     ),
     (
         data::writes::no_tracked_data_mutation::RULE,
         data::writes::no_tracked_data_mutation::check,
+        true,
     ),
     (
         data::writes::no_untrackable_draft_mutation::RULE,
         data::writes::no_untrackable_draft_mutation::check,
+        true,
     ),
     (
         data::writes::require_emit_after_draft_write::RULE,
         data::writes::require_emit_after_draft_write::check,
+        true,
     ),
     (
         lifecycle::no_handler_created_in_render::RULE,
         lifecycle::no_handler_created_in_render::check,
+        true,
     ),
     (
         lifecycle::require_bind_for_passed_method::RULE,
         lifecycle::require_bind_for_passed_method::check,
+        false,
     ),
     (
         lifecycle::require_super_in_lifecycle::RULE,
         lifecycle::require_super_in_lifecycle::check,
+        false,
     ),
     (
         effects::no_async_effect::RULE,
         effects::no_async_effect::check,
+        true,
     ),
     (
         effects::no_duplicate_effect_name::RULE,
         effects::no_duplicate_effect_name::check,
+        true,
     ),
     (
         effects::require_effect_deps::RULE,
         effects::require_effect_deps::check,
+        false,
     ),
     (
         boundaries::no_async_transaction::RULE,
         boundaries::no_async_transaction::check,
+        false,
     ),
     (
         boundaries::no_module_level_store::RULE,
         boundaries::no_module_level_store::check,
+        false,
     ),
     (
         boundaries::no_untrackable_store_data::RULE,
         boundaries::no_untrackable_store_data::check,
+        false,
     ),
     (
         boundaries::require_subscription_disposal::RULE,
         boundaries::require_subscription_disposal::check,
+        false,
     ),
     (
         data::interop::no_memo_over_store_read::RULE,
         data::interop::no_memo_over_store_read::check,
+        true,
     ),
     (
         data::interop::no_capturing_hook_selector::RULE,
         data::interop::no_capturing_hook_selector::check,
+        true,
     ),
 ];
 
@@ -237,8 +271,7 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
 
     match rule {
         allocations::no_closure_in_update::RULE => any(store) && text.contains("update"),
-        lifecycle::no_lifecycle_class_property::RULE
-        | lifecycle::require_super_in_lifecycle::RULE => {
+        lifecycle::no_lifecycle_class_property::RULE => {
             any(component) && LIFECYCLE_MARKERS.iter().any(|marker| text.contains(marker))
         }
         lifecycle::require_bind_for_passed_method::RULE => any(component),
@@ -290,6 +323,25 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
         _ => true,
     }
 }
+pub fn run(
+    program: &Program<'_>,
+    source: &Source<'_>,
+    config: &Config,
+    keep_overlaps: bool,
+) -> Vec<Diagnostic> {
+    dispatch::run(program, source, config, keep_overlaps, true)
+}
+
+#[cfg(test)]
+pub(super) fn run_internal(
+    program: &Program<'_>,
+    source: &Source<'_>,
+    config: &Config,
+    keep_overlaps: bool,
+    shared: bool,
+) -> Vec<Diagnostic> {
+    dispatch::run(program, source, config, keep_overlaps, shared)
+}
 
 /// Runs the rules the configuration leaves on over one parsed file; `keep_overlaps` leaves H31
 /// (no-function-in-render) and H32 (no-closure-in-update) beside H29/H30 instead of yielding to
@@ -297,7 +349,7 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
 ///
 /// A rule set to `off` is not merely filtered out of the output — it never runs, so turning rules
 /// off makes the pass cheaper rather than only quieter.
-pub fn run(
+pub(super) fn run_sequential(
     program: &Program<'_>,
     source: &Source<'_>,
     config: &Config,
@@ -343,7 +395,7 @@ pub fn run(
         None
     };
 
-    for (rule, check) in REGISTRY {
+    for (rule, check, _) in REGISTRY {
         let severity = config.severity(rule);
 
         if severity == Severity::Off || !rule_possible(rule, source.text, &bases) {
@@ -361,7 +413,8 @@ pub fn run(
             | boundaries::no_async_transaction::RULE
             | effects::no_async_effect::RULE
             | allocations::no_react_hooks_in_components::RULE
-            | data::writes::no_store_write_in_render::RULE => check_with_shared(
+            | data::writes::no_store_write_in_render::RULE
+            | boundaries::require_subscription_disposal::RULE => check_with_shared(
                 rule,
                 program,
                 source,
@@ -467,7 +520,11 @@ fn check_with_shared<'a>(
                 program, source, semantic, bases,
             )
         }
+        boundaries::require_subscription_disposal::RULE => {
+            boundaries::require_subscription_disposal::check_with_semantic(
+                program, source, semantic, bases,
+            )
+        }
         _ => Vec::new(),
     }
 }
-

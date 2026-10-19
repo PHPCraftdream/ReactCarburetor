@@ -89,16 +89,21 @@ pub(in crate::rules) fn check_with_semantic<'a, 's>(
     bases: &'s Bases,
 ) -> Vec<Diagnostic> {
     let index = CaptureIndex::new(semantic);
-    walk_rule(
-        program,
-        Check {
-            source,
-            semantic,
-            index,
-            diagnostics: Vec::new(),
-        },
-        bases,
-    )
+    walk_rule(program, make_rule(source, semantic, index), bases)
+}
+
+/// Builds the rule state for a shared semantic pass.
+pub(in crate::rules) fn make_rule<'a, 's>(
+    source: &'s Source<'s>,
+    semantic: &'s Semantic<'a>,
+    index: CaptureIndex<'a>,
+) -> impl Rule<'a> + 's {
+    Check {
+        source,
+        semantic,
+        index,
+        diagnostics: Vec::new(),
+    }
 }
 
 #[cfg(test)]

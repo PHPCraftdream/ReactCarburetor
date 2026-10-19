@@ -156,6 +156,14 @@ pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagn
     check_with_semantic(program, source, &semantic, bases)
 }
 
+/// Builds this rule's state without traversing the program.
+pub(in crate::rules) fn make_rule<'a>(
+    source: &'a Source<'a>,
+    semantic: &'a Semantic<'a>,
+) -> impl Rule<'a> + 'a {
+    Check { source, semantic, index: CaptureIndex::new(semantic), diagnostics: Vec::new() }
+}
+
 /// Runs the rule with a semantic pass shared across rules.
 pub(in crate::rules) fn check_with_semantic<'a, 's>(
     program: &Program<'a>,
@@ -163,17 +171,7 @@ pub(in crate::rules) fn check_with_semantic<'a, 's>(
     semantic: &'s Semantic<'a>,
     bases: &'s Bases,
 ) -> Vec<Diagnostic> {
-    let index = CaptureIndex::new(semantic);
-    walk_rule(
-        program,
-        Check {
-            source,
-            semantic,
-            index,
-            diagnostics: Vec::new(),
-        },
-        bases,
-    )
+    walk_rule(program, make_rule(source, semantic), bases)
 }
 
 #[cfg(test)]

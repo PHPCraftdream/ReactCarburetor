@@ -112,9 +112,18 @@ impl<'a, 's> Visit<'a> for Check<'s> {
 /// Runs the rule over one parsed file.
 pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diagnostic> {
     let semantic = build_semantic(program);
+    check_with_semantic(program, source, &semantic, _bases)
+}
+
+pub(in crate::rules) fn check_with_semantic<'a>(
+    program: &Program<'a>,
+    source: &Source<'_>,
+    semantic: &'a Semantic<'a>,
+    _bases: &Bases,
+) -> Vec<Diagnostic> {
     let mut check = Check {
         source,
-        semantic: &semantic,
+        semantic,
         diagnostics: Vec::new(),
         discarded_expression: None,
     };

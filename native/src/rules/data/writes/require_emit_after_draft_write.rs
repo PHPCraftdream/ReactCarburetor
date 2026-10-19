@@ -172,22 +172,18 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
 /// Runs the rule over one parsed file.
 pub fn check(program: &Program<'_>, source: &Source, bases: &Bases) -> Vec<Diagnostic> {
-    let mut diagnostics = walk_rule(
-        program,
-        Check {
-            source,
-            writes: HashMap::new(),
-            publishes: HashSet::new(),
-            calls_from: HashMap::new(),
-        },
-        bases,
-    );
+    let mut diagnostics = walk_rule(program, make_rule(source), bases);
 
     // The findings come out of a map, so they are ordered here rather than left to chance: the
     // whole-run sort is by file and line, which would leave two reports in one file arbitrary.
     diagnostics.sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
 
     diagnostics
+}
+
+/// Builds the rule state for the given source.
+pub(in crate::rules) fn make_rule<'a, 's>(source: &'s Source<'s>) -> impl Rule<'a> + 's {
+    Check { source, writes: HashMap::new(), publishes: HashSet::new(), calls_from: HashMap::new() }
 }
 
 #[cfg(test)]

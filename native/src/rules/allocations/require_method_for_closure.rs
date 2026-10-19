@@ -218,6 +218,15 @@ pub fn check(program: &Program<'_>, source: &Source<'_>, bases: &Bases) -> Vec<D
     check_with_semantic(program, source, &semantic, bases)
 }
 
+/// Builds this rule's state without traversing the program.
+pub(in crate::rules) fn make_rule<'a>(
+    source: &'a Source<'a>,
+    semantic: &'a Semantic<'a>,
+    bases: &'a Bases,
+) -> impl Rule<'a> + 'a {
+    Check { source, semantic, bases, components: HashMap::new(), diagnostics: Vec::new() }
+}
+
 /// Runs the rule with a semantic pass shared by the allocation-rule pair.
 pub(in crate::rules) fn check_with_semantic<'a>(
     program: &Program<'a>,
@@ -225,17 +234,7 @@ pub(in crate::rules) fn check_with_semantic<'a>(
     semantic: &Semantic<'a>,
     bases: &Bases,
 ) -> Vec<Diagnostic> {
-    walk_rule(
-        program,
-        Check {
-            source,
-            semantic,
-            bases,
-            components: HashMap::new(),
-            diagnostics: Vec::new(),
-        },
-        bases,
-    )
+    walk_rule(program, make_rule(source, semantic, bases), bases)
 }
 
 #[cfg(test)]
