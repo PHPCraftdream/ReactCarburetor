@@ -1,4 +1,4 @@
-// Test oracle: diffPaths as it was before the fused threshold count, kept verbatim but for names.
+// Test oracle: diffPaths as it was before the fused threshold count, kept verbatim but for names and lint comments.
 // It shares the live walkIdentityArray on purpose, so a parity diff isolates the threshold change; that
 // walker has its own coverage in Selections/restore/R39/array-*.test.ts and Boundaries/DiffPathsParity.test.ts.
 import {PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
@@ -33,6 +33,7 @@ const add = (into: TPathSet, path: TPath, budget: IDiffBudget): void => {
 
 /** Reports one leaf-level patch, when a caller asked diffPaths for patches at all. */
 const addPatch = (
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents -- alias unresolved in typed test lint
     onPatch: TPatchRecorder | undefined,
     segments: readonly string[],
     previous: unknown,
@@ -84,6 +85,7 @@ const walkChild = (
     key: string,
     segments: readonly string[],
     into: TPathSet,
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents -- alias unresolved in typed test lint
     onPatch: TPatchRecorder | undefined,
     budget: IDiffBudget
 ): void => {
@@ -96,6 +98,7 @@ const walkObject = (
     path: TPath,
     segments: readonly string[],
     into: TPathSet,
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents -- alias unresolved in typed test lint
     onPatch: TPatchRecorder | undefined,
     budget: IDiffBudget
 ): void => {
@@ -199,6 +202,7 @@ const walk = (
     path: TPath,
     segments: readonly string[],
     into: TPathSet,
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents -- alias unresolved in typed test lint
     onPatch: TPatchRecorder | undefined,
     budget: IDiffBudget
 ): void => {
@@ -270,11 +274,13 @@ export const legacyDiffPaths = (
     newValue: unknown,
     basePath: TPath = '',
     baseSegments: readonly string[] = [],
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents -- alias unresolved in typed test lint
     onPatch?: TPatchRecorder | Array<Parameters<TPatchRecorder>[0]>
 ): TPathSet => {
     const changed: TPathSet = new Set<TPath>();
     const budget: IDiffBudget = {limit: DIFF_PATH_THRESHOLD, spent: 0};
     const pending = onPatch === undefined ? undefined : Array.isArray(onPatch) ? onPatch : [];
+    // oxlint-disable-next-line typescript/no-redundant-type-constituents -- alias unresolved in typed test lint
     const deliver: TPatchRecorder | undefined = pending
         ? patch => { pending.push(patch); }
         : undefined;

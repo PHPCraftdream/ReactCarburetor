@@ -114,20 +114,20 @@ export class WriteLog {
                 continue;
             }
 
-            // The maps are ordered by latest write: delete-then-set moves refreshed paths to the tail.
-            this.last.delete(path);
             this.last.set(path, version);
             if (tracking) this.recent.record(path, version);
 
             let cut = path.lastIndexOf(PATH_SEPARATOR);
 
             while (cut > 0) {
-                this.under.delete(path.slice(0, cut));
                 this.under.set(path.slice(0, cut), version);
                 cut = path.lastIndexOf(PATH_SEPARATOR, cut - 1);
             }
 
-            evicted = this.evictOldest() || evicted;
+            if (this.last.size + this.under.size > this.capacity) {
+                this.evictOldest();
+                evicted = true;
+            }
         }
         if (tracking && evicted) {
             this.targets.reset(version);
@@ -135,24 +135,32 @@ export class WriteLog {
         }
     }
 
-    /** Evicts the oldest combined index entries and advances the path watermark. */
-    private evictOldest(): boolean {
-        let evictedVersion = -Infinity;
-        while (this.last.size + this.under.size > this.capacity) {
-            const lastPath = this.last.keys().next().value as TPath | undefined;
-            const underPath = this.under.keys().next().value as TPath | undefined;
-            const lastVersion = lastPath === undefined ? Infinity : this.last.get(lastPath)!;
-            const underVersion = underPath === undefined ? Infinity : this.under.get(underPath)!;
-            evictedVersion = Math.max(evictedVersion, Math.min(lastVersion, underVersion));
-            if (lastVersion < underVersion && lastPath !== undefined) this.last.delete(lastPath);
-            else if (underPath !== undefined) this.under.delete(underPath);
+    /**
+     * Evicts the oldest entries in one batch, down to seven eighths of the capacity, and raises the
+     * watermark to the highest evicted version: a write then pays nothing until the headroom is used.
+     */
+    private evictOldest(): void {
+        const size = this.last.size + this.under.size;
+        const excess = size - (this.capacity - (this.capacity >> 3));
+        const versions = new Float64Array(size);
+        let index = 0;
+        for (const version of this.last.values()) versions[index++] = version;
+        for (const version of this.under.values()) versions[index++] = version;
+        versions.sort();
+        const cutoff = versions[excess - 1];
+        // Everything older than the cutoff goes; entries at it fill the rest of the batch, ancestors first.
+        let ties = excess;
+        for (index = 0; index < excess && versions[index] < cutoff; index++) ties--;
+        for (const path of this.under.keys()) {
+            const version = this.under.get(path)!;
+            if (version < cutoff || (version === cutoff && ties-- > 0)) this.under.delete(path);
         }
-        if (evictedVersion !== -Infinity) {
-            this.watermark = Math.max(this.watermark, evictedVersion);
-            this.recent.prune(this.watermark);
-            return true;
+        for (const path of this.last.keys()) {
+            const version = this.last.get(path)!;
+            if (version < cutoff || (version === cutoff && ties-- > 0)) this.last.delete(path);
         }
-        return false;
+        this.watermark = Math.max(this.watermark, cutoff);
+        this.recent.prune(this.watermark);
     }
 
     /**

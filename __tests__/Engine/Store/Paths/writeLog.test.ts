@@ -233,3 +233,45 @@ describe('WriteLog (R16-05)', () => {
         expect(log.matches(99, setOf('unrelated'))).toBe(false);
     });
 });
+
+describe('WriteLog batch eviction', () => {
+    test('an overflow frees an eighth of the capacity at once, oldest versions first', () => {
+        const log = new WriteLog(64);
+        const state = log as unknown as {last: Map<string, number>; under: Map<string, number>};
+        for (let version = 1; version <= 65; version++) log.record(version, setOf(`p${version}`));
+        expect(state.last.size + state.under.size).toBe(56);
+        expect(log.getWatermark()).toBe(9);
+        // The headroom absorbs the next eight paths without another eviction.
+        for (let version = 66; version <= 73; version++) log.record(version, setOf(`p${version}`));
+        expect(state.last.size).toBe(64);
+        expect(log.getWatermark()).toBe(9);
+        log.record(74, setOf('p74'));
+        expect(log.getWatermark()).toBe(18);
+        expect(log.matches(18, setOf('p18'))).toBe(false);
+        expect(log.matches(18, setOf('p19'))).toBe(true);
+    });
+
+    test('never answers false for a write newer than the baseline', () => {
+        for (const capacity of [8, 16, 40]) {
+            const log = new WriteLog(capacity);
+            const publications: Array<[number, string[]]> = [];
+            let seed = capacity;
+            const next = (range: number): number => (seed = (seed * 1103515245 + 12345) % 2147483648) % range;
+            for (let version = 1; version <= 300; version++) {
+                const writes = Array.from({length: 1 + next(3)}, () => ['a', 'b', 'c'][next(3)] + '.' + next(12)
+                    + (next(2) ? '.' + next(4) : ''));
+                publications.push([version, writes]);
+                log.record(version, setOf(...writes));
+                const watermark = log.getWatermark();
+                for (const baseline of [watermark - 1, watermark, version - 3, version - 1]) {
+                    if (baseline < 0) continue;
+                    for (const read of ['a', 'b.3', 'c.5.1', 'a.7.2', 'unrelated']) {
+                        const intersects = publications.some(([at, paths]) => at > baseline && paths.some(write =>
+                            write === read || read.startsWith(`${write}.`) || write.startsWith(`${read}.`)));
+                        expect(log.matches(baseline, setOf(read))).toBe(baseline < watermark || intersects);
+                    }
+                }
+            }
+        }
+    });
+});

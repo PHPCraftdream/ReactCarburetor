@@ -1,5 +1,12 @@
 // Shared fixtures for the fused diff threshold tests: read-counting trees and seeded random pairs.
 
+/** An array of `length` holes, no own index set. */
+export const holes = (length: number): unknown[] => {
+    const array: unknown[] = [];
+    array.length = length;
+    return array;
+};
+
 /** Counts every string-key read through an instrumented container. */
 export interface IReadCounter {
     reads: number;
@@ -15,7 +22,7 @@ export const instrument = (value: unknown, counter: IReadCounter, memo = new Map
     if (known) return known;
     const source = value as Record<string, unknown>;
     const copy = (Array.isArray(value)
-        ? new Array<unknown>(value.length)
+        ? holes(value.length)
         : Object.create(Object.getPrototypeOf(value))) as Record<string, unknown>;
     const proxy = new Proxy(copy, {
         get: (target, key, receiver) => {
@@ -35,7 +42,7 @@ export const copyTree = (value: unknown, memo = new Map<object, object>()): unkn
     if (known) return known;
     const source = value as Record<string, unknown>;
     const copy = (Array.isArray(value)
-        ? new Array<unknown>(value.length)
+        ? holes(value.length)
         : Object.create(Object.getPrototypeOf(value))) as Record<string, unknown>;
     memo.set(value, copy);
     for (const key of Object.keys(source)) copy[key] = copyTree(source[key], memo);
@@ -132,7 +139,7 @@ export const randomPair = (seed: number, restorable = false): {previous: TRecord
     }
     if (random() < 0.2) nextRows.splice(Math.floor(random() * nextRows.length), 1 + Math.floor(random() * 40));
     if (random() < 0.2) for (let index = 0; index < 30; index++) nextRows.push(makeRow(random, count + index));
-    if (random() < 0.15) delete nextRows[Math.floor(random() * nextRows.length)];
+    if (random() < 0.15) Reflect.deleteProperty(nextRows, Math.floor(random() * nextRows.length));
     if (random() < 0.1) nextRows[3] = nextRows[1];
 
     let nextById: TRecord = {};
@@ -146,7 +153,7 @@ export const randomPair = (seed: number, restorable = false): {previous: TRecord
 
     const nextNums = nums.map(value => (random() < rate ? value + 0.5 : value));
     const next: TRecord = {
-        rows: nextRows, byId: nextById, nums: random() < 0.05 ? {...nextNums} : nextNums,
+        rows: nextRows, byId: nextById, nums: random() < 0.05 ? Object.assign({}, nextNums) : nextNums,
         misc: random() < 0.5 ? previous.misc : {a: 1, b: {c: 3}}, flag: true,
     };
     if (previous.sparse !== undefined) {

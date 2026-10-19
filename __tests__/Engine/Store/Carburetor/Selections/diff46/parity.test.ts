@@ -12,7 +12,7 @@ import {measureDiff} from '@/Carburetor/Store/Paths/Diff/Threshold/measureDiff';
 import {shouldCollapseDiff} from '@/Carburetor/Store/Paths/Diff/Threshold/shouldCollapseDiff';
 import {DIFF_PATH_THRESHOLD} from '@/Carburetor/Store/Paths/Diff/Threshold/DIFF_PATH_THRESHOLD';
 import {types} from 'node:util';
-import {copyTree, randomPair} from './helpers';
+import {copyTree, holes, randomPair} from './helpers';
 import {legacyDiffPaths} from './legacyDiffPaths';
 import {legacyApplyDiff} from './legacyApplyDiff';
 import {legacyScanBranch} from './legacyScanBranch';
@@ -106,7 +106,7 @@ describe('fused diff threshold keeps the pre-change outcomes', () => {
             (index % 2 === 0 ? {id: row.id + 1} : row));
         compareDiff(previous, shifted, '');
         compareDiff(previous, previous.map(row => ({id: -row.id - 1})), '');
-        compareDiff({a: previous}, {a: {...previous}}, '');
+        compareDiff({a: previous}, {a: Object.assign({}, previous)}, '');
     });
 
     test('engine views past the threshold are exchanged exactly as before', () => {
@@ -161,6 +161,7 @@ describe('fused diff threshold keeps the pre-change outcomes', () => {
         Object.defineProperty(hidden, 'h', {value: {x: 1, y: [1, 2]}, enumerable: false, configurable: true});
         check(hidden, {a: 1, h: {x: 2, y: [1, 3, 4]}, list: [1, 2, 3, 4, 5]});
         check({a: 1, b: 2}, {a: 1, c: 2});
+        // oxlint-disable-next-line no-sparse-arrays -- holes against own undefined are the point
         check({list: [1, , 3]}, {list: [1, undefined, 3, , 5]});
         check({list: [1, 2, 3, 4]}, {list: [1]});
         expect(verdicts.blocked).toBeGreaterThan(0);
@@ -205,14 +206,14 @@ describe('fused diff threshold keeps the pre-change outcomes', () => {
         try {
             for (const {value, rows, next, applies} of cases) {
                 inherit(value());
-                const previous = {flag: 0, rows: Array.from({length: rows}, () => new Array<unknown>(1))};
+                const previous = {flag: 0, rows: Array.from({length: rows}, () => holes(1))};
                 const assigned = {flag: 1, rows: Array.from({length: rows}, next)};
                 const budget = {unchanged: new Map<object, object>(), changes: 0};
                 expect(scanBranch(previous, assigned, budget))
                     .toBe(legacyScanBranch(previous, assigned, {unchanged: new Map<object, object>()}));
                 expect(budget.changes).toBe(countChanges(previous, assigned));
-                const left = {flag: 0, rows: Array.from({length: rows}, () => new Array<unknown>(1))};
-                const right = {flag: 0, rows: Array.from({length: rows}, () => new Array<unknown>(1))};
+                const left = {flag: 0, rows: Array.from({length: rows}, () => holes(1))};
+                const right = {flag: 0, rows: Array.from({length: rows}, () => holes(1))};
                 // Applying writes through an inherited object: each run starts from a fresh one.
                 const applied = legacyApplyDiff(right, previous, assigned);
                 expect(applied).toBe(applies);

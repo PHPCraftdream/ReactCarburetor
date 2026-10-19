@@ -11,7 +11,9 @@ const counter = {reads: 0};
 const instrument = (value, memo = new Map()) => {
     if (value === null || typeof value !== 'object') return value;
     if (memo.has(value)) return memo.get(value);
-    const copy = Array.isArray(value) ? new Array(value.length) : Object.create(Object.getPrototypeOf(value));
+    const copy = Array.isArray(value)
+        ? Object.assign([], {length: value.length})
+        : Object.create(Object.getPrototypeOf(value));
     const proxy = new Proxy(copy, {get: (target, key, receiver) => {
         if (typeof key === 'string') counter.reads++;
         return Reflect.get(target, key, receiver);
@@ -24,7 +26,7 @@ const rowPair = (count, changed) => {
     const previous = Array.from({length: count}, (_, title) => ({title}));
     return {previous, next: previous.map((row, index) => ({title: index < changed ? row.title + 1 : row.title}))};
 };
-const diffReads = (count, changed, root = false, patches = undefined) => {
+const diffReads = (count, changed, root = false, patches) => {
     const {previous, next} = rowPair(count, changed);
     const memo = new Map();
     const oldTree = instrument(root ? {rows: previous, unrelated: {value: 1}} : previous, memo);
