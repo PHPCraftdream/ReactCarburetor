@@ -19,7 +19,8 @@ impl<'a> Visit<'a> for Members<'a> {
     fn enter_node(&mut self, kind: AstKind<'a>) {
         match kind {
             AstKind::MethodDefinition(method)
-                if method.kind == MethodDefinitionKind::Method && method.value.body.is_some() =>
+                // Any member kind with a body: methods, constructors, getters and setters.
+                if method.value.body.is_some() =>
             {
                 self.methods.push(method);
             }

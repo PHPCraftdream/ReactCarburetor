@@ -123,4 +123,35 @@ pub(in crate::rules) const CORPUS: &[&str] = &[
     "function outer(e: number) { try {} catch (e) { const f = () => e; } }",
     // A `let` written after its initialiser, with a read in the writer.
     "function outer() { let c = 0; const f = () => (c += 1); return f; }",
+    // Own-symbol capture through a nested arrow chain: the entry dies on its owner frame.
+    "function outer() { const f = () => () => f; return f; }",
+    // A real capture of an own symbol, alongside a recursion on it.
+    "function outer() { const f = () => { const g = () => f; return g; }; return f; }",
+    // A declared function recursed on from a nested arrow.
+    "function outer() { function g() { return () => g; } return g; }",
+    // Mutual recursion between two arrows: neither is free of the enclosure.
+    "function outer() { const f = () => g(); const g = () => f(); return [f, g]; }",
+    // A chain where only the outermost function is free of captures.
+    "function g() { const f = () => 1; const h = () => f; return h; }",
+    // An own symbol at module depth, which never counts as a capture.
+    "const f = () => () => f;",
+    // A named function expression recursed on from a nested arrow.
+    "function outer() { const h = function named() { return () => named; }; return h; }",
+    // Exports do not change the folded minimum.
+    "export function outer(x: number) { const independent = () => 1; \
+     const dependent = () => x; return [independent, dependent]; }",
+    // A module binding read from a nested arrow.
+    "const moduleValue = 1; function outer(x: number) { const dependent = () => x + moduleValue; \
+     return dependent; }",
+    // A helper declaration inside a render method, called in place.
+    "class C extends AntiHookComponent { render() { function helper() { return 1; } \
+     return helper(); } }",
+    // A constructor member, whose arrow is an ordinary candidate.
+    "class C { constructor() { const f = () => 1; } }",
+    // A class declaration between site frames, with `this` and tracked data inside it.
+    "function wrap() { function outer() { const K = class { m() { this.x; } }; \
+     const f = () => new K(); return f; } return outer; }",
+    // Declarations and lexical marks between site frames, inside a tracked call.
+    "class C { m() { const f = () => { function d() { arguments; new.target; this.z; \
+     getData(store); } return d; }; return f; } }",
 ];

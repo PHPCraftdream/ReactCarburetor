@@ -19,6 +19,7 @@ use oxc_syntax::scope::ScopeFlags;
 
 use crate::config::ModuleFunctionScope;
 
+use super::own_min::{Frame, MinDecl};
 use super::RULE;
 use crate::rules::report;
 use crate::rules::support::bases::{EXCLUDED_CALLBACK_APIS, RENDER_TRACKED_APIS};
@@ -189,25 +190,6 @@ fn own_symbol(function: Option<&Function<'_>>, parent: AstKind<'_>) -> Option<Sy
     None
 }
 
-/// One level of function nesting, carrying everything its exit decision needs.
-struct Frame {
-    /// Whether it is an arrow, whose `this` and marks climb to its enclosure.
-    is_arrow: bool,
-    /// The class depth on entry, which tells the function's own `this` apart from a nested
-    /// class's.
-    class_base: usize,
-    /// Whether the function needs the class it sits in, by class-bound syntax under it.
-    class_dep: bool,
-    /// Whether the function sits inside a tracked-API call's arguments.
-    tracked: bool,
-    /// Whether `this`/`super`/`arguments`/`new.target` below belongs to this chain of arrows.
-    marked: bool,
-    /// The lowest nonzero functional depth any runtime reference reaches, `usize::MAX` if none.
-    min_decl: usize,
-    /// The name the function is bound under, whose references are its recursion, not captures.
-    own_symbol: Option<SymbolId>,
-}
-
 /// One walk over the whole program. A class member is a root rather than a nested-function
 /// candidate, but functions below that root are checked like any other nested function.
 struct ModuleScan<'a, 's> {
@@ -226,18 +208,27 @@ struct ModuleScan<'a, 's> {
     class_type_parameters: Vec<Vec<SymbolId>>,
     /// Whether findings are restricted to class bodies.
     class_only: bool,
+    /// The own symbol of each live frame, mapped to the frame's stack position.
+    own_names: HashMap<SymbolId, usize>,
 }
 
 impl<'a, 's> ModuleScan<'a, 's> {
     /// Enters a function boundary of either shape.
     fn enter(&mut self, is_arrow: bool, own: Option<SymbolId>) {
+        let index = self.frames.len();
+        // The registry lives exactly as long as the frame: a reference to a live frame's own
+        // symbol is that frame's recursion, and distinct symbols keep shadowing apart.
+        if let Some(own) = own {
+            self.own_names.insert(own, index);
+        }
         self.frames.push(Frame {
             is_arrow,
             class_base: self.class_depth,
             class_dep: false,
             tracked: self.tracked_depth > 0,
             marked: false,
-            min_decl: usize::MAX,
+            index,
+            min_decl: MinDecl::new(),
             own_symbol: own,
         });
     }
@@ -245,6 +236,9 @@ impl<'a, 's> ModuleScan<'a, 's> {
     /// Closes the innermost frame, passing its facts up to the enclosure.
     fn exit_frame(&mut self) -> Frame {
         let frame = self.frames.pop().expect("function frame");
+        if let Some(own) = frame.own_symbol {
+            self.own_names.remove(&own);
+        }
         if let Some(parent) = self.frames.last_mut() {
             // A nested class between the two already shows up as a different class base.
             if frame.class_base == parent.class_base {
@@ -254,7 +248,7 @@ impl<'a, 's> ModuleScan<'a, 's> {
             if frame.is_arrow {
                 parent.marked |= frame.marked;
             }
-            parent.min_decl = parent.min_decl.min(frame.min_decl);
+            frame.min_decl.merge_up(&mut parent.min_decl, parent.index);
         }
         frame
     }
@@ -361,7 +355,7 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
 
         // No capture means no runtime reference resolves into `1..k`, where `k` is this frame's
         // index plus one: enclosing-function declarations, and module ones (depth 0) pass.
-        if clean && frame.min_decl > self.frames.len() {
+        if clean && frame.min_decl.own_minimum() > self.frames.len() {
             self.found.push((function.span, self.class_depth > 0));
         }
     }
@@ -391,7 +385,7 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
             && !is_iife_callee(self.semantic, arrow.node_id(), arrow.span);
 
         // Same criterion as the function branch above.
-        if clean && frame.min_decl > self.frames.len() {
+        if clean && frame.min_decl.own_minimum() > self.frames.len() {
             self.found.push((arrow.span, self.class_depth > 0));
         }
     }
@@ -500,14 +494,15 @@ impl<'a, 's> Visit<'a> for ModuleScan<'a, 's> {
                 .reference_id
                 .get()
                 .and_then(|reference| self.scoping.get_reference(reference).symbol_id());
-            let own = self.frames.last().and_then(|frame| frame.own_symbol);
             if let Some(symbol) = symbol {
-                if Some(symbol) != own {
-                    let depth = self.function_depth(self.scoping.symbol_scope_id(symbol));
-                    // Depth 0 is a module declaration, which never counts as a capture.
-                    if depth != 0 {
+                let depth = self.function_depth(self.scoping.symbol_scope_id(symbol));
+                // Depth 0 is a module declaration, which never counts as a capture.
+                if depth != 0 {
+                    let owner = self.own_names.get(&symbol).copied();
+                    // A reference to the innermost frame's own symbol is its recursion.
+                    if owner != self.frames.last().map(|frame| frame.index) {
                         if let Some(frame) = self.frames.last_mut() {
-                            frame.min_decl = frame.min_decl.min(depth);
+                            frame.min_decl.fold(owner, depth);
                         }
                     }
                 }
@@ -557,6 +552,7 @@ pub(super) fn check<'a>(
         class_depth: 0,
         class_type_parameters: Vec::new(),
         class_only: false,
+        own_names: HashMap::new(),
     };
 
     if scope == ModuleFunctionScope::All {

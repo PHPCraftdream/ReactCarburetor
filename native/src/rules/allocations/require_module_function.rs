@@ -17,6 +17,7 @@ pub const RULE: &str = "carburetor/require-module-function";
 
 mod extract;
 mod module_functions;
+mod own_min;
 mod references;
 mod statement;
 mod support;

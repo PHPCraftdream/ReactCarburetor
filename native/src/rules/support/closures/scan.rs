@@ -530,3 +530,71 @@ impl<'a> Visit<'a> for Scan<'a, '_> {
         walk::walk_variable_declarator(self, declarator);
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use oxc_allocator::Allocator;
+    use oxc_parser::Parser;
+    use oxc_span::SourceType;
+
+    /// The first method definition with a body, whatever kind it is.
+    #[derive(Default)]
+    struct FirstMethod<'a> {
+        method: Option<&'a MethodDefinition<'a>>,
+    }
+
+    impl<'a> Visit<'a> for FirstMethod<'a> {
+        fn enter_node(&mut self, kind: AstKind<'a>) {
+            if let AstKind::MethodDefinition(method) = kind {
+                if method.value.body.is_some() && self.method.is_none() {
+                    self.method = Some(method);
+                }
+            }
+        }
+    }
+
+    /// Whether each candidate the snippet's first method yields runs in render, the member being
+    /// marked as render code.
+    fn render_executes_flags(text: &str) -> Vec<bool> {
+        let allocator = Allocator::default();
+        let parsed = Parser::new(&allocator, text, SourceType::tsx()).parse();
+        assert!(parsed.diagnostics.is_empty(), "test source must parse");
+
+        let semantic = build_semantic(&parsed.program);
+        let mut finder = FirstMethod::default();
+
+        finder.visit_program(&parsed.program);
+
+        let analysis = analyze_method(finder.method.expect("a method"), &semantic, true);
+
+        analysis
+            .closures
+            .iter()
+            .map(|candidate| candidate.executes_in_render)
+            .collect()
+    }
+
+    #[test]
+    fn a_protected_function_no_longer_leaks_the_render_state() {
+        // Intentional fix of the previous scan's state leak: the protected IIFE no longer resets
+        // the render state past its own extent, so the map callback still counts as render code,
+        // and its tracked read keeps it out of the candidates.
+        let flags = render_executes_flags(
+            "class C { render() { (() => 0)(); return [1].map(() => { getData(store); \
+             return 1; }); } }",
+        );
+
+        assert!(flags.is_empty());
+    }
+
+    #[test]
+    fn the_render_state_survives_a_protected_function() {
+        // Intentional fix of the previous scan's state leak: the render state is restored after
+        // the protected IIFE, so the synchronous map callback is still render code.
+        let flags =
+            render_executes_flags("class C { render() { (() => 0)(); return [1].map(() => 1); } }");
+
+        assert_eq!(flags, vec![true]);
+    }
+}
