@@ -9,7 +9,18 @@ import {renameSync, unlinkSync, writeFileSync} from "node:fs";
 export const writeAtomic = (target: string, content: string): void => {
     const tmp = `${target}.${process.pid}-${Math.random().toString(36).slice(2)}.tmp`;
 
-    writeFileSync(tmp, content);
+    try {
+        writeFileSync(tmp, content);
+    } catch (error) {
+        // Best-effort: a failed write must not litter a temp file next to the target.
+        try {
+            unlinkSync(tmp);
+        } catch {
+            // Never created, or already gone; the original failure below is the one that matters.
+        }
+
+        throw error;
+    }
 
     try {
         renameSync(tmp, target);

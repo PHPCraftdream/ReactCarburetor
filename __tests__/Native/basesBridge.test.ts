@@ -1,11 +1,12 @@
 import {spawnSync} from "node:child_process";
 import {createHash} from "node:crypto";
-import {existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from "node:fs";
+import {existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {describe, expect, rstest, test} from "@rstest/core";
 import {createRequire} from "node:module";
 import {basesConfig} from "@plugin/Utils/NativeBases.mts";
+import {writeAtomic} from "@plugin/Utils/atomicWrite.mts";
 import {runNative} from "@plugin/Utils/Native/nativeBridge.mts";
 
 /**
@@ -137,13 +138,78 @@ describe('basesConfig', () => {
         try {
             writeFileSync(path.join(cwd, '.carburetorrc.json'), JSON.stringify({
                 componentBases: ['Rc'],
-                storeBases: 42, // malformed rc values are skipped leniently, only in the rc
                 'require-module-function': [{'scope': 'classes'}], // per-rule options must not pass
             }));
 
             const {config} = basesConfig(cwd);
 
             expect(JSON.parse(readFileSync(config, 'utf8'))).toEqual({componentBases: ['Rc'], storeBases: []});
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
+    test.each([
+        ['a bare string', 'X'],
+        ['a number entry', [1]],
+        ['an empty-string entry', ['']],
+    ])('a malformed rc list (%s) fails loudly, as in the CLI', (_label, value) => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-rc-'));
+
+        try {
+            writeFileSync(path.join(cwd, '.carburetorrc.json'), JSON.stringify({componentBases: value}));
+
+            expect(() => basesConfig(cwd)).toThrow('componentBases" must be an array of non-empty base class names');
+            expect(() => basesConfig(cwd)).toThrow(path.join(cwd, '.carburetorrc.json'));
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
+    test.each([
+        ['broken JSON', '{not json'],
+        ['a top-level array', '["MyBase"]'],
+        ['a malformed list value', '{"componentBases": "MyBase"}'],
+        ['a malformed list entry', '{"storeBases": 42}'],
+    ])('an unreadable rc (%s) is an error, not a silent fallback', (_label, content) => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-rc-'));
+
+        try {
+            writeFileSync(path.join(cwd, '.carburetorrc.json'), content);
+
+            expect(() => basesConfig(cwd)).toThrow(path.join(cwd, '.carburetorrc.json'));
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
+    test('an absent rc is the shared neutral config (control)', () => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-'));
+
+        try {
+            const {config, key} = basesConfig(cwd);
+
+            expect(key).toBe('');
+            expect(config).toBe(path.join(BRIDGE_CONFIG_DIR, 'bridge.carburetorrc.json'));
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
+    test('base lists are canonized: order and duplicates do not change the key or the file', () => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-'));
+
+        try {
+            const first = basesConfig(cwd, {carburetor: {componentBases: ['MyBase', 'Alpha']}});
+            const second = basesConfig(cwd, {carburetor: {componentBases: ['Alpha', 'MyBase']}});
+            const duplicated = basesConfig(cwd, {carburetor: {componentBases: ['A', 'A']}});
+            const single = basesConfig(cwd, {carburetor: {componentBases: ['A']}});
+
+            expect(first.key).toBe(second.key);
+            expect(first.config).toBe(second.config);
+            expect(duplicated.key).toBe(single.key);
+            expect(JSON.parse(readFileSync(first.config, 'utf8')))
+                .toEqual({componentBases: ['Alpha', 'MyBase'], storeBases: []});
         } finally {
             rmSync(cwd, {recursive: true, force: true});
         }
@@ -164,52 +230,158 @@ describe('basesConfig', () => {
     });
 });
 
-describe('runNative cache separation by base key', () => {
-    test('different base lists spawn fresh runs, the same list reuses the cached one', () => {
-        const cwdA = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-a-'));
-        const cwdB = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-b-'));
-        const settingsA = {carburetor: {componentBases: ['A']}};
-        const settingsB = {carburetor: {componentBases: ['B']}};
-        const {key: keyA} = basesConfig(cwdA, settingsA);
-        const lockA = lockPathFor(cwdA, keyA);
-        const resultA = `${lockA.replace(/\.lock$/, '')}.result.json`;
+/** The result path for an existing `lock`, mirroring `resultPathFor` in the bridge. */
+const resultPathFor = (lock: string): string => {
+    const stat = statSync(lock);
+
+    return lock.replace(/\.lock$/, `.${stat.dev.toString(36)}${stat.ino.toString(36)}.json`);
+};
+
+/** A stub whose reply names the base set it was run with, read from the `--config` file itself. */
+const stubPerBaseNative = (): void => {
+    nativeSpawn.mockImplementation((_command, args) => {
+        const configPath = (args as readonly string[])[(args as readonly string[]).indexOf('--config') + 1] as string;
+        const base = (JSON.parse(readFileSync(configPath, 'utf8')) as {componentBases: string[]}).componentBases[0];
+
+        return {
+            stdout: JSON.stringify([
+                {rule: 'stub', file: './a.ts', line: 1, column: 1, message: `stub finding ${base}`, severity: 'error'},
+            ]),
+            stderr: '', status: 0, error: undefined,
+        } as ReturnType<TNativeSpawn>;
+    });
+};
+
+describe('writeAtomic', () => {
+    test('a failed write throws the original error and leaves no temp file behind', () => {
+        const dir = mkdtempSync(path.join(os.tmpdir(), 'carburetor-atomic-'));
 
         try {
-            stubSuccessfulNative();
+            expect(() => writeAtomic(path.join(dir, 'no-such-dir', 'f.json'), '{}'))
+                .toThrow(/no such file or directory/i);
+            expect(existsSync(path.join(dir, 'no-such-dir'))).toBe(false);
+        } finally {
+            rmSync(dir, {recursive: true, force: true});
+        }
+    });
 
-            const first = runNative(cwdA, () => 'stub', undefined, undefined, settingsA);
-            const second = runNative(cwdB, () => 'stub', undefined, undefined, settingsB);
-            const third = runNative(cwdA, () => 'stub', undefined, undefined, settingsA);
+    test('a successful write lands the content at the target (control)', () => {
+        const dir = mkdtempSync(path.join(os.tmpdir(), 'carburetor-atomic-'));
+        const target = path.join(dir, 'f.json');
 
-            expect(second).toEqual(first);
-            expect(third).toEqual(first);
+        try {
+            writeAtomic(target, '{"ok":true}');
 
-            // Two distinct base sets meant two distinct binaries runs; the repeat of the first set
-            // was served from the module cache, which must therefore be keyed by the base key.
-            expect(nativeSpawn).toHaveBeenCalledTimes(2);
+            expect(readFileSync(target, 'utf8')).toBe('{"ok":true}');
+        } finally {
+            rmSync(dir, {recursive: true, force: true});
+        }
+    });
+});
 
-            const argsOf = (call: number): readonly string[] => nativeSpawn.mock.calls[call][1] as readonly string[];
-            const configOf = (call: number): string => {
-                const args = argsOf(call);
+describe('runNative cache separation by base key', () => {
+    test('different base lists spawn fresh runs, the same list reuses the cached one', () => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-one-'));
+        const settingsA = {carburetor: {componentBases: ['A']}};
+        const settingsB = {carburetor: {componentBases: ['B']}};
+        const {key: keyA} = basesConfig(cwd, settingsA);
+        const lockA = lockPathFor(cwd, keyA);
 
-                expect(args).toContain('--config');
+        try {
+            stubPerBaseNative();
+            const spawnsBefore = nativeSpawn.mock.calls.length;
 
-                return args[args.indexOf('--config') + 1] as string;
-            };
+            // One project, three calls: each answer must name its own base set, proving neither
+            // the lock digest, the module cache nor the published result leak across base keys.
+            expect(runNative(cwd, () => 'stub', undefined, undefined, settingsA)[0].message).toBe('stub finding A');
+            expect(runNative(cwd, () => 'stub', undefined, undefined, settingsB)[0].message).toBe('stub finding B');
+            expect(runNative(cwd, () => 'stub', undefined, undefined, settingsA)[0].message).toBe('stub finding A');
 
-            expect(configOf(0)).not.toBe(configOf(1));
-            expect(configOf(0)).toBe(basesConfig(cwdA, settingsA).config);
+            // A then B each spawned; the return to A was served from the module cache, which must
+            // therefore be keyed by the base key.
+            expect(nativeSpawn.mock.calls.length).toBe(spawnsBefore + 2);
 
-            // The lock file names the base key in its digest, so two base sets in one process
+            // The lock file names the base key in its digest, so two base sets in one project
             // never elect over each other's lock.
             expect(existsSync(lockA)).toBe(true);
         } finally {
+            rmSync(resultPathFor(lockA), {force: true});
             rmSync(lockA, {force: true});
-            rmSync(resultA, {force: true});
-            rmSync(cwdA, {recursive: true, force: true});
-            rmSync(cwdB, {recursive: true, force: true});
+            rmSync(cwd, {recursive: true, force: true});
         }
     });
+
+    test('the same unsaved buffer is analyzed per base set, not shared across them', () => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-buf-'));
+        const settingsA = {carburetor: {componentBases: ['A']}};
+        const settingsB = {carburetor: {componentBases: ['B']}};
+        const file = path.join(cwd, 'a.ts');
+
+        try {
+            stubPerBaseNative();
+            const spawnsBefore = nativeSpawn.mock.calls.length;
+
+            // The disk content differs from both buffers, so both take the in-memory path.
+            writeFileSync(file, 'export const saved = 1;');
+
+            expect(runNative(cwd, () => 'stub', file, 'export const aA = 1;', settingsA)[0].message)
+                .toBe('stub finding A');
+            expect(runNative(cwd, () => 'stub', file, 'export const aB = 1;', settingsB)[0].message)
+                .toBe('stub finding B');
+
+            // One spawn per call: the buffer cache is scoped by the base key, so the second set
+            // re-ran instead of serving the first set's buffer result.
+            expect(nativeSpawn.mock.calls.length).toBe(spawnsBefore + 2);
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+});
+
+test('a file saved after a waiter-accepted result is re-scanned, never answered from the file', () => {
+    const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-fresh-'));
+    const settingsA = {carburetor: {componentBases: ['A']}};
+    const settingsB = {carburetor: {componentBases: ['B']}};
+    const {key: keyA} = basesConfig(cwd, settingsA);
+    const {key: keyB} = basesConfig(cwd, settingsB);
+    const lockA = lockPathFor(cwd, keyA);
+    const lockB = lockPathFor(cwd, keyB);
+    const file = path.join(cwd, 'a.ts');
+    const text = 'export const a = 1;';
+    let resultA = '';
+
+    try {
+        stubPerBaseNative();
+
+        // A real runner elects, spawns and publishes its result file.
+        runNative(cwd, () => 'stub', undefined, undefined, settingsA);
+        resultA = resultPathFor(lockA);
+        const spawnsAfterRunner = nativeSpawn.mock.calls.length;
+
+        // A second base set arrives after its runner: a waiter, reading the file result.
+        writeFileSync(lockB, '');
+        writeFileSync(resultPathFor(lockB), JSON.stringify([
+            {rule: 'stub', file: './a.ts', line: 1, column: 1, message: 'stale file answer', severity: 'error'},
+        ]));
+
+        expect(runNative(cwd, () => 'stub', undefined, undefined, settingsB)[0].message).toBe('stale file answer');
+        expect(nativeSpawn.mock.calls.length).toBe(spawnsAfterRunner);
+
+        // Saved after both runs: a scan from either moment no longer describes this file.
+        writeFileSync(file, text);
+
+        const fresh = runNative(cwd, () => 'stub', file, text, settingsA);
+
+        expect(fresh[0].message).toBe('stub finding A');
+        // The stale file answer must not come back: the waiter result forced a scan in this thread.
+        expect(nativeSpawn.mock.calls.length).toBe(spawnsAfterRunner + 1);
+    } finally {
+        rmSync(resultPathFor(lockB), {force: true});
+        rmSync(lockA, {force: true});
+        rmSync(lockB, {force: true});
+        rmSync(resultA, {force: true});
+        rmSync(cwd, {recursive: true, force: true});
+    }
 });
 
 describe('the custom base, through the real host and the real binary', () => {

@@ -21,58 +21,71 @@ interface IBases {
     key: string;
 }
 
-/** Validates one host-supplied base list; a malformed shape is a loud setup error, not a fallback. */
-const settingList = (value: unknown, name: TBaseKey): readonly string[] => {
-    if (value === undefined) {
-        return [];
+/** Validates one host-supplied base list; a malformed shape is a loud setup error, not a fallback.
+ *
+ * @param value - the raw value from settings or the project rc
+ * @param prefix - where the value came from, named in the error (`settings.carburetor.x` or rc path)
+ * @returns the validated list, unchanged
+ */
+const baseList = (value: unknown, prefix: string): readonly string[] => {
+    if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string' || entry === '')) {
+        throw new Error(`react-carburetor/lint: ${prefix} must be an array of non-empty base class names.`);
     }
 
-    if (!Array.isArray(value)) {
-        throw new Error(
-            `react-carburetor/lint: settings.carburetor.${name} must be an array of non-empty ` +
-            'base class names.'
-        );
-    }
-
-    return value.map((entry): string => {
-        if (typeof entry !== 'string' || entry === '') {
-            throw new Error(
-                `react-carburetor/lint: settings.carburetor.${name} must be an array of non-empty ` +
-                'base class names.'
-            );
-        }
-
-        return entry;
-    });
+    return value;
 };
 
+/** Same contract as the settings key: absent means empty, present means a valid list. */
+const settingList = (value: unknown, name: TBaseKey): readonly string[] =>
+    value === undefined ? [] : baseList(value, `settings.carburetor.${name}`);
+
 /** The lists from `<cwd>/.carburetorrc.json`, reading only the two base keys and nothing else —
- * per-rule options from a project rc must not narrow the shared result, only these may pass. */
+ * per-rule options from a project rc must not narrow the shared result, only these may pass. A
+ * missing file is neutral; anything unreadable or malformed is the same loud error the CLI gives.
+ *
+ * @param cwd - the project whose `.carburetorrc.json` is read
+ * @returns the two base lists, empty when no rc exists
+ */
 const rcLists = (cwd: string): Record<TBaseKey, readonly string[]> => {
     const lists: Record<TBaseKey, readonly string[]> = {componentBases: [], storeBases: []};
+    const rcPath = path.join(cwd, '.carburetorrc.json');
+    let text: string;
+
+    try {
+        text = readFileSync(rcPath, 'utf8');
+    } catch (error) {
+        if ((error as {code?: string}).code === 'ENOENT') {
+            return lists;
+        }
+
+        throw new Error(`react-carburetor/lint: ${rcPath} could not be read: ${(error as Error).message}`);
+    }
 
     let parsed: unknown;
 
     try {
-        parsed = JSON.parse(readFileSync(path.join(cwd, '.carburetorrc.json'), 'utf8'));
-    } catch {
-        return lists; // Absent or broken rc: the built-in base names stand alone.
+        parsed = JSON.parse(text);
+    } catch (error) {
+        throw new Error(`react-carburetor/lint: ${rcPath} is not valid JSON: ${(error as Error).message}`);
     }
 
-    if (parsed === null || typeof parsed !== 'object') {
-        return lists;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error(`react-carburetor/lint: ${rcPath} must hold a JSON object at the top level.`);
     }
 
     for (const key of BASE_KEYS) {
         const value = (parsed as Record<string, unknown>)[key];
 
-        lists[key] = Array.isArray(value)
-            ? value.filter((entry): entry is string => typeof entry === 'string' && entry !== '')
-            : [];
+        if (value !== undefined) {
+            lists[key] = baseList(value, `${rcPath} "${key}"`);
+        }
     }
 
     return lists;
 };
+
+/** Base lists are sets: order and duplicates never change which classes are recognized. */
+const canonize = (list: readonly string[]): readonly string[] => [...new Set(list)].sort();
 
 /**
  * Resolves the base-class configuration the bridge runs the native binary with.
@@ -90,11 +103,15 @@ export const basesConfig = (cwd: string, settings?: Record<string, unknown>): IB
     const namespace = settings?.[SETTINGS_NAMESPACE];
     const source = namespace !== undefined && namespace !== null && typeof namespace === 'object'
         ? {
-            componentBases: settingList(
-                (namespace as Record<string, unknown>).componentBases, 'componentBases'),
-            storeBases: settingList((namespace as Record<string, unknown>).storeBases, 'storeBases'),
+            componentBases: canonize(settingList(
+                (namespace as Record<string, unknown>).componentBases, 'componentBases')),
+            storeBases: canonize(settingList((namespace as Record<string, unknown>).storeBases, 'storeBases')),
         }
-        : rcLists(cwd);
+        : (() => {
+            const rc = rcLists(cwd);
+
+            return {componentBases: canonize(rc.componentBases), storeBases: canonize(rc.storeBases)};
+        })();
 
     mkdirSync(BRIDGE_CONFIG_DIR, {recursive: true});
 
@@ -105,6 +122,8 @@ export const basesConfig = (cwd: string, settings?: Record<string, unknown>): IB
 
     // Content-stable, so a torn write from a racing first run is impossible: either it is already
     // there or one writer's atomic rename publishes it.
+    // Config files are content-addressed and shared between processes, so they are never deleted
+    // at exit: a racing run may be reading or about to write the very same name.
     if (!existsSync(config)) {
         writeAtomic(config, key === '' ? '{}' : JSON.stringify(source));
     }

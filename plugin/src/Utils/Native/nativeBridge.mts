@@ -74,9 +74,10 @@ const sleepSync = (milliseconds: number): void => {
     Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 };
 
-/** This run's lock path and cwd/base digest; the digest also scopes the leftover-file sweep. */
+/** The lock path and cwd/base digest; the digest also scopes the leftover-file sweep. An empty
+ * key keeps the original bare-cwd digest, so locks from before base keys existed still match. */
 const runPaths = (cwd: string, key: string): {lock: string; digest: string} => {
-    const digest = createHash('sha256').update(`${cwd}\u0000${key}`).digest('hex').slice(0, 32);
+    const digest = createHash('sha256').update(key === '' ? cwd : `${cwd}\u0000${key}`).digest('hex').slice(0, 32);
 
     return {lock: path.join(BRIDGE_DIR, `${process.pid}-${digest}.lock`), digest};
 };
@@ -340,6 +341,18 @@ export const runNative = (
 ): INativeDiagnostic[] => {
     const {config, key} = basesConfig(cwd, settings);
 
+    // One re-scan path for both cache hits: a new start time is adopted only after the scan
+    // succeeded, so a failed one cannot make stale results look fresh.
+    const rescan = (): INativeDiagnostic[] => {
+        const startMs = Date.now();
+        const fresh = runBinary(cwd, config, resolve);
+
+        cachedStartMs = startMs;
+        cached = fresh;
+
+        return fresh;
+    };
+
     if (text !== undefined && filename !== undefined && text !== diskText(filename)) {
         // One spawn per distinct buffer text, not per rule and not per keystroke.
         return cachedFileResult(filename, text, () => runNativeText(cwd, filename, text, config, resolve), key);
@@ -350,14 +363,7 @@ export const runNative = (
             return cached;
         }
 
-        // Adopt the new start only once the scan succeeded, so a failed one cannot make stale results fresh.
-        const startMs = Date.now();
-        const fresh = runBinary(cwd, config, resolve);
-
-        cachedStartMs = startMs;
-        cached = fresh;
-
-        return fresh;
+        return rescan();
     }
 
     const {lock, digest} = runPaths(cwd, key);
@@ -373,10 +379,15 @@ export const runNative = (
         sweepStaleFiles(digest);
 
         try {
-            cachedStartMs = Date.now();
+            const startMs = Date.now();
+            const fresh = runBinary(cwd, config, resolve);
+
+            // Published only after success: a failed run must leave no cache entry behind, or the
+            // next call with the same key would be served another set's array instead of retrying.
+            cachedStartMs = startMs;
             cachedCwd = cwd;
             cachedKey = key;
-            cached = runBinary(cwd, config, resolve);
+            cached = fresh;
             writeAtomic(result, JSON.stringify(cached));
 
             return cached;
@@ -415,6 +426,12 @@ export const runNative = (
     cachedCwd = cwd;
     cachedKey = key;
     cachedStartMs = statSync(lock).mtimeMs;
+
+    // A file result may describe a file as it stood before that file was last saved, so the same
+    // freshness check the module cache applies decides between this answer and a re-scan.
+    if (changedSince(filename, cachedStartMs)) {
+        return rescan();
+    }
 
     return cached;
 };

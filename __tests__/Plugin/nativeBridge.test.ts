@@ -8,6 +8,7 @@ import * as path from "node:path";
 import {describe, expect, test} from "@rstest/core";
 import {offsetAt} from "@plugin/Utils/Native/offsetAt.mts";
 import {runNative} from "@plugin/Utils/Native/nativeBridge.mts";
+import {basesConfig} from "@plugin/Utils/NativeBases.mts";
 import {cachedFileResult} from "@plugin/Utils/bufferCache.mts";
 import {platformPackageNames} from "@plugin/Utils/Native/platformPackage.mts";
 import {resolveBinary} from "@plugin/Utils/Native/resolveBinary.mts";
@@ -43,10 +44,9 @@ mkdirSync(BRIDGE_DIR, {recursive: true});
 const processStartMs = (): number => Date.now() - Math.round(process.uptime() * 1000);
 
 /** The lock path `runNative` would use for `cwd`, computed exactly as `runPaths` does — with the
- * empty base key, since these tests pass no settings, and the digest folds the key in after a
- * null separator so two base sets in one project never elect over each other's lock. */
+ * empty base key these tests pass no settings for, whose digest folds in the bare cwd alone. */
 const lockPathFor = (cwd: string): string => {
-    const digest = createHash('sha256').update(`${cwd}\u0000`).digest('hex').slice(0, 32);
+    const digest = createHash('sha256').update(cwd).digest('hex').slice(0, 32);
 
     return path.join(BRIDGE_DIR, `${process.pid}-${digest}.lock`);
 };
@@ -407,6 +407,41 @@ describe('a missing binary fails loudly', () => {
         } finally {
             rmSync(lock, {force: true});
             rmSync(genuineResult, {force: true});
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+});
+
+describe('a failed runner never poisons the cache', () => {
+    test('after one failed run, the same failing call throws again instead of returning another set\'s result', () => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-lint-poison-'));
+        const settingsA = {carburetor: {componentBases: ['A']}};
+        const settingsB = {carburetor: {componentBases: ['B']}};
+        const {key: keyA} = basesConfig(cwd, settingsA);
+        const {key: keyB} = basesConfig(cwd, settingsB);
+        const digestOf = (key: string): string =>
+            createHash('sha256').update(`${cwd}\u0000${key}`).digest('hex').slice(0, 32);
+        const lockA = path.join(BRIDGE_DIR, `${process.pid}-${digestOf(keyA)}.lock`);
+        const lockB = path.join(BRIDGE_DIR, `${process.pid}-${digestOf(keyB)}.lock`);
+        const brokenResolve = (): string => path.join(cwd, 'no-such-binary');
+        const stub = [{rule: 'stub', file: 'x', line: 1, column: 1, message: 'stub finding', severity: 'error'}];
+
+        try {
+            // The first set succeeds the way a waiter sees it: lock and result already published.
+            writeFileSync(lockA, '');
+            writeFileSync(resultPathFor(lockA), JSON.stringify(stub));
+            expect(runNative(cwd, brokenResolve, undefined, undefined, settingsA)).toEqual(stub);
+
+            expect(() => runNative(cwd, brokenResolve, undefined, undefined, settingsB))
+                .toThrow(/could not run the native binary/);
+
+            // The retry re-elects and fails again: it cannot be served the first set's cached array.
+            expect(() => runNative(cwd, brokenResolve, undefined, undefined, settingsB))
+                .toThrow(/could not run the native binary/);
+        } finally {
+            rmSync(resultPathFor(lockA), {force: true});
+            rmSync(lockA, {force: true});
+            rmSync(lockB, {force: true});
             rmSync(cwd, {recursive: true, force: true});
         }
     });

@@ -28,7 +28,9 @@ export const cachedFileResult = (
     compute: () => INativeDiagnostic[],
     scope = '',
 ): INativeDiagnostic[] => {
-    const key = `${scope}\u0000${filename}\u0000${createHash('sha256').update(text).digest('hex')}`;
+    const hash = createHash('sha256').update(text).digest('hex');
+    // No leading separator when unscoped: an empty scope keeps the historical key shape.
+    const key = scope === '' ? `${filename}\u0000${hash}` : `${scope}\u0000${filename}\u0000${hash}`;
     const held = fileResults.get(key);
 
     if (held) {

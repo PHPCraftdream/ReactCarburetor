@@ -223,9 +223,11 @@ base stops the walk — a project-local base is configured instead, with the `co
 
 The keys apply to the native CLI and to the ESLint/oxlint plugin alike: the plugin takes
 `settings.carburetor.componentBases` / `settings.carburetor.storeBases` from the host config, and
-falls back to the same two keys of `.carburetorrc.json` when the host passes no settings. Other
-keys of `.carburetorrc.json` (per-rule options) never reach the plugin's shared native run; rule
-options are passed through the host instead.
+falls back to the same two keys of `.carburetorrc.json` when the host passes no settings. The
+plugin reads a project rc only for those two keys: a missing file is the same as empty lists,
+while one that cannot be read or holds malformed lists is an error, as in the CLI. Other keys of
+`.carburetorrc.json` (per-rule options) never reach the plugin's shared native run; rule options
+are passed through the host instead.
 
 Most rules accept severity only: `error`, `warn` or `off`; `require-module-function` also accepts
 the `scope` option (`"all"` or `"classes"`). Unknown scope values, option keys and base-list
