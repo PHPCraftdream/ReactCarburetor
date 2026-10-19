@@ -338,7 +338,8 @@ mod tests {
 
     #[test]
     fn function_overloads_count_once() {
-        let source = "export function f(x: string): string;\nexport function f(x: number): number;\n\
+        let source =
+            "export function f(x: string): string;\nexport function f(x: number): number;\n\
                       export function f(x: any): any { return x; }\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);

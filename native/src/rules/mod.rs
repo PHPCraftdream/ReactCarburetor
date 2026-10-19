@@ -27,7 +27,7 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check, bool); 30] = [
+const REGISTRY: [(&str, Check, bool); 31] = [
     (
         boundaries::max_render_depth::RULE,
         boundaries::max_render_depth::check,
