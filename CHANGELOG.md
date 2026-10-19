@@ -65,6 +65,7 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- Linter plugin: `settings.carburetor.componentBases` / `storeBases` from the ESLint or oxlint config (or, without settings, the same keys of the project `.carburetorrc.json`) reach the native binary, so custom base classes act in the plugin as on the CLI. An unreadable or malformed rc is an error in the plugin, as in the CLI; a missing rc means empty lists.
 - Linter: `componentBases` and `storeBases` in `.carburetorrc.json` add project-local base classes to every rule, and recognition follows same-file `extends` chains (named or anonymous classes); `ResourceCache` counts as a store base. The ESLint/oxlint bridge runs the binary with a neutral configuration and recognises the built-in names and same-file chains only.
 - Native binary: `--stdin <path>` lints a buffer as the named file; the bridge uses it to lint unsaved editor text instead of mapping disk diagnostics onto it.
 - A parity test pins the oxlint presets against the severity maps, and the oxlint preset turns `typescript/unbound-method` off.
@@ -145,6 +146,14 @@ Entries below record development history in change order; where contracts differ
 
 ### Changed
 
+- Linter: every walk-based rule runs in one shared traversal, and the capture and class-dependency facts of `require-module-function` / `require-method-for-closure` come from one bottom-up pass with each member analysed once.
+- Reading a `Date` through a draft no longer publishes a write; the read is checked by time at the next publication and dropped when unchanged.
+- Diff overflow is decided in one counting pass, and the write log evicts its oldest entries in batches instead of one by one (`diff46`, `writelog39`).
+- A re-render whose reads match the committed set adopts that set instead of building a new one (`readset46`).
+- Appending, truncating or re-keying a selection's source patches the selection structurally from the write log (`selection46`).
+- Computed fan-in skips the pull probe for leaves whose proven version has not moved (`computed46`).
+- Replacing a value with a native object refreshes the native alias index; an ordinary `Date` keeps the cheap path.
+- Fewer allocations on hot paths: the update wave drains through two reused maps, subscriber and resource-cache scans avoid temporary arrays.
 - History folds a publication against an index of pending patches by path: O(P·D) per publication instead of O(P²·D) once an owned object target is pending (`history45/fold-scan`).
 - With a history attached, deleting a non-last dictionary key keeps the entry patch-shaped with an ordered undo plan instead of a full-state snapshot, and the delete path probes the key order in amortized O(1) per delete (`history45/delete-keys`).
 - Positional array methods (`splice`, `fill`, `copyWithin`) attribute and compare only the affected index window; the whole-array snapshot copy remains. Explicit `undefined` index arguments and arguments that coerce through `valueOf` follow the native semantics exactly.
@@ -929,6 +938,10 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- A computed that re-subscribes with the same id and callback after its read set changes keeps its registration, so its dependents are notified within the same wave.
+- `require-module-function`: a protected IIFE inside `render` no longer leaks its render state into the synchronous callbacks after it.
+- The native bridge re-scans a result adopted from another worker when the file was saved after that run, and a failed run no longer leaves another base set's result in the cache.
+- `no-parent-import` (repository rule): the fix keeps the import's original quote style.
 - `no-store-write-in-render` no longer counts `getFailure()` and `resolve()` as writes.
 - A computed whose body throws during an observed settlement no longer leaves stale UI: subscribers are woken once while the value and version stand still, the next read rethrows into the error boundary, and delivery resumes once the body recovers.
 - `hydrate` no longer loses state for tokens that were not listed.
