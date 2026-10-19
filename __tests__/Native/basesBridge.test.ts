@@ -64,17 +64,6 @@ const nativeSpawn = rstest.hoisted(() => rstest.fn<TNativeSpawn>());
 
 rstest.mock('node:child_process', () => ({spawnSync: nativeSpawn}));
 
-/** A successful one-diagnostic run, so a caching test only counts spawns, not outcomes. */
-const stubSuccessfulNative = (): void => {
-    nativeSpawn.mockImplementation(() =>
-        ({
-            stdout: JSON.stringify([
-                {rule: 'stub', file: './a.ts', line: 1, column: 1, message: 'stub finding', severity: 'error'},
-            ]),
-            stderr: '', status: 0, error: undefined,
-        }) as ReturnType<TNativeSpawn>);
-};
-
 /** The lock path `runNative` would use for this cwd and base key, mirroring its digest formula. */
 const lockPathFor = (cwd: string, key: string): string => {
     const digest = createHash('sha256').update(`${cwd}\u0000${key}`).digest('hex').slice(0, 32);
