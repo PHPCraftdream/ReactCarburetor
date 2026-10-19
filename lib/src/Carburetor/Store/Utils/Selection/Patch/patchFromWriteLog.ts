@@ -6,7 +6,8 @@ import {
 import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
 import {patchSelection} from "./patchSelection";
-import {planSelectionPatch} from "./planSelectionPatch";
+import {planSelectionPatch} from "./Plan/planSelectionPatch";
+import {patchStructure} from "./Structure/patchStructure";
 
 /** Approximate whole-reconcile cost for the write-log patch budget. */
 const shallowSize = (value: unknown): number => {
@@ -23,7 +24,8 @@ const shallowSize = (value: unknown): number => {
  * in the copy ledger, and the write log records the raw object each written path actually
  * mutated, so a write is only provably disjoint when none of its targets is ledger-registered —
  * without walking the selected graph again. A tick-only publication's target is the store root,
- * which is never ledger-registered, so the fast path stays.
+ * which is never ledger-registered, so the fast path stays. A key-set or length change of the
+ * selected container itself is patched by `patchStructure` from the same proof.
  *
  * @param source - store providing its write log
  * @param baselineVersion - version represented by previous
@@ -59,18 +61,20 @@ export const patchFromWriteLog = <R>(
     }
     // Outside-only writes need no patch budget, but the planner must still reject ancestors.
     const plan = planSelectionPatch(rootPath, paths, hasInside ? shallowSize(previous) : 0);
-    if (plan === undefined) return undefined;
+    // A structural change of the root has its own proof below. It needs a tree snapshot and an
+    // owner instance policy (each one throws): the full walk never reuses an instance's ancestor.
+    if (plan === undefined && (!allowPatch || onLiveInstance === undefined)) return undefined;
 
-    // The raw-target proof applies to outside-root writes only: inside-root changed leaves keep
-    // the existing patch route (`patchSelection` refuses any object-valued changed leaf, so
-    // coarse native paths cannot become an unsafe partial patch), and a publication whose raw
-    // proof was dropped keeps patching complete ordinary inside-root paths. For outside-root
-    // writes, a write is provably disjoint only when nothing it mutated is in the snapshot's
-    // copy ledger: the log records the raw object each write actually mutated — the set trap's
-    // container, the walked replacement branch, or the coarse native field value. Exposure of
-    // raw native members marks the write unknown — exact targets cannot be known for effects
-    // reached through them — so reuse is refused. A write whose targets were not recorded is
-    // unknown and stays conservative.
+    // The raw-target proof applies to outside-root writes here (the structural route proves its
+    // own inside-root writes): inside-root changed leaves keep the existing patch route
+    // (`patchSelection` refuses any object-valued changed leaf, so coarse native paths cannot
+    // become an unsafe partial patch), and a publication whose raw proof was dropped keeps
+    // patching complete ordinary inside-root paths. For outside-root writes, a write is provably
+    // disjoint only when nothing it mutated is in the snapshot's copy ledger: the log records the
+    // raw object each write actually mutated — the set trap's container, the walked replacement
+    // branch, or the coarse native field value. Exposure of raw native members marks the write
+    // unknown — exact targets cannot be known for effects reached through them — so reuse is
+    // refused. A write whose targets were not recorded is unknown and stays conservative.
     if (outsidePaths.length > 0) {
         const targets = protocol[CARBURETOR_TARGETS_SINCE];
         if (targets === undefined) return undefined;
@@ -83,6 +87,11 @@ export const patchFromWriteLog = <R>(
                 if (raw === RAW_EXPOSURE || ledger.has(raw)) return undefined;
             }
         }
+    }
+    if (plan === undefined) {
+        return patchStructure(
+            source, baselineVersion, rootPath, paths, previous, live, ledger, onLiveInstance, onArraySubclass
+        );
     }
     if (plan.children === undefined) return previous;
     if (!allowPatch) return undefined;

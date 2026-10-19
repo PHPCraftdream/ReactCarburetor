@@ -1,8 +1,8 @@
 import {TPath} from "@/Carburetor/Models/Paths";
 import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
 import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+import {IPatchNode} from "@/Carburetor/Store/Utils/Selection/Patch/Models";
 import {unescapeSegment} from "./unescapeSegment";
-import {IPatchNode} from "./Models";
 
 /**
  * R37-04: the decision to patch is relative, not an absolute path count. The estimated patch work
@@ -19,7 +19,8 @@ const MIN_FULL_COST = 16;
  * A path outside the root, and not its ancestor, is ignored: the selection never read it. Anything
  * the patch cannot place exactly asks for the full reconcile: the root itself or an ancestor, a
  * wildcard, a key-set or length change, or a branch marker — as does a batch whose estimated work
- * exceeds the whole reconcile.
+ * exceeds the whole reconcile. A key-set or length change of the root itself may still be
+ * proven by `planStructure` instead.
  *
  * @param rootPath - the path of the selected view (`''` for the store root)
  * @param paths - the paths written since the snapshot, as the write log lists them

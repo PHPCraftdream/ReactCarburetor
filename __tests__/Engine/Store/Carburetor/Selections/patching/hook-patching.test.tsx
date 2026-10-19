@@ -77,15 +77,21 @@ describe('a hook returning the live list patches from the write log (R36-01)', (
         expect(view.latest()).not.toBe(before);
     });
 
-    test('control: a push changes the key set, takes the full walk, and the counter shows it', () => {
+    test('control: a push with an in-row write takes the full walk, and the counter shows it', () => {
         const store = new CountingCarburetor(makeData());
         const view = mount(store);
         store.recorded = 0;
 
-        act(() => { store.edit((draft) => { draft.items.push(newRow('n')); }); });
+        act(() => {
+            store.edit((draft) => {
+                draft.items[0].title = 'edited';
+                draft.items.push(newRow('n'));
+            });
+        });
 
         expect(store.recorded).toBeGreaterThan(COUNT);
         expect(view.latest()).toHaveLength(COUNT + 1);
+        expect(view.latest()[0].title).toBe('edited');
     });
 
     test('a leaf the walk never read still wakes the hook after a patch', () => {
@@ -119,7 +125,7 @@ describe('a hook returning the live list patches from the write log (R36-01)', (
         expect(view.latest()[1].done).toBe(true);
     });
 
-    test('fallbacks stay correct: a write to the list itself, a push and a key-set change', () => {
+    test('structural and fallback writes stay correct: a write to the list itself, a push and a key-set change', () => {
         const store = new CountingCarburetor(makeData());
         const view = mount(store);
 

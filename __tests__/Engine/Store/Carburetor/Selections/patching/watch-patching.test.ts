@@ -81,7 +81,7 @@ describe('watch() patches a live-list selection from the write log (R36-01)', ()
         stop();
     });
 
-    test('a push and a key deletion fall back to the full walk and stay correct', () => {
+    test('a push (patched structurally) and a key deletion (full walk) stay correct', () => {
         const store = makeStore();
         let latest: IRow[] = [];
         const stop = store.watch(selectItems, (next) => { latest = next; });
