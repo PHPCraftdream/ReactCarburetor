@@ -1,4 +1,5 @@
 import {Carburetor, ComponentUpdateThrottle} from '@/Carburetor';
+import {transferReads} from '@/Carburetor/Store/Paths/Markers/transferReads';
 
 class ManualThrottle extends ComponentUpdateThrottle {
     constructor() { super(60_000); }
@@ -94,6 +95,142 @@ describe('store-local subscriber IDs and delivery ownership', () => {
         scheduler.flush();
         expect(calls).toEqual(['b', 'b']);
         b.unsubscribe('view');
+    });
+
+    test('transferred replacement with a different callback skips the old event', () => {
+        const store = new Carburetor({n: 0, other: 0});
+        const calls: string[] = [];
+        store.subscribe(() => {
+            const reads = readPath(store, 'other');
+            store.subscribe(() => calls.push('new'), transferReads(reads, 'target'));
+        }, {id: 'trigger', reads: readPath(store, 'n')});
+        store.subscribe(() => calls.push('old'), {id: 'target', reads: readPath(store, 'n')});
+        store.setData({n: 1, other: 0});
+        expect(calls).toEqual([]);
+        store.unsubscribe('trigger');
+        store.setData({n: 1, other: 1});
+        expect(calls).toEqual(['new']);
+        store.unsubscribe('target');
+    });
+
+    test('same-callback transferred refresh preserves queued delivery and routes new reads', () => {
+        const scheduler = new ManualThrottle();
+        const store = new Carburetor({n: 0, other: 0}, scheduler);
+        const reads = readPath(store, 'n');
+        const calls: number[] = [];
+        const callback = (): void => { calls.push(store.getData().n); };
+        store.subscribe(callback, transferReads(reads, 'retained', true));
+        store.setData({n: 1, other: 0});
+        const nextReads = readPath(store, 'other');
+        store.subscribe(callback, transferReads(nextReads, 'retained', true));
+        scheduler.flush();
+        expect(calls).toEqual([1]);
+        store.setData({n: 2, other: 0});
+        scheduler.flush();
+        expect(calls).toEqual([1]);
+        store.setData({n: 2, other: 1});
+        scheduler.flush();
+        expect(calls).toEqual([1, 2]);
+        store.unsubscribe('retained');
+    });
+
+    test('same-callback branded replacement without retain skips matched event then delivers next write', () => {
+        const store = new Carburetor({n: 0, other: 0});
+        const calls: number[] = [];
+        const callback = (): void => { calls.push(store.getData().n); };
+        store.subscribe(() => {
+            store.subscribe(callback, transferReads(readPath(store, 'n'), 'target'));
+        }, {id: 'trigger', reads: readPath(store, 'n')});
+        store.subscribe(callback, {id: 'target', reads: readPath(store, 'n')});
+
+        store.setData({n: 1, other: 0});
+        expect(calls).toEqual([]);
+        store.unsubscribe('trigger');
+        store.setData({n: 2, other: 0});
+        expect(calls).toEqual([2]);
+        store.unsubscribe('target');
+    });
+
+    test('same-callback branded replacement without retain cancels pending throttled delivery', () => {
+        const scheduler = new ManualThrottle();
+        const store = new Carburetor({n: 0, other: 0}, scheduler);
+        const calls: number[] = [];
+        const callback = (): void => { calls.push(store.getData().n); };
+        store.subscribe(callback, transferReads(readPath(store, 'n'), 'target'));
+        store.setData({n: 1, other: 0});
+        store.subscribe(callback, transferReads(readPath(store, 'n'), 'target'));
+        scheduler.flush();
+        expect(calls).toEqual([]);
+        store.setData({n: 2, other: 0});
+        scheduler.flush();
+        expect(calls).toEqual([2]);
+        store.unsubscribe('target');
+    });
+
+    test('public same-callback replacement during notification skips the matched event', () => {
+        const store = new Carburetor({n: 0, other: 0});
+        const calls: number[] = [];
+        const callback = (): void => { calls.push(store.getData().n); };
+        store.subscribe(() => {
+            store.subscribe(callback, {id: 'target', reads: readPath(store, 'n')});
+        }, {id: 'trigger', reads: readPath(store, 'n')});
+        store.subscribe(callback, {id: 'target', reads: readPath(store, 'n')});
+
+        store.setData({n: 1, other: 0});
+        expect(calls).toEqual([]);
+        store.unsubscribe('trigger');
+        store.setData({n: 2, other: 0});
+        expect(calls).toEqual([2]);
+        store.unsubscribe('target');
+    });
+
+    test('public same-callback replacement during a wave preserves current delivery only once', () => {
+        const store = new Carburetor({n: 0, other: 0});
+        const calls: number[] = [];
+        const callback = (): void => { calls.push(store.getData().n); };
+        store.subscribe(callback, {id: 'retained', reads: readPath(store, 'n')});
+        store.subscribe(() => {
+            store.subscribe(callback, {id: 'retained', reads: readPath(store, 'other')});
+        }, {id: 'refresh', reads: readPath(store, 'n')});
+
+        store.setData({n: 1, other: 0});
+        expect(calls).toEqual([1]);
+        store.unsubscribe('refresh');
+        store.setData({n: 2, other: 0});
+        expect(calls).toEqual([1]);
+        store.setData({n: 2, other: 1});
+        expect(calls).toEqual([1, 2]);
+        store.unsubscribe('retained');
+    });
+
+    test('same-callback transfer during a wave preserves current delivery only once', () => {
+        const store = new Carburetor({n: 0, other: 0});
+        const calls: number[] = [];
+        const callback = (): void => { calls.push(store.getData().n); };
+        store.subscribe(callback, transferReads(readPath(store, 'n'), 'retained', true));
+        store.subscribe(() => {
+            store.subscribe(callback, transferReads(readPath(store, 'n'), 'retained', true));
+        }, {id: 'refresh', reads: readPath(store, 'n')});
+
+        store.setData({n: 1, other: 0});
+        expect(calls).toEqual([1]);
+        store.unsubscribe('refresh');
+        store.setData({n: 2, other: 0});
+        expect(calls).toEqual([1, 2]);
+        store.unsubscribe('retained');
+    });
+
+    test('same-callback transferred refresh does not redeliver an already delivered event', () => {
+        const store = new Carburetor({n: 0, other: 0});
+        const calls: number[] = [];
+        const callback = (): void => { calls.push(store.getData().n); };
+        const reads = readPath(store, 'n');
+        store.subscribe(callback, transferReads(reads, 'retained', true));
+        store.setData({n: 1, other: 0});
+        expect(calls).toEqual([1]);
+        store.subscribe(callback, transferReads(readPath(store, 'n'), 'retained', true));
+        expect(calls).toEqual([1]);
+        store.unsubscribe('retained');
     });
 
     test('a replacement during a shared flush cancels only the old registration', () => {

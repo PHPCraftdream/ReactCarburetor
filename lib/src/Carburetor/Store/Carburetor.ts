@@ -38,6 +38,7 @@ import {
 } from "./Utils/Models";
 import {S} from "./Diagnostics/Internal/StoreIdentity";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
+import {READS_RETAIN} from "@/Carburetor/Store/Paths/Markers/RetainDeliveryBrand";
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
 export class Carburetor<T extends object> implements
@@ -132,10 +133,8 @@ export class Carburetor<T extends object> implements
     }
 
     /**
-     * The write counter, bumped on every emit.
-     *
-     * A component compares it between render and commit to notice a write that landed in
-     * between, which would otherwise leave it subscribed to stale paths.
+     * The write counter, bumped on every emit. A component compares it between render and commit
+     * to notice a write that landed in between, which would otherwise leave it subscribed to stale paths.
      */
     public getVersion(): number {
         return this[S.version];
@@ -324,9 +323,8 @@ export class Carburetor<T extends object> implements
     }
 
     /**
-     * Registers a subscriber, returning its public, store-local id.
-     * Public read sets are copied; fresh sets branded by `transferReads()` are adopted
-     * so `extend()` can grow them in place.
+     * Registers a subscriber, returning its public, store-local id. Public read sets are copied;
+     * fresh sets branded by `transferReads()` are adopted so `extend()` can grow them in place.
      *
      * @param callback - called on matching writes; failures do not stop other subscribers
      * @param options - optional local id and paths to watch (omitted reads match every write)
@@ -336,26 +334,34 @@ export class Carburetor<T extends object> implements
         const given = options.reads;
         let reads: TPathSet;
 
+        const transferred = given !== undefined
+            && (options as {[READS_TRANSFER]?: unknown})[READS_TRANSFER] === given;
         if (given === undefined) {
             reads = new Set<TPath>([WILDCARD_PATH]);
-        } else if ((options as {[READS_TRANSFER]?: unknown})[READS_TRANSFER] === given) {
+        } else if (transferred) {
             reads = given as TPathSet;
         } else {
             reads = new Set<TPath>(given);
         }
 
-        // Keep the same private queue slot when replacing this store's local id.
         const previous = this[S.subscribers][id];
-        if (previous) {
-            this[S.retract](previous);
-        }
-
-        this[S.subscribers][id] = {
+        const retained = previous && transferred
+            && (options as {[READS_RETAIN]?: unknown})[READS_RETAIN] === true && previous.callback === callback;
+        if (!retained && previous) this[S.retract](previous);
+        const record = retained ? previous : {
             callback, schedulerKey: previous?.schedulerKey ?? getUid(),
             generation: ++this[S.subscriptionGeneration], matchedVersion: 0,
             growthVersion: this[S.version], reads,
         };
-        this[S.subscriptionByReads].set(reads, this[S.subscribers][id]);
+        if (retained) {
+            record.growthVersion = this[S.version];
+            if (record.reads !== reads && this[S.subscriptionByReads].get(record.reads) === record) {
+                this[S.subscriptionByReads].delete(record.reads);
+            }
+            record.reads = reads;
+        }
+        this[S.subscribers][id] = record;
+        this[S.subscriptionByReads].set(reads, record);
         this[S.subscriberIndex].add(id, reads);
 
         return id;
@@ -450,15 +456,9 @@ export class Carburetor<T extends object> implements
     }
 
     /**
-     * Writes go through draft: changed paths are remembered, and only the subscribers
-     * that read those paths get woken up.
-     *
-     * Mutating this[S.data] directly also changes the state, but nothing records it —
-     * getData() hands out the raw object, and a raw object cannot be observed after the
-     * fact. On its own, such a write still wakes everyone: an emit with no recorded path
-     * falls back to the whole store. Mixed with draft writes in the same emit, only the
-     * recorded paths go out and the direct write wakes nobody — call markAllChanged()
-     * to publish such a write deliberately.
+     * Writes through draft record changed paths; matching subscribers are woken.
+     * Raw-state writes are unobserved. Alone, an emit without recorded paths wakes all;
+     * mixed with draft writes, only recorded paths wake. Use markAllChanged() to publish raw writes.
      */
     protected get draft(): T {
         const data: unknown = this[S.data];

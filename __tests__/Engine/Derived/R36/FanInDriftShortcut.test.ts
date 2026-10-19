@@ -128,7 +128,109 @@ describe('watermark correctness guards', () => {
         outer.unsubscribe(id);
     });
 
-    test.todo('early source pull can suppress dynamic downstream delivery');
+    test('early source pull can suppress dynamic downstream delivery', () => {
+        const store = new CountingStore({items: [0], noise: 0, flag: false, a: 1, b: 2});
+        const inner = computed(read => read(store).flag ? read(store).a : read(store).b);
+        const outer = computed(read => read(inner) * 10);
+        let deliveries = 0;
+        store.subscribe(() => { inner.get(); });
+        const id = outer.subscribe(() => { deliveries++; });
+        expect(outer.get()).toBe(20);
+        store.mutate(draft => { draft.flag = true; });
+        expect(outer.get()).toBe(10);
+        expect(deliveries).toBe(1);
+        outer.unsubscribe(id);
+    });
+
+    test('independent observers each receive one early-pull scenario delivery', () => {
+        const store = new CountingStore({items: [0], noise: 0, flag: false, a: 1, b: 2});
+        const inner = computed(read => read(store).flag ? read(store).a : read(store).b);
+        const outer = computed(read => read(inner) * 10);
+        let first = 0;
+        let second = 0;
+        store.subscribe(() => { inner.get(); });
+        const firstId = outer.subscribe(() => { first++; });
+        const secondId = outer.subscribe(() => { second++; });
+        expect(outer.get()).toBe(20);
+        store.mutate(draft => { draft.flag = true; });
+        expect(first).toBe(1);
+        expect(second).toBe(1);
+        outer.unsubscribe(firstId);
+        outer.unsubscribe(secondId);
+    });
+
+    test('three computed levels exercise an early dynamic source pull', () => {
+        const store = new CountingStore({items: [0], noise: 0, flag: false, a: 1, b: 2});
+        const inner = computed(read => read(store).flag ? read(store).a : read(store).b);
+        const middle = computed(read => read(inner) + 1);
+        const outer = computed(read => read(middle) * 10);
+        let deliveries = 0;
+        store.subscribe(() => { inner.get(); });
+        const id = outer.subscribe(() => { deliveries++; });
+        expect(outer.get()).toBe(30);
+        store.mutate(draft => { draft.flag = true; });
+        expect(outer.get()).toBe(20);
+        expect(deliveries).toBe(1);
+        outer.unsubscribe(id);
+    });
+
+    test('source pull reads the computed dependency twice in one callback', () => {
+        const store = new CountingStore({items: [0], noise: 0, flag: false, a: 1, b: 2});
+        const inner = computed(read => read(store).flag ? read(store).a : read(store).b);
+        const outer = computed(read => read(inner) * 10);
+        let deliveries = 0;
+        store.subscribe(() => { inner.get(); inner.get(); });
+        const id = outer.subscribe(() => { deliveries++; });
+        expect(outer.get()).toBe(20);
+        store.mutate(draft => { draft.flag = true; });
+        expect(outer.get()).toBe(10);
+        expect(deliveries).toBe(1);
+        outer.unsubscribe(id);
+    });
+
+    test('subscribed source observer without a get preserves dynamic delivery', () => {
+        const store = new CountingStore({items: [0], noise: 0, flag: false, a: 1, b: 2});
+        const inner = computed(read => read(store).flag ? read(store).a : read(store).b);
+        const outer = computed(read => read(inner) * 10);
+        let deliveries = 0;
+        store.subscribe(() => undefined);
+        const id = outer.subscribe(() => { deliveries++; });
+        expect(outer.get()).toBe(20);
+        store.mutate(draft => { draft.flag = true; });
+        expect(outer.get()).toBe(10);
+        expect(deliveries).toBe(1);
+        outer.unsubscribe(id);
+    });
+
+    test('ordinary dynamic update delivers without an early source pull', () => {
+        const store = new CountingStore({items: [0], noise: 0, flag: false, a: 1, b: 2});
+        const inner = computed(read => read(store).flag ? read(store).a : read(store).b);
+        const outer = computed(read => read(inner) * 10);
+        let deliveries = 0;
+        const id = outer.subscribe(() => { deliveries++; });
+        expect(outer.get()).toBe(20);
+        store.mutate(draft => { draft.flag = true; });
+        expect(outer.get()).toBe(10);
+        expect(deliveries).toBe(1);
+        outer.unsubscribe(id);
+    });
+
+    test('early pull replaces a throttled dynamic list callback before flush', () => {
+        const throttle = new ControlledThrottle(10000);
+        const store = new CountingStore({items: [0], noise: 0, flag: false, a: 1, b: 2}, throttle);
+        const inner = computed(read => read(store).flag ? read(store).a : read(store).b);
+        const outer = computed(read => [read(inner), read(inner) * 10]);
+        let deliveries = 0;
+        store.subscribe(() => { inner.get(); });
+        const id = outer.subscribe(() => { deliveries++; });
+        expect(outer.get()).toEqual([2, 20]);
+        store.mutate(draft => { draft.flag = true; });
+        expect(outer.get()).toEqual([1, 10]);
+        expect(deliveries).toBe(0);
+        throttle.flush();
+        expect(deliveries).toBe(1);
+        outer.unsubscribe(id);
+    });
 
     test('early store subscriber pull keeps dynamic outer fresh', () => {
         const store = new CountingStore({items: [0], noise: 0, flag: false, a: 1, b: 2});

@@ -366,7 +366,7 @@ export class Computed<R> implements IComputed<R> {
                     const dependency = collected[cuid];
                     attempted.push(cuid);
                     computedDependencies.subscribe(dependency.source, this[C.onDependencyChanged],
-                        transferReads(dependency.reads, this[C.uid]));
+                        transferReads(dependency.reads, this[C.uid], true));
                 }
             }
         } catch (error: unknown) {
@@ -376,7 +376,7 @@ export class Computed<R> implements IComputed<R> {
                 try {
                     if (previous?.observed && previous.source === collected[cuid].source) {
                         computedDependencies.subscribe(previous.source, this[C.onDependencyChanged],
-                            transferReads(previous.reads, this[C.uid]));
+                            transferReads(previous.reads, this[C.uid], true));
                     } else {
                         computedDependencies.unsubscribe(collected[cuid].source, this[C.uid]);
                     }

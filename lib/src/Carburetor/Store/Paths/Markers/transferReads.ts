@@ -1,5 +1,6 @@
 import {TPathSet} from "@/Carburetor/Models/Paths";
 import {ISubscribeOptions} from "@/Carburetor/Models/Store";
+import {READS_RETAIN} from "@/Carburetor/Store/Paths/Markers/RetainDeliveryBrand";
 import {READS_TRANSFER} from "./ReadsTransferBrand";
 
 /**
@@ -12,7 +13,12 @@ import {READS_TRANSFER} from "./ReadsTransferBrand";
  *
  * @param reads - the internal Set that may continue to grow through `extend()`
  * @param id - the subscription id to reuse, as in `ISubscribeOptions`
+ * @param retain - whether a same-callback replacement may retain its delivery registration
  */
-export const transferReads = (reads: TPathSet, id?: string): ISubscribeOptions & {[READS_TRANSFER]?: TPathSet} => ({
-    id, reads, [READS_TRANSFER]: reads,
+export const transferReads = (
+    reads: TPathSet,
+    id?: string,
+    retain = false,
+): ISubscribeOptions & {[READS_TRANSFER]?: TPathSet; [READS_RETAIN]?: true} => ({
+    id, reads, [READS_TRANSFER]: reads, ...(retain ? {[READS_RETAIN]: true as const} : {}),
 });
