@@ -67,16 +67,16 @@ export class UpdateWave {
             let failures: unknown[] | undefined;
 
             while (this.pending.size > 0) {
-                const batch = Array.from(this.pending.entries());
-                this.pending.clear();
+                const batch = this.pending;
+                this.pending = new Map<string, () => void>();
 
-                batch.forEach(([, settle]: [string, () => void]) => {
+                for (const settle of batch.values()) {
                     try {
                         settle();
                     } catch (error: unknown) {
                         (failures ??= []).push(error);
                     }
-                });
+                }
             }
 
             failures?.forEach(reportSettlementFailure);

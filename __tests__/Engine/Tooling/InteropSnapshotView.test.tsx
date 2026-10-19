@@ -5,6 +5,7 @@ import {rstest} from '@rstest/core';
 import {Carburetor} from "@/Carburetor";
 import {useCarburetorValue} from "@/Interop";
 import {READS_TRANSFER} from "@/Carburetor/Store/Paths/Markers/ReadsTransferBrand";
+import {readCoverage} from "@/Carburetor/Store/Paths/Markers/readCoverage";
 
 interface ICounterData {
     count: number;
@@ -60,6 +61,39 @@ class MapRootCarburetor extends Carburetor<Map<string, number>> {
 }
 
 describe('useCarburetorValue persistent root view', () => {
+    test('coverage checks are skipped when a stable-version selector returns a new object', () => {
+        const carburetor = new BoxCarburetor({box: {count: 1}});
+        let selectorCalls = 0;
+        const originalCovers = readCoverage.covers;
+        const covers = rstest.spyOn(readCoverage, 'covers').mockImplementation((reads, path) =>
+            originalCovers(reads, path)
+        );
+        const View = ({offset}: {offset: number}) => (
+            <span>{JSON.stringify(useCarburetorValue(carburetor, data => {
+                selectorCalls++;
+                return {count: data.box.count, offset};
+            }))}</span>
+        );
+
+        try {
+            const view = render(<View offset={0}/>);
+            expect(view.container.textContent).toBe('{"count":1,"offset":0}');
+            covers.mockClear();
+            const callsBeforeRerender = selectorCalls;
+
+            view.rerender(<View offset={1}/>);
+            expect(selectorCalls).toBeGreaterThan(callsBeforeRerender);
+            expect(view.container.textContent).toBe('{"count":1,"offset":1}');
+            expect(covers).not.toHaveBeenCalled();
+            covers.mockClear();
+            covers(new Set(['box.count']), 'box.count');
+            expect(covers).toHaveBeenCalledTimes(1);
+            view.unmount();
+        } finally {
+            covers.mockRestore();
+        }
+    });
+
     test('a root descriptor-only selector does not follow primitive changes (R8-02)', () => {
         const carburetor = new CounterCarburetor({count: 0});
         let descriptorRenders = 0;

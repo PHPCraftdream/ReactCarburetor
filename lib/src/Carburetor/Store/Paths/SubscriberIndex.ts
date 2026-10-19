@@ -473,7 +473,7 @@ export class SubscriberIndex {
         }
 
         if (source instanceof Set) {
-            source.forEach((id: string) => target.add(id));
+            for (const id of source) target.add(id);
         } else if (source instanceof Map) {
             source.forEach((_count: number, id: string) => target.add(id));
         } else {

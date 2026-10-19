@@ -54,6 +54,34 @@ const flush = async (): Promise<void> => {
 const readsOf = (...paths: TPath[]): TPathSet => new Set<TPath>(paths);
 
 describe('ResourceCache', () => {
+    test('unescaped subscription keys skip key decoding replacements', () => {
+        const originalReplace = String.prototype.replace;
+        let replacements = 0;
+        const replace = rstest.spyOn(String.prototype, 'replace').mockImplementation(function(
+            this: string, search: string | RegExp, replacement: string
+        ): string {
+            if (this.includes('perf-counter')) replacements++;
+            return Reflect.apply(originalReplace, this, [search, replacement]);
+        });
+        try {
+            const cache = new TestCache<IUser, string>(() => Promise.resolve({id: 'a', name: 'Ann'}));
+            const plainId = cache.subscribe(() => undefined, {
+                reads: readsOf('entries.perf-counter.data'),
+            });
+            cache.unsubscribe(plainId);
+            expect(replacements).toBe(0);
+            let escapedNotified = false;
+            const escapedId = cache.subscribe(() => { escapedNotified = true; }, {
+                reads: readsOf('entries.perf-counter~1dot~0tilde.data'),
+            });
+            cache.unsubscribe(escapedId);
+            expect(replacements).toBe(2);
+            expect(escapedNotified).toBe(false);
+        } finally {
+            replace.mockRestore();
+        }
+    });
+
     test('concurrent loads with the same arguments share one request', async () => {
         const loader = makeLoader();
         const cache = new TestCache<IUser, string>(loader.load);

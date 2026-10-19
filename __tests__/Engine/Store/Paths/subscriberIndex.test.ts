@@ -63,6 +63,27 @@ class InspectableIndex extends SubscriberIndex {
 }
 
 describe('SubscriberIndex', () => {
+    test('collect iterates multi-id buckets without Set.forEach callbacks', () => {
+        const index = new SubscriberIndex();
+        index.add('one', setOf('x'));
+        index.add('two', setOf('x'));
+        const bucket = (index as unknown as {exact: Map<TPath, string | Set<string>>}).exact.get('x');
+        expect(bucket).toBeInstanceOf(Set);
+        const ids = bucket as Set<string>;
+        const original = ids.forEach;
+        let calls = 0;
+        ids.forEach = function(...args: Parameters<Set<string>['forEach']>) {
+            calls++;
+            return original.apply(this, args);
+        };
+        ids.forEach(() => {});
+        const controlCalls = calls;
+        calls = 0;
+        expect([...index.match(setOf('x'))]).toEqual(['one', 'two']);
+        expect(controlCalls).toEqual(1);
+        expect(calls).toEqual(0);
+    });
+
     test('R42 overlapping ancestor buckets preserve first-add order across match-local transitions', () => {
         const index = new SubscriberIndex();
         index.add('all', setOf(WILDCARD_PATH));

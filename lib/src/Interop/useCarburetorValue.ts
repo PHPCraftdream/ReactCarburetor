@@ -18,6 +18,13 @@ import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {TSelector, TValueComparator} from "./Models";
 
+const coversReads = (reads: ReadonlySet<TPath>, filed: TCompletedReads): boolean => {
+    for (const path of reads) {
+        if (!readCoverage.covers(filed, path)) return false;
+    }
+    return true;
+};
+
 const useCommitEffect = typeof window === 'undefined' ? useEffect : useLayoutEffect;
 
 interface ICacheEntry<T extends object, R> {
@@ -269,12 +276,10 @@ export const useCarburetorValue = <T extends object, R>(
             const fresh: R = select(view.current.view);
             liveSelection = fresh;
 
-            const readsCoverSelection = noReadDrift && entry !== null && Array.from(reads).every(
-                path => readCoverage.covers(entry.reads!, path)
-            );
-            const canReuseInlineSelection = noReadDrift && sameCarburetor && entry !== null &&
+            const readsCoverSelection = noReadDrift && sameCarburetor && entry !== null &&
                 entry.isEqual === isEqual && isEqual === sameSelection &&
-                fresh === entry.liveSelection && readsCoverSelection;
+                fresh === entry.liveSelection && coversReads(reads, entry.reads!);
+            const canReuseInlineSelection = readsCoverSelection;
 
             if (canReuseInlineSelection) {
                 pendingReads.current = entry.reads!;

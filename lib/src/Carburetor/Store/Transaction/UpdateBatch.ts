@@ -92,16 +92,16 @@ export class UpdateBatch {
 
             // A notification may open a new transaction, so drain until nothing is left.
             while (this.pending.size > 0) {
-                const batch = Array.from(this.pending.entries());
-                this.pending.clear();
+                const batch = this.pending;
+                this.pending = new Map<IInternalSubscriptionProtocol, TPathSet>();
 
-                batch.forEach(([target, writes]: [IInternalSubscriptionProtocol, TPathSet]) => {
+                for (const [target, writes] of batch) {
                     try {
                         target[CARBURETOR_NOTIFY_WRITES]!(writes);
                     } catch (error: unknown) {
                         failures.push(error);
                     }
-                });
+                }
             }
 
             failures.forEach(reportBatchFailure);

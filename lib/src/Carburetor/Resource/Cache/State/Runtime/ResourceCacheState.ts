@@ -201,7 +201,8 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
                     break;
                 }
                 const escaped = parent.slice('entries'.length + PATH_SEPARATOR.length);
-                const key = escaped.replace(/~1/g, PATH_SEPARATOR).replace(/~0/g, '~');
+                const key = escaped.includes('~') ?
+                    escaped.replace(/~1/g, PATH_SEPARATOR).replace(/~0/g, '~') : escaped;
                 if (this.data.entries[key]) {
                     absent.clear();
                     break;
