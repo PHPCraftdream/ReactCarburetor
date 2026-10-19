@@ -353,6 +353,15 @@ describe('lint plugin in the oxlint host', () => {
         });
     });
 
+    test('the one-export rule fires on the second runtime export', () => {
+        const output = runOxlint([
+            '-c', 'plugin/__fixtures__/oxlintrc.json',
+            'plugin/__fixtures__/operations/oneExport.ts',
+        ]);
+
+        expect(countOccurrences(output, 'carburetor(one-export-per-file)')).toEqual(1);
+    });
+
     test('H29 fires on both allocation closures while H31 covers only the distinct spot', () => {
         const output = runOxlint([
             '-c', 'plugin/__fixtures__/oxlintrc.json',

@@ -26,6 +26,7 @@
     "carburetor/no-untrackable-draft-mutation": "error",
     "carburetor/no-untrackable-store-data": "error",
     "carburetor/no-use-carburetor-outside-render": "error",
+    "carburetor/one-export-per-file": "error",
     "carburetor/require-bind-for-passed-method": "error",
     "carburetor/require-effect-deps": "error",
     "carburetor/require-emit-after-draft-write": "error",

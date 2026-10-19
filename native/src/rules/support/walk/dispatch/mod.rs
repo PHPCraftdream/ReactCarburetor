@@ -32,6 +32,7 @@ pub(super) fn run(
         allocations::no_react_hooks_in_components::RULE,
         data::writes::no_store_write_in_render::RULE,
         boundaries::require_subscription_disposal::RULE,
+        boundaries::one_export_per_file::RULE,
     ];
     let semantic = semantic_rules
         .iter()

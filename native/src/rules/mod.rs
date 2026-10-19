@@ -169,6 +169,11 @@ const REGISTRY: [(&str, Check, bool); 30] = [
         false,
     ),
     (
+        boundaries::one_export_per_file::RULE,
+        boundaries::one_export_per_file::check,
+        false,
+    ),
+    (
         data::interop::no_memo_over_store_read::RULE,
         data::interop::no_memo_over_store_read::check,
         true,
@@ -310,6 +315,7 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
         effects::no_async_effect::RULE
         | effects::no_duplicate_effect_name::RULE
         | effects::require_effect_deps::RULE => text.contains("useEffect"),
+        boundaries::one_export_per_file::RULE => text.contains("export"),
         boundaries::no_async_transaction::RULE => {
             text.contains("transaction") || text.contains("update")
         }
@@ -386,6 +392,7 @@ pub(super) fn run_sequential(
     let hooks_severity = config.severity(allocations::no_react_hooks_in_components::RULE);
     let store_write_severity = config.severity(data::writes::no_store_write_in_render::RULE);
     let disposal_severity = config.severity(boundaries::require_subscription_disposal::RULE);
+    let export_severity = config.severity(boundaries::one_export_per_file::RULE);
     // One semantic pass for every rule that reads scopes or symbols; stores and ordinary
     // classes are in its scope too, so no component-marker dependency applies.
     let shared_semantic = if [
@@ -401,6 +408,7 @@ pub(super) fn run_sequential(
         hooks_severity,
         store_write_severity,
         disposal_severity,
+        export_severity,
     ]
     .iter()
     .any(|severity| *severity != Severity::Off)
@@ -429,7 +437,8 @@ pub(super) fn run_sequential(
             | effects::no_async_effect::RULE
             | allocations::no_react_hooks_in_components::RULE
             | data::writes::no_store_write_in_render::RULE
-            | boundaries::require_subscription_disposal::RULE => check_with_shared(
+            | boundaries::require_subscription_disposal::RULE
+            | boundaries::one_export_per_file::RULE => check_with_shared(
                 rule,
                 program,
                 source,
@@ -542,6 +551,9 @@ fn check_with_shared<'a>(
             data::writes::no_store_write_in_render::check_with_semantic(
                 program, source, semantic, bases,
             )
+        }
+        boundaries::one_export_per_file::RULE => {
+            boundaries::one_export_per_file::check_with_semantic(program, source, semantic)
         }
         boundaries::require_subscription_disposal::RULE => {
             boundaries::require_subscription_disposal::check_with_semantic(

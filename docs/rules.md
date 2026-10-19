@@ -5,8 +5,8 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
-`no-hooks` preset adds a component-architecture policy. The registry contains **29 rules**:
-28 catalogue rules plus the optional `no-react-hooks-in-components` rule. `no-module-level-store`
+`no-hooks` preset adds a component-architecture policy. The registry contains **31 rules**:
+30 catalogue rules plus the optional `no-react-hooks-in-components` rule. `no-module-level-store`
 is off in recommended configuration, so do not equate registry count with enabled rule count.
 
 ## Functional component reads
@@ -184,6 +184,7 @@ until your project changes shape.
 | `no-module-level-store` | off | A store created once per module, which a server shares across requests | [H18](hazards.md) |
 | `no-memo-over-store-read` | warn | `useMemo`/`useCallback` over hook-read values; derive in the selector or a `Computed` | [H33](hazards.md) |
 | `no-capturing-hook-selector` | warn | Inline hook selector captures render state; select whole record then pick, or use `AntiHookComponent#useCarburetor` without a selector | [H34](hazards.md) |
+| `one-export-per-file` | warn | A second runtime-value export in one file; every file ships at most one value, type exports are unlimited | [H36](hazards.md) |
 | `no-react-hooks-in-components` | off | React `use`/`useX` calls in components when the optional hook-free policy is enabled | [Optional policy](#hook-free-components-optional) |
 | `no-store-write-in-render` | error | A write to a store while rendering, which notifies subscribers mid-render | [H11](hazards.md) |
 | `no-tracked-data-mutation` | error | A write to data from `useCarburetor`, which throws | [H9](hazards.md) |
@@ -294,6 +295,15 @@ opposite mistake — a method passed as a value *without* it. The oxlint preset 
 ### Function-component render allocations
 
 H21 and H31 also recognize function-component render scope syntactically: the function’s own return must contain JSX, or it must be a JSX-returning callback passed to `memo`/`forwardRef` (including React-qualified forms); nested functions end that scope. H21 reports inline functions and `.bind(...)` calls passed to child-component props; H31 reports render-created functions at its documented allocation sites. A locally declared handler passed as `useCallback(handler)` or `useMemo(() => handler)` is not an H21 finding at the prop: its declaration is H31 if it captures a non-module outer binding, or H30 if capture-free. An inline function inside a hook call used as the prop remains H21. Module-level advice for H21/H31 applies only when the function does not reference any non-module outer binding, lexical `this`, or `arguments`; factories and HOCs that capture render state should use a hook-free child component instead.
+
+## one-export-per-file (H36)
+
+This rule warns when a file declares a second runtime-value export; every file ships at most one
+value, and type exports are unlimited. Counted forms: each variable binding including every
+destructured name, function declarations (an overload set counts once per name), classes, enums,
+namespaces with runtime content, default exports, `export =`, and each specifier of a local
+`export {x}`. Not counted: type and interface exports, type-only export lists, `declare` ambience,
+`.d.ts` files and re-export barrels. The default severity is `warn`.
 
 ## no-memo-over-store-read (H33)
 

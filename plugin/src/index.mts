@@ -8,6 +8,7 @@ import {requireModuleFunction} from "./Rules/Allocations/requireModuleFunction.m
 import {noAsyncTransaction} from "./Rules/Boundaries/noAsyncTransaction.mts";
 import {noModuleLevelStore} from "./Rules/Boundaries/noModuleLevelStore.mts";
 import {noUntrackableStoreData} from "./Rules/Boundaries/noUntrackableStoreData.mts";
+import {oneExportPerFile} from "./Rules/Boundaries/oneExportPerFile.mts";
 import {requireSubscriptionDisposal} from "./Rules/Boundaries/requireSubscriptionDisposal.mts";
 import {noAsyncEffect} from "./Rules/Effects/noAsyncEffect.mts";
 import {noClosureInUpdate} from "./Rules/Allocations/noClosureInUpdate.mts";
@@ -67,6 +68,7 @@ const plugin: IPlugin = {
         'no-tracked-data-mutation': noTrackedDataMutation,
         'no-untrackable-draft-mutation': noUntrackableDraftMutation,
         'no-untrackable-store-data': noUntrackableStoreData,
+        'one-export-per-file': oneExportPerFile,
         'no-use-carburetor-outside-render': noUseCarburetorOutsideRender,
         'require-bind-for-passed-method': requireBindForPassedMethod,
         'require-effect-deps': requireEffectDeps,

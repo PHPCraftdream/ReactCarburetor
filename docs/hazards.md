@@ -93,6 +93,7 @@ arbitrary inheritance chains. Custom component classes should directly inherit
 | H33 | `no-memo-over-store-read` | allocations | warn | no |
 | H34 | `no-capturing-hook-selector` | allocations | warn | no |
 | H35 | `max-render-depth` | lifecycle | warn | no |
+| H36 | `one-export-per-file` | boundaries | warn | no |
 
 Three of these overlap with a runtime diagnostic the engine already reports in development
 (H6, H14, H17). The rule is still worth having: it fires on code paths that were never
@@ -102,10 +103,10 @@ All four syntactic forms of a change count wherever a rule looks for one: `x.y =
 `delete x.y`, and an in-place array method (`push`, `splice`, `sort`, …). A rule that handled only
 assignment would miss three quarters of the hazard.
 
-**28 catalogue rules are implemented**, covering H1–H23, H26 and H29–H34: reads (H1–H5), writes (H6–H11),
-lifecycle (H12, H13, H21, H22), effects (H14–H16), boundaries (H17–H20) and allocations (H29–H34),
+**30 catalogue rules are implemented**, covering H1–H23, H26 and H29–H36: reads (H1–H5), writes (H6–H11),
+lifecycle (H12, H13, H21, H22, H35), effects (H14–H16), boundaries (H17–H20, H36) and allocations (H29–H34),
 with H23 and H26 folded into shared rules. H24 and H25 are not implemented; H27 is not a rule.
-The optional `no-react-hooks-in-components` policy brings the registry total to 29; `no-module-level-store`
+The optional `no-react-hooks-in-components` policy brings the registry total to 31; `no-module-level-store`
 remains off in recommended. Detection lives in `native/src/rules/`, tested there with oxc's parser.
 The thin host bridge reports native diagnostics. Real fixture and host coverage live in
 `__tests__/Native/conformance.test.ts` and `__tests__/Plugin/host.test.ts`.
@@ -1362,3 +1363,17 @@ Only components count as a level: a PascalCase or member name (`<Child>`, `<UI.C
 
 **False positives.** The rule is a warning about render shape, not a correctness error: a genuinely static deep tree can be fine. Suppress locally or raise `max` if the structure earns its depth.
 
+### H36 — a second runtime-value export in one file
+
+**Wrong**
+
+```
+export const load = () => 1;
+export const save = () => 2;
+```
+
+**Rule** `one-export-per-file` — **warn**.
+
+**Detection.** Every kind of value export counts: each variable binding including every destructured name, function declarations with an overload set counted once per name, classes, enums, namespaces with runtime content, default exports, `export =`, and each specifier of a local `export {x}` statement. Type and interface exports, type-only export lists, `declare` ambience, `.d.ts` files and re-export barrels are not counted and stay unlimited.
+
+**Why.** One module equals one exported value keeps dependency graphs and import sites readable and makes dead-value elimination trivial. Barrels stay legal.

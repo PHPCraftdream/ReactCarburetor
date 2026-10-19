@@ -36,6 +36,7 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/no-untrackable-draft-mutation': 'warn',
     'carburetor/no-untrackable-store-data': 'warn',
     'carburetor/no-use-carburetor-outside-render': 'error',
+    'carburetor/one-export-per-file': 'warn',
     'carburetor/require-bind-for-passed-method': 'error',
     'carburetor/require-effect-deps': 'warn',
     'carburetor/require-emit-after-draft-write': 'error',
