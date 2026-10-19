@@ -448,6 +448,8 @@ describe('lint plugin in the oxlint host', () => {
             'no-function-in-render,11,19',
             'no-function-in-render,12,36',
             'no-handler-created-in-render,14,19',
+            // The fixture exports two components; the second is a one-export-per-file finding.
+            'one-export-per-file,21,17',
             'require-module-function,22,45',
         ].sort();
 
