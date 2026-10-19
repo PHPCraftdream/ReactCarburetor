@@ -77,7 +77,9 @@ export const walkIdentityArray = (
     };
     const limit = Math.max(previous.length, next.length);
     if (limit > 4096 && (probesSparse(previous) || probesSparse(next))) {
-        const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+        const oldKeys = Object.keys(previous);
+        const keys = new Set(oldKeys);
+        for (const key of Object.keys(next)) keys.add(key);
         for (const key of keys) visit(key);
     } else {
         for (let index = 0; index < limit; index++) visit(index);

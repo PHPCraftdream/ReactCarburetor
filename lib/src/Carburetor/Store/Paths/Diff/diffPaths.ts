@@ -11,6 +11,7 @@ import {keyOrderRequiresReplay} from "./Order/keyOrderRequiresReplay";
 import {sameKind} from "./Kinds/sameKind";
 import {walkIdentityArray} from "./Kinds/walkIdentityArray";
 import {countDiffLeaves} from "./Threshold/countDiffLeaves";
+import {measureDiff} from "./Threshold/measureDiff";
 
 /** Preallocated overflow sentinel: walk control flow without an Error stack capture. */
 const DIFF_OVERFLOW: {readonly overflow: true} = Object.freeze({overflow: true});
@@ -294,14 +295,18 @@ export const diffPaths = (
 
         changed.clear();
         // The aborted walk left part of `newValue` unvisited: exchange its remaining views too,
-        // which also makes the counting walks below safe to run over it.
+        // which also makes the counting pass below safe to run over it.
         liveViews.normalizeAssigned(newValue, oldValue);
+
+        const rootKeys = basePath === '' && isTrackable(oldValue) && isTrackable(newValue)
+            && sameKind(oldValue, newValue);
+        // One counting pass answers both totals and, for an object root, its differing top-level keys.
+        const wake = rootKeys && !Array.isArray(oldValue) ? [] as string[] : undefined;
+        const measured = measureDiff(oldValue, newValue, wake);
 
         // R36-05: past the floor the answer is relative. A partial change of a large branch stays
         // precise (nothing is delivered yet that the re-walk would repeat); a near-total one collapses.
-        if (!shouldCollapseDiff(
-            countDiffLeaves.changed(oldValue, newValue), countDiffLeaves.total(oldValue, newValue)
-        )) {
+        if (!shouldCollapseDiff(measured.changed, measured.total)) {
             budget.limit = Infinity;
             budget.spent = 0;
             walk(oldValue, newValue, basePath, baseSegments, changed, deliver, budget);
@@ -310,7 +315,7 @@ export const diffPaths = (
             return changed;
         }
 
-        if (basePath === '' && isTrackable(oldValue) && isTrackable(newValue) && sameKind(oldValue, newValue)) {
+        if (rootKeys) {
             // A same-kind root never collapses to the wildcard: only the differing top-level keys wake.
             const oldRoot = oldValue as Record<string, unknown>;
             const newRoot = newValue as Record<string, unknown>;
@@ -318,10 +323,15 @@ export const diffPaths = (
             const newKeys = Object.keys(newRoot);
             const keysChanged = oldKeys.length !== newKeys.length
                 || oldKeys.some((key, index) => key !== newKeys[index]);
-            const unionKeys = new Set<string>(oldKeys);
-            for (const key of newKeys) unionKeys.add(key);
-            for (const key of unionKeys) {
-                if (countDiffLeaves.changed(oldRoot[key], newRoot[key], true) > 0) changed.add(joinPath('', key));
+            if (wake) {
+                for (const key of wake) changed.add(joinPath('', key));
+            } else {
+                // An array root pairs its own keys by position, outside the measured identity rules.
+                const unionKeys = new Set<string>(oldKeys);
+                for (const key of newKeys) unionKeys.add(key);
+                for (const key of unionKeys) {
+                    if (countDiffLeaves.changed(oldRoot[key], newRoot[key], true) > 0) changed.add(joinPath('', key));
+                }
             }
             if (keysChanged) changed.add(keysPath(''));
             addPatch(deliver, baseSegments, oldValue, newValue);

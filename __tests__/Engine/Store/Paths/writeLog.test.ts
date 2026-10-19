@@ -124,20 +124,94 @@ describe('WriteLog (R16-05)', () => {
         expect(log.matches(0, setOf('items.a.title'))).toBe(true);
     });
 
+    test('keeps eviction precise after refreshing an indexed path', () => {
+        const log = new WriteLog(4);
+        log.record(1, setOf('a.b'));
+        log.record(2, setOf('c.d'));
+        log.record(3, setOf('a.b'));
+        log.record(4, setOf('e.f'));
+
+        expect(log.matches(2, setOf('unrelated'))).toBe(false);
+        expect(log.matches(2, setOf('a.b'))).toBe(true);
+        expect(log.matches(0, setOf('unrelated'))).toBe(true);
+        expect(log.getWatermark()).toBe(2);
+    });
+
+    test('keeps raw and recent tracking bounded and recovers after an eviction reset', () => {
+        const log = new WriteLog(2);
+        const raw = {};
+        log.record(1, setOf('a'), [['a', raw]]);
+        log.record(2, setOf('b'), [['b', raw]]);
+        log.record(3, setOf('c'), [['c', raw]]);
+
+        expect(log.pathsSince(2)).toEqual(['c']);
+        expect(log.pathsSince(1)).toEqual(['b', 'c']);
+        expect(log.targetsSince(2)).toBeUndefined();
+        expect(log.targetsSince(3)).toBeUndefined();
+        log.record(4, setOf('c'), [['c', raw]]);
+        expect(log.targetsSince(3)?.has('c')).toBe(true);
+        expect(log.targetsSince(3)?.has('d')).toBe(false);
+    });
+
+    test('refreshes order, preserves ancestor relationships, and handles same-version ties', () => {
+        const log = new WriteLog(3);
+        log.record(1, setOf('root.a.value'));
+        log.record(2, setOf('other'));
+        log.record(3, setOf('root.a.value'));
+        expect(log.matches(2, setOf('root.a'))).toBe(true);
+        expect(log.matches(2, setOf('unrelated'))).toBe(false);
+        expect(log.getWatermark()).toBe(2);
+    });
+
+    test('bounds recent same-version retention at capacity', () => {
+        const log = new WriteLog(2);
+        for (let index = 0; index < 80; index++) log.record(1, setOf(`p${index}`));
+        const state = log as unknown as {recent: {entries: Map<string, unknown>}};
+        expect(state.recent.entries.size).toBeLessThanOrEqual(2);
+        expect(log.pathsSince(1)).toEqual([]);
+    });
+
+    test('an oversized emit still observes a later wildcard in that publication', () => {
+        const log = new WriteLog(1);
+        log.record(1, setOf('a', WILDCARD_PATH));
+        expect(log.getWildcardVersion()).toBe(1);
+        expect(log.matches(0, setOf('unrelated'))).toBe(true);
+    });
+
+    test('matches a small exhaustive reference oracle across capacities', () => {
+        for (let capacity = 1; capacity <= 4; capacity++) {
+            const log = new WriteLog(capacity);
+            const publications: Array<[number, string]> = [];
+            for (let version = 1; version <= 6; version++) {
+                const path = ['a.x', 'b.y', 'a.z'][version % 3];
+                publications.push([version, path]);
+                log.record(version, setOf(path));
+                for (let baseline = 0; baseline <= version; baseline++) {
+                    for (const read of ['a', 'a.x', 'b.y', 'unrelated']) {
+                        const expected = log.matches(baseline, setOf(read));
+                        const intersects = publications.some(([v, write]) => v > baseline
+                            && (write === read || read.startsWith(`${write}.`) || write.startsWith(`${read}.`)));
+                        if (baseline >= log.getWatermark()) expect(expected).toBe(intersects);
+                        else expect(expected).toBe(true);
+                    }
+                }
+            }
+        }
+    });
     test('falls back to true once the baseline predates the watermark', () => {
         const log = new WriteLog(4);
 
         log.record(1, setOf('a', 'b'));
         log.record(2, setOf('c', 'd'));
-        // A fifth distinct path overflows the 4-entry index: it resets, raising the watermark to 3.
         log.record(3, setOf('e'));
 
-        expect(log.matches(2, setOf('unrelated'))).toBe(true);
-        // A baseline at the watermark was taken after everything forgotten.
+        expect(log.matches(0, setOf('unrelated'))).toBe(true);
+        expect(log.matches(1, setOf('unrelated'))).toBe(false);
+        expect(log.matches(2, setOf('unrelated'))).toBe(false);
         expect(log.matches(3, setOf('unrelated'))).toBe(false);
     });
 
-    test('answers precisely for writes recorded after a reset', () => {
+    test('answers precisely for writes recorded after eviction', () => {
         const log = new WriteLog(4);
 
         log.record(1, setOf('a', 'b', 'c', 'd', 'e'));

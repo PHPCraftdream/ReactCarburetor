@@ -3,8 +3,7 @@ import {PATH_SEPARATOR} from "./PathSeparator";
 import {WILDCARD_PATH} from "./WildcardPath";
 
 /**
- * How many distinct paths (written paths plus their ancestors) the log indexes before it forgets
- * everything and raises its watermark: 4000 rows each adding their own key index 4002.
+ * How many distinct indexed paths the log retains before evicting the oldest entries.
  */
 const DEFAULT_CAPACITY = 8192;
 
@@ -23,7 +22,7 @@ const DEFAULT_CAPACITY = 8192;
  * Raw-target proofs use independent publication and accumulated cardinality bounds (R39-01).
  */
 export class WriteLog {
-    /** How many entries `last` and `under` may hold together before the log resets. */
+    /** How many entries `last` and `under` may hold together before oldest-first eviction. */
     private readonly capacity: number;
     /** The version each written path was last written at. */
     private readonly last: Map<TPath, number> = new Map<TPath, number>();
@@ -39,6 +38,8 @@ export class WriteLog {
     private watermark = 0;
     /** The version raw-target and recent-path tracking started at; Infinity until a consumer asks. */
     private trackedSince: number;
+    /** Earliest baseline for which raw-target attribution is complete. */
+    private targetsSinceVersion = 0;
 
     /** Current lower bound of versions for which path-level matching is unavailable.
      *
@@ -59,7 +60,7 @@ export class WriteLog {
     /**
      * Sets the log's bound.
      *
-     * @param capacity - how many distinct paths, ancestors included, to index before resetting.
+     * @param capacity - how many distinct paths, ancestors included, to retain before oldest-first eviction.
      * @param tracking - keep the patch proofs from the start; a store passes false and tracks on demand
      */
     constructor(capacity: number = DEFAULT_CAPACITY, tracking: boolean = true) {
@@ -74,12 +75,16 @@ export class WriteLog {
      * @param version - the store version at the request; a baseline below it cannot be answered
      */
     public track(version: number): void {
-        if (this.trackedSince === Infinity) this.trackedSince = version;
+        if (this.trackedSince === Infinity) {
+            this.trackedSince = version;
+            this.targetsSinceVersion = version;
+        }
     }
 
     /** Returns to the untracked state once no consumer needs proofs (R39-04): releases every retained raw object. */
     public untrack(): void {
         this.trackedSince = Infinity;
+        this.targetsSinceVersion = Infinity;
         this.targets.reset(0);
         this.recent.clear();
     }
@@ -100,6 +105,8 @@ export class WriteLog {
         const tracking = this.trackedSince !== Infinity;
         if (tracking) this.targets.record(version, writes, targets, targetsIncomplete);
 
+        let evicted = false;
+
         for (const path of writes) {
             if (path === WILDCARD_PATH) {
                 this.wildcardVersion = version;
@@ -107,31 +114,45 @@ export class WriteLog {
                 continue;
             }
 
+            // The maps are ordered by latest write: delete-then-set moves refreshed paths to the tail.
+            this.last.delete(path);
             this.last.set(path, version);
             if (tracking) this.recent.record(path, version);
 
             let cut = path.lastIndexOf(PATH_SEPARATOR);
 
             while (cut > 0) {
+                this.under.delete(path.slice(0, cut));
                 this.under.set(path.slice(0, cut), version);
                 cut = path.lastIndexOf(PATH_SEPARATOR, cut - 1);
             }
 
-            // Oversized emit: index nothing further. Raising the watermark answers every
-            // baseline below it coarsely, exactly like the old index-then-forget, and a
-            // wildcard later in this same emit is covered by that watermark too — any
-            // baseline it could matter for is already below the watermark. Lost ordinary
-            // history makes everything conservative, so raw ownership is cleared too.
-            if (this.last.size + this.under.size > this.capacity) {
-                this.last.clear();
-                this.under.clear();
-                this.watermark = version;
-                this.targets.reset(version);
-                this.recent.clear();
-
-                return;
-            }
+            evicted = this.evictOldest() || evicted;
         }
+        if (tracking && evicted) {
+            this.targets.reset(version);
+            this.targetsSinceVersion = version;
+        }
+    }
+
+    /** Evicts the oldest combined index entries and advances the path watermark. */
+    private evictOldest(): boolean {
+        let evictedVersion = -Infinity;
+        while (this.last.size + this.under.size > this.capacity) {
+            const lastPath = this.last.keys().next().value as TPath | undefined;
+            const underPath = this.under.keys().next().value as TPath | undefined;
+            const lastVersion = lastPath === undefined ? Infinity : this.last.get(lastPath)!;
+            const underVersion = underPath === undefined ? Infinity : this.under.get(underPath)!;
+            evictedVersion = Math.max(evictedVersion, Math.min(lastVersion, underVersion));
+            if (lastVersion < underVersion && lastPath !== undefined) this.last.delete(lastPath);
+            else if (underPath !== undefined) this.under.delete(underPath);
+        }
+        if (evictedVersion !== -Infinity) {
+            this.watermark = Math.max(this.watermark, evictedVersion);
+            this.recent.prune(this.watermark);
+            return true;
+        }
+        return false;
     }
 
     /**
@@ -155,7 +176,7 @@ export class WriteLog {
      */
     public targetsSince(baselineVersion: number): ReadonlyMap<TPath, ReadonlySet<object>> | undefined {
         if (baselineVersion < this.watermark || baselineVersion < this.trackedSince
-            || this.wildcardVersion > baselineVersion) return undefined;
+            || baselineVersion < this.targetsSinceVersion || this.wildcardVersion > baselineVersion) return undefined;
         return this.targets.since(baselineVersion);
     }
 
@@ -209,6 +230,8 @@ class RecentWritePaths {
     private readonly entries = new Map<TPath, IEntry>();
     /** Most recently written node. */
     private tail: IEntry | undefined;
+    /** Least recently written node. */
+    private head: IEntry | undefined;
 
     /** Moves one path to the latest publication.
      *
@@ -224,6 +247,7 @@ class RecentWritePaths {
             this.entries.set(path, entry);
         } else {
             if (entry.previous) entry.previous.next = entry.next;
+            else this.head = entry.next;
             if (entry.next) entry.next.previous = entry.previous;
             if (this.tail === entry) this.tail = entry.previous;
         }
@@ -231,6 +255,7 @@ class RecentWritePaths {
         entry.previous = this.tail;
         entry.next = undefined;
         if (this.tail) this.tail.next = entry;
+        else this.head = entry;
         this.tail = entry;
     }
 
@@ -246,7 +271,22 @@ class RecentWritePaths {
     }
 
     /** Releases all indexed nodes. */
-    public clear(): void { this.entries.clear(); this.tail = undefined; }
+    public clear(): void { this.entries.clear(); this.tail = this.head = undefined; }
+
+    /** Removes paths at or older than the eviction boundary.
+     *
+     * @param boundary - oldest evicted version; only newer paths remain
+     */
+    public prune(boundary: number): void {
+        while (this.head !== undefined && this.head.version <= boundary) {
+            const entry = this.head;
+            this.head = entry.next;
+            if (this.head) this.head.previous = undefined;
+            else this.tail = undefined;
+            this.entries.delete(entry.path);
+            entry.next = undefined;
+        }
+    }
 }
 
 

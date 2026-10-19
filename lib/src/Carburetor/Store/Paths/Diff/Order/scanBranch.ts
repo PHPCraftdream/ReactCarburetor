@@ -1,3 +1,4 @@
+import {countChanges} from "@/Carburetor/Store/Paths/Diff/Threshold/countChanges";
 import {keyOrderRequiresReplay} from "./keyOrderRequiresReplay";
 
 /** Outcome of the raw pre-pass: the difference cannot be installed natively, nothing differs,
@@ -7,9 +8,12 @@ type BranchScan = 'blocked' | 'equal' | 'differ';
 /** Shared with applyDiff: previous-side branches proven fully equal skip draft wrapping. */
 interface IScanBudget {
     unchanged: Map<object, object>;
+    /** Differing leaves seen so far, counted as `countChanges` counts them. */
+    changes: number;
 }
 
 const hasOwn = Object.prototype.hasOwnProperty;
+const isEnumerable = Object.prototype.propertyIsEnumerable;
 
 /** One fused check for the scan's hot loop, equivalent to
  * `isTrackable(a) && isTrackable(b) && sameKind(a, b)` (whose modules stay canonical for the
@@ -30,6 +34,9 @@ const sameTrackableKind = (a: unknown, b: unknown): boolean => {
  * One raw pass over the pair, before any draft write: verifies native assignment can install the
  * difference (key order, locked lengths, non-configurable fields) and marks fully equal subtrees
  * in `budget.unchanged`, so applyKey never wraps them in a draft proxy.
+ *
+ * The same pass adds the differing leaves to `budget.changes`, as `countChanges` counts them,
+ * so the size threshold needs no counting walk of its own.
  *
  * @param previous - the branch's current raw value.
  * @param next - the corresponding branch of the snapshot being installed; read only.
@@ -85,19 +92,29 @@ export const scanBranch = (
         const previousList = previous as unknown as unknown[];
         const nextList = next as unknown as unknown[];
         const shared = previousLength < nextLength ? previousLength : nextLength;
+        // A hole reads `undefined` unless the prototype chain holds that index; only then can an
+        // equal or same-kind read hide an own-index change, which counts as one change.
+        const prototype = Object.getPrototypeOf(previous) as object | null;
         for (let index = 0; index < shared; index++) {
             const oldValue = previousList[index];
             const newValue = nextList[index];
             if (Object.is(oldValue, newValue)) {
-                if (oldValue === undefined && hasOwn.call(previous, index) !== hasOwn.call(next, index)) {
-                    differ = true;
-                }
+                if (oldValue === undefined) {
+                    if (hasOwn.call(previous, index) !== hasOwn.call(next, index)) {
+                        differ = true;
+                        budget.changes++;
+                    }
+                } else if (prototype !== null && index in prototype
+                    && hasOwn.call(previous, index) !== hasOwn.call(next, index)) budget.changes++;
                 continue;
             }
             if (sameTrackableKind(oldValue, newValue)) {
+                const counted = budget.changes;
                 const child = scanBranch(
                     oldValue as Record<string, unknown>, newValue as Record<string, unknown>, budget
                 );
+                if (prototype !== null && index in prototype
+                    && hasOwn.call(previous, index) !== hasOwn.call(next, index)) budget.changes = counted + 1;
                 if (child === 'blocked') return 'blocked';
                 if (child === 'differ') {
                     if (Object.getOwnPropertyDescriptor(previous, index)?.writable === false) return 'blocked';
@@ -106,17 +123,23 @@ export const scanBranch = (
             } else {
                 if (Object.getOwnPropertyDescriptor(previous, index)?.writable === false) return 'blocked';
                 differ = true;
+                budget.changes++;
             }
         }
         // Indices beyond the shared range: any previous-side non-configurable index that the
         // shrink would drop blocks the native write; everything else is covered by the length.
         if (nextLength < previousLength) {
             for (let index = shared; index < previousLength; index++) {
-                if (hasOwn.call(previous, index)
-                    && Object.getOwnPropertyDescriptor(previous, index)?.configurable === false) {
+                if (!hasOwn.call(previous, index)) continue;
+                if (Object.getOwnPropertyDescriptor(previous, index)?.configurable === false) {
                     return 'blocked';
                 }
+                budget.changes++;
             }
+        }
+        // Each own index the growth adds is one installed leaf.
+        for (let index = shared; index < nextLength; index++) {
+            if (hasOwn.call(next, index)) budget.changes++;
         }
     } else {
         for (const key of previousKeys) {
@@ -124,6 +147,7 @@ export const scanBranch = (
             if (!sameKeys && !hasOwn.call(next, key)) {
                 if (Object.getOwnPropertyDescriptor(previous, key)?.configurable === false) return 'blocked';
                 differ = true;
+                budget.changes++;
                 continue;
             }
             const oldValue = previous[key];
@@ -147,15 +171,23 @@ export const scanBranch = (
                 // same-kind nested edit would throw on target[key], after earlier sibling writes.
                 if (descriptor?.writable === false) return 'blocked';
                 differ = true;
+                budget.changes++;
             }
         }
     }
     if (!array) {
-        if (nextKeyCount !== previousKeys.length) {
+        if (!sameKeys) {
+            // Keys `previous` does not enumerate; only a key-count change can need extension.
+            const grows = nextKeyCount !== previousKeys.length;
             for (const key of Object.keys(next)) {
-                if (hasOwn.call(previous, key)) continue;
-                if (!Object.isExtensible(previous)) return 'blocked';
+                if (isEnumerable.call(previous, key)) continue;
+                if (hasOwn.call(previous, key)) {
+                    budget.changes += countChanges(previous[key], next[key]);
+                    continue;
+                }
+                if (grows && !Object.isExtensible(previous)) return 'blocked';
                 differ = true;
+                budget.changes++;
             }
         }
     } else if (lengthLocked || (nextLength > previousLength && !Object.isExtensible(previous))) {

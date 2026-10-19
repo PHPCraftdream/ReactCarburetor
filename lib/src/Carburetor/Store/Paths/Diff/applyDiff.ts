@@ -17,36 +17,6 @@ interface IBudget {
     unchanged: Map<object, object>;
 }
 
-/** Counts differing leaves, stopping once `stopAfter` is passed (the count is then only a lower bound). */
-const countChanges = (previous: unknown, next: unknown, stopAfter: number): number => {
-    if (Object.is(previous, next)) return 0;
-    if (!isTrackable(previous) || !isTrackable(next) || !sameKind(previous, next)) return 1;
-    let count = 0;
-    if (Array.isArray(previous)) {
-        const oldArray = previous as unknown[];
-        const newArray = next as unknown[];
-        for (let index = 0; index < Math.max(oldArray.length, newArray.length); index++) {
-            const oldOwn = hasOwn.call(oldArray, index);
-            const newOwn = hasOwn.call(newArray, index);
-            if (oldOwn === newOwn && Object.is(oldArray[index], newArray[index])) continue;
-            count += oldOwn && newOwn ? countChanges(oldArray[index], newArray[index], stopAfter - count) : 1;
-            if (count > stopAfter) return count;
-        }
-        return count;
-    }
-    const keys = new Set<string>(Object.keys(previous));
-    const nextKeys = Object.keys(next);
-    for (const key of nextKeys) keys.add(key);
-    for (const key of keys) {
-        if (!hasOwn.call(previous, key) || !hasOwn.call(next, key)) { count++; continue; }
-        count += countChanges(
-            (previous as Record<string, unknown>)[key], (next as Record<string, unknown>)[key], stopAfter - count
-        );
-        if (count > stopAfter) return count;
-    }
-    return count;
-};
-
 const countLeaves = (value: unknown): number => {
     if (!isTrackable(value)) return 1;
     let count = 0;
@@ -240,7 +210,7 @@ const applyBranch = (
  * object graph is never adopted into the store. A key order that native deletion/append
  * cannot install is rejected before any draft mutation; `restore` then falls back to an owned
  * root copy. Oversized diffs also return `false` when `shouldCollapseDiff` reports collapse,
- * preserving the existing threshold fallback.
+ * preserving the existing threshold fallback; the scan's own change count feeds that check.
  *
  * Caller's responsibility: `previous` and `next` must already share a kind and supported
  * prototype at the root — `restore` checks once before calling here; nested mismatches are
@@ -255,7 +225,7 @@ export const applyDiff = (
     previous: Record<string, unknown>,
     next: Record<string, unknown>
 ): boolean => {
-    const scanBudget: IBudget = {spent: 0, unchanged: new Map<object, object>()};
+    const scanBudget = {unchanged: new Map<object, object>(), changes: 0};
     const scan = scanBranch(previous, next, scanBudget);
     if (scan === 'blocked') return false;
     if (scan === 'equal') return true;
@@ -272,9 +242,9 @@ export const applyDiff = (
         return true;
     }
     // Only past the floor does the answer depend on the branch's size, so the common restore pays
-    // for the changed region alone.
-    if (countChanges(previous, next, DIFF_PATH_THRESHOLD) > DIFF_PATH_THRESHOLD
-        && shouldCollapseDiff(countChanges(previous, next, Infinity), countLeaves(previous))) return false;
+    // for the changed region alone; the scan above already counted it.
+    if (scanBudget.changes > DIFF_PATH_THRESHOLD
+        && shouldCollapseDiff(scanBudget.changes, countLeaves(previous))) return false;
 
     // No fixed mid-apply cutoff: preflight above decides eligibility atomically. Bound writes by
     // the relative limit so the draft walk cannot partially mutate and then overflow.

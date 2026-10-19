@@ -51,8 +51,16 @@ describe('bounded retained structures and recent-path work (R39-01/R39-04)', () 
         expect(proof.count).toBe(0);
         expect(log.targetsSince(1)).toBeUndefined();
         publish(log, 3, 'fresh', {});
-        expect(log.targetsSince(2)?.has('fresh')).toBe(true);
-        expect(log.targetsSince(2)?.has('old')).toBe(false);
+        if (kind === 'ordinary-overflow') {
+            expect(log.targetsSince(2)).toBeUndefined();
+            const fresh = {};
+            publish(log, 4, 'fresh', fresh);
+            expect(log.targetsSince(3)?.get('fresh')?.has(fresh)).toBe(true);
+            expect(log.targetsSince(3)?.has('old')).toBe(false);
+        } else {
+            expect(log.targetsSince(2)?.has('fresh')).toBe(true);
+            expect(log.targetsSince(2)?.has('old')).toBe(false);
+        }
     });
 
     test('cumulative overflow releases every retained pair and the materialized cache', () => {
