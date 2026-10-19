@@ -65,6 +65,10 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- Linter: `componentBases` and `storeBases` in `.carburetorrc.json` add project-local base classes to every rule, and recognition follows same-file `extends` chains (named or anonymous classes); `ResourceCache` counts as a store base. The ESLint/oxlint bridge runs the binary with a neutral configuration and recognises the built-in names and same-file chains only.
+- Native binary: `--stdin <path>` lints a buffer as the named file; the bridge uses it to lint unsaved editor text instead of mapping disk diagnostics onto it.
+- A parity test pins the oxlint presets against the severity maps, and the oxlint preset turns `typescript/unbound-method` off.
+- Performance gate for the lint binary: `lint-binary/scaling@2k|8k`.
 - `update(mutate, ...args)` forwards the extra arguments to the mutator, so the mutator can be a module-level
   function without a closure; publication is still guaranteed when the mutator throws.
 - `CarburetorScope.hydrate(state)` without a token list applies the payload lazily on the first `get(token)`;
@@ -141,6 +145,9 @@ Entries below record development history in change order; where contracts differ
 
 ### Changed
 
+- The H6 advice points at `this.update(mutate, ...args)`.
+- The bridge maps native positions correctly after astral characters and clamps them to the buffer.
+- The lint binary shares one semantic pass across 11 rules (6 before), prefilters rules by marker groups and resolves positions through a line table; diagnostics are unchanged.
 - Completing a read set prunes branch markers through one owner slice per path and a once-built fallback prefix set, keeping sibling-heavy read sets linear; wake semantics are unchanged.
 - Flat `connectSelection` wakes verify through the one-level flat walk before the full reconcile; selection reconcile resolves one raw target per member and drops per-key lookup objects.
 - Computed `track()` reuses each source's recorder and encoded id per slot.
@@ -918,6 +925,7 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- `no-store-write-in-render` no longer counts `getFailure()` and `resolve()` as writes.
 - A computed whose body throws during an observed settlement no longer leaves stale UI: subscribers are woken once while the value and version stand still, the next read rethrows into the error boundary, and delivery resumes once the body recovers.
 - `hydrate` no longer loses state for tokens that were not listed.
 - `ResourceCache.clear()` aborts requests whose entries were removed by a state replacement and settles the
