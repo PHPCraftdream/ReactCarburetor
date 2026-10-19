@@ -171,7 +171,6 @@ describe('runNative cache separation by base key', () => {
         const settingsA = {carburetor: {componentBases: ['A']}};
         const settingsB = {carburetor: {componentBases: ['B']}};
         const {key: keyA} = basesConfig(cwdA, settingsA);
-        const {key: keyB} = basesConfig(cwdB, settingsB);
         const lockA = lockPathFor(cwdA, keyA);
         const resultA = `${lockA.replace(/\.lock$/, '')}.result.json`;
 
