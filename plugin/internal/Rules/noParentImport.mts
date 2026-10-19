@@ -114,12 +114,15 @@ export const noParentImport: IRule = {
                 return;
             }
 
+            const quote = (source as ILiteralNode).raw?.startsWith("'") ? "'" : '"';
+
             context.report({
                 node: source,
                 message: `"${specifier}" reaches up out of this directory. Import it as "${alias}", `
                     + 'which names the module from the root of the source tree and survives the file '
                     + 'being moved.',
-                fix: (fixer: IRuleFixer) => fixer.replaceText(source, `"${alias}"`),
+                // Keeps the original quote style, so the fix agrees with whatever formatter owns the file.
+                fix: (fixer: IRuleFixer) => fixer.replaceText(source, `${quote}${alias}${quote}`),
             });
         };
 

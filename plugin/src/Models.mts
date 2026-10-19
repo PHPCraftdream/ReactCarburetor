@@ -31,6 +31,8 @@ export interface IIdentifierNode extends IAstNode {
 export interface ILiteralNode extends IAstNode {
     type: 'Literal';
     value: unknown;
+    /** The literal as written, quotes included. */
+    raw?: string;
 }
 
 /** The part of the host's fixer this plugin uses. */

@@ -48,6 +48,13 @@ export const registerNoParentImportCases = (): void => {
                 errors: [{message: /reaches up out of this directory/}],
             },
             {
+                name: 'single quotes stay single quotes',
+                filename: 'lib/src/Carburetor/Store/Tracking/createWriteProxy.ts',
+                code: `import {joinPath} from '../Paths/joinPath';`,
+                output: `import {joinPath} from '@/Carburetor/Store/Paths/joinPath';`,
+                errors: 1,
+            },
+            {
                 name: 'two levels up',
                 filename: 'lib/src/Carburetor/Store/Tracking/createWriteProxy.ts',
                 code: `import {TPath} from "../../Models/Paths";`,
