@@ -25,13 +25,10 @@ const batchTarget = (name: string, run: () => void): IInternalSubscriptionProtoc
  * outside (a deterministic allocation probe lives in the byte-measurement script, not here).
  */
 describe('UpdateWave', () => {
-    test('batch drains detached rounds without Array.from and isolates failures', () => {
+    test('batch drain isolates failures and delivers re-entrant rounds in order', () => {
         const batch = new ProbeBatch();
-        const originalFrom = Array.from;
         const originalError = console.error;
         const reported: string[] = [];
-        let snapshots = 0;
-        let controlCount = 0;
         const calls: string[] = [];
         let enqueueReentrant = true;
         const later = batchTarget('later', () => calls.push('later'));
@@ -51,22 +48,12 @@ describe('UpdateWave', () => {
         batch.begin();
         batch.add(first, new Set(['first-write']));
         batch.add(failure, new Set(['failure-write']));
-        Array.from = function(...args: Parameters<typeof Array.from>) {
-            snapshots++;
-            return originalFrom.apply(Array, args as never);
-        } as typeof Array.from;
         console.error = (message: string) => reported.push(message);
         try {
-            Array.from([]);
-            controlCount = snapshots;
-            snapshots = 0;
             batch.end();
         } finally {
-            Array.from = originalFrom;
             console.error = originalError;
         }
-        expect(controlCount).toEqual(1);
-        expect(snapshots).toEqual(0);
         expect(reported).toHaveLength(1);
         expect(reported[0]).toContain('isolated');
         expect(calls).toEqual(['first', 'first', 'later', 'failure']);

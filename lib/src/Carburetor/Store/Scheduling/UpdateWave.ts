@@ -26,6 +26,8 @@ export class UpdateWave {
     protected depth: number = 0;
     /** Settlements deferred during the pass, keyed so a re-defer replaces the earlier one. */
     protected pending: Map<string, () => void> = new Map<string, () => void>();
+    /** The drained round's map, reused so a drain allocates nothing per round. */
+    protected spare: Map<string, () => void> = new Map<string, () => void>();
 
     /** Whether a notification pass is open. */
     public isActive(): boolean {
@@ -68,7 +70,8 @@ export class UpdateWave {
 
             while (this.pending.size > 0) {
                 const batch = this.pending;
-                this.pending = new Map<string, () => void>();
+                this.pending = this.spare;
+                this.spare = batch;
 
                 for (const settle of batch.values()) {
                     try {
@@ -77,6 +80,8 @@ export class UpdateWave {
                         (failures ??= []).push(error);
                     }
                 }
+
+                batch.clear();
             }
 
             failures?.forEach(reportSettlementFailure);
