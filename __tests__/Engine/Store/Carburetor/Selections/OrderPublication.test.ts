@@ -31,6 +31,7 @@ class OrderedStore extends Carburetor<{item: Record<string, number>; leaf: numbe
     public removeAroundRawAdd(first: string, added: string): void {
         this.update(draft => {
             delete draft.item[first];
+            // oxlint-disable-next-line carburetor/no-external-data-mutation
             this.getData().item[added] = 3;
             delete draft.item[added];
         });

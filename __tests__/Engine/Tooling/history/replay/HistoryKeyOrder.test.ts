@@ -239,7 +239,7 @@ describe('pending owned-target fold', () => {
         const entry = (history as unknown as {past: Array<{kind: string; patches?: unknown[]}>}).past.at(-1)!;
         expect(entry.kind).toBe('patches');
         expect(entry.patches).toHaveLength(1);
-        expect((entry.patches?.[0] as {next: {title: string}}).next).toEqual({title: 'final'});
+        expect((entry.patches![0] as {next: {title: string}}).next).toEqual({title: 'final'});
         expect((history as unknown as {baseline: {rows: unknown}}).baseline.rows).toBe(baselineRows);
         expect(store.getData().rows).toBe(rows);
         expect(store.getData().docs.entry).toEqual({title: 'final'});
@@ -290,7 +290,7 @@ describe('pending owned-target fold', () => {
         const entry = (history as unknown as {past: Array<{kind: string; patches?: unknown[]}>}).past.at(-1)!;
         expect(entry.kind).toBe('patches');
         expect(entry.patches).toHaveLength(1);
-        expect((entry.patches?.[0] as {next: {title: string}}).next).toEqual({title: 'three'});
+        expect((entry.patches![0] as {next: {title: string}}).next).toEqual({title: 'three'});
         expect(history.undo()).toBe(true);
         expect(store.getData().docs).toEqual({});
         expect(history.redo()).toBe(true);
@@ -453,7 +453,7 @@ describe('positional windows with explicit undefined and coerced arguments', () 
 
         const stable = new ListStore({list: [0, 1, 2, 3]});
         const stableHistory = new CarburetorHistory(stable);
-        stable.edit(draft => { stable; draft.list.copyWithin({valueOf: () => 0} as unknown as number, 2, 3); });
+        stable.edit(draft => { draft.list.copyWithin({valueOf: () => 0} as unknown as number, 2, 3); });
         expect(stable.getData().list).toEqual([2, 1, 2, 3]);
         expect(entryPatches(stableHistory).map(segments => segments.join('.'))).toEqual(['list.0']);
         expect(stableHistory.undo()).toBe(true);

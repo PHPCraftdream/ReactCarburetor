@@ -224,6 +224,7 @@ const isTrackableItem = (value: unknown): boolean =>
 
 /**
  * Runs one intercepted positional method natively on the raw array and attributes the result.
+ *
  * The raw array may be left partially mutated when the native call throws; the attribution in
  * `finally` records whatever did land, the same partial trace the per-write set traps left —
  * a throw widens the attribution back to the whole array.

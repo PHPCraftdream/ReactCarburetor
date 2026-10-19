@@ -17,6 +17,9 @@ const containerKey = (segments: readonly string[]): string => {
      * Plans land on private copies: the pending patch objects are shared with every other
      * observer. Undefined means an order the plans cannot reinstate exactly, so the
      * publication falls back to a full snapshot.
+     *
+     * @param baseline - the publication baseline the deleted keys are looked up in.
+     * @param pending - the collected patches; deletions get their plans.
      */
 export const resolveOrderPlans = (baseline: unknown, pending: IWritePatch[]): IWritePatch[] | undefined => {
         let resolved: IWritePatch[] | undefined;
