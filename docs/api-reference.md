@@ -182,11 +182,17 @@ to history before ordinary subscribers, after transaction/throttle coalescing.
 
 Ordinary plain-tree undo/redo records patches — O(changed values), not O(state). Ordinary Date
 raw identity is preserved; reads subscribe coarsely to the raw leaf, without wrapping reads or writes.
-Draft Date exposure lasts through the synchronous turn, checking its time value on each publication
-until microtask cleanup. Net changes create opaque history snapshots; unchanged setters and mutations
-reverted before the next publication create no Date write. Date subclasses and Dates with own properties use
-conservative immediate exposure. `setData`, `restore` and `fromJSON` record their leaf patches too (up to
-1000, then one opaque entry). Only
+Draft Date exposures last through the end of the synchronous turn and one microtask hop; each
+publication checks the Date's time value in that window. Cleanup only forgets exposures: it does
+not flush, write, or publish. An `emitSoon` queued in the same turn runs before cleanup. A mutation
+after the last publication is discarded when the exposure is cleared, not merged into a later
+update. Distinct paths are retained conservatively after movement, which can cause extra wakes.
+Descriptor checks verify only that the source key still points to the Date; the owner must keep
+the container attached. A detached container that still points to the Date may cause a
+conservative false wake. Net changes create opaque history snapshots; unchanged setters and
+mutations reverted before a publication create no Date write. Date subclasses and Dates with own
+properties use conservative immediate exposure. `setData`, `restore` and `fromJSON` record their
+leaf patches too (up to 1000, then one opaque entry). Only
 classes whose wire form differs from their live data override `captureHistory(own)`, passing their
 authoritative raw graph to `own`; custom history sources are not supported.
 

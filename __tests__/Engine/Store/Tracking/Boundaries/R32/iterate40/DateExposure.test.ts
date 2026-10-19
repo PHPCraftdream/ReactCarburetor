@@ -1,13 +1,17 @@
+import {S} from '@/Carburetor/Store/Diagnostics/Internal/StoreIdentity';
 import {Carburetor, CarburetorHistory, transaction} from '@/Carburetor';
 
 interface IState {
     row: {due: Date; done: boolean};
     other: Date;
-    list: Date[];
+    list: Array<{due: Date}>;
     scalar: number;
 }
 
 class InspectedHistory extends CarburetorHistory<IState> {
+    public get opaquePending(): boolean {
+        return this.pendingOpaque;
+    }
     public get kinds(): readonly string[] {
         return [...this.past.map(entry => entry.kind), ...this.future.map(entry => entry.kind)];
     }
@@ -15,6 +19,10 @@ class InspectedHistory extends CarburetorHistory<IState> {
 
 /** A store exposing only public entry points for the protected mutation/publication API. */
 class DateStore extends Carburetor<IState> {
+
+    public pendingWritePaths(): readonly string[] {
+        return [...this[S.writes]];
+    }
 
     /** Applies a mutation through Carburetor.update.
      *
@@ -67,7 +75,7 @@ class DateStore extends Carburetor<IState> {
 const makeStore = (): DateStore => new DateStore({
     row: {due: new Date(100), done: false},
     other: new Date(200),
-    list: [new Date(300), new Date(400)],
+    list: [{due: new Date(300)}, {due: new Date(400)}],
     scalar: 0,
 });
 
@@ -189,14 +197,14 @@ describe('Date draft exposure tracking', () => {
             draft.list.splice(1, 1);
         });
 
-        expect(store.getData().list.map(date => date.getTime())).toEqual([400]);
+        expect(store.getData().list.map(row => row.due.getTime())).toEqual([400]);
         expect(firstWakes).toBe(1);
         expect(secondWakes).toBe(1);
 
         firstWakes = 0;
-        store.edit(draft => { draft.list[0].setTime(401); });
+        store.edit(draft => { draft.list[0].due.setTime(401); });
         expect(firstWakes).toBe(1);
-        expect(store.getData().list[0].getTime()).toBe(401);
+        expect(store.getData().list[0].due.getTime()).toBe(401);
     });
 
     test('cloned Date snapshots preserve native identity and timestamp', () => {
@@ -321,6 +329,7 @@ describe('Date draft exposure tracking', () => {
 
     test('soon schedules Date-only publication without a synchronous update', async () => {
         const store = makeStore();
+        const history = new InspectedHistory(store);
         let dueWakes = 0;
         store.subscribe(() => dueWakes++, {reads: new Set(['row.due'])});
 
@@ -330,6 +339,8 @@ describe('Date draft exposure tracking', () => {
 
         expect(dueWakes).toBe(1);
         expect(store.getData().row.due.getTime()).toBe(104);
+        expect(history.kinds).toContain('snapshot');
+        history.disconnect();
     });
 
     test('a thrown update still publishes completed Date and scalar mutations', () => {
@@ -385,6 +396,96 @@ describe('Date draft exposure tracking', () => {
 
         expect(firstWakes).toBe(1);
         expect(secondWakes).toBe(1);
+    });
+
+    test('pruning an old Date exposure does not invoke an own getter', () => {
+        const store = makeStore();
+        const rawRow = store.getData().row;
+        const oldDate = rawRow.due;
+        let getterCalls = 0;
+        store.edit(draft => { void draft.row.due; });
+        Object.defineProperty(rawRow, 'due', {
+            get: () => { getterCalls++; return oldDate; },
+            enumerable: true,
+            configurable: true,
+        });
+        oldDate.setTime(101);
+        try {
+            store.edit(draft => { draft.scalar++; });
+            expect(getterCalls).toBe(0);
+            expect(store.getData().row.due.getTime()).toBe(101);
+        } finally {
+            Object.defineProperty(rawRow, 'due', {
+                value: oldDate,
+                enumerable: true,
+                writable: true,
+                configurable: true,
+            });
+        }
+    });
+
+    test('cleanup leaves a held Date mutation out of the next scalar patch', async () => {
+        const store = makeStore();
+        const history = new InspectedHistory(store);
+        let dueWakes = 0;
+        let scalarWakes = 0;
+        store.subscribe(() => dueWakes++, {reads: new Set(['row.due'])});
+        store.subscribe(() => scalarWakes++, {reads: new Set(['scalar'])});
+        let held!: Date;
+
+        store.edit(draft => { held = draft.row.due; });
+        held.setTime(101);
+        await settle();
+        expect(history.kinds).toEqual([]);
+        expect(history.opaquePending).toBe(false);
+        expect(store.pendingWritePaths()).toEqual([]);
+        store.edit(draft => { draft.scalar++; });
+
+        expect(dueWakes).toBe(0);
+        expect(scalarWakes).toBe(1);
+        expect(history.kinds).toEqual(['patches']);
+        expect(history.opaquePending).toBe(false);
+        expect(store.pendingWritePaths()).toEqual([]);
+        expect(store.getData().scalar).toBe(1);
+        expect(history.undo()).toBeTruthy();
+        expect(store.getData().scalar).toBe(0);
+        expect(store.getData().row.due.getTime()).toBe(101);
+        history.disconnect();
+    });
+
+    test('moved nested Date exposure follows its current array path', () => {
+        const store = makeStore();
+        let wakes = 0;
+
+        store.edit(draft => { void draft.list[0].due; });
+        store.edit(draft => { draft.list.reverse(); });
+        store.subscribe(() => wakes++, {reads: new Set(['list.1.due'])});
+        store.edit(draft => { draft.list[1].due.setTime(101); });
+
+        expect(wakes).toBe(1);
+        expect(store.getData().list[1].due.getTime()).toBe(101);
+    });
+
+    test('replaced Date exposure no longer wakes for the detached Date', () => {
+        const store = makeStore();
+        let wakes = 0;
+        store.subscribe(() => wakes++, {reads: new Set(['row.due'])});
+        let oldDate!: Date;
+
+        store.edit(draft => { oldDate = draft.row.due; });
+        store.edit(draft => { draft.row.due = new Date(500); });
+        const history = new InspectedHistory(store);
+        wakes = 0;
+        oldDate.setTime(101);
+        store.edit(draft => { draft.scalar++; });
+
+        expect(wakes).toBe(0);
+        expect(history.kinds).toEqual(['patches']);
+        expect(store.getData().row.due.getTime()).toBe(500);
+        expect(history.undo()).toBeTruthy();
+        expect(store.getData().scalar).toBe(0);
+        expect(store.getData().row.due.getTime()).toBe(500);
+        history.disconnect();
     });
 
     test('microtask cleanup does not turn a future external mutation into a Date write', async () => {

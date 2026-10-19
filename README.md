@@ -1295,11 +1295,17 @@ a test pins the exported surface so one does not slip in by accident.
   A native backlink to the store root necessarily subscribes to the whole store.
   `Date`, custom instances and unsupported native subclasses remain raw. Native reads are coarse
   leaf reads; ordinary Date raw identity is preserved without read/write wrapping. A Date draft
-  exposure lasts through the synchronous turn; its time value is checked on each publication until
-  microtask cleanup. Net changes produce opaque history snapshots; unchanged setters and mutations
-  reverted before a publication produce no Date write. Date subclasses, Dates with own properties, custom
-  instances and unsupported native subclasses use conservative immediate exposure. Read tracking
-  remains coarse at the raw leaf level.
+  exposure lasts through the synchronous turn. Each publication checks its time value through the
+  end of that turn and one microtask hop. Cleanup only forgets exposures: it does not flush, write,
+  or publish. An `emitSoon` queued in the same turn runs before cleanup. A mutation after the last
+  publication is discarded when the exposure is cleared, not merged into a later update. Distinct
+  paths are retained conservatively after movement, which can cause extra wakes. Descriptor checks
+  verify only that the source key still points to the Date; the owner must keep the container
+  attached. A detached container that still points to the Date may cause a conservative false wake.
+  Net changes produce opaque history snapshots; unchanged setters and mutations reverted before a
+  publication produce no Date write. Date subclasses, Dates with own properties, custom instances
+  and unsupported native subclasses use conservative immediate exposure. Read tracking remains
+  coarse at the raw leaf level.
   Alias answers for such a value are cached and refreshed only by a topological write, so an
   in-place mutation of the value — or of a `Map` behind the facade — keeps its stale alias set
   until then; that is the same invisibility an opaque leaf's contents already have. A topological

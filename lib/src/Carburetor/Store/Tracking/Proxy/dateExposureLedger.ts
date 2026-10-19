@@ -4,7 +4,6 @@ import {IProxyCache} from "@/Carburetor/Store/Tracking/Models";
 import {nativeAliasIndex} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex";
 import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 import {isOrdinaryDate} from "@/Carburetor/Store/Tracking/Proxy/Definitions/isOrdinaryDate";
-import {reportDeliveryFailure} from "@/Carburetor/Store/Diagnostics/reportDeliveryFailure";
 
 interface IExposure {
     baseline: number;
@@ -55,25 +54,21 @@ export const dateExposureLedger = {
             ledger = new Map();
             exposures.set(port, ledger);
             const scheduled = ledger;
-            queueMicrotask(() => {
-                try {
-                    this.flush(port);
-                } catch (error: unknown) {
-                    reportDeliveryFailure(error);
-                } finally {
-                    if (exposures.get(port) === scheduled) {
-                        scheduled.clear();
-                        exposures.delete(port);
-                    }
+            queueMicrotask(() => queueMicrotask(() => {
+                if (exposures.get(port) === scheduled) {
+                    scheduled.clear();
+                    exposures.delete(port);
                 }
-            });
+            }));
         }
         let exposure = ledger.get(date);
         if (exposure === undefined) {
             exposure = {baseline: Date.prototype.getTime.call(date), entries: []};
             ledger.set(date, exposure);
         }
-        if (!exposure.entries.some(entry => entry.source === source && entry.key === key && entry.root === root)) {
+        // Keep distinct paths after movement; stale aliases are retained conservatively.
+        if (!exposure.entries.some(entry => entry.source === source && entry.key === key && entry.root === root &&
+            entry.path === path)) {
             exposure.entries.push({source, key, root, record, path, cache});
         }
     },
@@ -89,6 +84,18 @@ export const dateExposureLedger = {
         let firstError: unknown;
         let changed = false;
         for (const [date, exposure] of ledger) {
+            for (let index = exposure.entries.length - 1; index >= 0; index--) {
+                const item = exposure.entries[index];
+                const descriptor = Reflect.getOwnPropertyDescriptor(item.source, item.key);
+                if (descriptor === undefined || !("value" in descriptor) || descriptor.value !== date) {
+                    exposure.entries.splice(index, 1);
+                }
+            }
+            // A detached Date with no live edge must not wake listeners.
+            if (exposure.entries.length === 0) {
+                ledger.delete(date);
+                continue;
+            }
             if (!isOrdinaryDate(date)) {
                 changed = true;
                 for (const item of exposure.entries) {

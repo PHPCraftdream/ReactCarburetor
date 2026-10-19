@@ -19,12 +19,17 @@ semantics:
 ## What the rules can and cannot see
 
 Ordinary `Date` leaves are opaque to tracking: reads subscribe to the raw Date leaf, and raw
-identity is preserved without wrapping reads or writes. A draft Date exposure lasts through the
-synchronous turn; its time value is checked on each publication until microtask cleanup. A net
-change produces an opaque history snapshot; unchanged setters or mutations reverted before the next publication
-produce no Date write. Normal updates publish synchronously; `emitSoon` is deferred, and multiple
-synchronous publications can schedule multiple wakes. Cleanup does not publish automatically: it
-only flushes sinks from an existing later emit. Date subclasses and Dates with own properties use
+identity is preserved without wrapping reads or writes. Draft exposures last through the end of
+the synchronous turn and one microtask hop; each publication checks the Date's time value in that
+window. Cleanup only forgets exposures: it does not flush, write, or publish. An `emitSoon` queued
+in the same turn runs before cleanup. A mutation after the last publication is discarded when the
+exposure is cleared, not merged into a later update. Distinct paths are retained conservatively
+after movement, which can cause extra wakes. Descriptor checks verify only that the source key
+still points to the Date; the owner must keep the container attached. A detached container that
+still points to the Date may cause a conservative false wake. A net change produces an opaque
+history snapshot; unchanged setters or mutations reverted before a publication produce no Date
+write. Normal updates publish synchronously; `emitSoon` is deferred, and multiple synchronous
+publications can schedule multiple wakes. Date subclasses and Dates with own properties use
 conservative immediate exposure.
 
 oxlint's JS plugin API is ESLint's, and neither gives a JS rule the TypeScript type checker.
