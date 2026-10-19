@@ -221,6 +221,9 @@ base stops the walk — a project-local base is configured instead, with the `co
 }
 ```
 
+The keys apply to the native CLI. The ESLint/oxlint bridge runs the binary with a neutral configuration, so it
+recognises the built-in names and same-file `extends` chains only.
+
 Most rules accept severity only: `error`, `warn` or `off`; `require-module-function` also accepts
 the `scope` option (`"all"` or `"classes"`). Unknown scope values, option keys and base-list
 shapes are malformed configuration. Suppress reports with

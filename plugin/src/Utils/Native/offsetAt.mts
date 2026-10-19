@@ -27,7 +27,17 @@ export const offsetAt = (text: string, line: number, column: number): number => 
     }
 
     const lineText = lines[Math.min(line - 1, lines.length - 1)] ?? '';
-    const characters = [...lineText].slice(0, Math.max(0, column - 1));
+    let units = 0;
+    let seen = 0;
 
-    return Math.min(offset + characters.join('').length, text.length);
+    for (const character of lineText) {
+        if (seen >= column - 1) {
+            break;
+        }
+
+        units += character.length;
+        seen++;
+    }
+
+    return Math.min(offset + units, text.length);
 };

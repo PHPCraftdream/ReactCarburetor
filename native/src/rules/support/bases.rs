@@ -9,7 +9,7 @@
 /// The base classes a component is recognised by.
 pub const COMPONENT_BASES: [&str; 2] = ["AntiHookComponent", "ScopedAntiHookComponent"];
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use oxc_ast::ast::{Class, Program};
 use oxc_ast_visit::{walk, Visit};
@@ -86,16 +86,41 @@ pub struct ClassChains {
 /// Collects the heritage of every named class in the file, one pass.
 struct ChainCollector {
     super_of: HashMap<String, String>,
+    /// Class names declared without an `extends` clause, to catch a later same-name subclass.
+    plain: HashSet<String>,
+    /// Names declared more than once with different heritage.
+    ambiguous: HashSet<String>,
 }
 
 impl<'a> Visit<'a> for ChainCollector {
     fn visit_class(&mut self, class: &Class<'a>) {
         if let Some(id) = &class.id {
-            if let Some(heritage) = &class.heritage {
-                if let Some(name) = super_class_name(&heritage.expression) {
-                    self.super_of
-                        .entry(id.name.to_string())
-                        .or_insert_with(|| String::from(name));
+            let super_name = class
+                .heritage
+                .as_ref()
+                .and_then(|heritage| super_class_name(&heritage.expression));
+            let name = id.name.to_string();
+
+            // Heritage is resolved by spelling, not by binding: a name declared twice with
+            // different heritage (two scopes) is dropped so neither declaration is guessed.
+            match super_name {
+                Some(next) => match self.super_of.get(&name) {
+                    Some(known) if known != next => {
+                        self.ambiguous.insert(name);
+                    }
+                    Some(_) => {}
+                    None if self.plain.contains(&name) => {
+                        self.ambiguous.insert(name);
+                    }
+                    None => {
+                        self.super_of.insert(name, String::from(next));
+                    }
+                },
+                None if self.super_of.contains_key(&name) => {
+                    self.ambiguous.insert(name);
+                }
+                None => {
+                    self.plain.insert(name);
                 }
             }
         }
@@ -113,9 +138,15 @@ impl ClassChains {
     pub fn build(program: &Program<'_>) -> ClassChains {
         let mut collector = ChainCollector {
             super_of: HashMap::new(),
+            plain: HashSet::new(),
+            ambiguous: HashSet::new(),
         };
 
         collector.visit_program(program);
+
+        for name in &collector.ambiguous {
+            collector.super_of.remove(name);
+        }
 
         ClassChains {
             super_of: collector.super_of,
@@ -123,30 +154,27 @@ impl ClassChains {
     }
 
     /// Whether `class` extends a base `is_base` recognises, directly or through same-file
-    /// subclasses.
+    /// subclasses. The walk starts at the class's own `extends` clause, so an anonymous class
+    /// expression follows its chain like a named one.
     pub fn reaches(&self, class: &Class<'_>, is_base: impl Fn(&str) -> bool) -> bool {
-        if let Some(heritage) = &class.heritage {
-            if let Some(name) = super_class_name(&heritage.expression) {
-                if is_base(name) {
-                    return true;
-                }
-            }
-        }
-
-        let Some(mut name) = class.id.as_ref().map(|id| id.name.as_str()) else {
+        let Some(mut name) = class
+            .heritage
+            .as_ref()
+            .and_then(|heritage| super_class_name(&heritage.expression))
+        else {
             return false;
         };
 
         for _ in 0..MAX_HERITAGE_DEPTH {
-            let Some(super_name) = self.super_of.get(name) else {
-                return false;
-            };
-
-            if is_base(super_name) {
+            if is_base(name) {
                 return true;
             }
 
-            name = super_name.as_str();
+            let Some(next) = self.super_of.get(name) else {
+                return false;
+            };
+
+            name = next.as_str();
         }
 
         false

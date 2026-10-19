@@ -2,7 +2,6 @@ import * as path from "node:path";
 import {offsetAt} from "#src/Utils/Native/offsetAt.mts";
 import {runNative} from "#src/Utils/Native/nativeBridge.mts";
 import type {INativeRuleOptions, IRule, IRuleContext, IRuleMeta, TRuleVisitor} from "#src/Models.mts";
-import type {INativeDiagnostic} from "#src/Utils/Native/INativeDiagnostic.mts";
 
 /**
  * A single-point report node. oxlint requires `range`; ESLint derives its message location from

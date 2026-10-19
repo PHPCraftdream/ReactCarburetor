@@ -55,7 +55,7 @@ fn stdin_lints_the_buffer_as_if_it_were_the_named_file() {
     let found = stdin_diagnostics(
         "buffers/unsaved.tsx",
         "class Row extends AntiHookComponent {
-    render() { this.useCarburetor(store); return null; }
+    save() { this.useCarburetor(store); }
 }
 ",
     );

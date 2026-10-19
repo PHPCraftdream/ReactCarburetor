@@ -15,11 +15,11 @@ const name = process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-
 const binary = process.env.CARBURETOR_LINT_BIN
     ?? join('native', 'target', 'release', name);
 
-// One self-sufficient nested function per call: the shape require-module-function reports,
-// so the run's cost includes the capture analysis the rule is built from.
+// One nested function per call that uses nothing from its parent: the shape require-module-function
+// reports, so the run's cost includes the capture analysis the rule is built from.
 let source = '';
 for (let index = 0; index < count; index++) {
-    source += `export function f${index}(x: number) { const y = x + 1; return function () { return y; }; }
+    source += `export function f${index}(x: number) { return function () { return 1; }; }
 `;
 }
 
@@ -34,7 +34,7 @@ const lintMs = performance.now() - started;
 let found = -1;
 if (result.status === 1) {
     try {
-        found = JSON.parse(result.stdout).length;
+        found = JSON.parse(result.stdout).filter(item => item.rule === 'carburetor/require-module-function').length;
     } catch {
         found = -1;
     }

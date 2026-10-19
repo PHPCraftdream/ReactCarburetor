@@ -361,14 +361,19 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
 
         // A buffer that does not parse is the editor's or compiler's problem to describe;
         // report nothing rather than half a diagnosis.
-        return Ok(analyze(path, &text, &config, options.keep_overlaps)
-            .unwrap_or_default()
-            .into_iter()
-            .map(|mut diagnostic| {
-                diagnostic.file = path.to_string_lossy().replace('\\', "/");
-                diagnostic
-            })
-            .collect());
+        let mut diagnostics: Vec<Diagnostic> =
+            analyze(path, &text, &config, options.keep_overlaps)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|mut diagnostic| {
+                    diagnostic.file = path.to_string_lossy().replace('\\', "/");
+                    diagnostic
+                })
+                .collect();
+
+        sort_diagnostics(&mut diagnostics);
+
+        return Ok(diagnostics);
     }
 
     let files = collect_files(&options.paths, config.ignores())?;
@@ -387,6 +392,13 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
         }
     };
 
+    sort_diagnostics(&mut diagnostics);
+
+    Ok(diagnostics)
+}
+
+/// The one report order, shared by file runs and `--stdin`: file, line, column, rule.
+fn sort_diagnostics(diagnostics: &mut [Diagnostic]) {
     diagnostics.sort_by(|left, right| {
         (&left.file, left.line, left.column, &left.rule).cmp(&(
             &right.file,
@@ -395,8 +407,6 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
             &right.rule,
         ))
     });
-
-    Ok(diagnostics)
 }
 
 fn main() -> ExitCode {

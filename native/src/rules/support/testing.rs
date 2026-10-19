@@ -456,6 +456,17 @@ class Cart extends Carburetor<{count: number}> {
             data::writes::require_emit_after_draft_write::RULE,
             "class C extends Carburetor { m() { this.draft.x = 1; } }"
         ));
+
+        // An `update` callback may name its draft anything, so `draft` is not a required marker.
+        for rule in [
+            data::writes::no_untrackable_draft_mutation::RULE,
+            data::writes::require_emit_after_draft_write::RULE,
+        ] {
+            assert!(possible(
+                rule,
+                "class C extends Carburetor { m(v) { this.update(d => { d.index.add(v); }); } }"
+            ));
+        }
     }
 
     #[test]

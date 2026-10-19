@@ -439,4 +439,18 @@ mod tests {
         assert!(diagnostics[0].message.contains("silently stop working"));
         assert!(!diagnostics[0].message.contains("TypeError"));
     }
+
+    #[test]
+    fn an_anonymous_subclass_of_a_same_file_component_is_recognised() {
+        let source = "class Base extends AntiHookComponent {}\nexport default class extends Base {\n    componentDidMount = () => {};\n}\n";
+
+        assert_eq!(diagnose(source, check).len(), 1);
+    }
+
+    #[test]
+    fn a_name_declared_with_different_heritage_in_two_scopes_is_not_guessed() {
+        let source = "class Base extends AntiHookComponent {}\nfunction make() {\n    class Base {}\n    class View extends Base {\n        componentDidMount = () => {};\n    }\n    return View;\n}\n";
+
+        assert!(diagnose(source, check).is_empty());
+    }
 }

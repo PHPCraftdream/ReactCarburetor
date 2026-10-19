@@ -265,7 +265,8 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
         .any(|marker| text.contains(marker)),
         data::writes::no_untrackable_draft_mutation::RULE
         | data::writes::require_emit_after_draft_write::RULE => {
-            any(store) && text.contains("draft")
+            // `this.draft`, or the draft an `update` callback names whatever it is called.
+            any(store) && (text.contains("draft") || text.contains("update"))
         }
         effects::no_async_effect::RULE
         | effects::no_duplicate_effect_name::RULE
