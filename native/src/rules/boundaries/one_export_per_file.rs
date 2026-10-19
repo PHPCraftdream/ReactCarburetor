@@ -18,9 +18,10 @@
 use std::collections::HashSet;
 
 use oxc_ast::ast::{
-    Declaration, ExportDefaultDeclarationKind, ExportSpecifier, ImportDeclarationSpecifier,
-    ImportOrExportKind, ModuleExportName, Program, Statement, TSNamespaceDeclaration,
-    TSNamespaceDeclarationBody,
+    Class, Declaration, ExportDefaultDeclarationKind, ExportSpecifier, Function,
+    ImportDeclarationSpecifier, ImportOrExportKind, ModuleExportName, Program, Statement,
+    TSEnumDeclaration, TSImportEqualsDeclaration, TSNamespaceDeclaration,
+    TSNamespaceDeclarationBody, VariableDeclaration,
 };
 use oxc_semantic::Semantic;
 use oxc_span::Span;
@@ -106,9 +107,23 @@ fn collect_values<'a>(program: &'a Program<'a>) -> HashSet<&'a str> {
                 }
             }
             Statement::TSImportEqualsDeclaration(imp) => {
-                if imp.import_kind != ImportOrExportKind::Type {
-                    values.insert(imp.id.name.as_str());
-                }
+                import_equals_binds_value(imp, &mut values);
+            }
+            // Bare top-level declarations bind values too: a later `export {name}` must see them.
+            Statement::VariableDeclaration(variable) => {
+                variable_binds_value(variable, &mut values);
+            }
+            Statement::FunctionDeclaration(function) => {
+                function_binds_value(function, &mut values);
+            }
+            Statement::ClassDeclaration(class) => {
+                class_binds_value(class, &mut values);
+            }
+            Statement::TSEnumDeclaration(enumeration) => {
+                enum_binds_value(enumeration, &mut values);
+            }
+            Statement::TSNamespaceDeclaration(namespace) => {
+                namespace_binds_value(namespace, &mut values);
             }
             Statement::ExportDeclaration(export) => {
                 collect_declaration_value(&export.declaration, &mut values);
@@ -120,40 +135,94 @@ fn collect_values<'a>(program: &'a Program<'a>) -> HashSet<&'a str> {
     values
 }
 
+/// Collects the names bound by one top-level variable declaration, when it is a runtime value.
+fn variable_binds_value<'a>(variable: &VariableDeclaration<'a>, values: &mut HashSet<&'a str>) {
+    if variable.declare {
+        return;
+    }
+
+    for declarator in &variable.declarations {
+        for identifier in declarator.id.get_binding_identifiers() {
+            values.insert(identifier.name.as_str());
+        }
+    }
+}
+
+/// Collects the name bound by one top-level function declaration, when it is a runtime value.
+fn function_binds_value<'a>(function: &Function<'a>, values: &mut HashSet<&'a str>) {
+    if function.declare {
+        return;
+    }
+
+    if let Some(id) = &function.id {
+        values.insert(id.name.as_str());
+    }
+}
+
+/// Collects the name bound by one top-level class declaration, when it is a runtime value.
+fn class_binds_value<'a>(class: &Class<'a>, values: &mut HashSet<&'a str>) {
+    if class.declare {
+        return;
+    }
+
+    if let Some(id) = &class.id {
+        values.insert(id.name.as_str());
+    }
+}
+
+/// Collects the name bound by one top-level enum declaration, when it is a runtime value.
+fn enum_binds_value<'a>(enumeration: &TSEnumDeclaration<'a>, values: &mut HashSet<&'a str>) {
+    if enumeration.declare {
+        return;
+    }
+
+    values.insert(enumeration.id.name.as_str());
+}
+
+/// Collects the name bound by one top-level namespace, when the namespace is a runtime value.
+fn namespace_binds_value<'a>(
+    namespace: &TSNamespaceDeclaration<'a>,
+    values: &mut HashSet<&'a str>,
+) {
+    if namespace.declare || namespace_is_type_only(namespace) {
+        return;
+    }
+
+    values.insert(namespace.id.name.as_str());
+}
+
+/// Collects the name bound by one top-level `import x = ..`, when it is a runtime value.
+fn import_equals_binds_value<'a>(
+    imp: &TSImportEqualsDeclaration<'a>,
+    values: &mut HashSet<&'a str>,
+) {
+    if imp.import_kind != ImportOrExportKind::Type {
+        values.insert(imp.id.name.as_str());
+    }
+}
+
 /// Inserts the name a top-level `export <declaration>` binds, when it is a runtime value.
 fn collect_declaration_value<'a>(declaration: &Declaration<'a>, values: &mut HashSet<&'a str>) {
     match declaration {
-        Declaration::VariableDeclaration(variable) if !variable.declare => {
-            for declarator in &variable.declarations {
-                for identifier in declarator.id.get_binding_identifiers() {
-                    values.insert(identifier.name.as_str());
-                }
-            }
+        Declaration::VariableDeclaration(variable) => {
+            variable_binds_value(variable, values);
         }
-        Declaration::FunctionDeclaration(function) if !function.declare => {
-            if let Some(id) = &function.id {
-                values.insert(id.name.as_str());
-            }
+        Declaration::FunctionDeclaration(function) => {
+            function_binds_value(function, values);
         }
-        Declaration::ClassDeclaration(class) if !class.declare => {
-            if let Some(id) = &class.id {
-                values.insert(id.name.as_str());
-            }
+        Declaration::ClassDeclaration(class) => {
+            class_binds_value(class, values);
         }
-        Declaration::TSEnumDeclaration(enumeration) if !enumeration.declare => {
-            values.insert(enumeration.id.name.as_str());
+        Declaration::TSEnumDeclaration(enumeration) => {
+            enum_binds_value(enumeration, values);
         }
-        Declaration::TSNamespaceDeclaration(namespace)
-            if !namespace.declare && !namespace_is_type_only(namespace) =>
-        {
-            values.insert(namespace.id.name.as_str());
+        Declaration::TSNamespaceDeclaration(namespace) => {
+            namespace_binds_value(namespace, values);
         }
-        Declaration::TSImportEqualsDeclaration(imp)
-            if imp.import_kind != ImportOrExportKind::Type =>
-        {
-            values.insert(imp.id.name.as_str());
+        Declaration::TSImportEqualsDeclaration(imp) => {
+            import_equals_binds_value(imp, values);
         }
-        // Type shapes, declare forms and ambient modules are not runtime values.
+        // Type shapes and ambient modules are not runtime values.
         _ => {}
     }
 }
@@ -429,7 +498,9 @@ mod tests {
 
     #[test]
     fn a_type_only_import_equals_is_not_a_runtime_export() {
-        let source = "namespace B { export const C = 1; }\nexport import type A = B.C;\nexport const value = 2;\n";
+        let source = "namespace B { export const C = 1; }\n\
+                      export import type A = require(\"./b\");\n\
+                      export const value = 2;\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }

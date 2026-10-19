@@ -50,6 +50,15 @@ struct Check<'s, 'a> {
 
 impl Check<'_, '_> {
     fn enter(&mut self, span: Span, tag: JsxTag, context: &Context) {
+        // The state to restore is captured before any reset: a nested render (a memo callback,
+        // a nested component) must not leak its zeroed depth or its scope into the frame the
+        // owner's branch restores from.
+        let outer = Frame {
+            depth: self.depth,
+            suppressed: self.suppressed,
+            scope: self.scope,
+            linked: false,
+        };
         let linked = if context.in_render {
             if self.scope != context.render_scope {
                 // A new render (a nested component function) starts counting from zero.
@@ -63,12 +72,7 @@ impl Check<'_, '_> {
             // attribute expression. It continues the nearest enclosing element's render.
             self.stack.last().is_some_and(|frame| frame.linked)
         };
-        self.stack.push(Frame {
-            depth: self.depth,
-            suppressed: self.suppressed,
-            scope: self.scope,
-            linked,
-        });
+        self.stack.push(Frame { linked, ..outer });
 
         if !linked || tag != JsxTag::Component {
             return;
@@ -223,7 +227,7 @@ mod tests {
         let attribute = render("        return <A icon={<B/>}/>;");
         assert_eq!(lines(&diagnose(&attribute, check)), [] as [usize; 0]);
 
-        let deep_attribute = render("        return <A><B><C render={<D/>}/></C></B>;");
+        let deep_attribute = render("        return <A><B><C render={<D/>}/></B>;");
         assert_eq!(lines(&diagnose(&deep_attribute, check)), [3]);
 
         let expression = render("        return <A>{cond && <B/>}</A>;");
@@ -240,8 +244,9 @@ mod tests {
             "        function Inner() {{\n{inner}\n        }}\n        return <Inner/>;"
         ));
         // Inner is a PascalCase function returning JSX, so it is its own render; its depth-four
-        // return on line 3 reports once, and the outer `<Inner/>` alone does not.
-        assert_eq!(lines(&diagnose(&source, check)), [3]);
+        // return is on line 4 (line 3 is the `function Inner() {` line) and reports once, and
+        // the outer `<Inner/>` alone does not.
+        assert_eq!(lines(&diagnose(&source, check)), [4]);
     }
 
     #[test]
