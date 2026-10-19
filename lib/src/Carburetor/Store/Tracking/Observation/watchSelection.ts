@@ -1,9 +1,8 @@
 import {TDisposer, TReadonly} from '@/Carburetor/Models/Base';
-import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
+import {TPath} from '@/Carburetor/Models/Paths';
 import {ICarburetorSubscription, TSelector} from '@/Carburetor/Models/Store';
 import {readCoverage} from '@/Carburetor/Store/Paths/Markers/readCoverage';
-import {completeReads} from '@/Carburetor/Store/Tracking/Observation/completeReads';
-import {completeObservation} from '@/Carburetor/Store/Tracking/Observation/completeObservation';
+import {ReadLedger} from '@/Carburetor/Store/Paths/Markers/ReadLedger';
 import {transferCompletedReads} from '@/Carburetor/Store/Tracking/Observation/transferCompletedReads';
 import {sameReads} from '@/Carburetor/Store/Tracking/Observation/sameReads';
 import {TCompletedReads} from '@/Carburetor/Store/Tracking/Observation/Models';
@@ -26,16 +25,16 @@ const rejectWatchInstance = (instance: object): never => {
     );
 };
 
-/** Collects the selector's value and tracked reads without a per-watch runner closure. */
+/** Runs the selector into the ledger's recording, matched against the filed set's recording. */
 const runSelector = <T, R>(
     source: {read: (record: TPathRecorder) => TReadonly<T>}, select: TSelector<T, R>,
-    reads: {current: TPathSet}, views: PersistentViews
-): {value: R; reads: TPathSet} => {
-    reads.current = new Set<TPath>();
+    ledger: ReadLedger, installed: TCompletedReads | undefined, views: PersistentViews
+): {value: R} => {
+    if (!ledger.open(source, installed)) ledger.begin(new Set<TPath>());
     const view = views.view(source, (path: TPath) => {
-        reads.current.add(path);
+        ledger.record(path);
     });
-    return {value: select(view), reads: reads.current};
+    return {value: select(view)};
 };
 
 /** A watch's read set follows the selector even when its selected value stays unchanged.
@@ -51,9 +50,9 @@ export const watchSelection = <T, R>(
 ): TDisposer => {
     const id = getUid();
     const views = new PersistentViews();
-    const reads: {current: TPathSet} = {current: new Set<TPath>()};
+    const ledger = new ReadLedger();
     const versionOf = (source as {getVersion?: () => number}).getVersion;
-    const initial = runSelector(source, select, reads, views);
+    const initial = runSelector(source, select, ledger, undefined, views);
     let liveSelection: unknown = initial.value;
     // R37-05: allocated only for an object selection; a primitive verdict needs no ledger.
     let copies: WeakMap<object, unknown> | undefined;
@@ -78,14 +77,12 @@ export const watchSelection = <T, R>(
         );
     }
     let patchable = !trace.shared;
-    const completedInitial = completeObservation(initial);
-    let previous: R = completedInitial.value;
-    let installed: TCompletedReads = transferCompletedReads(
-        completedInitial.reads, id
-    ).reads as unknown as TCompletedReads;
+    const initialReads = ledger.close(false);
+    let previous: R = initial.value;
+    let installed: TCompletedReads = transferCompletedReads(initialReads, id).reads as unknown as TCompletedReads;
 
     const callback = (): void => {
-        const fresh = runSelector(source, select, reads, views);
+        const fresh = runSelector(source, select, ledger, installed, views);
         const nowVersion = versionOf?.call(source);
         // R36-01: the same live view as last time, so the write log names what changed.
         const viaLog = version !== undefined && fresh.value === liveSelection && copies !== undefined
@@ -126,17 +123,23 @@ export const watchSelection = <T, R>(
         if (changed) previous = next;
         fresh.value = previous;
         // The read set closes only after selection comparison and detachment finish.
-        const completed = {value: fresh.value, reads: viaLog !== undefined
-            ? readCoverage.extend(installed, fresh.reads) : completeReads(fresh.reads)};
+        let reads: TCompletedReads;
+        if (viaLog === undefined) reads = ledger.close(true);
+        else {
+            reads = ledger.covered(installed) ? installed : readCoverage.extend(installed, ledger.spill());
+            ledger.abandon();
+        }
         // Re-filed only when the read set actually moved: an unchanged set keeps the
         // subscriber index's record and skips the whole diff.
-        if (!sameReads(installed, completed.reads as unknown as TCompletedReads)) {
-            source.subscribe(callback, transferCompletedReads(completed.reads, id));
-            installed = completed.reads as unknown as TCompletedReads;
+        if (!sameReads(installed, reads)) {
+            source.subscribe(callback, transferCompletedReads(reads, id));
+            installed = reads;
+        } else if (reads !== installed) {
+            ledger.adopt(reads, installed);
         }
-        if (changed) onChange(completed.value as TReadonly<R>, last as TReadonly<R>);
+        if (changed) onChange(fresh.value as TReadonly<R>, last as TReadonly<R>);
     };
-    source.subscribe(callback, transferCompletedReads(completedInitial.reads, id));
+    source.subscribe(callback, transferCompletedReads(initialReads, id));
     // Owned only once the disposer exists: a throwing initial walk must not leak an owner.
     if (copies !== undefined) own(true);
     return () => {

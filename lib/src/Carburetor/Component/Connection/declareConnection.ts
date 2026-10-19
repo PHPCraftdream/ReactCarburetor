@@ -3,6 +3,7 @@ import {TPath, TPathRecorder} from "@/Carburetor/Models/Paths";
 import {TReadonly} from "@/Carburetor/Models/Base";
 import {getUid} from "@/Carburetor/Store/Utils/getUid";
 import {IConnection, IConnectionSource, IRenderAttempt} from "@/Carburetor/Component/Models/Connection";
+import {AttemptEntry} from "@/Carburetor/Component/Models/AttemptEntry";
 
 /**
  * One connect()-family declaration's whole state: the registered connection, the source
@@ -138,7 +139,7 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
             // already fixed this attempt's source.
             const carburetor = this.resolveAttemptSource();
 
-            entry = {source: carburetor, baselineVersion: carburetor.getVersion(), reads: new Set<TPath>()};
+            entry = new AttemptEntry(carburetor, carburetor.getVersion(), connection);
             connection.attemptEntry = entry;
 
             if (attempt.connections === undefined) {
@@ -148,12 +149,7 @@ class ConnectionSource<T extends object> implements IConnectionSource<T> {
             attempt.connections.push(connection);
         }
 
-        if (entry.sharedReads === true && !entry.reads.has(path)) {
-            entry.reads = new Set<TPath>(entry.reads);
-            entry.sharedReads = false;
-        }
-
-        entry.reads.add(path);
+        entry.record(path);
     }
 }
 

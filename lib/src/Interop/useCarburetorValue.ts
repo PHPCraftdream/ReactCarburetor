@@ -2,7 +2,7 @@
 
 import {useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore} from "react";
 import {IReadableCarburetor, TReadonly, TSubscriber} from "@/Carburetor";
-import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
+import {TPath, TPathRecorder} from "@/Carburetor/Models/Paths";
 import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
 import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
 import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconcileFlatSelection";
@@ -15,6 +15,7 @@ import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
 import {readCoverage} from "@/Carburetor/Store/Paths/Markers/readCoverage";
 import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
+import {ReadLedger} from "@/Carburetor/Store/Paths/Markers/ReadLedger";
 import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {TSelector, TValueComparator} from "./Models";
 
@@ -152,13 +153,14 @@ export const useCarburetorValue = <T extends object, R>(
     // R39-04: one owner of the store's write proofs per mounted hook, created with the first object selection.
     const targets = useRef<TargetsHold | null>(null);
 
-    // The persistent root view getSnapshot reads through, and the slot its recorder reports
-    // into. The slot holds a Set only while a getSnapshot call is walking the view — a read
+    // The persistent root view getSnapshot reads through, and the ledger its recorder reports
+    // into. The ledger records only while a getSnapshot call is walking the view — a read
     // through a snapshot captured earlier and touched outside that window records nothing.
     const view = useRef<IRootView<T> | null>(null);
-    const currentReads = useRef<TPathSet | undefined>(undefined);
+    const ledger = useRef<ReadLedger | null>(null);
+    const recording = useRef(false);
     const recordRead = useCallback((path: TPath): void => {
-        currentReads.current?.add(path);
+        if (recording.current) ledger.current!.record(path);
     }, []);
 
     const install = useCallback((): void => {
@@ -176,6 +178,7 @@ export const useCarburetorValue = <T extends object, R>(
             // Equal content: adopt the set the subscriber index filed, so the drift probe of
             // the next getSnapshot takes the O(1) identity path.
             if (current.reads !== reads) {
+                ledger.current?.adopt(reads, current.reads);
                 pendingReads.current = current.reads;
                 const entry = cache.current;
                 if (entry !== null && entry.reads === reads) {
@@ -259,9 +262,10 @@ export const useCarburetorValue = <T extends object, R>(
 
         view.current = resolveView(view.current, carburetor, recordRead);
 
-        const reads = new Set<TPath>();
-
-        currentReads.current = reads;
+        // Matched against the last learned recording; a Set is built only once the paths diverge.
+        const reads = ledger.current ??= new ReadLedger();
+        if (!reads.open(carburetor, entry?.reads)) reads.begin(new Set<TPath>());
+        recording.current = true;
 
         let result: R;
         let liveSelection: R | undefined;
@@ -278,7 +282,8 @@ export const useCarburetorValue = <T extends object, R>(
 
             const readsCoverSelection = noReadDrift && sameCarburetor && entry !== null &&
                 entry.isEqual === isEqual && isEqual === sameSelection &&
-                fresh === entry.liveSelection && coversReads(reads, entry.reads!);
+                fresh === entry.liveSelection
+                && (reads.covered(entry.reads!) || coversReads(reads.spill(), entry.reads!));
             const canReuseInlineSelection = readsCoverSelection;
 
             if (canReuseInlineSelection) {
@@ -333,13 +338,15 @@ export const useCarburetorValue = <T extends object, R>(
                     : candidate;
             }
         } finally {
-            currentReads.current = undefined;
+            recording.current = false;
         }
 
         // A patched pass keeps the filed read set by identity unless the patch read a path it lacks
         // (a branch replaced by new leaves): then the set grows, and the subscription re-files.
         // Paths of branches the patch replaced stay in the set; a superset only wakes more.
-        const completedReads = patched ? readCoverage.extend(entry!.reads!, reads) : completeReads(reads);
+        const completedReads = !patched ? reads.close(entry !== null)
+            : reads.covered(entry!.reads!) ? entry!.reads! : readCoverage.extend(entry!.reads!, reads.spill());
+        if (patched) reads.abandon();
         const completed = {
             carburetor, select, isEqual, version, value: result, reads: completedReads, filled: true,
         };

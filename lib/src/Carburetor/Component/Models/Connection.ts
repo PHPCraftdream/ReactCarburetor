@@ -3,6 +3,7 @@ import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/
 import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {TargetsHold} from "@/Carburetor/Store/Utils/Selection/Patch/TargetsHold";
+import {ReadLedger} from "@/Carburetor/Store/Paths/Markers/ReadLedger";
 
 /**
  * What one commit established about a dependency: the carburetor a render attempt resolved,
@@ -62,6 +63,8 @@ export interface IDependencySlot {
     targets?: TargetsHold;
     /** Automatic terminal owners, released with the registration. */
     resourceLoads?: Map<TPath, Promise<void>>;
+    /** The last committed raw recording, matched by the next attempt instead of a fresh set. */
+    ledger?: ReadLedger;
 }
 
 /**
@@ -150,6 +153,19 @@ export interface IAttemptEntry {
     targetsWanted?: boolean;
     /** Canonical resource entries read by this commit. */
     resourcePaths?: Set<TPath>;
+    /**
+     * Records one read path into this attempt.
+     *
+     * @param path - the path a read touched
+     */
+    record(path: TPath): void;
+    /**
+     * Closes the paths for the commit consuming this attempt.
+     *
+     * @param slot - the slot being committed, absent for a slot this commit creates
+     * @param learn - whether a slot without a ledger starts one
+     */
+    complete(slot: IDependencySlot | undefined, learn: boolean): TCompletedReads;
 }
 
 /**

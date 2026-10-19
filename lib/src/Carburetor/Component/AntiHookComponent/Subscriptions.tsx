@@ -2,7 +2,6 @@
 
 import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
 
-import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
 import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
 import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
 import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
@@ -185,13 +184,14 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
      * Builds a fresh committed description out of one attempt entry.
      *
      * @param entry - the attempt's record for the source being committed
+     * @param slot - the slot receiving the description, absent for a slot this commit creates
      */
-    private [C.buildDescription](entry: IAttemptEntry): IDependencyDescription {
+    private [C.buildDescription](entry: IAttemptEntry, slot?: IDependencySlot): IDependencyDescription {
         return {
             resourcePaths: entry.resourcePaths,
             targetsWanted: entry.targetsWanted,
             carburetor: entry.source, baselineVersion: entry.baselineVersion,
-            reads: entry.sharedReads ? entry.reads as unknown as TCompletedReads : completeReads(entry.reads),
+            reads: entry.complete(slot, false),
         };
     }
 
@@ -218,10 +218,9 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             description.targetsWanted = entry.targetsWanted;
             description.carburetor = entry.source;
             description.baselineVersion = entry.baselineVersion;
-            description.reads = entry.sharedReads
-                ? entry.reads as unknown as TCompletedReads : completeReads(entry.reads);
+            description.reads = entry.complete(slot, true);
         } else {
-            slot.committed = this[C.buildDescription](entry);
+            slot.committed = this[C.buildDescription](entry, slot);
         }
     }
 
@@ -311,6 +310,7 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
             slot.installed = {carburetor: committed.carburetor, reads: committed.reads};
         } else if (slot.installed.reads !== committed.reads) {
             // Adopt the filed set: the drift answer below is O(1) only for that identity.
+            slot.ledger?.adopt(committed.reads, slot.installed.reads);
             committed.reads = slot.installed.reads;
         }
 

@@ -35,6 +35,7 @@ import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconci
 import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
 import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
 import {getSelectionAttemptIdentity} from "@/Carburetor/Component/Models/getSelectionAttemptIdentity";
+import {AttemptEntry} from "@/Carburetor/Component/Models/AttemptEntry";
 import {AntiHookComponentFoundation} from "./Foundation";
 
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
@@ -349,7 +350,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
      */
     public useComputed<R extends unknown>(computed: IComputed<R>): R {
         const entry = this[C.track](computed);
-        entry.reads.add(WILDCARD_PATH);
+        entry.record(WILDCARD_PATH);
         const value = computed.get();
         // A lazy first read can move the pre-observation token during render.
         entry.baselineVersion = getComputedSnapshotVersion(computed);
@@ -384,7 +385,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const fieldViewRecord = (fieldPath: TPath): void => {
             if (fieldView === undefined || (attempt !== undefined
                 && this[C.renderAttempt] === attempt && !attempt.abandoned)) {
-                entry.reads.add(fieldPath);
+                entry.record(fieldPath);
             }
         };
         // The shared reader records the automatic retry dependencies and builds the facade
@@ -577,7 +578,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         const attempt = this[C.renderAttempt];
 
         if (!attempt) {
-            return {source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
+            return new AttemptEntry(source, source.getVersion());
         }
 
         let tracked = attempt.tracked;
@@ -590,7 +591,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
         let entry = tracked.get(source);
 
         if (!entry) {
-            entry = {source, baselineVersion: source.getVersion(), reads: new Set<TPath>()};
+            entry = new AttemptEntry(source, source.getVersion(), this[C.tracked]?.get(source));
             tracked.set(source, entry);
         }
 

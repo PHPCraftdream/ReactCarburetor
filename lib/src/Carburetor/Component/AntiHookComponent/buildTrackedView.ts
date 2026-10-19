@@ -19,7 +19,7 @@ function recordTrackedPath<T extends object>(
     path: TPath
 ): void {
     if (tracked.attempt !== undefined && getRenderAttempt() === tracked.attempt) {
-        tracked.entry?.reads.add(path);
+        tracked.entry?.record(path);
     }
 }
 
@@ -50,7 +50,7 @@ export const buildTrackedView = <T extends object>(
     if (!isTrackable(data)) {
         return carburetor.read((path: TPath) => {
             if (attempt !== undefined) {
-                entry.reads.add(path);
+                entry.record(path);
             }
         }) as unknown as TReadonly<T>;
     }
