@@ -211,3 +211,255 @@ describe('ordered own keys in history endpoints', () => {
         history.disconnect();
     });
 });
+
+type DocsState = {docs: Record<string, {title: string} | null>; rows: {title: string}[]};
+
+type PlanState = {first?: number; second?: number; middle?: number; last: number; marker: number};
+
+// --- pending owned-target fold (search index) ---
+
+class DocsCarburetor extends Carburetor<DocsState> {
+    public edit(mutate: (draft: DocsState) => void): void {
+        this.update(mutate);
+    }
+}
+
+const buildRows = (): {title: string}[] => Array.from({length: 8}, (_, index) => ({title: `row-${index}`}));
+
+describe('pending owned-target fold', () => {
+    test('a write under a freshly added branch merges into the owned endpoint', () => {
+        const rows = buildRows();
+        const store = new DocsCarburetor({docs: {}, rows});
+        const history = new CarburetorHistory(store);
+        const baselineRows = (history as unknown as {baseline: {rows: {title: string}[]}}).baseline.rows;
+        store.edit(draft => {
+            draft.docs.entry = {title: 'first'};
+            draft.docs.entry.title = 'final';
+        });
+        const entry = (history as unknown as {past: Array<{kind: string; patches?: unknown[]}>}).past.at(-1)!;
+        expect(entry.kind).toBe('patches');
+        expect(entry.patches).toHaveLength(1);
+        expect((entry.patches?.[0] as {next: {title: string}}).next).toEqual({title: 'final'});
+        expect((history as unknown as {baseline: {rows: unknown}}).baseline.rows).toBe(baselineRows);
+        expect(store.getData().rows).toBe(rows);
+        expect(store.getData().docs.entry).toEqual({title: 'final'});
+        expect(history.undo()).toBe(true);
+        expect(store.getData().docs).toEqual({});
+        expect(history.redo()).toBe(true);
+        expect(store.getData().docs.entry).toEqual({title: 'final'});
+        history.disconnect();
+    });
+
+    test('deleting a folded branch keeps undo exact through repeated cycles', () => {
+        const store = new DocsCarburetor({docs: {}, rows: buildRows()});
+        const history = new CarburetorHistory(store);
+        store.edit(draft => {
+            draft.docs.entry = {title: 'first'};
+            delete draft.docs.entry;
+        });
+        expect(store.getData().docs).toEqual({});
+        expect(history.undo()).toBe(true);
+        expect(store.getData().docs).toEqual({});
+        expect(history.redo()).toBe(true);
+        expect(store.getData().docs).toEqual({});
+        store.edit(draft => {
+            draft.docs.entry = {title: 'kept'};
+            draft.docs.entry.title = 'edited';
+            delete draft.docs.entry;
+            draft.docs.entry = {title: 'again'};
+            draft.docs.entry.title = 'last';
+        });
+        expect(store.getData().docs.entry).toEqual({title: 'last'});
+        for (let cycle = 0; cycle < 2; cycle++) {
+            expect(history.undo()).toBe(true);
+            expect(store.getData().docs).toEqual({});
+            expect(history.redo()).toBe(true);
+            expect(store.getData().docs.entry).toEqual({title: 'last'});
+        }
+        history.disconnect();
+    });
+
+    test('a same-path replacement folds to the final endpoint over an older owned copy', () => {
+        const store = new DocsCarburetor({docs: {}, rows: buildRows()});
+        const history = new CarburetorHistory(store);
+        store.edit(draft => {
+            draft.docs.entry = {title: 'one'};
+            draft.docs.entry.title = 'two';
+            draft.docs.entry = {title: 'three'};
+        });
+        const entry = (history as unknown as {past: Array<{kind: string; patches?: unknown[]}>}).past.at(-1)!;
+        expect(entry.kind).toBe('patches');
+        expect(entry.patches).toHaveLength(1);
+        expect((entry.patches?.[0] as {next: {title: string}}).next).toEqual({title: 'three'});
+        expect(history.undo()).toBe(true);
+        expect(store.getData().docs).toEqual({});
+        expect(history.redo()).toBe(true);
+        expect(store.getData().docs.entry).toEqual({title: 'three'});
+        history.disconnect();
+    });
+});
+
+// --- order-carrying deletion plans ---
+
+class PlanOrderedStore extends Carburetor<PlanState> {
+    public remove(key: 'first' | 'second' | 'middle'): void {
+        this.update(draft => { delete draft[key]; });
+    }
+    public bulkRemove(): void {
+        this.update(draft => {
+            delete draft.first;
+            delete draft.second;
+            delete draft.middle;
+        });
+    }
+    public mark(value: number): void {
+        this.update(draft => { draft.marker = value; });
+    }
+}
+
+const planBefore = ['first', 'second', 'middle', 'last', 'marker'];
+const makePlanStore = (): PlanOrderedStore =>
+    new PlanOrderedStore({first: 1, second: 2, middle: 3, last: 4, marker: 0});
+const planKeysOf = (store: PlanOrderedStore): string[] => Object.keys(store.getData());
+const entryOf = (history: CarburetorHistory<PlanState>):
+    {kind: string} => (history as unknown as {past: Array<{kind: string}>}).past.at(-1)!;
+
+describe('middle-key deletions stay patch entries with ordered undo', () => {
+    test('a middle-key deletion records a patches entry and undo reinstalls its position', () => {
+        const store = makePlanStore();
+        const history = new CarburetorHistory(store);
+        store.remove('first');
+        expect(entryOf(history).kind).toBe('patches');
+        expect(planKeysOf(store)).toEqual(['second', 'middle', 'last', 'marker']);
+        expect(history.undo()).toBe(true);
+        expect(planKeysOf(store)).toEqual(planBefore);
+        expect(store.getData().first).toBe(1);
+        expect(history.redo()).toBe(true);
+        expect(planKeysOf(store)).toEqual(['second', 'middle', 'last', 'marker']);
+        history.disconnect();
+    });
+
+    test('the last ordered key deletion keeps its plain append undo', () => {
+        const store = makePlanStore();
+        const history = new CarburetorHistory(store);
+        store.update(draft => { delete draft.marker; });
+        expect(entryOf(history).kind).toBe('patches');
+        expect(history.undo()).toBe(true);
+        expect(planKeysOf(store)).toEqual(planBefore);
+        expect(history.redo()).toBe(true);
+        expect(planKeysOf(store)).toEqual(['first', 'second', 'middle', 'last']);
+        history.disconnect();
+    });
+
+    test('bulk middle deletions produce one patches entry whose undo restores every position', () => {
+        const store = makePlanStore();
+        const history = new CarburetorHistory(store);
+        store.bulkRemove();
+        expect(entryOf(history).kind).toBe('patches');
+        expect(planKeysOf(store)).toEqual(['last', 'marker']);
+        expect(history.undo()).toBe(true);
+        expect(planKeysOf(store)).toEqual(planBefore);
+        expect(store.getData().first).toBe(1);
+        expect(store.getData().second).toBe(2);
+        expect(store.getData().middle).toBe(3);
+        expect(history.redo()).toBe(true);
+        expect(planKeysOf(store)).toEqual(['last', 'marker']);
+        history.disconnect();
+    });
+
+    test('two histories on one store resolve their own private order plans', () => {
+        const store = makePlanStore();
+        const first = new CarburetorHistory(store);
+        const second = new CarburetorHistory(store);
+        store.remove('middle');
+        const patchesOf = (history: CarburetorHistory<PlanState>): Array<Record<string, unknown>> =>
+            ((history as unknown as {past: Array<{patches?: unknown[]}>}).past.at(-1)!.patches ?? []);
+        expect(entryOf(first).kind).toBe('patches');
+        expect(entryOf(second).kind).toBe('patches');
+        expect(patchesOf(first)[0]).not.toBe(patchesOf(second)[0]);
+        expect(patchesOf(first)[0].orderPlan).toBeDefined();
+        expect(patchesOf(second)[0].orderPlan).toBeDefined();
+        expect((patchesOf(first)[0].orderPlan as {from: number}).from)
+            .toBe((patchesOf(second)[0].orderPlan as {from: number}).from);
+        expect(first.undo()).toBe(true);
+        expect(planKeysOf(store)).toEqual(planBefore);
+        expect(store.getData().middle).toBe(3);
+        first.disconnect();
+        second.disconnect();
+    });
+});
+
+describe('positional windows with explicit undefined and coerced arguments', () => {
+    class ListStore extends Carburetor<{list: number[]}> {
+        public edit(mutate: (draft: {list: number[]}) => void): void { this.update(mutate); }
+    }
+
+    const entryPatches = (history: CarburetorHistory<{list: number[]}>): string[][] => {
+        const entry = (history as unknown as {past: Array<{patches?: Array<{segments: string[]}>}>}).past.at(-1);
+        return entry?.kind === 'patches' ? entry.patches!.map(patch => [...patch.segments]) : [];
+    };
+
+    test('fill treats an explicit undefined end as the array length', () => {
+        const store = new ListStore({list: [0, 1, 2, 3]});
+        const history = new CarburetorHistory(store);
+        store.edit(draft => { draft.list.fill(9, 1, undefined); });
+        expect(store.getData().list).toEqual([0, 9, 9, 9]);
+        expect(entryPatches(history).map(segments => segments.join('.')))
+            .toEqual(['list.1', 'list.2', 'list.3']);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().list).toEqual([0, 1, 2, 3]);
+        expect(history.redo()).toBe(true);
+        expect(store.getData().list).toEqual([0, 9, 9, 9]);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().list).toEqual([0, 1, 2, 3]);
+        history.disconnect();
+    });
+
+    test('copyWithin treats an explicit undefined end as the array length', () => {
+        const store = new ListStore({list: [0, 1, 2, 3]});
+        const history = new CarburetorHistory(store);
+        store.edit(draft => { draft.list.copyWithin(0, 2, undefined); });
+        expect(store.getData().list).toEqual([2, 3, 2, 3]);
+        expect(entryPatches(history).map(segments => segments.join('.')))
+            .toEqual(['list.0', 'list.1']);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().list).toEqual([0, 1, 2, 3]);
+        expect(history.redo()).toBe(true);
+        expect(store.getData().list).toEqual([2, 3, 2, 3]);
+        expect(history.undo()).toBe(true);
+        expect(store.getData().list).toEqual([0, 1, 2, 3]);
+        history.disconnect();
+    });
+
+    test('splice with an explicitly undefined deleteCount removes nothing', () => {
+        const store = new ListStore({list: [0, 1, 2, 3]});
+        const history = new CarburetorHistory(store);
+        store.edit(draft => { draft.list.splice(0, undefined); });
+        expect(store.getData().list).toEqual([0, 1, 2, 3]);
+        expect(history.undo()).toBe(false);
+        history.disconnect();
+    });
+
+    test('non-numeric index arguments skip the window and coerce only once', () => {
+        const store = new ListStore({list: [0, 1, 2, 3]});
+        const history = new CarburetorHistory(store);
+        let calls = 0;
+        const target = {valueOf: (): number => ++calls === 1 ? 2 : 0};
+        store.edit(draft => { draft.list.copyWithin(target as unknown as number, 2, 3); });
+        expect(calls).toBe(1);
+        expect(store.getData().list).toEqual([0, 1, 2, 3]);
+        expect(history.undo()).toBe(false);
+        history.disconnect();
+
+        const stable = new ListStore({list: [0, 1, 2, 3]});
+        const stableHistory = new CarburetorHistory(stable);
+        stable.edit(draft => { stable; draft.list.copyWithin({valueOf: () => 0} as unknown as number, 2, 3); });
+        expect(stable.getData().list).toEqual([2, 1, 2, 3]);
+        expect(entryPatches(stableHistory).map(segments => segments.join('.'))).toEqual(['list.0']);
+        expect(stableHistory.undo()).toBe(true);
+        expect(stable.getData().list).toEqual([0, 1, 2, 3]);
+        expect(stableHistory.redo()).toBe(true);
+        expect(stable.getData().list).toEqual([2, 1, 2, 3]);
+        stableHistory.disconnect();
+    });
+});

@@ -9,7 +9,8 @@ import {ownArrayRestore} from "./Kinds/ownArrayRestore";
 
 const hasOwn = Object.prototype.hasOwnProperty;
 
-class ApplyDiffOverflow extends Error {}
+/** Preallocated overflow sentinel: walk control flow without an Error stack capture. */
+const APPLY_DIFF_OVERFLOW: {readonly overflow: true} = Object.freeze({overflow: true});
 /** How many draft writes this call has made so far; threaded through, not module state. */
 interface IBudget {
     spent: number;
@@ -33,7 +34,9 @@ const countChanges = (previous: unknown, next: unknown, stopAfter: number): numb
         }
         return count;
     }
-    const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
+    const keys = new Set<string>(Object.keys(previous));
+    const nextKeys = Object.keys(next);
+    for (const key of nextKeys) keys.add(key);
     for (const key of keys) {
         if (!hasOwn.call(previous, key) || !hasOwn.call(next, key)) { count++; continue; }
         count += countChanges(
@@ -279,7 +282,7 @@ export const applyDiff = (
     try {
         applyBranch(target, previous, next, budget);
     } catch (error) {
-        if (error instanceof ApplyDiffOverflow) {
+        if (error === APPLY_DIFF_OVERFLOW) {
             return false;
         }
 

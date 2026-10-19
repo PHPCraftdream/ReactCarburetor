@@ -50,6 +50,83 @@ const unwrapArg = (value: unknown): unknown => {
     return raw;
 };
 
+/** The half-open index range one positional call can touch; undefined means the whole array. */
+interface IPositionalWindow {
+    /** First index whose occupant may change. */
+    start: number;
+    /** One past the last index whose occupant may change. */
+    end: number;
+    /** Whether the range is trusted as complete only when the native result matches it. */
+    verify: (result: unknown, oldLength: number, source: unknown[]) => boolean;
+}
+
+/** `ToIntegerOrInfinity` truncated to an integer; `undefined` and `NaN` become 0. */
+const toIndex = (value: unknown): number => {
+    if (value === undefined) return 0;
+    const num = Number(value);
+    return Number.isNaN(num) ? 0 : Math.trunc(num);
+};
+
+/** Clamps a spec-relative start or end to `[0, length]`. */
+const clampIndex = (value: number, length: number): number =>
+    value < 0 ? Math.max(length + value, 0) : Math.min(value, length);
+
+/** The `splice` window: slot-replacement touches `[start, start + count)`, everything else the tail. */
+const spliceWindow = (args: unknown[], length: number): IPositionalWindow => {
+    const start = clampIndex(toIndex(args[0]), length);
+    // An explicitly passed undefined deleteCount coerces to zero per spec; only an omitted
+    // second argument removes through the end.
+    const deleteCount = args.length > 1
+        ? Math.max(0, Math.min(toIndex(args[1]), length - start))
+        : length - start;
+    const items = args.length > 2 ? args.length - 2 : 0;
+    if (deleteCount === items) {
+        return {
+            start, end: start + items,
+            verify: (result, oldLength, source) => Array.isArray(result) && result.length === items
+                && source.length === oldLength,
+        };
+    }
+    return {start, end: Number.MAX_SAFE_INTEGER, verify: () => true};
+};
+
+/** The `fill` window is exactly the filled range; an omitted or undefined end is the length. */
+const fillWindow = (args: unknown[], length: number): IPositionalWindow => ({
+    start: clampIndex(toIndex(args[1]), length),
+    end: clampIndex(args[2] === undefined ? length : toIndex(args[2]), length),
+    verify: () => true,
+});
+
+/** The `copyWithin` window is the target range of the copied span. */
+const copyWithinWindow = (args: unknown[], length: number): IPositionalWindow => {
+    const target = clampIndex(toIndex(args[0]), length);
+    const from = clampIndex(toIndex(args[1]), length);
+    const to = clampIndex(args[2] === undefined ? length : toIndex(args[2]), length);
+    const count = Math.max(0, Math.min(to - from, length - from, length - target));
+    return {start: target, end: target + count, verify: () => true};
+};
+
+/** Whether an index argument coerces predictably: objects with valueOf would coerce twice. */
+const plainIndex = (value: unknown): boolean => value === undefined || typeof value === 'number';
+
+/**
+ * Derives the affected index window from the arguments before the native call; whole array for
+ * the movers (`sort`/`reverse`/`shift`/`unshift`), non-numeric index arguments and anything else.
+ *
+ * @param key - the intercepted method name.
+ * @param length - the array length before the call.
+ * @param args - the invocation arguments.
+ */
+const positionalWindow = (key: string, length: number, args: unknown[]): IPositionalWindow | undefined => {
+    const indexArgs = key === 'splice' ? args.slice(0, 2)
+        : key === 'fill' ? args.slice(1, 3) : key === 'copyWithin' ? args.slice(0, 3) : [];
+    if (!indexArgs.every(plainIndex)) return undefined;
+    if (key === 'splice') return spliceWindow(args, length);
+    if (key === 'fill') return fillWindow(args, length);
+    if (key === 'copyWithin') return copyWithinWindow(args, length);
+    return undefined;
+};
+
 /**
  * Attributes a finished positional operation: records one path per index whose occupant
  * changed identity (or own-ness), plus `length` and the key-set marker when they changed,
@@ -59,20 +136,25 @@ const unwrapArg = (value: unknown): unknown => {
  * @param host - the write-proxy facilities.
  * @param before - the occupants before the call, `source.slice()`.
  * @param source - the raw array, already mutated.
+ * @param window - the precomputed affected range, or undefined to compare every index.
  */
-const attributePositional = (host: IPositionalHost, before: unknown[], source: unknown[]): void => {
+const attributePositional = (
+    host: IPositionalHost, before: unknown[], source: unknown[], window: IPositionalWindow | undefined
+): void => {
     const listener = host.patchPort?.listener;
     const concrete = listener && !host.patchPort?.opaque ? listener : undefined;
     const patches: Parameters<TPatchRecorder>[0][] | undefined = concrete ? [] : undefined;
     const beforeLength = before.length;
     const afterLength = source.length;
-    const limit = beforeLength > afterLength ? beforeLength : afterLength;
+    const hardLimit = beforeLength > afterLength ? beforeLength : afterLength;
+    const limit = window === undefined ? hardLimit : Math.min(window.end, hardLimit);
+    const first = window === undefined ? 0 : Math.min(window.start, hardLimit);
     let containersMoved = false;
     let anyChange = false;
 
     host.aliases?.checkWrite(source, host.basePath);
 
-    for (let index = 0; index < limit; index++) {
+    for (let index = first; index < limit; index++) {
         const wasOwn = index < beforeLength
             && Object.prototype.hasOwnProperty.call(before, index);
         const isOwn = index < afterLength
@@ -143,7 +225,8 @@ const isTrackableItem = (value: unknown): boolean =>
 /**
  * Runs one intercepted positional method natively on the raw array and attributes the result.
  * The raw array may be left partially mutated when the native call throws; the attribution in
- * `finally` records whatever did land, the same partial trace the per-write set traps left.
+ * `finally` records whatever did land, the same partial trace the per-write set traps left —
+ * a throw widens the attribution back to the whole array.
  *
  * @param host - the write-proxy facilities.
  * @param key - the intercepted method name.
@@ -156,6 +239,8 @@ export const runPositional = (
 ): unknown => {
     const native = (Array.prototype as unknown as Record<string, (...args: unknown[]) => unknown>)[key];
     const before = source.slice();
+    const oldLength = before.length;
+    let window = positionalWindow(key, oldLength, args);
     let result: unknown;
 
     try {
@@ -165,8 +250,12 @@ export const runPositional = (
         } else {
             result = native.apply(source, args);
         }
+        if (window !== undefined && !window.verify(result, oldLength, source)) window = undefined;
+    } catch (error) {
+        window = undefined;
+        throw error;
     } finally {
-        attributePositional(host, before, source);
+        attributePositional(host, before, source, window);
     }
 
     // Spec return values: the mutators return the receiver, the extractors the removed data.

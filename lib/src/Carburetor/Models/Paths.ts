@@ -71,6 +71,11 @@ export interface IWritePatch {
     next: unknown;
     /** Leaf diff of a replaced branch; native aliases require whole-graph history replay. */
     replacesBranch?: true;
+    /**
+     * Where an undo of this deletion must reinstate the key: the publication baseline's
+     * ordered string keys from the deleted position on, shared per container per entry.
+     */
+    orderPlan?: {readonly keys: readonly string[]; readonly from: number};
 }
 
 /** Delivers a field patch, opaque write, or structural transition requiring owned replay. */

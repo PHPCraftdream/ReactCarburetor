@@ -1,6 +1,41 @@
 import {IWritePatch} from "@/Carburetor/Models/Paths";
 import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
+import {isOrderedStringKey} from "./Order/isOrderedStringKey";
+import {orderReplayGuard} from "./Order/orderReplayGuard";
+
+const hasOwn = Object.prototype.hasOwnProperty;
+
+/** The baseline's ordered keys from a deleted position on, shared per container per entry. */
+interface IOrderPlan {readonly keys: readonly string[]; readonly from: number}
+
+/**
+ * Re-appends the baseline's ordered string keys that followed a deleted key, so the key
+ * reinstated by the inverse install regains its original enumeration position.
+ *
+ * @param node - the container the deletion was undone on.
+ * @param plan - the baseline's ordered keys from the deleted position on.
+ */
+const reinstateOrder = (node: Record<string, unknown>, plan: IOrderPlan): void => {
+    const keys = plan.keys;
+    orderReplayGuard.depth++;
+    try {
+        for (let index = plan.from; index < keys.length; index++) {
+            const key = keys[index];
+            if (!isOrderedStringKey(key) || !hasOwn.call(node, key)) continue;
+            const value = node[key];
+            delete node[key];
+            if (key === '__proto__') {
+                Object.defineProperty(node, key,
+                    {value, writable: true, enumerable: true, configurable: true});
+            } else {
+                node[key] = value;
+            }
+        }
+    } finally {
+        orderReplayGuard.depth--;
+    }
+};
 
 /**
  * Installs one patch's `previous` (undo) or `next` (redo) into `root` by walking its segments.
@@ -13,7 +48,8 @@ import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
  *
  * @param root - the object the patch's segments are resolved from.
  * @param patch - the patch to install.
- * @param inverse - false installs `next`; true installs `previous`, deleting when absent.
+ * @param inverse - false installs `next`; true installs `previous`, deleting when absent; an
+ * order-carrying deletion also reinstates its key's original enumeration position.
  */
 export const installPatch = (root: Record<string, unknown>, patch: IWritePatch, inverse: boolean): void => {
     let node: Record<string, unknown> = root;
@@ -39,4 +75,6 @@ export const installPatch = (root: Record<string, unknown>, patch: IWritePatch, 
     } else {
         node[key] = isTrackable(value) ? deepClone(value) : value;
     }
+
+    if (inverse && patch.orderPlan !== undefined) reinstateOrder(node, patch.orderPlan);
 };

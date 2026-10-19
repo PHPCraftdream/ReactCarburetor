@@ -3,7 +3,8 @@ import {
     TPatchPort, TWriteRecorder,
 } from "@/Carburetor/Models/Paths";
 import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
-import {keyDeletionRequiresReplay} from "@/Carburetor/Store/Paths/Diff/Order/keyDeletionRequiresReplay";
+import {orderReplayGuard} from "@/Carburetor/Store/Paths/Diff/Order/orderReplayGuard";
+import {orderedTailMemo} from "@/Carburetor/Store/Paths/Diff/Order/orderedTailMemo";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
 import {branchPath} from "@/Carburetor/Store/Paths/Markers/BranchMarker";
@@ -34,8 +35,7 @@ import {deliverPatches} from "./Proxy/deliverPatches";
  * takes its cache entry with it once nothing else references it.
  *
  */
-/**
- * The reordering/positional array methods the write proxy intercepts on draft arrays: run
+/** The reordering/positional array methods the write proxy intercepts on draft arrays: run
  * natively on the raw array, then attributed as index-level writes, so one `splice` records
  * one path per changed index instead of a field diff per shifted element.
  */
@@ -378,7 +378,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         // A key that did not already exist changes the key set itself (R16-01): an index write
         // past the array's own end is exactly such a case, alongside an ordinary new object key.
         if (!wasOwn) {
-            this.record(this.keysMarker(), source);
+            orderedTailMemo.forget(source); this.record(this.keysMarker(), source);
         }
 
         const nextLength = previousLength !== undefined
@@ -492,7 +492,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         this.aliases?.forget(previous);
 
         if (!wasOwn) {
-            this.record(this.keysMarker(), source);
+            orderedTailMemo.forget(source); this.record(this.keysMarker(), source);
         }
 
         const listener = this.patchPort?.listener;
@@ -537,8 +537,8 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
         const previous = Reflect.get(source, key);
         const listener = this.patchPort?.listener;
-        const changesOrderOnInverse = listener && !this.isArray
-            && keyDeletionRequiresReplay(source, key);
+        const changesOrderOnInverse = listener && !this.isArray && orderReplayGuard.depth === 0
+            && orderedTailMemo.follows(source, key);
         this.aliases?.checkWrite(source, this.basePath);
         if (!Reflect.deleteProperty(source, key)) {
             return false;

@@ -145,6 +145,10 @@ Entries below record development history in change order; where contracts differ
 
 ### Changed
 
+- History folds a publication against an index of pending patches by path: O(P·D) per publication instead of O(P²·D) once an owned object target is pending (`history45/fold-scan`).
+- With a history attached, deleting a non-last dictionary key keeps the entry patch-shaped with an ordered undo plan instead of a full-state snapshot, and the delete path probes the key order in amortized O(1) per delete (`history45/delete-keys`).
+- Positional array methods (`splice`, `fill`, `copyWithin`) attribute and compare only the affected index window; the whole-array snapshot copy remains. Explicit `undefined` index arguments and arguments that coerce through `valueOf` follow the native semantics exactly.
+- Diff overflow no longer captures an `Error` stack, and key unions are built without spreads.
 - The H6 advice points at `this.update(mutate, ...args)`.
 - The bridge maps native positions correctly after astral characters and clamps them to the buffer.
 - The lint binary shares one semantic pass across 11 rules (6 before), prefilters rules by marker groups and resolves positions through a line table; diagnostics are unchanged.

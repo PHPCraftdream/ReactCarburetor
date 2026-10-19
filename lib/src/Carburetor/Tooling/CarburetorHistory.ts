@@ -6,6 +6,7 @@ import {
 import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
 import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
 import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
+import {resolveOrderPlans} from "@/Carburetor/Store/Paths/Diff/Order/resolveOrderPlans";
 import {IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
 import {applyPatchesEntryOnDraft} from "./Graph/replayPatchesOnDraft";
 import {foldDependentPatch} from './Graph/foldDependentPatch';
@@ -270,11 +271,10 @@ export class CarburetorHistory<T extends object> {
         if (this.pendingReplayOwner !== undefined &&
             (this.replayTarget !== undefined || attempt !== undefined)) return;
 
-        if (patch === PATCH_ARRAY_LENGTH_LOCK || patch === PATCH_KEY_ORDER_CHANGE) {
-            this.markPendingOpaque();
-            this.pendingOwnedReplay = true;
-            return;
+        if (patch === PATCH_ARRAY_LENGTH_LOCK) {
+            this.markPendingOpaque(); this.pendingOwnedReplay = true; return;
         }
+        if (patch === PATCH_KEY_ORDER_CHANGE) return;
         if (patch === PATCH_OPAQUE) { this.markPendingOpaque(); return; }
         if (this.pendingOpaque) return;
 
@@ -448,11 +448,11 @@ export class CarburetorHistory<T extends object> {
     }
 
     /**
-     * Turns the writes collected since the last flush into one entry.
+     * Attaches each deletion's undo order plan, derived once per container from the baseline.
      *
-     * Patches when every one of them was describable; a full snapshot either side of the change
-     * otherwise. The empty-patch case is defensive — every write path this class knows of reports
-     * one or the other — so a gap in that coverage still falls back to a safe, larger entry.
+     * Plans land on private copies: the pending patch objects are shared with every other
+     * observer. Undefined means an order the plans cannot reinstate exactly, so the
+     * publication falls back to a full snapshe still falls back to a safe, larger entry.
      */
     protected buildEntry(fact?: IStatePublication): THistoryEntry<T> | undefined {
         if (this.pendingOpaque || this.pendingPatches.length === 0 ||
@@ -466,7 +466,8 @@ export class CarburetorHistory<T extends object> {
         const scalarCancellation = this.pendingPrimitivePatchesUnchanged(fact);
         if (scalarCancellation === true ||
             (scalarCancellation === undefined && this.pendingPatchesUnchanged())) return undefined;
-        const patches = this.pendingPatches;
+        const patches = resolveOrderPlans(this.baseline, this.pendingPatches);
+        if (patches === undefined) { this.pendingOwnedReplay = true; return this.buildSnapshotEntry(); }
         let plainScalars = !this.baselineContainsRestricted && !this.baselineContainsLockedArray;
         if (plainScalars) {
             for (const patch of patches) {

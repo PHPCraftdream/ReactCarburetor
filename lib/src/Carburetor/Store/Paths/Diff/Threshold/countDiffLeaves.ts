@@ -30,7 +30,10 @@ const countLeaves = (oldValue: unknown, newValue: unknown): number => {
     } else {
         const previous = oldValue as Record<string, unknown>;
         const next = newValue as Record<string, unknown>;
-        for (const key of new Set([...Object.keys(previous), ...Object.keys(next)])) {
+        const keys = new Set<string>(Object.keys(previous));
+        const nextKeys = Object.keys(next);
+        for (const key of nextKeys) keys.add(key);
+        for (const key of keys) {
             count += countLeaves(previous[key], next[key]);
         }
     }
@@ -46,7 +49,9 @@ const countVisitedLeaves = (oldValue: unknown, newValue: unknown, positional = f
         const identity = new ArrayIdentity(previous, newValue);
         const limit = Math.max(previous.length, newValue.length);
         if (limit > 4096 && (probesSparse(previous) || probesSparse(newValue))) {
-            const keys = new Set([...Object.keys(previous), ...Object.keys(newValue)]);
+            const keys = new Set<string>(Object.keys(previous));
+            const newKeys = Object.keys(newValue);
+            for (const key of newKeys) keys.add(key);
             for (const key of keys) {
                 if (!/^(0|[1-9]\d*)$/.test(key)) continue;
                 const index = Number(key);
@@ -70,7 +75,10 @@ const countVisitedLeaves = (oldValue: unknown, newValue: unknown, positional = f
     } else {
         const previous = oldValue as Record<string, unknown>;
         const next = newValue as Record<string, unknown>;
-        for (const key of new Set([...Object.keys(previous), ...Object.keys(next)])) {
+        const keys = new Set<string>(Object.keys(previous));
+        const nextKeys = Object.keys(next);
+        for (const key of nextKeys) keys.add(key);
+        for (const key of keys) {
             const inOld = Object.prototype.hasOwnProperty.call(previous, key);
             const inNew = Object.prototype.hasOwnProperty.call(next, key);
             if (inOld && inNew && Object.is(previous[key], next[key])) continue;

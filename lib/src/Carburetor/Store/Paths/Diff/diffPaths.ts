@@ -12,7 +12,8 @@ import {sameKind} from "./Kinds/sameKind";
 import {walkIdentityArray} from "./Kinds/walkIdentityArray";
 import {countDiffLeaves} from "./Threshold/countDiffLeaves";
 
-class DiffOverflow extends Error {}
+/** Preallocated overflow sentinel: walk control flow without an Error stack capture. */
+const DIFF_OVERFLOW: {readonly overflow: true} = Object.freeze({overflow: true});
 
 /** The recorded-path ceiling of one walk; lifted for the precise re-walk of a partial change. */
 interface IDiffBudget {
@@ -24,7 +25,7 @@ interface IDiffBudget {
 const add = (into: TPathSet, path: TPath, budget: IDiffBudget): void => {
     if (!into.has(path)) budget.spent++;
     into.add(path);
-    if (budget.spent > budget.limit) throw new DiffOverflow();
+    if (budget.spent > budget.limit) throw DIFF_OVERFLOW;
 };
 
 /** Reports one leaf-level patch, when a caller asked diffPaths for patches at all. */
@@ -284,7 +285,7 @@ export const diffPaths = (
     try {
         walk(oldValue, newValue, basePath, baseSegments, changed, deliver, budget);
     } catch (error) {
-        if (!(error instanceof DiffOverflow)) {
+        if (error !== DIFF_OVERFLOW) {
             throw error;
         }
         // A threshold fallback replaces the entire partial diff: none of its earlier patches
@@ -317,7 +318,9 @@ export const diffPaths = (
             const newKeys = Object.keys(newRoot);
             const keysChanged = oldKeys.length !== newKeys.length
                 || oldKeys.some((key, index) => key !== newKeys[index]);
-            for (const key of new Set([...oldKeys, ...newKeys])) {
+            const unionKeys = new Set<string>(oldKeys);
+            for (const key of newKeys) unionKeys.add(key);
+            for (const key of unionKeys) {
                 if (countDiffLeaves.changed(oldRoot[key], newRoot[key], true) > 0) changed.add(joinPath('', key));
             }
             if (keysChanged) changed.add(keysPath(''));
