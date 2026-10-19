@@ -281,7 +281,7 @@ describe('native scalar alias and fallback boundaries', () => {
                     if (operation === 'mixed-date') { draft.n = 2; draft.date.setTime(200); }
                     if (operation === 'mixed-replacement') { draft.n = 2; draft.date = new Date(200); }
                 });
-                expect(history.kinds()[1]).toBe('snapshot');
+                expect(history.kinds()[1]).toBe(operation === 'draft-read' ? 'patches' : 'snapshot');
                 const after = {
                     n: store.getData().n, time: store.getData().date.getTime(), map: [...store.getData().map],
                 };

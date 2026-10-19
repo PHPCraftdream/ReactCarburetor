@@ -1,5 +1,5 @@
 import {
-    PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, RAW_EXPOSURE, TPath, TAliasLedger, TPatchRecorder,
+    PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TAliasLedger, TPatchRecorder,
     TPatchPort, TWriteRecorder,
 } from "@/Carburetor/Models/Paths";
 import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
@@ -7,7 +7,6 @@ import {orderReplayGuard} from "@/Carburetor/Store/Paths/Diff/Order/orderReplayG
 import {orderedTailMemo} from "@/Carburetor/Store/Paths/Diff/Order/orderedTailMemo";
 import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
 import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
-import {branchPath} from "@/Carburetor/Store/Paths/Markers/BranchMarker";
 import {clonePatchValue} from "./Proxy/clonePatchValue";
 import {createProxyCache} from "./Proxy/createProxyCache";
 import {IProxyCache, PROXY_CACHE, RAW_TARGET} from "./Models";

@@ -7,7 +7,8 @@ const {Carburetor, CarburetorHistory} = await load();
 const rows = Number(process.argv[2] ?? 10000);
 class Store extends Carburetor { run(fn) { this.update(fn); } }
 const heap = () => { globalThis.gc(); globalThis.gc(); return process.memoryUsage().heapUsed; };
-const store = new Store({items: Array.from({length: rows}, (_, id) => ({id, due: new Date(1700000000000)}))});
+const makeRow = (id) => ({id, due: new Date(1700000000000), scalar: 0});
+const store = new Store({items: Array.from({length: rows}, (_, id) => makeRow(id))});
 const history = new CarburetorHistory(store, {limit: 50});
 let dateWakes = 0;
 store.subscribe(() => dateWakes++, {id: 'date', reads: new Set(['items.0.due'])});
