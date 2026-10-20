@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R34-05: serializing a scope through dehydrate() against stringifying the stores' wire forms.
 // Args: [rows=10000] [samples=15]
 import {emit, load, median} from '../../harness/lib.mjs';

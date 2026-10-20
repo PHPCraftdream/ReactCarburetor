@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Reads. The mechanism gates are counters: one registry insert per fresh proxy is the pre-R30-02
 // cost (probeControl proves the insert probe still sees), one source.read() call per recompute or
 // watch fire is a rebuilt read tree — the pre-R30-05 cost, whose complement the rows-view

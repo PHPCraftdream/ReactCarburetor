@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R36-01: paths recorded through tracked reads per one-field write under a hook and a watch returning the live list.
 // The control disables the write-log enumeration, so the same write must walk the whole selection.
 // Args: [rows=10000] [writes=9]

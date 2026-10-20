@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R32-06: enumerating keys through a read view must not wrap (and then retain) the values it
 // discards. Retained heap per fresh enumerated view is compared against a small control in the
 // same process. Args: [keys=10000] [rounds=8]

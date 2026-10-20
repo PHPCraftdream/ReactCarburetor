@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/require-tsdoc */
 import {emit, loadPath, median} from '../../harness/lib.mjs';
 const {completeReads} = await loadPath('Carburetor/Store/Tracking/Observation/completeReads.mjs');
 const shapes = [

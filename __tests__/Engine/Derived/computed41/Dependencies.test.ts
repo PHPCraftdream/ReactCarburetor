@@ -1,6 +1,6 @@
 import {Carburetor, computed} from '@/Carburetor';
 // Reuse the baseline Computed fixture without moving baseline files.
-// oxlint-disable-next-line carburetor-internal/no-parent-import
+// oxlint-disable-next-line carburetor/no-parent-import
 import {ExternalComputed} from '../Computed/fixtures';
 
 class Store extends Carburetor<{left: number; right: number}> {

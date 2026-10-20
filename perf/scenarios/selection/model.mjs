@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R30-03/04: selections compare and copy as plain data — no descriptor walks, an unchanged
 // detached Date is EQUAL while a changed one is not, and genuinely different selections answer
 // CHANGED, so an always-equal comparison cannot pass. Args: [iterations=200000] [rounds=11] [mode=plain|date]

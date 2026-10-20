@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Task-only adaptation of selection44/timing: independent lanes; defects never terminate controls.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // R36-03: related writes to an observed computed are answered from the filed record, not the write log.
 // The control asks the same store through an unfiled copy of the read set: the log must be consulted.
 import {countWriteLogMatches, emit, load} from '../../harness/lib.mjs';

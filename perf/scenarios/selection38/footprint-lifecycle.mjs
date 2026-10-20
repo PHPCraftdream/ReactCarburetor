@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 import {emit, load, engineKey} from '../../harness/lib.mjs';
 const {Carburetor, transaction} = await load();
 class Store extends Carburetor {

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R32-05: one changed row must cost O(changed) allocations and a near-copy diff, not a field
 // walk per unchanged element. Costs are gated as ratios to a plain JS array copy of the same
 // rows, taken in this process. Allocated bytes come from a grandchild whose huge young

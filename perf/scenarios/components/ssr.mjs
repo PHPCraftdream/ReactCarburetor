@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Server render of an AntiHookComponent list: rows carry no per-instance proxy or hook method
 // fields (JS-R13-06). Timing remains diagnostic; Map/WeakMap methods and size accessor calls
 // count cache retirement work per row in a separate cold-render window.

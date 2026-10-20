@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Restore is guarded by exact changed-row wrapping, not its timing relative to snapshot cloning.
 // Both timings remain report metrics. R32-08's Object.create counter has its own positive control.
 export default [

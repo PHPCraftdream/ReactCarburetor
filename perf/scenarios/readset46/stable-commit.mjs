@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 // A class list parent re-rendering with an unchanged read set: render and commit construct no Set,
 // slice nothing, and neither subscribe nor re-file. A branch switch still builds and re-files the
 // new set. Counted per mode (useCarburetor, connect) over stable rounds. Args: [rows=1000] [rounds=5]

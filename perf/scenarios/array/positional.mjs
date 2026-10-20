@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R32-03: native positional array methods must record index-level write paths, not field-diff
 // every shifted element. Paths and woken readers are exact mechanism counters, and every
 // operation's result is compared with the same operation on a plain JS array.

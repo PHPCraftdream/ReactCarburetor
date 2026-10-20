@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, react/immutability, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, react/immutability, carburetor/max-line-length, carburetor/require-tsdoc */
 // R30-10: count hook-owned Set initializers and unchanged watch subscription replacements.
 import {emit, load, setupReact} from '../../../harness/lib.mjs';
 const {Carburetor} = await load();

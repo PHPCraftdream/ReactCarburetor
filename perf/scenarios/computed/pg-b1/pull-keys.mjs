@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R13-04: settled consumer pulls exclude publication and fixture work.
 export const countPullKeys = (Carburetor, computed, consumers) => {
     class Store extends Carburetor { bump() { this.update(d => { d.count++; }); } }

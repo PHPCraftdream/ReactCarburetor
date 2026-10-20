@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Partitioned persist and the throttleMs write-rate bound: mechanism counters only, no
 // timing ceilings. The throttle scenario stubs the clock persist reads and advances the
 // window by hand, so the counters are the same whatever the process pauses do. The

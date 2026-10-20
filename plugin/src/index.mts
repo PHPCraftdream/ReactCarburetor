@@ -22,6 +22,11 @@ import {noMemoOverStoreRead} from "./Rules/Reads/noMemoOverStoreRead.mts";
 import {noCapturingHookSelector} from "./Rules/Reads/noCapturingHookSelector.mts";
 import {noHandlerCreatedInRender} from "./Rules/Lifecycle/noHandlerCreatedInRender.mts";
 import {maxRenderDepth} from "./Rules/Lifecycle/maxRenderDepth.mts";
+import {maxLineLength} from "./Rules/Style/maxLineLength.mts";
+import {noBlankLineAfterTsdoc} from "./Rules/Style/noBlankLineAfterTsdoc.mts";
+import {noParentImport} from "./Rules/Style/noParentImport.mts";
+import {requireTsdoc} from "./Rules/Style/requireTsdoc.mts";
+import {tsdocBlankLineBeforeTags} from "./Rules/Style/tsdocBlankLineBeforeTags.mts";
 import {noLifecycleClassProperty} from "./Rules/Lifecycle/noLifecycleClassProperty.mts";
 import {requireBindForPassedMethod} from "./Rules/Lifecycle/requireBindForPassedMethod.mts";
 import {requireSuperInLifecycle} from "./Rules/Lifecycle/requireSuperInLifecycle.mts";
@@ -61,6 +66,11 @@ const plugin: IPlugin = {
         'no-function-in-render': noFunctionInRender,
         'no-handler-created-in-render': noHandlerCreatedInRender,
         'max-render-depth': maxRenderDepth,
+        'max-line-length': maxLineLength,
+        'no-blank-line-after-tsdoc': noBlankLineAfterTsdoc,
+        'no-parent-import': noParentImport,
+        'require-tsdoc': requireTsdoc,
+        'tsdoc-blank-line-before-tags': tsdocBlankLineBeforeTags,
         'no-lifecycle-class-property': noLifecycleClassProperty,
         'no-module-level-store': noModuleLevelStore,
         'no-react-hooks-in-components': noReactHooksInComponents,

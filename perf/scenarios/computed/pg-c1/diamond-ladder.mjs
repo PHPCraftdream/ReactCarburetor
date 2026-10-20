@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R16-06: both builds use bound markStale fields, not prototype methods.
 // Wrap their registered invalidation callbacks identically, as the ladder fixture does.
 import {emit, load, loadPath, engine} from '../../../harness/lib.mjs';

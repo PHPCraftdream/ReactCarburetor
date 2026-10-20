@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // An observed computed behind `useComputedValue`: stable pulls and unrelated writes re-run the
 // body never; each real change announces, re-runs the body, commits once and publishes exactly
 // one new snapshot record (the old computedFreshness contract). Args: [mode=native] [dependencies=12] [writes=20] [stableReads=400]

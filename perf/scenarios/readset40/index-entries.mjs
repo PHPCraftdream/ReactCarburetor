@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 import {emit, engine, load, loadPath, median, setupReact} from '../../harness/lib.mjs';
 const {transferReads} = await loadPath('Carburetor/Store/Paths/Markers/transferReads.mjs');
 const {Carburetor} = await load();

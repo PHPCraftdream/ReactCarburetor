@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Throughput scaling of the lint binary (TEST-19): the 8k/2k time ratio is the guard. Linear
 // work costs about 4x, so the budget of 12 leaves a 3x margin over the noise; a superlinear
 // capture scan or a quadratic pass shows up far above it. Requires the release binary, so a

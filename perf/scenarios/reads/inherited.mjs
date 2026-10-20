@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R12-E02: reading an inherited plain-object key records its path (an own-key write must wake); array methods stay untracked. Args: [repetitions=20000] [views=2000]
 import {emit, load, loadPath, median} from '../../harness/lib.mjs';
 

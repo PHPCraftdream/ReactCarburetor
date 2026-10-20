@@ -16,7 +16,7 @@ export default function Page(): React.ReactElement {
     return (
         <main>
             <span>{
-                // oxlint-disable-next-line carburetor-internal/max-line-length
+                // oxlint-disable-next-line carburetor/max-line-length
                 // carburetor-disable-next-line carburetor/no-get-data-in-render -- Server Component: one-shot read, no subscription exists on the server
                 `server:${store.getData().count}`
             }</span>

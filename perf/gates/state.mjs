@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // State model, restore length, date identity, resource history: exact counters first; the
 // snapshot cost is bounded by the 4k/1k size scale and sparse clone work by a generous ceiling
 // far below a hole walk.

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Count the clone's own cycle ledger, not captureHistory: direct own(baseline) is included.
 import {load, loadPath} from '../../harness/lib.mjs';
 

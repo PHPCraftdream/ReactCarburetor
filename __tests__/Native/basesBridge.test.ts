@@ -241,6 +241,83 @@ const stubPerBaseNative = (): void => {
     });
 };
 
+describe('basesConfig ruleOptions', () => {
+    test('settings.carburetor.ruleOptions reach the config file as ["error", options] per rule', () => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-ruleopts-'));
+
+        try {
+            const {config, key} = basesConfig(cwd, {carburetor: {ruleOptions: {
+                'no-parent-import': {roots: [{'path': 'lib/src', 'prefix': '@/'}]},
+                'require-tsdoc': {'requireParamDocs': true},
+            }}});
+
+            expect(existsSync(config)).toBe(true);
+            expect(JSON.parse(readFileSync(config, 'utf8'))).toEqual({
+                componentBases: [],
+                storeBases: [],
+                rules: {
+                    'carburetor/no-parent-import': ['error', {roots: [{'path': 'lib/src', 'prefix': '@/'}]}],
+                    'carburetor/require-tsdoc': ['error', {'requireParamDocs': true}],
+                },
+            });
+            expect(key).not.toBe('');
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
+    test('an empty ruleOptions changes nothing: the config keeps its previous exact shape', () => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-ruleopts-'));
+
+        try {
+            const neutral = basesConfig(cwd);
+            const empty = basesConfig(cwd, {carburetor: {ruleOptions: {}}});
+
+            expect(JSON.parse(readFileSync(empty.config, 'utf8'))).toEqual({});
+            expect(empty.key).toBe('');
+            expect(empty.config).toBe(neutral.config);
+
+            const withBases = basesConfig(cwd, {carburetor: {componentBases: ['A'], ruleOptions: {}}});
+
+            expect(JSON.parse(readFileSync(withBases.config, 'utf8')))
+                .toEqual({componentBases: ['A'], storeBases: []});
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
+    test('ruleOptions are part of the content hash: different options, different keys', () => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-ruleopts-'));
+
+        try {
+            const first = basesConfig(cwd, {carburetor: {ruleOptions: {'max-line-length': {'code': 80}}}});
+            const second = basesConfig(cwd, {carburetor: {ruleOptions: {'max-line-length': {'code': 100}}}});
+            const same = basesConfig(cwd, {carburetor: {ruleOptions: {'max-line-length': {'code': 80}}}});
+
+            expect(first.key).not.toBe(second.key);
+            expect(first.key).toBe(same.key);
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
+    test.each([
+        ['a bare string', 'X'],
+        ['an array', []],
+        ['a non-object entry', {'require-tsdoc': true}],
+        ['a null entry', {'require-tsdoc': null}],
+    ])('malformed ruleOptions (%s) fail loudly, like the base lists', (_label, value) => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-ruleopts-'));
+
+        try {
+            expect(() => basesConfig(cwd, {carburetor: {ruleOptions: value as unknown}}))
+                .toThrow('settings.carburetor.ruleOptions');
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+});
+
 describe('writeAtomic', () => {
     test('a failed write throws the original error and leaves no temp file behind', () => {
         const dir = mkdtempSync(path.join(os.tmpdir(), 'carburetor-atomic-'));

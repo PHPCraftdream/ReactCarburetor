@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R19-ENGINE-02: cache replacement walks no owned endpoints during lock classification.
 // Ordinary draft writes stay patch-based; resource loads record pending/settled transitions.
 // Native aliases survive undo/redo. This does not probe R19-API-02 pre-loader cancellation.

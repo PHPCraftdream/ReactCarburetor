@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Selection. R31-03: sparse selections cost O(own indices) at every size; the kernel counters fall
 // on pre-R31 builds (768/196608 hasOwn checks, 131072 wake checks at 65536). Dense (a
 // same-cost control), the same-content notification and parity-wake entries are controls. R31-01 +

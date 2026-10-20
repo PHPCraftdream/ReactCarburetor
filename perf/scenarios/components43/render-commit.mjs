@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/require-tsdoc */
 import assert from 'node:assert/strict';
 import {emit, load, require, setupDOM} from './fixture.mjs';
 process.env.NODE_ENV = 'production';

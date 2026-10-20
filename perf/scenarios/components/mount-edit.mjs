@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R6-04: AntiHookComponent mount/edit/replace/unmount over one store. Render counts are the
 // exact mechanism; times are generous JSDOM ceilings. Args: [rows=4000] [samples=5]
 import {emit, load, median, setupReact} from '../../harness/lib.mjs';

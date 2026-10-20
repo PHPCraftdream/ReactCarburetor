@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R6-04 no-added-copy control: no historical internal-copy separation is established.
 // Count only Set constructions whose iterable is one of the fixture's read sets.
 import {emit, load, loadPath} from '../../../harness/lib.mjs';

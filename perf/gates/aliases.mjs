@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Native aliases: reflection counters cover descriptor primitives and positive row controls.
 // ce08c7f contains R19-ENGINE-02 and is b33be10's parent (R19-ENGINE-01).
 // e41828a41747 is 470a912's parent (scalar-write index retention).

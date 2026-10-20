@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Subscriptions. Wake, growth, retention and heap facts are exact counters or same-run ratios;
 // the 4k/1k one-write scale guards the index against a per-subscriber scan regression.
 export default [

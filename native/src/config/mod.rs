@@ -68,9 +68,11 @@ pub struct RuleSetting {
 /// of truth for strictness — this table exists so the native binary agrees with it by default, and
 /// the conformance corpus is what keeps the two from drifting apart.
 pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
+    ("max-line-length", Severity::Off),
     ("max-render-depth", Severity::Warn),
     ("no-async-effect", Severity::Error),
     ("no-async-transaction", Severity::Error),
+    ("no-blank-line-after-tsdoc", Severity::Off),
     ("no-closure-in-update", Severity::Warn),
     ("no-capturing-hook-selector", Severity::Warn),
     ("no-computed-get-in-computed", Severity::Error),
@@ -85,6 +87,7 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("no-lifecycle-class-property", Severity::Error),
     ("no-memo-over-store-read", Severity::Warn),
     ("no-module-level-store", Severity::Off),
+    ("no-parent-import", Severity::Off),
     ("no-react-hooks-in-components", Severity::Off),
     ("no-store-write-in-render", Severity::Error),
     ("no-tracked-data-mutation", Severity::Error),
@@ -99,6 +102,8 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("require-module-function", Severity::Warn),
     ("require-subscription-disposal", Severity::Warn),
     ("require-super-in-lifecycle", Severity::Error),
+    ("require-tsdoc", Severity::Off),
+    ("tsdoc-blank-line-before-tags", Severity::Off),
 ];
 
 /// Why a configuration could not be used. `Malformed` with `path: None` comes from `parse`, which
@@ -345,6 +350,15 @@ fn parse_setting(rule: &str, value: &serde_json::Value) -> Result<RuleSetting, C
             if rule == "max-render-depth" {
                 validate_max_render_depth_options(map)?;
             }
+            if rule == "max-line-length" {
+                validate_max_line_length_options(map)?;
+            }
+            if rule == "no-parent-import" {
+                validate_no_parent_import_options(map)?;
+            }
+            if rule == "require-tsdoc" {
+                validate_require_tsdoc_options(map)?;
+            }
 
             Ok(RuleSetting {
                 severity: required_severity(text)?,
@@ -443,6 +457,7 @@ fn parse(text: &str) -> Result<Config, ConfigError> {
 mod bases;
 mod depth;
 mod scope;
+mod style;
 
 use bases::parse_bases;
 use depth::validate_max_render_depth_options;
@@ -450,143 +465,11 @@ pub(crate) use depth::DEFAULT_MAX;
 use scope::validate_module_function_options;
 
 pub use scope::ModuleFunctionScope;
+use style::{
+    validate_max_line_length_options, validate_no_parent_import_options,
+    validate_require_tsdoc_options,
+};
+pub(crate) use style::{ImportRoot, MaxLineLengthOptions, RequireTsdocOptions};
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    #[test]
-    fn an_empty_object_is_pure_defaults() {
-        let config = parse("{}").unwrap();
-
-        assert_eq!(config, Config::default());
-        assert_eq!(
-            config.severity("carburetor/no-module-level-store"),
-            Severity::Off
-        );
-        assert_eq!(config.severity("require-effect-deps"), Severity::Warn);
-        assert_eq!(
-            config.severity("carburetor/no-async-effect"),
-            Severity::Error
-        );
-    }
-
-    #[test]
-    fn prefixed_and_bare_rule_keys_normalise_to_one_setting() {
-        let prefixed = parse(r#"{"rules": {"carburetor/require-effect-deps": "error"}}"#).unwrap();
-        let bare = parse(r#"{"rules": {"require-effect-deps": "error"}}"#).unwrap();
-
-        assert_eq!(prefixed, bare);
-        assert_eq!(
-            prefixed.severity("carburetor/require-effect-deps"),
-            Severity::Error
-        );
-    }
-
-    #[test]
-    fn array_form_carries_options_verbatim() {
-        let config =
-            parse(r#"{"rules": {"require-effect-deps": ["warn", {"any": "options"}]}}"#).unwrap();
-
-        let setting = &config.rules["require-effect-deps"];
-        assert_eq!(setting.severity, Severity::Warn);
-        assert_eq!(setting.options, Some(json!({ "any": "options" })));
-    }
-
-    #[test]
-    fn unknown_rules_and_bad_severities_are_rejected() {
-        assert!(parse(r#"{"rules": {"carburetor/no-such-rule": "error"}}"#).is_err());
-        assert!(parse(r#"{"rules": {"require-effect-deps": "fatal"}}"#).is_err());
-        assert!(parse(r#"{"rules": {"require-effect-deps": ["warn"]}}"#).is_err());
-        assert!(parse(r#"{"rules": {"require-effect-deps": ["warn", "strict"]}}"#).is_err());
-    }
-
-    #[test]
-    fn invalid_globs_are_rejected() {
-        assert!(parse(r#"{"ignore": ["["]}"#).is_err());
-        assert!(parse(r#"{"ignore": [""]}"#).is_err());
-        assert!(parse(r#"{"ignore": [3]}"#).is_err());
-        assert!(parse(r#"{"ignore": ["**/generated/**", "examples/legacy"]}"#).is_ok());
-    }
-
-    #[test]
-    fn unknown_top_level_keys_are_rejected() {
-        assert!(parse(r#"{"ruls": {}}"#).is_err());
-    }
-
-    #[test]
-    fn structurally_broken_files_are_rejected() {
-        assert!(parse("not json").is_err());
-        assert!(parse("[]").is_err());
-        assert!(parse(r#"{"rules": "warn"}"#).is_err());
-    }
-
-    #[test]
-    fn ignore_patterns_survive_parsing() {
-        let config = parse(r#"{"ignore": ["**/generated/**", "examples/legacy"]}"#).unwrap();
-
-        assert_eq!(config.ignores(), ["**/generated/**", "examples/legacy"]);
-    }
-
-    #[test]
-    fn module_function_scope_defaults_to_all_and_parses_both_spellings() {
-        assert_eq!(
-            parse("{}").unwrap().module_function_scope(),
-            ModuleFunctionScope::All
-        );
-
-        let classes =
-            parse(r#"{"rules": {"require-module-function": ["warn", {"scope": "classes"}]}}"#)
-                .unwrap();
-
-        assert_eq!(
-            classes.module_function_scope(),
-            ModuleFunctionScope::Classes
-        );
-        assert_eq!(classes.severity("require-module-function"), Severity::Warn);
-    }
-
-    #[test]
-    fn module_function_scope_rejects_unknown_values_and_keys() {
-        assert!(
-            parse(r#"{"rules": {"require-module-function": ["warn", {"scope": "bogus"}]}}"#)
-                .is_err()
-        );
-        assert!(
-            parse(r#"{"rules": {"require-module-function": ["warn", {"unknown": 1}]}}"#).is_err()
-        );
-        assert!(parse(r#"{"rules": {"require-module-function": ["warn", "classes"]}}"#).is_err());
-    }
-
-    #[test]
-    fn another_rules_options_stay_verbatim() {
-        let config =
-            parse(r#"{"rules": {"require-effect-deps": ["warn", {"any": {"nested": 1}}]}}"#)
-                .unwrap();
-
-        assert_eq!(
-            config.rules["require-effect-deps"].options,
-            Some(json!({"any": {"nested": 1}}))
-        );
-    }
-
-    #[test]
-    fn command_line_overrides_win_and_validate() {
-        let mut config = parse("{}").unwrap();
-
-        config
-            .override_rule("require-effect-deps", Severity::Error)
-            .unwrap();
-        assert_eq!(config.severity("require-effect-deps"), Severity::Error);
-
-        config
-            .override_rule("carburetor/no-module-level-store", Severity::Warn)
-            .unwrap();
-        assert_eq!(config.severity("no-module-level-store"), Severity::Warn);
-
-        assert!(config
-            .override_rule("no-such-rule", Severity::Error)
-            .is_err());
-    }
-}
+mod tests;

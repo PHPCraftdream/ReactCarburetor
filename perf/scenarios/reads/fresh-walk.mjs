@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R30-02: constructing a fresh read tree inserts no proxy into the process-wide registry. Args: [rows=4000]
 import {emit, load, median} from '../../harness/lib.mjs';
 

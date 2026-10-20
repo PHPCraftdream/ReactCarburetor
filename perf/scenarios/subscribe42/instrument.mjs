@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Counters observe the actual filed bucket, not matched/delivery Sets. All patches are finally-scoped.
 import assert from 'node:assert/strict';
 import {engine} from '../../harness/lib.mjs';

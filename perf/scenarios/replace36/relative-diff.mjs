@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R36-05: replacements with a partial large diff retain leaf attribution beyond the absolute floor.
 // Args: [rows=10000] [changed=2010]
 import {emit, loadPath} from '../../harness/lib.mjs';

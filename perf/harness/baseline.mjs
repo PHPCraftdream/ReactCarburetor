@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Builds the distribution of a git ref once and prints its directory, for A/B runs against the
 // working tree: `node perf/harness/baseline.mjs <ref>` → worktrees/bench-dist/<sha>. Never installs
 // anything: the temporary worktree lives under the repository, so the build resolves the

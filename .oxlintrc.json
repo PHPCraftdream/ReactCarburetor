@@ -8,18 +8,17 @@
         "unicorn"
     ],
     "jsPlugins": [
-        "./plugin/src/index.mts",
-        "./plugin/internal/index.mts"
+        "./plugin/src/index.mts"
     ],
     "categories": {
         "correctness": "error"
     },
     "rules": {
-        "carburetor-internal/max-line-length": "error",
-        "carburetor-internal/no-blank-line-after-tsdoc": "error",
-        "carburetor-internal/no-parent-import": "error",
-        "carburetor-internal/require-tsdoc": ["error", {"requireParamDocs": true, "requireFieldDocs": true}],
-        "carburetor-internal/tsdoc-blank-line-before-tags": "error",
+        "carburetor/max-line-length": "error",
+        "carburetor/no-blank-line-after-tsdoc": "error",
+        "carburetor/no-parent-import": "error",
+        "carburetor/require-tsdoc": "error",
+        "carburetor/tsdoc-blank-line-before-tags": "error",
         "carburetor/no-memo-over-store-read": "warn",
         "carburetor/no-capturing-hook-selector": "warn",
         "carburetor/no-async-effect": "error",
@@ -50,6 +49,20 @@
         "carburetor/require-super-in-lifecycle": "error",
         "typescript/unbound-method": "off"
     },
+    "settings": {
+        "carburetor": {
+            "ruleOptions": {
+                "max-line-length": {},
+                "no-parent-import": {
+                    "roots": [
+                        {"path": "lib/src", "prefix": "@/"},
+                        {"path": "plugin/src", "prefix": "@plugin/"}
+                    ]
+                },
+                "require-tsdoc": {"requireParamDocs": true, "requireFieldDocs": true}
+            }
+        }
+    },
     "env": {
         "browser": true,
         "node": true
@@ -60,8 +73,8 @@
                 "examples/**"
             ],
             "rules": {
-                "carburetor-internal/no-parent-import": "off",
-                "carburetor-internal/require-tsdoc": "off"
+                "carburetor/no-parent-import": "off",
+                "carburetor/require-tsdoc": "off"
             }
         },
         {
@@ -69,7 +82,7 @@
                 "__tests__/**"
             ],
             "rules": {
-                "carburetor-internal/require-tsdoc": "off",
+                "carburetor/require-tsdoc": "off",
                 "carburetor/no-memo-over-store-read": "off",
                 "carburetor/no-capturing-hook-selector": "off",
                 "carburetor/no-function-in-render": "off",

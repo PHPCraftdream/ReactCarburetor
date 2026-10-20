@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R42-S02. Independent args: [writes=16] [readers=16] [samples=7] [publications=32].
 import assert from 'node:assert/strict';
 import {emit, load, median} from '../../harness/lib.mjs';

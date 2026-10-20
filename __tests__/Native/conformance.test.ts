@@ -1,5 +1,6 @@
 import {execFileSync} from "node:child_process";
-import {readFileSync} from "node:fs";
+import {mkdtempSync, readFileSync, writeFileSync} from "node:fs";
+import * as os from "node:os";
 import * as path from "node:path";
 import {describe, expect, test} from "@rstest/core";
 
@@ -13,6 +14,17 @@ import {describe, expect, test} from "@rstest/core";
  * The corpus is grouped by topic under `plugin/__fixtures__`, written so every rule fires exactly
  * once — the same files the JS plugin's host tests exercise. Comparison is on
  * `(file, line, column, rule)`: the behavioural contract a consumer depends on.
+ *
+ * Configs are deliberately split. The five opt-in house-style rules (`max-line-length`,
+ * `no-blank-line-after-tsdoc`, `no-parent-import`, `require-tsdoc`,
+ * `tsdoc-blank-line-before-tags`) have no JS-side counterpart anymore — the JS implementations
+ * under plugin/internal were removed — so oxlint cannot execute them and they must stay out of
+ * the corpus comparison entirely. `conformance.carburetorrc.json` turns all five on `error`
+ * with the options the fixtures need, and backs the style corpus below (native-only, by
+ * design); the comparison corpus derives its own config from that file at run time by
+ * stripping the five style entries, because its fixtures do not keep to the house style and
+ * would report one-sidedly. The stripped config is written to a temp directory per run, the
+ * same pattern the bases tests use.
  */
 const ROOT: string = process.cwd();
 const NATIVE_BINARY: string = path.join(
@@ -22,8 +34,39 @@ const NATIVE_BINARY: string = path.join(
     'release',
     process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint',
 );
-const NATIVE_CONFIG: string = path.join('native', 'tests', 'fixtures', 'conformance.carburetorrc.json');
+const NATIVE_STYLE_CONFIG_PATH: string = path.join('native', 'tests', 'fixtures', 'conformance.carburetorrc.json');
+const STYLE_CORPUS: readonly string[] = [
+    path.join('plugin', '__fixtures__', 'style', 'maxLineLength.ts'),
+    path.join('plugin', '__fixtures__', 'style', 'noBlankLineAfterTsdoc.ts'),
+    path.join('plugin', '__fixtures__', 'style', 'sub', 'inner.ts'),
+    path.join('plugin', '__fixtures__', 'style', 'requireTsdoc.ts'),
+    path.join('plugin', '__fixtures__', 'style', 'tsdocBlankLineBeforeTags.ts'),
+];
+
+/** The five native-only house-style rules; the JS bridge catalogue excludes them. */
+const STYLE_RULES: readonly string[] = [
+    'carburetor/max-line-length',
+    'carburetor/no-blank-line-after-tsdoc',
+    'carburetor/no-parent-import',
+    'carburetor/require-tsdoc',
+    'carburetor/tsdoc-blank-line-before-tags',
+];
 const JS_CONFIG: string = path.join('plugin', '__fixtures__', 'oxlintrc.json');
+// The comparison corpus derives its config from the style config at run time by stripping the five
+// house-style entries (native-only, see the header); written to a temp directory per run.
+const NATIVE_CONFIG: string = (() => {
+    const config = JSON.parse(readFileSync(NATIVE_STYLE_CONFIG_PATH, 'utf8')) as {rules: Record<string, unknown>};
+
+    for (const rule of STYLE_RULES) {
+        delete config.rules[rule];
+    }
+
+    const tmpDir = mkdtempSync(path.join(os.tmpdir(), 'carburetor-conformance-'));
+    const configPath = path.join(tmpDir, 'conformance.carburetorrc.json');
+    writeFileSync(configPath, JSON.stringify(config, null, 2));
+
+    return configPath;
+})();
 const CORPUS: readonly string[] = [
     path.join('plugin', '__fixtures__', 'data', 'allocations.tsx'),
     path.join('plugin', '__fixtures__', 'data', 'reads.tsx'),
@@ -127,7 +170,48 @@ describe('bridge round-trip: native binary vs the JavaScript plugin bridge', () 
         const seen = new Set(nativeDiagnostics().map((diagnostic) => diagnostic.rule));
 
         // no-module-level-store is off by default in both implementations but is force-enabled by
-        // both configs above specifically so this corpus can prove it fires identically too.
-        expect([...seen].sort()).toEqual(nativeRegistryRules().map((name) => 'carburetor/' + name).sort());
+        // both configs above specifically so this corpus can prove it fires identically too. The
+        // five house-style rules are subtracted: they are native-only now (see the header), so
+        // the JS side cannot represent them and their corpus lives in the style test below.
+        const catalogue = nativeRegistryRules()
+            .map((name) => 'carburetor/' + name)
+            .filter((rule) => !STYLE_RULES.includes(rule));
+
+        expect([...seen].sort()).toEqual(catalogue.sort());
+    });
+});
+
+describe('the native-only style rules over their own corpus', () => {
+    /** The binary over the style fixtures, at the style config's severities and options. */
+    const styleDiagnostics = (): IDiagnostic[] => {
+        const output = runCapturingStdout(
+            NATIVE_BINARY,
+            ['--config', NATIVE_STYLE_CONFIG_PATH, '--format=json', ...STYLE_CORPUS],
+        );
+
+        return (JSON.parse(output) as IDiagnostic[]).map((diagnostic) => ({
+            ...diagnostic,
+            file: diagnostic.file.replace(/\\/g, '/'),
+        }));
+    };
+
+    test('every style rule fires, exactly once', () => {
+        const diagnostics = styleDiagnostics();
+
+        for (const rule of STYLE_RULES) {
+            const reports = diagnostics.filter((diagnostic) => diagnostic.rule === rule);
+
+            expect(reports.length, `${rule} fires exactly once`).toBe(1);
+        }
+    });
+
+    test('max-line-length reports the one over-limit line the fixture carries', () => {
+        // The config caps lines at 200; maxLineLength.ts holds exactly one 224-character line.
+        const reports = styleDiagnostics().filter(
+            (diagnostic) => diagnostic.rule === 'carburetor/max-line-length',
+        );
+
+        expect(reports.length).toBe(1);
+        expect(reports[0].message).toContain('the maximum is 200');
     });
 });

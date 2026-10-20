@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // R37-01: a watch over rows aliased through a native Map must keep snapshot.link.get('row') === snapshot.rows[1]
 // with the linked value updated on the first AND the second edit; the plain-list control keeps publishing.
 // Args: [edits=2]

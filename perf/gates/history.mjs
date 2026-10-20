@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // History. PG-B1: raw-row enumeration separates pre-R34 replay; timings are diagnostics.
 // R33-06 also counts subtree row walks.
 export default [

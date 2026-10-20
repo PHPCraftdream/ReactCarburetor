@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Uninstrumented warm read batches. No GC, descriptor taps, subscriptions or writes.
 import assert from 'node:assert/strict';
 import {emit, load, median} from './fixture.mjs';

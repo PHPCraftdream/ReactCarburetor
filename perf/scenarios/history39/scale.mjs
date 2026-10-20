@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Fixed modest batches, identical warmup, alternating order; no counter hooks in timed regions.
 import {emit, median} from '../../harness/lib.mjs';
 import {countOwned} from './owned-counter.mjs';

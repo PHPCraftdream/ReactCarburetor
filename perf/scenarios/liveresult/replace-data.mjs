@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R35-01: a computed whose result is a live view of store data follows setData/fromJSON, which swap
 // the data object while recording only the leaves that differ; a primitive result does not re-run.
 // Args: [rows=10000] [samples=200]

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R16-PERF-01: count ledger copies on originals/intermediates and descriptor installations.
 import {emit, load, loadPath} from '../../../harness/lib.mjs';
 import {makeRows, rowProbe} from '../../history/pg-d1/row-probe.mjs';

@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/require-tsdoc */
 import {emit, load} from '../../harness/lib.mjs';
 const {Carburetor, CarburetorHistory} = await load();
 const a = {id: 'a'}, b = {id: 'b'};

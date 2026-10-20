@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/require-tsdoc */
 import {createHash} from 'node:crypto';
 
 const canonical = value => Array.isArray(value)

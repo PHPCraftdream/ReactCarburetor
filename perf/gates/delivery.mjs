@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Delivery. Delivered-callback counts are exact; cancellation must not cost more than the
 // uncancelled control of the same run.
 export default [

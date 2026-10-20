@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Subscribers. R30-09 replaced the per-path ancestors array — allocated per filed path and walked
 // with Array.prototype.forEach — with an in-place backward scan. ancestorArrayWalks counts exactly
 // that mechanism (one per path on the pre-R30 build, zero after), probeSelfCount proves the probe

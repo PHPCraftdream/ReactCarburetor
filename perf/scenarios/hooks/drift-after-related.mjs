@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R34-01: a `useCarburetorValue` list component re-rendered by its own state after an unrelated
 // write, before and after one related write re-ran its selector with the same read set.
 // Args: [rows=10000] [stable|inline] [samples=15]

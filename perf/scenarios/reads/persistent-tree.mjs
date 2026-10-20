@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R30-05: an observed computed and a watch reuse one persistent read tree per source — a scalar
 // write recompute or fire builds no fresh tree, and the rows view the body walks keeps its
 // identity across runs. Args: [rows=4000] [writes=12]

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-02: wall time of one leaf write and one undo with a single Date field in the state (median of many).
 import {emit, load, median} from '../../harness/lib.mjs';
 

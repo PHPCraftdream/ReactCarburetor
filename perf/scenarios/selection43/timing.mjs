@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // No monkeypatches or history in the measured store; history controls run separately, untimed.
 import assert from 'node:assert/strict';
 import {existsSync} from 'node:fs';

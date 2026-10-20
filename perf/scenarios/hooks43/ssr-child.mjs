@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc, carburetor-internal/max-line-length */
+/* oxlint-disable react/globals, carburetor/require-tsdoc, carburetor/max-line-length */
 import assert from 'node:assert/strict';
 import {cpSync, existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync} from 'node:fs';
 import {createRequire} from 'node:module';

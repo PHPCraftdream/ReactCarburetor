@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 import {emit, load} from '../../harness/lib.mjs';
 
 const {Carburetor, computed} = await load();

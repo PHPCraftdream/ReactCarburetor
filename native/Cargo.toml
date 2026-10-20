@@ -18,6 +18,9 @@ oxc_span = "=0.150.0"
 # the graph through oxc_ast, so naming it here costs nothing but has to be pinned with the rest.
 oxc_syntax = "=0.150.0"
 rayon = "=1.12.0"
+# Style rules need one regex engine: max-line-length's ignorePattern is a user-supplied
+# regex, and it has to behave the way the JavaScript rule's RegExp did.
+regex = "=1.11.3"
 ignore = "=0.4.33"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.145"

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 // A computed's track() mints its per-source recorder and encoded id once per slot instead of
 // on every call; every write still recomputes the body, delivers once and reaches the exact
 // final value, while an unrelated store stays silent. Args: [tracks=200] [cycles=40]

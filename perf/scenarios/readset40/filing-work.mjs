@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/require-tsdoc */
 import {emit, loadPath} from '../../harness/lib.mjs';
 const {SubscriberIndex} = await loadPath('Carburetor/Store/Paths/SubscriberIndex.mjs');
 const subscribers = Number(process.argv[2] ?? 4000);

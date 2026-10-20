@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R34-01 (fan-in): an observed computed that reads a store both directly and through an inner
 // computed over the same store; `get()` after an unrelated write. Args: [rows=10000] [samples=200]
 import {countWriteLogMatches, emit, load, median} from '../../harness/lib.mjs';

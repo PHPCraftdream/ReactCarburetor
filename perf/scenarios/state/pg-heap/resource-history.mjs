@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R19-ENGINE-02: one unlocked cache replacement, plus exact endpoint and idle controls.
 import {emit, loadPath, call} from '../../../harness/lib.mjs';
 const {ResourceCache} = await loadPath('Carburetor/Resource/Cache/ResourceCache.mjs');

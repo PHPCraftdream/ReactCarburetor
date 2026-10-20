@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 export default [
     {
         id: 'replace36/public-replacements@10k', improvement: 'R36-04', scenario: 'replace36/public-replacements', args: [10000, 9],

@@ -29,6 +29,32 @@
     "carburetor/require-method-for-closure": "error",
     "carburetor/require-module-function": "error",
     "carburetor/require-subscription-disposal": "error",
-    "carburetor/require-super-in-lifecycle": "error"
+    "carburetor/require-super-in-lifecycle": "error",
+    "carburetor/max-line-length": [
+      "error",
+      {
+        "code": 200
+      }
+    ],
+    "carburetor/no-blank-line-after-tsdoc": "error",
+    "carburetor/no-parent-import": [
+      "error",
+      {
+        "roots": [
+          {
+            "path": "plugin/__fixtures__/style",
+            "prefix": "@/"
+          }
+        ]
+      }
+    ],
+    "carburetor/require-tsdoc": [
+      "error",
+      {
+        "requireParamDocs": true,
+        "requireFieldDocs": true
+      }
+    ],
+    "carburetor/tsdoc-blank-line-before-tags": "error"
   }
 }

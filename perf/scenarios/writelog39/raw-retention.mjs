@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-01: raw write targets stay strongly held only up to the proof cap (2048 pairs), not per write.
 // Needs --expose-gc. WeakRef targets live until the end of the creating job, so every phase
 // yields to a macrotask before collecting.

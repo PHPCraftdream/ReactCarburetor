@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R37-02: a throwing patch observer must not truncate the already-applied replacement batch.
 // Counters, not timings: every detailed patch must reach an independent observer and undo must
 // restore the whole root, both with and without a throwing observer. The counting observer is

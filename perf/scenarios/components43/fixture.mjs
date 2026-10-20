@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 import {existsSync} from 'node:fs';
 import {createRequire} from 'node:module';
 import {resolve} from 'node:path';

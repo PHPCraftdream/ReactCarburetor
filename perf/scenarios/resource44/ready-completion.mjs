@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 import assert from 'node:assert/strict';
 import {emit} from '../../harness/lib.mjs';
 import {api, ready, gate} from './fixture.mjs';

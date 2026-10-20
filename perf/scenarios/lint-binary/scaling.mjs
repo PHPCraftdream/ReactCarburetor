@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Throughput scaling of the lint binary over generated nested-function files at 2k and 8k
 // functions. The guard is the 8k/2k scale ratio (linear work is about 4x; the budget leaves a
 // 3x noise margin), plus an exact diagnostics count as the correctness check, so a binary that

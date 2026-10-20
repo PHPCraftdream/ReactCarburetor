@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Descriptor writes under history — a redefined field plus index growth per write: one version
 // and one delivery per write, and full undo/redo replays restore the exact shape.
 // Args: [writes=300]

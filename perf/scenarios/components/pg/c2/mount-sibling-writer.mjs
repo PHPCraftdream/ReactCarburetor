@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R16-05: fixture from precise-drift.test.tsx.
 import {emit, load, setupReact} from '../../../../harness/lib.mjs';
 const {AntiHookComponent, Carburetor} = await load();

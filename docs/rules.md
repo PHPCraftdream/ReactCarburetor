@@ -168,6 +168,11 @@ until your project changes shape.
 | Rule | Level | Catches | Hazard |
 |------|-------|---------|--------|
 | `max-render-depth` | warn | A render whose component tree is deeper than the configured limit; configurable depth | [H35](hazards.md) |
+| `max-line-length` | off | A source line longer than the configured limit; house style, opt-in | — |
+| `no-blank-line-after-tsdoc` | off | A blank line between a TSDoc block and the declaration it documents; house style, opt-in | — |
+| `no-parent-import` | off | An import reaching up out of its directory instead of through the configured alias; house style, opt-in | — |
+| `require-tsdoc` | off | A function, method or function-valued member without a short TSDoc block; house style, opt-in | — |
+| `tsdoc-blank-line-before-tags` | off | A missing blank line between a TSDoc description and its first block tag; house style, opt-in | — |
 | `no-async-effect` | error | An `async` effect body, whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
 | `no-async-transaction` | error | An `async` body given to `transaction()` (a value import from `react-carburetor`) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
 | `no-closure-in-update` | warn | A capturing inline callback passed to `this.update` in a recognized store member; pass a module-level mutator and its arguments to `this.update` instead | [H32](hazards.md) |
@@ -312,3 +317,69 @@ This rule warns when `useMemo` or `useCallback` in a recognized function-compone
 ## no-capturing-hook-selector (H34)
 
 This rule warns when an inline selector passed as argument 2 to `useCarburetorValue(source, select, isEqual?)` or argument 3 to `useResourceValue(source, args, select, isEqual?)` captures a parameter or local binding from the recognized component render. `useComputedValue(computed)` has no selector and is not covered by H34. It does not report capture-free selectors, which remain H30-only and are not duplicated by H34. Prefer selecting the whole record then picking fields during render; the default severity is `warn`.
+
+## House-style rules (optional, off by default)
+
+The five rules below are optional house-style rules native to the Rust binary; their JavaScript
+implementations no longer exist, so the plugin runs them through the same native bridge as every
+other rule. All five are `off` in the recommended preset: a project turns on the ones it wants.
+They are configured in `.carburetorrc.json` entries of the form `["warn", {…}]` on the CLI. In a
+plugin host, per-rule options go under `settings.carburetor.ruleOptions`, keyed by the bare rule
+name without the `carburetor/` prefix; inline option arrays on the rule entry itself are not
+supported by the host bridge (each rule is a thin `nativeRule` wrapper without a schema):
+
+```json
+{
+  "settings": {
+    "carburetor": {
+      "ruleOptions": {
+        "no-parent-import": {"roots": [{"path": "lib/src", "prefix": "@/"}]}
+      }
+    }
+  }
+}
+```
+
+### `max-line-length`
+
+Reports any source line longer than the limit. Options and defaults: `code` `120`, `tabWidth` `4`,
+`ignoreUrls` `false`, `ignorePattern` (unset), `ignoreStrings` `true` (deliberately unlike the
+common default: long string literals are data, not logic), `ignoreTemplateLiterals` `false`.
+
+```json
+{"rules": {"carburetor/max-line-length": ["warn", {"code": 100}]}}
+```
+
+### `no-blank-line-after-tsdoc`
+
+Reports a blank line between a TSDoc block and the declaration it documents, where the block stops
+reading as that declaration's documentation. No options.
+
+### `no-parent-import`
+
+Reports a `../`-relative import that resolves out of a configured source root, with the aliased
+form as a fix. Options: `roots`, default `[]` — an array of `{path, prefix}` pairs naming where a
+source tree starts and the alias that reaches into it. With no roots configured the rule stays
+silent: an upward import has no aliased form to offer.
+
+```json
+{"rules": {"carburetor/no-parent-import": ["warn", {"roots": [{"path": "lib/src", "prefix": "@/"}]}]}}
+```
+
+### `require-tsdoc`
+
+Requires a `/** */` TSDoc block with a non-empty summary of at most `maxLines` lines on functions,
+class methods, function-valued members and exported `const` functions. Options and defaults:
+`maxLines` `3`, `access` `"all"` (or `"public"` to excuse private and protected members),
+`allowOverloads` `true`, `allowInheritdoc` `true`, `allowTrivialAccessors` `false`,
+`requireParamDocs` `false` (every parameter beyond a lone one needs a `@param` tag with a
+description), `requireFieldDocs` `false` (plain class fields need the doc a function gets).
+
+```json
+{"rules": {"carburetor/require-tsdoc": ["warn", {"requireParamDocs": true, "requireFieldDocs": true}]}}
+```
+
+### `tsdoc-blank-line-before-tags`
+
+Requires exactly one blank line between a TSDoc description and its first block tag, so the summary
+paragraph stays visually separate from the tags. No options.

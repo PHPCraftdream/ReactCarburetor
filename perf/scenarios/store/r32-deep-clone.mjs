@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R32-08: snapshot() of a plain-object state must not use Object.create per object; the {}
 // literal fast path drops the counter to zero. Args: [rows=10000] [runs=31]
 import {emit, load, loadPath, median} from '../../harness/lib.mjs';

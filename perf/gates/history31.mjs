@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // History. R31-04: a canceled scalar batch proves cancellation without a full capture; both sizes
 // fall on pre-R31 builds (capture 1, 3 x rows row visits). constructionCaptures is the control that
 // keeps the captureHistory hook honest. Ordinary undo/redo stays intact.

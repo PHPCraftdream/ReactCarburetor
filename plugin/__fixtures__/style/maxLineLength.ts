@@ -1,0 +1,1 @@
+export const deliberatelyOverlongLine = "this single line of source exists only to exceed the configured maximum line length of the max-line-length style rule, which it does by a very wide margin indeed, far past the limit";

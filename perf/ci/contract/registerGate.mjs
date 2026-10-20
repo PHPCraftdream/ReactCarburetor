@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Registers new gate files in the freeze contract; run from the repository root.
 import {readFileSync, writeFileSync} from 'node:fs';
 import {basename, resolve} from 'node:path';

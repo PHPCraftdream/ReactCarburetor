@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 import {execFileSync} from 'node:child_process';
 import {cpSync, readdirSync} from 'node:fs';
 import {resolve} from 'node:path';

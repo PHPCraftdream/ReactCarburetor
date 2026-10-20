@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Read-view key enumeration. keysSeen is the enumerated length the scenario observed. The
 // retained-heap ceilings separate the builds at both sizes (~437/1740 KB now against ~723/2890 KB
 // with the pre-R32-06 wrappers retained); the over-gate keeps the 10k ceiling V8-independent by

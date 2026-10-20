@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Write path. View counts and ratios to an in-process JS copy are machine independent; the
 // heap ceiling sits far above the fixed cost and far below the pre-R32-05 per-element cost.
 export default [

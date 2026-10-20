@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R30-09: filing three-path subscribers, then removing them; after a full cycle nothing may stay
 // filed, and filing itself allocates no ancestors array per path. Args: [subscribers=4000] [reps=5]
 import {emit, loadPath} from '../../harness/lib.mjs';

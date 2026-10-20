@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R31-01 + R31-05: Map/Set equality compares iteration order and Object.is Date timestamps, so a
 // reordering is a visible change and an equal Invalid Date is not. No args.
 import {emit, load} from '../../harness/lib.mjs';

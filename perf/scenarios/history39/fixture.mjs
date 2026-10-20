@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 import {load} from '../../harness/lib.mjs';
 const {Carburetor, CarburetorHistory} = await load();
 class Store extends Carburetor {

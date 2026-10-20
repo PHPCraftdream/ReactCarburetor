@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-07: a data-only useResource reader whose pending entry is removed must reload; the bare
 // creation of that entry must not render it. ManualThrottle holds the creation notification
 // until flush(), so a removal can arrive in the same delivery as the creation.

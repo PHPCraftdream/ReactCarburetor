@@ -15,7 +15,7 @@ import {join, relative, sep} from 'node:path';
  * is enough for the conventions this repository actually follows.
  */
 const ROOTS = [
-    'lib/src', 'plugin/src', 'plugin/internal', 'plugin/__fixtures__',
+    'lib/src', 'plugin/src', 'plugin/__fixtures__',
     '__tests__', 'native/src', 'native/tests', 'scripts', 'benchmarks', 'perf', 'npm', 'examples',
 ];
 const STANDALONE_CODE_FILES = [
@@ -23,7 +23,7 @@ const STANDALONE_CODE_FILES = [
 ];
 // The one-export rule exists for library code. Examples may export several names — tests import
 // them directly instead of going through facade objects.
-const EXPORT_ROOTS = new Set(['lib/src', 'plugin/src', 'plugin/internal', '__tests__']);
+const EXPORT_ROOTS = new Set(['lib/src', 'plugin/src', '__tests__']);
 const MAX_ENTRIES = 7;
 // Registries of the perf suite: one flat entry per benchmarked area, unbounded by design.
 const FLAT_REGISTRIES = new Set(['perf/gates', 'perf/scenarios']);
@@ -31,6 +31,9 @@ const FLAT_REGISTRIES = new Set(['perf/gates', 'perf/scenarios']);
 // rule catches yet; both names are dictated by the native examples test, so the count follows
 // the rule registry rather than the seven-entry readability cap.
 FLAT_REGISTRIES.add('examples/wrong');
+// `native/src/rules` holds one directory per rule category plus `support`; the count follows the
+// rule registry the way `examples/wrong` does, not the readability cap.
+FLAT_REGISTRIES.add('native/src/rules');
 const MAX_LINES = 600;
 const TYPE_FILES = /^Models\.(ts|mts)$/;
 const BARREL_FILES = /^index\.(ts|tsx|mts)$/;

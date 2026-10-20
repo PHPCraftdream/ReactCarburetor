@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Runs one scenario on one or more builds, one child process per sample, builds interleaved.
 // A scenario is a module that reads its build from DIST_ROOT and ends with one `@@ {json}` line.
 import {spawnSync} from 'node:child_process';

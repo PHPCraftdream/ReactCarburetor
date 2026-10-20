@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 // A full selection reconcile resolves each member's raw graph object once instead of probing
 // the RAW_TARGET hatch two to three times per member. Args: [rows=1000] [wakes=6]
 import {emit, load, setupReact} from '../../harness/lib.mjs';

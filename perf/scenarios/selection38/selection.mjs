@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 import {emit, load, setupReact} from '../../harness/lib.mjs';
 const {Carburetor} = await load();
 class TestStore extends Carburetor { change(fn) { this.update(fn); } }

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Descriptor writes through the draft. Exact counts of versions, deliveries, wakes and replay
 // depths are the contract: value-preserving definitions record nothing (R10-01), index
 // definitions wake exactly the touched readers (R10-02), a literal own `__proto__` is never a

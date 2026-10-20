@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // DevTools publication: every write publishes once, and every store name — a prototype-named one
 // included — lands as an own key of the outgoing state carrying that store's snapshot.
 // Args: [writes=500]

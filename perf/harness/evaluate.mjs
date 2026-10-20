@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Gate evaluation. A gate is one assertion over a summarized scenario run:
 //   {metric, equals}              every sample equals the value (counters, rendered text, booleans)
 //   {metric, max} / {metric, min} the median stays within an absolute bound

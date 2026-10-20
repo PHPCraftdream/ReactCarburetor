@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R31-02: settled readonly `clear` prepares one bulk removal instead of N whole-graph clones;
 // Controls carry only the writable/mixed removal fallbacks.
 // Args: [count=32] [op=settled|writable|mixed|controls]

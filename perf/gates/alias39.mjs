@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 const leafEntries = ['Date', 'flat'].map(kind => ({
     id: `alias39/${kind === 'Date' ? 'date' : 'flat-instance'}@10k`,
     improvement: 'R39-03', scenario: 'alias39/date-leaves', args: [10000, kind],

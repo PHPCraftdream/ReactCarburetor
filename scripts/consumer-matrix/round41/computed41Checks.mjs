@@ -8,7 +8,7 @@
 export const computed41Checks = (assert, producer, recorder, label) => {
     // Keep the first graph uid-only: the frozen build must reach the value assertion.
     // Domain-collision fixtures intentionally declare undocumented application members.
-    /* oxlint-disable carburetor-internal/require-tsdoc */
+    /* oxlint-disable carburetor/require-tsdoc */
     class Named extends producer.Computed {
         uid = 'total';
     }
@@ -21,7 +21,7 @@ export const computed41Checks = (assert, producer, recorder, label) => {
         markStale = this.onDependencyChanged; settle = this.onDependencyChanged;
         recompute = this.onDependencyChanged; deliver = this.onDependencyChanged;
     }
-    /* oxlint-enable carburetor-internal/require-tsdoc */
+    /* oxlint-enable carburetor/require-tsdoc */
     const a = new producer.Carburetor({n: 1});
     const b = new producer.Carburetor({n: 2});
     const first = new Named(read => read(a).n);

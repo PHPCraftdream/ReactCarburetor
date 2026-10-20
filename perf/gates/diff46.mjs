@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // Container reads over one complete walk (restore: over its scan) of the same rows, as pre-change -> now -> bound:
 // collapse 2.5k 4.77 -> 2.52 -> 2.75, collapse 10k 4.47 -> 2.22 -> 2.75, root collapse 10k 6.22 -> 2.22 -> 2.5,
 // precise 2500-of-10k 5.29 -> 3.22 -> 3.5, restore one leaf 6.00 -> 4.00 -> 4.5, restore full 5.15 -> 2.75 -> 3.25.

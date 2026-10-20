@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // No deref during GC turns, no allocation pressure, finalizers, snapshots or subscriptions.
 import assert from 'node:assert/strict';
 import {emit, load} from './fixture.mjs';

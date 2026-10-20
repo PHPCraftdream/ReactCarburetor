@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 export default [
     {
         id: 'drift36/log-reset@10k', improvement: 'R36-03', scenario: 'drift36/log-reset', args: [],

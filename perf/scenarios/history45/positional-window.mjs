@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Positional attribution compares and attributes only the affected index window of a range op;
 // the whole-array snapshot copy remains, so the claimed saving is the per-index comparison and
 // attribution work, not the copy. The gate counts hasOwnProperty probes (two per visited index)

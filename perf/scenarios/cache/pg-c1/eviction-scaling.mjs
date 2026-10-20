@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R16-04: retained cold loads amortize eviction; fresh hits do no eviction work.
 import {emit, loadPath, call, engine} from '../../../harness/lib.mjs';
 

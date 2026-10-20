@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-04 release: once the last selection consumer is gone a store behaves as if it never had one.
 export default ['watch', 'hook', 'class'].map(route => ({
     id: `trackrelease39/release-${route}@1000`, improvement: 'R39-04',

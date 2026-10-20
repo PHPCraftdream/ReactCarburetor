@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R36-02 and R36-01 for the class API. Rows render `selectedId === id` through connectSelection (gated) and through
 // connect (control): renders per selection move. A parent selecting the live list: paths read per render with no write
 // and per related write; the control disables the write log and the drift answer so every render walks the list.

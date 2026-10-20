@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 import {emit, load, median, setupReact} from '../../harness/lib.mjs';
 const {Carburetor, AntiHookComponent} = await load();
 const {React, flushSync, root, container} = await setupReact();

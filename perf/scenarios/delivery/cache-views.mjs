@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R11-07: a cache view keeps identity while nothing read changed (Object.is on data — NaN
 // included) and a signed-zero change is still visible. Args: [reads=30000] [samples=7]
 import {emit, loadPath, median, call} from '../../harness/lib.mjs';

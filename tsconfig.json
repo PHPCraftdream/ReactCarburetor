@@ -9,9 +9,6 @@
       ],
       "@plugin/*": [
         "./plugin/src/*"
-      ],
-      "@plugin-internal/*": [
-        "./plugin/internal/*"
       ]
     },
     "lib": [

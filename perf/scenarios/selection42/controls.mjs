@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 import assert from 'node:assert/strict';
 import {emit, load, engineKey} from '../../harness/lib.mjs';
 const {Carburetor, transaction} = await load();

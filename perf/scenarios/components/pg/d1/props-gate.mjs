@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R36-07: class props comparisons, isolated from React scheduling and fixture allocation.
 // Synchronous sweeping prevents post-GC reclamation from making a zero-allocation slice shrink.
 import {spawnSync} from 'node:child_process';

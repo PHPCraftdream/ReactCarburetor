@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, react/immutability, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, react/immutability, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R13-08: wake the title selector via a real dependency write with equal selected content.
 import {emit, load, setupReact} from '../../../harness/lib.mjs';
 const {Carburetor} = await load();

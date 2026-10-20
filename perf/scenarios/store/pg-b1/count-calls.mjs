@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Count only synchronous measured work; always restore the original method.
 export const countCalls = (owner, key, work) => {
     const original = owner[key];

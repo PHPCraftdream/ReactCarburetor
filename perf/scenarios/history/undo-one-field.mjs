@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R34-03: undo/redo of a one-field history entry as the state grows. Args: [rows=10000] [samples=9]
 import {emit, load, median} from '../../harness/lib.mjs';
 

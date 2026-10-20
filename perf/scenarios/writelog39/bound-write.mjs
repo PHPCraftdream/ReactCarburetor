@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-01: wall time of one related write that follows two unrelated publications (median of many).
 import {emit, load, median, setupReact} from '../../harness/lib.mjs';
 

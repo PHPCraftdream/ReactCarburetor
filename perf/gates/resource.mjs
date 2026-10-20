@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Resource. The mechanism gate is the serialization counter: resolve() of a warm primitive must
 // not re-derive its key (the pre-R30-08 build stringifies once per resolve, so the gate fails
 // there), and the golden-string gates pin the key and path bytes a key must keep.

@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 import {emit, load, median} from '../../harness/lib.mjs';
 
 if (!process.env.DIST_ROOT) throw new Error('DIST_ROOT is required');

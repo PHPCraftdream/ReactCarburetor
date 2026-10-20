@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // R37-04: paths recorded per wake for K changed leaves on a large plain list. After the relative
 // work budget, K=64 and K=65 (and K=128) stay bounded by the batch; the full-walk control reads
 // the whole selection. Args: [rows=4000] [writes=1]

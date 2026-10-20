@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R33-01: a computed returning a live branch (read(s).rows) must not have the branch walked
 // through read proxies on settle. Args: [rows=10000] [samples=9]
 import {emit, load, median} from '../../harness/lib.mjs';

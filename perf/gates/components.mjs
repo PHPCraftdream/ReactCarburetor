@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Components. Render counts, rendered text and the instance/proxy shapes are exact; mount cost
 // is bounded by the 4k/1k size scale; SSR timings are diagnostic only.
 // mount-edit is a correctness control (the old benchmark was a non-regression A/B).

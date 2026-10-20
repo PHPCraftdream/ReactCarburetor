@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R15-03: toggle-and-back forces a fresh equal array; a no-equals reader proves publication.
 import {emit, load, setupReact} from '../../../harness/lib.mjs';
 const {Carburetor, computed, AntiHookComponent} = await load();

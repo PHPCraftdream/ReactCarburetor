@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R36-06: React.memo rows under `useCarburetorValue(s, d => d.rows)` after an insert at the top and a one-row move.
 // The control edit proves the render counter counts. Args: [rows=2000]
 import {emit, load, setupReact} from '../../harness/lib.mjs';

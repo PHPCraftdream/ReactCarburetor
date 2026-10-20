@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R11-05: detachOpaque keeps repeated Date identity — one Date shared by a Map, a Set and many
 // references detaches to one copy whose Map key still looks up — and a detached tracked plain
 // key stays one copy in either property order. persist() serializes each write without ever

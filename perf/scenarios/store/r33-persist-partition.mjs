@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Partitioned persist: one storage key per top-level branch, sealed once, then only dirty
 // branches rewritten. The pre-partition build ignores {partitions} and rewrites the
 // whole-store key instead. Args: [rows=10000] [writes=50]

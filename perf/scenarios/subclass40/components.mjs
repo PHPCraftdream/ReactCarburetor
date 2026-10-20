@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/require-tsdoc */
 import {emit, load, setupReact} from '../../harness/lib.mjs';
 const {Carburetor, AntiHookComponent} = await load();
 const {React, flushSync, root, container} = await setupReact();

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Hooks. Render counts and rendered text are exact; times are >= 10x ceilings that still sit
 // below the pre-fix cost, and the size scale gate is machine independent.
 const related = mode => ({

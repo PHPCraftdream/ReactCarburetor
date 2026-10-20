@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // A draft defineProperty that changes no supported state records no version, delivery or history
 // entry; a real value change still does, and undo/redo round-trips it exactly.
 // Args: [writes=1000]

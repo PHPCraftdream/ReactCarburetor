@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Separate process liveness gate: all caches remain strongly reachable throughout full GCs.
 // No unit-test GC timing assumption, no resolve/getEntry after removal to hide an obsolete memo.
 import {spawnSync} from 'node:child_process';

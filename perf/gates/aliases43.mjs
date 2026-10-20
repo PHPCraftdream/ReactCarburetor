@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // Invalid GC controls mean inconclusive, never evidence of library retention.
 // Timing metrics are report-only for baseline/fix comparison; old gates are untouched.
 export default [

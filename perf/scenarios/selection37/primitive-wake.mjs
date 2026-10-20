@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // R37-05: a watch selecting an equivalent scalar must wake with zero WeakMap/WeakSet constructions;
 // the object/cycle control proves the counter still sees the full reconcile's ledgers. A changed
 // scalar must still deliver. Args: [writes=1]

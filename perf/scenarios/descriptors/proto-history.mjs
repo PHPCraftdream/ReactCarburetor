@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // History with a numeric limit bounds undo depth to the kept entries, and a literal own
 // `__proto__` definition is an own data property whose undo/redo never touches the prototype.
 // Args: [rows=300] [writes=250] [limit=50]

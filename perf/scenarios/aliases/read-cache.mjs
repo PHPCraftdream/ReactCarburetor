@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R30-01: a repeated opaque read answers from the per-read cache, and a warmed Map view iterates
 // at raw speed. Warm both paths and alternate batched samples to amortize timer/JIT effects.
 // freshMs (first read after a topological write) is informational: its run-to-run spread is too

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Isolated stronger endpoint assertions; permanent history44 gates/scenarios are untouched.
 import assert from 'node:assert/strict';
 import {opaqueFixture,scalarFixture} from '../../scenarios/history44/fixture.mjs';

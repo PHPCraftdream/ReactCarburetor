@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Distinct multi-id exact Set buckets, not the bare-string disjoint control in controls.mjs.
 // Runs unchanged against either DIST_ROOT. Constructor counts are calls, never heap bytes.
 import assert from 'node:assert/strict';

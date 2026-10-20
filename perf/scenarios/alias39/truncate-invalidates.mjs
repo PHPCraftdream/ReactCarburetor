@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-03: `draft.rows.length = n` must invalidate native-alias ownership. Reads inside the same
 // transaction see the owners the index answers; each answer is compared with a freshly built store.
 import {emit, load} from '../../harness/lib.mjs';

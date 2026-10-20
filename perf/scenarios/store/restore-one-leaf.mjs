@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R34-04: restore() of a snapshot that differs from the live state in one leaf wraps only the
 // changed row in a draft proxy (counted exactly), next to the cost of taking that snapshot.
 // Args: [rows=10000] [samples=9]

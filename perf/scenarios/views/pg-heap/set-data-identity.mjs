@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R10-06: count public view identities for root and single-answer replacements; no private cache fields.
 import {emit, loadPath, call} from '../../../harness/lib.mjs';
 

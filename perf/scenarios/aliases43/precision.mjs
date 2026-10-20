@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // Independent process: precision/own-data checks never enter the liveness window.
 import assert from 'node:assert/strict';
 import {emit, load} from './fixture.mjs';

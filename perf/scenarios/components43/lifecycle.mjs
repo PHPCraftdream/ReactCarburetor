@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 import {emit, load, require, setupDOM} from './fixture.mjs';
 import {checkOwnership} from '../components42/checks.mjs';
 process.env.NODE_ENV = 'development';

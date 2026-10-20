@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R8-03/R9-04: synchronous persistence exposes every publication, without microtask coalescing.
 import {emit, loadPath, call} from '../../../harness/lib.mjs';
 

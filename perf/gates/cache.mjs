@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Cache. R31-02: settled `clear` is one ownership pass at every matrix size; the 32/128
 // entries fall on pre-R31 builds (roots 32/128, 496/8128 omitted-entry visits, ~15/324 ms), the
 // larger sizes by construction. The fallbacks entry controls writable/mixed removal;

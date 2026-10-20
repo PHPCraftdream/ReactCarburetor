@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R31-04: a canceled scalar batch (n=1 then n=0) proves cancellation without a full capture, while
 // an ordinary change keeps undo/redo. Args: [rows=512]
 import {emit, load, loadPath} from '../../harness/lib.mjs';

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R14-07: fresh proxies; inspect actual handlers passed to the native Proxy constructor.
 // Synchronous sweeping and compilation keep background reclamation out of heap slices.
 import {spawnSync} from 'node:child_process';

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Probe original AND intermediate rows: a copier registers source -> detached target in its ledger.
 export const rowProbe = rows => {
     const originals = new WeakSet(rows);

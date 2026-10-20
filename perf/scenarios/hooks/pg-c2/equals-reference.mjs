@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R33-05: a suppressed computed publication retains the reference on the next owner render.
 import {emit, load, setupReact} from '../../../harness/lib.mjs';
 const {Carburetor, computed, AntiHookComponent} = await load();

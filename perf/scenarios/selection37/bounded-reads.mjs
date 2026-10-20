@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // R37-03: the filed read set must stay bounded while a replaced subtree cycles through object and
 // primitive shapes. 16 and 64 object→primitive payload cycles file a constant set; a genuinely
 // growing payload proves the counter still sees growth. Args: [writes=1]

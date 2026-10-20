@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // Correctness and actual patch spine counts gate; warmed timings are report-only.
 export default [{
     id: 'selection43/same-value', improvement: 'R43-S01', scenario: 'selection43/same-value', args: [],

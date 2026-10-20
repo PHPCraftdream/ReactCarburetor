@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R6-04: subscribe() copies a public read set, so a later caller mutation cannot desynchronize
 // matching, and re-subscribing with a grown set files the growth; the internal transferReads
 // path adopts the caller's set with no copy — its retained bookkeeping per subscriber stays

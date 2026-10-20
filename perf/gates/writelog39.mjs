@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 const selections = ['watch', 'hook', 'class'].flatMap(route => [1000, 10000].map(size => ({
     id: `writelog39/interleaved-${route}@${size}`, improvement: 'R39-01',
     scenario: 'writelog39/interleaved', args: [size, route],

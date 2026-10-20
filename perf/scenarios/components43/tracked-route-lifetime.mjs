@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/require-tsdoc, carburetor-internal/max-line-length */
+/* oxlint-disable carburetor/require-tsdoc, carburetor/max-line-length */
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {fileURLToPath} from 'node:url';

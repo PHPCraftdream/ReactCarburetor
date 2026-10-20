@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 import assert from 'node:assert/strict';
 import {emit, load} from '../../harness/lib.mjs';
 import {countOwned} from '../history39/owned-counter.mjs';

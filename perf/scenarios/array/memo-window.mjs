@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R32-04: per-handler path memos must stay bounded by the live key set — a rolling key window
 // must not grow the heap as iterations pile up, with or without a persistent read view that
 // reads every key once. Args: [iters=200000] [view=0|1] [keys=100]

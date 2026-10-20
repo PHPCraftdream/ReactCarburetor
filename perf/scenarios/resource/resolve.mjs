@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R30-08: resource cache resolve() of primitive ids answers from the key memo, no re-serialization;
 // the keys themselves must stay byte-identical to the pinned golden strings. Args: [ids=4000] [passes=9]
 import {emit, loadPath, median, call} from '../../harness/lib.mjs';

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // `useComputedValue` delivers stable-reference results — a Map mutated in place and a stable
 // envelope around it — with one commit and one render per consumer per publication, and the
 // hook hands every consumer the same value identity across all publications.

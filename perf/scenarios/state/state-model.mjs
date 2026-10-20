@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R6-02/R6-03: state is own enumerable string-keyed data — a symbol key and an array's non-index
 // key are not state (snapshots drop them, a symbol draft write throws) — plus the old
 // stateModel write/read cases: draft writes with and without history, a deep-copied setData,

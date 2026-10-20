@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/require-tsdoc */
 import {emit, load} from '../../harness/lib.mjs';
 const {ResourceCache, ResourceCarburetor, CarburetorHistory} = await load();
 // The bound handles are the only public own names (D2); everything else is symbol-keyed.

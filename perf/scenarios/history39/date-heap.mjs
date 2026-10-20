@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-02: retained heap per history entry for a scalar leaf write, plain state vs one Date field.
 // Needs --expose-gc. Controls: replacing the Date is a genuine snapshot entry; a plain state costs the same as the Date one.
 import {emit, load} from '../../harness/lib.mjs';

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Selection. The mechanism gates are counters: descriptor walks per key are the pre-R30-04 cost,
 // Object.keys/Reflect.ownKeys on a live view is the pre-R33-04 cost (probeSelfCount proves the
 // enumeration probe still counts), and an unchanged detached Date answering "changed" is the

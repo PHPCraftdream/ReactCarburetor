@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R15-06: mounted connected rows vs otherwise identical plain rows, post-GC retention.
 import {emit, load, setupReact, median} from '../../../../harness/lib.mjs';
 

@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 import {emit, load, countWriteLogMatches} from '../../harness/lib.mjs';
 
 const {Carburetor, computed} = await load();

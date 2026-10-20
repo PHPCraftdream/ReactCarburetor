@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R15-05: three disjoint depth-two paths per reader, no shared ancestor buckets.
 import {emit, loadPath} from '../../../harness/lib.mjs';
 const {SubscriberIndex} = await loadPath('Carburetor/Store/Paths/SubscriberIndex.mjs');

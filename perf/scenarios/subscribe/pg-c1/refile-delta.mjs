@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R15-04: fixed-depth delta filing, not the O(reads) membership scan.
 // Both builds expose register/unregister; newer builds split branch filing into methods.
 import {emit, loadPath} from '../../../harness/lib.mjs';

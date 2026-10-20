@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R32-04: observe both handler memo kinds through global Map.set, retaining only WeakRefs.
 // For this 100-key rolling fixture, the oldest-128 sample has <half live by threshold 512:
 // write audits start at 128, may double to 256, then clear; read audits include both kinds

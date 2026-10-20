@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // Timings are report-only: parent harness alternates independent processes/builds; no tiny ceiling.
 export default [16, 128, 512, 4096, 16384].map(width => ({
     id: `selection42/outside-dictionary@${width}`, improvement: 'R42-S01',

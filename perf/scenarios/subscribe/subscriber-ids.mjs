@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R7-04: caller-chosen ids live in their own dictionary slot — '__proto__' files an ordinary
 // own key (never the dictionary's prototype) and unsubscribe removes it entirely, while
 // dictionary built-in names stay usable. Args: [count=1000] [samples=9]

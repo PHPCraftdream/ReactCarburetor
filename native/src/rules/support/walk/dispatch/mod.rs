@@ -177,7 +177,7 @@ pub(super) fn run(
         } else if built.is_some() {
             unreachable!("dispatch factory is missing its shared registry marker: {rule}");
         } else if semantic_rules.contains(rule) {
-            buckets[index].extend(super::check_with_shared(
+            buckets[index].extend(crate::rules::shared::check_with_shared(
                 rule,
                 program,
                 source,
@@ -186,7 +186,26 @@ pub(super) fn run(
                 &bases,
             ));
         } else {
-            buckets[index].extend(check(program, source, &bases));
+            // The rules with options read them here too, so a configured limit or root set
+            // behaves identically on both dispatch paths.
+            buckets[index].extend(match *rule {
+                style::max_line_length::RULE => style::max_line_length::check_with_options(
+                    program,
+                    source,
+                    &config.max_line_length(),
+                ),
+                style::no_parent_import::RULE => style::no_parent_import::check_with_options(
+                    program,
+                    source,
+                    &config.no_parent_import_roots(),
+                ),
+                style::require_tsdoc::RULE => style::require_tsdoc::check_with_options(
+                    program,
+                    source,
+                    &config.require_tsdoc(),
+                ),
+                _ => check(program, source, &bases),
+            });
         }
     }
 

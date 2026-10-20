@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R7-03: count hole probes plus enumerated own indices on the exact raw array.
 // Production removes AliasLedger validation; this scenario does not claim to measure it.
 import {emit, load, loadPath} from '../../../harness/lib.mjs';

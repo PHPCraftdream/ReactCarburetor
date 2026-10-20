@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R33-06: one history entry with overlapping object patches must stay independent (folded patch
 // list) instead of cloning the whole owned baseline for the preflight.
 import {emit, load, median} from '../../harness/lib.mjs';

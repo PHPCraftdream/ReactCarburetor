@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // R46-09: an append to, or a tail pop from, a selected list patches the container from the write log:
 // member reads and fresh row copies follow the change, not the list. A popped row's copy stays
 // collectable. Positive controls: an append with an in-row write and an unshift still take the full

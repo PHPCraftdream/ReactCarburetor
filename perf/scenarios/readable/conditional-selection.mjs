@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R31 readable split: a six-capability external source drives `useCarburetorValue`; recorded reads
 // keep unselected writes silent and unmount releases the subscription. Args: [rounds=32]
 import {emit, load, setupReact} from '../../harness/lib.mjs';

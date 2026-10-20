@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 import {emit, load, setupReact} from '../../harness/lib.mjs';
 const {Carburetor, AntiHookComponent} = await load();
 const {useCarburetorValue} = await load('Interop');

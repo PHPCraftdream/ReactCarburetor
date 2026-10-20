@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Include constructor-driven add calls when a Set copies an iterable.
 export const countSets = fn => {
     const NativeSet = globalThis.Set;

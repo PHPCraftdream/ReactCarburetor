@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 // A flat connectSelection wake verdicts through the one-level walk: delivery constructs no
 // graph collections for flat rows, and a nested selection still reconciles exactly.
 // Args: [rows=128]

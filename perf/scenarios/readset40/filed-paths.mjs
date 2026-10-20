@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/require-tsdoc */
 import {emit, load, setupReact} from '../../harness/lib.mjs';
 const {Carburetor, AntiHookComponent, computed} = await load();
 const {useCarburetorValue} = await load('Interop');

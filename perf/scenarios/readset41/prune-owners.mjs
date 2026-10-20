@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/require-tsdoc */
 // Owner-slice prune: completing a deep read set costs one owner slice per path instead of a
 // prefix set over every ancestor of every path. Args: [rows=1000] [completions=8]
 import {emit, loadPath} from '../../harness/lib.mjs';

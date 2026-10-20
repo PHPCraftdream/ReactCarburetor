@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';
 import {createRequire} from 'node:module';

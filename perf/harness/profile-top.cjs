@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Summarize a .cpuprofile: self time by function and inclusive time for named functions.
 const fs = require('fs');
 const file = process.argv[2];

@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Deleting a non-last ordered string key with history attached: the delete path used to run
 // Object.keys per delete and degrade the whole publication to a full-state snapshot entry.
 // The gate counts Object.keys calls on the delete path and requires the entry to stay a

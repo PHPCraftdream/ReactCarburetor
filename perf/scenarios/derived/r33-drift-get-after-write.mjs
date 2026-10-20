@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R33-03: get() on an observed computed after unrelated writes must be O(1) via the
 // per-subscription matched version, not a whole read-set match. Args: [rows=10000] [samples=200]
 import {countWriteLogMatches, emit, load, median} from '../../harness/lib.mjs';

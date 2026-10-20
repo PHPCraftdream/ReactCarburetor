@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-02. Baseline must fail patches/zero clones, not just timing. <=2 native/plain is
 // reported separately as acceptance diagnostics; scale is deliberately generous on shared CPUs.
 const aliasGates = [

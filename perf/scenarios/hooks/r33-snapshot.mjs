@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R33-02: useCarburetorValue must not re-run a stable selector nor deep-compare the selection
 // after unrelated writes; an inline selector still runs but skips the deep compare.
 // Args: [rows=10000] [samples=15]

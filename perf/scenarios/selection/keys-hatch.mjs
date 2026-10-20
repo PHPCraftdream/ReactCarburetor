@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R33-04: compare and detach read view keys through the internal hatch, never Object.keys or
 // Reflect.ownKeys on a live view — watched over EVERY view of the selection (the array view and
 // each row view), with a self-check that the probe counts a deliberate enumeration.

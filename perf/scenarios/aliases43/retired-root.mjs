@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // This parent never imports the store. One bounded GC child per native kind, run serially.
 import assert from 'node:assert/strict';
 import {spawnSync} from 'node:child_process';

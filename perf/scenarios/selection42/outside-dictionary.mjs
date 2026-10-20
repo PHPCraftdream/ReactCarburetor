@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R42-S01. Args: [width=128] [samples=7] [cycles=16]. Counters and timing use different stores.
 import assert from 'node:assert/strict';
 import {emit, load, median} from '../../harness/lib.mjs';

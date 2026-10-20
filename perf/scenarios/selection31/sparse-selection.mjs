@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R31-03: a sparse selection costs O(own indices), not O(length); the dense prefix is unchanged.
 // Args: [length=65536] [variant=sparse|dense] [updates=5]
 import {emit, load, loadPath, median} from '../../harness/lib.mjs';

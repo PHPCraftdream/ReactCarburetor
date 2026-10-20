@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-02: scalar writes before and after a genuine native snapshot boundary.
 import {emit} from '../../harness/lib.mjs';
 import {countOwned} from './owned-counter.mjs';

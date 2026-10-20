@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 import {emit, loadPath} from '../../harness/lib.mjs';
 const {diffPaths} = await loadPath('Carburetor/Store/Paths/Diff/diffPaths.mjs');
 const previous = Array.from({length: 5000}, (_, title) => ({title}));

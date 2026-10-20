@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // History fold search: with a pending owned object target, every later patch used to scan all
 // pending patches backwards (O(P^2) candidate reads per publication). `scans` counts candidate
 // reads through the segments proxy each pending patch carries; a head splice and a bulk push

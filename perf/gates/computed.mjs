@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // PG-B1 hook timings are diagnostic; settled-pull Object.keys counts guard JS-R13-04.
 // Computed pulls, freshness and hook delivery. Evaluation, notification and snapshot-record
 // counts are the contract; the 128-dependency pull cost is judged against the 1-dependency

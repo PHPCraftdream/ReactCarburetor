@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R12-E01: two stores sharing one scheduler with the same local subscription id both deliver;
 // a plain wildcard fan-out still delivers every write to every subscriber. Args: [subscribers=64] [writes=500] [samples=7]
 import {emit, load, loadPath, median} from '../../harness/lib.mjs';

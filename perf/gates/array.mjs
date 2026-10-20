@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Array engine. Written paths and woken readers are exact mechanism counters: index-level writes
 // cost one path per shifted index (the pre-R32-03 field diff recorded ~30000 for a head splice),
 // and only readers of shifted positions wake. Timings stay ungated (shared machine); the runner's

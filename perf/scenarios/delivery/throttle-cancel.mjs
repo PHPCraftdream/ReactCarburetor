@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R11-06: cancelling during a flush drops the captured callback — cancelled updates are not
 // delivered; the uncancelled control delivers everything. Args: [rounds=2000] [samples=7]
 import {emit, loadPath, median} from '../../harness/lib.mjs';

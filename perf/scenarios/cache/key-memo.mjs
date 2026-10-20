@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R31-06 + R30-08: an explicit keyCacheSize is honored and one cold crossing no longer wipes the
 // hot set; the repeated pass at or below capacity stays free of re-serialization, while the
 // cold pass proves the memo is fed by real JSON.stringify derivation. Args: [mode=cycle|hotcold] [count=4096] [keyCacheSize]

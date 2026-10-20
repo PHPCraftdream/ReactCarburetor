@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // The development build is the `esm` sibling of the measured production dist; the unpublished-draft
 // diagnostic only exists there. The diagnostic is gated by callback identity, not by time.
 import {existsSync} from 'node:fs';

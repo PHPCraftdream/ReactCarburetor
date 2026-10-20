@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R33-07: persist coalesces storage writes by default (one stringify per microtask);
 // {coalesce: false} keeps a synchronous stringify per write. Args: [rows=10000] [writes=50]
 import {emit, load} from '../../harness/lib.mjs';

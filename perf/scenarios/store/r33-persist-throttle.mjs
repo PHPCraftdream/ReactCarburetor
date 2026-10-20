@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // persist throttleMs bounds the storage write rate. The scenario stubs the clock persist
 // reads (Date.now) and the timers it schedules (setTimeout/clearTimeout), so the window is
 // opened and advanced by hand: process pauses and system-clock changes cannot move the

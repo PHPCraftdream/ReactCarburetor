@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R16-02: one changed path wakes exactly the subscriber reading it, at any
 // subscriber count — setData, restore and object replacement announce the structural diff.
 // The index section restores the old pathsIntersect loads: write-set matching at many

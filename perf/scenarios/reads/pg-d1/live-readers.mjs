@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R13-02/03: retained read trees must not add work to primitive writes.
 import {emit, load} from '../../../harness/lib.mjs';
 

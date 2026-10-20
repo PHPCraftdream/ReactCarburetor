@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // The performance gate suite: every entry in perf/gates/*.mjs is measured on the build under test
 // and checked against its gates. Exit code 1 on any violation, so it can guard a change.
 //

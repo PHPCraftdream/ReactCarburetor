@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 // PERF round 46: a structural change of a selected list (append, tail pop) patches the container
 // from the write log instead of reconciling every row.
 export default [

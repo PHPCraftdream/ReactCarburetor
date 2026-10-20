@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R32-01: containers built from draft branches (map/filter/spread) must not store engine views
 // in state, and the diff of a leaking assignment must not read opaque fields through views.
 // Args: [rows=10000]

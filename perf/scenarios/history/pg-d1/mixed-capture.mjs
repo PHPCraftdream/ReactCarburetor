@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R17-ENGINE-04: the Map deliberately follows the complete plain prefix.
 import {emit, load, loadPath} from '../../../harness/lib.mjs';
 import {makeRows, rowProbe} from './row-probe.mjs';

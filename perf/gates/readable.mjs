@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Readable adapter. A six-capability external source over `useCarburetorValue`: unselected writes
 // stay invisible (renders, texts), unmount releases the subscription. replace() iterates a listener
 // snapshot because the hook re-subscribes during delivery; with the snapshot the writer's own reads

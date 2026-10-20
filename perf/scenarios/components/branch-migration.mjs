@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R37-06: an equal-valued conditional branch switch (useLeft true->false, left===right) must
 // migrate the class connection's read set at notification time WITHOUT a forceUpdate — the
 // hook control stays at 1 render and the class owner must now stay at 1 too. A real value

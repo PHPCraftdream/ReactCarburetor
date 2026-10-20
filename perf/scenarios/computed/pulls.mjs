@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Unobserved pulls: stable pulls and pulls after an unrelated write re-run the body never, one
 // changed dependency re-runs it once, and the pull cost stays flat as dependencies grow. The
 // fan-in section is the old computedDependencies load: a diamond of 1/10/100 input computeds

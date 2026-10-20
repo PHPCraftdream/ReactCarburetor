@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R32-02: one outer computed over K inner computeds sharing one store settles in O(K^2 * M)
 // before the combined capture read set, linear after. Sizes are hardcoded.
 import {emit, load, median} from '../../harness/lib.mjs';

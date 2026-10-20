@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // JS-R13-05: production row reads do not note live views (the parent noted one view per row).
 // The module moved between builds, so both paths are tried; a direct call is the seam control.
 // Args: [rows=4000]

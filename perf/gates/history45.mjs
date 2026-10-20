@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Mechanism counters for the history/write-path round: fold-search scans (splice + bulk push
 // with history), endpoint re-cloning on the history entry path, key scans and snapshot
 // degradation on dictionary deletes, positional window work, and Date draft reads. Every

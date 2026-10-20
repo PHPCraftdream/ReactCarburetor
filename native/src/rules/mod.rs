@@ -19,6 +19,8 @@ mod dispatch;
 mod dispatch_tests;
 mod effects;
 mod lifecycle;
+mod shared;
+mod style;
 mod support;
 
 /// What every rule is: one pass over a parsed file, producing diagnostics. `Bases` carries the
@@ -27,7 +29,7 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check, bool); 31] = [
+const REGISTRY: [(&str, Check, bool); 36] = [
     (
         boundaries::max_render_depth::RULE,
         boundaries::max_render_depth::check,
@@ -183,6 +185,31 @@ const REGISTRY: [(&str, Check, bool); 31] = [
         data::interop::no_capturing_hook_selector::check,
         true,
     ),
+    (
+        style::max_line_length::RULE,
+        style::max_line_length::check,
+        false,
+    ),
+    (
+        style::no_blank_line_after_tsdoc::RULE,
+        style::no_blank_line_after_tsdoc::check,
+        false,
+    ),
+    (
+        style::no_parent_import::RULE,
+        style::no_parent_import::check,
+        false,
+    ),
+    (
+        style::require_tsdoc::RULE,
+        style::require_tsdoc::check,
+        false,
+    ),
+    (
+        style::tsdoc_blank_line_before_tags::RULE,
+        style::tsdoc_blank_line_before_tags::check,
+        false,
+    ),
 ];
 
 /// Builds a diagnostic at a source offset. The severity is what a rule means when it reports at
@@ -330,6 +357,10 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
         data::interop::no_capturing_hook_selector::RULE => {
             text.contains("useCarburetorValue") || text.contains("useResourceValue")
         }
+        style::no_parent_import::RULE => text.contains("../"),
+        style::no_blank_line_after_tsdoc::RULE
+        | style::require_tsdoc::RULE
+        | style::tsdoc_blank_line_before_tags::RULE => text.contains("/*"),
         // No static marker: render detection is syntactic, the closure rules reach every class,
         // and `require-module-function` at `scope: "all"` reaches every nested function.
         _ => true,
@@ -438,7 +469,7 @@ pub(super) fn run_sequential(
             | allocations::no_react_hooks_in_components::RULE
             | data::writes::no_store_write_in_render::RULE
             | boundaries::require_subscription_disposal::RULE
-            | boundaries::one_export_per_file::RULE => check_with_shared(
+            | boundaries::one_export_per_file::RULE => shared::check_with_shared(
                 rule,
                 program,
                 source,
@@ -452,6 +483,21 @@ pub(super) fn run_sequential(
                     source,
                     config.max_render_depth(),
                     &bases,
+                ),
+                style::max_line_length::RULE => style::max_line_length::check_with_options(
+                    program,
+                    source,
+                    &config.max_line_length(),
+                ),
+                style::no_parent_import::RULE => style::no_parent_import::check_with_options(
+                    program,
+                    source,
+                    &config.no_parent_import_roots(),
+                ),
+                style::require_tsdoc::RULE => style::require_tsdoc::check_with_options(
+                    program,
+                    source,
+                    &config.require_tsdoc(),
                 ),
                 _ => check(program, source, &bases),
             },
@@ -486,80 +532,4 @@ pub(super) fn run_sequential(
     }
 
     diagnostics
-}
-
-/// Runs the rules that share one semantic pass; `None` means every one of them is off.
-fn check_with_shared<'a>(
-    rule: &str,
-    program: &'a Program<'a>,
-    source: &Source<'_>,
-    semantic: Option<&'a oxc_semantic::Semantic<'a>>,
-    module_scope: crate::config::ModuleFunctionScope,
-    bases: &'a support::bases::Bases,
-) -> Vec<Diagnostic> {
-    let Some(semantic) = semantic else {
-        return Vec::new();
-    };
-    match rule {
-        allocations::require_method_for_closure::RULE => {
-            allocations::require_method_for_closure::check_with_semantic(
-                program, source, semantic, bases,
-            )
-        }
-        allocations::require_module_function::RULE => {
-            allocations::require_module_function::check_with_semantic(
-                program,
-                source,
-                semantic,
-                module_scope,
-                bases,
-            )
-        }
-        lifecycle::no_handler_created_in_render::RULE => {
-            lifecycle::no_handler_created_in_render::check_with_semantic(
-                program, source, semantic, bases,
-            )
-        }
-        lifecycle::no_function_in_render::RULE => {
-            lifecycle::no_function_in_render::check_with_semantic(program, source, semantic, bases)
-        }
-        data::interop::no_memo_over_store_read::RULE => {
-            data::interop::no_memo_over_store_read::check_with_semantic(
-                program, source, semantic, bases,
-            )
-        }
-        data::interop::no_capturing_hook_selector::RULE => {
-            data::interop::no_capturing_hook_selector::check_with_semantic(
-                program, source, semantic, bases,
-            )
-        }
-        allocations::no_closure_in_update::RULE => {
-            allocations::no_closure_in_update::check_with_semantic(program, source, semantic, bases)
-        }
-        boundaries::no_async_transaction::RULE => {
-            boundaries::no_async_transaction::check_with_semantic(program, source, semantic)
-        }
-        effects::no_async_effect::RULE => {
-            effects::no_async_effect::check_with_semantic(program, source, semantic)
-        }
-        allocations::no_react_hooks_in_components::RULE => {
-            allocations::no_react_hooks_in_components::check_with_semantic(
-                program, source, semantic, bases,
-            )
-        }
-        data::writes::no_store_write_in_render::RULE => {
-            data::writes::no_store_write_in_render::check_with_semantic(
-                program, source, semantic, bases,
-            )
-        }
-        boundaries::one_export_per_file::RULE => {
-            boundaries::one_export_per_file::check_with_semantic(program, source, semantic)
-        }
-        boundaries::require_subscription_disposal::RULE => {
-            boundaries::require_subscription_disposal::check_with_semantic(
-                program, source, semantic, bases,
-            )
-        }
-        _ => Vec::new(),
-    }
 }

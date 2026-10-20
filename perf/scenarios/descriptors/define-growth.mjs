@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Defining an index past the array's end wakes the length and key-set readers, not an
 // untouched-index reader, and undo/redo restores the length in both directions.
 // Args: [writes=250]

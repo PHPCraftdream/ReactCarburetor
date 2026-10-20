@@ -1,4 +1,4 @@
-/* oxlint-disable carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable carburetor/max-line-length, carburetor/require-tsdoc */
 const shapes = [4, 16, 64].flatMap(p => [4, 16, 64].map(n => [p, n]))
     .concat([[256, 64], [64, 256], [256, 256], [1024, 256], [256, 1024]]);
 export default shapes.map(([p, n]) => ({

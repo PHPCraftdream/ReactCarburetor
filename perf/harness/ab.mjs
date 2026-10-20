@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Ad-hoc A/B of one scenario across builds (no gates): exact counters, timings as median [min–max].
 //
 //   node perf/harness/ab.mjs <scenario.mjs> --roots base=dist-a/esm-prod,fix=dist/esm-prod [--runs 5] [-- args]

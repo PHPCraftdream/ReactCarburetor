@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Resource views contract: `setData` keeps unchanged entry views identical, publishes once for a
 // real change and nothing for the same root (round 10 measurement plan). Args: [count=100]
 import {emit, loadPath, median, call} from '../../harness/lib.mjs';

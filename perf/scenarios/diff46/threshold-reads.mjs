@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Past DIFF_PATH_THRESHOLD, diffPaths decides collapse versus precise with one counting pass and restore
 // counts inside its scan. Counts container reads on instrumented rows against one complete walk of them.
 import {emit, loadPath} from '../../harness/lib.mjs';

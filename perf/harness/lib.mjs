@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Shared helpers for scenario probes: dist loading, timing, DOM setup and engine counters.
 // A scenario reads its build from DIST_ROOT (a directory holding Carburetor/ and Interop/,
 // e.g. dist/esm-prod, dist/esm or a patched copy) and ends with one `@@ {json}` metrics line.

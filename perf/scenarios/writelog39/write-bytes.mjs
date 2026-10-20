@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R39-04: heap bytes per write. A child with a 64 MB semi-space runs the writes, so no scavenge
 // (which would shrink the used heap) happens inside a measured slice; `monotone` proves it.
 // savedBytes is the median of paired per-round differences (proofs on minus off), not of the margins.

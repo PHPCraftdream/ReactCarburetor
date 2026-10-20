@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Tooling contracts. The DevTools bridge publishes every write and carries a prototype-named
 // store as an own state key with its snapshot (R9-02).
 export default [

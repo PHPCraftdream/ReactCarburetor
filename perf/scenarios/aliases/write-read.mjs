@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // 470a912 (scalar-alias-index fix): scalar writes keep the native-alias index — write/read cycles pay no root search or
 // rebuild, through EITHER descriptor primitive. Args: [rows=4000] [cycles=64]
 import {emit, load} from '../../harness/lib.mjs';

@@ -1,7 +1,7 @@
 import {computed} from '@/Carburetor';
 import {updateWave} from '@/Carburetor/Store/Scheduling/UpdateWaveInstance';
 // Reuse the baseline Computed fixture without moving baseline files.
-// oxlint-disable-next-line carburetor-internal/no-parent-import
+// oxlint-disable-next-line carburetor/no-parent-import
 import {CounterCarburetor, ExternalComputed} from '../Computed/fixtures';
 
 describe('R41-02 observer lifetime', () => {

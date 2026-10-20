@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // Derived values. Bounds are ~50x the measured cost and ~100x below the cost before the fix, so
 // they pass on a slow shared machine and fail the moment the O(read set) walk comes back.
 export default [

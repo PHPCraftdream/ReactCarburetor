@@ -1,4 +1,4 @@
-/* oxlint-disable react/globals, carburetor-internal/max-line-length, carburetor-internal/require-tsdoc */
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 // R6-01: restore() keeps a sparse array's length-only growth (holes stay holes) at the root and
 // one level down, next to dense growth and shrinkage. R7-03: work on a sparse array costs its
 // own keys, not the hole count — truncating a 100k-long array wakes no absent-index reader and

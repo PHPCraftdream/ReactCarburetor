@@ -30,9 +30,10 @@ import {basesConfig} from "#src/Utils/NativeBases.mts";
  * Lock and result files live in their own temp subdirectory and are deleted at process exit, once
  * no later-arriving thread could still need them.
  *
- * The binary runs with the base-class configuration resolved from the host's settings (see
- * `basesConfig`), so `componentBases`/`storeBases` act here exactly as on the CLI. Per-rule
- * options still never reach this run: they are applied host-side, in nativeRule.mts.
+ * The binary runs with the configuration resolved from the host's settings (see
+ * `basesConfig`): `componentBases`/`storeBases` act here exactly as on the CLI, and
+ * `settings.carburetor.ruleOptions` land in that config as per-rule `["error", {…}]` entries —
+ * the `--rule` flags below fix the severity, the options are what reach the rules.
  */
 
 /** Every rule id native knows, whatever this project's own config says about severity. */
@@ -188,14 +189,15 @@ const claimLock = (lock: string): {isRunner: boolean; identity: {dev: number; in
 };
 
 /** Runs the binary over `cwd` with every rule forced on, so the host — not native — decides what
- * a rule's own `create()` actually surfaces. `config` carries the base-class lists resolved from
- * the host's settings (`basesConfig`), so custom bases act here as on the CLI. `--keep-overlaps`
+ * a rule's own `create()` actually surfaces. `config` is the file `basesConfig` generated from
+ * the host's settings, carrying the base-class lists and any per-rule options, so both act here
+ * as on the CLI. `--keep-overlaps`
  * disables native's own deduplication of overlapping rules — a host may have disabled the rule a
  * diagnostic would otherwise be folded into; those overlaps are re-deduplicated host-side in
  * nativeRule.mts.
  *
  * @param cwd - the project the binary runs in
- * @param config - the path of the base-class config file the binary is started with
+ * @param config - the config file the binary is started with (bases and rule options)
  * @param resolve - where the binary is; injectable so a test can stage one
  */
 const runBinary = (
@@ -247,7 +249,7 @@ const runBinary = (
  * @param cwd - the project the binary runs in; the file's path is reported relative to it
  * @param filename - the absolute path the buffer is analyzed as
  * @param text - the buffer's own text, piped to the binary's standard input
- * @param config - the path of the base-class config file the binary is started with
+ * @param config - the config file the binary is started with (bases and rule options)
  * @param resolve - where the binary is; injectable so a test can stage one
  */
 const runNativeText = (
@@ -330,7 +332,8 @@ const diskText = (filename: string): string | undefined => {
  * @param filename - the file being linted; a save after the cached run forces a fresh scan
  * @param text - the host's own buffer content, when it may differ from the file on disk
  * @param settings - the host's settings object; its `carburetor` namespace carries the base
- * lists that reach the binary (see `basesConfig`), and keys this run's caches
+ * lists and per-rule options that reach the binary (see `basesConfig`), and keys this run's
+ * caches
  */
 export const runNative = (
     cwd: string,
