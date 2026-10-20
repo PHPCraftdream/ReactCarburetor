@@ -358,11 +358,12 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
             text.contains("useCarburetorValue") || text.contains("useResourceValue")
         }
         style::no_parent_import::RULE => text.contains("../"),
-        style::no_blank_line_after_tsdoc::RULE
-        | style::require_tsdoc::RULE
-        | style::tsdoc_blank_line_before_tags::RULE => text.contains("/*"),
+        style::no_blank_line_after_tsdoc::RULE | style::tsdoc_blank_line_before_tags::RULE => {
+            text.contains("/*")
+        }
         // No static marker: render detection is syntactic, the closure rules reach every class,
-        // and `require-module-function` at `scope: "all"` reaches every nested function.
+        // `require-module-function` at `scope: "all"` reaches every nested function, and
+        // `require-tsdoc` reports the comment a file lacks.
         _ => true,
     }
 }

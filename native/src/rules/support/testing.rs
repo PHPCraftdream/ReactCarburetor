@@ -450,6 +450,11 @@ class Cart extends Carburetor<{count: number}> {
         // Rules without a static marker are never prefiltered.
         assert!(possible(allocations::require_module_function::RULE, ""));
         assert!(possible(lifecycle::no_function_in_render::RULE, ""));
+        // A file with no comment at all is exactly what `require-tsdoc` reports.
+        assert!(possible(
+            crate::rules::style::require_tsdoc::RULE,
+            "export function bare() {}"
+        ));
 
         // An escaped identifier disables the prefilter for the whole file.
         assert!(possible(
