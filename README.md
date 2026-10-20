@@ -162,6 +162,72 @@ export class TodoCarburetor extends Carburetor<ITodoList> {
 }
 ```
 
+For helpers consuming tracked data, accept `readonly T[]` or `TReadonly<T>` instead of
+requiring mutable inputs. The optional rule
+[`carburetor/prefer-readonly-array-param`](docs/rules.md) encourages readonly array parameters.
+
+<!-- example:file examples/readme/App/RoundStore.ts#readonly-array-helper -->
+```ts
+/** Returns how many round kinds are available.
+ *
+ * @param kinds - accepted round kinds
+ */
+export const countKinds = (kinds: readonly string[]): number => kinds.length;
+```
+
+The mutator object's `markWrong` property declares `index: number`, so
+`this.update(mutators.markWrong, index)` infers the argument type. TypeScript rejects other
+argument types.
+
+Group small mutators in one module-level object:
+
+<!-- example:file examples/readme/App/RoundStore.ts#module-mutators -->
+```ts
+const mutators = {
+    /**
+     * Locks the round after a winning answer.
+     *
+     * @param draft - state to change
+     */
+    lockWin(draft: IRound): void {
+        draft.round.locked = true;
+    },
+    /**
+     * Marks an answer wrong at its position.
+     *
+     * @param draft - state to change
+     * @param index - position to mark
+     */
+    markWrong(draft: IRound, index: number): void {
+        draft.round.wrong[index] = 1;
+    },
+};
+```
+
+Methods inside `RoundStore` pass their arguments to these mutators:
+
+<!-- example:file examples/readme/App/RoundStore.ts#store-methods -->
+```ts
+/** Marks an answer wrong.
+ *
+ * @param index - position to mark
+ */
+public markWrong(index: number): void {
+    this.update(mutators.markWrong, index);
+}
+
+public lockWin(): void {
+    this.update(mutators.lockWin);
+}
+
+public finishRound(): void {
+    transaction(() => {
+        this.update(mutators.markWrong, 0);
+        this.update(mutators.lockWin);
+    });
+}
+```
+
 ### Selection results and ownership
 
 `watch`, `useCarburetorValue`, and `connectSelection` return **borrowed readonly selections**.
@@ -285,6 +351,21 @@ detachment rules are in the [API reference](https://github.com/PHPCraftdream/Rea
 
 ### Precise invalidation
 
+A render subscribes only to the fields it reads. No selector is needed for `round.kind`;
+it does not subscribe to sibling `round.wrong`.
+
+<!-- example:file examples/readme/Computed/ScopedRound.tsx#kind-read -->
+```tsx
+const store = this.resolve(scopedRoundToken);
+const {round} = this.useCarburetor(store);
+return <span className="kind">{round.kind}</span>;
+```
+
+For a detached slice handed to a memo child, classes use `connectSelection(source, select)`: the
+snapshot keeps its identity while the selected content is unchanged. Hooks use
+`useCarburetorValue(store, select, isEqual?)` with an optional comparison. A `computed` shares a
+derived value across components.
+
 `emitUpdate` compares the written paths against every subscriber's read paths. A write
 touches a read when the paths are equal or one is nested in the other:
 
@@ -375,6 +456,38 @@ use `@bind`, or silence it per line.
 
 ### Derived values
 
+A computed memoizes a derived value and tracks paths read by its body. A store instance can own a computed field:
+
+<!-- example:file examples/readme/Computed/ScopedRound.tsx#scoped-round-class -->
+```tsx
+export class RoundViews extends RoundStore {
+    public readonly visible = computed((read) => {
+        const {round} = read(this);
+        return round.wrong.flatMap((wrong, index) => wrong === 0 ? [index] : []);
+    });
+}
+```
+
+A token factory creates an independent store and computed for each scope:
+
+<!-- example:file examples/readme/Computed/ScopedRound.tsx#scoped-token -->
+```tsx
+export const scopedRoundToken = carburetorToken<RoundViews>(
+    () => new RoundViews({round: {kind: 'quiz', wrong: [0, 0], locked: false}}),
+    'readme/scoped-round'
+);
+```
+
+A scoped component can resolve the store and subscribe to its computed:
+
+<!-- example:file examples/readme/Computed/ScopedRound.tsx#computed-render -->
+```tsx
+public render() {
+    const store = this.resolve(scopedRoundToken);
+    return <span className="visible">{this.useComputed(store.visible).join(',')}</span>;
+}
+```
+
 `computed` memoizes a derived value and tracks its own dependencies: the paths its body reads.
 It is recomputed only when one of them is written, and subscribers are woken only when the
 result actually changed.
@@ -463,6 +576,22 @@ transaction(() => {
     filterCarburetor.reset();
 });
 ```
+
+A store method can group several updates in one transaction:
+
+<!-- example:file examples/readme/App/RoundStore.ts#finish-round -->
+```ts
+public finishRound(): void {
+    transaction(() => {
+        this.update(mutators.markWrong, 0);
+        this.update(mutators.lockWin);
+    });
+}
+```
+
+Use a transaction when `watch`, computed subscribers, or other immediate observers must receive
+one publication per store. React may already batch component renders, but that does not combine
+separate store notifications.
 
 ### Scheduling is a policy, not a constant
 
@@ -978,6 +1107,53 @@ pre-clear deferred writes; other histories stay independent. See the
 for the options and the replay semantics.
 
 ## Testing your code
+
+### Testing a store without React
+
+A store is an ordinary class: construct `new RoundStore(...)` or resolve a token with
+`new CarburetorScope().get(token)`, call its methods, and assert the results. Store logic
+does not need React rendering or jsdom.
+
+<!-- example:file examples/readme/App/StoreTesting.ts -->
+```ts
+import {ComponentUpdateThrottle, waitForUpdate} from 'react-carburetor';
+import {test, expect, rstest} from '@rstest/core';
+import {RoundStore} from './RoundStore';
+
+export const registerStoreTest = (): void => {
+    test('a throttled store can be tested without React', async () => {
+        rstest.useFakeTimers();
+        const store = new RoundStore(
+            {round: {kind: 'quiz', wrong: [0], locked: false}},
+            new ComponentUpdateThrottle(40)
+        );
+        const observed: number[] = [];
+        const stopWatch = store.watch(
+            (data) => data.round.wrong[0],
+            (next) => { observed.push(next); }
+        );
+
+        try {
+            const delivered = waitForUpdate(store);
+            store.markWrong(0);
+            expect(store.getData().round.wrong[0]).toBe(1);
+            expect(observed).toEqual([]);
+            await rstest.advanceTimersByTimeAsync(40);
+            await delivered;
+            expect(observed).toEqual([1]);
+        } finally {
+            stopWatch();
+            rstest.useRealTimers();
+        }
+    });
+};
+```
+
+The repository wrapper calls `registerStoreTest()` to register this test; see
+[RoundStore.test.tsx](__tests__/Tooling/examples/readme/RoundStore.test.tsx). Call it from your
+test file to register the example.
+
+### Component tests with jsdom
 
 Install jsdom and the React testing dependencies (`@testing-library/react` and `react-dom`). Configure the test runner's jsdom environment with React's act environment enabled in runner setup. Import `act` from `@testing-library/react`: it re-exports the right implementation for the installed React (React's own `act` is unavailable at the React 18.0 floor, and `react-dom/test-utils` is deprecated in React 19).
 
