@@ -249,6 +249,15 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
         this[R.abortKey](this[R.keyOf](args));
     }
 
+    protected didDispose(): void {
+        const requests: ICacheRequest[] = [];
+        this[R.runtimeRecords]?.forEach((runtime) => {
+            if (runtime.request) { requests.push(runtime.request); runtime.request = undefined; }
+        });
+        requests.forEach(abortCacheRequest);
+        super.didDispose();
+    }
+
     /** Abort every in-flight request with one delivered publication. */
     public abortAll(): void {
         this[R.bulkDepth]++;

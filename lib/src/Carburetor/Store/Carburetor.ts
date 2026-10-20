@@ -46,6 +46,7 @@ import {CARBURETOR_EVENT_TYPES} from "./Utils/Graph/Events/EventTypes";
 import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 import {READS_RETAIN} from "@/Carburetor/Store/Paths/Markers/RetainDeliveryBrand";
+import {storeLifecycle} from "@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle";
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 export class Carburetor<T extends object, TEvents extends object = {}> implements
     ICarburetor<T>, IPatchSource, IInternalSubscriptionProtocol, ICarburetorEvents<TEvents> {
@@ -61,7 +62,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
     public [S.subscribers]: IDict<ISubscriberRecord> = Object.create(null);
     /** Distinguishes registrations created after an event selected its subscribers. */
     private [S.subscriptionGeneration] = 0;
-    /** Finds the subscribers a write concerns without scanning all of them. */
+    /** Finds subscribers writes concern without scanning them. */
     public [S.subscriberIndex]: SubscriberIndex = new SubscriberIndex();
     /** Development alias ledger handed to both proxies; undefined outside development. */
     public [S.aliases]: TAliasLedger = createAliasLedger();
@@ -148,13 +149,27 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
         const hub = this.#eventHub ??= new StoreEvents<TEvents>();
         return hub.on(name, listener);
     }
-    /** Removes event listeners and cancels captured event delivery. */
-    public dispose(): void { this.cleanupEventListeners(); }
+    /** Dispose once; subscription owners still unsubscribe. */
+    public dispose(): void {
+        const subscribers = this[S.subscribers];
+        storeLifecycle.dispose(this, [
+            ...Object.keys(subscribers).map(id => (): void => this[S.scheduler].cancel(subscribers[id]!.schedulerKey)),
+            (): void => this.cleanupEventListeners(), (): void => this.didDispose(),
+        ]);
+    }
+    /** Aborted on disposal; allocated lazily. */
+    protected get signal(): AbortSignal { return storeLifecycle.signal(this); }
+    /** Schedule a task and cancel it when the store is disposed.
+     *
+     * @param ms - delay in milliseconds
+     * @param task - task to invoke unless disposal cancels the timer
+     */
+    protected after(ms: number, task: () => void): TDisposer { return storeLifecycle.after(this, ms, task); }
+    /** Subclass cleanup hook, called once after built-in resources are cancelled. */
+    protected didDispose(): void {}
     /** Clears listeners and cancels already captured event deliveries. */
     private cleanupEventListeners(): void {
-        this.#disposed = true;
-        this.#eventHub?.dispose();
-        this.#eventHub = undefined;
+        this.#disposed = true; this.#eventHub?.dispose(); this.#eventHub = undefined;
     }
     /** Current raw state; the root is readonly, while mutations still require draft publication. */
     protected get data(): T { return this[S.data]; }
@@ -406,18 +421,19 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
      */
     public watch<R>(select: TSelector<T, R>,
         onChange: (next: TReadonly<R>, previous: TReadonly<R>) => void): TDisposer {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         return watchSelection(this, select, onChange);
     }
     /** Delivers one notification pass for a closed write set; called only via the internal
      * symbol protocol, never as a public method. */
     public [CARBURETOR_NOTIFY_WRITES](writes: TPathSet): void {
+        if (storeLifecycle.isDisposed(this)) return;
         updateWave.begin();
         try {
             let failures: unknown[] | undefined;
             const generation = this[S.subscriptionGeneration];
             const matched = this[S.subscriberIndex].match(writes);
             const notifiedAt = this[S.version];
-            // A removed/replaced registration cannot inherit an earlier event's match.
             matched.forEach((id: string) => {
                 const record = this[S.subscribers][id];
                 if (record && record.generation <= generation) record.matchedVersion = notifiedAt;
@@ -430,6 +446,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
             this[S.pendingPublication] = undefined;
             failures = this[S.patchObservers]?.publish(fact);
             matched.forEach((id: string) => {
+                if (storeLifecycle.isDisposed(this)) return;
                 const record = this[S.subscribers][id];
                 if (record && record.generation <= generation) {
                     try {
@@ -486,6 +503,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
      * @param args - forwarded to `mutate` after the draft
      */
     protected update<A extends readonly unknown[]>(mutate: (draft: T, ...args: A) => void, ...args: A): void {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         let result: unknown;
         try {
             result = mutate(this.draft, ...args);
@@ -509,6 +527,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
         queueMicrotask(() => {
             this[S.pendingEmit] = false;
             // Keep the opaque fallback, unless a synchronous emit already published it.
+            if (storeLifecycle.isDisposed(this)) return;
             if (this[S.version] === scheduledAt || this[S.draftTouched] || this[S.writes].size > 0) {
                 this.emitUpdate(undefined, true);
             }
@@ -541,7 +560,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
         if (IS_DEVELOPMENT) {
             if (this[S.unpublishedDraftCheck] === undefined) {
                 this[S.unpublishedDraftCheck] = (): void => {
-                    if (!this[S.draftTouched] || this[S.pendingEmit]) {
+                    if (!this[S.draftTouched] || this[S.pendingEmit] || storeLifecycle.isDisposed(this)) {
                         return;
                     }
                     diagnostics.report(
@@ -558,7 +577,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
     public [S.recordWrite](path: TPath): void { this[S.writes].add(path); }
     /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
     protected markAllChanged(): void {
-        // Always a real change, unlike emitUpdate()'s own bypass fallback below.
+        // Always a real change; unlike the emitUpdate() fallback, this is an explicit mark.
         this[S.recordWrite](WILDCARD_PATH);
         this[S.patchPort].listener?.(PATCH_OPAQUE);
     }
@@ -571,6 +590,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
      * @param deferredContinuation - whether its publication fact was already queued
      */
     protected emitUpdate(installation?: IStateInstallation, deferredContinuation: boolean = false): void {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         emitStoreUpdate<T>(this[S.port], installation, deferredContinuation);
     }
 }

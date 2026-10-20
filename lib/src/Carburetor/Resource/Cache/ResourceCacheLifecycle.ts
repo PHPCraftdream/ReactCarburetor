@@ -1,4 +1,5 @@
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
+import {storeLifecycle} from "@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {
     IResourceCacheData,
@@ -38,6 +39,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
      * @param args - loader arguments; stray event arguments are dropped.
      */
     public load(...args: TArgs): Promise<void> {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         return this.runLoad(dropEventArgs(args));
     }
 
@@ -46,6 +48,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
      * @param args - loader arguments; stray event arguments are dropped.
      */
     public refresh(...args: TArgs): Promise<void> {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         return this.runRefresh(dropEventArgs(args));
     }
 
@@ -57,8 +60,10 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
         } catch (error: unknown) {
             return Promise.reject(error);
         }
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         const entry = this.data.entries[key];
         this[R.touch](key);
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         if (entry && entry.status === EResourceStatus.Success && !this[R.isStale](entry)) {
             return Promise.resolve();
         }
@@ -73,7 +78,9 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
         } catch (error: unknown) {
             return Promise.reject(error);
         }
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         this[R.touch](key);
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         return this[R.fetch](key, args, false, true);
     }
 
@@ -82,6 +89,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
      * @param args - arguments identifying the cache key.
      */
     public suspend(...args: TArgs): T {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         const key = this[R.keyOf](args);
         const entry = this.data.entries[key];
         this[R.touch](key);
@@ -115,6 +123,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
     public [R.fetch](
         key: string, args: TArgs, deferNotification: boolean = false, force: boolean = false,
     ): Promise<void> {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         const known = this[R.runtimeRecords]?.get(key)?.request;
         if (known && !force) return known.promise;
         const superseded = known;
@@ -147,8 +156,15 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
         runtime.request = request;
         // Any reentrant start from an abort listener then joins this already-registered request.
         superseded?.controller.abort();
+        if (storeLifecycle.isDisposed(this)) {
+            runtime.request = undefined;
+            void promise.catch(noop);
+            rejectRequest(new Error('Carburetor: store has been disposed'));
+            return promise;
+        }
         try {
             this[R.markLoading](key, deferNotification, entry, prepared, request);
+            if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
             if (this[R.isCurrent](key, request)) this[R.evict](deferNotification);
         } catch (error: unknown) {
             if (this[R.isCurrent](key, request)) {

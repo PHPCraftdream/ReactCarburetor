@@ -9,8 +9,11 @@ const quoteKey = (key: string): string => '"' + key + '"';
 
 /**
  * One set of carburetor instances. Create a scope per server request instead of keeping
- * module-level singletons: a singleton on the server is shared by every request, which
- * leaks one user's state into another's render.
+ * module-level singletons: a singleton on the server is shared by every request, which leaks
+ * one user's state into another's render.
+ *
+ * A scope owns every distinct instance created or installed in it, including replaced instances,
+ * and disposes them in reverse ownership order.
  */
 export class CarburetorScope {
     /** The instances created or installed in this scope so far, keyed by token id. */
@@ -20,23 +23,38 @@ export class CarburetorScope {
      *  A repeated lazy hydrate() merges its payload into this (new entries win) and applies
      *  new values to already created instances via fromJSON. */
     protected lazyHydration: IDict<unknown> | undefined = undefined;
+    protected readonly creationOrder: unknown[] = [];
+    protected readonly resolving: string[] = [];
+    protected disposed = false;
 
     /**
      * The instance this token stands for, created once per scope on first use.
      *
      * A method, not an arrow field: every overridable member below is, so a subclass override
      * lands on the prototype instead of an own property shadowing it.
+     * A failed lazy hydration leaves the token uncreated so a later get() retries.
      *
-     * A failed lazy hydration throws and leaves the token uncreated, so the next get() retries.
+     * @param token - identifies the slot to create or retrieve
      */
     public get<T extends unknown>(token: ICarburetorToken<T>): T {
-        if (this.instances.has(token.id)) {
-            return this.instances.get(token.id) as T;
+        if (this.disposed) throw new Error('CarburetorScope: scope is disposed');
+        if (this.instances.has(token.id)) return this.instances.get(token.id) as T;
+        const cycleAt = this.resolving.indexOf(token.id);
+        if (cycleAt !== -1) {
+            const chain = [...this.resolving.slice(cycleAt), token.id].join(' -> ');
+            throw new Error('CarburetorScope: dependency cycle: ' + chain);
         }
-
-        const created = token.create();
+        this.resolving.push(token.id);
+        let created: T;
+        try { created = token.create(this); }
+        catch (error) { this.resolving.pop(); throw error; }
+        this.resolving.pop();
+        if (this.disposed) {
+            try { (created as {dispose?: () => void} | null)?.dispose?.(); }
+            finally { throw new Error('CarburetorScope: scope is disposed'); }
+        }
         this.instances.set(token.id, created);
-
+        if (!this.creationOrder.includes(created)) this.creationOrder.push(created);
         if (this.lazyHydration !== undefined
             && Object.prototype.hasOwnProperty.call(this.lazyHydration, token.id)
             && this.isInspectable(created)) {
@@ -45,19 +63,16 @@ export class CarburetorScope {
                 // Cloned, not adopted — same reason as in the eager hydrate() branch.
                 created.fromJSON(deepClone(this.lazyHydration[token.id]));
             } catch (error) {
-                // Roll back: an instance that failed to hydrate must not stay in the scope, or
-                // the next get() would silently return it half-hydrated. Identity guard, not a
-                // blind delete: fromJSON() may re-enter get()/set() and replace the slot — only
-                // the instance this call created is removed. The pending entry is kept so the
-                // next get() retries the application.
+                // Keep the failed object in creationOrder: it remains scope-owned and must be
+                // disposed even though get() removes its unusable token slot for a later retry.
                 if (this.instances.get(token.id) === created) {
                     this.instances.delete(token.id);
                 }
-
+                if (this.disposed) throw new Error('CarburetorScope: scope is disposed');
                 throw error;
             }
         }
-
+        if (this.disposed) throw new Error('CarburetorScope: scope is disposed');
         return created;
     }
 
@@ -69,17 +84,45 @@ export class CarburetorScope {
      * a pending lazy hydrate() entry for the token is dropped, so `set` wins over the payload
      */
     public set<T extends unknown>(token: ICarburetorToken<T>, instance: T): void {
+        if (this.disposed) throw new Error('CarburetorScope: scope is disposed');
+        const old = this.instances.get(token.id);
+        if (old === undefined || old !== instance) {
+            if (!this.creationOrder.includes(instance)) this.creationOrder.push(instance);
+            if (old !== undefined && !this.creationOrder.includes(old)) this.creationOrder.push(old);
+        }
         this.instances.set(token.id, instance);
-
-        if (this.lazyHydration !== undefined
-            && Object.prototype.hasOwnProperty.call(this.lazyHydration, token.id)) {
+        if (this.lazyHydration !== undefined && Object.prototype.hasOwnProperty.call(this.lazyHydration, token.id)) {
             delete this.lazyHydration[token.id];
         }
     }
 
-    /** Whether this scope already created an instance for the token. */
+    /** Whether this scope already created an instance for the token.
+     *
+     * @param token - identifies the slot to check
+     */
     public has<T extends unknown>(token: ICarburetorToken<T>): boolean {
         return this.instances.has(token.id);
+    }
+
+    /** Dispose owned instances once, in reverse ownership order, continuing after errors.
+     */
+    public dispose(): void {
+        if (this.disposed) return;
+        this.disposed = true;
+        let failed = false;
+        let firstError: unknown;
+        const seen = new Set<unknown>();
+        for (let index = this.creationOrder.length - 1; index >= 0; index--) {
+            const instance = this.creationOrder[index];
+            if (seen.has(instance)) continue;
+            seen.add(instance);
+            if (typeof (instance as {dispose?: unknown} | null)?.dispose !== 'function') continue;
+            try { (instance as {dispose: () => void}).dispose(); }
+            catch (error) { if (!failed) { failed = true; firstError = error; } }
+        }
+        this.creationOrder.length = 0;
+        this.instances.clear();
+        if (failed) throw firstError;
     }
 
     /**
@@ -153,6 +196,7 @@ export class CarburetorScope {
      * listed tokens are left to be created on demand instead
      */
     public hydrate(state: IDict<unknown>, tokens?: ReadonlyArray<ICarburetorToken<unknown>>): void {
+        if (this.disposed) throw new Error('CarburetorScope: scope is disposed');
         if (tokens === undefined) {
             // Cloned, not adopted: `state` is the caller's own payload and may keep being
             // mutated after the call — the lazy application must not see that.
@@ -217,7 +261,10 @@ export class CarburetorScope {
         }
     }
 
-    /** Whether an instance can be serialized, and hands back a detached copy. */
+    /** Whether an instance can be serialized.
+     *
+     * @param instance - instance to inspect for the serialization interface
+     */
     protected isInspectable(instance: unknown): instance is IInspectable {
         if (typeof instance !== 'object' || instance === null) {
             return false;

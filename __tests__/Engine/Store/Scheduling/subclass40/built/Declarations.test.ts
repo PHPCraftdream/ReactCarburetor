@@ -9,8 +9,10 @@ describe('R40-01 built subclass contract', () => {
         const text = readFileSync(resolve(root, 'dist/esm/Carburetor/Store/Carburetor.d.mts'), 'utf8');
         const members = [...text.matchAll(/^\s+protected (?:get )?(\w+)/gm)]
             .map(match => match[1]).sort((a, b) => a.localeCompare(b));
-        expect(members).toEqual(['data', 'didSetData', 'draft', 'emitSoon', 'emitUpdate',
-            'markAllChanged', 'preEmit', 'update'].sort());
+        expect(members).toEqual([
+            'after', 'data', 'didDispose', 'didSetData', 'draft', 'emitSoon', 'emitUpdate', 'signal',
+            'markAllChanged', 'preEmit', 'update',
+        ].sort());
         expect(text).toMatch(/protected get data\(\): T;/);
         expect(text).not.toMatch(/set data\(/);
         expect(text).toMatch(/protected preEmit\([^)]*ReadonlySet<string>\)/);

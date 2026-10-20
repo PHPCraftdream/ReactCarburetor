@@ -2,6 +2,7 @@ import {IStateInstallation, PATCH_OPAQUE, TPath, TPathSet,
 } from '@/Carburetor/Models/Paths';
 import {CARBURETOR_NOTIFY_WRITES} from '@/Carburetor/Store/Utils/Models';
 import {IStorePublicationPort} from '@/Carburetor/Store/Transaction/Models';
+import {storeLifecycle} from '@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle';
 import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
 import {dateExposureLedger} from '@/Carburetor/Store/Tracking/Proxy/dateExposureLedger';
 import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
@@ -22,6 +23,7 @@ export const emitStoreUpdate = <T extends object>(
     receiver: IStorePublicationPort<T>, installation?: IStateInstallation, deferredContinuation: boolean = false
 ): void => {
     const store = receiver;
+    if (storeLifecycle.isDisposed(store)) return;
     let failed = false;
     let firstError: unknown;
     try {

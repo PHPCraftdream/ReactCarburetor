@@ -1,3 +1,4 @@
+import type {CarburetorScope} from "@/Carburetor/Component/Scope/CarburetorScope";
 import {TDisposer} from "./Base";
 
 /**
@@ -10,7 +11,7 @@ export interface ICarburetorToken<T> {
      * dehydrate() and hydrate() match on across the server/client boundary.
      */
     id: string;
-    create: () => T;
+    create: (scope: CarburetorScope) => T;
 }
 
 /** The part of the Storage API persistence needs, so tests do not require a browser. */

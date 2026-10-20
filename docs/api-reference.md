@@ -18,6 +18,24 @@ throw. A wide-read warning is reported once per component/store pair. Value enum
 (`Object.values`, `Object.entries`, object spread) typically records many leaf reads; key enumeration
 (`Object.keys`) records the key set, not values, and is not treated as a large value read set.
 
+## Scopes and store lifecycle
+
+`CarburetorProvider` only exposes its supplied scope: it does not own or dispose it, and nested
+providers do not fall back to a parent. Create one scope per request or screen and dispose it at
+that owner's boundary. Token factories receive the scope and may resolve dependencies;
+zero-argument factories remain compatible, named cycles throw, and hydration may be eager or lazy.
+Raw references from `getData()` cannot be revoked.
+
+| Symbol | Signature | Contract | Link |
+|---|---|---|---|
+| `CarburetorScope` | `new CarburetorScope()` | Request/screen owner; lazily gets token instances; owns distinct created/installed instances, including replaced ones; reverse-order disposal, once each. | [`CarburetorScope.ts`](../lib/src/Carburetor/Component/Scope/CarburetorScope.ts) |
+| `CarburetorScope.dispose` | `(): void` | Idempotent; continues after disposer errors and rethrows first. `get`, `set`, `hydrate` throw after disposal. | [same](../lib/src/Carburetor/Component/Scope/CarburetorScope.ts) |
+| `carburetorToken` | `<T>(create: (scope: CarburetorScope) => T, name: string)` | Lazy scope-aware factory; `() => T` compatible; named cycles throw with chain. | [`carburetorToken.ts`](../lib/src/Carburetor/Component/Scope/carburetorToken.ts) |
+| `Carburetor.dispose` | `(): void` | Idempotent; aborts lazy signal, cancels timers/queued updates, then calls `didDispose`. Update/emitUpdate/watch and resource load/refresh/suspend throw `Carburetor: store has been disposed` before request creation or loader invocation (a `ResourceCache.refresh` disposed by its own abort listener rejects with that error instead); pending notifications silent; subscriptions remain until unsubscribe. | [`Carburetor.ts`](../lib/src/Carburetor/Store/Carburetor.ts) |
+| `signal` | protected `AbortSignal` getter | Lazy; aborted on disposal. | [same](../lib/src/Carburetor/Store/Carburetor.ts) |
+| `after` | `after(ms: number, task: () => void): TDisposer` (protected) | Lazily schedules work; returns a timer disposer. Throws after disposal to detect use beyond store lifetime; disposal cancels pending timers. | [same](../lib/src/Carburetor/Store/Carburetor.ts) |
+| `didDispose` | `didDispose(): void` (protected) | Called once after built-in cleanup; overrides call `super.didDispose()`. | [same](../lib/src/Carburetor/Store/Carburetor.ts) |
+
 ## Resources
 
 | Symbol | Signature | Contract | Link |
@@ -134,7 +152,7 @@ The four lint types below come from `react-carburetor/lint`.
 | `IResourceView<T>` | Extends `IResourceEntry<T>`; `stale: boolean` | Entry plus freshness verdict. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `IResourceResolution<T>` | `{key: string; path: string; view: IResourceView<T>; present?: boolean; fieldView?: (resolution: IResourceResolution<T>, record: (path: string) => void) => IResourceView<T>}` | Key, subscription path and current view resolved together. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `IResourceSource<T, TArgs extends TResourceArgs = []>` | Extends subscription; `resolve(...args: TArgs): IResourceResolution<T>; load(...args: TArgs): Promise<void>` | Minimal resource source for readers. | [same](../lib/src/Carburetor/Models/Resource.ts) |
-| `ICarburetorToken<T>` | `{id: string; create(): T}` | Stable scope identity and factory. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
+| `ICarburetorToken<T>` | `{id: string; create(scope: CarburetorScope): T}` | Stable scope identity and scope-aware factory; a zero-argument factory is assignable. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
 | `TValueComparator<R>` | `(a: TReadonly<R>, b: TReadonly<R>) => boolean` | Interop comparator; imported from `react-carburetor/interop`, not the root entry. | [`Models.ts`](../lib/src/Interop/Models.ts) |
 | `TSeverity` | `'error' \| 'warn' \| 'off'` | Lint-rule severity; from `react-carburetor/lint`. | [`lint.d.ts`](../plugin/lint.d.ts) |
 | `ICarburetorRule` | `{meta?: {type?: string; docs?: {description: string; url?: string}; schema?: readonly unknown[]; fixable?: string}; create(context: unknown): Record<string, (node: never) => void>}` | Public lint rule shape. | [same](../plugin/lint.d.ts) |

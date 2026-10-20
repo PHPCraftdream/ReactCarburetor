@@ -1,9 +1,11 @@
 import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
 import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
+import {storeLifecycle} from "@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle";
 import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
 import {
     IResourceData, IResourceSnapshot, TResourceArgs, TResourceKey, TResourceLoader,
 } from "@/Carburetor/Models/Resource";
+import {ISlotRequest, ISlotRuntime} from "@/Carburetor/Resource/Keys/Models";
 import {TSignalLoader} from "@/Carburetor/Resource/Keys/TSignalLoader";
 import {defaultResourceKey} from "@/Carburetor/Resource/Keys/defaultResourceKey";
 import {encodeResourceKeyValue} from "@/Carburetor/Resource/Keys/encodeResourceKeyValue";
@@ -34,28 +36,6 @@ const createSupersededError = (): Error => {
     error.name = 'AbortError';
     return error;
 };
-
-interface ISlotRequest<TArgs> {
-    key: string;
-    args: TArgs;
-    controller: AbortController;
-    promise: Promise<void>;
-    /** Promise capture used to adopt a successor's outcome when this request is replaced. */
-    resolve: (value: void | PromiseLike<void>) => void;
-    generation: number;
-    /** A revalidation started by a render read: suspend serves the visible data. */ background?: boolean;
-}
-
-interface ISlotAnswer<T> {
-    key: string | undefined;
-    owner: IResourceData<T>;
-    failure?: {value: unknown; message: string | undefined};
-}
-
-interface ISlotRuntime<T, TArgs> {
-    request?: ISlotRequest<TArgs>;
-    answer?: ISlotAnswer<T>;
-}
 
 /** An async value with explicit status: shared requests per key, fresh memory answers
  * without a request; `suspend` serves only the key an answer settled under. */
@@ -105,10 +85,12 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
     private readonly [R.keyOption]: TResourceKey<TArgs> | undefined;
     /** Starts a load, or joins the one already in flight for the same arguments (D2). */
     public load(...args: TArgs): Promise<void> {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         return this[R.load](args);
     }
     /** Always restarts the request for these arguments; stale answers reload through it (D2, D4). */
     public refresh(...args: TArgs): Promise<void> {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         const settled = dropEventArgs(args);
         let key: string;
         try {
@@ -116,12 +98,14 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         } catch (error: unknown) {
             return Promise.reject(error);
         }
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         return this[R.start](settled, false, true, key);
     }
     /** Cancels in flight, drops the answer and the whole memory, back to Idle (D2). */
     public clear: () => void;
     /** The shared entry point behind the bound `load`: skip, memory hit, join, or request. */
     public [R.load](args: TArgs): Promise<void> {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         const settled = dropEventArgs(args);
         let key: string;
         try {
@@ -129,6 +113,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         } catch (error: unknown) {
             return Promise.reject(error);
         }
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         const state = this.data;
         const answer = this[R.runtime]?.answer;
         if (state.status === EResourceStatus.Success && answer?.key === key
@@ -259,6 +244,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
     /** Reads the value, suspending while it loads and rethrowing when it failed;
      * publications are deferred to a microtask because a render must not notify subscribers. */
     public suspend(...args: TArgs): T {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         const state = this.data;
         const key = this[R.keyOf](args);
         const answer = this[R.runtime]?.answer;
@@ -286,6 +272,13 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
             return remembered.data;
         }
         throw this[R.start](args, true, false, key);
+    }
+    protected didDispose(): void {
+        this[R.operationVersion]++;
+        this[R.cancelInFlight]();
+        if (this[R.runtime]) this[R.runtime]!.answer = undefined;
+        this[R.memory].clear();
+        super.didDispose();
     }
     /** Cancels the request in flight; its result is ignored when it arrives. */
     public abort(): void {
@@ -342,6 +335,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
     public [R.start](
         args: TArgs, deferNotification: boolean, force = false, key?: string, background = false,
     ): Promise<void> {
+        if (storeLifecycle.isDisposed(this)) throw new Error('Carburetor: store has been disposed');
         key ??= this[R.keyOf](args);
         const current = this[R.runtime]?.request;
         if (!force && current?.key === key) return current.promise;
@@ -349,6 +343,13 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         const stateBeforeAbort = this.data;
         const operationVersion = ++this[R.operationVersion];
         this[R.cancelInFlight]();
+        if (storeLifecycle.isDisposed(this)) {
+            if (superseded) {
+                void superseded.promise.catch(noop);
+                superseded.resolve(Promise.resolve());
+            }
+            throw new Error('Carburetor: store has been disposed');
+        }
         const replacement = this[R.runtime]?.request;
         if (this[R.operationVersion] !== operationVersion || this.data !== stateBeforeAbort) {
             if (replacement?.key === key) {
@@ -423,6 +424,12 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
             return promise;
         }
         if (!this[R.isCurrent](request)) {
+            rejectRequest(createSupersededError());
+            return promise;
+        }
+        if (storeLifecycle.isDisposed(this)) {
+            this[R.runtime]!.request = undefined;
+            void promise.catch(noop);
             rejectRequest(createSupersededError());
             return promise;
         }

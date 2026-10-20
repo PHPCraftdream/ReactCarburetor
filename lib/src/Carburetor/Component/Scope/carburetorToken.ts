@@ -1,3 +1,4 @@
+import {CarburetorScope} from "@/Carburetor/Component/Scope/CarburetorScope";
 import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
@@ -22,12 +23,13 @@ const takenNames: Set<string> = sharedSingleton('takenNames', () => new Set<stri
  * as given, so a scope that has not instantiated this id yet picks up the reloaded factory; one
  * that already has keeps its existing instance, since `CarburetorScope.get` looks up by `id`.
  *
- * @param create - the factory for the instance; run lazily, once per scope, on the token's
- * first `get` rather than at declaration time
+ * @param create - scope-aware factory, run lazily on first `get`; zero-argument factories also work
  * @param name - the token's `id` and the dehydrate/hydrate key; must be non-empty, and unique
  * in this process outside of HMR reloads, and is written literally at both declaration sites
  */
-export const carburetorToken = <T extends unknown>(create: () => T, name: string): ICarburetorToken<T> => {
+export const carburetorToken = <T extends unknown>(
+    create: (scope: CarburetorScope) => T, name: string
+): ICarburetorToken<T> => {
     if (name === '') {
         throw new Error('Carburetor: a token needs a non-empty name: it is the key the client hydrates from.');
     }

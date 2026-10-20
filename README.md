@@ -180,6 +180,8 @@ export const HookStatus = () => {
   [A persistent connection](#a-persistent-connection-connect) and
   [docs/examples/components.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/examples/components.md);
   `connect()` is for a store fixed for the component's lifetime.
+- **Scopes:** `CarburetorScope` owns token-created stores; create and dispose one per request or screen.
+  React providers only expose a scope—they do not create or dispose it automatically. See [Scopes](#scopes-and-lifetimes).
 - **Writing:** methods on the store call `this.update(mutate, ...args)` — extra arguments are
   forwarded and the mutator can be a module-level function; see
   [Read through the carburetor, write through its methods](#read-through-the-carburetor-write-through-its-methods).
@@ -1514,6 +1516,10 @@ require their own write/tooling capabilities.
 | `emitUpdate()` *(protected)*    | Notifies subscribers whose read paths intersect the writes.        |
 | `markAllChanged()` *(protected)* | Wakes every reader, after a write that bypassed `draft`.           |
 | `didSetData()` *(protected)*    | Runs after `setData`/`restore` installed new data, before the replacement notifications — synchronize derived state here. |
+| `dispose(): void` | Public, idempotently cancels owned work and calls `didDispose`; update, emitUpdate and watch then throw. |
+| `signal: AbortSignal` *(protected getter)* | Lazily created; aborted on disposal. |
+| `after(ms: number, task: () => void)` *(protected)* | Lazily schedules cancellable work; throws after disposal. |
+| `didDispose(): void` *(protected)* | Called once after built-in cleanup; overrides must call `super.didDispose()`. |
 | `data: T` *(protected getter)*  | The current data, read-only: reads are untracked, writes go through `update`/`draft`. |
 
 Members are prototype methods — here and on `ComponentUpdateThrottle`, `CarburetorScope`,
@@ -1551,7 +1557,7 @@ do not redeclare it.
 | `transaction(body)`                           | One notification pass for a group of writes. |
 | `UpdateThrottle` / `ComponentUpdateThrottle(ms)` | Coalescing for streaming sources; `UpdateThrottle` is the preferred name, the long one is kept. |
 | `ResourceCarburetor(loader, options?)`        | Async state with status and cancellation; `options` carries `key`, `ttl`, `maxEntries`, `scheduler`. |
-| `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent` | Per-request stores. |
+| `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent`, `Carburetor.dispose` | [Per-request stores and lifecycle](#scopes-and-lifetimes). |
 | `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
 | `diagnostics`, `Diagnostics`                  | [Development warning switch](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): independent instances and engine singleton. |
 | `EResourceStatus`, `EDevToolsAction`, `EDevToolsMessageType` | Enums for the resource status and the DevTools protocol. |
@@ -1584,6 +1590,61 @@ try {
 Internals — the tracking proxies, the proxy cache, path string plumbing, the update scheduler
 and the batch coordinator — are deliberately not exported: they are implementation details, and
 a test pins the exported surface so one does not slip in by accident.
+
+## Scopes and lifetimes
+
+A scope owns every distinct store created or installed, including replaced instances, and disposes
+in reverse ownership order. Factories receive the scope (`() => T` remains compatible), allowing
+related stores to resolve dependencies without module singletons; named cycles throw. Hydration can
+be eager for selected tokens or lazy on first `get`. After scope disposal, `get`, `set`, and
+`hydrate` throw. Providers expose the supplied scope only: they do not own or dispose it, and nested
+providers do not fall back to a parent.
+
+Stores expose public `dispose(): void`; after disposal `update`, `emitUpdate`, `watch`, and resource `load`, `refresh`, and `suspend` throw `Carburetor: store has been disposed` before loader invocation or request creation (a `ResourceCache.refresh` whose own abort of the previous request disposes the store returns a promise rejected with that error instead);
+while pending notifications are silent and existing subscriptions remain until owners unsubscribe.
+Subclasses use protected `signal: AbortSignal` and
+`after(ms: number, task: () => void): TDisposer`; both are lazy and cleaned up on disposal.
+`after` throws after disposal to catch use beyond the store lifetime. Override `didDispose(): void`
+for subclass cleanup and call `super.didDispose()`. Raw references obtained through `getData()`
+cannot be revoked after disposal.
+
+Render the returned `element`; the caller owns its lifetime and calls `dispose()` when closing the
+screen. No React effect owns scope disposal, avoiding StrictMode effect-replay disposal.
+
+<!-- example:file examples/readme/App/ScopeLifetime.tsx -->
+```tsx
+import React from 'react';
+import {CarburetorProvider, CarburetorScope, carburetorToken, Carburetor} from 'react-carburetor';
+
+class ClockStore extends Carburetor<{ticks: number}> {
+    public constructor() { super({ticks: 0}); }
+
+    public start(): void {
+        this.after(1000, () => this.update(draft => { draft.ticks += 1; }));
+    }
+}
+
+interface IScreenLifetime {
+    element: React.ReactNode;
+    dispose: () => void;
+}
+
+const clockToken = carburetorToken(() => new ClockStore(), 'screen/clock');
+const gameToken = carburetorToken(owner => ({clock: owner.get(clockToken)}), 'screen/game');
+
+/** Creates a screen scope and returns its provider element and owner-controlled disposer.
+ *
+ * @param children - the screen content to provide the scope to
+ */
+export function createScreen(children: React.ReactNode): IScreenLifetime {
+    const scope = new CarburetorScope();
+    scope.get(gameToken).clock.start();
+    return {
+        element: <CarburetorProvider scope={scope}>{children}</CarburetorProvider>,
+        dispose: (): void => scope.dispose(),
+    };
+}
+```
 
 ## Caveats
 
