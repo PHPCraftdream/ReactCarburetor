@@ -7,7 +7,7 @@ triggers each one, why it is silent at runtime, and where the rule can be wrong.
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
 `no-hooks` preset adds a component-architecture policy. The registry contains **31 rules**:
 30 catalogue rules plus the optional `no-react-hooks-in-components` rule. `no-module-level-store`
-is off in recommended configuration, so do not equate registry count with enabled rule count.
+and `one-export-per-file` are off in recommended configuration, so do not equate registry count with enabled rule count.
 
 ## Functional component reads
 
@@ -184,7 +184,7 @@ until your project changes shape.
 | `no-module-level-store` | off | A store created once per module, which a server shares across requests | [H18](hazards.md) |
 | `no-memo-over-store-read` | warn | `useMemo`/`useCallback` over hook-read values; derive in the selector or a `Computed` | [H33](hazards.md) |
 | `no-capturing-hook-selector` | warn | Inline hook selector captures render state; select whole record then pick, or use `AntiHookComponent#useCarburetor` without a selector | [H34](hazards.md) |
-| `one-export-per-file` | warn | A second runtime-value export in one file; every file ships at most one value, type exports are unlimited | [H36](hazards.md) |
+| `one-export-per-file` | off | A second runtime-value export in one file; every file ships at most one value, type exports are unlimited | [H36](hazards.md) |
 | `no-react-hooks-in-components` | off | React `use`/`useX` calls in components when the optional hook-free policy is enabled | [Optional policy](#hook-free-components-optional) |
 | `no-store-write-in-render` | error | A write to a store while rendering, which notifies subscribers mid-render | [H11](hazards.md) |
 | `no-tracked-data-mutation` | error | A write to data from `useCarburetor`, which throws | [H9](hazards.md) |

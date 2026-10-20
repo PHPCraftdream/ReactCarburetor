@@ -6,7 +6,7 @@
  * a dependency array, a decision about what "escapes" — where a false positive is possible and the
  * author has to judge the report. `off` is for `no-module-level-store`, which forbids the correct
  * and recommended pattern in a client-only application and only makes sense once a project renders
- * on a server.
+ * on a server, and for `one-export-per-file`, an opt-in house style.
  *
  * This map is the single source of truth for both hosts: the ESLint flat config reads it directly,
  * and a test pins `recommended.oxlintrc.json` against it so the JSON a consumer extends cannot
@@ -36,7 +36,7 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/no-untrackable-draft-mutation': 'warn',
     'carburetor/no-untrackable-store-data': 'warn',
     'carburetor/no-use-carburetor-outside-render': 'error',
-    'carburetor/one-export-per-file': 'warn',
+    'carburetor/one-export-per-file': 'off',
     'carburetor/require-bind-for-passed-method': 'error',
     'carburetor/require-effect-deps': 'warn',
     'carburetor/require-emit-after-draft-write': 'error',

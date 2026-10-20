@@ -91,7 +91,7 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("no-untrackable-draft-mutation", Severity::Warn),
     ("no-untrackable-store-data", Severity::Warn),
     ("no-use-carburetor-outside-render", Severity::Error),
-    ("one-export-per-file", Severity::Warn),
+    ("one-export-per-file", Severity::Off),
     ("require-bind-for-passed-method", Severity::Error),
     ("require-effect-deps", Severity::Warn),
     ("require-emit-after-draft-write", Severity::Error),

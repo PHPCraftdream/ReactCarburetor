@@ -93,7 +93,7 @@ arbitrary inheritance chains. Custom component classes should directly inherit
 | H33 | `no-memo-over-store-read` | allocations | warn | no |
 | H34 | `no-capturing-hook-selector` | allocations | warn | no |
 | H35 | `max-render-depth` | lifecycle | warn | no |
-| H36 | `one-export-per-file` | boundaries | warn | no |
+| H36 | `one-export-per-file` | boundaries | off | no |
 
 Three of these overlap with a runtime diagnostic the engine already reports in development
 (H6, H14, H17). The rule is still worth having: it fires on code paths that were never
@@ -107,7 +107,7 @@ assignment would miss three quarters of the hazard.
 lifecycle (H12, H13, H21, H22, H35), effects (H14–H16), boundaries (H17–H20, H36) and allocations (H29–H34),
 with H23 and H26 folded into shared rules. H24 and H25 are not implemented; H27 is not a rule.
 The optional `no-react-hooks-in-components` policy brings the registry total to 31; `no-module-level-store`
-remains off in recommended. Detection lives in `native/src/rules/`, tested there with oxc's parser.
+and `one-export-per-file` remain off in recommended. Detection lives in `native/src/rules/`, tested there with oxc's parser.
 The thin host bridge reports native diagnostics. Real fixture and host coverage live in
 `__tests__/Native/conformance.test.ts` and `__tests__/Plugin/host.test.ts`.
 
@@ -1372,7 +1372,7 @@ export const load = () => 1;
 export const save = () => 2;
 ```
 
-**Rule** `one-export-per-file` — **warn**.
+**Rule** `one-export-per-file` — **off by default** (opt-in house style; documentation examples and model files legitimately export several values).
 
 **Detection.** Every kind of value export counts: each variable binding including every destructured name, function declarations with an overload set counted once per name, classes, enums, namespaces with runtime content, default exports, `export =`, and each specifier of a local `export {x}` statement. Type and interface exports, type-only export lists, `declare` ambience, `.d.ts` files and re-export barrels are not counted and stay unlimited.
 
