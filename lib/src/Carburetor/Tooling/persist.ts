@@ -3,6 +3,8 @@ import {ICarburetor} from "@/Carburetor/Models/Store";
 import {IStorageLike, IPersistOptions} from "@/Carburetor/Models/Tooling";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
+import {mergeSaved} from '@/Carburetor/Tooling/Persist/MergeSaved';
+import {readVersioned} from '@/Carburetor/Tooling/Persist/ReadVersioned';
 
 /** Reports a failed restore to onError, or loudly in development when the caller gave none.
  *
@@ -386,13 +388,31 @@ const persistPartitions = <T extends object>(
  * one key, or the single stored partition — in production too: without `onError` that
  * removal is silent there, while development reports it through the engine diagnostics. A
  * composite restore over several stored partitions keeps every entry (the culprit is
- * unknown) and is only reported.
+ * unknown) and is only reported. With `version`, a failed migration or a newer stored version
+ * keeps the entry untouched and blocks this subscription's writes.
  *
  * @param carburetor - both read and written: its snapshot is stored, stored data is restored into it
  * @param options - `key` and `storage` are required; a failed load or write reaches `onError` when given
  */
 export const persist = <T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions): TDisposer => {
-    const {key, storage, coalesce, throttleMs, partitions} = options;
+    const {key, storage, coalesce, throttleMs, partitions, version, migrate, prune} = options;
+
+    if (migrate !== undefined && version === undefined) {
+        throw new Error('persist: migrate requires version');
+    }
+    if (version !== undefined && (!Number.isInteger(version) || version < 0)) {
+        throw new RangeError('persist: version must be a non-negative integer');
+    }
+    if (version !== undefined) {
+        for (let step = 1; step <= version; step++) {
+            if (typeof migrate?.[step] !== 'function') {
+                throw new Error('persist: missing migration step ' + step);
+            }
+        }
+    }
+    if (partitions !== undefined && (version !== undefined || migrate !== undefined || prune !== undefined)) {
+        throw new Error('persist: version, migrate, and prune cannot be combined with partitions');
+    }
 
     if (throttleMs !== undefined) {
         if (!Number.isFinite(throttleMs) || throttleMs < 0) {
@@ -436,16 +456,33 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         stored = null;
     }
 
+    let blocked = false;
     if (stored !== null) {
         try {
-            carburetor.restore(JSON.parse(stored) as T);
+            let data: unknown = JSON.parse(stored);
+            if (version !== undefined) {
+                const decoded = readVersioned(data, version, migrate as NonNullable<typeof migrate>);
+                data = decoded.data;
+            }
+            const needsWireBaseline = version !== undefined || prune === true || typeof prune === 'function';
+            const currentWire = needsWireBaseline ? carburetor.toJSON() : undefined;
+            if (typeof prune === 'function') data = prune(data, currentWire);
+            if (version !== undefined || prune === true) {
+                data = mergeSaved(data, currentWire, prune === true, carburetor.getData());
+            }
+            carburetor.restore(data as T);
         } catch (error: unknown) {
-            reportRestoreFailure(key, error, options.onError, 'the stored data was removed');
-
-            try {
-                storage.removeItem(key);
-            } catch (removeError: unknown) {
-                reportRemovalFailure(options.onError, removeError);
+            if (version !== undefined || typeof prune === 'function') {
+                blocked = true;
+                if (!options.onError) throw error;
+                reportRestoreFailure(key, error, options.onError, 'the stored data is kept');
+            } else {
+                reportRestoreFailure(key, error, options.onError, 'the stored data was removed');
+                try {
+                    storage.removeItem(key);
+                } catch (removeError: unknown) {
+                    reportRemovalFailure(options.onError, removeError);
+                }
             }
         }
     }
@@ -460,11 +497,15 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     const write = (): void => {
         // Mark this version as attempted even on failure: dispose must not retry a failed
         // write, which would report the same error twice.
+        if (blocked) return;
         lastSeenVersion = carburetor.getVersion();
 
         try {
             // The store's wire form: JSON.stringify invokes its toJSON(), without cloning it.
-            storage.setItem(key, JSON.stringify(carburetor));
+            const value = version === undefined
+                ? JSON.stringify(carburetor)
+                : JSON.stringify({v: version, data: carburetor.toJSON()});
+            storage.setItem(key, value);
             lastWriteAt = Date.now();
         } catch (error: unknown) {
             if (options.onError) {

@@ -28,7 +28,8 @@ export interface IPersistOptions {
      *
      * Corrupt data and an unrestorable single entry are removed and reported (engine diagnostics
      * in development, silent in production). With several `partitions` a failed restore keeps
-     * every stored entry, since the guilty one is unknown.
+     * every stored entry, since the guilty one is unknown. With `version`, an entry that fails to
+     * migrate or comes from a newer version is kept, and this subscription stops writing.
      */
     onError?: (error: unknown) => void;
     /**
@@ -60,6 +61,12 @@ export interface IPersistOptions {
      * top-level keys of the wire form; anything else throws.
      */
     partitions?: ReadonlyArray<string>;
+    /** Current non-negative schema version; versioned entries use `{v, data}` envelopes. */
+    version?: number;
+    /** Synchronous migrations; each key `n` converts version `n - 1` into `n`. */
+    migrate?: Record<number, (state: unknown) => unknown>;
+    /** Prunes closed schemas, or controls merging for custom dictionaries. */
+    prune?: boolean | ((saved: unknown, current: unknown) => unknown);
 }
 
 export interface IHistoryOptions {

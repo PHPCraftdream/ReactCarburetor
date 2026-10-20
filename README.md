@@ -925,6 +925,49 @@ for the resource and cache serialization details.
 Failed storage reads reach `persist`'s `onError` handler without deleting unread data; without a
 handler, a read failure throws.
 
+`version` wraps writes as `{v, data}` and treats raw legacy JSON as version 0. `migrate[n]`
+converts n-1 to n; the complete chain is validated synchronously. `prune: true` removes unknown
+keys from populated plain-object schemas while preserving defaults; empty objects remain open
+dictionaries. For populated dynamic dictionaries use the `prune` callback instead of `prune: true`.
+Future versions and migration failures preserve stored bytes and block later writes until reconnect.
+Schema options cannot be combined with `partitions`; versionless persistence keeps its existing
+wire format.
+
+<!-- example:file examples/readme/Tooling/Persist.ts -->
+```ts
+import {Carburetor, IStorageLike, persist} from 'react-carburetor';
+
+interface IProfile {
+    name: string;
+    skills: Record<string, number>;
+}
+
+const storage: IStorageLike = {
+    getItem: key => localStorage.getItem(key),
+    setItem: (key, value) => localStorage.setItem(key, value),
+    removeItem: key => localStorage.removeItem(key),
+};
+
+// v1 renamed `nick` to `name`; v2 added `skills`, which the current defaults fill in.
+const renameNick = (state: unknown): unknown => {
+    const {nick, ...rest} = state as {nick?: string};
+    return {...rest, name: nick ?? ''};
+};
+const keepAsIs = (state: unknown): unknown => state;
+
+const profile = new Carburetor<IProfile>({name: '', skills: {letters: 0, numbers: 0}});
+const stop = persist(profile, {
+    key: 'app.profile',
+    storage,
+    version: 2,
+    migrate: {1: renameNick, 2: keepAsIs},
+    // Drops keys the current shape no longer has, such as a retired `logic` field.
+    prune: true,
+});
+
+stop();
+```
+
 `CarburetorHistory` records undo/redo steps for plain-tree stores as patches — O(changed values),
 not O(state) — while steps that replace, mutate or read a native value through `draft` use
 complete detached graphs instead of patches, so undo/redo stays faithful for native `Map`/`Set`/`Date`
