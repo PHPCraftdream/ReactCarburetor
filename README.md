@@ -1197,13 +1197,26 @@ for the options and the replay semantics.
 
 A store is an ordinary class: construct `new RoundStore(...)` or resolve a token with
 `new CarburetorScope().get(token)`, call its methods, and assert the results. Store logic
-does not need React rendering or jsdom.
+does not need React rendering or jsdom. Timers a store starts with `this.after(ms, task)` are
+cancelled by `dispose()`, so a fake clock advanced past a disposed store's deadline runs nothing.
 
 <!-- example:file examples/readme/App/StoreTesting.ts -->
 ```ts
-import {ComponentUpdateThrottle, waitForUpdate} from 'react-carburetor';
+import {Carburetor, ComponentUpdateThrottle, waitForUpdate} from 'react-carburetor';
 import {test, expect, rstest} from '@rstest/core';
 import {RoundStore} from './RoundStore';
+
+const showHint = (draft: {hint: boolean}): void => {
+    draft.hint = true;
+};
+
+/** Shows a hint after ten seconds of silence; the timer dies with the store. */
+class HintStore extends Carburetor<{hint: boolean}> {
+    /** Arms the idle hint. */
+    public arm(): void {
+        this.after(10_000, () => this.update(showHint));
+    }
+}
 
 export const registerStoreTest = (): void => {
     test('a throttled store can be tested without React', async () => {
@@ -1228,6 +1241,19 @@ export const registerStoreTest = (): void => {
             expect(observed).toEqual([1]);
         } finally {
             stopWatch();
+            rstest.useRealTimers();
+        }
+    });
+
+    test('a timer started with after() never fires once the store is disposed', () => {
+        rstest.useFakeTimers();
+        try {
+            const store = new HintStore({hint: false});
+            store.arm();
+            store.dispose();
+            rstest.advanceTimersByTime(10_000);
+            expect(store.getData().hint).toBe(false);
+        } finally {
             rstest.useRealTimers();
         }
     });

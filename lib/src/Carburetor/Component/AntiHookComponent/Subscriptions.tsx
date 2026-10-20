@@ -145,7 +145,8 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
                 }
             }
 
-            if (process.env.NODE_ENV !== 'production' && diagnostics.isEnabled()) {
+            if (process.env.NODE_ENV !== 'production' && diagnostics.isEnabled()
+                && diagnostics.getWideReadThreshold() !== Infinity) {
                 // One warning per component and store per commit, over the union of the read
                 // paths of every committed slot of that store; a single slot is counted as is.
                 const wideReads = new Map<string, {source: object; paths: ReadonlySet<unknown>}>();
