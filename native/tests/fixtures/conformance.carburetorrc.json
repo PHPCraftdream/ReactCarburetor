@@ -33,7 +33,8 @@
     "carburetor/max-line-length": [
       "error",
       {
-        "code": 200
+        "code": 200,
+        "ignoreStrings": false
       }
     ],
     "carburetor/no-blank-line-after-tsdoc": "error",

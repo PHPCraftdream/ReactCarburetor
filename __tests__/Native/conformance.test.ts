@@ -206,7 +206,7 @@ describe('the native-only style rules over their own corpus', () => {
     });
 
     test('max-line-length reports the one over-limit line the fixture carries', () => {
-        // The config caps lines at 200; maxLineLength.ts holds exactly one 224-character line.
+        // The config caps lines at 200 and counts strings; maxLineLength.ts holds exactly one 224-character string line.
         const reports = styleDiagnostics().filter(
             (diagnostic) => diagnostic.rule === 'carburetor/max-line-length',
         );
