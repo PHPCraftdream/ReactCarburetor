@@ -551,7 +551,7 @@ A computed memoizes a derived value and tracks paths read by its body. A store i
 export class RoundViews extends RoundStore {
     public readonly visible = computed((read) => {
         const {round} = read(this);
-        return round.wrong.flatMap((wrong, index) => wrong === 0 ? [index] : []);
+        return round.wrong.flatMap(unmarkedIndex);
     });
 }
 ```
@@ -1228,6 +1228,8 @@ import {Carburetor, ComponentUpdateThrottle, waitForUpdate} from 'react-carburet
 import {test, expect, rstest} from '@rstest/core';
 import {RoundStore} from './RoundStore';
 
+const selectFirstWrong = (data: {round: {wrong: readonly number[]}}): number => data.round.wrong[0];
+
 const showHint = (draft: {hint: boolean}): void => {
     draft.hint = true;
 };
@@ -1248,10 +1250,7 @@ export const registerStoreTest = (): void => {
             new ComponentUpdateThrottle(40)
         );
         const observed: number[] = [];
-        const stopWatch = store.watch(
-            (data) => data.round.wrong[0],
-            (next) => { observed.push(next); }
-        );
+        const stopWatch = store.watch(selectFirstWrong, (next) => { observed.push(next); });
 
         try {
             const delivered = waitForUpdate(store);
@@ -1664,11 +1663,15 @@ screen. No React effect owns scope disposal, avoiding StrictMode effect-replay d
 import React from 'react';
 import {CarburetorProvider, CarburetorScope, carburetorToken, Carburetor} from 'react-carburetor';
 
+const tick = (draft: {ticks: number}): void => {
+    draft.ticks += 1;
+};
+
 class ClockStore extends Carburetor<{ticks: number}> {
     public constructor() { super({ticks: 0}); }
 
     public start(): void {
-        this.after(1000, () => this.update(draft => { draft.ticks += 1; }));
+        this.after(1000, () => this.update(tick));
     }
 }
 

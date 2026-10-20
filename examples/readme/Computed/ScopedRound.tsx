@@ -1,12 +1,14 @@
 import {computed, carburetorToken, ScopedAntiHookComponent} from 'react-carburetor';
 import {RoundStore} from '../App/RoundStore';
 
+const unmarkedIndex = (wrong: number, index: number): number[] => wrong === 0 ? [index] : [];
+
 // #region scoped-round-class
 export class RoundViews extends RoundStore {
     // #region computed-field
     public readonly visible = computed((read) => {
         const {round} = read(this);
-        return round.wrong.flatMap((wrong, index) => wrong === 0 ? [index] : []);
+        return round.wrong.flatMap(unmarkedIndex);
     });
     // #endregion computed-field
 }

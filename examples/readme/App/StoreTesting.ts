@@ -2,6 +2,8 @@ import {Carburetor, ComponentUpdateThrottle, waitForUpdate} from 'react-carburet
 import {test, expect, rstest} from '@rstest/core';
 import {RoundStore} from './RoundStore';
 
+const selectFirstWrong = (data: {round: {wrong: readonly number[]}}): number => data.round.wrong[0];
+
 // #region timer-store
 const showHint = (draft: {hint: boolean}): void => {
     draft.hint = true;
@@ -25,10 +27,7 @@ export const registerStoreTest = (): void => {
             new ComponentUpdateThrottle(40)
         );
         const observed: number[] = [];
-        const stopWatch = store.watch(
-            (data) => data.round.wrong[0],
-            (next) => { observed.push(next); }
-        );
+        const stopWatch = store.watch(selectFirstWrong, (next) => { observed.push(next); });
 
         try {
             const delivered = waitForUpdate(store);

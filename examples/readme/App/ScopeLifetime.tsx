@@ -1,11 +1,15 @@
 import React from 'react';
 import {CarburetorProvider, CarburetorScope, carburetorToken, Carburetor} from 'react-carburetor';
 
+const tick = (draft: {ticks: number}): void => {
+    draft.ticks += 1;
+};
+
 class ClockStore extends Carburetor<{ticks: number}> {
     public constructor() { super({ticks: 0}); }
 
     public start(): void {
-        this.after(1000, () => this.update(draft => { draft.ticks += 1; }));
+        this.after(1000, () => this.update(tick));
     }
 }
 
