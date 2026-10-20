@@ -227,7 +227,7 @@ mod tests {
         let attribute = render("        return <A icon={<B/>}/>;");
         assert_eq!(lines(&diagnose(&attribute, check)), [] as [usize; 0]);
 
-        let deep_attribute = render("        return <A><B><C render={<D/>}/></B>;");
+        let deep_attribute = render("        return <A><B><C render={<D/>}/></B></A>;");
         assert_eq!(lines(&diagnose(&deep_attribute, check)), [3]);
 
         let expression = render("        return <A>{cond && <B/>}</A>;");
