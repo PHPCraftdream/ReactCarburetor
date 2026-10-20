@@ -27,7 +27,9 @@ fn next_tab_stop(column: u32, tab_width: u32) -> u32 {
     column + tab_width - (column % tab_width)
 }
 
-/// The line's length as displayed, with each tab stretched out to its tab stop.
+/// The line's length as displayed, with each tab stretched out to its tab stop and every other
+/// character counted in UTF-16 code units — the JavaScript `line.length`, where an astral emoji
+/// is two characters; byte offsets stay byte offsets for the string scan below.
 fn expanded_length(line: &str, tab_width: u32) -> u32 {
     let mut column = 0;
 
@@ -35,23 +37,23 @@ fn expanded_length(line: &str, tab_width: u32) -> u32 {
         column = if character == '\t' {
             next_tab_stop(column, tab_width)
         } else {
-            column + 1
+            column + character.len_utf16() as u32
         };
     }
 
     column
 }
 
-/// The raw index of the character displayed at `column` — for a line over the limit, the first
-/// character that is.
+/// The byte index of the character displayed at `column`, where columns are UTF-16 code units —
+/// for a line over the limit, the first character that is.
 fn index_at_column(line: &str, column: u32, tab_width: u32) -> usize {
-    let mut current = 0;
+    let mut current = 0u32;
 
     for (index, character) in line.char_indices() {
         let next = if character == '\t' {
             next_tab_stop(current, tab_width)
         } else {
-            current + 1
+            current + character.len_utf16() as u32
         };
 
         if next > column {

@@ -104,6 +104,11 @@ export interface INativeRuleOptions {
     /** Drops native diagnostics this rule must not report under the host's own options. */
     filter?(diagnostic: import("#src/Utils/Native/INativeDiagnostic.mts").INativeDiagnostic,
         options: readonly unknown[]): boolean;
+    /**
+     * Declares `meta.fixable` to the host; only rules whose native diagnostics carry a `fix`
+     * set this, to `'code'`.
+     */
+    fixable?: 'code';
 }
 
 /** A shareable config, in the shape ESLint v9 flat config consumes. */

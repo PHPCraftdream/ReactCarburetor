@@ -6,9 +6,10 @@ import type {IRule} from "#src/Models.mts";
  *
  * Detection lives in the native crate (native/src/rules/style/no_parent_import/), which the
  * JS plugin calls once per lint run; its `roots` come from
- * `settings.carburetor.ruleOptions`.
+ * `settings.carburetor.ruleOptions`. The rule autofixes through the native bridge.
  */
 export const noParentImport: IRule = nativeRule(
     'carburetor/no-parent-import',
-    'Import through the alias instead of reaching up out of the directory.'
+    'Import through the alias instead of reaching up out of the directory.',
+    {fixable: 'code'}
 );

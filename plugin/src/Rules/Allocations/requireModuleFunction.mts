@@ -24,7 +24,8 @@ const scopeOption = (options: readonly unknown[]): TScope => {
  *
  * Detection lives in the native crate now (native/src/rules/), which the JS plugin calls once
  * per lint run and reports through -- see plugin/src/Utils/Native/nativeBridge.mts for why,
- * and native/src/rules/ for the rule itself. See docs/hazards.md, H30.
+ * and native/src/rules/ for the rule itself. See docs/hazards.md, H30. The rule autofixes
+ * through the native bridge.
  */
 export const requireModuleFunction: IRule = nativeRule(
     'carburetor/require-module-function',
@@ -37,5 +38,6 @@ export const requireModuleFunction: IRule = nativeRule(
         }],
         filter: (diagnostic: INativeDiagnostic, options: readonly unknown[]): boolean =>
             scopeOption(options) !== 'classes' || diagnostic.scope !== 'module',
+        fixable: 'code',
     }
 );

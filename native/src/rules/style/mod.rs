@@ -17,21 +17,28 @@ use oxc_ast::ast::{Comment, Program};
 ///
 /// This is `getCommentsBefore` narrowed to what the style rules need: the JavaScript host
 /// returns every comment chained before a node with only whitespace between them, and the rules
-/// take the last one. A comment whose end is only whitespace away from `offset` cannot have
-/// another token between them, so "whitespace-only gap" is the same adjacency the host computes.
+/// take the last one. Comments arrive sorted by span start, so one binary search finds the
+/// nearest previous one, and it is the only candidate: the nearest previous comment is the last
+/// of any whitespace-separated chain, so if its end does not touch `offset`, no earlier one does.
 pub(crate) fn comment_before<'a>(
     program: &'a Program<'a>,
     text: &str,
     offset: u32,
 ) -> Option<&'a Comment> {
-    program
+    // The nearest comment starting before `offset`; its end is checked rather than assumed,
+    // since a comment only ends before the next token.
+    let index = program
         .comments
-        .iter()
-        .filter(|comment| {
-            comment.span.end <= offset
-                && text[comment.span.end as usize..offset as usize]
-                    .trim()
-                    .is_empty()
-        })
-        .max_by_key(|comment| comment.span.start)
+        .partition_point(|comment| comment.span.start < offset);
+    let comment = program.comments.get(index.checked_sub(1)?)?;
+
+    if comment.span.end <= offset
+        && text[comment.span.end as usize..offset as usize]
+            .trim()
+            .is_empty()
+    {
+        Some(comment)
+    } else {
+        None
+    }
 }

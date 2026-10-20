@@ -26,9 +26,10 @@
 //! one — a `@param` that is present must still carry a description.
 
 use oxc_ast::ast::{
-    BindingPattern, Class, Declaration, ExportDefaultDeclarationKind, FormalParameters, Function,
-    Program, Statement, TSAccessibility, VariableDeclarator,
+    BindingPattern, Declaration, ExportDefaultDeclarationKind, FormalParameters, Function,
+    MethodDefinition, Program, PropertyDefinition, Statement, TSAccessibility, VariableDeclarator,
 };
+use oxc_ast_visit::{walk, Visit};
 
 use crate::config::RequireTsdocOptions;
 use crate::rules::report;
@@ -112,12 +113,20 @@ fn param_tags(raw: &str) -> Vec<ParamTag> {
     tags
 }
 
-/// Reads `@param name - description` out of one tag line; `None` for every other tag.
+/// Reads `@param name - description` out of one tag line; `None` for every other tag. As in the
+/// JavaScript `/^@param\s+/`, the space after the tag is required, so `@parameter` and
+/// `@paramfirst` are not `@param` tags.
 fn parse_param_tag(text: &str) -> Option<ParamTag> {
     let rest = text.strip_prefix("@param")?;
-    let mut parts = rest.trim_start().splitn(2, char::is_whitespace);
 
+    if !rest.starts_with(char::is_whitespace) {
+        return None;
+    }
+
+    // The name is the first non-whitespace chunk, the JavaScript regex's `(\S+)`.
+    let mut parts = rest.trim_start().splitn(2, char::is_whitespace);
     let name = parts.next()?.trim();
+
     if name.is_empty() {
         return None;
     }
@@ -186,6 +195,25 @@ fn is_hidden(accessibility: Option<TSAccessibility>) -> bool {
     )
 }
 
+/// Whether a property's initializer holds a function: an arrow or a function expression.
+fn holds_function(value: Option<&oxc_ast::ast::Expression<'_>>) -> bool {
+    matches!(
+        value,
+        Some(
+            oxc_ast::ast::Expression::ArrowFunctionExpression(_)
+                | oxc_ast::ast::Expression::FunctionExpression(_)
+        )
+    )
+}
+
+/// Whether a class member's own start, counting decorators the member hangs on.
+fn member_start(span_start: u32, decorators: &[oxc_ast::ast::Decorator<'_>]) -> u32 {
+    decorators
+        .iter()
+        .map(|decorator| decorator.span.start)
+        .fold(span_start, u32::min)
+}
+
 struct Check<'s, 'a> {
     source: &'s Source<'s>,
     program: &'a Program<'a>,
@@ -196,11 +224,14 @@ struct Check<'s, 'a> {
 impl<'s, 'a> Check<'s, 'a> {
     /// The exemptions are decided before the missing-doc checks: an overload has no comment to
     /// find, so it has to be excused before the rule would report one missing. The parameter
-    /// and field checks after them only run past the exemptions too.
+    /// and field checks after them only run past the exemptions too. `read` is where the doc
+    /// comment is looked up — the export wrapper for an exported declaration — while `report_at`
+    /// is the declaration itself, matching the JavaScript rule's `node` on report.
     #[allow(clippy::too_many_arguments)]
     fn check(
         &mut self,
-        offset: u32,
+        read: u32,
+        report_at: u32,
         kind: &str,
         name: &str,
         overload: bool,
@@ -209,7 +240,7 @@ impl<'s, 'a> Check<'s, 'a> {
         parameters: &[Option<String>],
     ) {
         let text = self.source.text;
-        let comment = comment_before(self.program, text, offset);
+        let comment = comment_before(self.program, text, read);
         let raw =
             comment.map(|comment| &text[comment.span.start as usize..comment.span.end as usize]);
 
@@ -233,7 +264,7 @@ impl<'s, 'a> Check<'s, 'a> {
 
         let Some(raw) = raw else {
             self.report(
-                offset,
+                report_at,
                 format!("{kind} '{name}' is missing its TSDoc comment."),
             );
 
@@ -242,7 +273,7 @@ impl<'s, 'a> Check<'s, 'a> {
 
         if comment.is_some_and(|comment| comment.is_line()) {
             self.report(
-                offset,
+                report_at,
                 format!("{kind} '{name}' has a // comment where a /** */ TSDoc block is required."),
             );
 
@@ -251,7 +282,7 @@ impl<'s, 'a> Check<'s, 'a> {
 
         if !raw.starts_with("/**") {
             self.report(
-                offset,
+                report_at,
                 format!(
                     "{kind} '{name}' is documented with a plain /* */ block; TSDoc requires \
                      /** */."
@@ -264,7 +295,10 @@ impl<'s, 'a> Check<'s, 'a> {
         let lines = summary_lines(raw);
 
         if lines.is_empty() {
-            self.report(offset, format!("The TSDoc on '{name}' has no description."));
+            self.report(
+                report_at,
+                format!("The TSDoc on '{name}' has no description."),
+            );
 
             return;
         }
@@ -273,7 +307,7 @@ impl<'s, 'a> Check<'s, 'a> {
 
         if lines.len() > max as usize {
             self.report(
-                offset,
+                report_at,
                 format!(
                     "The TSDoc summary on '{name}' is {} lines; the maximum is {max}. Keep the \
                      summary short and put the rest after a blank line.",
@@ -293,7 +327,7 @@ impl<'s, 'a> Check<'s, 'a> {
                 for parameter in parameters.iter().flatten() {
                     if !tagged.contains(&parameter.as_str()) {
                         self.report(
-                            offset,
+                            report_at,
                             format!(
                                 "The TSDoc on '{name}' is missing a @param tag for '{parameter}'."
                             ),
@@ -305,7 +339,7 @@ impl<'s, 'a> Check<'s, 'a> {
             for tag in &tags {
                 if tag.description.trim().is_empty() {
                     self.report(
-                        offset,
+                        report_at,
                         format!(
                             "The @param tag for '{}' on '{name}' has no description.",
                             tag.name
@@ -321,14 +355,18 @@ impl<'s, 'a> Check<'s, 'a> {
             .push(report(self.source, offset, RULE, message));
     }
 
-    fn check_function(&mut self, function: &Function<'_>, offset: u32) {
+    /// `read` is the export wrapper for an exported declaration, the function otherwise; the
+    /// report always sits on the function itself. A body-less function is an overload signature
+    /// (oxc has no separate `TSDeclareFunction` node).
+    fn check_function(&mut self, function: &Function<'_>, read: u32) {
         let name = function
             .id
             .as_ref()
             .map_or("function", |id| id.name.as_str());
 
         self.check(
-            offset,
+            read,
+            function.span.start,
             "Function",
             name,
             function.body.is_none(),
@@ -338,132 +376,21 @@ impl<'s, 'a> Check<'s, 'a> {
         );
     }
 
-    fn check_class(&mut self, class: &Class<'_>) {
-        for element in &class.body.body {
-            match element {
-                oxc_ast::ast::ClassElement::MethodDefinition(method) => {
-                    let offset = method.span.start;
-
-                    // An overload member has no body; a `get`/`set` is a trivial accessor.
-                    self.check(
-                        offset,
-                        "Method",
-                        name_of_key(&method.key)
-                            .unwrap_or_else(|| String::from("method"))
-                            .as_str(),
-                        method.value.body.is_none(),
-                        method.accessibility,
-                        matches!(
-                            method.kind,
-                            oxc_ast::ast::MethodDefinitionKind::Get
-                                | oxc_ast::ast::MethodDefinitionKind::Set
-                        ),
-                        &parameter_names(&method.value.params),
-                    );
-                }
-                oxc_ast::ast::ClassElement::PropertyDefinition(property) => {
-                    let name =
-                        name_of_key(&property.key).unwrap_or_else(|| String::from("property"));
-                    let holds_function = matches!(
-                        property.value.as_ref(),
-                        Some(
-                            oxc_ast::ast::Expression::ArrowFunctionExpression(_)
-                                | oxc_ast::ast::Expression::FunctionExpression(_)
-                        )
-                    );
-                    let offset = property.span.start;
-
-                    // A plain field has no body, yet is not an overload — hence the explicit
-                    // flag; `requireFieldDocs` asks it for the doc a function gets.
-                    if !holds_function {
-                        if self.options.require_field_docs {
-                            self.check(
-                                offset,
-                                "Class property",
-                                &name,
-                                false,
-                                property.accessibility,
-                                false,
-                                &[],
-                            );
-                        }
-
-                        continue;
-                    }
-
-                    let parameters = match property.value.as_ref().expect("checked above") {
-                        oxc_ast::ast::Expression::ArrowFunctionExpression(arrow) => {
-                            parameter_names(&arrow.params)
-                        }
-                        oxc_ast::ast::Expression::FunctionExpression(function) => {
-                            parameter_names(&function.params)
-                        }
-                        _ => Vec::new(),
-                    };
-
-                    self.check(
-                        offset,
-                        "Class property",
-                        &name,
-                        false,
-                        property.accessibility,
-                        false,
-                        &parameters,
-                    );
-                }
-                _ => {}
-            }
-        }
-    }
-
     /// The declarator of an exported `const` whose initializer is a function, if any.
-    fn exported_function(declaration: &'a Declaration<'a>) -> Option<&'a VariableDeclarator<'a>> {
+    fn exported_function<'d>(
+        declaration: &'d Declaration<'a>,
+    ) -> Option<&'d VariableDeclarator<'a>> {
         let Declaration::VariableDeclaration(variable) = declaration else {
             return None;
         };
 
         variable.declarations.iter().find(|declarator| {
             matches!(declarator.id, BindingPattern::BindingIdentifier(_))
-                && matches!(
-                    declarator.init.as_ref(),
-                    Some(
-                        oxc_ast::ast::Expression::ArrowFunctionExpression(_)
-                            | oxc_ast::ast::Expression::FunctionExpression(_)
-                    )
-                )
+                && holds_function(declarator.init.as_ref())
         })
     }
 
-    fn visit_statement(&mut self, statement: &'a Statement<'a>, exported: Option<u32>) {
-        match statement {
-            Statement::FunctionDeclaration(function) => {
-                self.check_function(function, exported.unwrap_or(function.span.start));
-            }
-            Statement::ClassDeclaration(class) => self.check_class(class),
-            Statement::ExportDeclaration(export) => match &export.declaration {
-                Declaration::FunctionDeclaration(function) => {
-                    self.check_function(function, export.span.start);
-                }
-                Declaration::ClassDeclaration(class) => self.check_class(class),
-                Declaration::VariableDeclaration(_) => {
-                    if let Some(declarator) = Self::exported_function(&export.declaration) {
-                        self.check_exported_function(declarator, export.span.start);
-                    }
-                }
-                _ => {}
-            },
-            Statement::ExportDefaultDeclaration(export) => match &export.declaration {
-                ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
-                    self.check_function(function, export.span.start);
-                }
-                ExportDefaultDeclarationKind::ClassDeclaration(class) => self.check_class(class),
-                _ => {}
-            },
-            _ => {}
-        }
-    }
-
-    fn check_exported_function(&mut self, declarator: &VariableDeclarator<'a>, offset: u32) {
+    fn check_exported_function(&mut self, declarator: &VariableDeclarator<'a>, read: u32) {
         let name = match &declarator.id {
             BindingPattern::BindingIdentifier(identifier) => identifier.name.as_str(),
             _ => "function",
@@ -479,7 +406,8 @@ impl<'s, 'a> Check<'s, 'a> {
         };
 
         self.check(
-            offset,
+            read,
+            declarator.span.start,
             "Exported function",
             name,
             false,
@@ -487,6 +415,110 @@ impl<'s, 'a> Check<'s, 'a> {
             false,
             &parameters,
         );
+    }
+}
+
+impl<'a> Visit<'a> for Check<'_, 'a> {
+    /// Function declarations only — a `Function` node is also every function expression, which
+    /// the rule does not cover; the expression forms are reached through their declarations.
+    fn visit_statement(&mut self, statement: &Statement<'a>) {
+        if let Statement::FunctionDeclaration(function) = statement {
+            self.check_function(function, function.span.start);
+        }
+
+        walk::walk_statement(self, statement);
+    }
+
+    fn visit_method_definition(&mut self, method: &MethodDefinition<'a>) {
+        // An overload member has no body; a `get`/`set` is a trivial accessor.
+        let start = member_start(method.span.start, &method.decorators);
+
+        self.check(
+            start,
+            start,
+            "Method",
+            name_of_key(&method.key)
+                .unwrap_or_else(|| String::from("method"))
+                .as_str(),
+            method.value.body.is_none(),
+            method.accessibility,
+            matches!(
+                method.kind,
+                oxc_ast::ast::MethodDefinitionKind::Get | oxc_ast::ast::MethodDefinitionKind::Set
+            ),
+            &parameter_names(&method.value.params),
+        );
+
+        walk::walk_method_definition(self, method);
+    }
+
+    fn visit_property_definition(&mut self, property: &PropertyDefinition<'a>) {
+        let start = member_start(property.span.start, &property.decorators);
+        let name = name_of_key(&property.key).unwrap_or_else(|| String::from("property"));
+
+        if holds_function(property.value.as_ref()) {
+            let parameters = match property.value.as_ref().expect("checked above") {
+                oxc_ast::ast::Expression::ArrowFunctionExpression(arrow) => {
+                    parameter_names(&arrow.params)
+                }
+                oxc_ast::ast::Expression::FunctionExpression(function) => {
+                    parameter_names(&function.params)
+                }
+                _ => Vec::new(),
+            };
+
+            self.check(
+                start,
+                start,
+                "Class property",
+                &name,
+                false,
+                property.accessibility,
+                false,
+                &parameters,
+            );
+        } else if self.options.require_field_docs {
+            // A plain field has no body, yet is not an overload — hence the explicit flag.
+            self.check(
+                start,
+                start,
+                "Class property",
+                &name,
+                false,
+                property.accessibility,
+                false,
+                &[],
+            );
+        }
+
+        walk::walk_property_definition(self, property);
+    }
+
+    /// `walk_export_declaration` descends into the declaration, reaching class members and
+    /// nested functions; each declaration is checked here, exactly once.
+    fn visit_export_declaration(&mut self, export: &oxc_ast::ast::ExportDeclaration<'a>) {
+        if let Declaration::FunctionDeclaration(function) = &export.declaration {
+            self.check_function(function, export.span.start);
+        }
+
+        if let Some(declarator) = Self::exported_function(&export.declaration) {
+            self.check_exported_function(declarator, export.span.start);
+        }
+
+        walk::walk_export_declaration(self, export);
+    }
+
+    fn visit_export_default_declaration(
+        &mut self,
+        export: &oxc_ast::ast::ExportDefaultDeclaration<'a>,
+    ) {
+        if let ExportDefaultDeclarationKind::FunctionDeclaration(function) = &export.declaration {
+            self.check_function(function, export.span.start);
+        }
+
+        // The default walk descends into the declaration, reaching class members and nested
+        // functions; the function itself was checked above, exactly once.
+        walk::walk_export_default_declaration(self, export);
     }
 }
 
@@ -508,9 +540,7 @@ pub(in crate::rules) fn check_with_options(
         diagnostics: Vec::new(),
     };
 
-    for statement in &program.body {
-        check.visit_statement(statement, None);
-    }
+    check.visit_program(program);
 
     check.diagnostics
 }

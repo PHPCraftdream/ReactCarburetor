@@ -336,6 +336,54 @@ fn an_undocumented_exported_const_function_is_reported() {
 }
 
 #[test]
+fn an_undocumented_exported_function_reports_on_the_function_below_the_export() {
+    // The comment would be read before `export`, but the report sits on the declaration itself:
+    // `function` starts at column 8 after `export `.
+    let source = "export function build(): void {};";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].line, 1);
+    assert_eq!(diagnostics[0].column, 8);
+}
+
+#[test]
+fn an_undocumented_default_export_reports_on_the_function_after_default() {
+    // `function` starts at column 16 after `export default `.
+    let source = "export default function build(): void {};";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].line, 1);
+    assert_eq!(diagnostics[0].column, 16);
+}
+
+#[test]
+fn an_undocumented_function_reports_at_the_function_keyword() {
+    let source = "function pick(first: string): string { return first; }";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].line, 1);
+    assert_eq!(diagnostics[0].column, 1);
+}
+
+#[test]
+fn an_undocumented_exported_const_reports_on_the_declarator() {
+    // `build` starts at column 14 after `export const `.
+    let source = "export const build = (): void => {};";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert_eq!(diagnostics[0].line, 1);
+    assert_eq!(diagnostics[0].column, 14);
+}
+
+#[test]
 fn an_undocumented_function_declaration_is_reported() {
     let source = "function pick(first: string): string { return first; }";
 
@@ -428,6 +476,88 @@ fn a_doc_with_an_empty_description_is_reported() {
 }
 
 #[test]
+fn a_documented_outer_function_excuses_only_itself_of_the_pair() {
+    // The inner declaration is reached through the walk of the outer body, so it is checked
+    // too; the outer doc says nothing about the inner one.
+    let source = "/** Creates a helper. */\n\
+                  function outer() {\n    function inner() {}\n}";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(lines(&diagnostics), [3]);
+    assert_eq!(
+        diagnostics[0].message,
+        "Function 'inner' is missing its TSDoc comment."
+    );
+}
+
+#[test]
+fn a_documented_inner_function_inside_a_documented_outer_passes() {
+    let source = "/** Creates a helper. */\n\
+                  function outer() {\n    /** Does work. */\n\n    function inner() {}\n}";
+
+    assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+}
+
+#[test]
+fn a_nested_function_inside_an_if_block_is_reported() {
+    let source = "function outer() {\n    if (true) {\n        function inner() {}\n    }\n}";
+
+    let diagnostics = diagnose(source, check);
+
+    // The outer declaration is undocumented too, so it is reported alongside the inner one.
+    assert_eq!(lines(&diagnostics), [1, 3]);
+    assert_eq!(
+        diagnostics[1].message,
+        "Function 'inner' is missing its TSDoc comment."
+    );
+}
+
+#[test]
+fn a_method_of_a_class_expression_in_a_constant_is_reported() {
+    let source = "const Counter = class {\n    increment(): void {}\n};";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect::<Vec<_>>(),
+        ["Method 'increment' is missing its TSDoc comment."]
+    );
+}
+
+#[test]
+fn a_function_declaration_inside_an_arrow_body_is_reported() {
+    let source = "const run = (): void => {\n    function inner() {}\n};";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect::<Vec<_>>(),
+        ["Function 'inner' is missing its TSDoc comment."]
+    );
+}
+
+#[test]
+fn a_class_declared_inside_a_function_body_has_its_method_checked() {
+    let source = "/** Wraps the check. */\n\
+                  function outer() {\n    class Inner {\n        run(): void {}\n    }\n}";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(lines(&diagnostics), [4]);
+    assert_eq!(
+        diagnostics[0].message,
+        "Method 'run' is missing its TSDoc comment."
+    );
+}
+
+#[test]
 fn a_five_line_summary_reports_under_max_lines_three() {
     let source = "class Counter {\n    /**\n     * Adds one to the count and, when the carry overflows,\n     \
                   * wraps the counter around,\n     * resetting it to zero,\n     * as clocks do at midnight,\n     \
@@ -442,7 +572,8 @@ fn a_five_line_summary_reports_under_max_lines_three() {
             .map(|diagnostic| diagnostic.message.as_str())
             .collect::<Vec<_>>(),
         [
-            "The TSDoc summary on 'increment' is 5 lines; the maximum is 3.           Keep the summary short and put the rest after a blank line."
+            "The TSDoc summary on 'increment' is 5 lines; the maximum is 3. Keep the summary \
+             short and put the rest after a blank line."
         ]
     );
 }

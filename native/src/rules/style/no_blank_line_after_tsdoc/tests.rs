@@ -143,6 +143,41 @@ fn a_blank_line_before_an_exported_const_function_is_reported() {
 }
 
 #[test]
+fn a_blank_line_before_a_function_nested_in_a_documented_outer_is_reported() {
+    // The walk descends into the outer body, so the inner declaration's own gap is measured.
+    let source = "/** Creates a helper. */\n\
+                  function outer() {\n    /** Does work. */\n\n    function inner() {}\n}";
+    let expected = "/** Creates a helper. */\n\
+                    function outer() {\n    /** Does work. */\n    function inner() {}\n}";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(lines(&diagnostics), [3]);
+    assert_eq!(
+        diagnostics[0].message,
+        "A blank line separates the TSDoc comment from 'inner'."
+    );
+    assert_eq!(fixed(source), expected);
+}
+
+#[test]
+fn a_blank_line_before_a_function_nested_in_an_if_block_is_reported() {
+    let source = "function outer() {\n    if (true) {\n        /** Does work. */\n\n        \
+                  function inner() {}\n    }\n}";
+    let expected = "function outer() {\n    if (true) {\n        /** Does work. */\n        \
+                    function inner() {}\n    }\n}";
+
+    let diagnostics = diagnose(source, check);
+
+    assert_eq!(lines(&diagnostics), [3]);
+    assert_eq!(
+        diagnostics[0].message,
+        "A blank line separates the TSDoc comment from 'inner'."
+    );
+    assert_eq!(fixed(source), expected);
+}
+
+#[test]
 fn a_gap_without_a_blank_line_between_code_stays_silent() {
     let source = "class Counter {\n    /** Adds one. */\n    other(): void {}\n\n    increment(): void {}\n}";
 

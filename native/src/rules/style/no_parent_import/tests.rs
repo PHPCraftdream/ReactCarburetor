@@ -49,9 +49,13 @@ fn fixed_from(filename: &str, text: &str, roots: &[ImportRoot]) -> String {
     fix::apply(text, fixes.collect()).expect("every case here expects its fixes to apply")
 }
 
-/// `check` with no roots reports nothing on any file, valid or not.
+/// `check` at the JavaScript rule's default roots reports nothing on these files: a sibling, a
+/// downward reach, an aliased import, a package import and an exit from the tree are all fine.
 fn silent(filename: &str, text: &str) {
-    assert_eq!(lines(&diagnose_from(filename, text, &[])), [] as [usize; 0]);
+    assert_eq!(
+        lines(&diagnose_from(filename, text, &library_roots())),
+        [] as [usize; 0]
+    );
 }
 
 #[test]
@@ -263,8 +267,12 @@ fn roots_can_be_renamed_through_options() {
 fn an_offending_import_without_configured_roots_stays_silent() {
     // With no roots the rule cannot name an alias, so it stays silent rather than reporting a
     // violation with no way forward.
-    silent(
-        "lib/src/Carburetor/Store/Tracking/createWriteProxy.ts",
-        "import {joinPath} from \"../Paths/joinPath\";",
+    assert_eq!(
+        lines(&diagnose_from(
+            "lib/src/Carburetor/Store/Tracking/createWriteProxy.ts",
+            "import {joinPath} from \"../Paths/joinPath\";",
+            &[]
+        )),
+        [] as [usize; 0]
     );
 }

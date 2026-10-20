@@ -346,6 +346,10 @@ Reports any source line longer than the limit. Options and defaults: `code` `120
 `ignoreUrls` `false`, `ignorePattern` (unset), `ignoreStrings` `true` (deliberately unlike the
 common default: long string literals are data, not logic), `ignoreTemplateLiterals` `false`.
 
+`ignorePattern` uses the syntax of the Rust `regex` crate: JavaScript-only constructs such as
+lookahead, lookbehind, and backreferences are not supported, and a pattern invalid for that
+syntax is a configuration error.
+
 ```json
 {"rules": {"carburetor/max-line-length": ["warn", {"code": 100}]}}
 ```

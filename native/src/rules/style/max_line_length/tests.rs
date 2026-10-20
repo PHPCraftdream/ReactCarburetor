@@ -185,3 +185,61 @@ fn a_comment_line_reports_even_when_it_names_quotes() {
 
     assert_eq!(lines(&diagnose(&source, check)), [1]);
 }
+
+#[test]
+fn astral_characters_count_two_utf16_units_each() {
+    // `// ` is 3 units and each emoji is 2, so 59 emoji make 121 units over the 120 limit.
+    let source = format!("// {}", '\u{1F600}'.to_string().repeat(59));
+
+    let diagnostics = diagnose(&source, check);
+
+    assert_eq!(lines(&diagnostics), [1]);
+    assert_eq!(
+        diagnostics[0].message,
+        "Line 1 is 121 characters long; the maximum is 120."
+    );
+}
+
+#[test]
+fn a_line_of_astral_characters_under_the_limit_passes() {
+    // 58 emoji are 116 units plus the 3-unit `// ` prefix: 119 units, under the limit.
+    let source = format!("// {}", '\u{1F600}'.to_string().repeat(58));
+
+    assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+}
+
+#[test]
+fn characters_outside_the_bmp_count_one_unit_each() {
+    // Cyrillic is one UTF-16 unit per character, so 117 of it after `// ` is exactly 120.
+    let short = format!("// {}", "\u{0430}".repeat(117));
+
+    assert_eq!(lines(&diagnose(&short, check)), [] as [usize; 0]);
+
+    let long = format!("// {}", "\u{0430}".repeat(118));
+
+    let diagnostics = diagnose(&long, check);
+
+    assert_eq!(lines(&diagnostics), [1]);
+    assert_eq!(
+        diagnostics[0].message,
+        "Line 1 is 121 characters long; the maximum is 120."
+    );
+}
+
+#[test]
+fn a_literal_boundary_after_astral_characters_is_measured_in_utf16_units() {
+    // `const s = "` is 11 units, 59 emoji are 118, `";` is 2: 131 units, and the 121st unit —
+    // the first past the limit — sits inside the literal, which the default exempts.
+    let source = format!("const s = \"{}\";", '\u{1F600}'.to_string().repeat(59));
+
+    assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
+
+    let configured = options(120, 4, false, None, false, false);
+    let diagnostics = diagnose_options(&source, &configured);
+
+    assert_eq!(lines(&diagnostics), [1]);
+    assert_eq!(
+        diagnostics[0].message,
+        "Line 1 is 131 characters long; the maximum is 120."
+    );
+}

@@ -9,7 +9,7 @@ use super::{malformed, ConfigError};
 
 /// `max-line-length`'s options. Defaults are the JavaScript rule's: notably `ignore_strings` is
 /// TRUE, deliberately unlike eslint's false — long string literals are data, not logic.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct MaxLineLengthOptions {
     /// The line length limit.
     pub code: u32,
@@ -25,6 +25,19 @@ pub struct MaxLineLengthOptions {
     pub ignore_template_literals: bool,
 }
 
+impl Default for MaxLineLengthOptions {
+    fn default() -> Self {
+        Self {
+            code: 120,
+            tab_width: 4,
+            ignore_urls: false,
+            ignore_pattern: None,
+            ignore_strings: true,
+            ignore_template_literals: false,
+        }
+    }
+}
+
 /// One source root of `no-parent-import`: where a source tree starts, and the alias it is
 /// reached through. Defaults to EMPTY — with no configured roots the rule reports nothing,
 /// because without knowing the tree's root an upward import has no aliased form to offer.
@@ -37,7 +50,7 @@ pub struct ImportRoot {
 }
 
 /// `require-tsdoc`'s options; the defaults are the JavaScript rule's.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct RequireTsdocOptions {
     /// The longest summary the rule accepts before asking for a blank line.
     pub max_lines: u32,
@@ -55,6 +68,20 @@ pub struct RequireTsdocOptions {
     pub require_field_docs: bool,
 }
 
+impl Default for RequireTsdocOptions {
+    fn default() -> Self {
+        Self {
+            max_lines: 3,
+            public_only: false,
+            allow_overloads: true,
+            allow_inheritdoc: true,
+            allow_trivial_accessors: false,
+            require_param_docs: false,
+            require_field_docs: false,
+        }
+    }
+}
+
 impl super::Config {
     /// `max-line-length`'s options, defaults filling whatever the config left out.
     pub fn max_line_length(&self) -> MaxLineLengthOptions {
@@ -70,10 +97,12 @@ impl super::Config {
         MaxLineLengthOptions {
             code: read("code")
                 .and_then(|value| value.as_u64())
-                .map_or(120, |code| code as u32),
+                .and_then(|code| u32::try_from(code).ok())
+                .unwrap_or(120),
             tab_width: read("tabWidth")
                 .and_then(|value| value.as_u64())
-                .map_or(4, |width| width as u32),
+                .and_then(|width| u32::try_from(width).ok())
+                .unwrap_or(4),
             ignore_urls: read("ignoreUrls")
                 .and_then(|value| value.as_bool())
                 .unwrap_or(false),
@@ -127,7 +156,8 @@ impl super::Config {
         RequireTsdocOptions {
             max_lines: read("maxLines")
                 .and_then(|value| value.as_u64())
-                .map_or(3, |lines| lines as u32),
+                .and_then(|lines| u32::try_from(lines).ok())
+                .unwrap_or(3),
             public_only: read("access").and_then(|value| value.as_str()) == Some("public"),
             allow_overloads: read("allowOverloads")
                 .and_then(|value| value.as_bool())
@@ -165,7 +195,8 @@ fn unknown_key(
     Ok(())
 }
 
-/// Reads one unsigned-integer option of at least `least`.
+/// Reads one unsigned-integer option of at least `least`, fitting a `u32` — the width the rules
+/// store their limits in.
 fn unsigned(
     map: &serde_json::Map<String, serde_json::Value>,
     rule: &str,
@@ -175,9 +206,10 @@ fn unsigned(
     match map.get(key) {
         None | Some(serde_json::Value::Null) => Ok(()),
         Some(value) => match value.as_u64() {
-            Some(number) if number >= least => Ok(()),
+            Some(number) if number >= least && number <= u32::MAX as u64 => Ok(()),
             _ => Err(malformed(format!(
-                "the {key} option of {rule} must be an integer of at least {least}"
+                "the {key} option of {rule} must be an integer between {least} and {}",
+                u32::MAX
             ))),
         },
     }
@@ -226,7 +258,9 @@ pub(super) fn validate_max_line_length_options(
         Some(serde_json::Value::String(pattern)) => {
             regex::Regex::new(pattern).map(|_| ()).map_err(|_| {
                 malformed(format!(
-                    "the ignorePattern option of max-line-length is not a valid regex: {pattern:?}"
+                    "the ignorePattern option of max-line-length is not a valid regex in the \
+                     Rust regex syntax (lookaround and backreferences of JavaScript RegExp are \
+                     not supported): {pattern:?}"
                 ))
             })
         }
@@ -323,11 +357,28 @@ pub(super) fn validate_require_tsdoc_options(
 #[cfg(test)]
 mod tests {
     use super::super::parse;
+    use crate::config::{MaxLineLengthOptions, RequireTsdocOptions};
 
     #[test]
     fn max_line_length_defaults_match_the_javascript_rule() {
         let config = parse("{}").unwrap();
         let options = config.max_line_length();
+
+        // The getter and the manual `Default` hold the same JavaScript values; keeping them
+        // equal field by field is what lets the rule read either one.
+        let defaults = MaxLineLengthOptions::default();
+        assert_eq!(options.code, defaults.code);
+        assert_eq!(options.tab_width, defaults.tab_width);
+        assert_eq!(options.ignore_urls, defaults.ignore_urls);
+        assert_eq!(
+            options.ignore_pattern.is_some(),
+            defaults.ignore_pattern.is_some()
+        );
+        assert_eq!(options.ignore_strings, defaults.ignore_strings);
+        assert_eq!(
+            options.ignore_template_literals,
+            defaults.ignore_template_literals
+        );
 
         assert_eq!(options.code, 120);
         assert_eq!(options.tab_width, 4);
@@ -377,6 +428,36 @@ mod tests {
     }
 
     #[test]
+    fn numeric_options_must_fit_a_u32() {
+        assert!(
+            parse(r#"{"rules": {"max-line-length": ["warn", {"tabWidth": 4294967296}]}}"#).is_err()
+        );
+        assert!(
+            parse(r#"{"rules": {"max-line-length": ["warn", {"code": 4294967296}]}}"#).is_err()
+        );
+        assert!(
+            parse(r#"{"rules": {"require-tsdoc": ["warn", {"maxLines": 4294967296}]}}"#).is_err()
+        );
+        assert!(parse(r#"{"rules": {"max-line-length": ["warn", {"tabWidth": 0}]}}"#).is_err());
+        assert!(
+            parse(r#"{"rules": {"max-line-length": ["warn", {"tabWidth": 4294967295}]}}"#).is_ok()
+        );
+    }
+
+    #[test]
+    fn an_ignore_pattern_with_a_lookahead_names_the_regex_syntax_in_the_error() {
+        let error = parse(
+            r#"{"rules": {"max-line-length": ["warn", {"ignorePattern": "^// (?=generated)"}]}}"#,
+        )
+        .expect_err("lookahead is not Rust-regex");
+
+        assert!(
+            error.to_string().contains("Rust regex syntax"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
     fn no_parent_import_roots_default_to_empty() {
         assert!(parse("{}").unwrap().no_parent_import_roots().is_empty());
 
@@ -420,6 +501,18 @@ mod tests {
     fn require_tsdoc_defaults_match_the_javascript_rule() {
         let config = parse("{}").unwrap();
         let options = config.require_tsdoc();
+        let defaults = RequireTsdocOptions::default();
+
+        assert_eq!(options.max_lines, defaults.max_lines);
+        assert_eq!(options.public_only, defaults.public_only);
+        assert_eq!(options.allow_overloads, defaults.allow_overloads);
+        assert_eq!(options.allow_inheritdoc, defaults.allow_inheritdoc);
+        assert_eq!(
+            options.allow_trivial_accessors,
+            defaults.allow_trivial_accessors
+        );
+        assert_eq!(options.require_param_docs, defaults.require_param_docs);
+        assert_eq!(options.require_field_docs, defaults.require_field_docs);
 
         assert_eq!(options.max_lines, 3);
         assert!(!options.public_only);

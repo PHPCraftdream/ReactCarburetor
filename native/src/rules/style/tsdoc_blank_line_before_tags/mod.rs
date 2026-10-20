@@ -137,3 +137,6 @@ pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diag
 
     diagnostics
 }
+
+#[cfg(test)]
+mod tests;

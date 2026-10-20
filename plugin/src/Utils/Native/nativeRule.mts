@@ -1,5 +1,6 @@
 import * as path from "node:path";
 import {offsetAt} from "#src/Utils/Native/offsetAt.mts";
+import {utf16FromByte} from "#src/Utils/utf16FromByte.mts";
 import {runNative} from "#src/Utils/Native/nativeBridge.mts";
 import type {INativeRuleOptions, IRule, IRuleContext, IRuleMeta, TRuleVisitor} from "#src/Models.mts";
 
@@ -47,17 +48,24 @@ const enabledRuns = new WeakMap<object, Set<string>>();
  * yields its own overlap host-side: when the covering rule is actually enabled, its diagnostic
  * wins — matching native's default deduplication for hosts that disable either side.
  *
+ * A rule that fixes passes `fixable: 'code'`, which the host reads from `meta.fixable`; when a
+ * diagnostic then carries a `fix` — byte offsets native serialized, not string indices — the
+ * boundaries are converted to UTF-16 indices with `utf16FromByte` and exposed as the host's
+ * `fixer.replaceText` over a node spanning exactly that range. Diagnostics without a `fix`
+ * report as before, and `fix` stays absent from the report.
+ *
  * @param id - the rule id native reports under; a diagnostic belongs to this rule only when its
  * `rule` field matches
  * @param description - placed in `meta.docs.description` verbatim, so each produced rule presents
  * as its own rule to the host
- * @param options - the optional schema and diagnostic filter described above
+ * @param options - the optional schema, diagnostic filter, and `fixable` described above
  */
 export const nativeRule = (id: string, description: string, options: INativeRuleOptions = {}): IRule => ({
     meta: {
         type: 'problem',
         docs: {description},
         ...(options.schema ? {schema: options.schema} : {}),
+        ...(options.fixable ? {fixable: options.fixable} : {}),
     } satisfies IRuleMeta,
 
     create(context: IRuleContext): TRuleVisitor {
@@ -117,7 +125,29 @@ export const nativeRule = (id: string, description: string, options: INativeRule
                             loc: {start: point, end: point},
                         };
 
-                        context.report({node, message: diagnostic.message});
+                        const report: {
+                            node: IPointNode;
+                            message: string;
+                            fix?: (fixer: import("#src/Models.mts").IRuleFixer) => unknown;
+                        } = {node, message: diagnostic.message};
+
+                        if (diagnostic.fix !== undefined) {
+                            const start16 = utf16FromByte(text, diagnostic.fix.start);
+                            const end16 = utf16FromByte(text, diagnostic.fix.end);
+                            // Same node shape `report` needs: `range` for oxlint, `loc` for
+                            // ESLint, both spanning exactly the fix.
+                            const fixed: IPointNode = {
+                                type: 'Program',
+                                start: start16,
+                                end: end16,
+                                range: [start16, end16],
+                                loc: node.loc,
+                            };
+
+                            report.fix = (fixer) => fixer.replaceText(fixed, diagnostic.fix!.text);
+                        }
+
+                        context.report(report);
                     });
             },
         };

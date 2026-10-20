@@ -158,3 +158,40 @@ fn an_exported_const_function_missing_a_param_tag_is_reported() {
         ["The TSDoc on 'build' is missing a @param tag for 'step'."]
     );
 }
+
+#[test]
+fn a_param_like_tag_without_a_space_is_not_a_param_tag() {
+    // `@parameter` does not match `/^@param\s+/`, so it tags nothing and 'first' stays untagged.
+    let source = "/**\n * Picks a value.\n *\n * @parameter first - first choice.\n \
+                  * @param second - fallback.\n */\n\
+                  function pick(first: string, second: number): string {\n    return first;\n}";
+    let configured = with_flag(|options| options.require_param_docs = true);
+
+    let diagnostics = diagnose_options(source, &configured);
+
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect::<Vec<_>>(),
+        ["The TSDoc on 'pick' is missing a @param tag for 'first'."]
+    );
+}
+
+#[test]
+fn paramfirst_is_not_a_param_tag_either() {
+    let source = "/**\n * Picks a value.\n *\n * @paramfirst - description.\n \
+                  * @param second - fallback.\n */\n\
+                  function pick(first: string, second: number): string {\n    return first;\n}";
+    let configured = with_flag(|options| options.require_param_docs = true);
+
+    let diagnostics = diagnose_options(source, &configured);
+
+    assert_eq!(
+        diagnostics
+            .iter()
+            .map(|diagnostic| diagnostic.message.as_str())
+            .collect::<Vec<_>>(),
+        ["The TSDoc on 'pick' is missing a @param tag for 'first'."]
+    );
+}

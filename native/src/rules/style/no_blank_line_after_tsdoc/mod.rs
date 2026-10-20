@@ -8,9 +8,10 @@
 //! wrapper rather than at the declaration inside it.
 
 use oxc_ast::ast::{
-    ArrowFunctionExpression, Class, Declaration, ExportDefaultDeclarationKind, Expression,
-    Function, Program, Statement, VariableDeclarator,
+    Class, Declaration, ExportDefaultDeclarationKind, Expression, Function, MethodDefinition,
+    Program, PropertyDefinition, Statement,
 };
+use oxc_ast_visit::{walk, Visit};
 
 use crate::fix::Fix;
 use crate::rules::report_with_fix;
@@ -79,6 +80,8 @@ struct Check<'s, 'a> {
     source: &'s Source<'s>,
     program: &'a Program<'a>,
     diagnostics: Vec<Diagnostic>,
+    /// The export wrapper's start while inside one — where an exported declaration's doc sits.
+    exported: Option<u32>,
 }
 
 impl<'s, 'a> Check<'s, 'a> {
@@ -135,15 +138,10 @@ impl<'s, 'a> Check<'s, 'a> {
         self.check(wrapper, "function", name);
     }
 
-    fn check_class(&mut self, class: &'a Class<'a>, wrapper: u32) {
-        let name = class.id.as_ref().map(|id| String::from(id.name.as_str()));
-
-        self.check(wrapper, "class", name);
-        self.visit_class(class);
-    }
-
     /// The declarator of an exported `const` whose initializer is a function, if any.
-    fn exported_function(declaration: &'a Declaration<'a>) -> Option<&'a VariableDeclarator<'a>> {
+    fn exported_function<'d>(
+        declaration: &'d Declaration<'a>,
+    ) -> Option<&'d oxc_ast::ast::VariableDeclarator<'a>> {
         let Declaration::VariableDeclaration(variable) = declaration else {
             return None;
         };
@@ -155,141 +153,87 @@ impl<'s, 'a> Check<'s, 'a> {
             ) && holds_function(declarator.init.as_ref())
         })
     }
+}
 
-    fn visit_statement(&mut self, statement: &'a Statement<'a>, exported: Option<u32>) {
-        match statement {
-            Statement::FunctionDeclaration(function) => {
-                self.check_function(function, exported.unwrap_or(function.span.start));
-            }
-            Statement::ClassDeclaration(class) => {
-                self.check_class(class, exported.unwrap_or(class.span.start));
-            }
-            Statement::ExportDeclaration(export) => {
-                let wrapper = export.span.start;
-
-                match &export.declaration {
-                    Declaration::FunctionDeclaration(function) => {
-                        self.check_function(function, wrapper);
-                    }
-                    Declaration::ClassDeclaration(class) => {
-                        self.check_class(class, wrapper);
-                    }
-                    Declaration::VariableDeclaration(_) => {
-                        if let Some(declarator) = Self::exported_function(&export.declaration) {
-                            self.check(wrapper, "exported function", declarator_name(declarator));
-                        }
-                    }
-                    _ => {}
-                }
-            }
-            Statement::ExportDefaultDeclaration(export) => {
-                let wrapper = export.span.start;
-
-                match &export.declaration {
-                    ExportDefaultDeclarationKind::FunctionDeclaration(function) => {
-                        self.check_function(function, wrapper);
-                    }
-                    ExportDefaultDeclarationKind::ClassDeclaration(class) => {
-                        self.check_class(class, wrapper);
-                    }
-                    _ => {}
-                }
-            }
-            Statement::BlockStatement(block) => {
-                for nested in &block.body {
-                    self.visit_statement(nested, None);
-                }
-            }
-            Statement::ExpressionStatement(expression) => {
-                self.visit_expression(&expression.expression);
-            }
-            Statement::VariableDeclaration(variable) => {
-                for declarator in &variable.declarations {
-                    if let Some(init) = &declarator.init {
-                        self.visit_expression(init);
-                    }
-                }
-            }
-            Statement::ReturnStatement(returned) => {
-                if let Some(argument) = &returned.argument {
-                    self.visit_expression(argument);
-                }
-            }
-            _ => {}
+impl<'a> Visit<'a> for Check<'_, 'a> {
+    /// Function declarations only — a `Function` node is also every function expression, which
+    /// the rule does not cover on its own.
+    fn visit_statement(&mut self, statement: &Statement<'a>) {
+        if let Statement::FunctionDeclaration(function) = statement {
+            self.check_function(function, function.span.start);
         }
+
+        walk::walk_statement(self, statement);
     }
 
-    /// Walks the expressions a nested class expression could hide behind.
-    fn visit_expression(&mut self, expression: &'a Expression<'a>) {
-        match expression {
-            Expression::ClassExpression(class) => self.visit_class(class),
-            Expression::ArrowFunctionExpression(arrow) => self.visit_arrow(arrow),
-            Expression::FunctionExpression(function) => self.visit_function(function),
-            Expression::BinaryExpression(binary) => {
-                self.visit_expression(&binary.left);
-                self.visit_expression(&binary.right);
-            }
-            Expression::LogicalExpression(logical) => {
-                self.visit_expression(&logical.left);
-                self.visit_expression(&logical.right);
-            }
-            Expression::ConditionalExpression(conditional) => {
-                self.visit_expression(&conditional.consequent);
-                self.visit_expression(&conditional.alternate);
-            }
-            Expression::ParenthesizedExpression(parenthesized) => {
-                self.visit_expression(&parenthesized.expression);
-            }
-            _ => {}
-        }
+    fn visit_class(&mut self, class: &Class<'a>) {
+        let name = class.id.as_ref().map(|id| String::from(id.name.as_str()));
+
+        self.check(self.exported.unwrap_or(class.span.start), "class", name);
+
+        walk::walk_class(self, class);
     }
 
-    fn visit_arrow(&mut self, arrow: &'a ArrowFunctionExpression<'a>) {
-        // Concise-bodied arrows hold only an expression — a class expression there would come
-        // from a property initializer, which the expression walk already covers.
-        if let oxc_ast::ast::ArrowFunctionBody::FunctionBody(body) = &arrow.body {
-            for statement in &body.statements {
-                self.visit_statement(statement, None);
-            }
-        }
+    fn visit_method_definition(&mut self, method: &MethodDefinition<'a>) {
+        let start = member_start(method.span.start, &method.decorators);
+
+        self.check(start, "method", name_of_key(&method.key));
+
+        walk::walk_method_definition(self, method);
     }
 
-    fn visit_function(&mut self, function: &'a Function<'a>) {
-        if let Some(body) = &function.body {
-            for statement in &body.statements {
-                self.visit_statement(statement, None);
-            }
+    fn visit_property_definition(&mut self, property: &PropertyDefinition<'a>) {
+        if holds_function(property.value.as_ref()) {
+            let start = member_start(property.span.start, &property.decorators);
+
+            self.check(start, "class property", name_of_key(&property.key));
         }
+
+        walk::walk_property_definition(self, property);
     }
 
-    fn visit_class(&mut self, class: &'a Class<'a>) {
-        for element in &class.body.body {
-            match element {
-                oxc_ast::ast::ClassElement::MethodDefinition(method) => {
-                    let start = member_start(method.span.start, &method.decorators);
+    /// `walk_export_declaration` descends into the declaration; the exported flag marks where
+    /// the exported doc comments sit, and each covered declaration is checked here once.
+    fn visit_export_declaration(&mut self, export: &oxc_ast::ast::ExportDeclaration<'a>) {
+        let saved = self.exported.replace(export.span.start);
 
-                    self.check(start, "method", name_of_key(&method.key));
-                    self.visit_function(&method.value);
-                }
-                oxc_ast::ast::ClassElement::PropertyDefinition(property) => {
-                    if holds_function(property.value.as_ref()) {
-                        let start = member_start(property.span.start, &property.decorators);
-
-                        self.check(start, "class property", name_of_key(&property.key));
-                    }
-
-                    if let Some(value) = &property.value {
-                        self.visit_expression(value);
-                    }
-                }
-                _ => {}
-            }
+        if let Declaration::FunctionDeclaration(function) = &export.declaration {
+            self.check_function(function, export.span.start);
         }
+
+        if let Some(declarator) = Self::exported_function(&export.declaration) {
+            self.check(
+                export.span.start,
+                "exported function",
+                declarator_name(declarator),
+            );
+        }
+
+        walk::walk_export_declaration(self, export);
+
+        self.exported = saved;
+    }
+
+    fn visit_export_default_declaration(
+        &mut self,
+        export: &oxc_ast::ast::ExportDefaultDeclaration<'a>,
+    ) {
+        let saved = self.exported.replace(export.span.start);
+
+        if let ExportDefaultDeclarationKind::FunctionDeclaration(function) = &export.declaration {
+            self.check_function(function, export.span.start);
+        }
+
+        // The default walk descends into the declaration; a class is checked by `visit_class`
+        // with the exported flag still set.
+        walk::walk_export_default_declaration(self, export);
+
+        self.exported = saved;
     }
 }
 
 /// The bound name of one exported declarator, when it spells a plain identifier.
-fn declarator_name(declarator: &VariableDeclarator<'_>) -> Option<String> {
+fn declarator_name(declarator: &oxc_ast::ast::VariableDeclarator<'_>) -> Option<String> {
     match &declarator.id {
         oxc_ast::ast::BindingPattern::BindingIdentifier(identifier) => {
             Some(String::from(identifier.name.as_str()))
@@ -304,11 +248,13 @@ pub fn check(program: &Program<'_>, source: &Source, _bases: &Bases) -> Vec<Diag
         source,
         program,
         diagnostics: Vec::new(),
+        exported: None,
     };
 
-    for statement in &program.body {
-        check.visit_statement(statement, None);
-    }
+    check.visit_program(program);
 
     check.diagnostics
 }
+
+#[cfg(test)]
+mod tests;

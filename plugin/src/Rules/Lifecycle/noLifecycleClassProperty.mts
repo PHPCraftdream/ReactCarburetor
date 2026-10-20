@@ -6,9 +6,11 @@ import type {IRule} from "#src/Models.mts";
  *
  * Detection lives in the native crate now (native/src/rules/), which the JS plugin calls once
  * per lint run and reports through -- see plugin/src/Utils/Native/nativeBridge.mts for why,
- * and native/src/rules/ for the rule itself. See docs/hazards.md, H13.
+ * and native/src/rules/ for the rule itself. See docs/hazards.md, H13. The rule autofixes
+ * through the native bridge.
  */
 export const noLifecycleClassProperty: IRule = nativeRule(
     'carburetor/no-lifecycle-class-property',
-    'Declare lifecycle methods as methods, not as class properties.'
+    'Declare lifecycle methods as methods, not as class properties.',
+    {fixable: 'code'}
 );
