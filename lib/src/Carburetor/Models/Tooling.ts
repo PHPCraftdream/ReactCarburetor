@@ -62,7 +62,7 @@ export interface IPersistOptions {
      * top-level keys of the wire form; anything else throws.
      */
     partitions?: ReadonlyArray<string>;
-    /** Current non-negative schema version; versioned entries use `{v, data}` envelopes. */
+    /** Current non-negative schema version; versioned entries use `{__carburetorVersion, data}` envelopes. */
     version?: number;
     /** Synchronous migrations; each key `n` converts version `n - 1` into `n`. */
     migrate?: Record<number, (state: unknown) => unknown>;

@@ -504,7 +504,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
             // The store's wire form: JSON.stringify invokes its toJSON(), without cloning it.
             const value = version === undefined
                 ? JSON.stringify(carburetor)
-                : JSON.stringify({v: version, data: carburetor.toJSON()});
+                : JSON.stringify({__carburetorVersion: version, data: carburetor.toJSON()});
             storage.setItem(key, value);
             lastWriteAt = Date.now();
         } catch (error: unknown) {

@@ -82,7 +82,7 @@ Entries below record development history in change order; where contracts differ
   the store and the written paths that matched its reads; `diagnostics.setWideReadThreshold(n)`
   opts into a warning, once per component and store, when a render reads more than `n` distinct
   paths of one store (off by default).
-- `persist` options `version`, `migrate` and `prune`: versioned `{v, data}` envelopes, sequential
+- `persist` options `version`, `migrate` and `prune`: versioned `{__carburetorVersion, data}` envelopes, sequential
   migrations validated when `persist` is called (raw legacy entries count as version 0), and pruning
   of keys the current shape no longer has. A newer stored version or a failed migration keeps the
   stored entry and stops that subscription's writes. Not combinable with `partitions`.

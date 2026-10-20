@@ -40,9 +40,18 @@ describe('persist schema evolution', () => {
         stop();
     });
 
+    test('a legacy root that happens to hold v and data fields stays legacy data', () => {
+        const storage = new Storage();
+        storage.value = JSON.stringify({v: 0, data: {x: 7}, keep: 9});
+        const store = new Carburetor({v: 0, data: {x: 0}, keep: 0});
+        const stop = persist(store, config(storage, {version: 0, coalesce: false}));
+        expect(store.getData()).toEqual({v: 0, data: {x: 7}, keep: 9});
+        stop();
+    });
+
     test('envelope skips earlier steps and version zero writes an envelope', () => {
         const storage = new Storage();
-        storage.value = JSON.stringify({v: 1, data: {x: 4}});
+        storage.value = JSON.stringify({__carburetorVersion: 1, data: {x: 4}});
         const called: number[] = [];
         const store = new Carburetor({x: 0});
         const stop = persist(store, config(storage, {
@@ -58,7 +67,7 @@ describe('persist schema evolution', () => {
         const zeroStore = new Carburetor({x: 0});
         const zeroStop = persist(zeroStore, config(storage, {version: 0, migrate: {}, coalesce: false}));
         zeroStore.setData({x: 5});
-        expect(JSON.parse(storage.value as string)).toEqual({v: 0, data: {x: 5}});
+        expect(JSON.parse(storage.value as string)).toEqual({__carburetorVersion: 0, data: {x: 5}});
         zeroStop();
     });
 
@@ -67,13 +76,13 @@ describe('persist schema evolution', () => {
         const store = new Carburetor({x: 0});
         const stop = persist(store, config(storage, {version: 2, migrate: {1: x => x, 2: x => x}, coalesce: false}));
         store.setData({x: 4});
-        expect(JSON.parse(storage.value as string)).toEqual({v: 2, data: {x: 4}});
+        expect(JSON.parse(storage.value as string)).toEqual({__carburetorVersion: 2, data: {x: 4}});
         stop();
     });
 
     test('future versions retain bytes and block later writes and disposal', () => {
         const storage = new Storage();
-        storage.value = '{"v":9,"data":{"x":1}}';
+        storage.value = '{"__carburetorVersion":9,"data":{"x":1}}';
         const original = storage.value;
         const errors: unknown[] = [];
         const store = new Carburetor({x: 0});
@@ -89,7 +98,7 @@ describe('persist schema evolution', () => {
 
     test('future version without handler throws and retains bytes', () => {
         const storage = new Storage();
-        storage.value = '{"v":9,"data":{"x":1}}';
+        storage.value = '{"__carburetorVersion":9,"data":{"x":1}}';
         const original = storage.value;
         expect(() => persist(new Carburetor({x: 0}), config(storage, {
             version: 2, migrate: {1: x => x, 2: x => x},
@@ -113,7 +122,7 @@ describe('persist schema evolution', () => {
 
     test('migration without an error handler throws and leaves stored bytes unchanged', () => {
         const storage = new Storage();
-        storage.value = '{"v":0,"data":{"x":1}}';
+        storage.value = '{"__carburetorVersion":0,"data":{"x":1}}';
         const original = storage.value;
         expect(() => persist(new Carburetor({x: 0}), config(storage, {
             version: 1, migrate: {1: () => { throw new Error('migration failed'); }},
@@ -128,7 +137,7 @@ describe('persist schema evolution', () => {
             {version: 0, migrate: {}, prune: () => { throw failure; }},
         ].forEach(extra => {
             const storage = new Storage();
-            storage.value = '{"v":0,"data":{"x":1}}';
+            storage.value = '{"__carburetorVersion":0,"data":{"x":1}}';
             const original = storage.value;
             const errors: unknown[] = [];
             const store = new Carburetor({x: 0});
@@ -201,7 +210,7 @@ describe('persist schema evolution', () => {
         const rows = [{saved: true}];
         const store = new Carburetor<IData>({native: map, instance: model, rows});
         const storage = new Storage();
-        storage.value = '{"v":0,"data":{}}';
+        storage.value = '{"__carburetorVersion":0,"data":{}}';
         const migrated = {native: [map, set, date], instance: model, rows};
         const stop = persist(store, config(storage, {
             version: 1, migrate: {1: () => migrated}, prune: true,

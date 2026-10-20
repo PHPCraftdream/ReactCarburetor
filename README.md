@@ -1161,7 +1161,7 @@ for the resource and cache serialization details.
 Failed storage reads reach `persist`'s `onError` handler without deleting unread data; without a
 handler, a read failure throws.
 
-`version` wraps writes as `{v, data}` and treats raw legacy JSON as version 0. `migrate[n]`
+`version` wraps writes as `{__carburetorVersion, data}` and treats raw legacy JSON as version 0. `migrate[n]`
 converts n-1 to n; the complete chain is validated synchronously. `prune: true` removes unknown
 keys from populated plain-object schemas while preserving defaults; empty objects remain open
 dictionaries. For populated dynamic dictionaries use the `prune` callback instead of `prune: true`.

@@ -1,5 +1,8 @@
 type TRecord = Record<string, unknown>;
 
+/** The envelope's version key; a stored root is an envelope only with exactly this key and `data`. */
+const VERSION_KEY = '__carburetorVersion';
+
 /** Decodes legacy raw data or a version envelope and applies each intervening migration.
  *
  * @param parsed - parsed storage value
@@ -13,9 +16,9 @@ export const readVersioned = (
 ): {data: unknown; storedVersion: number} => {
     const record = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
         ? parsed as TRecord : undefined;
-    const envelope = record !== undefined && Object.prototype.hasOwnProperty.call(record, 'v')
-        && Object.prototype.hasOwnProperty.call(record, 'data');
-    const found = envelope ? record?.v : 0;
+    const keys = record === undefined ? [] : Object.keys(record);
+    const envelope = keys.length === 2 && keys.includes(VERSION_KEY) && keys.includes('data');
+    const found = envelope ? record?.[VERSION_KEY] : 0;
     if (!Number.isInteger(found) || (found as number) < 0) {
         throw new Error('persist: invalid stored version');
     }

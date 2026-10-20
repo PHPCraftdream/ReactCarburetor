@@ -151,13 +151,17 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
         const hub = this.#eventHub ??= new StoreEvents<TEvents>();
         return hub.on(name, listener);
     }
-    /** Dispose once; subscription owners still unsubscribe. */
+    /** Dispose once; events close before the abort, and subscription owners still unsubscribe. */
     public dispose(): void {
+        if (storeLifecycle.isDisposed(this)) return;
+        this.#disposed = true; this.#eventHub?.dispose(); this.#eventHub = undefined;
         const subscribers = this[S.subscribers];
-        storeLifecycle.dispose(this, [
-            ...Object.keys(subscribers).map(id => (): void => this[S.scheduler].cancel(subscribers[id]!.schedulerKey)),
-            (): void => this.cleanupEventListeners(), (): void => this.didDispose(),
-        ]);
+        const cancel = (id: string): void => {
+            const record = subscribers[id];
+            if (record !== undefined) this[S.scheduler].cancel(record.schedulerKey);
+        };
+        const steps = Object.keys(subscribers).map(id => (): void => cancel(id));
+        storeLifecycle.dispose(this, [...steps, (): void => this.didDispose()]);
     }
     /** Aborted on disposal; allocated lazily. */
     protected get signal(): AbortSignal { return storeLifecycle.signal(this); }
@@ -169,10 +173,6 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
     protected after(ms: number, task: () => void): TDisposer { return storeLifecycle.after(this, ms, task); }
     /** Subclass cleanup hook, called once after built-in resources are cancelled. */
     protected didDispose(): void {}
-    /** Clears listeners and cancels already captured event deliveries. */
-    private cleanupEventListeners(): void {
-        this.#disposed = true; this.#eventHub?.dispose(); this.#eventHub = undefined;
-    }
     /** Current raw state; the root is readonly, while mutations still require draft publication. */
     protected get data(): T { return this[S.data]; }
     /** Unique engine identity. */

@@ -75,7 +75,7 @@ restores once and returns a disposer. Options are `key` and `storage` (required)
 
 `version` must be a non-negative integer. Each `migrate[n]` converts version n-1 to n; the whole
 1..version chain is required and checked synchronously even without stored data. Raw legacy JSON
-is v0; writes use `{v, data}`. Migration is sequential. Future-version entries and versioned
+is v0; writes use `{__carburetorVersion, data}`. Migration is sequential. Future-version entries and versioned
 migration/restore failures are kept and prevent all writes until reconnect; without `onError` the
 error is thrown. Unversioned persistence preserves its existing raw format and error policy.
 An old key is not a fallback: a key named `app.profile.v3` is raw v0; retain that key or copy its
