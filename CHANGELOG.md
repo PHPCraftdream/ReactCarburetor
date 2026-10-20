@@ -65,6 +65,37 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- Store lifetime: an idempotent `dispose()` on every store, a lazily created protected `signal`
+  (aborted on disposal), protected `after(ms, task)` timers that disposal cancels, and a
+  `didDispose()` hook. After disposal `update`, `emitUpdate`, `watch`, `after` and resource
+  `load`/`refresh`/`suspend` throw `Carburetor: store has been disposed` before any loader runs.
+- `CarburetorScope.dispose()` disposes every instance the scope owns, in reverse order of first
+  ownership, once each; `get`/`set`/`hydrate` throw afterwards. Token factories receive the scope
+  (`carburetorToken((scope) => new Store(scope.get(dep)), name)`; `() => T` factories still work),
+  and a dependency cycle throws with the chain of token names.
+- Typed one-off store events: `Carburetor<T, TEvents>`, protected `emit(name, payload)` and public
+  `on(name, listener)`; delivery is synchronous outside a transaction and after the outermost one
+  inside it. Components subscribe with `this.useEvent(store, name, handler)` in `useEffects()`, hooks
+  with `useCarburetorEvent` from `react-carburetor/interop`. Events never touch data, history or
+  persistence, and `dispose()` drops their listeners.
+- Development diagnostics: `diagnostics.traceUpdates(listener)` reports each woken subscriber with
+  the store and the written paths that matched its reads; `diagnostics.setWideReadThreshold(n)`
+  opts into a warning, once per component and store, when a render reads more than `n` distinct
+  paths of one store (off by default).
+- `persist` options `version`, `migrate` and `prune`: versioned `{v, data}` envelopes, sequential
+  migrations validated when `persist` is called (raw legacy entries count as version 0), and pruning
+  of keys the current shape no longer has. A newer stored version or a failed migration keeps the
+  stored entry and stops that subscription's writes. Not combinable with `partitions`.
+- Linter: `prefer-readonly-array-param` (H37, off by default) suggests `readonly T[]` /
+  `ReadonlyArray<T>` for an array parameter the function never writes to or lets escape, with a fix.
+- Linter: the five house-style rules `max-line-length`, `no-blank-line-after-tsdoc`,
+  `no-parent-import` (with its fix), `require-tsdoc` and `tsdoc-blank-line-before-tags` run in the
+  native binary and ship as opt-in `carburetor/*` rules (off by default), configured through
+  `.carburetorrc.json` or `settings.carburetor.ruleOptions`; the bridge now hands native fixes to
+  the host.
+- Documentation: testing a store without React (fake timers, throttled delivery, `after`/`dispose`),
+  transactions inside store methods, a `computed` field on a scoped store, module-level mutator
+  objects, and subscriptions that follow what a render reads.
 - Linter: `max-render-depth` (H35, warn) reports a render whose component tree nests deeper than `max` components (default 3); DOM tags and fragments nest without counting, attribute JSX and callbacks continue their owner's depth, and a nested component is its own render.
 - Linter: `one-export-per-file` (H36, off by default) limits a file to one runtime-value export; type exports, `declare` forms, `.d.ts` files and re-export barrels stay unlimited.
 - Linter plugin: `settings.carburetor.componentBases` / `storeBases` from the ESLint or oxlint config (or, without settings, the same keys of the project `.carburetorrc.json`) reach the native binary, so custom base classes act in the plugin as on the CLI. In the plugin an unreadable rc, invalid JSON, a non-object root or malformed base lists are errors, a missing rc means empty lists, and the rc's other keys are ignored there (the CLI validates the whole file).
@@ -104,6 +135,8 @@ Entries below record development history in change order; where contracts differ
 
 ### Breaking
 
+- **Breaking:** the repository-private `carburetor-internal` lint plugin is gone; its rules are the
+  native opt-in `carburetor/*` house-style rules, so disable comments name `carburetor/<rule>`.
 - **Breaking:** Class `useResource` returns a read-only view of the entry: assigning, defining or deleting a
   field on it throws TypeError for the built-in resource sources (the field-view facade); a custom
   `IResourceSource` without a `fieldView` hands out its plain view — readonly by type and contract, without
