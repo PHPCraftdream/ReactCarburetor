@@ -20,6 +20,7 @@ export const measureControls = async (baseline, gateFiles, runs, output) => {
         entries.push(...gates.filter(entry => scenarios.has(entry.scenario)));
     }
     const raw = output.replace(/\.json$/, '.jsonl');
+    const beforeSummaries = new Map(), afterSummaries = new Map();
     const roots = {before: resolve(baseline.dist, 'esm-prod'), after: resolve(baseline.currentDist, 'esm-prod')};
     const report = {baseline: baseline.sha, roots, runs, entries: entries.length,
         ordering: 'alternating AB / BA', completed: 0, crashes: 0, gateFailures: 0,
@@ -83,12 +84,13 @@ export const measureControls = async (baseline, gateFiles, runs, output) => {
             'scenario mutated during A/B measurement');
         if (samples.before.length === runs && samples.after.length === runs) {
             const base = summarize(samples.before), fixed = summarize(samples.after);
+            beforeSummaries.set(entry.id, base); afterSummaries.set(entry.id, fixed);
             const timings = summary => Object.fromEntries(Object.keys(summary).filter(key => key.endsWith('Ms'))
                 .map(key => [key, show(summary[key])]));
             row.before = timings(base); row.after = timings(fixed); row.comparisons = compare(entry, fixed, base);
             report.timingFailures += row.comparisons.filter(result => !result.ok).length;
             if (entry.scenario !== 'selection44/timing') {
-                row.beforeGates = evaluate(entry, base, new Map()); row.afterGates = evaluate(entry, fixed, new Map());
+                row.beforeGates = evaluate(entry, base, beforeSummaries); row.afterGates = evaluate(entry, fixed, afterSummaries);
                 report.gateFailures += [...row.beforeGates, ...row.afterGates].filter(result => !result.ok).length;
             }
         }

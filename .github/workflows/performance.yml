@@ -11,8 +11,13 @@ on:
   workflow_dispatch:
     inputs:
       baseline:
-        description: Commit before the optimizations under review
+        description: Previous release point the current tree is compared against
         required: true
+        default: 90829af804a64e0692abfb0917e03e281f49d9ef
+        type: string
+      gainsBaseline:
+        description: Commit before the round-44 gains the mechanism calibration rejects
+        required: false
         default: acfd3e2b8e58210ce1076bf1683f666283216af5
         type: string
       runs:
@@ -38,7 +43,8 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 240
     env:
-      BENCH_BASELINE: ${{ inputs.baseline || 'acfd3e2b8e58210ce1076bf1683f666283216af5' }}
+      BENCH_BASELINE: ${{ inputs.baseline || '90829af804a64e0692abfb0917e03e281f49d9ef' }}
+      BENCH_GAINS_BASELINE: ${{ inputs.gainsBaseline || 'acfd3e2b8e58210ce1076bf1683f666283216af5' }}
       BENCH_METADATA_BASELINE: ${{ inputs.metadataBaseline }}
       BENCH_RUNS: ${{ inputs.runs || '9' }}
     steps:
@@ -63,7 +69,7 @@ jobs:
 
       - name: Exact pre-fix/fixed mechanism calibration in all formats
         if: ${{ !cancelled() }}
-        run: npm run bench:ci -- --phase gains --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
+        run: npm run bench:ci -- --phase gains --gains-baseline "$env:BENCH_GAINS_BASELINE" --runs "$env:BENCH_RUNS"
 
       - name: All current benchmark gates
         if: ${{ !cancelled() }}

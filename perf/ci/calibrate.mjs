@@ -16,14 +16,14 @@ export const calibrateGains = async (baseline, output) => {
     }
     const metadataBaseline = process.env.BENCH_METADATA_BASELINE;
     const metadataDist = metadataBaseline ? baselineDist(metadataBaseline) : undefined;
+    // R44-R-01 retired: the resource44/controls scenario needs the handle API that postdates the pre-fix build
     const cases = [
-        {finding: 'R44-C01', id: 'computed44/repeated-flat-snapshot@K16-M16-aliases', metrics: ['keyCalls', 'keyEntries', 'leafUIDs']},
+        {finding: 'R44-C01', id: 'computed44/repeated-flat-snapshot@K16-M16-aliases', metrics: ['inputEdges', 'keyCalls', 'keyEntries', 'leafUIDs']},
         {finding: 'R44-C02', id: 'computed44/observed-baseline-eligibility@M32-changed', metrics: ['preBodyCalls', 'preBodyEntries']},
         {finding: 'R44-C01-single-leaf', id: 'computed44/observed-baseline-eligibility@M1-changed',
             metrics: ['captureValueCalls', 'captureValueEntries'], beforeDist: metadataDist},
         {finding: 'R44-S02', id: 'history44/after-opaque@32-3-32-native-middle', metrics: ['afterOpaqueVisits', 'cutoverUnusedOwnedNodes', 'unusedOwnedNodes']},
         {finding: 'R44-S03', id: 'history44/scalar-proof@64-2-repeat-plain', metrics: ['undoWeakmaps', 'redoWeakmaps']},
-        {finding: 'R44-R-01', id: 'resource44/controls', metrics: ['cowOwnershipAccepted', 'cancelledGenerationProtected']},
         {finding: 'R44-S01', id: 'selection44/array-spine-prototype@M8-L64', actual: /actual:\s*0\b/, expected: /expected:\s*1\b/},
         {finding: 'R44-A01', id: 'components44/selection-attribution-lifetime@4', actual: /actual:\s*4\b/, expected: /expected:\s*0\b/},
         {finding: 'R44-A02', id: 'hooks44/computed-snapshot-lifetime', expected: /expected:\s*undefined/, diagnostic: /strictEqual/},

@@ -1,6 +1,6 @@
 /* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 import {execFileSync} from 'node:child_process';
-import {cpSync, readdirSync} from 'node:fs';
+import {cpSync, readdirSync, rmSync} from 'node:fs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
 import {baselineDist} from '../../harness/baseline.mjs';
@@ -15,6 +15,7 @@ export const prepareBaseline = async reference => {
     const dist = resolve('worktrees/ci-comparison/baseline');
     const currentDist = resolve('worktrees/ci-comparison/modified');
     // Match root depth and length: relocation alone changed the measured JIT/startup cost.
+    rmSync(dist, {recursive: true, force: true}); rmSync(currentDist, {recursive: true, force: true});
     cpSync(sourceDist, dist, {recursive: true});
     cpSync(resolve('dist'), currentDist, {recursive: true});
     const tree = resolve('worktrees', 'ci-gates-' + sha.slice(0, 12) + '-' + process.pid);

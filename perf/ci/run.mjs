@@ -13,7 +13,8 @@ if (process.env.GITHUB_ACTIONS !== 'true') throw new Error('This runner is GitHu
 const args = process.argv.slice(2);
 const option = (name, fallback) => {const i = args.indexOf('--' + name); return i < 0 ? fallback : args[i + 1];};
 const phase = option('phase', 'current');
-const reference = option('baseline', 'acfd3e2b8e58210ce1076bf1683f666283216af5');
+// The gains calibration needs a build from before the round-44 fixes; every other phase compares against the previous release point.
+const reference = phase === 'gains' ? option('gains-baseline', 'acfd3e2b8e58210ce1076bf1683f666283216af5') : option('baseline', '90829af804a64e0692abfb0917e03e281f49d9ef');
 const runs = Number(option('runs', '3'));
 if (!['current', 'previous', 'controls', 'gains'].includes(phase)) throw new Error('Expected --phase current, previous, controls or gains');
 if (!Number.isInteger(runs) || runs < 3) throw new Error('At least three independent samples are required');
@@ -82,7 +83,7 @@ if (phase === 'current') {
     const report = await calibrateGains(baseline, resolve(output, 'mechanism-calibration.json'));
     accepted = report.accepted;
 } else {
-    const files = readdirSync('perf/gates').filter(file => file.endsWith('.mjs') && !Object.hasOwn(baseline.gateHashes, file)).sort();
+    const files = readdirSync('perf/gates').filter(file => file.endsWith('.mjs')).sort();
     const report = await measureControls(baseline, files, runs, resolve(output, 'new-controls-ab.json'));
     if (report.entries === 0) throw new Error('No new completed-operation controls were selected');
     accepted = report.accepted;
