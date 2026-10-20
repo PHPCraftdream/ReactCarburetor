@@ -336,3 +336,45 @@ fn declaration_file_path_skips_function_and_arrow_implementations() {
     )
     .is_empty());
 }
+
+#[test]
+fn defaults_referencing_other_parameters_suppress() {
+    for src in [
+        "function r(xs: number[], ...[alias = xs]: number[][]) { alias.push(1); }",
+        "function f(xs: number[], alias: number[] = xs) { alias.push(1); }",
+        "function g(xs: number[], { a = xs }: { a?: number[] } = {}) { void a; }",
+        "function c(xs: number[], copy: number[] = xs.slice()) { copy.push(1); }",
+    ] {
+        assert!(diagnose(src, check).is_empty(), "{src}");
+    }
+    let d = diagnose(
+        "function h(xs: number[] = [], other: number[]) { void other.length; }",
+        check,
+    );
+    // the default `[]` does not reference another parameter, so both never-mutated
+    // array params (xs and other) are still reported
+    assert_eq!(lines(&d), [1, 1]);
+}
+
+#[test]
+fn callback_passing_array_methods_are_conservative() {
+    for src in [
+        "function a(xs: number[]) { xs.map(String); }",
+        concat!(
+            "function b(xs: number[]) { xs.reduce((acc: number, _v: number, _i: number,",
+            " arr: number[]) => { arr.push(1); return acc; }, 0); }"
+        ),
+        "function c(xs: number[]) { xs.forEach((v: number, i: number, ...rest: number[][]) => { void v; void i; }); }",
+        "function d(xs: number[]) { xs.forEach((_v: number, _i: number, arr: number[]) => { arr.push(1); }); }",
+        "function e(xs: number[], callbacks: [(v: number) => void]) { xs.forEach(...callbacks); }",
+    ] {
+        assert!(diagnose(src, check).is_empty(), "{src}");
+    }
+    for src in [
+        "function f(xs: number[]) { xs.forEach((v) => void v); }",
+        "function g(xs: number[]) { xs.reduce((a: number, b: number) => a + b, 0); }",
+        "function h(xs: string[]) { xs.map(v => v.length); }",
+    ] {
+        assert_eq!(lines(&diagnose(src, check)), [1], "{src}");
+    }
+}

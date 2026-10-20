@@ -50,6 +50,30 @@ fn parameter_identifier<'r, 'a>(p: &'r BindingPattern<'a>) -> Option<&'r Binding
         _ => None,
     }
 }
+fn callback_array_index(name: &str) -> Option<usize> {
+    match name {
+        "forEach" | "map" | "filter" | "flatMap" | "every" | "some" | "find" | "findIndex"
+        | "findLast" | "findLastIndex" => Some(2),
+        "reduce" | "reduceRight" => Some(3),
+        _ => None,
+    }
+}
+fn callback_covers_array(params: &oxc_ast::ast::FormalParameters<'_>, array_index: usize) -> bool {
+    params.rest.is_some() || params.items.len() > array_index
+}
+/// Conservative pre-pass: any appearance of the name in another parameter's
+/// initializer (even a safe read like `xs.slice()`) must block the autofix.
+struct AppearsIn<'a> {
+    name: &'a str,
+    found: bool,
+}
+impl<'a> Visit<'a> for AppearsIn<'_> {
+    fn visit_identifier_reference(&mut self, n: &oxc_ast::ast::IdentifierReference<'a>) {
+        if n.name == self.name {
+            self.found = true;
+        }
+    }
+}
 struct Scan<'a> {
     name: &'a str,
     bad: bool,
@@ -137,6 +161,29 @@ impl<'a> Visit<'a> for Scan<'_> {
                 .contains(&name)
             {
                 self.bad = true;
+            }
+            if let Some(array_index) = callback_array_index(name) {
+                // A spread hands over callbacks the rule cannot see.
+                if n.arguments
+                    .first()
+                    .is_some_and(|a| a.as_expression().is_none())
+                {
+                    self.bad = true;
+                } else if let Some(arg) = n.arguments.first().and_then(|a| a.as_expression()) {
+                    match arg.get_inner_expression() {
+                        Expression::ArrowFunctionExpression(f) => {
+                            if callback_covers_array(&f.params, array_index) {
+                                self.bad = true;
+                            }
+                        }
+                        Expression::FunctionExpression(f) => {
+                            if callback_covers_array(&f.params, array_index) {
+                                self.bad = true;
+                            }
+                        }
+                        _ => self.bad = true,
+                    }
+                }
             }
             if let Expression::ComputedMemberExpression(m) = n.callee.get_inner_expression() {
                 self.visit_expression(&m.expression);
@@ -278,6 +325,32 @@ impl<'a> Visit<'a> for Scan<'_> {
         walk::walk_function(self, n, f)
     }
 }
+fn initializer_appears(
+    s: &mut Scan<'_>,
+    id: &BindingIdentifier<'_>,
+    q: &oxc_ast::ast::FormalParameter<'_>,
+) -> bool {
+    let mut app = AppearsIn {
+        name: id.name.as_str(),
+        found: false,
+    };
+    app.visit_formal_parameter(q);
+    if app.found {
+        true
+    } else {
+        s.visit_formal_parameter(q);
+        false
+    }
+}
+/// Whether the parameter appears anywhere in the rest parameter, defaults included.
+fn rest_appears(id: &BindingIdentifier<'_>, rest: &oxc_ast::ast::FormalParameterRest<'_>) -> bool {
+    let mut app = AppearsIn {
+        name: id.name.as_str(),
+        found: false,
+    };
+    app.visit_formal_parameter_rest(rest);
+    app.found
+}
 struct Finder<'s> {
     source: &'s Source<'s>,
     diagnostics: Vec<Diagnostic>,
@@ -318,11 +391,21 @@ impl<'a> Visit<'a> for Finder<'_> {
     fn visit_function(&mut self, f: &Function<'a>, flags: oxc_syntax::scope::ScopeFlags) {
         if !self.source.path.to_string_lossy().ends_with(".d.ts") {
             if let Some(b) = &f.body {
-                for p in &f.params.items {
+                for (i, p) in f.params.items.iter().enumerate() {
                     if let Some(id) = parameter_identifier(&p.pattern) {
                         if p.accessibility.is_none() && !p.readonly && !p.r#override {
                             if let Some(t) = &p.type_annotation {
-                                self.report(id, &t.type_annotation, &|s| s.visit_function_body(b));
+                                self.report(id, &t.type_annotation, &|s| {
+                                    for (j, q) in f.params.items.iter().enumerate() {
+                                        if j != i && initializer_appears(s, id, q) {
+                                            s.bad = true;
+                                        }
+                                    }
+                                    if f.params.rest.as_ref().is_some_and(|r| rest_appears(id, r)) {
+                                        s.bad = true;
+                                    }
+                                    s.visit_function_body(b);
+                                });
                             }
                         }
                     }
@@ -333,14 +416,24 @@ impl<'a> Visit<'a> for Finder<'_> {
     }
     fn visit_arrow_function_expression(&mut self, a: &oxc_ast::ast::ArrowFunctionExpression<'a>) {
         if !self.source.path.to_string_lossy().ends_with(".d.ts") {
-            for p in &a.params.items {
+            for (i, p) in a.params.items.iter().enumerate() {
                 if let (Some(id), Some(t)) = (parameter_identifier(&p.pattern), &p.type_annotation)
                 {
-                    self.report(id, &t.type_annotation, &|s| match &a.body {
-                        ArrowFunctionBody::FunctionBody(b) => s.visit_function_body(b),
-                        body => {
-                            if let Some(e) = body.as_expression() {
-                                s.visit_expression(e)
+                    self.report(id, &t.type_annotation, &|s| {
+                        for (j, q) in a.params.items.iter().enumerate() {
+                            if j != i && initializer_appears(s, id, q) {
+                                s.bad = true;
+                            }
+                        }
+                        if a.params.rest.as_ref().is_some_and(|r| rest_appears(id, r)) {
+                            s.bad = true;
+                        }
+                        match &a.body {
+                            ArrowFunctionBody::FunctionBody(b) => s.visit_function_body(b),
+                            body => {
+                                if let Some(e) = body.as_expression() {
+                                    s.visit_expression(e)
+                                }
                             }
                         }
                     });
