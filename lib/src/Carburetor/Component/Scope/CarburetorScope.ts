@@ -23,8 +23,11 @@ export class CarburetorScope {
      *  A repeated lazy hydrate() merges its payload into this (new entries win) and applies
      *  new values to already created instances via fromJSON. */
     protected lazyHydration: IDict<unknown> | undefined = undefined;
+    /** Distinct owned instances in order of first ownership; disposed in reverse. */
     protected readonly creationOrder: unknown[] = [];
+    /** Token ids whose factories are running, for dependency-cycle errors. */
     protected readonly resolving: string[] = [];
+    /** Set once by dispose(); get, set and hydrate refuse afterwards. */
     protected disposed = false;
 
     /**
@@ -50,8 +53,9 @@ export class CarburetorScope {
         catch (error) { this.resolving.pop(); throw error; }
         this.resolving.pop();
         if (this.disposed) {
-            try { (created as {dispose?: () => void} | null)?.dispose?.(); }
-            finally { throw new Error('CarburetorScope: scope is disposed'); }
+            const disposedError = new Error('CarburetorScope: scope is disposed');
+            try { (created as {dispose?: () => void} | null)?.dispose?.(); } catch { /* the disposed error wins */ }
+            throw disposedError;
         }
         this.instances.set(token.id, created);
         if (!this.creationOrder.includes(created)) this.creationOrder.push(created);

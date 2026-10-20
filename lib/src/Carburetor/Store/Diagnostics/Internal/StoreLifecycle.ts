@@ -1,11 +1,14 @@
 import {createAbortHandle} from "@/Carburetor/Resource/Slot/createAbortHandle";
 
+/** Per-store disposal state kept outside the store: lazy signal, owned timers, disposed flag. */
 class StoreLifecycle {
+    /** Lifecycle state per store, created on first need. */
     private readonly states = new WeakMap<object, {
         disposed: boolean;
         controller?: AbortController;
         timers?: Set<ReturnType<typeof setTimeout>>;
     }>();
+    /** The error every use after disposal throws. */
     private readonly disposedError = (): Error => new Error('Carburetor: store has been disposed');
 
     /** Check whether the store is disposed.

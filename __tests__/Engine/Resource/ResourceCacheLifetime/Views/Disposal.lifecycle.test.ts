@@ -94,7 +94,7 @@ describe('resource disposal', () => {
     test.each(['resource', 'cache'] as const)(
         'disposing during key derivation prevents %s request creation', type => {
             let calls = 0;
-            let instance: ResourceCarburetor<string> | ResourceCache<string, [string]>;
+            let instance: {dispose(): void};
             const key = (): string => {
                 instance.dispose();
                 return 'key';
@@ -116,7 +116,7 @@ describe('resource disposal', () => {
     test.each(['resource', 'cache'] as const)(
         'mid-refresh disposal rejects refresh with the disposed error for %s', async type => {
             let calls = 0;
-            let instance!: ResourceCarburetor<string> | ResourceCache<string, [string]>;
+            let instance!: {dispose(): void};
             const gate = deferred<string>();
             const loader = (_arg: string | undefined, signal: AbortSignal): Promise<string> => {
                 calls++;

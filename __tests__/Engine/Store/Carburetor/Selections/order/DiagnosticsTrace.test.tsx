@@ -160,7 +160,7 @@ describe('global diagnostics tracing', () => {
             render() { const data = this.useCarburetor(store); return <span>{data.a}</span>; }
         }
         const view = render(<TracedWidget/>);
-        act(() => store.setData({a: 1, other: 0}));
+        act(() => { store.setData({a: 1, other: 0}); });
         expect(events).toHaveLength(1);
         expect(events[0]).toMatchObject({subscriber: 'TracedWidget', store: store.getUID(), paths: ['a']});
         stop();

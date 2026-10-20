@@ -249,6 +249,7 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
         this[R.abortKey](this[R.keyOf](args));
     }
 
+    /** Aborts every in-flight entry request; late answers are not published. */
     protected didDispose(): void {
         const requests: ICacheRequest[] = [];
         this[R.runtimeRecords]?.forEach((runtime) => {

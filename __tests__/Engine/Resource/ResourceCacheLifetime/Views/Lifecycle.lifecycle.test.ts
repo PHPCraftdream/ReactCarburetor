@@ -18,6 +18,7 @@ class LifecycleStore extends Carburetor<{value: number}> {
     public observe(): () => void { return this.watch(data => data.value, () => undefined); }
     public getSignal(): AbortSignal { return this.signal; }
     public scheduleTask(ms: number, task: () => void): () => void { return this.after(ms, task); }
+    // oxlint-disable-next-line carburetor/require-emit-after-draft-write
     public touchDraft(): void { this.draft.value++; }
     public didDisposeCalls = 0;
     protected didDispose(): void { super.didDispose(); this.didDisposeCalls++; }
@@ -78,7 +79,6 @@ describe('Carburetor lifecycle', () => {
     });
 
     test('signal works without a global AbortController and is aborted when first requested after disposal', () => {
-        const original = globalThis.AbortController;
         const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'AbortController');
         const error = rstest.spyOn(console, 'error').mockImplementation(() => undefined);
         try {

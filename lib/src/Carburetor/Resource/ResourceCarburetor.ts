@@ -273,6 +273,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         }
         throw this[R.start](args, true, false, key);
     }
+    /** Cancels the in-flight request and drops remembered answers. */
     protected didDispose(): void {
         this[R.operationVersion]++;
         this[R.cancelInFlight]();

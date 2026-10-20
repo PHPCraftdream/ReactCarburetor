@@ -59,16 +59,16 @@ test('scoped computed values are isolated; tracked kind ignores other round fiel
     expect(rightTree.container.querySelector('.visible')?.textContent).toBe('0,1');
     expect(kindRenders).toBe(1);
 
-    act(() => leftStore.markWrong(0));
+    act(() => { leftStore.markWrong(0); });
     expect(leftTree.container.querySelector('.visible')?.textContent).toBe('1');
     expect(rightTree.container.querySelector('.visible')?.textContent).toBe('0,1');
     expect(kindRenders).toBe(1);
 
-    act(() => leftStore.setData({round: {...leftStore.getData().round, kind: 'bonus'}}));
+    act(() => { leftStore.setData({round: {...leftStore.getData().round, kind: 'bonus'}}); });
     expect(leftTree.container.querySelector('.kind')?.textContent).toBe('bonus');
     expect(kindRenders).toBe(2);
 
-    act(() => rightStore.markWrong(1));
+    act(() => { rightStore.markWrong(1); });
     expect(leftTree.container.querySelector('.visible')?.textContent).toBe('1');
     expect(rightTree.container.querySelector('.visible')?.textContent).toBe('0');
     leftTree.unmount();

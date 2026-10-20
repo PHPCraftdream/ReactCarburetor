@@ -56,7 +56,9 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
     };
     /** Type-only event witness; `declare` emits no runtime field or allocation. */
     declare public readonly [CARBURETOR_EVENT_TYPES]?: TEvents;
+    /** Lazily created event listeners; absent until the first on(). */
     #eventHub?: StoreEvents<TEvents>;
+    /** Set when event listeners are dropped by dispose(). */
     #disposed = false;
     /** Registered callbacks and their stable scheduler keys, indexed by public local id. */
     public [S.subscribers]: IDict<ISubscriberRecord> = Object.create(null);

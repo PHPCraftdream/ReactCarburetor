@@ -15,7 +15,7 @@ describe('wide read diagnostics', () => {
         console.error = (...args: unknown[]) => errors.push(args);
         try {
             const view = render(<WideReader/>);
-            act(() => store.setData({a: 1, b: 0, c: 0}));
+            act(() => { store.setData({a: 1, b: 0, c: 0}); });
             view.unmount();
         } finally { console.error = original; diagnostics.setWideReadThreshold(Infinity); }
         expect(errors).toHaveLength(1);
@@ -37,7 +37,7 @@ describe('wide read diagnostics', () => {
         console.error = (...args: unknown[]) => errors.push(args);
         try {
             const view = render(<NarrowReader/>);
-            act(() => store.setData({a: 1, b: 1, unrelated: {secret: 2}}));
+            act(() => { store.setData({a: 1, b: 1, unrelated: {secret: 2}}); });
             view.unmount();
         } finally {
             console.error = original;
