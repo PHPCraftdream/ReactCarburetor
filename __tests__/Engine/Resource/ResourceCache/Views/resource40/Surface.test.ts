@@ -36,8 +36,9 @@ void assertGenericTypes;
 void assertConcreteTypes;
 
 describe('R40 Interop public surface', () => {
-    test('exports exactly the three value hooks', () => {
+    test('exports exactly the four hooks including events', () => {
         expect(Object.keys(Interop).sort()).toEqual([
+            'useCarburetorEvent',
             'useCarburetorValue',
             'useComputedValue',
             'useResourceValue',

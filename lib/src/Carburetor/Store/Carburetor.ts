@@ -4,7 +4,10 @@ import {
     STATE_MIXED_PUBLICATION, STATE_MUTATION_PUBLICATION, STATE_PUBLIC_REPLACEMENT, IWritePatch,
     TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
 } from "@/Carburetor/Models/Paths";
-import {ICarburetor, ICarburetorOptions, IPatchSource, ISubscribeOptions, IUpdateScheduler, TSelector} from "@/Carburetor/Models/Store";
+import {
+    ICarburetor, ICarburetorEvents, ICarburetorOptions, IPatchSource, ISubscribeOptions,
+    IUpdateScheduler, TSelector,
+} from "@/Carburetor/Models/Store";
 import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
 import {sameKind} from "./Paths/Diff/Kinds/sameKind";
@@ -37,16 +40,22 @@ import {
     IInternalSubscriptionProtocol, ISubscriberRecord,
 } from "./Utils/Models";
 import {S} from "./Diagnostics/Internal/StoreIdentity";
+import {StoreEvents} from "./Utils/Graph/Events/StoreEvents";
+import {CARBURETOR_EVENT_TYPES} from "./Utils/Graph/Events/EventTypes";
+import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 import {READS_RETAIN} from "@/Carburetor/Store/Paths/Markers/RetainDeliveryBrand";
 declare const process: {env: {NODE_ENV?: string}} | undefined;
-
-export class Carburetor<T extends object> implements
-    ICarburetor<T>, IPatchSource, IInternalSubscriptionProtocol {
+export class Carburetor<T extends object, TEvents extends object = {}> implements
+    ICarburetor<T>, IPatchSource, IInternalSubscriptionProtocol, ICarburetorEvents<TEvents> {
     /** Shared base-method identities; no registration record allocated per store. */
     private static readonly nativeStoreMethods = {
         getVersion: Carburetor.prototype.getVersion, emitUpdate: Carburetor.prototype.emitUpdate,
     };
+    /** Type-only event witness; `declare` emits no runtime field or allocation. */
+    declare public readonly [CARBURETOR_EVENT_TYPES]?: TEvents;
+    #eventHub?: StoreEvents<TEvents>;
+    #disposed = false;
     /** Registered callbacks and their stable scheduler keys, indexed by public local id. */
     public [S.subscribers]: IDict<ISubscriberRecord> = Object.create(null);
     /** Distinguishes registrations created after an event selected its subscribers. */
@@ -55,7 +64,6 @@ export class Carburetor<T extends object> implements
     public [S.subscriberIndex]: SubscriberIndex = new SubscriberIndex();
     /** Development alias ledger handed to both proxies; undefined outside development. */
     public [S.aliases]: TAliasLedger = createAliasLedger();
-
     /** The currently attached patch listener, if any; shared with the write proxy tree. */
     public [S.patchPort]: TPatchPort = {};
     /** Lazily attached mutation/publication observers, shared by draft and restore paths. */
@@ -68,7 +76,6 @@ export class Carburetor<T extends object> implements
     private [S.notifiedVersion] = 0;
     /** Maps a transferred read-set identity to its active subscription for constant-time drift answers. */
     private readonly [S.subscriptionByReads] = new WeakMap<TPathSet, ISubscriberRecord>();
-
     /** Paths changed since the last emitUpdate. */
     public [S.writes]: TPathSet = new Set<TPath>();
     /** The raw objects each pending write mutated, handed to the write log at emit. */
@@ -103,7 +110,6 @@ export class Carburetor<T extends object> implements
             this[S.rememberPublication](installation);
         }
     };
-
     /** Authoritative root, independent of the subclass getter. */
     private [S.data]!: T;
     /** Delivery policy, independent of application fields. */
@@ -118,28 +124,46 @@ export class Carburetor<T extends object> implements
      */
     constructor(data: T, scheduler: IUpdateScheduler | ICarburetorOptions = syncUpdateScheduler) {
         const policy = 'schedule' in scheduler ? scheduler : scheduler.scheduler ?? syncUpdateScheduler;
-
         this[S.data] = data; this[S.scheduler] = policy;
         this[S.aliases]?.checkState(data, '');
         nativeStoreWriteEpoch.sources.set(this, Carburetor.nativeStoreMethods);
     }
-
+    /** Emits one captured event to the listeners registered at this point.
+     *
+     * @param name - event name
+     * @param payload - event payload
+     */
+    protected emit<K extends keyof TEvents>(name: K, payload: TEvents[K]): void {
+        const delivery = this.#eventHub?.capture(name, payload);
+        if (delivery) updateBatch.enqueueAfterFlush(delivery);
+    }
+    /** Registers a typed one-off event listener.
+     *
+     * @param name - event name
+     * @param listener - callback receiving the event payload
+     */
+    public on<K extends keyof TEvents>(name: K, listener: (payload: TEvents[K]) => void): TDisposer {
+        if (this.#disposed) return (): void => {};
+        const hub = this.#eventHub ??= new StoreEvents<TEvents>();
+        return hub.on(name, listener);
+    }
+    /** Removes event listeners and cancels captured event delivery. */
+    public dispose(): void { this.cleanupEventListeners(); }
+    /** Clears listeners and cancels already captured event deliveries. */
+    private cleanupEventListeners(): void {
+        this.#disposed = true;
+        this.#eventHub?.dispose();
+        this.#eventHub = undefined;
+    }
     /** Current raw state; the root is readonly, while mutations still require draft publication. */
     protected get data(): T { return this[S.data]; }
-
     /** Unique engine identity. */
-    public getUID(): string {
-        return this[S.uid];
-    }
-
+    public getUID(): string { return this[S.uid]; }
     /**
      * The write counter, bumped on every emit. A component compares it between render and commit
      * to notice a write that landed in between, which would otherwise leave it subscribed to stale paths.
      */
-    public getVersion(): number {
-        return this[S.version];
-    }
-
+    public getVersion(): number { return this[S.version]; }
     /** The paths written after `baselineVersion`; undefined once the write log cannot enumerate them. */
     public [CARBURETOR_PATHS_SINCE](baselineVersion: number): ReadonlyArray<TPath> | undefined {
         return this[S.writeLog].pathsSince(baselineVersion);
@@ -150,7 +174,6 @@ export class Carburetor<T extends object> implements
     public [CARBURETOR_TARGETS_SINCE](baselineVersion: number): ReadonlyMap<TPath, ReadonlySet<object>> | undefined {
         return this[S.writeLog].targetsSince(baselineVersion);
     }
-
     /**
      * The path-precise drift check: could a write since `baselineVersion` concern
      * `reads`? O(1) for a read set this store filed; otherwise the write log, which says `true`
@@ -161,15 +184,12 @@ export class Carburetor<T extends object> implements
      */
     public [CARBURETOR_HAS_DRIFT](baselineVersion: number, reads: ReadonlySet<TPath>): boolean {
         const record = this[S.subscriptionByReads].get(reads as TPathSet);
-
         if (record && record.reads === reads && baselineVersion >= record.growthVersion
             && this[S.notifiedVersion] >= this[S.version]) {
             return record.matchedVersion > baselineVersion;
         }
-
         return this[S.writeLog].matches(baselineVersion, reads);
     }
-
     /**
      * History's draft replay of undo/redo patches; reached via the internal protocol.
      *
@@ -182,28 +202,21 @@ export class Carburetor<T extends object> implements
     ): void {
         replayPatchesOnPort(this[S.port], () => this.draft, patches, inverse, installation);
     }
-
     /** The state as it is, untracked: reads through it subscribe to nothing. */
     public getData(): T {
         return this[S.data];
     }
-
     /** The state behind a read proxy that reports every path the caller touches. */
     public read(record: TPathRecorder): TReadonly<T> {
         const data: unknown = this[S.data];
-
         if (!isTrackable(data)) {
             record(WILDCARD_PATH);
-
             return this[S.data] as unknown as TReadonly<T>;
         }
-
         return createReadProxy(data, record, '', this[S.aliases]) as unknown as TReadonly<T>;
     }
-
     /** Adopts `data` verbatim through the shared install/commit/delivery boundary. */
     public setData(data: T): T { return this[S.commitState](data, STATE_PUBLIC_REPLACEMENT); }
-
     /**
      * Installs one prepared root, records topology and changed paths, then closes publication — the
      * one entry library subclasses use instead of coordinating data, proxies, aliases and emits.
@@ -214,20 +227,16 @@ export class Carburetor<T extends object> implements
     public [S.commitState](data: T, installation: IStateInstallation = STATE_PUBLIC_REPLACEMENT): T {
         return installState(this[S.port], data, installation);
     }
-
     /** Symbol-keyed transaction view without an allocation on the write path. */
     private get [S.port](): IStateInstallPort<T> {
         return this as unknown as IStateInstallPort<T>;
     }
-
     /** Lets subclasses synchronize derived state before replacement notifications. */
     protected didSetData(): void {}
-
     /** Copies plain state while retaining native and class-instance references as documented. */
     public snapshot(): T {
         return deepClone(this[S.data]);
     }
-
     /** Owns the live graph for history: it is the authoritative raw state.
      * Internal engine protocol (history); not an extension point, no stability guarantee.
      *
@@ -238,7 +247,6 @@ export class Carburetor<T extends object> implements
     public captureHistory(own: <V>(value: V) => V): T {
         return own(this[S.data]);
     }
-
     /** Installs a detached snapshot with precise draft changes. A root kind change or an
      * oversized structural diff falls back to a whole-root replacement through setData().
      *
@@ -250,20 +258,16 @@ export class Carburetor<T extends object> implements
         const installation: IStateInstallation = claim
             ? {origin: 'restore', owner: claim.owner, representation: claim.representation}
             : {origin: 'restore', representation: 'public'};
-
         this[S.aliases]?.checkState(data, '');
-
         // An owned endpoint may need to keep aliases across plain/native branches intact.
         if (claim?.adopt) {
             this[S.commitState](data, installation);
             return;
         }
-
         if (!isTrackable(current) || !isTrackable(data) || !sameKind(current, data)) {
             this[S.commitState](deepClone(data), installation);
             return;
         }
-
         let applied: boolean;
         const previousInstallation = this[S.activeInstallation];
         this[S.activeInstallation] = installation;
@@ -284,15 +288,12 @@ export class Carburetor<T extends object> implements
             throw error;
         }
         this[S.activeInstallation] = previousInstallation;
-
         if (!applied) {
             installState(this[S.port], deepClone(data), installation, true);
             return;
         }
-
         this.emitUpdate(undefined, true);
     }
-
     /** Cancels one registration's scheduled updates and drops its read-set filing.
      *
      * @param record - the registration being replaced or removed. */
@@ -300,7 +301,6 @@ export class Carburetor<T extends object> implements
         this[S.scheduler].cancel(record.schedulerKey);
         if (this[S.subscriptionByReads].get(record.reads) === record) this[S.subscriptionByReads].delete(record.reads);
     }
-
     /** The store's wire form: the live data as it stands, without a copy.
      *
      * Ordinary stores expose live data; classes with another wire form override it. A detached
@@ -309,7 +309,6 @@ export class Carburetor<T extends object> implements
     public toJSON(): unknown {
         return this[S.data];
     }
-
     /**
      * The type-erased half of `setData`: adopts `value` directly, diffed the same way.
      * Unlike `restore`, it makes no copy: `value` is expected to be freshly parsed JSON the
@@ -321,7 +320,6 @@ export class Carburetor<T extends object> implements
     public fromJSON(value: unknown): void {
         this.setData(value as T);
     }
-
     /**
      * Registers a subscriber, returning its public, store-local id. Public read sets are copied;
      * fresh sets branded by `transferReads()` are adopted so `extend()` can grow them in place.
@@ -333,7 +331,6 @@ export class Carburetor<T extends object> implements
         const id = options.id || getUid();
         const given = options.reads;
         let reads: TPathSet;
-
         const transferred = given !== undefined
             && (options as {[READS_TRANSFER]?: unknown})[READS_TRANSFER] === given;
         if (given === undefined) {
@@ -343,7 +340,6 @@ export class Carburetor<T extends object> implements
         } else {
             reads = new Set<TPath>(given);
         }
-
         const previous = this[S.subscribers][id];
         const retained = previous && transferred
             && (options as {[READS_RETAIN]?: unknown})[READS_RETAIN] === true && previous.callback === callback;
@@ -363,10 +359,8 @@ export class Carburetor<T extends object> implements
         this[S.subscribers][id] = record;
         this[S.subscriptionByReads].set(reads, record);
         this[S.subscriberIndex].add(id, reads);
-
         return id;
     }
-
     /**
      * Adds one path to an already-registered subscription, without copying or re-filing
      * the rest of its read set — the incremental sibling of `subscribe`, for a caller
@@ -382,7 +376,6 @@ export class Carburetor<T extends object> implements
         if (!Object.prototype.hasOwnProperty.call(this[S.subscribers], id)) {
             return;
         }
-
         this[S.subscriberIndex].addPath(id, path);
         const record = this[S.subscribers][id];
         if (record) {
@@ -414,12 +407,10 @@ export class Carburetor<T extends object> implements
         onChange: (next: TReadonly<R>, previous: TReadonly<R>) => void): TDisposer {
         return watchSelection(this, select, onChange);
     }
-
     /** Delivers one notification pass for a closed write set; called only via the internal
      * symbol protocol, never as a public method. */
     public [CARBURETOR_NOTIFY_WRITES](writes: TPathSet): void {
         updateWave.begin();
-
         try {
             let failures: unknown[] | undefined;
             const generation = this[S.subscriptionGeneration];
@@ -454,7 +445,6 @@ export class Carburetor<T extends object> implements
             updateWave.end();
         }
     }
-
     /**
      * Writes through draft record changed paths; matching subscribers are woken.
      * Raw-state writes are unobserved. Alone, an emit without recorded paths wakes all;
@@ -462,28 +452,22 @@ export class Carburetor<T extends object> implements
      */
     protected get draft(): T {
         const data: unknown = this[S.data];
-
         this[S.touchDraft]();
-
         if (!isTrackable(data)) {
             // The store itself cannot be wrapped (a Map or a class instance as the root),
             // so a mutation through this reference is invisible. There is no path to be
             // precise about either, which makes the whole store the honest answer.
             this[S.recordWrite](WILDCARD_PATH);
             this[S.patchPort].listener?.(PATCH_OPAQUE);
-
             return this[S.data];
         }
-
         if (!this[S.draftProxy]) {
             this[S.draftProxy] = createWriteProxy(
                 data, this[S.writeRecorder], '', this[S.aliases], undefined, this[S.patchPort]
             ) as T;
         }
-
         return this[S.draftProxy]!;
     }
-
     /**
      * Mutates and publishes in one step: writing to `draft` and forgetting `emitUpdate()` changes
      * the data while nobody re-renders, which is why this is the recommended form.
@@ -498,16 +482,13 @@ export class Carburetor<T extends object> implements
      */
     protected update<A extends readonly unknown[]>(mutate: (draft: T, ...args: A) => void, ...args: A): void {
         let result: unknown;
-
         try {
             result = mutate(this.draft, ...args);
         } finally {
             this.emitUpdate();
         }
-
         if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') warnIfAsyncMutate(result);
     }
-
     /** Publishes on the next microtask when synchronous delivery is unsafe.
      * The parameters drive internal engine paths only; call this publicly without arguments.
      *
@@ -520,17 +501,14 @@ export class Carburetor<T extends object> implements
         }
         this[S.pendingEmit] = true;
         const scheduledAt = this[S.version];
-
         queueMicrotask(() => {
             this[S.pendingEmit] = false;
-
             // Keep the opaque fallback, unless a synchronous emit already published it.
             if (this[S.version] === scheduledAt || this[S.draftTouched] || this[S.writes].size > 0) {
                 this.emitUpdate(undefined, true);
             }
         });
     }
-
     /** Coalesces ordinary mutations without losing facts from root installs or owned operations.
      *
      * @param installation - the root transition, or none for an in-place mutation
@@ -547,15 +525,12 @@ export class Carburetor<T extends object> implements
             this[S.pendingPublication] = installation ?? STATE_MUTATION_PUBLICATION;
         }
     }
-
     /** Marks draft as used and arms the development check for a write that never published. */
     public [S.touchDraft](): void {
         if (this[S.draftTouched]) {
             return;
         }
-
         this[S.draftTouched] = true;
-
         // Keep the diagnostic inside the development guard so its message is removed from
         // production bundles. A single callback per store suffices: it reads the current cycle.
         if (IS_DEVELOPMENT) {
@@ -564,18 +539,16 @@ export class Carburetor<T extends object> implements
                     if (!this[S.draftTouched] || this[S.pendingEmit]) {
                         return;
                     }
-
                     diagnostics.report(
                         'a write went through draft, but emitUpdate() was never called, so no ' +
-                        'subscriber was notified. Prefer this.update(mutate, ...args), which writes and publishes in one step.'
+                        'subscriber was notified. Prefer this.update(mutate, ...args), which writes ' +
+                        'and publishes in one step.'
                     );
                 };
             }
-
             queueMicrotask(this[S.unpublishedDraftCheck]!);
         }
     }
-
     /** Remembers one changed path, so the emit wakes only the subscribers that read it. */
     public [S.recordWrite](path: TPath): void { this[S.writes].add(path); }
     /** Marks the whole store as changed: the escape hatch for a write that bypassed draft. */
@@ -584,10 +557,8 @@ export class Carburetor<T extends object> implements
         this[S.recordWrite](WILDCARD_PATH);
         this[S.patchPort].listener?.(PATCH_OPAQUE);
     }
-
     /** A hook for subclasses to write derived state before an emit goes out. */
     protected preEmit(_changed: ReadonlySet<string>): void {}
-
     /** Closes the completed write set through the shared pre-subscriber publication boundary.
      * The parameters drive internal engine paths only; call this publicly without arguments.
      *

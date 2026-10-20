@@ -1,5 +1,18 @@
 import {TDisposer, TReadonly, TSubscriber, TUpdater} from "./Base";
 import {IPatchObserver} from "./Paths";
+import {CARBURETOR_EVENT_TYPES} from "@/Carburetor/Store/Utils/Graph/Events/EventTypes";
+
+/** Event subscription capability exposed separately from existing carburetor interfaces. */
+export interface ICarburetorEvents<TEvents extends object> {
+    /** Optional structural witness used only for event-type inference. */
+    readonly [CARBURETOR_EVENT_TYPES]?: TEvents;
+    /** Registers a listener for a named event and returns its disposer.
+     *
+     * @param name - the event name
+     * @param listener - called with the event payload
+     */
+    on: <K extends keyof TEvents>(name: K, listener: (payload: TEvents[K]) => void) => TDisposer;
+}
 
 /**
  * Picks the part of a carburetor's data one subscription cares about, run against a tracked

@@ -20,6 +20,8 @@ export class C {
     public static readonly declareConnection = Symbol("component.declareConnection");
     /** Internal effects slot. */
     public static readonly effects = Symbol("component.effects");
+    /** Internal eventSubscriptions slot. */
+    public static readonly eventSubscriptions = Symbol("component.eventSubscriptions");
     /** Internal ensureEffects slot. */
     public static readonly ensureEffects = Symbol("component.ensureEffects");
     /** Internal ensureTracked slot. */

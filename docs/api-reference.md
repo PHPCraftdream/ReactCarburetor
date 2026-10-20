@@ -65,6 +65,30 @@ serialization limits. Schema options with `partitions` throw eagerly rather than
 | `useComputedValue<R>` | `(computed: IComputed<R>): R` | Returns the live computed value, not a detached result. Mutable results can retain identity; memoized children may not rerender, so pass scalar or detached projections. | [`useComputedValue.ts`](../lib/src/Interop/useComputedValue.ts) |
 | `useResourceValue<T, TArgs, R>` | `(source, args: TArgs, select, isEqual?): TReadonly<R>` where `TArgs extends TResourceArgs` — the loader arguments are an explicit tuple (`[]` for a resource without arguments) and precede the required synchronous selector, which returns a detached readonly value; loading starts after commit. | [`useResourceValue.ts`](../lib/src/Interop/useResourceValue.ts) |
 
+## Events
+
+`Carburetor<T, TEvents = {}>` implements `ICarburetorEvents<TEvents>` when an event map is supplied.
+Event names and payloads are inferred from that map.
+
+- `protected emit<K extends keyof TEvents>(name: K, payload: TEvents[K]): void` captures current listeners.
+  It does not mutate state or increment the version. Outside transactions, delivery is synchronous
+  inside `emit()`; in transactions, delivery waits until the outer transaction closes, FIFO. A
+  throwing transaction does not roll back state and still drains captured events.
+- `on<K extends keyof TEvents>(name: K, listener: (payload: TEvents[K]) => void): TDisposer`
+  registers a listener. Its idempotent disposer removes that registration; a listener removed
+  before its turn during delivery is skipped. There is no replay, and listener errors are isolated.
+- `dispose(): void` removes listeners, prevents future registrations and cancels captured deliveries.
+- `AntiHookComponent.useEvent(store, name, handler): void` subscribes using a stable handler; that
+  handler's sole registration is replaced if its store or event name changes and disposed on
+  component cleanup.
+- `useCarburetorEvent(store, name, handler): void` subscribes in an effect with dependencies
+  `[store, name, handler]`. Import it from `react-carburetor/interop`.
+
+Events do not participate in versions, history, persistence, DevTools, or dehydration. See
+[One-off events](../README.md#one-off-events), the
+[class example](../examples/readme/Interop/OneOffEvents.tsx), and
+[hooks example](../examples/readme/Interop/HookOneOffEvents.tsx).
+
 ## Types index
 
 The four lint types below come from `react-carburetor/lint`.

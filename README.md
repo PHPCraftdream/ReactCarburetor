@@ -98,6 +98,82 @@ export class Counter extends AntiHookComponent {
 }
 ```
 
+## One-off events
+
+<!-- example:file examples/readme/Interop/OneOffEvents.tsx -->
+```tsx
+import {bind} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from 'react-carburetor';
+
+interface IStatus {online: boolean}
+interface IEvents {connected: {at: number}}
+
+/** Sets the status online before its connected event is emitted. */
+const setOnline = (draft: IStatus): void => {
+    draft.online = true;
+};
+
+class StatusCarburetor extends Carburetor<IStatus, IEvents> {
+    @bind
+    connect(): void {
+        this.update(setOnline);
+        this.emit('connected', {at: Date.now()});
+    }
+}
+
+const statusCarburetor = new StatusCarburetor({online: false});
+
+export class StatusView extends AntiHookComponent {
+    protected useEffects(): void {
+        this.useEvent(statusCarburetor, 'connected', this.receiveConnected);
+    }
+
+    /** @param event - the connection event payload */
+    @bind
+    protected receiveConnected(event: IEvents['connected']): void {
+        console.info('Connected at', event.at);
+    }
+
+    public render() {
+        const {online} = this.useCarburetor(statusCarburetor);
+        return <button onClick={statusCarburetor.connect}>{online ? 'Online' : 'Connect'}</button>;
+    }
+}
+```
+
+Events notify listeners but do not change state or versions. Call `emit()` after publishing the state
+it describes. Outside transactions, delivery occurs synchronously inside `emit()`; within transactions,
+delivery waits until the outer transaction closes. A throwing transaction does not roll back state
+and still drains captured events. Events have no replay and do not participate in history, persistence,
+DevTools, or dehydration. Listener errors are isolated, and `dispose()` cancels pending delivery and
+prevents future registrations.
+
+`AntiHookComponent` subscribes from `useEffects()` using `this.useEvent(store, name, handler)`.
+Use a stable `@bind` method; each handler owns one registration, replaced when store or name changes.
+`useCarburetorEvent(store, name, handler)` is the hooks alternative, with dependencies
+`[store, name, handler]`. See the [class example](examples/readme/Interop/OneOffEvents.tsx) and
+[hooks example](examples/readme/Interop/HookOneOffEvents.tsx).
+
+<!-- example:file examples/readme/Interop/HookOneOffEvents.tsx -->
+```tsx
+import {Carburetor} from 'react-carburetor';
+import {useCarburetorEvent} from 'react-carburetor/interop';
+
+interface IEvents {connected: {at: number}}
+
+class StatusCarburetor extends Carburetor<{online: boolean}, IEvents> {}
+const statusCarburetor = new StatusCarburetor({online: false});
+/** @param event - the connection event payload */
+const receiveConnected = (event: IEvents['connected']): void => {
+    console.info('Connected at', event.at);
+};
+
+export const HookStatus = () => {
+    useCarburetorEvent(statusCarburetor, 'connected', receiveConnected);
+    return null;
+};
+```
+
 ## Public contract at a glance
 
 - **Reading:** `this.useCarburetor(store)` in render — see

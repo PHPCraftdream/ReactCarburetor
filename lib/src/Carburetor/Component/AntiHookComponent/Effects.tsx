@@ -2,10 +2,11 @@
 
 import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
 
-import {IDict, TEffect, TEffectDeps} from "@/Carburetor/Models/Base";
+import {IDict, TEffect, TEffectDeps, TDisposer} from "@/Carburetor/Models/Base";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {AntiHookComponentReads} from "./Reads";
 import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
+import {ICarburetorEvents} from "@/Carburetor/Models/Store";
 
 declare const process: {env: {NODE_ENV?: string}} | undefined;
 
@@ -48,6 +49,50 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * Records of effects keyed by the effect function itself; allocated lazily.
      */
     private [C.functionEffects]: Map<TEffect, IEffectRecord> | undefined = undefined;
+
+    /** Event registrations are stored under an internal symbol to avoid subclass field collisions. */
+    private [C.eventSubscriptions]?: Array<{
+        store: object;
+        name: PropertyKey;
+        handler: (payload: never) => void;
+        dispose: TDisposer;
+    }>;
+
+    /**
+     * Subscribes a stable handler to a typed store event for this component's lifetime.
+     * One registration is kept per handler; changing its store or event replaces that registration.
+     *
+     * @param store - the event-capable carburetor
+     * @param name - the event to receive
+     * @param handler - a stable (normally `@bind`) event handler
+     */
+    protected useEvent<TEvents extends object, K extends keyof TEvents>(
+        store: ICarburetorEvents<TEvents>,
+        name: K,
+        handler: (payload: TEvents[K]) => void
+    ): void {
+        let registrations = this[C.eventSubscriptions];
+
+        if (registrations === undefined) {
+            registrations = [];
+            this[C.eventSubscriptions] = registrations;
+        }
+
+        const current = registrations.find(record => record.handler === handler);
+
+        if (current && current.store === store && current.name === name) return;
+        if (current) {
+            current.dispose();
+            registrations.splice(registrations.indexOf(current), 1);
+        }
+        const dispose = store.on(name, handler);
+        registrations.push({
+            store: store as object,
+            name: name as PropertyKey,
+            handler: handler as (payload: never) => void,
+            dispose,
+        });
+    }
 
     /**
      * Runs `callBack` when its dependencies changed since the last run, keyed by name.
@@ -204,7 +249,10 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
 
         this[C.functionEffects] = undefined;
 
-        if (records === undefined && functionRecords === undefined) {
+        const eventSubscriptions = this[C.eventSubscriptions];
+        this[C.eventSubscriptions] = undefined;
+
+        if (records === undefined && functionRecords === undefined && eventSubscriptions === undefined) {
             return;
         }
 
@@ -237,6 +285,14 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
                 }
             });
         }
+
+        eventSubscriptions?.forEach(record => {
+            try {
+                record.dispose();
+            } catch (error: unknown) {
+                failures.push(error);
+            }
+        });
 
         // One report per teardown, covering both string-keyed and function-keyed cleanups.
         failures.forEach((error: unknown) => this[C.reportTeardownFailure](
