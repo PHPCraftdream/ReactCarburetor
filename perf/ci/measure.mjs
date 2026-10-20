@@ -61,10 +61,12 @@ export const measureControls = async (baseline, gateFiles, runs, output) => {
                     const diagnostic = metrics.results.filter(result => result.diagnostic);
                     assert.equal(diagnostic.length, 4);
                     if (side === 'after') assert.ok(metrics.results.every(result => result.correct));
-                    else assert.ok(diagnostic.every(result => !result.correct && result.defect?.code === 'ERR_ASSERTION'));
+                    // A baseline that already carries the array-spine fix reports the diagnostic lanes as correct.
+                    else assert.ok(diagnostic.every(result => result.correct || result.defect?.code === 'ERR_ASSERTION'));
                     assert.ok(metrics.results.filter(result => !result.diagnostic).every(result => result.correct));
                 } else {
-                    const results = evaluate(entry, summarize([metrics]), new Map());
+                    // Scale gates compare against the @1 entry and are evaluated on the summaries below.
+                    const results = evaluate({...entry, gates: entry.gates.filter(gate => !gate.scale)}, summarize([metrics]), new Map());
                     assert.ok(results.every(result => result.ok), JSON.stringify(results.filter(result => !result.ok)));
                     if (entry.scenario === 'history44/timing') {
                         assert.equal(metrics.wholeEndpointsCorrect, true); assert.equal(metrics.publicationCorrect, true);
