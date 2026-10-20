@@ -32,6 +32,7 @@ const EXPECTED: string[] = [
     'Carburetor/Component/Scope/CarburetorContext',
     'Carburetor/Component/Scope/CarburetorProvider',
     'Carburetor/Component/ScopedAntiHookComponent',
+    'Interop/useCarburetorEvent',
     'Interop/useCarburetorValue',
     'Interop/useComputedValue',
     'Interop/useResourceValue',

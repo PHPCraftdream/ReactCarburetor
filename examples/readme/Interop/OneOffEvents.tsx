@@ -1,5 +1,6 @@
 import {bind} from 'react-carburetor';
 import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import type {ICarburetorEvents} from 'react-carburetor';
 
 interface IStatus {online: boolean}
 interface IEvents {connected: {at: number}}
@@ -18,6 +19,15 @@ class StatusCarburetor extends Carburetor<IStatus, IEvents> {
 }
 
 const statusCarburetor = new StatusCarburetor({online: false});
+
+/** Logs one connection event. */
+const logConnected = (event: IEvents['connected']): void => {
+    console.info('Connected at', event.at);
+};
+
+/** Any store emitting `connected` fits, not only StatusCarburetor. */
+export const watchConnections = (source: ICarburetorEvents<IEvents>): (() => void) =>
+    source.on('connected', logConnected);
 
 export class StatusView extends AntiHookComponent {
     protected useEffects(): void {

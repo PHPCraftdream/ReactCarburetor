@@ -10,7 +10,7 @@ describe('R40-01 built subclass contract', () => {
         const members = [...text.matchAll(/^\s+protected (?:get )?(\w+)/gm)]
             .map(match => match[1]).sort((a, b) => a.localeCompare(b));
         expect(members).toEqual([
-            'after', 'data', 'didDispose', 'didSetData', 'draft', 'emitSoon', 'emitUpdate', 'signal',
+            'after', 'data', 'didDispose', 'didSetData', 'draft', 'emit', 'emitSoon', 'emitUpdate', 'signal',
             'markAllChanged', 'preEmit', 'update',
         ].sort());
         expect(text).toMatch(/protected get data\(\): T;/);
@@ -45,7 +45,7 @@ describe('R40-01 built subclass contract', () => {
         }
         expect([...names].sort()).toEqual(['componentDidMount', 'componentDidUpdate', 'componentWillUnmount',
             'connect', 'connectSelection', 'shouldComponentUpdate', 'unUseEffects', 'useCarburetor',
-            'useComputed', 'useEffect', 'useEffects', 'useResource', 'suspendResource'].sort());
+            'useComputed', 'useEffect', 'useEffects', 'useEvent', 'useResource', 'suspendResource'].sort());
     });
 
     test('strict consumer fixture compiles against dist declarations', () => {

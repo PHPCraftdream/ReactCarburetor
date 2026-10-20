@@ -104,6 +104,7 @@ export class Counter extends AntiHookComponent {
 ```tsx
 import {bind} from 'react-carburetor';
 import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import type {ICarburetorEvents} from 'react-carburetor';
 
 interface IStatus {online: boolean}
 interface IEvents {connected: {at: number}}
@@ -122,6 +123,15 @@ class StatusCarburetor extends Carburetor<IStatus, IEvents> {
 }
 
 const statusCarburetor = new StatusCarburetor({online: false});
+
+/** Logs one connection event. */
+const logConnected = (event: IEvents['connected']): void => {
+    console.info('Connected at', event.at);
+};
+
+/** Any store emitting `connected` fits, not only StatusCarburetor. */
+export const watchConnections = (source: ICarburetorEvents<IEvents>): (() => void) =>
+    source.on('connected', logConnected);
 
 export class StatusView extends AntiHookComponent {
     protected useEffects(): void {
@@ -736,6 +746,18 @@ package also ships pre-stripped outputs selected by the `production` condition i
 for toolchains that do not substitute `NODE_ENV` themselves.
 
 `diagnostics.traceUpdates(listener)` observes delivered subscriber callbacks, not React renders.
+
+<!-- example:file examples/readme/Core/Diagnostics.ts#trace -->
+```ts
+/** Logs which subscriber woke and which written paths it had read. */
+const logTrace = (trace: IUpdateTrace): void => {
+    console.debug(trace.subscriber, trace.store, trace.paths);
+};
+
+const stopTrace = diagnostics.traceUpdates(logTrace);
+stopTrace();
+```
+
 `diagnostics.setWideReadThreshold(n)` turns on a development warning for a component that reads
 more than `n` paths of one store in a render (off by default; for example `100`; `Infinity` turns
 it off again). Large read sets often come from enumerating values or spreading an
