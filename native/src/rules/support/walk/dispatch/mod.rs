@@ -204,6 +204,9 @@ pub(super) fn run(
                     source,
                     &config.require_tsdoc(),
                 ),
+                style::prefer_readonly_array_param::RULE => {
+                    style::prefer_readonly_array_param::check(program, source, &bases)
+                }
                 _ => check(program, source, &bases),
             });
         }

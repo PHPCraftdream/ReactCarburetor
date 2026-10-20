@@ -26,6 +26,7 @@ import {maxLineLength} from "./Rules/Style/maxLineLength.mts";
 import {noBlankLineAfterTsdoc} from "./Rules/Style/noBlankLineAfterTsdoc.mts";
 import {noParentImport} from "./Rules/Style/noParentImport.mts";
 import {requireTsdoc} from "./Rules/Style/requireTsdoc.mts";
+import {preferReadonlyArrayParam} from "./Rules/Style/preferReadonlyArrayParam.mts";
 import {tsdocBlankLineBeforeTags} from "./Rules/Style/tsdocBlankLineBeforeTags.mts";
 import {noLifecycleClassProperty} from "./Rules/Lifecycle/noLifecycleClassProperty.mts";
 import {requireBindForPassedMethod} from "./Rules/Lifecycle/requireBindForPassedMethod.mts";
@@ -69,6 +70,7 @@ const plugin: IPlugin = {
         'max-line-length': maxLineLength,
         'no-blank-line-after-tsdoc': noBlankLineAfterTsdoc,
         'no-parent-import': noParentImport,
+        'prefer-readonly-array-param': preferReadonlyArrayParam,
         'require-tsdoc': requireTsdoc,
         'tsdoc-blank-line-before-tags': tsdocBlankLineBeforeTags,
         'no-lifecycle-class-property': noLifecycleClassProperty,

@@ -59,15 +59,52 @@ pub fn lines(diagnostics: &[Diagnostic]) -> Vec<usize> {
 #[cfg(test)]
 mod registry {
 
-use std::path::Path;
+    use std::path::Path;
 
     use oxc_allocator::Allocator;
     use oxc_parser::Parser;
     use oxc_span::SourceType;
 
-use crate::config::{Config, ModuleFunctionScope, Severity};
-use crate::rules::{allocations, boundaries, data, effects, lifecycle, rule_possible, run, Diagnostic, Source};
-use crate::rules::support::bases::Bases;
+    use crate::config::{Config, ModuleFunctionScope, Severity};
+    use crate::rules::support::bases::Bases;
+    use crate::rules::{
+        allocations, boundaries, data, effects, lifecycle, rule_possible, run, Diagnostic, Source,
+    };
+
+    #[test]
+    fn readonly_array_param_prefilter_requires_array_syntax_marker() {
+        assert!(rule_possible(
+            crate::rules::style::prefer_readonly_array_param::RULE,
+            "function f(xs: T[]) {}",
+            &Bases::default(),
+        ));
+        assert!(rule_possible(
+            crate::rules::style::prefer_readonly_array_param::RULE,
+            "function f(xs: Array<T>) {}",
+            &Bases::default(),
+        ));
+        assert!(rule_possible(
+            crate::rules::style::prefer_readonly_array_param::RULE,
+            r"function f(xs: Arr\u0061y<number>) {}",
+            &Bases::default(),
+        ));
+        assert!(rule_possible(
+            crate::rules::style::prefer_readonly_array_param::RULE,
+            "function f(xs: /* array */ Array <T>) {}",
+            &Bases::default(),
+        ));
+        assert!(rule_possible(
+            crate::rules::style::prefer_readonly_array_param::RULE,
+            "function f(xs: number[ /* element */ ]) {}",
+            &Bases::default(),
+        ));
+        assert!(!rule_possible(
+            crate::rules::style::prefer_readonly_array_param::RULE,
+            "function f(xs: number) {}",
+            &Bases::default(),
+        ));
+
+    }
 
     fn run_with_overlaps(
         text: &str,

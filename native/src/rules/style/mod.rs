@@ -7,6 +7,7 @@
 pub(crate) mod max_line_length;
 pub(crate) mod no_blank_line_after_tsdoc;
 pub(crate) mod no_parent_import;
+pub(crate) mod prefer_readonly_array_param;
 pub(crate) mod require_tsdoc;
 pub(crate) mod tsdoc_blank_line_before_tags;
 

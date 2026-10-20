@@ -31,6 +31,7 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/max-line-length': 'off',
     'carburetor/no-blank-line-after-tsdoc': 'off',
     'carburetor/no-parent-import': 'off',
+    'carburetor/prefer-readonly-array-param': 'off',
     'carburetor/require-tsdoc': 'off',
     'carburetor/tsdoc-blank-line-before-tags': 'off',
     'carburetor/no-module-level-store': 'off',

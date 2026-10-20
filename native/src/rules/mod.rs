@@ -29,7 +29,7 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check, bool); 36] = [
+const REGISTRY: [(&str, Check, bool); 37] = [
     (
         boundaries::max_render_depth::RULE,
         boundaries::max_render_depth::check,
@@ -201,6 +201,11 @@ const REGISTRY: [(&str, Check, bool); 36] = [
         false,
     ),
     (
+        style::prefer_readonly_array_param::RULE,
+        style::prefer_readonly_array_param::check,
+        false,
+    ),
+    (
         style::require_tsdoc::RULE,
         style::require_tsdoc::check,
         false,
@@ -358,6 +363,9 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
             text.contains("useCarburetorValue") || text.contains("useResourceValue")
         }
         style::no_parent_import::RULE => text.contains("../"),
+        style::prefer_readonly_array_param::RULE => {
+            text.contains('[') || text.contains("Array") || text.contains('\\')
+        }
         style::no_blank_line_after_tsdoc::RULE | style::tsdoc_blank_line_before_tags::RULE => {
             text.contains("/*")
         }
@@ -500,6 +508,9 @@ pub(super) fn run_sequential(
                     source,
                     &config.require_tsdoc(),
                 ),
+                style::prefer_readonly_array_param::RULE => {
+                    style::prefer_readonly_array_param::check(program, source, &bases)
+                }
                 _ => check(program, source, &bases),
             },
         };

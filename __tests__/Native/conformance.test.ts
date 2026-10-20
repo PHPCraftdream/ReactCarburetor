@@ -75,6 +75,7 @@ const CORPUS: readonly string[] = [
     path.join('plugin', '__fixtures__', 'operations', 'effects.tsx'),
     path.join('plugin', '__fixtures__', 'operations', 'boundaries.ts'),
     path.join('plugin', '__fixtures__', 'operations', 'oneExport.ts'),
+    path.join('plugin', '__fixtures__', 'style', 'preferReadonlyArrayParam.ts'),
     path.join('plugin', '__fixtures__', 'lifecycle', 'lifecycleClassProperty.tsx'),
     path.join('plugin', '__fixtures__', 'function-components.tsx'),
     path.join('plugin', '__fixtures__', 'consumer', 'noHooks.jsx'),

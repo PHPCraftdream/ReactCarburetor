@@ -1309,7 +1309,9 @@ projections.
 
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
-subscribed to, or when an effect's cleanup is silently dropped. The package ships 26 core rules plus the optional 27th `no-react-hooks-in-components` rule. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
+subscribed to, or when an effect's cleanup is silently dropped. The plugin and native registries each
+contain 37 rules: 31 catalogue rules, the optional `no-react-hooks-in-components` policy, and five
+house-style rules. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
 reference by rule name — what each catches, how to switch one off, and the optional `no-hooks`
 preset. [docs/hazards.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/hazards.md) is the same material by mistake, with the code that
 triggers it, why it is silent at runtime, and where the rule can be wrong.

@@ -94,6 +94,7 @@ arbitrary inheritance chains. Custom component classes should directly inherit
 | H34 | `no-capturing-hook-selector` | allocations | warn | no |
 | H35 | `max-render-depth` | lifecycle | warn | no |
 | H36 | `one-export-per-file` | boundaries | off | no |
+| H37 | `prefer-readonly-array-param` | style | off | no |
 
 Three of these overlap with a runtime diagnostic the engine already reports in development
 (H6, H14, H17). The rule is still worth having: it fires on code paths that were never
@@ -103,11 +104,13 @@ All four syntactic forms of a change count wherever a rule looks for one: `x.y =
 `delete x.y`, and an in-place array method (`push`, `splice`, `sort`, …). A rule that handled only
 assignment would miss three quarters of the hazard.
 
-**30 catalogue rules are implemented**, covering H1–H23, H26 and H29–H36: reads (H1–H5), writes (H6–H11),
-lifecycle (H12, H13, H21, H22, H35), effects (H14–H16), boundaries (H17–H20, H36) and allocations (H29–H34),
-with H23 and H26 folded into shared rules. H24 and H25 are not implemented; H27 is not a rule.
-The optional `no-react-hooks-in-components` policy brings the registry total to 31; `no-module-level-store`
-and `one-export-per-file` remain off in recommended. Detection lives in `native/src/rules/`, tested there with oxc's parser.
+**31 catalogue rules are implemented**, covering H1–H23, H26 and H29–H37: reads (H1–H5), writes
+(H6–H11), lifecycle (H12, H13, H21, H22, H35), effects (H14–H16), boundaries (H17–H20, H36) and
+allocations (H29–H34), with H23 and H26 folded into shared rules. H24 and H25 are not implemented;
+H27 is not a rule. The plugin registry totals 37 rules: the 31 catalogue rules, optional
+`no-react-hooks-in-components`, and five house-style rules; the native registry also totals 37.
+`no-module-level-store` and `one-export-per-file` remain off in recommended. Detection lives in
+`native/src/rules/`, tested there with oxc's parser.
 The thin host bridge reports native diagnostics. Real fixture and host coverage live in
 `__tests__/Native/conformance.test.ts` and `__tests__/Plugin/host.test.ts`.
 
@@ -1046,6 +1049,32 @@ simply wrong, and `invalidate` is the only thing that can rescue it.
 **Right.** Give data the user edits a short lifetime, or none at all, and invalidate on write.
 
 **Rule** none. This is a judgement about the data, and a linter has no way to make it.
+
+### H37 — mutable array parameters that are only read
+
+**Wrong**
+
+```text
+function labels(items: string[]): string[] { return [...items]; }
+```
+
+**Why this matters.** TypeScript catches readonly-to-mutable array incompatibility, but cannot infer
+readonly intent for a function accepting a mutable array that only reads it.
+
+**Right.** Use `readonly T[]` or `ReadonlyArray<T>`.
+
+**Rule** `prefer-readonly-array-param` — **off** by default.
+
+**Detection.** A syntactic heuristic for simple identifier `T[]` or `Array<T>` parameters on functions,
+methods and arrows, including optional/defaulted parameters. It skips rest/destructured parameters,
+bodyless declarations, abstract methods and `.d.ts` files. Constructor properties are skipped;
+ordinary constructor parameters are analyzed. Member reads and nonmutator method calls, for-of
+iteration, spread into arrays/calls/objects, comparisons, `typeof`/`in` checks and conditions are
+safe. Any whole-parameter use in an unapproved position suppresses the report. Nested functions
+are scanned under the same policy.
+
+**Fix.** Converts `T[]` to `readonly T[]` and `Array<T>` to `ReadonlyArray<T>`; the change is shallow
+and may affect caller assignability. This is opt-in; indirect mutation or retention is not inferred.
 
 ## Allocations
 

@@ -32,6 +32,7 @@
     "carburetor/require-emit-after-draft-write": "error",
     "carburetor/require-method-for-closure": "error",
     "carburetor/require-module-function": "error",
+    "carburetor/prefer-readonly-array-param": "error",
     "carburetor/require-subscription-disposal": "error",
     "carburetor/require-super-in-lifecycle": "error"
   }

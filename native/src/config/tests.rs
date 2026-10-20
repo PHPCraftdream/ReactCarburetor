@@ -16,6 +16,10 @@ fn an_empty_object_is_pure_defaults() {
     );
     assert_eq!(config.severity("require-effect-deps"), Severity::Warn);
     assert_eq!(
+        config.severity("carburetor/prefer-readonly-array-param"),
+        Severity::Off
+    );
+    assert_eq!(
         config.severity("carburetor/no-async-effect"),
         Severity::Error
     );

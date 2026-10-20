@@ -88,6 +88,7 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("no-memo-over-store-read", Severity::Warn),
     ("no-module-level-store", Severity::Off),
     ("no-parent-import", Severity::Off),
+    ("prefer-readonly-array-param", Severity::Off),
     ("no-react-hooks-in-components", Severity::Off),
     ("no-store-write-in-render", Severity::Error),
     ("no-tracked-data-mutation", Severity::Error),

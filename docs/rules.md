@@ -5,9 +5,9 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
-`no-hooks` preset adds a component-architecture policy. The registry contains **31 rules**:
-30 catalogue rules plus the optional `no-react-hooks-in-components` rule. `no-module-level-store`
-and `one-export-per-file` are off in recommended configuration, so do not equate registry count with enabled rule count.
+`no-hooks` preset adds a component-architecture policy. The plugin registry contains **37 rules**:
+31 catalogue rules, the optional `no-react-hooks-in-components` policy, and five house-style rules. The native registry also has 37
+entries. `no-module-level-store` and `one-export-per-file` are off in recommended configuration.
 
 ## Functional component reads
 
@@ -171,6 +171,7 @@ until your project changes shape.
 | `max-line-length` | off | A source line longer than the configured limit; house style, opt-in | — |
 | `no-blank-line-after-tsdoc` | off | A blank line between a TSDoc block and the declaration it documents; house style, opt-in | — |
 | `no-parent-import` | off | An import reaching up out of its directory instead of through the configured alias; house style, opt-in | — |
+| `prefer-readonly-array-param` | off | Non-mutating array parameters; opt-in syntactic heuristic | [H37](hazards.md) |
 | `require-tsdoc` | off | A function, method or function-valued member without a short TSDoc block; house style, opt-in | — |
 | `tsdoc-blank-line-before-tags` | off | A missing blank line between a TSDoc description and its first block tag; house style, opt-in | — |
 | `no-async-effect` | error | An `async` effect body, whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
@@ -203,6 +204,24 @@ until your project changes shape.
 | `require-module-function` | warn | A clean nested function needing no surrounding invocation state, or an eligible component member needing no class; configurable scope | [H30](hazards.md) |
 | `require-subscription-disposal` | warn | A subscription whose id is discarded, so it can never be released | [H20](hazards.md) |
 | `require-super-in-lifecycle` | error | A lifecycle override that skips `super`, disabling effects, cleanup or the props gate | [H12](hazards.md) |
+
+### prefer-readonly-array-param (H37)
+
+The rule recommends `readonly` for simple identifier parameters `T[]` or `Array<T>`, including
+optional and defaulted parameters on functions, methods and arrows. Fixes are shallow:
+`readonly T[]` or `ReadonlyArray<T>`.
+
+Rest/destructured parameters, bodyless declarations, abstract methods and `.d.ts` files are skipped.
+Ordinary constructor parameters remain eligible; constructor properties are skipped. The rule only
+reports whole parameters in approved positions. Member reads and nonmutator method calls, for-of
+iteration, spread into arrays/calls/objects, comparisons, `typeof`/`in` checks and conditions are
+safe. Any whole-parameter use in an unapproved position suppresses the report. Nested functions
+are scanned under the same policy.
+
+This rule is not type-aware. TypeScript catches readonly-to-mutable array incompatibility but does
+not infer readonly intent for APIs that only read. The fix can affect caller assignability, so it is
+off by default. Enable it only when the ergonomics tradeoff is appropriate; indirect mutation or
+retention is not inferred.
 
 ## Fixed recognition and configuration
 
