@@ -65,6 +65,8 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- Linter: `max-render-depth` (H35, warn) reports a render whose component tree nests deeper than `max` components (default 3); DOM tags and fragments nest without counting, attribute JSX and callbacks continue their owner's depth, and a nested component is its own render.
+- Linter: `one-export-per-file` (H36, off by default) limits a file to one runtime-value export; type exports, `declare` forms, `.d.ts` files and re-export barrels stay unlimited.
 - Linter plugin: `settings.carburetor.componentBases` / `storeBases` from the ESLint or oxlint config (or, without settings, the same keys of the project `.carburetorrc.json`) reach the native binary, so custom base classes act in the plugin as on the CLI. In the plugin an unreadable rc, invalid JSON, a non-object root or malformed base lists are errors, a missing rc means empty lists, and the rc's other keys are ignored there (the CLI validates the whole file).
 - Linter: `componentBases` and `storeBases` in `.carburetorrc.json` add project-local base classes to every rule, and recognition follows same-file `extends` chains (named or anonymous classes); `ResourceCache` counts as a store base. The ESLint/oxlint bridge runs the binary with a neutral configuration and recognises the built-in names and same-file chains only.
 - Native binary: `--stdin <path>` lints a buffer as the named file; the bridge uses it to lint unsaved editor text instead of mapping disk diagnostics onto it.
