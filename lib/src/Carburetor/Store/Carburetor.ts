@@ -12,6 +12,7 @@ import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
 import {sameKind} from "./Paths/Diff/Kinds/sameKind";
 import {SubscriberIndex} from "./Paths/SubscriberIndex";
+import {deliveryCallback} from './Diagnostics/Internal/scheduleTrace';
 import {WriteLog} from "./Paths/WriteLog";
 import {WriteTargetLedger} from "./Utils/Graph/WriteTargetLedger";
 import {TargetOwners} from "./Utils/Graph/TargetOwners";
@@ -419,9 +420,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
             // A removed/replaced registration cannot inherit an earlier event's match.
             matched.forEach((id: string) => {
                 const record = this[S.subscribers][id];
-                if (record && record.generation <= generation) {
-                    record.matchedVersion = notifiedAt;
-                }
+                if (record && record.generation <= generation) record.matchedVersion = notifiedAt;
             });
             this[S.notifiedVersion] = Math.max(this[S.notifiedVersion], notifiedAt);
             const fact = this[S.publicationPending]
@@ -434,7 +433,13 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
                 const record = this[S.subscribers][id];
                 if (record && record.generation <= generation) {
                     try {
-                        this[S.scheduler].schedule(record.schedulerKey, record.callback);
+                        let callback = record.callback;
+                        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+                            && diagnostics.isTracing()) {
+                            callback = deliveryCallback(true, id, this.getUID(), record, writes, notifiedAt,
+                                () => this[S.subscribers][id]);
+                        }
+                        this[S.scheduler].schedule(record.schedulerKey, callback);
                     } catch (error: unknown) {
                         (failures ??= []).push(error);
                     }

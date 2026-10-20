@@ -16,6 +16,8 @@ import {
     ITrackedCarburetor,
 } from "@/Carburetor/Component/Models/Connection";
 import {AntiHookComponentEffects} from "./Effects";
+import {diagnostics} from '@/Carburetor/Store/Diagnostics/DiagnosticsInstance';
+declare const process: {env: {NODE_ENV?: string}};
 
 export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends AntiHookComponentEffects<P, S> {
     /**
@@ -67,7 +69,10 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
 
         if (fresh) {
             this[C.committedAttempt] = attempt;
-
+            if (process.env.NODE_ENV !== 'production') {
+                const ctor = this.constructor as typeof this.constructor & {displayName?: string};
+                diagnostics.registerComponent(this, ctor.displayName ?? ctor.name, this[C.onCarburetorUpdate]);
+            }
             const trackedEntries = attempt.tracked;
             const touchedConnections = attempt.connections;
 
@@ -116,21 +121,55 @@ export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends Ant
                     if (existing) {
                         this[C.applyDescription](existing, entry);
                     } else {
-                        this[C.ensureTracked]().set(source, {
-                            committed: this[C.buildDescription](entry),
-                            installed: undefined,
-                        });
+                        const committed = this[C.buildDescription](entry);
+                        this[C.ensureTracked]().set(source, {committed, installed: undefined});
                     }
                 }
             }
 
             if (touchedConnections !== undefined) {
+                if (process.env.NODE_ENV !== 'production') {
+                    const ctor = this.constructor as typeof this.constructor & {displayName?: string};
+                    const name = ctor.displayName ?? ctor.name;
+                    for (const connection of touchedConnections) {
+                        if (connection.wake !== undefined) {
+                            diagnostics.registerComponent(this, name, connection.wake);
+                        }
+                    }
+                }
                 for (const connection of touchedConnections) {
                     const entry = connection.attemptEntry;
-
                     if (entry !== undefined) {
                         this[C.applyDescription](connection, entry);
                     }
+                }
+            }
+
+            if (process.env.NODE_ENV !== 'production' && diagnostics.isEnabled()) {
+                // One warning per component and store per commit, over the union of the read
+                // paths of every committed slot of that store; a single slot is counted as is.
+                const wideReads = new Map<string, {source: object; paths: ReadonlySet<unknown>}>();
+                /** Adds one committed slot's reads to its store's union.
+                 *
+                 * @param slot - a tracked slot or connection of this component
+                 */
+                const accumulate = (slot: IDependencySlot): void => {
+                    const committed = slot.committed;
+                    if (committed === undefined) return;
+                    const uid = committed.carburetor.getUID();
+                    const entry = wideReads.get(uid);
+                    if (entry === undefined) {
+                        wideReads.set(uid, {source: committed.carburetor as object, paths: committed.reads});
+                    } else if (entry.paths !== committed.reads) {
+                        const union = new Set<unknown>(entry.paths);
+                        committed.reads.forEach((path: unknown) => union.add(path));
+                        entry.paths = union;
+                    }
+                };
+                this[C.tracked]?.forEach(accumulate);
+                for (const connection of this[C.connections]) accumulate(connection);
+                for (const [uid, {source, paths}] of wideReads) {
+                    diagnostics.reportWideRead(this, source, uid, paths.size);
                 }
             }
 

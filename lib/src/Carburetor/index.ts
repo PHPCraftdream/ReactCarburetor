@@ -19,6 +19,7 @@ export * from './Models/Tooling';
 
 export * from './Store/Carburetor';
 export * from './Store/Diagnostics/Diagnostics';
+export type {IUpdateTrace} from './Store/Diagnostics/UpdateTrace';
 export * from './Store/Diagnostics/DiagnosticsInstance';
 // WILDCARD_PATH is deliberately not re-exported here: it is one concrete path
 // string, the engine's own "every write" marker — a caller reaches the same effect by omitting

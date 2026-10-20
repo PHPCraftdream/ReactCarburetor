@@ -3,6 +3,21 @@
 Compact reference for public exports. Core symbols come from `react-carburetor`; React hooks
 come from `react-carburetor/interop`. Source links are repository-relative.
 
+## Diagnostics
+
+`diagnostics.traceUpdates(listener): TDisposer` subscribes to immutable callback-delivery events.
+Events expose `subscriber`, `store`, `paths`, `version`, and `callback: 'invoked'`. A trace means
+that the scheduler invoked the store subscriber callback; it does not assert that React rendered.
+Subscriber/store identifiers are their UIDs (component labels use `displayName`, then constructor
+name where available). The disposer removes this listener.
+
+`diagnostics.setWideReadThreshold(n: number): void` configures the development warning limit,
+off by default (`Infinity`); a finite value such as `100` warns past that many completed read paths
+of one store per component. Invalid negative or `NaN` values
+throw. A wide-read warning is reported once per component/store pair. Value enumeration
+(`Object.values`, `Object.entries`, object spread) typically records many leaf reads; key enumeration
+(`Object.keys`) records the key set, not values, and is not treated as a large value read set.
+
 ## Resources
 
 | Symbol | Signature | Contract | Link |

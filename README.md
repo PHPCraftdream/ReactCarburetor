@@ -733,6 +733,13 @@ guard, so a bundler drops the whole block — strings included — from a produc
 package also ships pre-stripped outputs selected by the `production` condition in `exports`,
 for toolchains that do not substitute `NODE_ENV` themselves.
 
+`diagnostics.traceUpdates(listener)` observes delivered subscriber callbacks, not React renders.
+`diagnostics.setWideReadThreshold(n)` turns on a development warning for a component that reads
+more than `n` paths of one store in a render (off by default; for example `100`; `Infinity` turns
+it off again). Large read sets often come from enumerating values or spreading an
+object; use `computed` for derived work, `connectSelection` for child projections, or row components
+that read only their own data.
+
 ## Async resources
 
 `ResourceCarburetor` turns a promise into state with an explicit status, request
