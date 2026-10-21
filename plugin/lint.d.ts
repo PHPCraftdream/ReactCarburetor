@@ -26,7 +26,11 @@ export interface ICarburetorFlatConfig {
 export interface ICarburetorPlugin {
     meta: {name: string; version?: string};
     rules: Record<string, ICarburetorRule>;
-    configs: {recommended: ICarburetorFlatConfig; 'no-hooks': ICarburetorFlatConfig};
+    configs: {
+        recommended: ICarburetorFlatConfig;
+        'no-hooks': ICarburetorFlatConfig;
+        'house-style': ICarburetorFlatConfig;
+    };
 }
 
 declare const plugin: ICarburetorPlugin;

@@ -45,7 +45,8 @@
       }
     },
     "./lint/recommended.oxlintrc.json": "./dist/lint/recommended.oxlintrc.json",
-    "./lint/no-hooks.oxlintrc.json": "./dist/lint/no-hooks.oxlintrc.json"
+    "./lint/no-hooks.oxlintrc.json": "./dist/lint/no-hooks.oxlintrc.json",
+    "./lint/house-style.oxlintrc.json": "./dist/lint/house-style.oxlintrc.json"
   },
   "files": [
     "dist",

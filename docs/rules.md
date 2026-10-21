@@ -59,6 +59,45 @@ configuration file and limit the override carefully: a page may be a Client Comp
 Only use this override when those matched pages are known Server Components; a `'use client'` page
 can still need the subscription this rule protects.
 
+## House-style preset (optional)
+
+Use the house-style preset alongside `recommended` to opt into project-wide source conventions. It is
+additive, not a replacement: extend it second so the recommended correctness rules remain enabled.
+
+```json
+{
+  "extends": [
+    "react-carburetor/lint/recommended.oxlintrc.json",
+    "react-carburetor/lint/house-style.oxlintrc.json"
+  ]
+}
+```
+
+The preset enables `max-line-length`, `no-blank-line-after-tsdoc`, `no-parent-import`,
+`require-tsdoc`, `tsdoc-blank-line-before-tags`, and `one-export-per-file` as errors. It enables
+`prefer-readonly-array-param` as a warning. The corresponding `react-carburetor/lint` plugin config
+is available as `house-style`.
+
+The native CLI can use equivalent severities in `.carburetorrc.json`:
+
+```json
+{
+  "rules": {
+    "carburetor/max-line-length": "error",
+    "carburetor/no-blank-line-after-tsdoc": "error",
+    "carburetor/no-parent-import": "error",
+    "carburetor/prefer-readonly-array-param": "warn",
+    "carburetor/require-tsdoc": "error",
+    "carburetor/tsdoc-blank-line-before-tags": "error",
+    "carburetor/one-export-per-file": "error"
+  }
+}
+```
+
+This preset applies those severities only; rule-specific options such as `no-parent-import` roots
+must be configured for the native CLI separately. See the individual rule entries below for
+available options. These configurations are not promised to override the plugin's native bridge.
+
 ## Setup
 
 **oxlint** — one line; the preset travels inside the package, and it also switches oxlint's

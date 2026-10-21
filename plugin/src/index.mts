@@ -1,6 +1,7 @@
 import type {IPlugin} from "./Models.mts";
 import {RECOMMENDED} from "./recommended.mts";
 import {NO_HOOKS} from "./noHooks.mts";
+import {HOUSE_STYLE} from "./Rules/Style/HouseStyle/houseStyle.mts";
 import {noFunctionInRender} from "./Rules/Lifecycle/noFunctionInRender.mts";
 import {noReactHooksInComponents} from "./Rules/Allocations/noReactHooksInComponents.mts";
 import {requireMethodForClosure} from "./Rules/Allocations/requireMethodForClosure.mts";
@@ -101,6 +102,10 @@ plugin.configs = {
     'no-hooks': {
         plugins: {carburetor: plugin},
         rules: NO_HOOKS,
+    },
+    'house-style': {
+        plugins: {carburetor: plugin},
+        rules: HOUSE_STYLE,
     },
 };
 
