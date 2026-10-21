@@ -15,8 +15,8 @@ class S extends Carburetor {
 
 const rows = Number(process.argv[2] ?? 10000);
 const withSubs = (process.argv[3] ?? '0') === '1';
-const WARMUP = 2;
-const ROUNDS = 5;
+const WARMUP = 0;
+const ROUNDS = 1;
 const makeRows = () => Array.from({length: rows}, (_, n) =>
     ({id: n, title: 't' + n, done: n % 2 === 0, a: n * 3, b: n % 5, c: 10 - n}));
 const NEW_ROW = {id: -1, title: 'n', done: false, a: 0, b: 0, c: 0};

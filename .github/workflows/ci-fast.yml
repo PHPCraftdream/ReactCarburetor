@@ -238,7 +238,7 @@ jobs:
       # Mechanism counters and a few generous absolute ceilings; exit 1 only on a gate violation.
       - name: Performance gates (full sweep)
         if: needs.plan.outputs.full == 'true'
-        run: node perf/run.mjs --runs 3
+        run: node perf/run.mjs --runs 3 --counter-runs 1
 
       # One --only per affected area. A selector area that matches no entry fails the run —
       # acceptable, since the selector and the gate names are kept in sync.
@@ -249,7 +249,7 @@ jobs:
         run: |
           AREAS=$(node -e "console.log(JSON.parse(process.env.AREAS_JSON).join(' '))")
           for area in $AREAS; do
-            node perf/run.mjs --only "$area" --runs 3 || exit 1
+            node perf/run.mjs --only "$area" --runs 3 --counter-runs 1 || exit 1
           done
 
   native:
