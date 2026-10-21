@@ -26,7 +26,7 @@ export const action = <This extends object, Args extends unknown[], Result>(
         actionDepth.set(this, depth + 1);
         updateBatch.begin();
         try {
-            store.draft;
+            void store.draft;
             const result = method.apply(this, args);
             if (process.env.NODE_ENV !== 'production') {
                 warnIfAsyncMutate(result);

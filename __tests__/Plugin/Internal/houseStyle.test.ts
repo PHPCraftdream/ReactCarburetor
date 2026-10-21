@@ -10,7 +10,9 @@ import config from "../../../rslib.config.ts";
 const ROOT: string = process.cwd();
 const PRESET = path.join(ROOT, 'plugin', 'recommended.oxlintrc.json');
 const NO_HOOKS_PRESET = path.join(ROOT, 'plugin', 'src', 'no-hooks.oxlintrc.json');
-const HOUSE_STYLE_PRESET = path.join(ROOT, 'plugin', 'src', 'Rules', 'Style', 'HouseStyle', 'house-style.oxlintrc.json');
+const HOUSE_STYLE_PRESET = path.join(
+    ROOT, 'plugin', 'src', 'Rules', 'Style', 'HouseStyle', 'house-style.oxlintrc.json'
+);
 
 const presetRules = (file: string): Record<string, string> => {
     return (JSON.parse(readFileSync(file, 'utf8')) as {rules: Record<string, string>}).rules;

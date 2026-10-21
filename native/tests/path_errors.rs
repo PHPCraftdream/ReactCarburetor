@@ -278,7 +278,7 @@ fn native_file_override_suppresses_test_file_and_cli_wins() {
     std::fs::write(dir.join("file.test.ts"), source).unwrap();
     let config = concat!(
         r#"{"overrides":[{"files":["**/*.test.ts"],"rules":{"#,
-        r#"carburetor/require-module-function":"off"}}]}"#,
+        r#""carburetor/require-module-function":"off"}}]}"#,
     );
     std::fs::write(dir.join("config.json"), config).unwrap();
     let first = run(&dir, &["--config=config.json", "--format=json", "."]);

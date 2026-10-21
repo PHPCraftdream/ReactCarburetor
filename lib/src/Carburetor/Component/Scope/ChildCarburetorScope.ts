@@ -9,8 +9,11 @@ import {ICarburetorToken} from '@/Carburetor/Models/Tooling';
 export function createChildScope(parent: CarburetorScope,
     localTokens: readonly ICarburetorToken<unknown>[]): CarburetorScope {
     class ChildScope extends CarburetorScope {
+        /** The scope that resolves every token this child does not own. */
         protected scopeParent: CarburetorScope = parent;
+        /** Ids of the tokens this child creates and owns. */
         protected readonly localIds = new Set(localTokens.map(token => token.id));
+        /** Instances resolved through the parent, cached per token id. */
         protected readonly delegated = new Map<string, unknown>();
         /** Resolve a local token or delegate to the parent.
          *
@@ -50,6 +53,7 @@ export function createChildScope(parent: CarburetorScope,
             super.hydrate(state, selected);
         }
 
+        /** Disposes the owned instances and forgets the delegated ones. */
         public dispose(): void {
             try { super.dispose(); }
             finally { this.delegated.clear(); }

@@ -1,3 +1,4 @@
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
 import {load, emit} from '../../harness/lib.mjs';
 
 const {CarburetorScope, carburetorToken} = await load();

@@ -80,5 +80,5 @@ export async function fingerprint(root = process.cwd()) {
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
-  fingerprint().then(value => console.log(value));
+  void fingerprint().then(value => console.log(value));
 }

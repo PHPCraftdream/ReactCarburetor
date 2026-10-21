@@ -31,7 +31,9 @@ export class CarburetorScope implements ITestingScopeVisit {
     protected readonly resolving: string[] = [];
     /** Set once by dispose(); get, set and hydrate refuse afterwards. */
     protected disposed = false;
+    /** Live child scopes, closed before this scope's own instances. */
     protected readonly children: CarburetorScope[] = [];
+    /** The scope this one was created from by child(), if any. */
     protected scopeParent: CarburetorScope | undefined = undefined;
 
     /** Visits owned instances and descendant scope instances.

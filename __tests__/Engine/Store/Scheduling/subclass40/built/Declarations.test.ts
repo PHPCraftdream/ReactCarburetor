@@ -38,7 +38,7 @@ describe('R40-01 built subclass contract', () => {
         const text = readFileSync(resolve(root, 'dist/esm/Testing/index.d.mts'), 'utf8');
         const reexports = [...text.matchAll(/export\s*\{\s*([^}]+)\s*\}\s*from\s*['"][^'"]+['"]/g)]
             .flatMap(match => match[1].split(',').map(specifier => specifier.trim().split(/\s+as\s+/)[0]))
-            .sort();
+            .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
         expect(reexports).toEqual(['createTestScope', 'flush']);
     });
 

@@ -19,7 +19,8 @@ const gcSensitive = (path, read, seen = new Set()) => {
     return [...source.matchAll(IMPORT)].some(match => gcSensitive(resolve(dirname(path), match[1]), read, seen));
 };
 const classifySampling = (entry, read = readScenario) => {
-    if (typeof entry.scenario !== 'string' || entry.nodeArgs?.some(arg => /expose-gc/.test(String(arg)))) return 'mixed';
+    if (typeof entry.scenario !== 'string') return 'mixed';
+    if (entry.nodeArgs?.some(arg => /expose-gc/.test(String(arg)))) return 'mixed';
     if (gcSensitive(resolve('perf/scenarios', entry.scenario + '.mjs'), read)) return 'mixed';
     const gates = entry.gates;
     if (!Array.isArray(gates) || gates.length === 0) return 'mixed';

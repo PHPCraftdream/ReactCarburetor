@@ -13,13 +13,14 @@ import { fingerprint } from './fingerprint.mjs';
  * @returns {string} Safe Markdown text.
  */
 function escapeMarkdown(value) {
-  return String(value ?? '').replace(/[\\`|\[\]<>]/g, '\\$&').replace(/[\r\n]+/g, ' ');
+  const text = typeof value === 'string' ? value : JSON.stringify(value) ?? '';
+  return text.replace(/[\\`|[\]<>]/g, '\\$&').replace(/[\r\n]+/g, ' ');
 }
 
 /** Builds the human-readable license report.
  *
- * @param {object} result - Evaluation result.
- * @param {string} digest - Dependency fingerprint.
+ * @param result - Evaluation result.
+ * @param digest - Dependency fingerprint.
  * @returns {string} Markdown report.
  */
 function renderReport(result, digest) {
@@ -30,7 +31,7 @@ function renderReport(result, digest) {
     '| Ecosystem | Scope | License | Count |',
     '|---|---|---|---:|',
   ];
-  for (const [key, count] of Object.entries(result.summary).sort()) {
+  for (const [key, count] of Object.entries(result.summary).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) {
     const [ecosystem, scope, ...licenseParts] = key.split(':');
     const license = licenseParts.join(':');
     lines.push(`| ${escapeMarkdown(ecosystem)} | ${escapeMarkdown(scope)} | `
@@ -59,8 +60,8 @@ function renderReport(result, digest) {
 
 /** Checks dependency license policy, optionally using offline metadata fixtures.
  *
- * @param {string[]} args - Supported CLI arguments.
- * @param {string} root - Repository root.
+ * @param args - Supported CLI arguments.
+ * @param root - Repository root.
  * @returns {Promise<object>} Evaluation result.
  */
 export async function check(args = process.argv.slice(2), root = process.cwd()) {

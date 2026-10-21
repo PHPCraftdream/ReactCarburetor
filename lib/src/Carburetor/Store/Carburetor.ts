@@ -177,10 +177,10 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
     protected get data(): T { return this[S.data]; }
     /** Unique engine identity. */
     public getUID(): string { return this[S.uid]; }
+    /** Delivers pending throttled notifications on behalf of react-carburetor/testing. */
     public [CARBURETOR_FLUSH](): boolean {
         if (storeLifecycle.isDisposed(this) || updateBatch.isActive() || updateWave.isActive()) return false;
-        const scheduler = this[S.scheduler] as IUpdateScheduler & {flushPendingUpdates?: () => boolean};
-        return scheduler.flushPendingUpdates?.() ?? false;
+        return (this[S.scheduler] as {flushPendingUpdates?: () => boolean}).flushPendingUpdates?.() ?? false;
     }
     /** Counts emits; components compare render and commit versions to detect intervening writes. */
     public getVersion(): number { return this[S.version]; }

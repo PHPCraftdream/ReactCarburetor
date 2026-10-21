@@ -122,6 +122,7 @@ describe('@action', () => {
     test('warns for a thenable result', () => {
         class Store extends Carburetor<{value: number}> {
             constructor() { super({value: 0}); }
+            // oxlint-disable-next-line unicorn/no-thenable
             @action run() { this.draft.value++; return {then: () => undefined}; }
         }
         const store = new Store(); let deliveries = 0; store.subscribe(() => deliveries++);

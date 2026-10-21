@@ -1,3 +1,4 @@
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc, carburetor/require-emit-after-draft-write */
 import {emit, load} from '../../harness/lib.mjs';
 
 const {Carburetor, action} = await load();

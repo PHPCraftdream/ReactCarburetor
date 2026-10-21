@@ -1,13 +1,13 @@
 import {Carburetor} from '@/Carburetor/Store/Carburetor';
 import {ComponentUpdateThrottle} from '@/Carburetor/Store/Scheduling/ComponentUpdateThrottle';
 import {carburetorToken} from '@/Carburetor/Component/Scope/carburetorToken';
-import {CarburetorScope} from '@/Carburetor/Component/Scope/CarburetorScope';
 import {transaction} from '@/Carburetor/Store/Transaction/transaction';
 import {updateWave} from '@/Carburetor/Store/Scheduling/UpdateWaveInstance';
 import {flush, createTestScope} from '@/Testing';
 
 class Counter extends Carburetor<{n: number}> {
     public increment(): void { this.draft.n++; this.emitUpdate(); }
+    // oxlint-disable-next-line carburetor/require-emit-after-draft-write
     public writeOnly(): void { this.draft.n++; }
 }
 

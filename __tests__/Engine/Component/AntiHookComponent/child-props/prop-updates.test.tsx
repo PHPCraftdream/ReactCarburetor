@@ -301,6 +301,7 @@ describe('props gate on in-place mutation', () => {
         }
 
         class OpenPanel extends AntiHookComponent<IPanelProps> {
+            // oxlint-disable-next-line carburetor/require-super-in-lifecycle
             public shouldComponentUpdate(): boolean { return true; }
 
             public render() {
