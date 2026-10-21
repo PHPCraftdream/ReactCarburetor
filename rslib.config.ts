@@ -1,4 +1,5 @@
 import {defineConfig} from '@rslib/core';
+import {generateHouseStyleOxlintJson} from './plugin/src/Rules/Style/HouseStyle/house-style.oxlintrc.mts';
 
 const entry = {
     index: ['./lib/src/Carburetor/**', './lib/src/Interop/**'],
@@ -47,6 +48,11 @@ const pluginEntry = {
 const pluginAssets = [
     {from: './plugin/recommended.oxlintrc.json', to: './recommended.oxlintrc.json'},
     {from: './plugin/src/no-hooks.oxlintrc.json', to: './no-hooks.oxlintrc.json'},
+    {
+        from: './plugin/src/Rules/Style/HouseStyle/house-style.oxlintrc.json',
+        to: './house-style.oxlintrc.json',
+        transform: () => generateHouseStyleOxlintJson(),
+    },
     {from: './plugin/lint.d.ts', to: './index.d.mts'},
     {from: './plugin/lint.d.ts', to: './index.d.cts'},
 ];
