@@ -34,6 +34,20 @@
         "default": "./dist/cjs/Interop/index.js"
       }
     },
+    "./testing": {
+      "import": {
+        "types": "./dist/esm/Testing/index.d.mts",
+        "production": "./dist/esm-prod/Testing/index.mjs",
+        "development": "./dist/esm/Testing/index.mjs",
+        "default": "./dist/esm/Testing/index.mjs"
+      },
+      "require": {
+        "types": "./dist/cjs/Testing/index.d.ts",
+        "production": "./dist/cjs-prod/Testing/index.js",
+        "development": "./dist/cjs/Testing/index.js",
+        "default": "./dist/cjs/Testing/index.js"
+      }
+    },
     "./lint": {
       "import": {
         "types": "./dist/lint/index.d.mts",

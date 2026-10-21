@@ -1,3 +1,4 @@
+import {createTestScope, flush} from 'react-carburetor/testing';
 import * as React from "react";
 import {
     AntiHookComponent,
@@ -135,6 +136,9 @@ export class Direct extends AntiHookComponent {
 }
 
 const scopedToken = carburetorToken(() => new Store({count: 5}), 'consumer-matrix/scoped-store');
+const testScope = createTestScope([[scopedToken, new Store({count: 2})]]);
+flush(testScope.get(scopedToken));
+testScope.dispose();
 
 export class Scoped extends ScopedAntiHookComponent {
     /** Resolves the scope-backed store and renders its tracked count. */

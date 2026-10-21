@@ -93,6 +93,13 @@ callback instead of `prune: true`. Arrays, Maps, Sets, Dates, and class instance
 are not traversed. Native values retain normal JSON serialization limits. Schema options with
 `partitions` throw eagerly rather than being ignored.
 
+## Testing
+
+Import `flush` and `createTestScope` from `react-carburetor/testing`. `flush(target)` synchronously
+flushes pending work for a `Carburetor` or `CarburetorScope`. `createTestScope(overrides?)` creates
+an isolated scope, optionally installing token/value pairs; its returned scope has
+`[Symbol.dispose]()` for cleanup. See [Testing your code](../README.md#testing-your-code).
+
 ## Interop
 
 | Symbol | Signature | Contract | Link |

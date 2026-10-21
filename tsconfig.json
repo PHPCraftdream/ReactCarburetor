@@ -30,7 +30,8 @@
   },
   "include": [
     "lib/src/Carburetor/**/*",
-    "lib/src/Interop/**/*"
+    "lib/src/Interop/**/*",
+    "lib/src/Testing/**/*"
   ],
   "exclude": [
     "node_modules",

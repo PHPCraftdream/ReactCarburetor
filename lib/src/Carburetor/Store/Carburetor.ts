@@ -36,7 +36,7 @@ import {diagnostics} from "./Diagnostics/DiagnosticsInstance";
 import {reportDeliveryFailure} from "./Diagnostics/reportDeliveryFailure";
 import {warnIfAsyncMutate} from "./Diagnostics/warnIfAsyncMutate";
 import {
-    CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, CARBURETOR_PATHS_SINCE,
+    CARBURETOR_FLUSH, CARBURETOR_EXTEND, CARBURETOR_HAS_DRIFT, CARBURETOR_NOTIFY_WRITES, CARBURETOR_PATHS_SINCE,
     CARBURETOR_REPLAY_PATCHES, CARBURETOR_TARGETS_SINCE, CARBURETOR_TRACK_TARGETS,
     IInternalSubscriptionProtocol, ISubscriberRecord,
 } from "./Utils/Models";
@@ -177,10 +177,12 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
     protected get data(): T { return this[S.data]; }
     /** Unique engine identity. */
     public getUID(): string { return this[S.uid]; }
-    /**
-     * The write counter, bumped on every emit. A component compares it between render and commit
-     * to notice a write that landed in between, which would otherwise leave it subscribed to stale paths.
-     */
+    public [CARBURETOR_FLUSH](): boolean {
+        if (storeLifecycle.isDisposed(this) || updateBatch.isActive() || updateWave.isActive()) return false;
+        const scheduler = this[S.scheduler] as IUpdateScheduler & {flushPendingUpdates?: () => boolean};
+        return scheduler.flushPendingUpdates?.() ?? false;
+    }
+    /** Counts emits; components compare render and commit versions to detect intervening writes. */
     public getVersion(): number { return this[S.version]; }
     /** The paths written after `baselineVersion`; undefined once the write log cannot enumerate them. */
     public [CARBURETOR_PATHS_SINCE](baselineVersion: number): ReadonlyArray<TPath> | undefined {

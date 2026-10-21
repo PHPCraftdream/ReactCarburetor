@@ -24,13 +24,27 @@ describe('R40-01 built subclass contract', () => {
     test('the complete built namespace contains no internal symbol groups', async () => {
         const api = await import('../../../../../../dist/esm/Carburetor/index.mjs');
         expect(Object.keys(api).sort()).toEqual([
-            'AntiHookComponent', 'Carburetor', 'CarburetorContext', 'CarburetorHistory', 'CarburetorProvider',
+            'AntiHookComponent', 'Carburetor', 'CarburetorChildScope', 'CarburetorContext', 'CarburetorHistory',
+            'CarburetorProvider',
             'CarburetorScope', 'ComponentUpdateThrottle', 'Computed', 'Diagnostics', 'EDevToolsAction',
             'EDevToolsMessageType', 'EResourceStatus', 'ResourceCache', 'ResourceCarburetor',
             'ScopedAntiHookComponent', 'UpdateThrottle', 'bind', 'carburetorToken', 'computed', 'connectDevTools',
             'deepClone', 'diagnostics', 'getInitialResourceData', 'persist', 'resourceState', 'shallowEqual',
             'transaction', 'waitForUpdate', 'action',
         ].sort());
+    });
+
+    test('built testing declarations expose only the supported helpers', () => {
+        const text = readFileSync(resolve(root, 'dist/esm/Testing/index.d.mts'), 'utf8');
+        const reexports = [...text.matchAll(/export\s*\{\s*([^}]+)\s*\}\s*from\s*['"][^'"]+['"]/g)]
+            .flatMap(match => match[1].split(',').map(specifier => specifier.trim().split(/\s+as\s+/)[0]))
+            .sort();
+        expect(reexports).toEqual(['createTestScope', 'flush']);
+    });
+
+    test('complete built testing namespace contains only the documented helpers', async () => {
+        const testing = await import('../../../../../../dist/esm/Testing/index.mjs');
+        expect(Object.keys(testing).sort()).toEqual(['createTestScope', 'flush']);
     });
 
     test('component prototype string names contain only documented APIs and lifecycle', async () => {

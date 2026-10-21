@@ -20,6 +20,9 @@
       "react-carburetor/interop": [
         "../lib/src/Interop/index.ts"
       ],
+      "react-carburetor/testing": [
+        "../lib/src/Testing/index.ts"
+      ],
       "react-carburetor/lint": [
         "../plugin/lint.d.ts"
       ],

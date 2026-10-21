@@ -1,6 +1,15 @@
-import {Carburetor, ComponentUpdateThrottle, waitForUpdate} from 'react-carburetor';
+import {createTestScope, flush} from 'react-carburetor/testing';
+import {Carburetor, ComponentUpdateThrottle, waitForUpdate, carburetorToken} from 'react-carburetor';
 import {test, expect, rstest} from '@rstest/core';
 import {RoundStore} from './RoundStore';
+
+class ScopeStore extends Carburetor<{count: number}> {
+    public increment(): void { this.draft.count += 1; this.emitUpdate(); }
+}
+const scopeToken = carburetorToken(
+    () => new ScopeStore({count: 0}, new ComponentUpdateThrottle(40)),
+    'readme/store-testing-scope'
+);
 
 const selectFirstWrong = (data: {round: {wrong: readonly number[]}}): number => data.round.wrong[0];
 
@@ -17,6 +26,29 @@ class HintStore extends Carburetor<{hint: boolean}> {
     }
 }
 // #endregion timer-store
+
+// #region scope-test
+export const scopeTest = (): void => {
+    const scope = createTestScope([[
+        scopeToken,
+        new ScopeStore({count: 7})
+    ]]);
+    try {
+        const store = scope.get(scopeToken);
+        const observed: number[] = [];
+        const stop = store.watch(data => data.count, next => { observed.push(next); });
+        try {
+            store.increment();
+            flush(store);
+            expect(observed).toEqual([8]);
+        } finally {
+            stop();
+        }
+    } finally {
+        scope.dispose();
+    }
+};
+// #endregion scope-test
 
 // #region test-body
 export const registerStoreTest = (): void => {

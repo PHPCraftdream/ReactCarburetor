@@ -62,8 +62,12 @@ const TSCONFIG = (format) => ({
 
 const HARNESS_ESM = `import * as React from 'react';
 import {renderToString} from 'react-dom/server';
+import {flush, createTestScope} from 'react-carburetor/testing';
 import {App, registry, publishReadable} from './out/consumer.js';
 
+const scope = createTestScope();
+flush(scope);
+scope.dispose();
 const html = renderToString(React.createElement(App));
 publishReadable({count: 9}, new Set(['count']));
 const refreshed = renderToString(React.createElement(App));
@@ -89,8 +93,12 @@ console.log('OK');
 
 const HARNESS_CJS = `const React = require('react');
 const {renderToString} = require('react-dom/server');
+const {flush, createTestScope} = require('react-carburetor/testing');
 const {App, registry, publishReadable} = require('./out/consumer.js');
 
+const scope = createTestScope();
+flush(scope);
+scope.dispose();
 const html = renderToString(React.createElement(App));
 publishReadable({count: 9}, new Set(['count']));
 const refreshed = renderToString(React.createElement(App));

@@ -5,8 +5,8 @@ import * as Carburetor from '@/Carburetor';
 const PUBLIC_SURFACE = [
     'AntiHookComponent',
     'Carburetor',
-    'CarburetorContext',
     'CarburetorChildScope',
+    'CarburetorContext',
     'CarburetorHistory',
     'CarburetorProvider',
     'CarburetorScope',
@@ -20,6 +20,7 @@ const PUBLIC_SURFACE = [
     'ResourceCarburetor',
     'ScopedAntiHookComponent',
     'UpdateThrottle',
+    'action',
     'bind',
     'carburetorToken',
     'computed',
@@ -37,5 +38,6 @@ const PUBLIC_SURFACE = [
 describe('public source surface', () => {
     test('root entry exports exactly the whitelisted names', () => {
         expect(Object.keys(Carburetor).sort()).toEqual(PUBLIC_SURFACE);
+        expect(Carburetor).not.toHaveProperty('testing');
     });
 });

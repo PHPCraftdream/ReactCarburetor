@@ -30,6 +30,16 @@ export const CARBURETOR_NOTIFY_WRITES: unique symbol = Symbol.for('react-carbure
 /** History's draft replay: installs undo/redo patches through the draft, keeping the owner's fact. */
 export const CARBURETOR_REPLAY_PATCHES: unique symbol = Symbol.for('react-carburetor/v1/store-replay-patches');
 
+/** Flushes one store's pending scheduler callbacks for test execution. */
+export const CARBURETOR_FLUSH: unique symbol = Symbol.for('react-carburetor/v1/testing-flush-store');
+/** Visits owned scope instances and descendants without exposing ownership collections. */
+export const SCOPE_TESTING_VISIT: unique symbol = Symbol.for('react-carburetor/v1/testing-scope-visit');
+
+export interface ITestingScopeVisit {
+    /** @param visitStore - callback invoked for each owned instance */
+    [SCOPE_TESTING_VISIT](visitStore: (store: unknown) => void): void;
+}
+
 /** The snapshot version a computed exposes, including changes not yet announced. */
 export const CARBURETOR_SNAPSHOT_VERSION: unique symbol = Symbol.for('react-carburetor/v1/computed-snapshot-version');
 
@@ -44,6 +54,8 @@ export interface IInternalSubscriptionProtocol {
     [CARBURETOR_REPLAY_PATCHES]?: (
         patches: readonly IWritePatch[], inverse: boolean, installation: IStateInstallation
     ) => void;
+    [CARBURETOR_FLUSH]?: () => boolean;
+    [SCOPE_TESTING_VISIT]?: (visitStore: (store: unknown) => void) => void;
     [CARBURETOR_SNAPSHOT_VERSION]?: () => number;
 }
 

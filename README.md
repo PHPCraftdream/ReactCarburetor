@@ -103,6 +103,47 @@ export class Counter extends AntiHookComponent {
 }
 ```
 
+## Testing your code
+
+Runner fake clocks control scheduled work such as `ComponentUpdateThrottle` and `after()` timers.
+Use the runner's clock APIs (for example, `rstest.useFakeTimers()` and
+`rstest.advanceTimersByTimeAsync()`); do not wrap or replace the clock APIs.
+
+For work that does not involve clocks, import `flush` and `createTestScope` from
+`react-carburetor/testing`. `flush(target)` delivers recorded notifications synchronously; it does
+not advance `after()` timers or promises. When stores share a scheduler, flushing one drains that
+scheduler queue. Active update waves and transactions still determine atomic delivery.
+`createTestScope(overrides?)` creates an isolated scope with optional token overrides; dispose it
+when the test finishes. Use `using` when the runtime supports `Symbol.dispose`, or `try/finally` to
+dispose explicitly as shown below.
+
+<!-- example:file examples/readme/App/StoreTesting.ts#scope-test -->
+```ts
+export const scopeTest = (): void => {
+    const scope = createTestScope([[
+        scopeToken,
+        new ScopeStore({count: 7})
+    ]]);
+    try {
+        const store = scope.get(scopeToken);
+        const observed: number[] = [];
+        const stop = store.watch(data => data.count, next => { observed.push(next); });
+        try {
+            store.increment();
+            flush(store);
+            expect(observed).toEqual([8]);
+        } finally {
+            stop();
+        }
+    } finally {
+        scope.dispose();
+    }
+};
+```
+
+The [store testing recipe](docs/examples/testing.md) also exercises runner fake timers for throttled
+watch delivery and `after()` cleanup.
+
 ## One-off events
 
 <!-- example:file examples/readme/Interop/OneOffEvents.tsx -->
@@ -1254,26 +1295,8 @@ A store is an ordinary class: construct `new RoundStore(...)` or resolve a token
 does not need React rendering or jsdom. Timers a store starts with `this.after(ms, task)` are
 cancelled by `dispose()`, so a fake clock advanced past a disposed store's deadline runs nothing.
 
-<!-- example:file examples/readme/App/StoreTesting.ts -->
+<!-- example:file examples/readme/App/StoreTesting.ts#test-body -->
 ```ts
-import {Carburetor, ComponentUpdateThrottle, waitForUpdate} from 'react-carburetor';
-import {test, expect, rstest} from '@rstest/core';
-import {RoundStore} from './RoundStore';
-
-const selectFirstWrong = (data: {round: {wrong: readonly number[]}}): number => data.round.wrong[0];
-
-const showHint = (draft: {hint: boolean}): void => {
-    draft.hint = true;
-};
-
-/** Shows a hint after ten seconds of silence; the timer dies with the store. */
-class HintStore extends Carburetor<{hint: boolean}> {
-    /** Arms the idle hint. */
-    public arm(): void {
-        this.after(10_000, () => this.update(showHint));
-    }
-}
-
 export const registerStoreTest = (): void => {
     test('a throttled store can be tested without React', async () => {
         rstest.useFakeTimers();
@@ -1313,9 +1336,8 @@ export const registerStoreTest = (): void => {
 };
 ```
 
-The repository wrapper calls `registerStoreTest()` to register this test; see
-[RoundStore.test.tsx](__tests__/Tooling/examples/readme/RoundStore.test.tsx). Call it from your
-test file to register the example.
+The repository wrapper calls `registerStoreTest()` and `scopeTest()` to register these examples; see
+[RoundStore.test.tsx](__tests__/Tooling/examples/readme/RoundStore.test.tsx).
 
 ### Component tests with jsdom
 

@@ -2,7 +2,7 @@ import {defineConfig} from '@rslib/core';
 import {generateHouseStyleOxlintJson} from './plugin/src/Rules/Style/HouseStyle/house-style.oxlintrc.mts';
 
 const entry = {
-    index: ['./lib/src/Carburetor/**', './lib/src/Interop/**'],
+    index: ['./lib/src/Carburetor/**', './lib/src/Interop/**', './lib/src/Testing/**'],
 };
 
 /**

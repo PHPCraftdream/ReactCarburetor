@@ -10,6 +10,7 @@ This catalog contains self-contained typechecked recipes covering the whole publ
 - [resources.md](resources.md) — ResourceCarburetor and ResourceCache (TTL, limits, hydration).
 - [hooks.md](hooks.md) — the hooks interop layer from 'react-carburetor/interop' (useCarburetorValue, useComputedValue, useResourceValue).
 - [tooling.md](tooling.md) — devtools, waitForUpdate, history/undo, persist.
+- [testing.md](testing.md) — non-clock testing helpers from `react-carburetor/testing`.
 - [lint.md](lint.md) — oxlint/ESLint/standalone CLI setup for the lint rules.
 
 ## Choosing an API
@@ -25,6 +26,7 @@ This catalog contains self-contained typechecked recipes covering the whole publ
 | Async data with TTL and eviction | `ResourceCache` | [resources.md](resources.md) |
 | Single async resource | `ResourceCarburetor` | [resources.md](resources.md) |
 | Isolate stores per request (SSR/testing) | `CarburetorScope` / `ScopedAntiHookComponent` | [components.md](components.md) |
+| Test store delivery | `flush` / `createTestScope` | [testing.md](testing.md) |
 | Undo/redo | `CarburetorHistory` | [tooling.md](tooling.md) |
 | Durable state | `persist(carburetor, {key, storage})` | [tooling.md](tooling.md) |
 | Catch state mistakes early | lint presets / `carburetor-lint` | [lint.md](lint.md) |

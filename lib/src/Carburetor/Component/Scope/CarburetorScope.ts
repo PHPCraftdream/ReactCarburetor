@@ -1,5 +1,6 @@
 import {IDict} from "@/Carburetor/Models/Base";
 import {IInspectable} from "@/Carburetor/Models/Store";
+import {SCOPE_TESTING_VISIT, ITestingScopeVisit} from '@/Carburetor/Store/Utils/Models';
 import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
@@ -16,7 +17,7 @@ const quoteKey = (key: string): string => '"' + key + '"';
  * A scope owns every distinct instance created or installed in it, including replaced instances,
  * and disposes them in reverse ownership order.
  */
-export class CarburetorScope {
+export class CarburetorScope implements ITestingScopeVisit {
     /** The instances created or installed in this scope so far, keyed by token id. */
     protected instances: Map<string, unknown> = new Map<string, unknown>();
 
@@ -32,6 +33,15 @@ export class CarburetorScope {
     protected disposed = false;
     protected readonly children: CarburetorScope[] = [];
     protected scopeParent: CarburetorScope | undefined = undefined;
+
+    /** Visits owned instances and descendant scope instances.
+     *
+     * @param visitStore - callback invoked for each owned instance
+     */
+    public [SCOPE_TESTING_VISIT](visitStore: (store: unknown) => void): void {
+        this.creationOrder.forEach(visitStore);
+        this.children.forEach(child => child[SCOPE_TESTING_VISIT](visitStore));
+    }
 
     /** Create a child scope with local tokens.
      *

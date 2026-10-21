@@ -121,6 +121,13 @@ export class ComponentUpdateThrottle implements IUpdateScheduler {
         }
     }
 
+    /** Synchronously flushes queued callbacks; used by the testing protocol. */
+    public flushPendingUpdates(): boolean {
+        if (this.updaters.size === 0 || this.flushing) return false;
+        this.letsUpdate();
+        return true;
+    }
+
     /** Flushes the queue, including what the flush itself queues, and fails on a loop. */
     protected letsUpdate(): void {
         // Updates queued while flushing (for example from an effect that writes to a
