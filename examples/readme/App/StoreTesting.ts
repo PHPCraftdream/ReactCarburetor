@@ -12,6 +12,7 @@ const scopeToken = carburetorToken(
 );
 
 const selectFirstWrong = (data: {round: {wrong: readonly number[]}}): number => data.round.wrong[0];
+const selectCount = (data: {count: number}): number => data.count;
 
 // #region timer-store
 const showHint = (draft: {hint: boolean}): void => {
@@ -36,7 +37,7 @@ export const scopeTest = (): void => {
     try {
         const store = scope.get(scopeToken);
         const observed: number[] = [];
-        const stop = store.watch(data => data.count, next => { observed.push(next); });
+        const stop = store.watch(selectCount, next => { observed.push(next); });
         try {
             store.increment();
             flush(store);

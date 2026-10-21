@@ -127,7 +127,7 @@ export const scopeTest = (): void => {
     try {
         const store = scope.get(scopeToken);
         const observed: number[] = [];
-        const stop = store.watch(data => data.count, next => { observed.push(next); });
+        const stop = store.watch(selectCount, next => { observed.push(next); });
         try {
             store.increment();
             flush(store);
