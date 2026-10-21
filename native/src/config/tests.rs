@@ -1,6 +1,7 @@
 //! The parse/override tests for `Config`, split out of `mod.rs` for size.
 
 mod options;
+mod overrides;
 
 use super::*;
 use serde_json::json;

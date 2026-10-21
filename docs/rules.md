@@ -255,6 +255,25 @@ while one that cannot be read or holds malformed lists is an error, as in the CL
 `.carburetorrc.json` (per-rule options) never reach the plugin's shared native run; rule options
 are passed through the host instead.
 
+The native CLI also accepts `overrides` in `.carburetorrc.json`. Actual input paths resolve from
+the process working directory, then are made relative to the config directory (or CWD for the
+default config). Relative and absolute inputs under that directory match; paths outside it do
+not. The last matching entry wins per rule. A command-line `--rule` severity takes priority over
+all config severities, while the matching override's options remain in effect. This is native-only:
+oxlint implements its own `overrides` behavior for JavaScript plugin rules; keep those entries in
+oxlint's configuration.
+
+```json
+{
+  "overrides": [
+    {
+      "files": ["**/*.test.*", "**/__tests__/**", "e2e/**"],
+      "rules": {"carburetor/require-module-function": "off"}
+    }
+  ]
+}
+```
+
 Most rules accept severity only: `error`, `warn` or `off`; `require-module-function` also accepts
 the `scope` option (`"all"` or `"classes"`) and `max-render-depth` accepts `max` (an integer >= 1).
 Unknown option values, option keys and base-list

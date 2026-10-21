@@ -22,6 +22,7 @@ rayon = "=1.12.0"
 # regex, and it has to behave the way the JavaScript rule's RegExp did.
 regex = "=1.11.3"
 ignore = "=0.4.33"
+globset = "=0.4.20"
 serde = { version = "=1.0.228", features = ["derive"] }
 serde_json = "=1.0.145"
 
