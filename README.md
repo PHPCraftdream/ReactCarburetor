@@ -1766,6 +1766,11 @@ export function createScreen(children: React.ReactNode): IScreenLifetime {
   concurrent render pass; don't write to stores from render.
 - The props gate means a component that relied on its parent re-rendering to pick up data it
   never read will stop updating. Read what you render, through `useCarburetor`.
+  A parent that mutates an object in place and passes the same reference down is the common case:
+  the child's props stay shallow-equal, so even the parent's `forceUpdate` does not reach it. Keep
+  data that changes in a store the child reads, or replace the gate for that one component with
+  `shouldComponentUpdate(): boolean { return true; }` (a deliberate override, see
+  [docs/hazards.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/hazards.md)).
 - Ordinary plain-tree undo/redo records patches — O(changed values), not O(state). Steps that
   replace, mutate or read a native value through `draft` use owned detached graphs instead.
   `CarburetorHistory` works with the `Carburetor` family — `Carburetor`, `ResourceCarburetor`,

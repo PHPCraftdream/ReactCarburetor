@@ -163,6 +163,23 @@ The lint rules ship with the package; see [rules.md](rules.md) for setup and
 adopted code is most likely to hit: draft writes that never publish, unbound methods passed
 as callbacks, and subscriptions without disposal.
 
+## 7. Use a local copy of the library
+
+Link the built package, not the sources. The `exports` map is what makes
+`react-carburetor`, `react-carburetor/interop` and `react-carburetor/lint` resolve, and it picks the
+`development` or `production` build from your bundler's conditions.
+
+1. Build the library once and after each change: `npm run build` in the library checkout.
+2. Depend on the checkout by path from the app's `package.json`, then reinstall:
+   `"react-carburetor": "file:../ReactCarburetor"` (or a workspace entry for a monorepo).
+3. Import as usual: `import {Carburetor} from 'react-carburetor'` and
+   `import {useCarburetorValue} from 'react-carburetor/interop'`.
+
+Do not alias `react-carburetor` to `lib/src` in `tsconfig` or the bundler. An alias on the sources only
+covers the paths you list (the root and `@/*`, never `/interop`), bypasses the `development` /
+`production` conditions, and the library's own `@/` imports collide with the app's `@/` alias.
+Keep a single copy of `react` and `react-dom` in the app: the library declares them as peers.
+
 ## Order of adoption
 
 1. One store for one slice of state, instantiated at module level (client-only).
@@ -170,3 +187,4 @@ as callbacks, and subscriptions without disposal.
 3. Class components (`AntiHookComponent`) where render cost matters.
 4. Scope per request (`CarburetorScope` + `ScopedAntiHookComponent`) when rendering on the server.
 5. The linter, with the recommended preset.
+6. A local copy through a `file:` dependency, when you work on the library alongside the app.
