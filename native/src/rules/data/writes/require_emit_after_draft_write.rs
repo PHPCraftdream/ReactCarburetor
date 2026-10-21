@@ -50,6 +50,8 @@ struct Check<'s> {
     writes: HashMap<Span, Write>,
     /// The methods that do publish.
     publishes: HashSet<Span>,
+    /// Method spans known to be decorated with `@action`; those methods publish on exit.
+    actions: HashSet<Span>,
     /// (class span, method name) -> the same class's methods it calls, for spreading the
     /// exemption. Keyed by class like `writes` is by span: two classes can define the same method
     /// name, and one class's exemption must not reach into the other.
@@ -98,7 +100,7 @@ impl<'a, 's> Rule<'a> for Check<'s> {
         let mut diagnostics: Vec<Diagnostic> = Vec::new();
 
         for (member, write) in &self.writes {
-            if self.publishes.contains(member) {
+            if self.publishes.contains(member) || self.actions.contains(member) {
                 continue;
             }
 
@@ -120,6 +122,17 @@ impl<'a, 's> Rule<'a> for Check<'s> {
         diagnostics.sort_by_key(|diagnostic| (diagnostic.line, diagnostic.column));
 
         diagnostics
+    }
+
+    fn method(&mut self, method: &oxc_ast::ast::MethodDefinition<'_>, context: &Context) {
+        if !context.in_carburetor || context.member_span.is_none() {
+            return;
+        }
+        if method.decorators.iter().any(|decorator| {
+            matches!(&decorator.expression, Expression::Identifier(identifier) if identifier.name == "action")
+        }) {
+            self.actions.insert(method.span);
+        }
     }
 
     fn mutation(&mut self, root: &ChainRoot<'_, 'a>, span: Span, context: &Context) {
@@ -186,6 +199,7 @@ pub(in crate::rules) fn make_rule<'a, 's>(source: &'s Source<'s>) -> impl Rule<'
         source,
         writes: HashMap::new(),
         publishes: HashSet::new(),
+        actions: HashSet::new(),
         calls_from: HashMap::new(),
     }
 }
@@ -201,6 +215,43 @@ mod tests {
     }
 
     #[test]
+    fn decorated_action_publishes_on_exit() {
+        let source = concat!(
+            "import {Carburetor, action} from 'react-carburetor';\n",
+            "class Store extends Carburetor {\n",
+            "    @action\n",
+            "    rename() { this.draft.count++; }\n",
+            "}"
+        );
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn undecorated_write_still_reports_near_action() {
+        let source = store(concat!(
+            "    @action\n",
+            "    first() {\n",
+            "        this.draft.count++;\n",
+            "    }\n",
+            "    second() {\n",
+            "        this.draft.count++;\n",
+            "    }"
+        ));
+        assert_eq!(lines(&diagnose(&source, check)), [7]);
+    }
+
+    #[test]
+    fn unrelated_decorator_does_not_exempt_method() {
+        let source = concat!(
+            "class Store extends Carburetor {\n",
+            "    @other\n",
+            "    rename() { this.draft.count++; }\n",
+            "}"
+        );
+        assert_eq!(lines(&diagnose(source, check)), [3]);
+    }
+
+    #[test]
     fn a_write_that_never_publishes_is_reported() {
         let source = store("    rename(name) {\n        this.draft.name = name;\n    }");
 
@@ -209,8 +260,9 @@ mod tests {
 
     #[test]
     fn a_write_followed_by_an_emit_is_correct() {
-        let source =
-            store("    rename(name) {\n        this.draft.name = name;\n        this.emitUpdate();\n    }");
+        let source = store(
+            "    rename(name) {\n        this.draft.name = name;\n        this.emitUpdate();\n    }",
+        );
 
         assert_eq!(lines(&diagnose(&source, check)), [] as [usize; 0]);
     }

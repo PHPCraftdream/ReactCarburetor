@@ -27,6 +27,7 @@ export * from './Store/Diagnostics/DiagnosticsInstance';
 export * from './Store/Scheduling/ComponentUpdateThrottle';
 export {ComponentUpdateThrottle as UpdateThrottle} from './Store/Scheduling/ComponentUpdateThrottle';
 export * from './Store/Transaction/transaction';
+export * from './Store/Diagnostics/Internal/Action/action';
 export * from './Store/Utils/deepClone';
 
 export * from './Derived/Computed';

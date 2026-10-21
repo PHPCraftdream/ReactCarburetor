@@ -197,9 +197,9 @@ export const HookStatus = () => {
   `connect()` is for a store fixed for the component's lifetime.
 - **Scopes:** `CarburetorScope` owns token-created stores; create and dispose one per request or screen.
   React providers only expose a scope—they do not create or dispose it automatically. See [Scopes](#scopes-and-lifetimes).
-- **Writing:** methods on the store call `this.update(mutate, ...args)` — extra arguments are
-  forwarded and the mutator can be a module-level function; see
-  [Read through the carburetor, write through its methods](#read-through-the-carburetor-write-through-its-methods).
+- **Writing:** use `this.update(mutate, ...args)` for a synchronous one-step write.
+  Decorated `@action` methods batch synchronous draft writes and publish once; they must not await
+  (thenable returns warn in development). See [Writing actions](#writing-actions).
 - **Subscriptions:** per-path, established by what the render reads; `watch(select, onChange)`
   works outside React — see [Precise invalidation](#precise-invalidation) and the
   [Tooling section](#tooling).
@@ -222,6 +222,29 @@ A component reads what it needs, that read becomes its subscription, and a write
 only the intersecting paths.
 
 ## Core ideas
+
+### Writing actions
+
+Use `@action` for a synchronous store method that performs multiple draft writes. Nested decorated
+actions join the outer publication. Do not return a promise/thenable or await inside an action:
+only synchronous writes are included in its publication; asynchronous work should complete before
+calling a synchronous action.
+
+<!-- example:file examples/readme/Interop/CounterAction.ts -->
+```ts
+import {Carburetor, action} from '@/Carburetor';
+
+export class Counter extends Carburetor<{value: number}> {
+    constructor() { super({value: 0}); }
+
+    /** Increments the counter twice in one published action. */
+    @action addTwice(): void {
+        this.draft.value++;
+        this.draft.value++;
+    }
+}
+```
+
 
 ### Read through the carburetor, write through its methods
 
