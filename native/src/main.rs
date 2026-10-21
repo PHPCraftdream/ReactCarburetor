@@ -20,13 +20,13 @@ mod config;
 mod fix;
 mod rules;
 mod source;
-mod walk;
 mod suppression;
+mod walk;
 
 use config::{parse_severity, Config, Severity};
+use fix::Fix;
 use source::{analyze, check_file, Source};
 use walk::collect_files;
-use fix::Fix;
 
 /// Directories never worth walking, whatever the ignore files say: generated output and
 /// dependencies dwarf the sources and hold code nobody in this project is going to fix.
@@ -84,7 +84,7 @@ struct Options {
     paths: Vec<PathBuf>,
     format: Format,
     config: Option<PathBuf>,
-    /// Severity overrides from the command line, applied over the config file.
+    /// Severity overrides from the command line, applied over per-file config.
     overrides: Vec<(String, Severity)>,
     /// Whether a warning is enough to fail the run.
     deny_warnings: bool,
@@ -265,12 +265,23 @@ fn stabilize(
 }
 
 /// Runs the fix loop for one file; read failures retain the path for the run-level error.
-fn fix_one_file(path: &Path, config: &Config, keep_overlaps: bool) -> Result<FixOutcome, String> {
+fn fix_one_file(
+    path: &Path,
+    config: &Config,
+    cli: &[(String, Severity)],
+    keep_overlaps: bool,
+) -> Result<FixOutcome, String> {
+    let mut config = config.overrides_for(path);
+    for (rule, severity) in cli {
+        config
+            .override_rule(rule, *severity)
+            .map_err(|error| error.to_string())?;
+    }
     let original = fs::read_to_string(path)
         .map_err(|error| format!("could not read {}: {error}", path.display()))?;
 
     let (final_text, diagnostics) = stabilize(original.clone(), |text| {
-        analyze(path, text, config, keep_overlaps)
+        analyze(path, text, &config, keep_overlaps)
     });
     let change = (final_text != original).then_some((original, final_text));
 
@@ -280,18 +291,17 @@ fn fix_one_file(path: &Path, config: &Config, keep_overlaps: bool) -> Result<Fix
     })
 }
 
-/// Runs `--fix`/`--fix-dry-run` over every file: [`Write`](FixMode::Write) publishes each changed
-/// file atomically, [`DryRun`](FixMode::DryRun) prints a diff and touches nothing.
 fn run_fix(
     files: &[PathBuf],
     config: &Config,
     mode: FixMode,
+    cli: &[(String, Severity)],
     keep_overlaps: bool,
 ) -> Result<Vec<Diagnostic>, String> {
     // One task per file, the same reasoning as the plain check: parsing dominates the work.
     let outcomes: Vec<(&PathBuf, FixOutcome)> = files
         .par_iter()
-        .map(|path| fix_one_file(path, config, keep_overlaps).map(|outcome| (path, outcome)))
+        .map(|path| fix_one_file(path, config, cli, keep_overlaps).map(|outcome| (path, outcome)))
         .collect::<Result<Vec<_>, _>>()?;
 
     let mut diagnostics = Vec::new();
@@ -361,8 +371,14 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
 
         // A buffer that does not parse is the editor's or compiler's problem to describe;
         // report nothing rather than half a diagnosis.
+        let mut effective = config.overrides_for(path);
+        for (rule, severity) in &options.overrides {
+            effective
+                .override_rule(rule, *severity)
+                .map_err(|error| error.to_string())?;
+        }
         let mut diagnostics: Vec<Diagnostic> =
-            analyze(path, &text, &config, options.keep_overlaps)
+            analyze(path, &text, &effective, options.keep_overlaps)
                 .unwrap_or_default()
                 .into_iter()
                 .map(|mut diagnostic| {
@@ -379,17 +395,28 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
     let files = collect_files(&options.paths, config.ignores())?;
 
     let mut diagnostics: Vec<Diagnostic> = match options.fix_mode {
-        // One task per file: parsing dominates the work and is embarrassingly parallel.
         FixMode::Report => files
             .par_iter()
-            .map(|path| check_file(path, &config, options.keep_overlaps))
+            .map(|path| {
+                let mut effective = config.overrides_for(path);
+                for (rule, severity) in &options.overrides {
+                    effective
+                        .override_rule(rule, *severity)
+                        .map_err(|error| error.to_string())?;
+                }
+                check_file(path, &effective, options.keep_overlaps)
+            })
             .collect::<Result<Vec<_>, _>>()?
             .into_iter()
             .flatten()
             .collect(),
-        FixMode::Write | FixMode::DryRun => {
-            run_fix(&files, &config, options.fix_mode, options.keep_overlaps)?
-        }
+        FixMode::Write | FixMode::DryRun => run_fix(
+            &files,
+            &config,
+            options.fix_mode,
+            &options.overrides,
+            options.keep_overlaps,
+        )?,
     };
 
     sort_diagnostics(&mut diagnostics);

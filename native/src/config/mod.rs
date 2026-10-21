@@ -9,7 +9,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use globset::GlobSet;
 use ignore::overrides::OverrideBuilder;
 use serde::Serialize;
 
@@ -177,7 +179,7 @@ impl ConfigError {
 /// the rules recognise components and stores by. An empty `Config` is pure defaults — `severity`
 /// falls back to `DEFAULT_SEVERITIES` for any rule not overridden, and the base lists stay the
 /// built-in ones.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     // Overrides read from the config file / command line, keyed by BARE rule name (no
     // "carburetor/" prefix); rules absent from here fall back to DEFAULT_SEVERITIES.
@@ -186,6 +188,34 @@ pub struct Config {
     // Extra base class names from "componentBases" / "storeBases", added to the built-ins.
     component_bases: Vec<String>,
     store_bases: Vec<String>,
+    overrides: Vec<FileOverride>,
+    root: PathBuf,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            rules: BTreeMap::new(),
+            ignore: Vec::new(),
+            component_bases: Vec::new(),
+            store_bases: Vec::new(),
+            overrides: Vec::new(),
+            root: absolute_from_cwd(Path::new(".")),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FileOverride {
+    patterns: Vec<String>,
+    matcher: Arc<GlobSet>,
+    rules: BTreeMap<String, RuleSetting>,
+}
+
+impl PartialEq for FileOverride {
+    fn eq(&self, other: &Self) -> bool {
+        self.patterns == other.patterns && self.rules == other.rules
+    }
 }
 
 impl Config {
@@ -197,8 +227,16 @@ impl Config {
     pub fn load(path: Option<&Path>) -> Result<Config, ConfigError> {
         let Some(path) = path else {
             return match fs::read_to_string(CONFIG_FILE) {
-                Ok(text) => parse(&text).map_err(|error| error.with_path(Path::new(CONFIG_FILE))),
-                Err(error) if error.kind() == ErrorKind::NotFound => Ok(Config::default()),
+                Ok(text) => parse(&text)
+                    .map(|mut config| {
+                        config.root = absolute_from_cwd(Path::new("."));
+                        config
+                    })
+                    .map_err(|error| error.with_path(Path::new(CONFIG_FILE))),
+                Err(error) if error.kind() == ErrorKind::NotFound => Ok(Config {
+                    root: absolute_from_cwd(Path::new(".")),
+                    ..Config::default()
+                }),
                 Err(error) => Err(ConfigError::Unreadable {
                     path: PathBuf::from(CONFIG_FILE),
                     source: error,
@@ -211,7 +249,49 @@ impl Config {
             source,
         })?;
 
-        parse(&text).map_err(|error| error.with_path(path))
+        parse(&text)
+            .map(|mut config| {
+                let base = path
+                    .parent()
+                    .filter(|parent| !parent.as_os_str().is_empty())
+                    .unwrap_or(Path::new("."));
+                config.root = absolute_from_cwd(base);
+                config
+            })
+            .map_err(|error| error.with_path(path))
+    }
+
+    /// Resolve file-specific overrides once before the rule walk.
+    pub fn overrides_for(&self, path: &Path) -> Config {
+        let absolute = absolute_from_cwd(path);
+        let Ok(relative) = absolute.strip_prefix(&self.root) else {
+            return self.clone_without_overrides();
+        };
+        let normalized = relative.to_string_lossy().replace('\\', "/");
+        let mut effective = self.clone_without_overrides();
+        for item in &self.overrides {
+            #[cfg(test)]
+            count_override_match();
+            if item.matcher.is_match(&normalized) {
+                effective.rules.extend(
+                    item.rules
+                        .iter()
+                        .map(|(key, value)| (key.clone(), value.clone())),
+                );
+            }
+        }
+        effective
+    }
+
+    fn clone_without_overrides(&self) -> Config {
+        Config {
+            rules: self.rules.clone(),
+            ignore: self.ignore.clone(),
+            component_bases: self.component_bases.clone(),
+            store_bases: self.store_bases.clone(),
+            overrides: Vec::new(),
+            root: self.root.clone(),
+        }
     }
 
     /// Severity a rule reports at, given its id with or without the "carburetor/" prefix.
@@ -394,15 +474,18 @@ fn parse(text: &str) -> Result<Config, ConfigError> {
     for key in object.keys() {
         if !matches!(
             key.as_str(),
-            "rules" | "ignore" | "componentBases" | "storeBases"
+            "rules" | "ignore" | "componentBases" | "storeBases" | "overrides"
         ) {
             return Err(malformed(format!(
-                "unknown key {key:?}: expected \"rules\", \"ignore\", \"componentBases\" or \"storeBases\""
+                "unknown key {key:?}: expected \"rules\", \"ignore\", \"componentBases\", \"storeBases\" or \"overrides\""
             )));
         }
     }
 
-    let mut config = Config::default();
+    let mut config = Config {
+        root: absolute_from_cwd(Path::new(".")),
+        ..Config::default()
+    };
 
     if let Some(rules) = object.get("rules") {
         let Some(rules) = rules.as_object() else {
@@ -444,6 +527,8 @@ fn parse(text: &str) -> Result<Config, ConfigError> {
         }
     }
 
+    config.overrides = parse_overrides(object.get("overrides"))?;
+
     if let Some(component) = object.get("componentBases") {
         config.component_bases = parse_bases("componentBases", component)?;
     }
@@ -461,6 +546,9 @@ mod scope;
 mod style;
 
 use bases::parse_bases;
+use bases::{absolute_from_cwd, parse_overrides};
+#[cfg(test)]
+use bases::{count_override_match, override_match_count, reset_override_match_count};
 use depth::validate_max_render_depth_options;
 pub(crate) use depth::DEFAULT_MAX;
 use scope::validate_module_function_options;

@@ -2,7 +2,18 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU32, Ordering};
 
-const OFFENDER: &str = "class Widget extends AntiHookComponent {\n    componentDidMount = () => {\n        super.componentDidMount();\n        run();\n    };\n}\n";
+const OFFENDER: &str = concat!(
+    "class Widget extends AntiHookComponent {
+",
+    "    componentDidMount = () => {
+",
+    "        super.componentDidMount();
+",
+    "        run();
+    };
+}
+"
+);
 const CLEAN: &str = "const value = 1;\n";
 
 struct Workspace(PathBuf);
@@ -11,7 +22,10 @@ impl Workspace {
     fn new() -> Self {
         static COUNTER: AtomicU32 = AtomicU32::new(0);
         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!("carburetor-path-errors-{}-{id}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!(
+            "carburetor-path-errors-{}-{id}",
+            std::process::id()
+        ));
         std::fs::create_dir_all(&dir).unwrap();
         Self(dir)
     }
@@ -26,7 +40,9 @@ impl Drop for Workspace {
 impl std::ops::Deref for Workspace {
     type Target = Path;
 
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 fn run(cwd: &Path, args: &[&str]) -> Output {
@@ -77,11 +93,15 @@ fn missing_file_is_an_error_in_all_formats_and_modes() {
 fn clean_and_offender_exit_codes_are_stable_for_formats_and_modes() {
     for format in ["human", "json"] {
         for mode in modes(format) {
-            for (name, source, expected) in [("clean.tsx", CLEAN, 0), ("offender.tsx", OFFENDER, 1)] {
+            for (name, source, expected) in [("clean.tsx", CLEAN, 0), ("offender.tsx", OFFENDER, 1)]
+            {
                 let dir = Workspace::new();
                 std::fs::write(dir.join(name), source).unwrap();
                 let mut args = mode.clone();
-                let expected = if args.iter().any(|arg| arg == "--fix" || arg == "--fix-dry-run") {
+                let expected = if args
+                    .iter()
+                    .any(|arg| arg == "--fix" || arg == "--fix-dry-run")
+                {
                     0
                 } else {
                     expected
@@ -130,7 +150,10 @@ fn unreadable_file_is_reported_without_changing_permissions() {
     let mut permissions = std::fs::metadata(&path).unwrap().permissions();
     permissions.set_mode(0o000);
     std::fs::set_permissions(&path, permissions).unwrap();
-    let restore = RestorePermissions { path: path.clone(), mode: original };
+    let restore = RestorePermissions {
+        path: path.clone(),
+        mode: original,
+    };
     if std::fs::read(&path).is_ok() {
         eprintln!("skipping permission assertions: process can read mode-000 files");
         return;
@@ -167,7 +190,10 @@ fn unreadable_nested_directory_is_reported() {
     std::fs::write(nested.join("clean.tsx"), CLEAN).unwrap();
     let original = std::fs::metadata(&nested).unwrap().permissions().mode();
     std::fs::set_permissions(&nested, std::fs::Permissions::from_mode(0o000)).unwrap();
-    let restore = RestorePermissions { path: nested.clone(), mode: original };
+    let restore = RestorePermissions {
+        path: nested.clone(),
+        mode: original,
+    };
     if std::fs::read_dir(&nested).is_ok() {
         eprintln!("skipping permission assertions: process can traverse mode-000 directories");
         return;
@@ -188,7 +214,10 @@ fn unreadable_nested_directory_is_reported() {
 }
 
 #[cfg(unix)]
-struct RestorePermissions { path: PathBuf, mode: u32 }
+struct RestorePermissions {
+    path: PathBuf,
+    mode: u32,
+}
 
 #[cfg(unix)]
 impl Drop for RestorePermissions {
@@ -208,7 +237,12 @@ fn windows_share_locked_file_is_reported_in_all_modes() {
     let dir = Workspace::new();
     let path = dir.join("locked.tsx");
     std::fs::write(&path, OFFENDER).unwrap();
-    let lock = OpenOptions::new().read(true).write(true).share_mode(0).open(&path).unwrap();
+    let lock = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .share_mode(0)
+        .open(&path)
+        .unwrap();
     let error = std::fs::read_to_string(&path).unwrap_err();
     assert_eq!(error.raw_os_error(), Some(32), "{error:?}");
     for format in ["human", "json"] {
@@ -230,4 +264,40 @@ fn windows_share_locked_file_is_reported_in_all_modes() {
         }
     }
     drop(lock);
+}
+
+#[test]
+fn native_file_override_suppresses_test_file_and_cli_wins() {
+    let dir = Workspace::new();
+    let source = concat!(
+        "export function work(items: string[]) { ",
+        "return items.map(item => item.length); }
+"
+    );
+    std::fs::write(dir.join("file.ts"), source).unwrap();
+    std::fs::write(dir.join("file.test.ts"), source).unwrap();
+    let config = concat!(
+        r#"{"overrides":[{"files":["**/*.test.ts"],"rules":{"#,
+        r#"carburetor/require-module-function":"off"}}]}"#,
+    );
+    std::fs::write(dir.join("config.json"), config).unwrap();
+    let first = run(&dir, &["--config=config.json", "--format=json", "."]);
+    let found: serde_json::Value = serde_json::from_slice(&first.stdout).unwrap();
+    assert_eq!(found.as_array().unwrap().len(), 1);
+    let cli = run(
+        &dir,
+        &[
+            "--config=config.json",
+            "--rule=carburetor/require-module-function=error",
+            "--format=json",
+            ".",
+        ],
+    );
+    let found: serde_json::Value = serde_json::from_slice(&cli.stdout).unwrap();
+    assert_eq!(found.as_array().unwrap().len(), 2);
+    assert!(found
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|item| item["severity"] == "error"));
 }
