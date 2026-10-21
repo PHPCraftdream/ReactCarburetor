@@ -225,9 +225,12 @@ jobs:
           merge-multiple: true
           path: packages
 
+      # npm pack does not create the destination.
       - name: Pack the launcher
         shell: bash
-        run: npm pack ./npm/carburetor-lint --pack-destination launcher
+        run: |
+          mkdir -p launcher
+          npm pack ./npm/carburetor-lint --pack-destination launcher
 
       - name: Install on this machine
         if: ${{ !matrix.image }}

@@ -269,9 +269,11 @@ jobs:
       - name: Install
         run: npm ci
 
-      # prepack builds dist/.
+      # prepack builds dist/. npm pack does not create the destination.
       - name: Pack
-        run: npm pack --pack-destination "$RUNNER_TEMP/pack"
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack"
+          npm pack --pack-destination "$RUNNER_TEMP/pack"
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
