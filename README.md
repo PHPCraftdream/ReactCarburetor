@@ -1164,7 +1164,11 @@ successful or failed answer is reused only for matching arguments; Pending resto
 for the resource and cache serialization details.
 
 Failed storage reads reach `persist`'s `onError` handler without deleting unread data; without a
-handler, a read failure throws.
+handler, a read failure throws. `previousKeys` optionally lists old whole-storage keys in priority
+order: when the current key is absent, the first present old key is restored, written immediately
+under the current key in normalized form, then removed. Failed restores leave old data untouched.
+Current data takes precedence. Partitioned persistence checks old whole keys only when the current
+key and its partition entries are absent.
 
 `version` wraps writes as `{__carburetorVersion, data}` and treats raw legacy JSON as version 0. `migrate[n]`
 converts n-1 to n; the complete chain is validated synchronously. `prune: true` removes unknown

@@ -71,24 +71,27 @@ restores once and returns a disposer. Options are `key` and `storage` (required)
 `onError?: (error: unknown) => void`, `coalesce?: boolean`, `throttleMs?: number`,
 `partitions?: ReadonlyArray<string>`, `version?: number`,
 `migrate?: Record<number, (state: unknown) => unknown>`, and
-`prune?: boolean | ((saved: unknown, current: unknown) => unknown)`.
+`prune?: boolean | ((saved: unknown, current: unknown) => unknown)`,
+`previousKeys?: readonly string[]`.
 
 `version` must be a non-negative integer. Each `migrate[n]` converts version n-1 to n; the whole
 1..version chain is required and checked synchronously even without stored data. Raw legacy JSON
 is v0; writes use `{__carburetorVersion, data}`. Migration is sequential. Future-version entries and versioned
 migration/restore failures are kept and prevent all writes until reconnect; without `onError` the
 error is thrown. Unversioned persistence preserves its existing raw format and error policy.
-An old key is not a fallback: a key named `app.profile.v3` is raw v0; retain that key or copy its
-bytes externally before connecting at another key.
+`previousKeys` are ordered old whole-storage keys. They are consulted only if the current key is
+absent; the first present entry is restored, normalized to the current key immediately, and removed
+only after that write succeeds. Invalid stored data leaves the old entry intact. An empty list is
+valid; entries must be non-empty, unique, and distinct from the current key. For partitions, old
+whole-key fallback applies only when the current key and its partition entries are absent.
 
 Versioned restores and `prune: true` preserve missing current defaults recursively. Pruning only
 removes unknown keys at populated plain-object schemas; empty objects are open dictionaries.
 A callback receives saved/current wire values; it must not mutate either argument. Its result is
 merged with defaults only when `version` is set. For populated dynamic dictionaries use the `prune`
-callback instead of `prune: true`. Arrays, Maps, Sets, Dates, and class instances are
-opaque and are not traversed. Changing keys does not fall back to an old key: keep the old key or
-copy its bytes externally before connecting at another key. Native values retain normal JSON
-serialization limits. Schema options with `partitions` throw eagerly rather than being ignored.
+callback instead of `prune: true`. Arrays, Maps, Sets, Dates, and class instances are opaque and
+are not traversed. Native values retain normal JSON serialization limits. Schema options with
+`partitions` throw eagerly rather than being ignored.
 
 ## Interop
 
