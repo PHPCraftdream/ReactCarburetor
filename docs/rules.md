@@ -78,6 +78,10 @@ The preset enables `max-line-length`, `no-blank-line-after-tsdoc`, `no-parent-im
 `prefer-readonly-array-param` as a warning. The corresponding `react-carburetor/lint` plugin config
 is available as `house-style`.
 
+`no-parent-import` reports nothing until your config names the source roots it may alias, under
+`settings.carburetor.ruleOptions["no-parent-import"].roots` (each entry a `{path, prefix}` pair, for
+example `{"path": "src", "prefix": "@/"}`).
+
 The native CLI can use equivalent severities in `.carburetorrc.json`:
 
 ```json

@@ -20,7 +20,11 @@ describe('house-style host diagnostics', () => {
         try {
             const config = path.join(temporary, 'house-style.oxlintrc.json');
             const pluginEntry = path.join(ROOT, 'plugin', 'src', 'index.mts');
-            writeFileSync(config, generateHouseStyleOxlintJson(pluginEntry));
+            // no-parent-import stays silent until the config names the roots it may alias.
+            const preset = JSON.parse(generateHouseStyleOxlintJson(pluginEntry)) as Record<string, unknown>;
+            const roots = [{path: 'plugin/__fixtures__/style', prefix: '@fixtures/'}];
+            const settings = {carburetor: {ruleOptions: {'no-parent-import': {roots}}}};
+            writeFileSync(config, JSON.stringify({...preset, settings}));
             const fixtures = [
                 'plugin/__fixtures__/style/maxLineLength.ts',
                 'plugin/__fixtures__/style/noBlankLineAfterTsdoc.ts',
