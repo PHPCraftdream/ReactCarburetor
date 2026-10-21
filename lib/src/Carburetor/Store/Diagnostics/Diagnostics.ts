@@ -4,7 +4,7 @@ import {traceListeners} from '@/Carburetor/Store/Diagnostics/Internal/listeners'
 import {metadata} from '@/Carburetor/Store/Diagnostics/Internal/metadata';
 import {IS_DEVELOPMENT} from '@/Carburetor/Store/Utils/DevelopmentFlag';
 
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 /**
  * Development-only complaints about misuse — a write that was never published, a
@@ -38,7 +38,7 @@ export class Diagnostics {
      * @param listener - called with each delivered update trace.
      */
     public traceUpdates(listener: TUpdateTraceListener): TDisposer {
-        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        if (process.env.NODE_ENV !== 'production') {
             const registration = {listener};
             traceListeners.registrations.add(registration);
             if (traceListeners.registrations.size === 1) traceListeners.epoch++;
@@ -52,7 +52,7 @@ export class Diagnostics {
 
     /** Whether callback tracing currently has active registrations. */
     public isTracing(): boolean {
-        return typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+        return process.env.NODE_ENV !== 'production'
             && traceListeners.registrations.size > 0;
     }
 
@@ -64,7 +64,7 @@ export class Diagnostics {
      * @param version - store version delivered.
      */
     public traceUpdate(subscriber: string, store: string, paths: ReadonlySet<string>, version: number): void {
-        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production' && this.isTracing()) {
+        if (process.env.NODE_ENV !== 'production' && this.isTracing()) {
             traceListeners.notify(subscriber, store, paths, version);
         }
     }
@@ -90,7 +90,7 @@ export class Diagnostics {
      * @param callback - optional update callback used to label store subscriptions.
      */
     public registerComponent(component: object, name: string, callback?: object): void {
-        if (typeof process === 'undefined' || process.env.NODE_ENV === 'production') return;
+        if (process.env.NODE_ENV === 'production') return;
         metadata.componentNames.set(component, name);
         if (callback) metadata.callbackNames.set(callback, name);
     }
@@ -103,7 +103,7 @@ export class Diagnostics {
      * @param count - number of committed read paths.
      */
     public reportWideRead(component: object, store: object, storeUid: string, count: number): void {
-        if (typeof process === 'undefined' || process.env.NODE_ENV === 'production' || !this.enabled
+        if (process.env.NODE_ENV === 'production' || !this.enabled
             || count <= this.wideReadThreshold) return;
         let reported = metadata.wideReadReported.get(component);
         if (!reported) metadata.wideReadReported.set(component, reported = new WeakSet<object>());

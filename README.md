@@ -18,6 +18,11 @@ re-renders are never created in the first place.
 [Contributing](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CONTRIBUTING.md) · [Security](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/SECURITY.md) ·
 [Code of Conduct](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CODE_OF_CONDUCT.md)
 
+Development diagnostics are removed when your bundler (or its define configuration) substitutes the
+literal `process.env.NODE_ENV` expression with `"production"`. Without a bundler, set
+`globalThis.process = {env: {NODE_ENV: 'production'}}` before importing the library; use a dynamic
+`import()` after setting it, since static imports run before the assignment.
+
 ## Install
 
 The first public npm release is still being prepared: `react-carburetor` and

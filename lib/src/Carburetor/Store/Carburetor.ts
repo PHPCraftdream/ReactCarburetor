@@ -47,7 +47,7 @@ import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
 import {READS_RETAIN} from "@/Carburetor/Store/Paths/Markers/RetainDeliveryBrand";
 import {storeLifecycle} from "@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle";
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 export class Carburetor<T extends object, TEvents extends object = {}> implements
     ICarburetor<T>, IPatchSource, IInternalSubscriptionProtocol, ICarburetorEvents<TEvents> {
     /** Shared base-method identities; no registration record allocated per store. */
@@ -453,7 +453,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
                 if (record && record.generation <= generation) {
                     try {
                         let callback = record.callback;
-                        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+                        if (process.env.NODE_ENV !== 'production'
                             && diagnostics.isTracing()) {
                             callback = deliveryCallback(true, id, this.getUID(), record, writes, notifiedAt,
                                 () => this[S.subscribers][id]);
@@ -512,7 +512,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
         } finally {
             this.emitUpdate();
         }
-        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') warnIfAsyncMutate(result);
+        if (process.env.NODE_ENV !== 'production') warnIfAsyncMutate(result);
     }
     /** Publishes on the next microtask when synchronous delivery is unsafe.
      * The parameters drive internal engine paths only; call this publicly without arguments.

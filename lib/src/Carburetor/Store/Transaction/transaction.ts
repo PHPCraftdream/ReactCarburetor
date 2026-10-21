@@ -2,7 +2,7 @@ import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {updateBatch} from "./UpdateBatchInstance";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 const isThenable = (value: unknown): boolean => {
     if (typeof value !== 'object' || value === null) {
@@ -23,7 +23,7 @@ export const transaction = <R>(body: () => R): R => {
     try {
         const result = body();
 
-        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production' && isThenable(result)) {
+        if (process.env.NODE_ENV !== 'production' && isThenable(result)) {
             diagnostics.report(
                 'transaction() was given an async body. The batch closes when the body returns, ' +
                 'so only the writes before its first await are batched. Wrap the synchronous ' +

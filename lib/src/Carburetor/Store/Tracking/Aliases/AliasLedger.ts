@@ -8,7 +8,7 @@ import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
 // this exact member expression at build time, which is what lets the strings below be dropped
 // from a production bundle — an imported IS_DEVELOPMENT constant cannot be folded across
 // modules, and the messages would ship dead.
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 /** A string array index (not `length`), the only own keys an array's state has besides it. */
 const isArrayIndexKey = (key: string): boolean =>
@@ -220,7 +220,7 @@ const checkKey = (container: object, key: string, path: TPath): void => {
  * since invalid state corrupts tracking rather than merely surprising it.
  */
 export const createAliasLedger = (): TAliasLedger => {
-    if (typeof process === 'undefined' || process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production') {
         return undefined;
     }
 

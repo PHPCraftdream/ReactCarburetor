@@ -1,9 +1,57 @@
+import {readFileSync, readdirSync} from 'node:fs';
+import {resolve, join} from 'node:path';
+import {runInNewContext} from 'node:vm';
 import {UpdateWave} from "@/Carburetor/Store/Scheduling/UpdateWave";
 import {UpdateBatch} from "@/Carburetor/Store/Transaction/UpdateBatch";
 import {CARBURETOR_NOTIFY_WRITES, IInternalSubscriptionProtocol} from
     "@/Carburetor/Store/Utils/Models";
 import {TPathSet} from "@/Carburetor/Models/Paths";
 import {diagnostics} from "@/Carburetor";
+
+const sourceFiles = (directory: string): string[] => readdirSync(directory, {withFileTypes: true})
+    .flatMap(entry => entry.isDirectory()
+        ? sourceFiles(join(directory, entry.name))
+        : /\.tsx?$/.test(entry.name) ? [join(directory, entry.name)] : []);
+
+describe('development flag source guards', () => {
+    test('lib/src has no typeof process and the shared flag is a literal comparison', () => {
+        const root = resolve(process.cwd(), 'lib/src');
+        const flagged = sourceFiles(root).filter(file => /typeof\s+process\b/.test(readFileSync(file, 'utf8')));
+        expect(flagged).toEqual([]);
+        const flag = readFileSync(resolve(root, 'Carburetor/Store/Utils/DevelopmentFlag.ts'), 'utf8');
+        expect(flag).toContain("export const IS_DEVELOPMENT: boolean = process.env.NODE_ENV !== 'production';");
+        expect(flag).toContain('declare const process:');
+    });
+
+    test('the real flag initializer works after literal substitution without a process global', () => {
+        const flag = readFileSync(resolve(process.cwd(), 'lib/src/Carburetor/Store/Utils/DevelopmentFlag.ts'), 'utf8');
+        const initializer = flag.match(/export const IS_DEVELOPMENT: boolean = ([^;]+);/)?.[1];
+        expect(initializer).toBeDefined();
+        for (const [mode, expected] of [['development', true], ['production', false]] as const) {
+            const substituted = initializer!.replace('process.env.NODE_ENV', JSON.stringify(mode));
+            expect(runInNewContext(substituted, {})).toBe(expected);
+        }
+    });
+
+    test('the real warning reports in development and stays silent in production without global process', () => {
+        const source = readFileSync(
+            resolve(process.cwd(), 'lib/src/Carburetor/Store/Diagnostics/warnIfAsyncMutate.ts'), 'utf8'
+        );
+        const body = source.match(
+            /export const warnIfAsyncMutate = \(result: unknown\): void => \{([\s\S]*?)\n\};/
+        )?.[1];
+        expect(body).toBeDefined();
+        const reports: string[] = [];
+        const diagnosticStub = {report: (message: string): void => { reports.push(message); }};
+        for (const [mode, count] of [['development', 1], ['production', 0]] as const) {
+            reports.length = 0;
+            const substituted = body!.replace(/process\.env\.NODE_ENV/g, JSON.stringify(mode));
+            const script = `(function(result) {${substituted}})(result)`;
+            runInNewContext(script, {diagnostics: diagnosticStub, Promise, result: Promise.resolve()});
+            expect(reports).toHaveLength(count);
+        }
+    });
+});
 
 class ProbeBatch extends UpdateBatch {
     public get pendingMap(): Map<IInternalSubscriptionProtocol, TPathSet> {

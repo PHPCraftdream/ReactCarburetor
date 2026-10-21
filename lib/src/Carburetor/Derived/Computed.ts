@@ -22,7 +22,7 @@ import {C, IDependency, IActiveReadSlot} from "./Models";
 import {PersistentViews} from "@/Carburetor/Store/Tracking/Observation/PersistentViewCache";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 /**
  * Maps a live computed's invalidation callback to the call that marks that computed's
@@ -317,7 +317,7 @@ export class Computed<R> implements IComputed<R> {
             return;
         }
         computedDependencies.addRead(dependency, path);
-        if (dependency.published && typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        if (dependency.published && process.env.NODE_ENV !== 'production') {
             reportComputedEscape(this, (id: string) => this[C.subscribers].has(id));
         }
         const extend = (dependency.source as IInternalSubscriptionProtocol)[CARBURETOR_EXTEND];

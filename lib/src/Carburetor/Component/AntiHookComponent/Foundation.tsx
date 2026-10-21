@@ -15,7 +15,7 @@ import {
 import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
 import {renderOwner} from "@/Carburetor/Derived/renderOwner";
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 const RENDER_KEY = "render";
 
@@ -191,7 +191,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         this[C.installRenderBoundary]();
 
         // Development-only mount-super check, for overrides that never call super.
-        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        if (process.env.NODE_ENV !== 'production') {
             const overrides = Reflect.get(
                 Object.getPrototypeOf(this),
                 'componentDidMount',
@@ -332,7 +332,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         return (): React.ReactNode => {
             const attempt = this[C.openRenderAttempt]();
             // Only the development escape diagnostic reads the owner; production allocates nothing here.
-            const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+            const development = process.env.NODE_ENV !== 'production';
             const previousOwner = development ? renderOwner.get() : undefined;
 
             if (development) {

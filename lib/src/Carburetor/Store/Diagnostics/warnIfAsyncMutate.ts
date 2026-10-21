@@ -1,6 +1,6 @@
 import {diagnostics} from "./DiagnosticsInstance";
 
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 /** Reports an update callback that returned a promise, whose post-await writes wake nobody.
  *
@@ -9,7 +9,7 @@ declare const process: {env: {NODE_ENV?: string}} | undefined;
 export const warnIfAsyncMutate = (result: unknown): void => {
     // An async callback is accepted by a void-returning signature, and then everything it
     // writes after the first await lands in the data long after this emitUpdate has run.
-    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+    if (process.env.NODE_ENV !== 'production'
         && result instanceof Promise) {
         diagnostics.report(
             'update(mutate) published before the mutation finished: the callback returned '

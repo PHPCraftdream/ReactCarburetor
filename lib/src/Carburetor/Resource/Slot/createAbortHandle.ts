@@ -3,7 +3,7 @@ import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 // Declared locally rather than through @types/node, like DevelopmentFlag does: bundlers
 // substitute this exact member expression at build time, which is what keeps the guarded
 // block below droppable from a production bundle.
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 /** The one event the stand-in signal delivers, aimed at the signal itself as its target. */
 interface IShimEvent {
@@ -32,7 +32,7 @@ const invoke = (listener: TShimListener, event: IShimEvent): void => {
 // cancelInFlight() relies on that to finish its cleanup (R7-03). Development-only, like
 // the report above, so a production bundle drops it.
 const reportListenerError = (error: unknown): void => {
-    if (typeof process === 'undefined' || process.env.NODE_ENV === 'production') {
+    if (process.env.NODE_ENV === 'production') {
         return;
     }
 
@@ -65,7 +65,7 @@ export const createAbortHandle = (): AbortController => {
         return new AbortController();
     }
 
-    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production' && !reported) {
+    if (process.env.NODE_ENV !== 'production' && !reported) {
         reported = true;
 
         diagnostics.report(

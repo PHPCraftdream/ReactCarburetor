@@ -1,7 +1,7 @@
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 /** This module's own identity: stable here, distinct from any other copy's evaluation of it. */
 const copyMarker: object = {};
@@ -38,7 +38,7 @@ export const sharedSingleton = <T>(name: string, create: () => T, react?: unknow
         const foreignCopy = existing.copy !== copyMarker;
         const foreignReact = react !== undefined && existing.react !== react;
 
-        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production'
+        if (process.env.NODE_ENV !== 'production'
             && (foreignCopy || foreignReact) && !existing.reported) {
             existing.reported = true;
 

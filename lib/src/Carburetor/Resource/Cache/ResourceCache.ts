@@ -27,7 +27,7 @@ import {isViewCurrent} from "./State/isViewCurrent";
 import {createResourceFieldView} from './Reader/createResourceFieldView';
 import {trimCacheRuntime} from "./State/Runtime/Registry";
 
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 // Every absent entry answers with the exact same shape regardless of T (data is always
 // undefined), so one frozen instance serves every miss instead of a fresh object per call.
@@ -293,7 +293,7 @@ export class ResourceCache<T, TArgs extends TResourceArgs = []> extends Resource
         if (primed !== undefined) return primed.key;
 
         const json = defaultResourceKey(args);
-        const development = typeof process !== 'undefined' && process.env.NODE_ENV !== 'production';
+        const development = process.env.NODE_ENV !== 'production';
         // One single argument is tracked by its own identity, as before the variadic migration:
         // a caller-held object reports its mutation even when each call builds a fresh rest tuple.
         const reference = args.length === 1 ? args[0] : args;

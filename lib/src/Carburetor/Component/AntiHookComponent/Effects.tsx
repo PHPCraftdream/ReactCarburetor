@@ -8,7 +8,7 @@ import {AntiHookComponentReads} from "./Reads";
 import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
 import {ICarburetorEvents} from "@/Carburetor/Models/Store";
 
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 interface IEffectRecord {
     deps: TEffectDeps;
@@ -40,7 +40,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * @param failure - the message to report, already naming what ran and what it cost
      */
     public [C.reportTeardownFailure](failure: string): void {
-        if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+        if (process.env.NODE_ENV !== 'production') {
             diagnostics.report(failure);
         }
     }

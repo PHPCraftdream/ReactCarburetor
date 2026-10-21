@@ -3,12 +3,12 @@ import {IUpdateScheduler} from "@/Carburetor/Models/Store";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
-declare const process: {env: {NODE_ENV?: string}} | undefined;
+declare const process: {env: {NODE_ENV?: string}};
 
 const clearEnclosingBatch = (batch: Map<string, TUpdater>): void => batch.clear();
 
 const reportFlushFailure = (error: unknown): void => {
-    if (typeof process !== 'undefined' && process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== 'production') {
         diagnostics.report(
             'an updater threw while the throttle flushed: ' +
             (error instanceof Error ? error.message : String(error)) +
