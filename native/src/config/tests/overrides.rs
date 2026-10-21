@@ -67,7 +67,7 @@ fn last_matching_entry_wins_and_rooted_globs_do_not_match_outside_paths() {
 fn windows_separator_and_options_are_preserved() {
     let config = parse(concat!(
         r#"{"overrides":[{"files":["**/*.test.ts"],"rules":{"#,
-        r#"carburetor/require-module-function":["off",{"scope":"classes"}]}}]}"#,
+        r#""carburetor/require-module-function":["off",{"scope":"classes"}]}}]}"#,
     ))
     .unwrap();
     let effective = config.overrides_for(Path::new(r"src\\foo.test.ts"));
@@ -145,7 +145,7 @@ fn cwd_relative_input_below_nested_config_root_is_not_doubled() {
 fn override_match_count_is_per_file_not_per_ast_node() {
     let config = parse(concat!(
         r#"{"overrides":[{"files":["**/*.ts"],"rules":{"require-effect-deps":"off"}},{"files":["never/**"],"rules":{"#,
-        r#"no-async-effect":"off"}}]}"#,
+        r#""no-async-effect":"off"}}]}"#,
     )).unwrap();
     let path = Path::new("many.ts");
     let source = (0..250)
