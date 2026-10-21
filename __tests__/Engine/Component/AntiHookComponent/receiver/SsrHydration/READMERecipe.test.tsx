@@ -4,6 +4,7 @@
 // The example is imported before react-dom/client so the global reportError
 // capture is in place when react-dom picks its reportGlobalError implementation.
 import {renderRequest, hydratePage} from '../../../../../../examples/readme/App/Ssr';
+import {createPanel} from '../../../../../../examples/readme/App/ChildScope';
 
 import {act} from 'react';
 import {render} from '@testing-library/react';
@@ -24,6 +25,14 @@ afterEach(() => {
 });
 
 describe('README hydration recipe', () => {
+    test('the child-scope README example owns and disposes a panel', () => {
+        const panel = createPanel();
+        expect(panel.scope.get).toBeDefined();
+        panel.dispose();
+        panel.dispose();
+        expect(() => panel.scope.child([])).toThrow(/disposed/);
+    });
+
     test('the actual exported README Counter component renders and increments', async () => {
         const {container} = render(<Counter/>);
         const button = container.querySelector('button') as HTMLButtonElement;
