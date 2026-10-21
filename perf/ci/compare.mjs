@@ -3,7 +3,7 @@ import {appendFileSync, existsSync, readFileSync, writeFileSync} from 'node:fs';
 import {sampleScenario, summarize, show} from '../harness/measure.mjs';
 import {resolve} from 'node:path';
 import {pathToFileURL} from 'node:url';
-import sampling from '../sampling.mjs';
+import sampling from '../harness/sampling.mjs';
 const {demandByKey, elapsedRow} = sampling;
 import {evaluate, compare} from '../harness/evaluate.mjs';
 import {classifyBaselineGate} from './contract/gateContract.mjs';

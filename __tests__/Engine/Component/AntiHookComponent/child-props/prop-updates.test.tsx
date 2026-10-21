@@ -287,3 +287,48 @@ describe('child props boundary', () => {
         });
 
 });
+
+describe('props gate on in-place mutation', () => {
+    test('a parent mutation reaches only the child that replaces shouldComponentUpdate', () => {
+        interface IPanelProps { shape: {strokes: number}; }
+        const renders = {gated: 0, open: 0};
+
+        class GatedPanel extends AntiHookComponent<IPanelProps> {
+            public render() {
+                renders.gated++;
+                return <span data-testid="gated">{this.props.shape.strokes}</span>;
+            }
+        }
+
+        class OpenPanel extends AntiHookComponent<IPanelProps> {
+            public shouldComponentUpdate(): boolean { return true; }
+
+            public render() {
+                renders.open++;
+                return <span data-testid="open">{this.props.shape.strokes}</span>;
+            }
+        }
+
+        class Board extends React.Component {
+            private readonly shape = {strokes: 0};
+
+            public draw(): void {
+                this.shape.strokes++;
+                this.forceUpdate();
+            }
+
+            public render() {
+                return <div><GatedPanel shape={this.shape}/><OpenPanel shape={this.shape}/></div>;
+            }
+        }
+
+        const board = React.createRef<Board>();
+        const view = render(<Board ref={board}/>);
+        try {
+            act(() => { board.current!.draw(); });
+            expect(view.getByTestId('open').textContent).toBe('1');
+            expect(view.getByTestId('gated').textContent).toBe('0');
+            expect(renders).toEqual({gated: 1, open: 2});
+        } finally { view.unmount(); }
+    });
+});

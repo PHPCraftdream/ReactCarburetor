@@ -8,7 +8,7 @@ import {classifyBaselineGate} from './contract/gateContract.mjs';
 import {comparePrevious} from './compare.mjs';
 import {measureControls} from './measure.mjs';
 import {calibrateGains} from './calibrate.mjs';
-import sampling from '../sampling.mjs';
+import sampling from '../harness/sampling.mjs';
 
 const phaseStarted = Date.now();
 

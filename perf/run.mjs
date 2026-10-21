@@ -21,7 +21,7 @@ import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {baselineDist} from './harness/baseline.mjs';
 import {compare, evaluate} from './harness/evaluate.mjs';
-import sampling from './sampling.mjs';
+import sampling from './harness/sampling.mjs';
 import {sampleScenario, show, summarize} from './harness/measure.mjs';
 
 const {demandByKey, phaseBudget, elapsedRow, timingSummary, keyFor} = sampling;

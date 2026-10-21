@@ -8,7 +8,7 @@ import {pathToFileURL} from 'node:url';
 import {summarize, show} from '../harness/measure.mjs';
 import {evaluate, compare} from '../harness/evaluate.mjs';
 import {timingSummary} from './compare.mjs';
-import sampling from '../sampling.mjs';
+import sampling from '../harness/sampling.mjs';
 
 
 /** Measures new completed-operation controls separately from mechanism counters, with alternating native children. */

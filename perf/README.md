@@ -620,7 +620,7 @@ Sampling modes: `counter` entries default to one sample; `timing` and `mixed` en
 three. Standalone runs default to 3 samples; Performance validation defaults to 5. Explicit `--runs`
 requests apply to timing/mixed modes, while counter runs require `--counter-runs`. Phase budgets are
 60 seconds focused, 300 seconds CI, and 2,400 seconds combined; these are budgets, not measured
-durations. See the [runtime audit](reports/runtime-audit.md).
+durations.
 
 ## GitHub Actions
 

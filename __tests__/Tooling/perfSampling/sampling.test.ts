@@ -1,5 +1,5 @@
 import {describe, expect, it} from '@rstest/core';
-import sampling from '../../../perf/sampling.mjs';
+import sampling from '../../../perf/harness/sampling.mjs';
 const {classifySampling, demandByKey, phaseBudget, elapsedRow, timingSummary} = sampling;
 
 describe('counter sampling', () => {
