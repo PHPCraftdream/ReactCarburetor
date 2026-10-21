@@ -29,7 +29,7 @@ describe('R40-01 built subclass contract', () => {
             'EDevToolsMessageType', 'EResourceStatus', 'ResourceCache', 'ResourceCarburetor',
             'ScopedAntiHookComponent', 'UpdateThrottle', 'bind', 'carburetorToken', 'computed', 'connectDevTools',
             'deepClone', 'diagnostics', 'getInitialResourceData', 'persist', 'resourceState', 'shallowEqual',
-            'transaction', 'waitForUpdate',
+            'transaction', 'waitForUpdate', 'action',
         ].sort());
     });
 
