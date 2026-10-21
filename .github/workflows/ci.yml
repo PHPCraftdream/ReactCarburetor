@@ -72,7 +72,7 @@ jobs:
       - name: Build native linter
         if: steps.native-bin.outputs.cache-hit != 'true'
         working-directory: native
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Build
         run: npm run build
@@ -255,6 +255,69 @@ jobs:
           path: worktrees/ci-results/**/packed-lint*
           if-no-files-found: warn
 
+  # The packed library, built once for the jobs that install it on other runtimes.
+  library-tarball:
+    name: Library tarball
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      # prepack builds dist/.
+      - name: Pack
+        run: npm pack --pack-destination "$RUNNER_TEMP/pack"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: library-tarball
+          path: ${{ runner.temp }}/pack/*.tgz
+
+  # The oldest Node the package declares in engines.node, the newest release of that line, and the
+  # newest Node there is: the packed tarball is installed with that runtime's own npm and loaded as
+  # CJS and ESM, development and production builds, with a store write and a server render.
+  node-floor:
+    name: Node ${{ matrix.node }}
+    needs: library-tarball
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['24.0.0', '24', 'latest']
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: library-tarball
+          path: ${{ runner.temp }}/pack
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Install the tarball into a fresh project
+        run: |
+          set -e
+          mkdir "$RUNNER_TEMP/consumer"
+          cd "$RUNNER_TEMP/consumer"
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund "$RUNNER_TEMP"/pack/*.tgz react@18 react-dom@18
+          cp "$GITHUB_WORKSPACE/scripts/tools/release/ci/floorProbe/probe.cjs" .
+
+      - name: Load and use every build
+        working-directory: ${{ runner.temp }}/consumer
+        run: |
+          set -e
+          for flavor in require-development require-production import-development import-production; do
+            node probe.cjs "$flavor"
+          done
+
   native:
     name: Native linter
     runs-on: ubuntu-latest
@@ -303,19 +366,19 @@ jobs:
       - name: Build
         if: steps.gate.outputs.run == 'true'
         working-directory: native
-        run: cargo build --release
+        run: cargo build --release --locked
 
       # The integration tests run the built binary, so they cover the command line, the walk
       # and the exit codes — the parts a unit test cannot see.
       - name: Test
         if: steps.gate.outputs.run == 'true'
         working-directory: native
-        run: cargo test
+        run: cargo test --locked
 
       - name: Clippy
         if: steps.gate.outputs.run == 'true'
         working-directory: native
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: Record the verified marker
         if: steps.gate.outputs.run == 'true'
@@ -331,139 +394,8 @@ jobs:
           path: .native-verified
           key: native-verified-${{ steps.rustc.outputs.version }}-${{ hashFiles('native/src/**', 'native/tests/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
 
-  # The six published platform packages. Each leg builds one cargo target, then runs the
-  # produced binary there — compiling for a target proves nothing about the artefact, running
-  # it does — and finally drops the binary into its package directory and packs it for a
-  # maintainer to publish by hand.
+  # The published platform packages: every leg builds, checks, runs, packs and installs one
+  # binary. A reusable workflow, so a platform leg can also be run alone while it is tuned.
   native-packages:
-    name: Package ${{ matrix.package }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - package: carburetor-lint-win32-x64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bin_ext: .exe
-          - package: carburetor-lint-darwin-arm64
-            os: macos-15
-            target: aarch64-apple-darwin
-          - package: carburetor-lint-darwin-x64
-            os: macos-15-intel
-            target: x86_64-apple-darwin
-          - package: carburetor-lint-linux-x64-gnu
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-          - package: carburetor-lint-linux-x64-musl
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-            apt: musl-tools
-            linker_var: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER
-            linker: musl-gcc
-          - package: carburetor-lint-linux-arm64-gnu
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            apt: gcc-aarch64-linux-gnu
-            linker_var: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER
-            linker: aarch64-linux-gnu-gcc
-            emulator_apt: qemu-user-static
-            emulator: qemu-aarch64-static
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
-
-      # A cached cross binary skips the toolchain, the cross linker and the compile;
-      # the smoke and pack steps below still run. Cache eviction just rebuilds.
-      - name: Cross binary cache
-        id: pkg-bin
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}
-          key: native-pkg-${{ matrix.target }}-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
-
-      # The cross legs need a linker that speaks the target's ABI.
-      - name: Install the cross toolchain
-        if: matrix.apt && steps.pkg-bin.outputs.cache-hit != 'true'
-        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.apt }}
-
-      # The smoke step runs on a cache hit too, so the emulator is installed unconditionally.
-      - name: Install the emulator
-        if: matrix.emulator_apt
-        run: sudo apt-get update && sudo apt-get install -y ${{ matrix.emulator_apt }}
-
-      # qemu-user only needs the arm64 ld.so and libc on disk to execute a foreign binary; a real
-      # `apt-get install libc6:arm64` drags in dpkg's cross-arch version-parity `Breaks:` rules and
-      # apt tries to reconcile the whole base system against them. Downloading the .deb and
-      # unpacking it with dpkg -x sidesteps the dependency resolver entirely.
-      - name: Install the aarch64 runtime libraries
-        if: matrix.target == 'aarch64-unknown-linux-gnu'
-        run: |
-          sudo dpkg --add-architecture arm64
-          echo "deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports $(lsb_release -cs) main" \
-            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
-          sudo apt-get update -o Dir::Etc::sourcelist="sources.list.d/arm64-ports.list" -o Dir::Etc::sourceparts="-"
-          cd "$RUNNER_TEMP"
-          apt-get download libc6:arm64 libgcc-s1:arm64
-          sudo dpkg -x libc6_*.deb /
-          sudo dpkg -x libgcc-s1_*.deb /
-
-      # Matrix keys cannot be environment variable NAMES, so the linker reaches cargo through
-      # the environment file instead.
-      - name: Point cargo at the cross linker
-        if: matrix.linker && steps.pkg-bin.outputs.cache-hit != 'true'
-        run: echo "${{ matrix.linker_var }}=${{ matrix.linker }}" >> "$GITHUB_ENV"
-
-      - name: Add the cargo target
-        if: steps.pkg-bin.outputs.cache-hit != 'true'
-        run: rustup target add ${{ matrix.target }}
-
-      - name: Cargo cache
-        if: steps.pkg-bin.outputs.cache-hit != 'true'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            native/target
-          key: cargo-packages-${{ matrix.target }}-${{ hashFiles('native/Cargo.lock') }}
-
-      - name: Build
-        if: steps.pkg-bin.outputs.cache-hit != 'true'
-        working-directory: native
-        run: cargo build --release --target ${{ matrix.target }}
-
-      # `--help` exercises the dynamic loader; the fixture lint exercises the walk, the parser
-      # and the exit codes. reads.tsx carries known violations, so exit 1 with the rule id on
-      # stdout is the passing outcome, and anything else fails the step.
-      - name: Run the binary on this target
-        shell: bash
-        run: |
-          set -e
-          BIN="native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}"
-          ${{ matrix.emulator }} "$BIN" --help
-          set +e
-          OUT=$(${{ matrix.emulator }} "$BIN" --format=json --rule no-get-data-in-render=error plugin/__fixtures__/data/reads.tsx)
-          CODE=$?
-          set -e
-          [ "$CODE" -eq 1 ] || { echo "expected exit 1 (findings), got $CODE" >&2; exit 1; }
-          echo "$OUT" | grep -q no-get-data-in-render || { echo "expected the fixture's violation in the output" >&2; exit 1; }
-
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
-        with:
-          node-version: 24
-
-      - name: Pack the platform package
-        shell: bash
-        run: |
-          set -e
-          cp "native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}" "npm/${{ matrix.package }}/"
-          cd "npm/${{ matrix.package }}"
-          npm pack
-          # No -q: it exits the moment it finds a match, leaving tar to write into a closed pipe
-          # and fail with SIGPIPE under `set -e -o pipefail`, even when the check itself passes.
-          tar -tf *.tgz | grep "package/carburetor-lint" >/dev/null
-
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: ${{ matrix.package }}
-          path: npm/${{ matrix.package }}/*.tgz
+    name: Native packages
+    uses: ./.github/workflows/native-packages.yml

@@ -264,16 +264,16 @@ skips the Rust toolchain, the cargo caches and the compile entirely.
 In the full tier (`ci.yml`) the `native` job records a `native-verified-<hash>`
 marker after `cargo test` and `cargo clippy` both pass; later runs on the same
 Rust inputs skip straight through, including the nightly. Dispatching the
-workflow with `force_native: true` reruns them regardless. The six platform
-packages cache their cross binaries under `native-pkg-<target>-<hash>`; the
-smoke and packaging steps still run on a cache hit, so the uploaded
-`carburetor-lint-*` artifacts are identical either way.
+workflow with `force_native: true` reruns them regardless. The eight platform
+packages (`native-packages.yml`) cache their binaries under `native-pkg-<target>-<toolchain>-<hash>`;
+the portability check, the run, the packing and the install smoke still happen on a cache hit, so
+the uploaded `carburetor-lint-*` artifacts are identical either way.
 
 GitHub evicts caches after 7 days without use (and caps the total at 10 GB per
 repository), so an evicted entry simply means the affected job rebuilds — a
 miss is slower, never incorrect. `release.yml` is unaffected: it still requires
-a green full-tier run for the exact SHA and downloads the `carburetor-lint-*`
-artifacts from that run.
+a green full-tier run for the exact SHA (starting one when there is none) and
+downloads the `carburetor-lint-*` artifacts from that run.
 
 ## Pull requests
 
@@ -305,6 +305,17 @@ licenses remain denied, and unmatched exceptions fail as stale.
 CI caches only successful checks by fingerprint. Dispatch with `force: true` to
 bypass cache lookup. GitHub evicts unused caches after 7 days; an eviction causes
 the check to run again, never a skipped verification.
+
+### Third-party notices for the binaries
+
+The `carburetor-lint` binaries statically include the Rust crates they link, and those licenses
+require their notices to travel with the binary. `native/THIRD-PARTY-LICENSES.txt` holds them and
+is packed into every platform package. It is generated, not edited: after `native/Cargo.lock`
+changes, run `node scripts/tools/release/attribution/thirdParty.mjs --write` (it needs Cargo and
+the crate sources, which `cargo fetch` downloads) and commit the result. The license workflow
+re-generates it with `--check` whenever the dependencies change, so a stale file fails CI. A crate
+whose published source ships no license file needs an entry in
+`scripts/tools/release/attribution/supplements.json` pointing at its upstream text.
 
 ## Licensing of contributions
 

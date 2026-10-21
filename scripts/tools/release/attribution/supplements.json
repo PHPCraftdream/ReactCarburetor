@@ -1,0 +1,12 @@
+[
+  {
+    "repository": "https://github.com/oxc-project/oxc",
+    "source": "https://github.com/oxc-project/oxc/blob/main/LICENSE",
+    "file": "oxc.LICENSE"
+  },
+  {
+    "repository": "https://github.com/oxc-project/oxc-index-vec",
+    "source": "https://github.com/oxc-project/oxc-index-vec/blob/main/LICENSE-MIT",
+    "file": "oxc-index.LICENSE"
+  }
+]

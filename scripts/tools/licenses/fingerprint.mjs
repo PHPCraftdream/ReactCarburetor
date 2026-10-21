@@ -8,6 +8,18 @@ const sourceFiles = [
   'fingerprint.mjs', 'check.mjs',
 ];
 
+// Inputs of the same check that fixtures may omit: the workflow itself and the third-party
+// attribution (its generator and the committed file it must reproduce).
+const optionalInputs = [
+  '.github/workflows/licenses.yml',
+  'scripts/tools/release/attribution/collectShipped.mjs',
+  'scripts/tools/release/attribution/licenseFiles.mjs',
+  'scripts/tools/release/attribution/renderThirdParty.mjs',
+  'scripts/tools/release/attribution/thirdParty.mjs',
+  'scripts/tools/release/attribution/supplements.json',
+  'native/THIRD-PARTY-LICENSES.txt',
+];
+
 /** Recursively sorts object keys while preserving array order.
  *
  * @param {unknown} value - JSON-compatible value.
@@ -70,11 +82,12 @@ export async function fingerprint(root = process.cwd()) {
   add('policy', JSON.stringify(canonicalize(policy)));
   const base = path.join(root, 'scripts/tools/licenses');
   for (const file of sourceFiles) add(file, await readNormalized(path.join(base, file)));
-  const workflow = path.join(root, '.github/workflows/licenses.yml');
-  try {
-    add('licenses-workflow', await readNormalized(workflow));
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
+  for (const file of optionalInputs) {
+    try {
+      add(file, await readNormalized(path.join(root, file)));
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
   }
   return hash.digest('hex');
 }

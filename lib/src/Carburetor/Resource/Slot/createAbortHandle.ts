@@ -47,18 +47,17 @@ const reportListenerError = (error: unknown): void => {
  * Builds the abort handle one resource request runs under: the runtime's `AbortController`
  * where it exists, a minimal stand-in where it does not.
  *
- * The stand-in exists because `AbortController` reached Node's globals in 14.17.0, while
- * `engines.node` advertises 14.6.0, so the oldest advertised runtime
- * has no such global, and constructing the real one made every load throw before it could
- * start (R5-04). There the request degrades to unabortable, and development says so once:
+ * The stand-in exists for a runtime without a global `AbortController`: constructing the real one
+ * there made every load throw before it could start (R5-04). Node (`engines.node` is 24 or newer)
+ * and every browser that has `WeakRef` ship it, so only an embedded runtime gets here. There the
+ * request degrades to unabortable, and development says so once:
  * the loader receives a signal that honors abort(), fires the abort listeners it registered,
  * and answers throwIfAborted() and an onabort assignment the way the native one does, so it
  * can still be told to stop its work; what remains is that the stand-in is not a native
  * `AbortSignal`, so an API demanding native identity (fetch among them) rejects it and the
  * request itself is never interrupted. The state machine above the loader does not degrade —
  * a superseded or aborted answer is still discarded on landing, because that comparison reads
- * `signal.aborted`, which the stand-in honors. Browsers and every newer Node ship the real
- * thing, so the first branch is the one that runs in practice.
+ * `signal.aborted`, which the stand-in honors. The first branch is the one that runs in practice.
  */
 export const createAbortHandle = (): AbortController => {
     if (typeof AbortController === 'function') {
@@ -69,8 +68,8 @@ export const createAbortHandle = (): AbortController => {
         reported = true;
 
         diagnostics.report(
-            'this runtime has no AbortController (Node added one in 14.17.0; the advertised ' +
-            'floor is 14.6.0), so cancellation degrades: the stand-in signal honors abort(), ' +
+            'this runtime has no AbortController, so cancellation degrades: the stand-in ' +
+            'signal honors abort(), ' +
             'fires the abort listeners a loader registered, and still keeps a late answer from ' +
             'being stored, but it is not a native AbortSignal, so an API that demands native ' +
             'signal identity (fetch, for one) rejects it and nothing interrupts the request ' +

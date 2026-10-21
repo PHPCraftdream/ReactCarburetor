@@ -138,10 +138,11 @@ using the command above until the first public release.
 The binary ships the way oxlint ships its own: `carburetor-lint` on npm is a launcher script
 that finds the compiled binary and hands it your arguments, stdio and exit code, and the
 megabytes live in a platform package beside it, `carburetor-lint-<platform>`. The launcher
-package lists all six under `optionalDependencies`, and each platform package declares `os` and
+package lists all eight under `optionalDependencies`, and each platform package declares `os` and
 `cpu` — `libc` too on linux, where glibc and musl builds are not interchangeable — so an
 install downloads exactly the one binary that runs on the installing machine: `win32-x64`,
-`darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-x64-musl`, `linux-arm64-gnu`.
+`win32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-x64-musl`,
+`linux-arm64-gnu`, `linux-arm64-musl`.
 
 ```bash
 npm install --save-dev carburetor-lint
@@ -150,12 +151,16 @@ npx carburetor-lint --fix src
 ```
 
 The packages live in `../npm/`, one directory each, versioned in lockstep with this crate. The
-CI `native-packages` job builds all six cargo targets, runs each produced binary against a
-fixture to prove the artefact executes on its target — compiling for a target proves nothing
-about the result — and uploads the packed tarballs as artifacts. The manual Release workflow
-requires successful full-tier CI on the exact SHA, downloads those artifacts, packs and verifies
-the packages, then publishes the six platform packages, `carburetor-lint`, and `react-carburetor`
-in that order. Its default is `dry_run: true`; trusted OIDC publishing or `NPM_TOKEN` is supported,
+`native-packages.yml` workflow (called by CI, and runnable alone) builds all eight cargo targets
+on their own operating systems. Each leg checks the binary's portability (glibc symbols within the
+2.28 floor, no shared libraries for musl, no Visual C++ runtime on Windows, system dylibs and a
+macOS 11 target on macOS), runs it against a fixture — compiling for a target proves nothing about
+the result — packs it with `THIRD-PARTY-LICENSES.txt`, installs the packed tarball next to the
+launcher and runs it from there, and uploads the tarball as an artifact. The manual Release
+workflow requires a successful full-tier CI run on the exact SHA (it starts one when there is
+none), downloads those artifacts, packs and verifies the packages, then publishes the eight
+platform packages, `carburetor-lint`, and `react-carburetor` in that order, and finally installs
+the published packages from the registry on every platform. Its default is `dry_run: true`; trusted OIDC publishing or `NPM_TOKEN` is supported,
 and already-published versions are skipped. See [`../docs/releasing.md`](../docs/releasing.md).
 
 The lint bridge in `../plugin/src` looks the binary up through the same platform packages, so a

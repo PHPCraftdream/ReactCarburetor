@@ -70,7 +70,7 @@
   ],
   "sideEffects": false,
   "engines": {
-    "node": ">=14.6.0"
+    "node": ">=24.0.0"
   },
   "scripts": {
     "build": "rslib build",

@@ -1,0 +1,4 @@
+# Link the C runtime into the Windows binaries, so they run on a machine without the
+# Visual C++ Redistributable. Checked on the built binary by scripts/tools/release/portability.
+[target.'cfg(all(windows, target_env = "msvc"))']
+rustflags = ["-C", "target-feature=+crt-static"]

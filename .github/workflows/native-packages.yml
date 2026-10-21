@@ -1,0 +1,244 @@
+name: Native packages
+
+# The platform packages that carry the carburetor-lint binary. Each leg builds one cargo target,
+# proves the binary is portable as its package promises, runs it, packs it with the third-party
+# attribution, and installs the packed tarball the way a consumer would. ci.yml calls this
+# workflow; it can also be started alone (Actions → Native packages → Run workflow), which is the
+# cheap way to iterate on a platform leg.
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  # The compiler the shipped binaries are built with, pinned so that rebuilding a commit gives the
+  # same toolchain. Raise it on purpose; the verification jobs use the runner image's toolchain.
+  RUST_VERSION: 1.97.0
+
+jobs:
+  package:
+    name: Package ${{ matrix.package }}
+    runs-on: ${{ matrix.os }}
+    # The glibc legs build inside manylinux_2_28 (glibc 2.28), so the binary runs on every
+    # distribution from RHEL 8 / Debian 10 / Ubuntu 18.10 on, not only on the runner's.
+    container: ${{ matrix.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - package: carburetor-lint-win32-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin_ext: .exe
+            expect: windows
+            arch: x64
+          - package: carburetor-lint-win32-arm64
+            os: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            bin_ext: .exe
+            expect: windows
+            arch: arm64
+          - package: carburetor-lint-darwin-arm64
+            os: macos-15
+            target: aarch64-apple-darwin
+            expect: macos
+            arch: arm64
+          - package: carburetor-lint-darwin-x64
+            os: macos-15-intel
+            target: x86_64-apple-darwin
+            expect: macos
+            arch: x64
+          - package: carburetor-lint-linux-x64-gnu
+            os: ubuntu-latest
+            container: quay.io/pypa/manylinux_2_28_x86_64
+            target: x86_64-unknown-linux-gnu
+            expect: gnu
+            arch: x64
+          - package: carburetor-lint-linux-arm64-gnu
+            os: ubuntu-24.04-arm
+            container: quay.io/pypa/manylinux_2_28_aarch64
+            target: aarch64-unknown-linux-gnu
+            expect: gnu
+            arch: arm64
+          - package: carburetor-lint-linux-x64-musl
+            os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            linker_var: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER
+            expect: musl
+            arch: x64
+          - package: carburetor-lint-linux-arm64-musl
+            os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+            linker_var: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER
+            expect: musl
+            arch: arm64
+    env:
+      # An older deployment target than the runner's SDK, so the binary runs on older macOS.
+      MACOSX_DEPLOYMENT_TARGET: '11.0'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # A cached binary skips the toolchain and the compile; the checks, the run and the pack
+      # below still happen. The key names everything that changes the binary.
+      - name: Binary cache
+        id: binary
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}
+          key: native-pkg-${{ matrix.target }}-${{ env.RUST_VERSION }}-${{ hashFiles('native/src/**', 'native/.cargo/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', '.github/workflows/native-packages.yml') }}
+
+      - name: Install the Rust toolchain
+        if: steps.binary.outputs.cache-hit != 'true'
+        shell: bash
+        run: bash scripts/tools/release/ci/installRust.sh "$RUST_VERSION" "${{ matrix.target }}"
+
+      # The musl legs link statically through the musl-gcc wrapper.
+      - name: Install musl-tools
+        if: matrix.expect == 'musl' && steps.binary.outputs.cache-hit != 'true'
+        run: sudo apt-get update && sudo apt-get install -y musl-tools
+
+      - name: Point cargo at the musl linker
+        if: matrix.expect == 'musl' && steps.binary.outputs.cache-hit != 'true'
+        run: echo "${{ matrix.linker_var }}=musl-gcc" >> "$GITHUB_ENV"
+
+      - name: Cargo cache
+        if: steps.binary.outputs.cache-hit != 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-packages-${{ matrix.target }}-${{ env.RUST_VERSION }}-${{ hashFiles('native/Cargo.lock') }}
+
+      - name: Build
+        if: steps.binary.outputs.cache-hit != 'true'
+        shell: bash
+        working-directory: native
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # The binary must link the way its package promises: glibc symbols within the floor, no
+      # shared libraries for musl, no Visual C++ runtime on Windows, system dylibs only on macOS.
+      - name: Check the binary is portable
+        shell: bash
+        run: |
+          node scripts/tools/release/portability/check.mjs \
+            --expect ${{ matrix.expect }} --arch ${{ matrix.arch }} --max-glibc 2.28 --max-macos 11.0 \
+            "native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}"
+
+      # `--help` exercises the dynamic loader; the fixture lint exercises the walk, the parser
+      # and the exit codes. reads.tsx carries known violations, so exit 1 with the rule id on
+      # stdout is the passing outcome, and anything else fails the step.
+      - name: Run the binary on this target
+        shell: bash
+        run: |
+          set -e
+          BIN="native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}"
+          "$BIN" --help
+          set +e
+          OUT=$("$BIN" --format=json --rule no-get-data-in-render=error plugin/__fixtures__/data/reads.tsx)
+          CODE=$?
+          set -e
+          [ "$CODE" -eq 1 ] || { echo "expected exit 1 (findings), got $CODE" >&2; exit 1; }
+          echo "$OUT" | grep -q no-get-data-in-render || { echo "expected the fixture's violation in the output" >&2; exit 1; }
+
+      - name: Pack the platform package
+        shell: bash
+        run: |
+          set -e
+          cp "native/target/${{ matrix.target }}/release/carburetor-lint${{ matrix.bin_ext }}" "npm/${{ matrix.package }}/"
+          cp native/THIRD-PARTY-LICENSES.txt "npm/${{ matrix.package }}/"
+          cd "npm/${{ matrix.package }}"
+          npm pack
+          # No -q: it exits the moment it finds a match, leaving tar to write into a closed pipe
+          # and fail with SIGPIPE under `set -e -o pipefail`, even when the check itself passes.
+          tar -tf *.tgz | grep "package/carburetor-lint" >/dev/null
+          tar -tf *.tgz | grep "package/THIRD-PARTY-LICENSES.txt" >/dev/null
+
+      # What a consumer gets: the launcher and this package unpacked side by side, then run.
+      - name: Install the packed tarball and run it through the launcher
+        shell: bash
+        run: |
+          node scripts/tools/release/ci/smokePacked.mjs \
+            --launcher npm/carburetor-lint --package "npm/${{ matrix.package }}" \
+            --fixture plugin/__fixtures__/data/reads.tsx
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ matrix.package }}
+          path: npm/${{ matrix.package }}/*.tgz
+
+  # A consumer must end up with the one binary of its own machine. Every platform package is
+  # offered to a fresh project next to the launcher, the way the registry offers them, on each
+  # supported operating system (and on Alpine, to prove that npm tells musl from glibc); only the
+  # matching package may be installed, and the launcher must run it.
+  gating:
+    name: Only ${{ matrix.expect }} installs on ${{ matrix.name }}
+    needs: package
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows x64
+            os: windows-latest
+            expect: carburetor-lint-win32-x64
+          - name: Windows arm64
+            os: windows-11-arm
+            expect: carburetor-lint-win32-arm64
+          - name: macOS arm64
+            os: macos-15
+            expect: carburetor-lint-darwin-arm64
+          - name: macOS x64
+            os: macos-15-intel
+            expect: carburetor-lint-darwin-x64
+          - name: Linux x64 glibc
+            os: ubuntu-latest
+            expect: carburetor-lint-linux-x64-gnu
+          - name: Linux arm64 glibc
+            os: ubuntu-24.04-arm
+            expect: carburetor-lint-linux-arm64-gnu
+          - name: Linux x64 musl (Alpine)
+            os: ubuntu-latest
+            image: node:24-alpine
+            expect: carburetor-lint-linux-x64-musl
+          - name: Linux arm64 musl (Alpine)
+            os: ubuntu-24.04-arm
+            image: node:24-alpine
+            expect: carburetor-lint-linux-arm64-musl
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          pattern: carburetor-lint-*
+          merge-multiple: true
+          path: packages
+
+      - name: Pack the launcher
+        shell: bash
+        run: npm pack ./npm/carburetor-lint --pack-destination launcher
+
+      - name: Install on this machine
+        if: ${{ !matrix.image }}
+        shell: bash
+        run: |
+          node scripts/tools/release/ci/verifyGating.mjs \
+            --launcher "$(ls launcher/*.tgz)" --packages packages --expect ${{ matrix.expect }}
+
+      - name: Install in ${{ matrix.image }}
+        if: ${{ matrix.image }}
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work ${{ matrix.image }} \
+            node scripts/tools/release/ci/verifyGating.mjs \
+            --launcher "$(ls launcher/*.tgz)" --packages packages --expect ${{ matrix.expect }}

@@ -75,7 +75,8 @@ full or when Interop/Component files changed (`react18` output).
 
 `ci.yml` runs the complete suite on schedule, manually via
 `gh workflow run ci.yml --ref master`, or on a `sprint-*` tag. Before a release a
-green full tier for the exact SHA is mandatory — `release.yml` enforces it.
+green full tier for the exact SHA is mandatory — `release.yml` enforces it, and starts the full tier
+itself when the commit has none.
 
 Performance validation and timing attribution are a separate track: dedicated
 `ci/**` branches, up to 240 minutes, run manually (see `perf/README.md`).

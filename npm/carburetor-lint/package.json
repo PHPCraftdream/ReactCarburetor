@@ -12,6 +12,9 @@
     "LICENSE-APACHE"
   ],
   "license": "MIT OR Apache-2.0",
+  "engines": {
+    "node": ">=24.0.0"
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/PHPCraftdream/ReactCarburetor.git"
@@ -31,8 +34,10 @@
     "carburetor-lint-darwin-arm64": "0.1.0",
     "carburetor-lint-darwin-x64": "0.1.0",
     "carburetor-lint-linux-arm64-gnu": "0.1.0",
+    "carburetor-lint-linux-arm64-musl": "0.1.0",
     "carburetor-lint-linux-x64-gnu": "0.1.0",
     "carburetor-lint-linux-x64-musl": "0.1.0",
+    "carburetor-lint-win32-arm64": "0.1.0",
     "carburetor-lint-win32-x64": "0.1.0"
   }
 }

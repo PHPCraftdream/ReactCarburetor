@@ -1,0 +1,80 @@
+name: Post-publish check
+
+# Installs the published packages from the registry on every supported platform and uses them:
+# the launcher must start the right binary, and the library must load as ESM and CJS. The
+# release workflow calls it after publishing; it can also be run alone against any version.
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version that was published
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: The published version to verify
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: win32-x64
+            os: windows-latest
+          - name: win32-arm64
+            os: windows-11-arm
+          - name: darwin-arm64
+            os: macos-15
+          - name: darwin-x64
+            os: macos-15-intel
+          - name: linux-x64-gnu
+            os: ubuntu-latest
+          - name: linux-arm64-gnu
+            os: ubuntu-24.04-arm
+          # The oldest glibc the gnu binaries promise to run on.
+          - name: linux-x64-gnu on glibc 2.28
+            os: ubuntu-latest
+            image: almalinux:8
+          - name: linux-x64-musl
+            os: ubuntu-latest
+            image: node:24-alpine
+          - name: linux-arm64-musl
+            os: ubuntu-24.04-arm
+            image: node:24-alpine
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Install the published packages and use them
+        if: ${{ !matrix.image }}
+        shell: bash
+        run: node scripts/tools/release/ci/verifyPublished.mjs --version "${{ inputs.version }}" --fixture plugin/__fixtures__/data/reads.tsx
+
+      # Alpine ships its own Node; the glibc image borrows the runner's, which is built for glibc 2.28.
+      - name: Install the published packages and use them in ${{ matrix.image }}
+        if: ${{ matrix.image && !startsWith(matrix.image, 'almalinux') }}
+        run: |
+          docker run --rm -v "$PWD:/work" -w /work ${{ matrix.image }} \
+            node scripts/tools/release/ci/verifyPublished.mjs --version "${{ inputs.version }}" \
+            --fixture plugin/__fixtures__/data/reads.tsx
+
+      - name: Install the published packages and use them on the oldest glibc
+        if: ${{ startsWith(matrix.image, 'almalinux') }}
+        run: |
+          NODE_HOME="$(dirname "$(dirname "$(command -v node)")")"
+          docker run --rm -v "$PWD:/work" -v "$NODE_HOME:/opt/node:ro" -w /work \
+            -e PATH=/opt/node/bin:/usr/bin:/bin ${{ matrix.image }} \
+            node scripts/tools/release/ci/verifyPublished.mjs --version "${{ inputs.version }}" \
+            --fixture plugin/__fixtures__/data/reads.tsx

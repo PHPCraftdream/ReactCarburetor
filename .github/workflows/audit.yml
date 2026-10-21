@@ -1,0 +1,57 @@
+name: Dependency audit
+
+# Known vulnerabilities in what ships: the npm packages (react-carburetor has no runtime
+# dependencies, so this guards the day it gets one) and the Rust crates linked into the
+# carburetor-lint binaries. Advisories appear independently of our commits, so it also runs
+# weekly. The release workflow calls it and publishes only when it passes.
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 3 * * 1'
+  push:
+    branches: [master]
+    paths:
+      - package.json
+      - package-lock.json
+      - native/Cargo.toml
+      - native/Cargo.lock
+      - .github/workflows/audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    name: npm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      # What a consumer installs: production dependencies only.
+      - name: Audit the shipped dependencies
+        run: npm audit --omit=dev --audit-level=high
+      # The development tree is for information: a build tool's advisory must not block a release.
+      - name: Audit the development dependencies
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  cargo:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: cargo-audit cache
+        id: tool
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.cargo/bin/cargo-audit
+          key: cargo-audit-${{ runner.os }}-v1
+      - name: Install cargo-audit
+        if: steps.tool.outputs.cache-hit != 'true'
+        run: cargo install cargo-audit --locked
+      # The advisory database is fetched on every run: that is the point of auditing.
+      - name: Audit the linked crates
+        run: cargo audit --file native/Cargo.lock

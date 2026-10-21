@@ -23,12 +23,13 @@ entirely the consumer's job.
 
 ## Runtime requirements
 
-The package declares Node.js `>=14.6.0`. The cache uses `WeakRef`; browser runtimes need support
-for it (Chrome 84+, Firefox 79+, Safari 14.1+). Native `AbortController` is available globally
-from Node 14.17; earlier runtimes use a fallback for cooperative abortion and ignore late results,
-but cannot provide a native fetch signal. See [resource cancellation](../README.md) for using a
-compatible `AbortController` with APIs that require a native signal. Native linter packages are published for Windows x64,
-macOS x64/arm64, Linux x64 glibc/musl, and Linux arm64 glibc; these are not JavaScript runtime
+The package declares Node.js `>=24.0.0`. CI installs the packed package on Node 24.0.0, on the newest
+24 and on the newest Node release. The cache uses `WeakRef`; browser runtimes need support
+for it (Chrome 84+, Firefox 79+, Safari 14.1+). A native `AbortController` is a global in Node and in
+every browser that has `WeakRef`; an embedded runtime without one uses a fallback for cooperative
+abortion and ignores late results, but cannot provide a native fetch signal. See [resource cancellation](../README.md) for using a
+compatible `AbortController` with APIs that require a native signal. Native linter packages are published for Windows x64/arm64,
+macOS x64/arm64, and Linux x64/arm64 on glibc and musl; these are not JavaScript runtime
 limits.
 
 ## How the library binds to your React

@@ -18,8 +18,10 @@
   ],
   "files": [
     "carburetor-lint",
+    "THIRD-PARTY-LICENSES.txt",
     "LICENSE",
     "LICENSE-MIT",
     "LICENSE-APACHE"
-  ]
+  ],
+  "preferUnplugged": true
 }

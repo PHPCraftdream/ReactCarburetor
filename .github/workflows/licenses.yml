@@ -9,6 +9,8 @@ on:
     paths:
       - .github/workflows/licenses.yml
       - scripts/tools/licenses/**
+      - scripts/tools/release/attribution/**
+      - native/THIRD-PARTY-LICENSES.txt
       - package.json
       - package-lock.json
       - native/Cargo.toml
@@ -17,6 +19,8 @@ on:
     paths:
       - .github/workflows/licenses.yml
       - scripts/tools/licenses/**
+      - scripts/tools/release/attribution/**
+      - native/THIRD-PARTY-LICENSES.txt
       - package.json
       - package-lock.json
       - native/Cargo.toml
@@ -63,6 +67,11 @@ jobs:
       - name: Check licenses
         if: ${{ steps.license-cache.outputs.cache-hit != 'true' }}
         run: node scripts/tools/licenses/check.mjs --metadata "$RUNNER_TEMP/cargo-metadata.json"
+      # The attribution shipped in the platform packages must list exactly the crates linked into
+      # their binaries; it is regenerated here and compared with the committed file.
+      - name: Check third-party attribution
+        if: ${{ steps.license-cache.outputs.cache-hit != 'true' }}
+        run: node scripts/tools/release/attribution/thirdParty.mjs --check
       - name: Remember the passing check
         if: ${{ steps.license-cache.outputs.cache-hit != 'true' }}
         env:

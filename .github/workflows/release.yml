@@ -33,35 +33,59 @@ jobs:
     if: github.ref == 'refs/heads/master'
     permissions:
       contents: read
-      actions: read
+      # Reads the CI runs, and starts the full tier when this commit has none.
+      actions: write
     outputs:
       ci_run: ${{ steps.ci.outputs.run }}
       version: ${{ steps.versions.outputs.version }}
+      platforms: ${{ steps.versions.outputs.platforms }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      # ci.yml is the full tier now (dispatch / nightly / tags / ci/** branches), so a new
-      # commit gets its full run only by dispatching it manually against the right ref.
-      - name: Require a green CI run for this commit
+      # ci.yml is the full tier (dispatch / nightly / tags / ci/** branches). A push to master only
+      # runs the fast tier, so a commit that has no full run yet gets one here, started on this
+      # very commit, and the release waits for it. A red run stops the release.
+      - name: Require a green full-tier CI run for this commit
         id: ci
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -e
           run=$(gh run list --workflow ci.yml --commit "$GITHUB_SHA" --status success \
             --json databaseId --jq '.[0].databaseId')
-          [ -n "$run" ] || { echo "no successful full-tier CI run for $GITHUB_SHA — run the full tier first: gh workflow run ci.yml --ref master (or workflow_dispatch on the desired ref / a sprint-* tag)" >&2; exit 1; }
+          if [ -z "$run" ]; then
+            echo "no successful full-tier CI run for $GITHUB_SHA; starting one"
+            started=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            gh workflow run ci.yml --ref master
+            for attempt in $(seq 1 30); do
+              run=$(gh run list --workflow ci.yml --event workflow_dispatch --branch master --limit 20 \
+                --json databaseId,headSha,createdAt \
+                --jq "[.[] | select(.headSha == \"$GITHUB_SHA\" and .createdAt >= \"$started\")][0].databaseId // empty")
+              [ -n "$run" ] && break
+              sleep 10
+            done
+            if [ -z "$run" ]; then
+              echo "the dispatched CI run for $GITHUB_SHA did not appear; master may have moved on" >&2
+              exit 1
+            fi
+            echo "waiting for CI run $run"
+            gh run watch "$run" --exit-status --interval 60
+          fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
-      # One version for all eight packages, and the launcher's optionalDependencies must pin it.
-      - name: Check that the package versions agree
+      # One version for all packages, the launcher's optionalDependencies must pin it, and the
+      # changelog must have a section for it. The platform list comes from the launcher, so a
+      # platform is added in one place.
+      - name: Check that the package versions and the changelog agree
         id: versions
         run: |
           node -e '
-            const read = p => JSON.parse(require("fs").readFileSync(p, "utf8"));
+            const fs = require("fs");
+            const read = p => JSON.parse(fs.readFileSync(p, "utf8"));
             const root = read("package.json");
             const lint = read("npm/carburetor-lint/package.json");
             const platforms = Object.keys(lint.optionalDependencies);
@@ -72,13 +96,22 @@ jobs:
               if (lint.optionalDependencies[name] !== root.version) bad.push(`optional ${name}`);
             }
             if (lint.version !== root.version) bad.push("carburetor-lint");
+            const heading = new RegExp(`^## \\[${root.version.replace(/\./g, "\\.")}\\] - \\d{4}-\\d{2}-\\d{2}$`, "m");
+            if (!heading.test(fs.readFileSync("CHANGELOG.md", "utf8"))) {
+              bad.push(`CHANGELOG.md has no "## [${root.version}] - YYYY-MM-DD" section`);
+            }
             if (bad.length) { console.error("version mismatch:", bad.join(", ")); process.exit(1); }
-            require("fs").appendFileSync(process.env.GITHUB_OUTPUT, `version=${root.version}\n`);
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${root.version}\nplatforms=${platforms.join(" ")}\n`);
           '
+
+  audit:
+    name: Audit dependencies
+    if: github.ref == 'refs/heads/master'
+    uses: ./.github/workflows/audit.yml
 
   publish:
     name: Publish ${{ needs.prepare.outputs.version }} (${{ inputs.auth }}${{ inputs.dry_run && ', dry run' || '' }})
-    needs: prepare
+    needs: [prepare, audit]
     runs-on: ubuntu-latest
     # The environment is where reviewers can be required, and where a trusted publisher on
     # npmjs.com is told to expect this job. Its name must match that configuration.
@@ -90,6 +123,7 @@ jobs:
       id-token: write
     env:
       VERSION: ${{ needs.prepare.outputs.version }}
+      PLATFORMS: ${{ needs.prepare.outputs.platforms }}
       DIST_TAG: ${{ inputs.dist_tag }}
       DRY_RUN: ${{ inputs.dry_run }}
     steps:
@@ -133,7 +167,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           CI_RUN: ${{ needs.prepare.outputs.ci_run }}
-        run: gh run download "$CI_RUN" --pattern 'carburetor-lint-*' --dir artifacts
+        run: |
+          set -e
+          gh run download "$CI_RUN" --pattern 'carburetor-lint-*' --dir artifacts
+          for name in $PLATFORMS; do
+            [ -d "artifacts/$name" ] || { echo "CI run $CI_RUN produced no artifact for $name" >&2; exit 1; }
+          done
 
       - name: Install
         run: npm ci
@@ -161,7 +200,10 @@ jobs:
             case "$name" in
               react-carburetor) grep -q '^package/dist/cjs/Carburetor/index.js$' "$RUNNER_TEMP/files.txt" ;;
               carburetor-lint) grep -q '^package/bin/carburetor-lint.js$' "$RUNNER_TEMP/files.txt" ;;
-              *) grep -q '^package/carburetor-lint' "$RUNNER_TEMP/files.txt" ;;
+              *)
+                grep -q '^package/carburetor-lint' "$RUNNER_TEMP/files.txt"
+                grep -q '^package/THIRD-PARTY-LICENSES.txt$' "$RUNNER_TEMP/files.txt"
+                ;;
             esac
           done
 
@@ -177,9 +219,7 @@ jobs:
           else
             flags+=(--provenance)
           fi
-          for name in carburetor-lint-win32-x64 carburetor-lint-darwin-arm64 carburetor-lint-darwin-x64 \
-            carburetor-lint-linux-x64-gnu carburetor-lint-linux-x64-musl carburetor-lint-linux-arm64-gnu \
-            carburetor-lint react-carburetor; do
+          for name in $PLATFORMS carburetor-lint react-carburetor; do
             if npm view "$name@$VERSION" version >/dev/null 2>&1; then
               echo "== $name@$VERSION is already published, skipping"
               continue
@@ -187,3 +227,12 @@ jobs:
             echo "== publishing $name@$VERSION"
             npm publish "$(ls artifacts/$name/*.tgz)" "${flags[@]}"
           done
+
+  # What was published must install and run from the registry on every supported platform.
+  verify:
+    name: Verify the published packages
+    needs: [prepare, publish]
+    if: ${{ !inputs.dry_run }}
+    uses: ./.github/workflows/post-publish.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}

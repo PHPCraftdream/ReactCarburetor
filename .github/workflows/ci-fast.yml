@@ -152,7 +152,7 @@ jobs:
       - name: Build native linter
         if: steps.native-bin.outputs.cache-hit != 'true'
         working-directory: native
-        run: cargo build --release
+        run: cargo build --release --locked
 
       - name: Build
         run: npm run build
@@ -272,17 +272,17 @@ jobs:
 
       - name: Build
         working-directory: native
-        run: cargo build --release
+        run: cargo build --release --locked
 
       # The integration tests run the built binary, so they cover the command line, the walk
       # and the exit codes — the parts a unit test cannot see.
       - name: Test
         working-directory: native
-        run: cargo test
+        run: cargo test --locked
 
       - name: Clippy
         working-directory: native
-        run: cargo clippy --all-targets -- -D warnings
+        run: cargo clippy --locked --all-targets -- -D warnings
 
   # The fast tier covers full, affected and skipped runs alike; every job above must either
   # succeed or be deliberately skipped, and plan must never fail.

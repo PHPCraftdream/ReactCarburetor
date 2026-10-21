@@ -7,7 +7,7 @@
 import {readFileSync, readdirSync, statSync, existsSync} from 'node:fs';
 import {join, dirname, resolve} from 'node:path';
 
-const root = resolve(__dirname, '../..');
+const root = resolve(__dirname, '../../..');
 
 function readListedFiles(): string[] {
     const cfg = JSON.parse(readFileSync(join(root, 'tsconfig.types.json'), 'utf8'));

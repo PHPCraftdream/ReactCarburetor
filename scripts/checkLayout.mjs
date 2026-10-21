@@ -34,6 +34,9 @@ FLAT_REGISTRIES.add('examples/wrong');
 // `native/src/rules` holds one directory per rule category plus `support`; the count follows the
 // rule registry the way `examples/wrong` does, not the readability cap.
 FLAT_REGISTRIES.add('native/src/rules');
+// `npm` holds one directory per published package: the launcher and one platform package per
+// supported platform, so the count follows the platform list rather than the readability cap.
+FLAT_REGISTRIES.add('npm');
 const MAX_LINES = 600;
 const TYPE_FILES = /^Models\.(ts|mts)$/;
 const BARREL_FILES = /^index\.(ts|tsx|mts)$/;
