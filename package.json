@@ -63,6 +63,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p plugin/tsconfig.json && tsc --noEmit -p tsconfig.types.json && tsc --noEmit -p examples/tsconfig.json",
     "lint": "oxlint --type-aware",
     "check:layout": "node scripts/checkLayout.mjs",
+    "check:licenses": "node scripts/tools/licenses/check.mjs --npm-only",
     "affected": "node scripts/affected.mjs",
     "check:task": "node scripts/affected.mjs --task",
     "test": "rstest run",

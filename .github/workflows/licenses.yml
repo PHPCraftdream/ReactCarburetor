@@ -1,0 +1,70 @@
+name: Dependency licenses
+
+# Checks dependency licenses against scripts/tools/licenses/policy.json. A passing check is remembered
+# in the Actions cache under a fingerprint of the dependency inputs, so an unchanged
+# dependency set is not checked again; a cache miss, a red run or `force` re-checks.
+on:
+  push:
+    branches: [master, 'ci/**']
+    paths:
+      - .github/workflows/licenses.yml
+      - scripts/tools/licenses/**
+      - package.json
+      - package-lock.json
+      - native/Cargo.toml
+      - native/Cargo.lock
+  pull_request:
+    paths:
+      - .github/workflows/licenses.yml
+      - scripts/tools/licenses/**
+      - package.json
+      - package-lock.json
+      - native/Cargo.toml
+      - native/Cargo.lock
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Bypass the successful-check cache and run the license check
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  licenses:
+    name: Licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+      - name: Fingerprint dependency inputs
+        id: fingerprint
+        run: echo "value=$(node scripts/tools/licenses/fingerprint.mjs)" >> "$GITHUB_OUTPUT"
+      # The marker is written only after a passing check, and the cache is saved only for a
+      # passing job, so a red run is re-checked next time. GitHub evicts caches after 7 idle days.
+      - name: Successful-check marker
+        id: license-cache
+        if: ${{ github.event.inputs.force != 'true' }}
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .licenses-ok
+          key: licenses-ok-${{ steps.fingerprint.outputs.value }}
+      - name: Dependencies unchanged since the last passing check
+        if: ${{ steps.license-cache.outputs.cache-hit == 'true' }}
+        env:
+          FINGERPRINT: ${{ steps.fingerprint.outputs.value }}
+        run: echo "Dependencies unchanged since the last passing check (fingerprint $FINGERPRINT)." >> "$GITHUB_STEP_SUMMARY"
+      - name: Collect Rust dependency metadata
+        if: ${{ steps.license-cache.outputs.cache-hit != 'true' }}
+        run: cargo metadata --format-version 1 --locked --manifest-path native/Cargo.toml > "$RUNNER_TEMP/cargo-metadata.json"
+      - name: Check licenses
+        if: ${{ steps.license-cache.outputs.cache-hit != 'true' }}
+        run: node scripts/tools/licenses/check.mjs --metadata "$RUNNER_TEMP/cargo-metadata.json"
+      - name: Remember the passing check
+        if: ${{ steps.license-cache.outputs.cache-hit != 'true' }}
+        env:
+          FINGERPRINT: ${{ steps.fingerprint.outputs.value }}
+        run: echo "$FINGERPRINT" > .licenses-ok

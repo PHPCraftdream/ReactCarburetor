@@ -285,6 +285,27 @@ artifacts from that run.
 - Comments and identifiers are in English, and comments explain *why*, not *what*.
 - Don't bump the package version or dependency versions as part of a feature change.
 
+## Dependency licenses
+
+Run `npm run check:licenses` for the offline npm lockfile check; it never invokes Cargo.
+Full checks include npm and Rust and run in CI only: Cargo metadata is read on a cache
+miss, and no Rust build is performed. The exported `check(args, root)` API returns
+`rows`, `violations`, `review`, `stale`, `summary`, and `ok`. CLI options are
+`--npm-only` or `--metadata <file>`; unknown options and missing operands fail.
+
+The Markdown report includes ecosystem/scope/license counts, review items, violations
+with paths and Rust incoming dependencies, stale exceptions, and the fingerprint.
+Permissive licenses are allowed. Shipped dependencies are strict; dev dependencies
+may trigger review for GPL/LGPL. AGPL, SSPL, BUSL, UNLICENSED, and unknown licenses
+are denied in either scope. An exception in `scripts/tools/licenses/policy.json` must
+exactly specify `ecosystem` (`npm` or `cargo`), `name`, `version`, `license`, and
+nonempty `reason`. Exceptions only resolve exact unknown-license records; denied
+licenses remain denied, and unmatched exceptions fail as stale.
+
+CI caches only successful checks by fingerprint. Dispatch with `force: true` to
+bypass cache lookup. GitHub evicts unused caches after 7 days; an eviction causes
+the check to run again, never a skipped verification.
+
 ## Licensing of contributions
 
 Unless you explicitly state otherwise, any contribution intentionally submitted for
