@@ -36,4 +36,29 @@ describe('child scope React boundary', () => {
         rendered.unmount();
         expect(dispose).toHaveBeenCalledTimes(1);
     });
+
+    test('a changed parent scope rebuilds the child instead of keeping the old parent', () => {
+        const parentA = new CarburetorScope();
+        const parentB = new CarburetorScope();
+        const shared = carburetorToken(() => ({owner: 'unset'}), 'cr2/parent-change/shared');
+        parentA.get(shared).owner = 'A';
+        parentB.get(shared).owner = 'B';
+        const seen: string[] = [];
+        const Consumer = (): null => {
+            const scope = React.useContext(CarburetorContext);
+            if (scope) seen.push(scope.get(shared).owner);
+            return null;
+        };
+        const tree = (parent: CarburetorScope): React.ReactElement => <CarburetorContext.Provider value={parent}>
+            <CarburetorChildScope tokens={[]}><Consumer/></CarburetorChildScope>
+        </CarburetorContext.Provider>;
+        const rendered = render(tree(parentA));
+        expect(seen[seen.length - 1]).toBe('A');
+        rendered.rerender(tree(parentB));
+        expect(seen[seen.length - 1]).toBe('B');
+        parentA.dispose();
+        rendered.rerender(tree(parentB));
+        expect(seen[seen.length - 1]).toBe('B');
+        rendered.unmount();
+    });
 });

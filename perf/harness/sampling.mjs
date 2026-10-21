@@ -1,10 +1,26 @@
-import {appendFileSync} from 'node:fs';
+import {appendFileSync, readFileSync} from 'node:fs';
+import {dirname, resolve} from 'node:path';
 const phaseBudget = phase => ({
     combined: 40 * 60_000,
     ci: 5 * 60_000,
     focused: 60_000,
 })[phase] ?? 5 * 60_000;
-const classifySampling = entry => {
+// Scenarios whose verdict depends on garbage collection or heap state are not deterministic counters.
+const GC_SENSITIVE = /\bWeakRef\b|FinalizationRegistry|memoryUsage|heapUsed|getHeapStatistics|expose-gc|\bgc\s*\(/;
+const IMPORT = /(?:\bfrom|\bimport\s*\(?)\s*['"](\.[^'"]+)['"]/g;
+const readScenario = path => {
+    try { return readFileSync(path, 'utf8'); } catch { return undefined; }
+};
+const gcSensitive = (path, read, seen = new Set()) => {
+    if (seen.has(path)) return false;
+    seen.add(path);
+    const source = read(path);
+    if (source === undefined || GC_SENSITIVE.test(source)) return true;
+    return [...source.matchAll(IMPORT)].some(match => gcSensitive(resolve(dirname(path), match[1]), read, seen));
+};
+const classifySampling = (entry, read = readScenario) => {
+    if (typeof entry.scenario !== 'string' || entry.nodeArgs?.some(arg => /expose-gc/.test(String(arg)))) return 'mixed';
+    if (gcSensitive(resolve('perf/scenarios', entry.scenario + '.mjs'), read)) return 'mixed';
     const gates = entry.gates;
     if (!Array.isArray(gates) || gates.length === 0) return 'mixed';
     return gates.every(gate => {
@@ -17,7 +33,7 @@ const classifySampling = entry => {
     }) ? 'counter' : 'mixed';
 };
 const keyFor = entry => JSON.stringify([entry.scenario, entry.args ?? [], entry.nodeArgs ?? []]);
-const demandByKey = (entries, counterRuns = 1, timingRuns = 3) => {
+const demandByKey = (entries, counterRuns = 1, timingRuns = 3, read = readScenario) => {
     for (const [name, count] of [['counterRuns', counterRuns], ['timingRuns', timingRuns]]) {
         if (!Number.isInteger(count) || count <= 0) throw new TypeError(`${name} must be a positive integer`);
     }
@@ -36,7 +52,7 @@ const demandByKey = (entries, counterRuns = 1, timingRuns = 3) => {
         for (const gate of entry.gates ?? []) if (gate.scale) demand(byId.get(gate.scale.from), count, seen);
     };
     for (const entry of entries) {
-        const count = classifySampling(entry) === 'counter'
+        const count = classifySampling(entry, read) === 'counter'
             ? counterRuns
             : Math.max(3, timingRuns, entry.runs ?? 0);
         demand(entry, count);
