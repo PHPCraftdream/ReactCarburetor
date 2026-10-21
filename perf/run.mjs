@@ -16,12 +16,15 @@
 // holds for a baseline build that lacks an API a scenario needs, so a whole --against sweep over
 // old builds still ends with a per-entry summary. Entries sharing (scenario, args, nodeArgs) are measured
 // once per build and share their samples.
-import {existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
+import {appendFileSync, existsSync, readdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import {baselineDist} from './harness/baseline.mjs';
 import {compare, evaluate} from './harness/evaluate.mjs';
+import sampling from './sampling.mjs';
 import {sampleScenario, show, summarize} from './harness/measure.mjs';
+
+const {demandByKey, phaseBudget, elapsedRow, timingSummary, keyFor} = sampling;
 
 const here = dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -210,8 +213,13 @@ const against = option('against', undefined);
 const roots = [{name: 'now', dir: dist}];
 if (against) roots.push({name: 'base', dir: join(baselineDist(against), 'esm-prod')});
 const runs = Number(option('runs', '3'));
-const verbose = argv.includes('--verbose');
+const counterRuns = Number(option('counter-runs', '1'));
+const sampleDemands = demandByKey(order, counterRuns, runs);
+const phaseLimit = only ? phaseBudget('focused') : phaseBudget('ci');
+const phaseStarted = Date.now();
+let budgetWarned = false;
 const requireAll = argv.includes('--require-all');
+const verbose = argv.includes('--verbose');
 
 // An entry's `requires` cells are repository-relative paths that must exist before it measures.
 const missingRequires = entry => (entry.requires ?? []).map(item => item.path)
@@ -225,7 +233,8 @@ const samplesFor = entry => {
     const key = JSON.stringify([entry.scenario, entry.args ?? [], entry.nodeArgs ?? []]);
     if (!samplesByKey.has(key)) {
         try {
-            samplesByKey.set(key, sampleScenario(join(here, 'scenarios', entry.scenario + '.mjs'), entry.args ?? [], roots, runs, entry.nodeArgs ?? []));
+            samplesByKey.set(key, sampleScenario(join(here, 'scenarios', entry.scenario + '.mjs'), entry.args ?? [], roots,
+                sampleDemands.get(key) ?? runs, entry.nodeArgs ?? []));
         } catch (error) {
             samplesByKey.set(key, error);
         }
@@ -235,12 +244,18 @@ const samplesFor = entry => {
     return samples;
 };
 
+const measurementOwners = new Map();
 const summaries = new Map();
 const report = [];
 let violations = 0;
 let failedEntries = 0;
 let skippedEntries = 0;
 for (const entry of order) {
+    if (!budgetWarned && Date.now() - phaseStarted > phaseLimit) {
+        budgetWarned = true;
+        console.warn(`warning: ${only ? 'focused' : 'CI'} performance phase exceeded ${phaseLimit}ms`);
+    }
+    const entryStarted = Date.now();
     const missing = missingRequires(entry);
     if (missing.length > 0) {
         const reasons = missing.map(path => 'missing ' + path);
@@ -249,10 +264,10 @@ for (const entry of order) {
         if (requireAll) {
             violations += 1;
             failedEntries += 1;
-            report.push({id: entry.id, improvement: entry.improvement, violations: reasons});
+            report.push(elapsedRow({id: entry.id, improvement: entry.improvement, violations: reasons}, Date.now() - entryStarted));
         } else {
             skippedEntries += 1;
-            report.push({id: entry.id, improvement: entry.improvement, skipped: reasons});
+            report.push(elapsedRow({id: entry.id, improvement: entry.improvement, skipped: reasons}, Date.now() - entryStarted));
         }
         continue;
     }
@@ -265,6 +280,10 @@ for (const entry of order) {
         failure = error;
     }
     if (now) summaries.set(entry.id, now);
+    const key = keyFor(entry);
+    const owner = measurementOwners.get(key);
+    if (owner) entry.measurementOwner = owner;
+    else measurementOwners.set(key, entry.id);
     if (hidden.has(entry.id)) {
         if (failure) console.log(`note  ${entry.id} (scale source) could not be measured: ${brief(failure.message)}`);
         else if (verbose) console.log(`note  ${entry.id} measured as a scale source, not selected`);
@@ -279,7 +298,7 @@ for (const entry of order) {
         if (verbose && failure.output) {
             console.log(`       ${brief(failure.output.stderr || failure.output.stdout || '', 2000, 30)}`);
         }
-        report.push({id: entry.id, improvement: entry.improvement, error: detail, violations: ['run: ' + detail]});
+        report.push(elapsedRow({id: entry.id, improvement: entry.improvement, error: detail, violations: ['run: ' + detail]}, Date.now() - entryStarted, failure));
         continue;
     }
     const results = evaluate(entry, now, summaries);
@@ -293,14 +312,34 @@ for (const entry of order) {
             console.log(`       ${result.ok ? ' ' : '✗'} ${result.label}: ${result.detail}`);
         }
     }
-    report.push({
+    report.push(elapsedRow({
         id: entry.id, improvement: entry.improvement,
         metrics: Object.fromEntries(Object.keys(now).map(metric => [metric, show(now[metric])])),
         violations: bad.map(result => `${result.label}: ${result.detail}`),
-    });
+    }, Date.now() - entryStarted));
 }
 
 const json = option('json', undefined);
+const phaseElapsed = Date.now() - phaseStarted;
+if (phaseElapsed > phaseLimit) {
+    const warning = `warning: ${only ? 'focused' : 'CI'} performance phase exceeded ${phaseLimit}ms (actual ${phaseElapsed}ms)`;
+    if (!budgetWarned) console.warn(warning);
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, `\n${warning}\n`);
+}
+timingSummary('Slowest performance gate entries', report);
+for (const row of report) {
+    const entry = byId.get(row.id);
+    if (!entry) continue;
+    const key = keyFor(entry);
+    const demand = sampleDemands.get(key) ?? runs;
+    row.sampling = {
+        samples: demand,
+        classification: sampling.classifySampling(entry),
+        sharedKey: key,
+        cached: Boolean(entry.measurementOwner),
+        ...(entry.measurementOwner ? {sharedMeasurement: entry.measurementOwner} : {}),
+    };
+}
 if (json) writeFileSync(json, JSON.stringify(report, null, 2));
 const sources = hidden.size === 0 ? '' : ` (+${hidden.size} scale source${hidden.size === 1 ? '' : 's'} measured)`;
 console.log(`\n${matched.length} ${matched.length === 1 ? 'entry' : 'entries'}, ${failedEntries} failed, ${skippedEntries} skipped, `

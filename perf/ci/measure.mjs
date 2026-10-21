@@ -8,9 +8,12 @@ import {pathToFileURL} from 'node:url';
 import {summarize, show} from '../harness/measure.mjs';
 import {evaluate, compare} from '../harness/evaluate.mjs';
 import {timingSummary} from './compare.mjs';
+import sampling from '../sampling.mjs';
+
 
 /** Measures new completed-operation controls separately from mechanism counters, with alternating native children. */
 export const measureControls = async (baseline, gateFiles, runs, output) => {
+    assert.ok(Number.isInteger(runs) && runs >= 3, 'runs must be an integer >= 3');
     const scenarios = new Set(['computed44/repeated-flat-timing', 'computed44/observed-baseline-timing',
         'history44/timing', 'selection44/timing', 'components44/render-commit',
         'hooks44/multi-consumer', 'resource44/completed-operations']);
@@ -40,7 +43,9 @@ export const measureControls = async (baseline, gateFiles, runs, output) => {
                 : 'perf/scenarios/' + entry.scenario + '.mjs';
         const sourceHash = createHash('sha256').update(readFileSync(source)).digest('hex');
         const samples = {before: [], after: []};
-        const row = {id: entry.id, scenario: entry.scenario, source, sourceHash, samples, errors: []};
+        const entryStarted = Date.now();
+        const row = {id: entry.id, scenario: entry.scenario, source, sourceHash, samples, errors: [],
+            timingConfidence: 'multi-sample informational'};
         for (let pair = 0; pair < runs; pair++) for (const side of pair % 2 ? ['after', 'before'] : ['before', 'after']) {
             const args = [resolve(source), ...(entry.args ?? []).map(String)];
             const env = {NODE_ENV: 'production', DIST_ROOT: roots[side]};
@@ -96,11 +101,13 @@ export const measureControls = async (baseline, gateFiles, runs, output) => {
                 report.gateFailures += [...row.beforeGates, ...row.afterGates].filter(result => !result.ok).length;
             }
         }
+        row.elapsedMs = Date.now() - entryStarted; row.sampleCount = runs;
         report.rows.push(row); report.completed++; save();
         console.log(entry.id + ': ' + JSON.stringify({errors: row.errors,
             timingFlags: row.comparisons?.filter(result => !result.ok)}));
     }
     report.finished = new Date().toISOString();
+    sampling.timingSummary('Slowest completed-operation controls', report.rows);
     timingSummary('Completed-operation timing flags (informational)', report.rows);
     report.accepted = !report.crashes && !report.gateFailures && report.skippedEntries.length + report.completed === report.entries;
     save(); return report;

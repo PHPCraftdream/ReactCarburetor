@@ -8,6 +8,9 @@ import {classifyBaselineGate} from './contract/gateContract.mjs';
 import {comparePrevious} from './compare.mjs';
 import {measureControls} from './measure.mjs';
 import {calibrateGains} from './calibrate.mjs';
+import sampling from '../sampling.mjs';
+
+const phaseStarted = Date.now();
 
 if (process.env.GITHUB_ACTIONS !== 'true') throw new Error('This runner is GitHub-only; dispatch Performance validation instead of running locally.');
 const args = process.argv.slice(2);
@@ -22,6 +25,18 @@ const npm = process.env.npm_execpath;
 if (!npm || !existsSync(npm)) throw new Error('Invoke through npm run bench:ci so the installed npm CLI is explicit');
 const output = resolve('worktrees/ci-results', process.env.GITHUB_RUN_ID + '-' + process.env.GITHUB_RUN_ATTEMPT);
 mkdirSync(output, {recursive: true});
+process.once('exit', () => {
+    const path = resolve(output, 'phase-durations.json');
+    const durations = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : {};
+    durations[phase] = Date.now() - phaseStarted;
+    writeFileSync(path, JSON.stringify(durations, null, 2) + '\n');
+    const elapsedMs = Object.values(durations).reduce((sum, n) => sum + n, 0);
+    const budget = sampling.phaseBudget('combined');
+    const text = `- ${phase}: ${durations[phase]}ms; total ${elapsedMs}ms / ${budget}ms` +
+        (elapsedMs > budget ? ' WARNING: combined performance budget exceeded' : '');
+    console.log(text);
+    if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text + '\n');
+});
 const commands = [];
 function command(label, argv, options = {}) {
     console.log('CI COMMAND ' + label);

@@ -23,7 +23,7 @@ on:
       runs:
         description: Independent alternating samples per build (at least 3)
         required: true
-        default: '9'
+        default: '5'
         type: string
       metadataBaseline:
         description: Optional commit before the direct-capture allocation regression fix
@@ -46,7 +46,8 @@ jobs:
       BENCH_BASELINE: ${{ inputs.baseline || '90829af804a64e0692abfb0917e03e281f49d9ef' }}
       BENCH_GAINS_BASELINE: ${{ inputs.gainsBaseline || 'acfd3e2b8e58210ce1076bf1683f666283216af5' }}
       BENCH_METADATA_BASELINE: ${{ inputs.metadataBaseline }}
-      BENCH_RUNS: ${{ inputs.runs || '9' }}
+      BENCH_RUNS: ${{ inputs.runs || '5' }}
+      BENCH_COUNTER_RUNS: '1'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:

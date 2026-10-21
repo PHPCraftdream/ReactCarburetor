@@ -25,7 +25,7 @@ storage and directory-junction/symlink support. Intentional SSR-positive warning
 ```bash
 npm run build && npm run bench            # whole suite on the current build (dist/esm-prod)
 npm run bench -- --only history           # entries whose id or area contains the substring
-npm run bench -- --runs 5                 # samples per build (default 3)
+npm run bench -- --runs 5                 # explicit runs; counter-only entries remain at --counter-runs
 npm run bench -- --dist <dir>             # another build, e.g. one under worktrees/bench-dist
 npm run bench -- --against <git-ref>      # also build <ref> and compare every *Ms metric with it
 npm run bench -- --verbose                # passing gates too, and full crash output
@@ -613,6 +613,14 @@ the `esm` sibling of the measured dist (`distRoot/../esm`), so any build tree wi
 works, and the entry fails loudly when only `esm-prod` exists. It counts queued diagnostic
 callbacks and their identities, so a build that mints one callback per publish cycle instead of
 reusing one fails the `distinctCallbacks === 1` gate by mechanism, not by time.
+
+## Sampling and runtime audit
+
+Sampling modes: `counter` entries default to one sample; `timing` and `mixed` entries request at least
+three. Standalone runs default to 3 samples; Performance validation defaults to 5. Explicit `--runs`
+requests apply to timing/mixed modes, while counter runs require `--counter-runs`. Phase budgets are
+60 seconds focused, 300 seconds CI, and 2,400 seconds combined; these are budgets, not measured
+durations. See the [runtime audit](reports/runtime-audit.md).
 
 ## GitHub Actions
 
