@@ -29,6 +29,7 @@ const EXPECTED: string[] = [
     'Carburetor/Component/AntiHookComponent/Foundation',
     'Carburetor/Component/AntiHookComponent/Reads',
     'Carburetor/Component/AntiHookComponent/Subscriptions',
+    'Carburetor/Component/Scope/CarburetorChildScope',
     'Carburetor/Component/Scope/CarburetorContext',
     'Carburetor/Component/Scope/CarburetorProvider',
     'Carburetor/Component/ScopedAntiHookComponent',

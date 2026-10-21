@@ -1718,7 +1718,7 @@ Subclasses use protected `signal: AbortSignal` and
 for subclass cleanup and call `super.didDispose()`. Raw references obtained through `getData()`
 cannot be revoked after disposal.
 
-<!-- example:file examples/readme/App/ChildScope.ts -->
+<!-- example:file examples/readme/App/ChildScope.tsx -->
 ```ts
 import {CarburetorScope, carburetorToken} from 'react-carburetor';
 

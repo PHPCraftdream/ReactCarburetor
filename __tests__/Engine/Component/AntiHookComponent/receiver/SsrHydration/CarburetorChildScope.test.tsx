@@ -25,8 +25,11 @@ describe('CarburetorChildScope', () => {
     });
 
     test('errors without a parent scope', () => {
-        expect(() => render(<CarburetorChildScope tokens={[]}>
-            <Consumer/>
-        </CarburetorChildScope>)).toThrow(/parent scope/);
+        const error = rstest.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            expect(() => render(<CarburetorChildScope tokens={[]}>
+                <Consumer/>
+            </CarburetorChildScope>)).toThrow(/parent scope/);
+        } finally { error.mockRestore(); }
     });
 });
