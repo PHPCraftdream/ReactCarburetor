@@ -1,0 +1,25 @@
+/* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
+export default [{
+    id: 'persistCR/previous-key@small',
+    improvement: 'control',
+    scenario: 'persistCR/previous-key',
+    args: [],
+    gates: [
+        {metric: 'currentReads', equals: 1},
+        {metric: 'currentWrites', equals: 0},
+        {metric: 'currentRemoves', equals: 0},
+        {metric: 'currentOldRetained', equals: true},
+        {metric: 'currentContentOk', equals: true},
+        {metric: 'fallbackReads', equals: 3},
+        {metric: 'fallbackWrites', equals: 1},
+        {metric: 'fallbackRemoves', equals: 1},
+        {metric: 'fallbackContentOk', equals: true},
+        {metric: 'fallbackOldRetained', equals: true},
+        {metric: 'extraReads', equals: 4},
+        {metric: 'extraWrites', equals: 1},
+        {metric: 'extraRemoves', equals: 1},
+        {metric: 'controlReads', equals: 2},
+        {metric: 'controlWrites', equals: 2},
+        {metric: 'controlRemoves', equals: 2},
+    ],
+}];

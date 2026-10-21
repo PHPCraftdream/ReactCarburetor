@@ -68,6 +68,8 @@ export interface IPersistOptions {
     migrate?: Record<number, (state: unknown) => unknown>;
     /** Prunes closed schemas, or controls merging for custom dictionaries. */
     prune?: boolean | ((saved: unknown, current: unknown) => unknown);
+    /** Ordered fallback keys read only when the current key is absent. */
+    previousKeys?: readonly string[];
 }
 
 export interface IHistoryOptions {
