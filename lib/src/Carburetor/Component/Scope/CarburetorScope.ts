@@ -4,6 +4,7 @@ import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
+import {createChildScope} from './ChildCarburetorScope';
 
 const quoteKey = (key: string): string => '"' + key + '"';
 
@@ -29,6 +30,19 @@ export class CarburetorScope {
     protected readonly resolving: string[] = [];
     /** Set once by dispose(); get, set and hydrate refuse afterwards. */
     protected disposed = false;
+    protected readonly children: CarburetorScope[] = [];
+    protected scopeParent: CarburetorScope | undefined = undefined;
+
+    /** Create a child scope with local tokens.
+     *
+     * @param localTokens - tokens this child owns and instantiates
+     */
+    public child(localTokens: readonly ICarburetorToken<unknown>[]): CarburetorScope {
+        if (this.disposed) throw new Error('CarburetorScope: scope is disposed');
+        const child = createChildScope(this, localTokens);
+        this.children.push(child);
+        return child;
+    }
 
     /**
      * The instance this token stands for, created once per scope on first use.
@@ -115,6 +129,11 @@ export class CarburetorScope {
         this.disposed = true;
         let failed = false;
         let firstError: unknown;
+        const children = this.children.slice().reverse();
+        children.forEach(child => {
+            try { child.dispose(); } catch (error) { if (!failed) { failed = true; firstError = error; } }
+        });
+        this.children.length = 0;
         const seen = new Set<unknown>();
         for (let index = this.creationOrder.length - 1; index >= 0; index--) {
             const instance = this.creationOrder[index];
@@ -126,6 +145,11 @@ export class CarburetorScope {
         }
         this.creationOrder.length = 0;
         this.instances.clear();
+        const parent = this.scopeParent;
+        if (parent) {
+            const childIndex = parent.children.indexOf(this);
+            if (childIndex !== -1) parent.children.splice(childIndex, 1);
+        }
         if (failed) throw firstError;
     }
 

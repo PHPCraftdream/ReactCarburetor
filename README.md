@@ -1637,6 +1637,7 @@ do not redeclare it.
 | `UpdateThrottle` / `ComponentUpdateThrottle(ms)` | Coalescing for streaming sources; `UpdateThrottle` is the preferred name, the long one is kept. |
 | `ResourceCarburetor(loader, options?)`        | Async state with status and cancellation; `options` carries `key`, `ttl`, `maxEntries`, `scheduler`. |
 | `CarburetorScope`, `carburetorToken`, `CarburetorProvider`, `ScopedAntiHookComponent`, `Carburetor.dispose` | [Per-request stores and lifecycle](#scopes-and-lifetimes). |
+| `CarburetorChildScope` | A nested scope boundary that owns declared local token ids. |
 | `connectDevTools`, `persist`, `CarburetorHistory`, `waitForUpdate` | Tooling.  |
 | `diagnostics`, `Diagnostics`                  | [Development warning switch](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): independent instances and engine singleton. |
 | `EResourceStatus`, `EDevToolsAction`, `EDevToolsMessageType` | Enums for the resource status and the DevTools protocol. |
@@ -1679,6 +1680,14 @@ be eager for selected tokens or lazy on first `get`. After scope disposal, `get`
 `hydrate` throw. Providers expose the supplied scope only: they do not own or dispose it, and nested
 providers do not fall back to a parent.
 
+A child created with `parent.child(localTokens)` owns those token ids. Its local factories receive
+the child; other reads delegate to and cache parent values. Child `set()` shadows locally, `has()`
+reports local instances, and child hydration/dehydration is local. A child disposes only its own
+values; parent disposal visits living children in reverse creation order before parent values.
+`CarburetorChildScope` requires a parent provider, renders nothing during SSR and before mount,
+creates the owned scope after mount, and disposes it on unmount. Keep `tokens` stable for the
+component lifetime; to switch scope lifetimes, remount the boundary with a different React `key`.
+
 Stores expose public `dispose(): void`; after disposal `update`, `emitUpdate`, `watch`, and resource `load`, `refresh`, and `suspend` throw `Carburetor: store has been disposed` before loader invocation or request creation (a `ResourceCache.refresh` whose own abort of the previous request disposes the store returns a promise rejected with that error instead);
 while pending notifications are silent and existing subscriptions remain until owners unsubscribe.
 Subclasses use protected `signal: AbortSignal` and
@@ -1686,6 +1695,21 @@ Subclasses use protected `signal: AbortSignal` and
 `after` throws after disposal to catch use beyond the store lifetime. Override `didDispose(): void`
 for subclass cleanup and call `super.didDispose()`. Raw references obtained through `getData()`
 cannot be revoked after disposal.
+
+<!-- example:file examples/readme/App/ChildScope.ts -->
+```ts
+import {CarburetorScope, carburetorToken} from 'react-carburetor';
+
+const serviceToken = carburetorToken(() => ({name: 'shared'}), 'example/shared');
+const panelToken = carburetorToken(owner => ({service: owner.get(serviceToken)}), 'example/panel');
+
+export function createPanel(): {scope: CarburetorScope; dispose: () => void} {
+    const root = new CarburetorScope();
+    const scope = root.child([panelToken]);
+    scope.get(panelToken);
+    return {scope, dispose: (): void => root.dispose()};
+}
+```
 
 Render the returned `element`; the caller owns its lifetime and calls `dispose()` when closing the
 screen. No React effect owns scope disposal, avoiding StrictMode effect-replay disposal.

@@ -6,6 +6,7 @@ const PUBLIC_SURFACE = [
     'AntiHookComponent',
     'Carburetor',
     'CarburetorContext',
+    'CarburetorChildScope',
     'CarburetorHistory',
     'CarburetorProvider',
     'CarburetorScope',

@@ -42,6 +42,7 @@ export * from './Resource/Status/resourceState';
 export * from './Component/AntiHookComponent/index';
 export * from './Component/bind';
 export * from './Component/Scope/CarburetorContext';
+export * from './Component/Scope/CarburetorChildScope';
 export * from './Component/Scope/CarburetorProvider';
 export * from './Component/Scope/CarburetorScope';
 export * from './Component/Scope/carburetorToken';
