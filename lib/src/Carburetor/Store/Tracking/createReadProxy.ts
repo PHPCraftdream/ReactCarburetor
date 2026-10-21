@@ -331,7 +331,7 @@ class ReadProxyHandler<T extends object> implements ProxyHandler<T> {
             // would make every row depend on the whole list. Subscribe to the branch marker
             // instead, so a check that reads the branch itself (`!!data.user`) hears about
             // the branch being replaced without subscribing to leaves deep inside it.
-            this.aliases?.note(value, path);
+            this.aliases?.note(value, path, this.root);
             this.record(this.branchMarker(path));
 
             if (lockedAgainstWrapping(source, key)) {

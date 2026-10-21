@@ -152,7 +152,7 @@ const attributePositional = (
     let containersMoved = false;
     let anyChange = false;
 
-    host.aliases?.checkWrite(source, host.basePath);
+    host.aliases?.checkWrite(source, host.basePath, host.cache.nativeAliasRoot);
 
     for (let index = first; index < limit; index++) {
         const wasOwn = index < beforeLength

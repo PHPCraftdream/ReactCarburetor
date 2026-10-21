@@ -108,11 +108,11 @@ export const writeArrayLength = (
         }
     }
     if (removedAny) {
-        aliases?.checkWrite(array, basePath);
+        aliases?.checkWrite(array, basePath, root);
         record(keysPath(basePath), array);
     }
     if (nextLength !== previousLength || writableChanged) {
-        aliases?.checkWrite(array, basePath);
+        aliases?.checkWrite(array, basePath, root);
         record(joinPath(basePath, 'length'), array);
         if (queue && nextLength !== previousLength) {
             queue({segments: [...basePathSegments, 'length'], previousExists: true,

@@ -983,6 +983,7 @@ Entries below record development history in change order; where contracts differ
 
 ### Fixed
 
+- The development report "the same object was reached at two paths" (and its write-side twin "also read at") no longer fires for an object that merely moved: replacing a branch (`draft.round = {options: [b, a]}`, `setData`, a moved subtree) forgot only the replaced object, so the objects inside it kept the paths they had left and were reported against their new ones. A remembered path is now resolved against the current state first, and only an object still sitting there counts. Real aliases (one object twice in an array, a target that is also an option) are reported as before.
 - A computed that re-subscribes with the same id and callback after its read set changes keeps its registration, so its dependents are notified within the same wave.
 - `require-module-function`: a protected IIFE inside `render` no longer leaks its render state into the synchronous callbacks after it.
 - The native bridge re-scans a result adopted from another worker when the file was saved after that run, and a failed run no longer leaves another base set's result in the cache.

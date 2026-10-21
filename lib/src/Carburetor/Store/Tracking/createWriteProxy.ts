@@ -346,7 +346,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         }
         this.aliases?.checkKey(source, key, path);
         this.aliases?.checkState(raw, path, wasOwn ? previous : undefined);
-        this.aliases?.checkWrite(source, this.basePath);
+        this.aliases?.checkWrite(source, this.basePath, this.cache.nativeAliasRoot);
         // Define the literal data key without invoking an inherited setter. A refused write
         // must not forget aliases, announce a path or put a phantom value into history.
         const protoWrite = key === '__proto__';
@@ -465,7 +465,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const path = this.writtenPath(key, source);
         this.aliases?.checkKey(source, key, path);
         this.aliases?.checkState(raw, path, wasOwn ? previous : undefined);
-        this.aliases?.checkWrite(source, this.basePath);
+        this.aliases?.checkWrite(source, this.basePath, this.cache.nativeAliasRoot);
         const effective = 'value' in descriptor ? {...descriptor, value: raw} : descriptor;
         const previousLength = this.isArray ? (source as unknown as unknown[]).length : undefined;
         const wrote = Reflect.defineProperty(source, key, effective);
@@ -531,7 +531,7 @@ class WriteProxyHandler<T extends object> implements ProxyHandler<T> {
         const listener = this.patchPort?.listener;
         const changesOrderOnInverse = listener && !this.isArray && orderReplayGuard.depth === 0
             && orderedTailMemo.follows(source, key);
-        this.aliases?.checkWrite(source, this.basePath);
+        this.aliases?.checkWrite(source, this.basePath, this.cache.nativeAliasRoot);
         if (!Reflect.deleteProperty(source, key)) return false;
         orderedTailMemo.removed(source, key);
         this.aliases?.forget(previous);

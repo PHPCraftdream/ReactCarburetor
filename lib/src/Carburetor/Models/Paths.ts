@@ -23,10 +23,16 @@ export const RAW_EXPOSURE: {readonly kind: 'raw-member-exposure'} =
  * `undefined` outside development. See createAliasLedger for the behaviour.
  */
 export type TAliasLedger = {
-    /** Records where a branch object was read, complaining when that is a second path. */
-    note: (value: object, path: TPath) => void;
-    /** Complains when a write lands in an object that was read under a different path. */
-    checkWrite: (source: object, path: TPath) => void;
+    /**
+     * Records where a branch object was read, complaining when that is a second path. A
+     * remembered path the object has since left (looked up under `root`) is not a second path.
+     */
+    note: (value: object, path: TPath, root: object) => void;
+    /**
+     * Complains when a write lands in an object that was read under a different path it still
+     * occupies under `root`; `root` is absent when the caller has no state root to resolve against.
+     */
+    checkWrite: (source: object, path: TPath, root: object | undefined) => void;
     /** Drops the recorded path of a value draft replaced or deleted. */
     forget: (value: unknown) => void;
     /**
