@@ -65,6 +65,14 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- `CarburetorScope.child(localTokens)` and the `CarburetorChildScope` boundary: tokens listed as local are created and owned by the child scope, every other token resolves through the parent. Disposing the child leaves the parent alone; disposing the parent closes live children first. The boundary renders nothing on the server and before mount, creates its scope after commit and disposes it on unmount (StrictMode safe); its `tokens` are fixed for its lifetime, change them with a React `key`.
+- `@action` (Stage 3 decorator): a synchronous store method that writes to `this.draft` publishes as one update, nested actions and `transaction` calls publish once, the return value is forwarded, and a `Promise`/thenable result warns in development. Types come from the method signature; the name `update` stays reserved.
+- `persist(store, {previousKeys})`: when the current key is absent, the first existing key of the list is read (version envelope or legacy payload, through `migrate`), written under the new key, and removed only after a successful write. A present current key never reads the old ones.
+- `react-carburetor/testing`: `flush(target)` delivers a store's or scope tree's throttled notifications synchronously, without fake clocks; `createTestScope(overrides)` returns a scope with token overrides installed and a `Symbol.dispose` disposer.
+- Lint: the opt-in `react-carburetor/lint/house-style.oxlintrc.json` preset (`max-line-length`, `no-blank-line-after-tsdoc`, `no-parent-import`, `prefer-readonly-array-param`, `require-tsdoc`, `tsdoc-blank-line-before-tags`, `one-export-per-file`) and `plugin.configs['house-style']`; it complements `recommended`.
+- Native linter: `.carburetorrc.json` `overrides: [{files, rules}]` set per-file severities and options (the last matching override wins, command-line severities still win); globs compile once at load.
+- CI: a `Dependency licenses` workflow checks npm and native Rust dependency licenses against `scripts/tools/licenses/policy.json` (allow / review / deny, shipped and dev scopes) and is skipped while the dependency fingerprint is unchanged since the last passing run.
+- Docs: the props gate and how to replace it with `shouldComponentUpdate() { return true; }` for in-place mutated props; using a local copy through a `file:` dependency.
 - Store lifetime: an idempotent `dispose()` on every store, a lazily created protected `signal`
   (aborted on disposal), protected `after(ms, task)` timers that disposal cancels, and a
   `didDispose()` hook. After disposal `update`, `emitUpdate`, `watch`, `after` and resource
@@ -181,6 +189,8 @@ Entries below record development history in change order; where contracts differ
 
 ### Changed
 
+- Development diagnostics no longer test `typeof process`; they depend on the literal `process.env.NODE_ENV` expression that bundlers substitute, so they now run in browser bundles. Without a bundler, set `globalThis.process = {env: {NODE_ENV: 'production'}}` before importing the library (dynamic `import()`); a missing `process` global is now a ReferenceError instead of silently disabling diagnostics.
+- Benchmarks: entries whose gates are all deterministic counters are sampled once (`--counter-runs`), timing and memory entries keep at least three samples; Performance validation compares against `90829af` with its own pre-fix reference for the round-44 calibration (`gainsBaseline`), reports the 20 slowest entries and warns when a phase exceeds its budget.
 - Linter: every walk-based rule runs in one shared traversal; the nested-function capture and class-dependency facts of `require-module-function` / `require-method-for-closure` come from one bottom-up pass, and a member's analysis is shared between the rules.
 - Reading a `Date` through a draft no longer publishes a write; the read is checked by time at the next publication and dropped when unchanged.
 - Diff overflow is decided in one counting pass, and the write log evicts its oldest entries in batches instead of one by one (`diff46`, `writelog39`).
