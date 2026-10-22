@@ -12,8 +12,14 @@ class TimerStore extends Carburetor<{count: number}> {
     }
     public delay(ms: number, task: () => void): () => void { return this.after(ms, task); }
 }
-const token = (id: string): ReturnType<typeof carburetorToken<TimerStore>> =>
-    carburetorToken(() => new TimerStore({count: 0}), id);
+const tokens = new Map<string, ReturnType<typeof carburetorToken<TimerStore>>>();
+const token = (id: string): ReturnType<typeof carburetorToken<TimerStore>> => {
+    const known = tokens.get(id);
+    if (known) return known;
+    const created = carburetorToken(() => new TimerStore({count: 0}), id);
+    tokens.set(id, created);
+    return created;
+};
 
 describe('createTestClock', () => {
     test('advances exact deadlines once; nested due timers run in deadline/order', () => {
