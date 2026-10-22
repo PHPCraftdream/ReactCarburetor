@@ -4,9 +4,14 @@
 
 use std::fs;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use rayon::prelude::*;
 use serde::Serialize;
+
+use crate::config::{Config, Severity};
+use crate::source::analyze;
+use crate::{Diagnostic, FixMode, MAX_FIX_PASSES};
 
 /// Replace the byte range `[start, end)` of the file's source with `text`. Offsets are the same
 /// byte offsets a rule already reports at, so a rule builds one from spans it already has.
@@ -124,12 +129,244 @@ pub fn diff(old: &str, new: &str) -> String {
     out
 }
 
+/// One file's outcome after `--fix`'s pass loop: the diagnostics that remain, and — when the text
+/// actually changed — the before and after, for [`run_fix`] to either write or preview.
+struct FixOutcome {
+    diagnostics: Vec<Diagnostic>,
+    change: Option<(String, String)>,
+}
+
+/// Re-parses and re-runs the rules over `text` after every fix, applying at most one round of
+/// non-overlapping fixes per pass, until nothing fixable remains or [`MAX_FIX_PASSES`] is reached.
+/// A fix that turns out to have broken parsing is discarded rather than published: `compute`
+/// returning `None` stops the loop on the last text that was known to parse, and that text's own
+/// (pre-fix) diagnostics are what gets reported for it.
+pub(crate) fn stabilize(
+    text: String,
+    mut compute: impl FnMut(&str) -> Option<Vec<Diagnostic>>,
+) -> (String, Vec<Diagnostic>) {
+    let mut text = text;
+    let mut diagnostics = compute(&text).unwrap_or_default();
+
+    for _ in 0..MAX_FIX_PASSES {
+        let fixes: Vec<&Fix> = diagnostics
+            .iter()
+            .filter_map(|diagnostic| diagnostic.fix.as_ref())
+            .collect();
+
+        if fixes.is_empty() {
+            break;
+        }
+
+        let Some(candidate) = apply(&text, fixes) else {
+            break;
+        };
+
+        if candidate == text {
+            break;
+        }
+
+        match compute(&candidate) {
+            Some(next) => {
+                text = candidate;
+                diagnostics = next;
+            }
+            None => break,
+        }
+    }
+
+    (text, diagnostics)
+}
+
+/// Runs the fix loop for one file; read failures retain the path for the run-level error.
+fn fix_one_file(
+    path: &Path,
+    config: &Config,
+    cli: &[(String, Severity)],
+    keep_overlaps: bool,
+) -> Result<FixOutcome, String> {
+    let mut config = config.overrides_for(path);
+    for (rule, severity) in cli {
+        config
+            .override_rule(rule, *severity)
+            .map_err(|error| error.to_string())?;
+    }
+    let original = fs::read_to_string(path)
+        .map_err(|error| format!("could not read {}: {error}", path.display()))?;
+
+    let (final_text, diagnostics) = stabilize(original.clone(), |text| {
+        analyze(path, text, &config, keep_overlaps)
+    });
+    let change = (final_text != original).then_some((original, final_text));
+
+    Ok(FixOutcome {
+        diagnostics,
+        change,
+    })
+}
+
+/// Runs the fix loop over every file, writing or previewing each change as it goes.
+pub(crate) fn run_fix(
+    files: &[PathBuf],
+    config: &Config,
+    mode: FixMode,
+    cli: &[(String, Severity)],
+    keep_overlaps: bool,
+) -> Result<Vec<Diagnostic>, String> {
+    // One task per file, the same reasoning as the plain check: parsing dominates the work.
+    let outcomes: Vec<(&PathBuf, FixOutcome)> = files
+        .par_iter()
+        .map(|path| fix_one_file(path, config, cli, keep_overlaps).map(|outcome| (path, outcome)))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let mut diagnostics = Vec::new();
+
+    for (path, outcome) in outcomes {
+        if let Some((original, final_text)) = &outcome.change {
+            match mode {
+                FixMode::Write => write_atomically(path, final_text)
+                    .map_err(|error| format!("could not write {}: {error}", path.display()))?,
+                FixMode::DryRun => {
+                    println!("--- {}", path.display());
+                    print!("{}", diff(original, final_text));
+                }
+                FixMode::Report => unreachable!("run_fix only runs for Write or DryRun"),
+            }
+        }
+
+        diagnostics.extend(outcome.diagnostics);
+    }
+
+    Ok(diagnostics)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Severity;
 
     fn fix(start: u32, end: u32, text: &str) -> Fix {
         Fix { start, end, text: text.to_string() }
+    }
+
+    fn diagnostic_with_fix(fix: Fix) -> Diagnostic {
+        Diagnostic {
+            file: "fixture.tsx".to_string(),
+            line: 1,
+            column: 1,
+            rule: "carburetor/test-rule".to_string(),
+            message: "test".to_string(),
+            severity: Severity::Error,
+            fix: Some(fix),
+            scope: None,
+        }
+    }
+
+    #[test]
+    fn stabilize_stops_once_nothing_is_fixable() {
+        let (text, diagnostics) = stabilize("clean".to_string(), |_| Some(Vec::new()));
+
+        assert_eq!(text, "clean");
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn stabilize_applies_a_fix_and_recomputes_once() {
+        let (text, diagnostics) = stabilize("old".to_string(), |current| {
+            if current == "old" {
+                Some(vec![diagnostic_with_fix(Fix {
+                    start: 0,
+                    end: 3,
+                    text: "new".to_string(),
+                })])
+            } else {
+                Some(Vec::new())
+            }
+        });
+
+        assert_eq!(text, "new");
+        assert!(diagnostics.is_empty());
+    }
+
+    #[test]
+    fn stabilize_never_exceeds_the_pass_limit_when_a_fix_keeps_reporting_itself() {
+        // A pathological fix that flips the text forever and reports a violation every time: proof
+        // the loop stops on its own rather than hanging the tool.
+        let mut calls = 0u32;
+
+        let (text, diagnostics) = stabilize("a".to_string(), |current| {
+            calls += 1;
+            let flipped = if current == "a" { "b" } else { "a" };
+
+            Some(vec![diagnostic_with_fix(Fix {
+                start: 0,
+                end: current.len() as u32,
+                text: flipped.to_string(),
+            })])
+        });
+
+        assert_eq!(
+            calls,
+            MAX_FIX_PASSES + 1,
+            "one initial computation, then one per pass"
+        );
+        assert!(
+            !diagnostics.is_empty(),
+            "the oscillating rule never actually stabilizes"
+        );
+        assert!(text == "a" || text == "b");
+    }
+
+    #[test]
+    fn a_fix_that_breaks_parsing_is_discarded() {
+        let (text, diagnostics) = stabilize("good".to_string(), |current| {
+            if current == "good" {
+                // Reports a fix, but validating the candidate ("broken") fails to parse.
+                Some(vec![diagnostic_with_fix(Fix {
+                    start: 0,
+                    end: 4,
+                    text: "broken".to_string(),
+                })])
+            } else {
+                None
+            }
+        });
+
+        assert_eq!(text, "good", "the last text known to parse is kept");
+        assert_eq!(
+            diagnostics.len(),
+            1,
+            "the pre-fix diagnostics are what gets reported"
+        );
+    }
+
+    #[test]
+    fn two_overlapping_fixes_need_two_passes_to_both_land() {
+        // "XY": pass 1 offers two overlapping fixes ([0,1) and [0,2)); apply() keeps only the
+        // first, producing "1Y". Pass 2 offers a fresh, now non-overlapping fix for what is left.
+        let (text, diagnostics) = stabilize("XY".to_string(), |current| match current {
+            "XY" => Some(vec![
+                diagnostic_with_fix(Fix {
+                    start: 0,
+                    end: 1,
+                    text: "1".to_string(),
+                }),
+                diagnostic_with_fix(Fix {
+                    start: 0,
+                    end: 2,
+                    text: "22".to_string(),
+                }),
+            ]),
+            "1Y" => Some(vec![diagnostic_with_fix(Fix {
+                start: 1,
+                end: 2,
+                text: "2".to_string(),
+            })]),
+            _ => Some(Vec::new()),
+        });
+
+        assert_eq!(text, "12");
+        assert!(diagnostics.is_empty());
     }
 
     #[test]

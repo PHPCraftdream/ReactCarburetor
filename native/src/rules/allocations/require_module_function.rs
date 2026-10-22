@@ -421,7 +421,7 @@ mod tests {
     /// can land, proving the class-statement fixes overlap into one per pass and still
     /// converge.
     fn stabilized(source: &str) -> String {
-        let (text, remaining) = crate::stabilize(source.to_string(), |text| {
+        let (text, remaining) = crate::fix::stabilize(source.to_string(), |text| {
             let allocator = Allocator::default();
             let parsed = Parser::new(&allocator, text, SourceType::tsx()).parse();
 

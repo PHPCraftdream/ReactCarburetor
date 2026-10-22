@@ -41,7 +41,9 @@ What to know when the install and the run happen on different machines:
 - **`--omit=optional` / `--no-optional`** skips the binary altogether. The launcher then exits `2`
   naming the missing package; reinstall without the flag or set `CARBURETOR_LINT_BIN` to a binary.
 - **A platform without a package** (FreeBSD, 32-bit, RISC-V, Android): build `native/` from the
-  repository with Cargo and point `CARBURETOR_LINT_BIN` at the result.
+  repository with Cargo and point `CARBURETOR_LINT_BIN` at the result. The plugin's bridge checks
+  the binary's `--version` protocol before the first run, so keep the binary current with the
+  plugin — an old one fails lint with a rebuild instruction.
 
 The same binary powers the `react-carburetor/lint` oxlint/ESLint plugin — install this package
 next to `react-carburetor` and the plugin finds it.

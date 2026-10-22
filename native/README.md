@@ -10,6 +10,11 @@ cargo build --release
 ./target/release/carburetor-lint ../lib/src --format=json
 ```
 
+Before the first run, the JavaScript bridge checks `--version` (a protocol number) against the
+version it was built for. A stale binary fails lint with `the native binary at ... is from a
+different version ...`; rebuild it with `cargo build --release` inside `native/`, or install a
+matching `carburetor-lint`.
+
 ## Why native, in numbers
 
 Earlier 22-rule measurement on a 157-file tree, best of several runs:
@@ -167,7 +172,9 @@ The lint bridge in `../plugin/src` looks the binary up through the same platform
 project using `react-carburetor/lint` should install `carburetor-lint` alongside it. When
 neither a platform package nor a `CARBURETOR_LINT_BIN` override nor a workspace build is
 present, the bridge fails loudly, naming the missing platform package — a missing binary is a
-broken install to report, never a silent, wrong "no problems".
+broken install to report, never a silent, wrong "no problems". The bridge also checks the
+binary's `--version` protocol before the first run, so a binary older than the plugin fails
+with a rebuild instruction instead of silently misbehaving.
 
 The source and every npm tarball are offered under `MIT OR Apache-2.0`; see the
 repository's [dual-license notice](../LICENSE).

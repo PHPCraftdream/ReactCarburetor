@@ -10,6 +10,8 @@ type TNativeSpawn = typeof spawnSync;
 const nativeSpawn = rstest.hoisted(() => rstest.fn<TNativeSpawn>());
 
 rstest.mock('node:child_process', () => ({spawnSync: nativeSpawn}));
+// The handshake has its own tests; here the stub stands for a matching binary.
+rstest.mock('@plugin/Utils/assertProtocol.mts', () => ({assertProtocol: () => undefined}));
 
 /** The stub reports the file's current content as the one finding, so a stale answer is visible. */
 const stubNative = (failing: {on: boolean} = {on: false}): void => {

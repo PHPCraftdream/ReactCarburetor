@@ -11,6 +11,7 @@ import {resolveBinary} from "#src/Utils/Native/resolveBinary.mts";
 import type {INativeDiagnostic} from "#src/Utils/Native/INativeDiagnostic.mts";
 import {cachedFileResult} from "#src/Utils/bufferCache.mts";
 import {writeAtomic} from "#src/Utils/atomicWrite.mts";
+import {assertProtocol} from "#src/Utils/assertProtocol.mts";
 import {basesConfig} from "#src/Utils/NativeBases.mts";
 
 /**
@@ -217,6 +218,8 @@ const runBinary = (
         );
     }
 
+    assertProtocol(binary);
+
     const args = ALL_RULE_IDS.flatMap((id) => ['--rule', `${id}=error`]);
     const result = spawnSync(
         binary,
@@ -270,6 +273,8 @@ const runNativeText = (
             'repository.'
         );
     }
+
+    assertProtocol(binary);
 
     const args = ALL_RULE_IDS.flatMap((id) => ['--rule', `${id}=error`]);
     const relative = path.relative(cwd, filename).replace(/\\/g, '/');
