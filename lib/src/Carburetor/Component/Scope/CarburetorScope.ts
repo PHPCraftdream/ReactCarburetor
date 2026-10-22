@@ -3,6 +3,9 @@ import {IInspectable} from "@/Carburetor/Models/Store";
 import {SCOPE_TESTING_VISIT, ITestingScopeVisit} from '@/Carburetor/Store/Utils/Models';
 import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
 import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {storeLifecycle} from '@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle';
+import {Carburetor} from '@/Carburetor/Store/Carburetor';
+import {ITestClock} from '@/Testing/ITestClock';
 import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
 import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
 import {createChildScope} from './ChildCarburetorScope';
@@ -35,6 +38,20 @@ export class CarburetorScope implements ITestingScopeVisit {
     protected readonly children: CarburetorScope[] = [];
     /** The scope this one was created from by child(), if any. */
     protected scopeParent: CarburetorScope | undefined = undefined;
+    /** Optional test-only clock inherited by child scopes. */
+    protected testClock: ITestClock | undefined = undefined;
+    /** Set the clock inherited by child scopes and attached to engine stores on handout.
+     *
+     * @param clock - optional clock assigned to newly handed-out stores
+     */
+    public useTestClock(clock: ITestClock | undefined): void { this.testClock = clock; }
+    /** Attach this scope's clock when the instance is a Carburetor store.
+     *
+     * @param instance - instance to attach the scope's test clock to when it is an engine store
+     */
+    protected attachClock(instance: unknown): void {
+        if (this.testClock && instance instanceof Carburetor) storeLifecycle.useClock(instance, this.testClock);
+    }
 
     /** Visits owned instances and descendant scope instances.
      *
@@ -52,6 +69,7 @@ export class CarburetorScope implements ITestingScopeVisit {
     public child(localTokens: readonly ICarburetorToken<unknown>[]): CarburetorScope {
         if (this.disposed) throw new Error('CarburetorScope: scope is disposed');
         const child = createChildScope(this, localTokens);
+        child.testClock = this.testClock;
         this.children.push(child);
         return child;
     }
@@ -67,7 +85,11 @@ export class CarburetorScope implements ITestingScopeVisit {
      */
     public get<T extends unknown>(token: ICarburetorToken<T>): T {
         if (this.disposed) throw new Error('CarburetorScope: scope is disposed');
-        if (this.instances.has(token.id)) return this.instances.get(token.id) as T;
+        if (this.instances.has(token.id)) {
+            const existing = this.instances.get(token.id) as T;
+            this.attachClock(existing);
+            return existing;
+        }
         const cycleAt = this.resolving.indexOf(token.id);
         if (cycleAt !== -1) {
             const chain = [...this.resolving.slice(cycleAt), token.id].join(' -> ');
@@ -84,6 +106,7 @@ export class CarburetorScope implements ITestingScopeVisit {
             throw disposedError;
         }
         this.instances.set(token.id, created);
+        this.attachClock(created);
         if (!this.creationOrder.includes(created)) this.creationOrder.push(created);
         if (this.lazyHydration !== undefined
             && Object.prototype.hasOwnProperty.call(this.lazyHydration, token.id)
@@ -121,6 +144,7 @@ export class CarburetorScope implements ITestingScopeVisit {
             if (old !== undefined && !this.creationOrder.includes(old)) this.creationOrder.push(old);
         }
         this.instances.set(token.id, instance);
+        this.attachClock(instance);
         if (this.lazyHydration !== undefined && Object.prototype.hasOwnProperty.call(this.lazyHydration, token.id)) {
             delete this.lazyHydration[token.id];
         }

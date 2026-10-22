@@ -1,13 +1,26 @@
+import {ITestClock} from '@/Testing/ITestClock';
 /** Per-store disposal state kept outside the store: lazy signal, owned timers, disposed flag. */
 class StoreLifecycle {
     /** Lifecycle state per store, created on first need. */
     private readonly states = new WeakMap<object, {
         disposed: boolean;
         controller?: AbortController;
-        timers?: Set<ReturnType<typeof setTimeout>>;
+        timers?: Set<() => void>;
+        clock?: ITestClock;
     }>();
     /** The error every use after disposal throws. */
     private readonly disposedError = (): Error => new Error('Carburetor: store has been disposed');
+    /** Attach a test clock to a real Carburetor store at scope handout.
+     *
+     * @param store - store that will use the test clock
+     * @param clock - optional test clock to associate with the store
+     */
+    public useClock(store: object, clock: ITestClock | undefined): void {
+        if (!clock) return;
+        const state = this.states.get(store) ?? {disposed: false};
+        state.clock = clock;
+        this.states.set(store, state);
+    }
 
     /** Check whether the store is disposed.
      *
@@ -34,7 +47,7 @@ class StoreLifecycle {
             if (!failed) { failed = true; failure = error; }
         };
         try { state.controller?.abort(); } catch (error: unknown) { recordFailure(error); }
-        state.timers?.forEach((timer) => clearTimeout(timer));
+        state.timers?.forEach((cancel) => cancel());
         state.timers?.clear();
         for (const step of steps) {
             try { step(); } catch (error: unknown) { recordFailure(error); }
@@ -64,11 +77,19 @@ class StoreLifecycle {
         if (this.isDisposed(store)) throw this.disposedError();
         const state = this.states.get(store) ?? {disposed: false};
         this.states.set(store, state);
-        const timers = state.timers ??= new Set<ReturnType<typeof setTimeout>>();
-        let timer: ReturnType<typeof setTimeout>;
-        timer = setTimeout(() => { timers.delete(timer); if (!state.disposed) task(); }, ms);
-        timers.add(timer);
-        return () => { clearTimeout(timer); timers.delete(timer); };
+        const timers = state.timers ??= new Set<() => void>();
+        const clock = state.clock;
+        let cancel: () => void;
+        const callback = (): void => { timers.delete(cancel); if (!state.disposed) task(); };
+        if (clock) {
+            const timer = clock.setTimeout(callback, ms);
+            cancel = (): void => clock.clearTimeout(timer);
+        } else {
+            const timer = setTimeout(callback, ms);
+            cancel = (): void => clearTimeout(timer);
+        }
+        timers.add(cancel);
+        return (): void => { cancel(); timers.delete(cancel); };
     }
 }
 
