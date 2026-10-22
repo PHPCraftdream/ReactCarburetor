@@ -3,7 +3,8 @@
 Use `createTestClock()` for timer-driven behavior of scope-owned stores, or runner fake clocks otherwise. `createTestScope(overrides, {clock})` keeps the overrides argument and accepts an optional second
 options argument. `clock.now()` returns simulated time, `clock.advance(ms)` runs due timers in the window,
 `clock.pending` reports queued timers, and `clock.runAll()` drains them, with a 10,000-callback guard for
-recurring timers. Timers scheduled before scope handout and timers outside a scope use globals.
+recurring timers. Constructor-time timers of override stores and any store passed to `clock.attach(store)`
+run on the clock, with the remaining delay preserved; only stores never attached keep global timers.
 
 <!-- example:file examples/readme/App/StoreTesting.ts#clock-test -->
 ```ts
@@ -24,6 +25,25 @@ export const clockTest = (): void => {
         expect(fired).toEqual(['done']);
     } finally {
         scope.dispose();
+    }
+};
+```
+
+<!-- example:file examples/readme/App/StoreTesting.ts#attach-test -->
+```ts
+export const attachTest = (): void => {
+    const store = new TimerStore({count: 0});
+    const fired: string[] = [];
+    try {
+        store.delay(30, () => { fired.push('attached'); });
+        const clock = createTestClock();
+        clock.attach(store);
+        clock.advance(29);
+        expect(fired).toEqual([]);
+        clock.advance(1);
+        expect(fired).toEqual(['attached']);
+    } finally {
+        store.dispose();
     }
 };
 ```

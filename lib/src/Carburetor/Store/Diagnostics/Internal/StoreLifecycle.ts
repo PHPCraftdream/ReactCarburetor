@@ -1,25 +1,72 @@
 import {ITestClock} from '../../../../Testing/ITestClock';
+/** A pending owned timer, re-homable between global and clock timelines. */
+interface TimerEntry {
+    task: () => void;
+    delay: number;
+    startedAt: number;
+    clock?: ITestClock;
+    clockId?: number;
+    globalId?: ReturnType<typeof setTimeout>;
+}
 /** Per-store disposal state kept outside the store: lazy signal, owned timers, disposed flag. */
 class StoreLifecycle {
     /** Lifecycle state per store, created on first need. */
     private readonly states = new WeakMap<object, {
         disposed: boolean;
         controller?: AbortController;
-        timers?: Set<() => void>;
+        timers?: Set<TimerEntry>;
         clock?: ITestClock;
     }>();
     /** The error every use after disposal throws. */
     private readonly disposedError = (): Error => new Error('Carburetor: store has been disposed');
     /** Attach a test clock to a real Carburetor store at scope handout.
      *
+     * Attaching the same clock again is a no-op. Attaching a different clock moves every pending
+     * timer onto it; the remaining delay is preserved on the old clock's timeline.
+     *
      * @param store - store that will use the test clock
      * @param clock - optional test clock to associate with the store
      */
     public useClock(store: object, clock: ITestClock | undefined): void {
         if (!clock) return;
-        const state = this.states.get(store) ?? {disposed: false};
+        const state = this.states.get(store);
+        if (state?.clock === clock) return;
+        if (!state) {
+            this.states.set(store, {disposed: false, clock});
+            return;
+        }
         state.clock = clock;
-        this.states.set(store, state);
+        state.timers?.forEach((entry) => this.moveEntry(state!, entry, clock));
+    }
+
+    /** Cancel the current handle of an entry. */
+    private cancelEntry(entry: TimerEntry): void {
+        if (entry.clock !== undefined) {
+            if (entry.clockId !== undefined) entry.clock.clearTimeout(entry.clockId);
+        } else if (entry.globalId !== undefined) clearTimeout(entry.globalId);
+    }
+
+    /** Re-schedule a pending entry on a clock, preserving the remaining delay.
+     *
+     * @param state - lifecycle state of the store owning the timer
+     * @param entry - pending timer entry to move
+     * @param clock - clock the entry is re-homed onto
+     */
+    private moveEntry(
+        state: {disposed: boolean; timers?: Set<TimerEntry>},
+        entry: TimerEntry,
+        clock: ITestClock
+    ): void {
+        this.cancelEntry(entry);
+        const elapsed = (entry.clock !== undefined ? entry.clock.now() : Date.now()) - entry.startedAt;
+        entry.delay = Math.max(0, entry.delay - elapsed);
+        entry.startedAt = clock.now();
+        entry.clock = clock;
+        entry.globalId = undefined;
+        entry.clockId = clock.setTimeout((): void => {
+            state.timers?.delete(entry);
+            if (!state.disposed) entry.task();
+        }, entry.delay);
     }
 
     /** Check whether the store is disposed.
@@ -47,7 +94,7 @@ class StoreLifecycle {
             if (!failed) { failed = true; failure = error; }
         };
         try { state.controller?.abort(); } catch (error: unknown) { recordFailure(error); }
-        state.timers?.forEach((cancel) => cancel());
+        state.timers?.forEach((entry) => this.cancelEntry(entry));
         state.timers?.clear();
         for (const step of steps) {
             try { step(); } catch (error: unknown) { recordFailure(error); }
@@ -77,19 +124,20 @@ class StoreLifecycle {
         if (this.isDisposed(store)) throw this.disposedError();
         const state = this.states.get(store) ?? {disposed: false};
         this.states.set(store, state);
-        const timers = state.timers ??= new Set<() => void>();
+        const timers = state.timers ??= new Set<TimerEntry>();
         const clock = state.clock;
-        let cancel: () => void;
-        const callback = (): void => { timers.delete(cancel); if (!state.disposed) task(); };
+        const entry: TimerEntry = {task, delay: ms, startedAt: 0};
+        const callback = (): void => { timers.delete(entry); if (!state.disposed) task(); };
         if (clock) {
-            const timer = clock.setTimeout(callback, ms);
-            cancel = (): void => clock.clearTimeout(timer);
+            entry.startedAt = clock.now();
+            entry.clock = clock;
+            entry.clockId = clock.setTimeout(callback, ms);
         } else {
-            const timer = setTimeout(callback, ms);
-            cancel = (): void => clearTimeout(timer);
+            entry.startedAt = Date.now();
+            entry.globalId = setTimeout(callback, ms);
         }
-        timers.add(cancel);
-        return (): void => { cancel(); timers.delete(cancel); };
+        timers.add(entry);
+        return (): void => { this.cancelEntry(entry); timers.delete(entry); };
     }
 }
 

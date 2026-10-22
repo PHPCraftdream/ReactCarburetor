@@ -15,6 +15,12 @@ export interface ITestClock {
     /** Return the number of scheduled callbacks. */
     readonly pending: number;
     /**
+     * Attach a Carburetor store that is not placed in a scope; re-homes its pending timers onto this clock.
+     *
+     * @param store - Carburetor store instance to drive with this clock
+     */
+    attach(store: object): void;
+    /**
      * Schedule a callback after a delay.
      *
      * @param task - callback invoked when the delay expires

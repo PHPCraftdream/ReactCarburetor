@@ -121,6 +121,127 @@ describe('createTestClock', () => {
         }
     });
 
+    test('constructor-time timers are re-homed onto the clock with delay preserved', async () => {
+        rstest.useFakeTimers();
+        try {
+            const clock = createTestClock();
+            let called = false;
+            const store = new TimerStore(() => { called = true; });
+            const scope = createTestScope([[token('clock/rehome'), store]], {clock});
+            expect(clock.pending).toBe(1);
+            clock.advance(19);
+            expect(called).toBe(false);
+            await rstest.advanceTimersByTimeAsync(20);
+            expect(called).toBe(false);
+            clock.advance(1);
+            expect(called).toBe(true);
+            expect(clock.pending).toBe(0);
+            scope.dispose();
+        } finally {
+            rstest.useRealTimers();
+        }
+    });
+
+    test('the constructor-time disposer still cancels after re-homing', () => {
+        const clock = createTestClock();
+        let called = false;
+        const store = new TimerStore(() => { called = true; });
+        const cancel = store.constructorCancel;
+        const scope = createTestScope([[token('clock/rehome-cancel'), store]], {clock});
+        expect(clock.pending).toBe(1);
+        cancel();
+        clock.advance(100);
+        expect(called).toBe(false);
+        expect(clock.pending).toBe(0);
+        scope.dispose();
+    });
+
+    test('scope disposal clears re-homed constructor timers', () => {
+        const clock = createTestClock();
+        let called = false;
+        const store = new TimerStore(() => { called = true; });
+        const scope = createTestScope([[token('clock/rehome-dispose'), store]], {clock});
+        expect(clock.pending).toBe(1);
+        scope.dispose();
+        expect(clock.pending).toBe(0);
+        clock.advance(100);
+        expect(called).toBe(false);
+    });
+
+    test('a fired constructor timer is not re-run when a new clock attaches', () => {
+        const clock = createTestClock();
+        const clock2 = createTestClock();
+        let calls = 0;
+        const store = new TimerStore(() => { calls++; });
+        const scope = createTestScope([[token('clock/rehome-fired'), store]], {clock});
+        clock.advance(20);
+        expect(calls).toBe(1);
+        clock2.attach(store);
+        expect(clock2.pending).toBe(0);
+        clock2.advance(100);
+        expect(calls).toBe(1);
+        scope.dispose();
+    });
+
+    test('clock.attach() re-homes an unscoped store timer and cancels the real one', async () => {
+        rstest.useFakeTimers();
+        try {
+            const clock = createTestClock();
+            let called = false;
+            const store = new TimerStore(() => { called = true; });
+            store.constructorCancel();
+            store.delay(20, () => { called = true; });
+            clock.attach(store);
+            expect(clock.pending).toBe(1);
+            clock.advance(19);
+            expect(called).toBe(false);
+            clock.advance(1);
+            expect(called).toBe(true);
+            expect(clock.pending).toBe(0);
+            store.dispose();
+        } finally {
+            rstest.useRealTimers();
+        }
+    });
+
+    test('clock.attach() rejects non-store arguments', () => {
+        const clock = createTestClock();
+        expect(() => clock.attach('nope' as never)).toThrow(TypeError);
+        expect(() => clock.attach('nope' as never)).toThrow(/expected a Carburetor store/);
+        expect(() => clock.attach({})).toThrow(TypeError);
+    });
+
+    test('attaching a different clock moves pending timers to the new clock', () => {
+        const clock = createTestClock();
+        const clock2 = createTestClock();
+        let calls = 0;
+        const store = new TimerStore({count: 0});
+        const scope = createTestScope([[token('clock/rehome-move'), store]], {clock});
+        store.delay(50, () => { calls++; });
+        clock2.attach(store);
+        expect(clock.pending).toBe(0);
+        expect(clock2.pending).toBe(1);
+        clock2.advance(50);
+        expect(calls).toBe(1);
+        scope.dispose();
+    });
+
+    test('stores never attached keep real timers', async () => {
+        rstest.useFakeTimers();
+        try {
+            const clock = createTestClock();
+            let called = false;
+            const store = new TimerStore({count: 0});
+            store.delay(5, () => { called = true; });
+            await rstest.advanceTimersByTimeAsync(5);
+            expect(called).toBe(true);
+            expect(clock.pending).toBe(0);
+            store.dispose();
+        } finally {
+            rstest.useRealTimers();
+        }
+    });
+
     test('old override-only signature still works', () => {
         const override = new TimerStore({count: 2});
         const scope = createTestScope([[token('clock/override'), override]]);

@@ -7,8 +7,9 @@ import {ITestClock} from './ITestClock';
  * Creates a test scope with optional overrides and clock.
  *
  * @param overrides - token instances to install in the new scope
- * @param options - optional clock, attached lazily; constructor-time timers remain global
- * Stores not handed out by this scope use global timers.
+ * @param options - optional clock, attached lazily; constructor-time timers of override instances are
+ * re-homed onto the clock when the scope attaches it. Stores never placed in a scope (and never
+ * clock.attach()ed) keep global timers.
  */
 export const createTestScope = (
     overrides?: Iterable<readonly [ICarburetorToken<unknown>, unknown]>,

@@ -1,10 +1,12 @@
 import {ITestClock as ITestClockApi} from './ITestClock';
+import {Carburetor} from '../Carburetor/Store/Carburetor';
+import {storeLifecycle} from '../Carburetor/Store/Diagnostics/Internal/StoreLifecycle';
 
 /**
  * Create an isolated deterministic clock for scope-owned store timers.
  *
- * @returns Clock for use with createTestScope; only handed-out scoped stores use it.
- * Timers outside a scope or created before handout continue using global timers.
+ * @returns Clock for use with createTestScope; scoped stores use it, and stores outside a scope can
+ * be attached with clock.attach(store). Stores never attached keep using global timers.
  */
 export const createTestClock = (): ITestClockApi => {
     let time = 0;
@@ -31,7 +33,7 @@ export const createTestClock = (): ITestClockApi => {
         while (takeNext(target)) {}
         time = target;
     };
-    return {
+    const clockApi: ITestClockApi = {
         advance,
         runAll: (): void => {
             let count = 0;
@@ -53,5 +55,12 @@ export const createTestClock = (): ITestClockApi => {
         },
         clearTimeout: (id): void => { jobs.delete(id); },
         get pending(): number { return jobs.size; },
+        attach: (store: object): void => {
+            if (!(store instanceof Carburetor)) {
+                throw new TypeError('createTestClock.attach: expected a Carburetor store');
+            }
+            storeLifecycle.useClock(store, clockApi);
+        },
     };
+    return clockApi;
 };

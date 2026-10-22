@@ -112,3 +112,21 @@ export const clockTest = (): void => {
     }
 };
 // #endregion clock-test
+
+// #region attach-test
+export const attachTest = (): void => {
+    const store = new TimerStore({count: 0});
+    const fired: string[] = [];
+    try {
+        store.delay(30, () => { fired.push('attached'); });
+        const clock = createTestClock();
+        clock.attach(store);
+        clock.advance(29);
+        expect(fired).toEqual([]);
+        clock.advance(1);
+        expect(fired).toEqual(['attached']);
+    } finally {
+        store.dispose();
+    }
+};
+// #endregion attach-test
