@@ -19,7 +19,7 @@ describe('affected select', () => {
     });
 
     it('resource file selects resource and cross-subsystem tests without full run', () => {
-        const r = select(['lib/src/Carburetor/Resource/createAbortHandle.ts'], map);
+        const r = select(['lib/src/Carburetor/Resource/ResourceCarburetor.ts'], map);
         expect(r.full).toBe(false);
         expect(r.rstest).toContain('__tests__/Engine/Resource');
         const lifecycle = '__tests__/Engine/Component/AntiHookComponent/lifecycle/';
@@ -137,9 +137,9 @@ describe('affected select', () => {
         expect(r.rstest.every((p) => /\.test\.tsx?$/.test(p))).toBe(true);
     });
 
-    it('resource rule includes ResourceAbortFallback suite', () => {
-        expect(select(['lib/src/Carburetor/Resource/Slot/createAbortHandle.ts'], map).rstest)
-            .toContain('__tests__/Engine/ResourceAbortFallback.test.ts');
+    it('resource rule includes the custom resource source suite', () => {
+        expect(select(['lib/src/Carburetor/Resource/Slot/prepareSlotRequest.ts'], map).rstest)
+            .toContain('__tests__/Engine/Component/AntiHookComponent/lifecycle/custom-resource-source.test.tsx');
     });
 
     it('native changes run the JS-side native suites', () => {

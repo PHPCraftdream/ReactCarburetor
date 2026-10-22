@@ -192,6 +192,7 @@ Entries below record development history in change order; where contracts differ
 ### Changed
 
 - `engines.node` is `>=24.0.0` (was `>=14.6.0`), on `react-carburetor` and `carburetor-lint`. The old floor was never exercised and was false for the ES module build, which cannot load on Node before 14.13 (it imports React's named exports). CI now installs the packed package on Node 24.0.0, the newest 24 and the newest Node release, as CommonJS and ESM, development and production builds.
+- Resources use the runtime's `AbortController` directly. The stand-in signal for runtimes without one is removed: the library already requires `WeakRef`, and every runtime that has it (Node 24, current browsers, Deno, Bun) also has `AbortController`.
 - The Release workflow starts the full-tier CI run for the release commit when there is none and waits for it, requires a changelog section for the version, derives the platform list from the launcher's `optionalDependencies`, and verifies the published packages from the registry.
 - Native builds use `--locked` everywhere, and the shipped binaries are built with a pinned toolchain (`RUST_VERSION` in `native-packages.yml`).
 - Development diagnostics no longer test `typeof process`; they depend on the literal `process.env.NODE_ENV` expression that bundlers substitute, so they now run in browser bundles. Without a bundler, set `globalThis.process = {env: {NODE_ENV: 'production'}}` before importing the library (dynamic `import()`); a missing `process` global is now a ReferenceError instead of silently disabling diagnostics.

@@ -54,7 +54,6 @@
         "__tests__/Engine/Resource",
         "__tests__/Engine/Component/AntiHookComponent/lifecycle/deferred-resources.test.tsx",
         "__tests__/Engine/Component/AntiHookComponent/lifecycle/strict-mode.test.tsx",
-        "__tests__/Engine/ResourceAbortFallback.test.ts",
         "__tests__/Engine/Component/AntiHookComponent/lifecycle/custom-resource-source.test.tsx",
         "__tests__/Engine/Component/AntiHookComponent/lifecycle/render-attempts.test.tsx",
         "__tests__/Engine/Component/AntiHookComponent/receiver/SsrHydration/READMERecipe.test.tsx",

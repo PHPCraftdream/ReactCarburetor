@@ -1,5 +1,3 @@
-import {createAbortHandle} from "@/Carburetor/Resource/Slot/createAbortHandle";
-
 /** Per-store disposal state kept outside the store: lazy signal, owned timers, disposed flag. */
 class StoreLifecycle {
     /** Lifecycle state per store, created on first need. */
@@ -51,7 +49,7 @@ class StoreLifecycle {
     public signal(store: object): AbortSignal {
         const state = this.states.get(store) ?? {disposed: false};
         this.states.set(store, state);
-        state.controller ??= createAbortHandle();
+        state.controller ??= new AbortController();
         if (state.disposed && !state.controller.signal.aborted) state.controller.abort();
         return state.controller.signal;
     }

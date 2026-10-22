@@ -78,26 +78,18 @@ describe('Carburetor lifecycle', () => {
         expect(calls).toBe(0);
     });
 
-    test('signal works without a global AbortController and is aborted when first requested after disposal', () => {
-        const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'AbortController');
-        const error = rstest.spyOn(console, 'error').mockImplementation(() => undefined);
-        try {
-            Object.defineProperty(globalThis, 'AbortController', {configurable: true, value: undefined});
-            const before = new LifecycleStore();
-            const signal = before.getSignal();
-            let aborts = 0;
-            signal.addEventListener('abort', () => { aborts++; });
-            before.dispose();
-            expect(signal.aborted).toBe(true);
-            expect(aborts).toBe(1);
-            const store = new LifecycleStore();
-            store.dispose();
-            expect(store.getSignal().aborted).toBe(true);
-        } finally {
-            if (descriptor) Object.defineProperty(globalThis, 'AbortController', descriptor);
-            else Reflect.deleteProperty(globalThis, 'AbortController');
-            error.mockRestore();
-        }
+    test('signal fires abort on disposal and is aborted when first requested after disposal', () => {
+        const before = new LifecycleStore();
+        const signal = before.getSignal();
+        let aborts = 0;
+        signal.addEventListener('abort', () => { aborts++; });
+        before.dispose();
+        expect(signal.aborted).toBe(true);
+        expect(aborts).toBe(1);
+        const store = new LifecycleStore();
+        store.dispose();
+        expect(store.getSignal().aborted).toBe(true);
+        expect(store.getSignal()).toBeInstanceOf(AbortSignal);
     });
 
     test('timer completion and cancellation release handles before disposal', async () => {

@@ -21,7 +21,6 @@ import {Carburetor} from "@/Carburetor/Store/Carburetor";
 import {prepareSlotRequest} from "./Slot/prepareSlotRequest";
 import {restoreSlotData} from "./Slot/restoreSlotData";
 import {createAnswerMemory} from "./Slot/answerMemory";
-import {createAbortHandle} from "./Slot/createAbortHandle";
 import {getInitialResourceData} from "./Slot/getInitialResourceData";
 import {prepareSlotPublication} from "./Keys/prepareSlotPublication";
 import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
@@ -364,7 +363,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         const previousError = previousState.error;
         const previousAnswer = this[R.runtime]?.answer;
         const nextState = prepareSlotRequest(previousState);
-        const controller = createAbortHandle();
+        const controller = new AbortController();
         let resolveRequest!: () => void;
         let rejectRequest!: (error: unknown) => void;
         const promise = new Promise<void>((resolve, reject) => {

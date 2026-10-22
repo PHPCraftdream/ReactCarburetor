@@ -9,7 +9,6 @@ import {
     TResourceLoader,
 } from "@/Carburetor/Models/Resource";
 import {describeError} from "@/Carburetor/Resource/Status/describeError";
-import {createAbortHandle} from "@/Carburetor/Resource/Slot/createAbortHandle";
 import {dropEventArgs} from "@/Carburetor/Resource/Slot/dropEventArgs";
 import {createCacheSupersededError} from "@/Carburetor/Resource/Slot/createCacheSupersededError";
 import {getInitialCacheEntry} from "./State/getInitialCacheEntry";
@@ -135,7 +134,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
         const priorError = entry?.error;
         const priorRefreshing = entry?.refreshing;
         const runtime = this[R.runtimeFor](key, true) as ICacheRuntime<T>;
-        const controller = createAbortHandle();
+        const controller = new AbortController();
         let resolveRequest: (value: void | PromiseLike<void>) => void = noop;
         let rejectRequest: (error: unknown) => void = noop;
         const promise = new Promise<void>((resolve, reject) => {
