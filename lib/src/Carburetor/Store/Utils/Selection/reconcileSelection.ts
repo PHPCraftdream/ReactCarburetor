@@ -1,7 +1,7 @@
-import {viewKeys} from "@/Carburetor/Store/Tracking/Models";
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
-import {isPlainObject} from "@/Carburetor/Component/Connection/isPlainObject";
-import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
+import {viewKeys} from "../../Tracking/Models";
+import {liveViews} from "../../Tracking/Proxy/liveViews";
+import {isPlainObject} from "../../../Component/Connection/isPlainObject";
+import {sameSelection} from "../../../Component/Connection/sameSelection";
 import {detachOpaqueInto} from "./detachCore";
 import {createCollectionReconciler} from "./reconcileCollections";
 const {reconcileMap, reconcileSet} = createCollectionReconciler();

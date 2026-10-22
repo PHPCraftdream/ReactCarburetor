@@ -1,10 +1,10 @@
-import {PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathSet, TPatchRecorder} from "@/Carburetor/Models/Paths";
-import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
-import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
-import {clonePatchValue} from "@/Carburetor/Store/Tracking/Proxy/clonePatchValue";
+import {PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TPathSet, TPatchRecorder} from "../../../Models/Paths";
+import {joinPath} from "../joinPath";
+import {keysPath} from "../Markers/KeysMarker";
+import {WILDCARD_PATH} from "../WildcardPath";
+import {isTrackable} from "../../Tracking/isTrackable";
+import {liveViews} from "../../Tracking/Proxy/liveViews";
+import {clonePatchValue} from "../../Tracking/Proxy/clonePatchValue";
 import {DIFF_PATH_THRESHOLD} from "./Threshold/DIFF_PATH_THRESHOLD";
 import {shouldCollapseDiff} from "./Threshold/shouldCollapseDiff";
 import {keyOrderRequiresReplay} from "./Order/keyOrderRequiresReplay";

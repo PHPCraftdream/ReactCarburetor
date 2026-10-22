@@ -1,5 +1,5 @@
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
-import {sameKind} from '@/Carburetor/Store/Paths/Diff/Kinds/sameKind';
+import {isTrackable} from '../../../Tracking/isTrackable';
+import {sameKind} from '../Kinds/sameKind';
 
 const hasOwn = Object.prototype.hasOwnProperty;
 

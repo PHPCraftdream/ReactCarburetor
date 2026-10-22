@@ -1,9 +1,9 @@
-import {CarburetorScope, IStorageLike, persist, TDisposer} from "@/Carburetor";
-import {IToDoClientAPI} from "@/ToDo/API/Models";
-import {MockToDoClientAPI} from "@/ToDo/API/MockToDoClientAPI";
-import {TodoCarburetor} from "@/ToDo/Carburetors/TodoCarburetor";
-import {UndoCarburetor} from "@/ToDo/Carburetors/UndoCarburetor";
-import {TodoViews} from "@/ToDo/Derived/TodoViews";
+import {CarburetorScope, IStorageLike, persist, TDisposer} from "../../Carburetor/index";
+import {IToDoClientAPI} from "../API/Models";
+import {MockToDoClientAPI} from "../API/MockToDoClientAPI";
+import {TodoCarburetor} from "../Carburetors/TodoCarburetor";
+import {UndoCarburetor} from "../Carburetors/UndoCarburetor";
+import {TodoViews} from "../Derived/TodoViews";
 import {createDetailsCache} from "./createDetailsCache";
 import {ITodoScope} from "./Models";
 import {detailsToken} from "./Tokens/detailsToken";

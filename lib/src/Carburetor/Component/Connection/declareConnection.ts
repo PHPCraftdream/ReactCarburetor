@@ -1,9 +1,9 @@
-import {IReadableCarburetor} from "@/Carburetor/Models/Store";
-import {TPath, TPathRecorder} from "@/Carburetor/Models/Paths";
-import {TReadonly} from "@/Carburetor/Models/Base";
-import {getUid} from "@/Carburetor/Store/Utils/getUid";
-import {IConnection, IConnectionSource, IRenderAttempt} from "@/Carburetor/Component/Models/Connection";
-import {AttemptEntry} from "@/Carburetor/Component/Models/AttemptEntry";
+import {IReadableCarburetor} from "../../Models/Store";
+import {TPath, TPathRecorder} from "../../Models/Paths";
+import {TReadonly} from "../../Models/Base";
+import {getUid} from "../../Store/Utils/getUid";
+import {IConnection, IConnectionSource, IRenderAttempt} from "../Models/Connection";
+import {AttemptEntry} from "../Models/AttemptEntry";
 
 /**
  * One connect()-family declaration's whole state: the registered connection, the source

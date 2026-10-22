@@ -1,5 +1,5 @@
-import {IResourceCacheData} from '@/Carburetor/Models/Resource';
-import {cloneOwnedGraph} from '@/Carburetor/Store/Utils/Graph/cloneOwnedGraph';
+import {IResourceCacheData} from '../../../../Models/Resource';
+import {cloneOwnedGraph} from '../../../../Store/Utils/Graph/cloneOwnedGraph';
 
 /** Prepare a replacement only when a selected slot cannot be deleted in place.
  *

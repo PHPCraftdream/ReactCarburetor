@@ -1,9 +1,9 @@
-import {TPathSet} from '@/Carburetor/Models/Paths';
-import {ISubscriberRecord} from '@/Carburetor/Store/Utils/Models';
-import {pathsIntersect} from '@/Carburetor/Store/Paths/Diff/pathsIntersect';
-import {diagnostics} from '@/Carburetor/Store/Diagnostics/DiagnosticsInstance';
-import {traceListeners} from '@/Carburetor/Store/Diagnostics/Internal/listeners';
-import {metadata} from '@/Carburetor/Store/Diagnostics/Internal/metadata';
+import {TPathSet} from '../../../Models/Paths';
+import {ISubscriberRecord} from '../../Utils/Models';
+import {pathsIntersect} from '../../Paths/Diff/pathsIntersect';
+import {diagnostics} from '../DiagnosticsInstance';
+import {traceListeners} from './listeners';
+import {metadata} from './metadata';
 
 interface IPendingTrace {
     /** Accumulated matching paths until callback delivery. */

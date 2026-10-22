@@ -1,19 +1,19 @@
 "use client";
 
-import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
+import {C} from "../Models/ComponentSymbols";
 
 import * as React from "react";
-import {IDict, TEffectCleanup, TEffectDeps} from "@/Carburetor/Models/Base";
-import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {getUid} from "@/Carburetor/Store/Utils/getUid";
+import {IDict, TEffectCleanup, TEffectDeps} from "../../Models/Base";
+import {ICarburetorSubscription} from "../../Models/Store";
+import {getUid} from "../../Store/Utils/getUid";
 import {
     IConnection,
     IRenderAttempt,
     ITrackedCarburetor,
     ITrackedView,
-} from "@/Carburetor/Component/Models/Connection";
-import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
-import {renderOwner} from "@/Carburetor/Derived/renderOwner";
+} from "../Models/Connection";
+import {shallowEqual} from "../shallowEqual";
+import {renderOwner} from "../../Derived/renderOwner";
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}};
 

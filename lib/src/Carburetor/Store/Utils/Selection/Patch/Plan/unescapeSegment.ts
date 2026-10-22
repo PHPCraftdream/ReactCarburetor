@@ -1,4 +1,4 @@
-import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
+import {PATH_SEPARATOR} from "../../../../Paths/PathSeparator";
 
 /**
  * The inverse of the escape `joinPath` applies to one key: `~1` back to the separator, then `~0`

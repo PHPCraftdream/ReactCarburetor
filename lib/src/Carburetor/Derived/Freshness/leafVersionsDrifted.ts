@@ -1,9 +1,9 @@
-import {IDict} from '@/Carburetor/Models/Base';
-import {isNativeStoreSource} from '@/Carburetor/Store/Scheduling/isNativeStoreSource';
-import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
+import {IDict} from '../../Models/Base';
+import {isNativeStoreSource} from '../../Store/Scheduling/isNativeStoreSource';
+import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from '../../Store/Utils/Models';
 import {ILeafVersion, IReadSet} from './Models';
 import {readStoreData} from './readStoreData';
-import {leafWatermarks} from '@/Carburetor/Derived/reporting/leafWatermarks';
+import {leafWatermarks} from '../reporting/leafWatermarks';
 
 /** Whether one moved leaf really concerns the paths it read; the store answers per filed pair.
  *

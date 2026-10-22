@@ -1,5 +1,5 @@
-import {TPath, TPathSet} from '@/Carburetor/Models/Paths';
-import {TCompletedReads} from '@/Carburetor/Store/Tracking/Observation/Models';
+import {TPath, TPathSet} from '../../../Models/Paths';
+import {TCompletedReads} from '../../Tracking/Observation/Models';
 
 /** Strict branch coverage of a collection that is being completed. */
 const prefixes = (reads: ReadonlySet<TPath>): Set<TPath> => {

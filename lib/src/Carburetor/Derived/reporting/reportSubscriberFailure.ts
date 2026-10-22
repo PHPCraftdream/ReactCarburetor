@@ -1,4 +1,4 @@
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}};

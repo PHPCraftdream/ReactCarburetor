@@ -1,9 +1,9 @@
-import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
-import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
+import {TPath, TPathSet} from "../../Models/Paths";
+import {ICarburetorSubscription} from "../../Models/Store";
+import {completeReads} from "../../Store/Tracking/Observation/completeReads";
+import {TCompletedReads} from "../../Store/Tracking/Observation/Models";
 import {IAttemptEntry, IDependencySlot} from "./Connection";
-import {ReadLedger} from "@/Carburetor/Store/Paths/Markers/ReadLedger";
+import {ReadLedger} from "../../Store/Paths/Markers/ReadLedger";
 
 /**
  * One source's read record inside one render attempt, recorded copy-on-divergence.

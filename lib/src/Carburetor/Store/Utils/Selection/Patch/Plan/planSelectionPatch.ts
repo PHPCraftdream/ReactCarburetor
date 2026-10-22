@@ -1,7 +1,7 @@
-import {TPath} from "@/Carburetor/Models/Paths";
-import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {IPatchNode} from "@/Carburetor/Store/Utils/Selection/Patch/Models";
+import {TPath} from "../../../../../Models/Paths";
+import {PATH_SEPARATOR} from "../../../../Paths/PathSeparator";
+import {WILDCARD_PATH} from "../../../../Paths/WildcardPath";
+import {IPatchNode} from "../Models";
 import {unescapeSegment} from "./unescapeSegment";
 
 /**

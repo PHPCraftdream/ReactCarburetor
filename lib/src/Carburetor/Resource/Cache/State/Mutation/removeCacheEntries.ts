@@ -1,4 +1,4 @@
-import {IResourceCacheData} from '@/Carburetor/Models/Resource';
+import {IResourceCacheData} from '../../../../Models/Resource';
 import {omitLockedCacheEntries} from './omitLockedCacheEntries';
 
 /** Remove real dictionary slots before reporting removal to bookkeeping.

@@ -1,13 +1,13 @@
-import {TDisposer} from "@/Carburetor/Models/Base";
-import {ICarburetor} from "@/Carburetor/Models/Store";
-import {IPersistOptions} from "@/Carburetor/Models/Tooling";
-import {CARBURETOR_PERSIST_DRAIN} from '@/Carburetor/Store/Utils/Models';
-import {mergeSaved} from '@/Carburetor/Tooling/Persist/MergeSaved';
-import {persistPartitions} from '@/Carburetor/Tooling/Persist/PersistPartitions';
-import {readFallback} from '@/Carburetor/Tooling/Persist/ReadFallback';
-import {readVersioned} from '@/Carburetor/Tooling/Persist/ReadVersioned';
-import {reportRemovalFailure} from '@/Carburetor/Tooling/Persist/ReportRemovalFailure';
-import {reportRestoreFailure} from '@/Carburetor/Tooling/Persist/ReportRestoreFailure';
+import {TDisposer} from "../Models/Base";
+import {ICarburetor} from "../Models/Store";
+import {IPersistOptions} from "../Models/Tooling";
+import {CARBURETOR_PERSIST_DRAIN} from '../Store/Utils/Models';
+import {mergeSaved} from './Persist/MergeSaved';
+import {persistPartitions} from './Persist/PersistPartitions';
+import {readFallback} from './Persist/ReadFallback';
+import {readVersioned} from './Persist/ReadVersioned';
+import {reportRemovalFailure} from './Persist/ReportRemovalFailure';
+import {reportRestoreFailure} from './Persist/ReportRestoreFailure';
 
 /** Keeps a carburetor mirrored in a storage: loads the stored state once on connect, then
  * writes its wire form (`toJSON()`) on every change. Returns a disposer that stops the mirroring.

@@ -1,5 +1,5 @@
 import * as React from "react";
-import {AntiHookComponent} from "@/Carburetor";
+import {AntiHookComponent} from "../../../Carburetor/index";
 import {ITodoStats} from "./Models";
 
 interface IStatsSummaryProps {

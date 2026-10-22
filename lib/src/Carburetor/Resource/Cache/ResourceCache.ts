@@ -1,6 +1,6 @@
-import {TSignalLoader} from "@/Carburetor/Resource/Keys/TSignalLoader";
-import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
-import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
+import {TSignalLoader} from "../Keys/TSignalLoader";
+import {R} from "../../Store/Diagnostics/Internal/ResourceSymbols";
+import {S} from "../../Store/Diagnostics/Internal/StoreIdentity";
 import {
     IResourceCacheData,
     IResourceCacheOptions,
@@ -10,16 +10,16 @@ import {
     TResourceArgs,
     TResourceKey,
     TResourceLoader,
-} from "@/Carburetor/Models/Resource";
-import {defaultResourceKey} from "@/Carburetor/Resource/Keys/defaultResourceKey";
-import {encodeResourceKeyValue} from "@/Carburetor/Resource/Keys/encodeResourceKeyValue";
-import {validateResourceKey} from "@/Carburetor/Resource/Keys/validateResourceKey";
-import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
-import {TPath} from "@/Carburetor/Models/Paths";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
-import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
-import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+} from "../../Models/Resource";
+import {defaultResourceKey} from "../Keys/defaultResourceKey";
+import {encodeResourceKeyValue} from "../Keys/encodeResourceKeyValue";
+import {validateResourceKey} from "../Keys/validateResourceKey";
+import {EResourceStatus} from "../../Models/Enums/EResourceStatus";
+import {TPath} from "../../Models/Paths";
+import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
+import {joinPath} from "../../Store/Paths/joinPath";
+import {PATH_SEPARATOR} from "../../Store/Paths/PathSeparator";
+import {WILDCARD_PATH} from "../../Store/Paths/WildcardPath";
 import {escapeCacheKey} from "./escapeCacheKey";
 import {getInitialCacheEntry} from "./State/getInitialCacheEntry";
 import {ResourceCacheLifecycle} from "./ResourceCacheLifecycle";

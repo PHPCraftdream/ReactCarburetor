@@ -1,6 +1,6 @@
-import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
+import {ICarburetorSubscription} from "../Models/Store";
+import {TPath, TPathSet} from "../Models/Paths";
+import {IInternalSubscriptionProtocol} from "../Store/Utils/Models";
 
 /**
  * Internal types of the derived layer: kept out of the public `Models/` barrel on purpose.

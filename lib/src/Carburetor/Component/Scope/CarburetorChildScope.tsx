@@ -3,7 +3,7 @@
 import * as React from "react";
 import {CarburetorContext} from "./CarburetorContext";
 import {CarburetorScope} from "./CarburetorScope";
-import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
+import {ICarburetorToken} from "../../Models/Tooling";
 
 interface ICarburetorChildScopeProps {
     /** Tokens created and owned by the child scope; fixed for the boundary's lifetime. */

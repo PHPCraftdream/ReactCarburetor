@@ -1,4 +1,4 @@
-import {TPath} from "@/Carburetor/Models/Paths";
+import {TPath} from "../../Models/Paths";
 
 /**
  * The proxy-cache contract types, grouped because the factory, both proxies and the engine's

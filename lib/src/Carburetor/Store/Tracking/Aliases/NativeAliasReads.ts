@@ -1,6 +1,6 @@
-import {TPathRecorder} from "@/Carburetor/Models/Paths";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
+import {TPathRecorder} from "../../../Models/Paths";
+import {WILDCARD_PATH} from "../../Paths/WildcardPath";
+import {isTrackable} from "../isTrackable";
 import {nativeAliasIndex} from "./NativeAliasIndex";
 
 /** Cached alias answer owned by one weak root, valid at one index generation. */

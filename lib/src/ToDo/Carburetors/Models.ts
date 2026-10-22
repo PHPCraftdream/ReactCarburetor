@@ -1,5 +1,5 @@
-import {ITodo} from "@/ToDo/API/Models";
-import {ETodoFilter} from "@/ToDo/Models/Enums/ETodoFilter";
+import {ITodo} from "../API/Models";
+import {ETodoFilter} from "../Models/Enums/ETodoFilter";
 
 export type TUpdateTodo = (data: ITodo) => void;
 

@@ -1,5 +1,5 @@
-import {TPath} from "@/Carburetor/Models/Paths";
-import {IProxyCache} from "@/Carburetor/Store/Tracking/Models";
+import {TPath} from "../../../Models/Paths";
+import {IProxyCache} from "../Models";
 
 /**
  * One cached branch. A read handler carries its own `path`/`proxy` and doubles as the entry;

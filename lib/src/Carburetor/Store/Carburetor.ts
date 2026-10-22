@@ -1,13 +1,13 @@
-import {IDict, TDisposer, TReadonly, TSubscriber} from "@/Carburetor/Models/Base";
+import {IDict, TDisposer, TReadonly, TSubscriber} from "../Models/Base";
 import {
     IPatchObserver, IStateInstallation, IStatePublication, IStateRestoreClaim, PATCH_OPAQUE,
     STATE_MIXED_PUBLICATION, STATE_MUTATION_PUBLICATION, STATE_PUBLIC_REPLACEMENT, IWritePatch,
     TPath, TPathRecorder, TPathSet, TAliasLedger, TPatchPort,
-} from "@/Carburetor/Models/Paths";
+} from "../Models/Paths";
 import {
     ICarburetor, ICarburetorEvents, ICarburetorOptions, IPatchSource, ISubscribeOptions,
     IUpdateScheduler, TSelector,
-} from "@/Carburetor/Models/Store";
+} from "../Models/Store";
 import {deepClone} from "./Utils/deepClone";
 import {applyDiff} from "./Paths/Diff/applyDiff";
 import {sameKind} from "./Paths/Diff/Kinds/sameKind";
@@ -45,8 +45,8 @@ import {StoreEvents} from "./Utils/Graph/Events/StoreEvents";
 import {CARBURETOR_EVENT_TYPES} from "./Utils/Graph/Events/EventTypes";
 import {updateBatch} from "./Transaction/UpdateBatchInstance";
 import {READS_TRANSFER} from "./Paths/Markers/ReadsTransferBrand";
-import {READS_RETAIN} from "@/Carburetor/Store/Paths/Markers/RetainDeliveryBrand";
-import {storeLifecycle} from "@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle";
+import {READS_RETAIN} from "./Paths/Markers/RetainDeliveryBrand";
+import {storeLifecycle} from "./Diagnostics/Internal/StoreLifecycle";
 declare const process: {env: {NODE_ENV?: string}};
 export class Carburetor<T extends object, TEvents extends object = {}> implements
     ICarburetor<T>, IPatchSource, IInternalSubscriptionProtocol, ICarburetorEvents<TEvents> {

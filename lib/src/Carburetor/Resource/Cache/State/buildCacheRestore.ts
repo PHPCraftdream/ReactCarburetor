@@ -1,7 +1,7 @@
-import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
-import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
-import {deepClone} from '@/Carburetor/Store/Utils/deepClone';
-import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
+import {EResourceStatus} from '../../../Models/Enums/EResourceStatus';
+import {IResourceCacheData, IResourceEntry} from '../../../Models/Resource';
+import {deepClone} from '../../../Store/Utils/deepClone';
+import {resourceStatusFlags} from '../../Status/resourceStatusFlags';
 import {normalizeOwnedCacheReplay} from './normalizeOwnedCacheReplay';
 
 /** Assemble restored entries with newer requests created by abort listeners.

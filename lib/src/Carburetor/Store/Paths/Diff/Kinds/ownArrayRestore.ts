@@ -1,4 +1,4 @@
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
+import {isTrackable} from '../../../Tracking/isTrackable';
 
 /** R39-05: own changed graph endpoints while retaining proven-equal root siblings and their aliases.
  *

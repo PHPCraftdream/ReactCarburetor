@@ -1,8 +1,8 @@
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
-import {sameKind} from '@/Carburetor/Store/Paths/Diff/Kinds/sameKind';
-import {ArrayIdentity} from '@/Carburetor/Store/Paths/Diff/Kinds/ArrayIdentity';
-import {probesSparse} from '@/Carburetor/Store/Paths/Diff/Kinds/probesSparse';
-import {countDiffLeaves} from '@/Carburetor/Store/Paths/Diff/Threshold/countDiffLeaves';
+import {isTrackable} from '../../../Tracking/isTrackable';
+import {sameKind} from '../Kinds/sameKind';
+import {ArrayIdentity} from '../Kinds/ArrayIdentity';
+import {probesSparse} from '../Kinds/probesSparse';
+import {countDiffLeaves} from './countDiffLeaves';
 
 const hasOwn = Object.prototype.hasOwnProperty;
 const isEnumerable = Object.prototype.propertyIsEnumerable;

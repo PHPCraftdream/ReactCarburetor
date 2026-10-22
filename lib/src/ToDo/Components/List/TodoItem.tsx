@@ -1,6 +1,6 @@
 import * as React from "react";
-import {ScopedAntiHookComponent, bind} from "@/Carburetor";
-import {todoToken} from "@/ToDo/Scope/Tokens/todoToken";
+import {ScopedAntiHookComponent, bind} from "../../../Carburetor/index";
+import {todoToken} from "../../Scope/Tokens/todoToken";
 import {TodoDetails} from "./TodoDetails";
 
 interface ITodoItemProps {

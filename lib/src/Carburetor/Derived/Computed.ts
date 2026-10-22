@@ -1,15 +1,15 @@
-import {IDict, TSubscriber} from "@/Carburetor/Models/Base";
-import {IComputed, IComputedOptions, TComputeBody, TComputedReader} from "@/Carburetor/Models/Derived";
-import {TPath} from "@/Carburetor/Models/Paths";
-import {IReadableCarburetor, ISubscribeOptions} from "@/Carburetor/Models/Store";
-import {getUid} from "@/Carburetor/Store/Utils/getUid";
-import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
-import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
-import {nativeStoreWriteEpoch} from "@/Carburetor/Store/Scheduling/nativeStoreWriteEpoch";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
-import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
-import {CARBURETOR_EXTEND, CARBURETOR_SNAPSHOT_VERSION, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
+import {IDict, TSubscriber} from "../Models/Base";
+import {IComputed, IComputedOptions, TComputeBody, TComputedReader} from "../Models/Derived";
+import {TPath} from "../Models/Paths";
+import {IReadableCarburetor, ISubscribeOptions} from "../Models/Store";
+import {getUid} from "../Store/Utils/getUid";
+import {sharedSingleton} from "../Store/Utils/sharedSingleton";
+import {updateWave} from "../Store/Scheduling/UpdateWaveInstance";
+import {nativeStoreWriteEpoch} from "../Store/Scheduling/nativeStoreWriteEpoch";
+import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
+import {completeReads} from "../Store/Tracking/Observation/completeReads";
+import {transferReads} from "../Store/Paths/Markers/transferReads";
+import {CARBURETOR_EXTEND, CARBURETOR_SNAPSHOT_VERSION, IInternalSubscriptionProtocol} from "../Store/Utils/Models";
 import {announceIsUnchanged} from "./Freshness/announceIsUnchanged";
 import {reportComputedEscape} from "./reporting/reportComputedEscape";
 import {reportSubscriberFailure} from "./reporting/reportSubscriberFailure";
@@ -19,7 +19,7 @@ import {ILeafVersion} from "./Freshness/Models";
 import {leafVersionsDrifted} from "./Freshness/leafVersionsDrifted";
 import {computedDependencies} from "./computedDependencies";
 import {C, IDependency, IActiveReadSlot} from "./Models";
-import {PersistentViews} from "@/Carburetor/Store/Tracking/Observation/PersistentViewCache";
+import {PersistentViews} from "../Store/Tracking/Observation/PersistentViewCache";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}};

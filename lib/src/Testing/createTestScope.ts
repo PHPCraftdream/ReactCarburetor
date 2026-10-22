@@ -1,7 +1,7 @@
 /// <reference lib="esnext.disposable" />
-import {ICarburetorToken} from '@/Carburetor/Models/Tooling';
-import {CarburetorScope} from '@/Carburetor/Component/Scope/CarburetorScope';
-import {ITestClock} from '@/Testing/ITestClock';
+import {ICarburetorToken} from '../Carburetor/Models/Tooling';
+import {CarburetorScope} from '../Carburetor/Component/Scope/CarburetorScope';
+import {ITestClock} from './ITestClock';
 
 /**
  * Creates a test scope with optional overrides and clock.

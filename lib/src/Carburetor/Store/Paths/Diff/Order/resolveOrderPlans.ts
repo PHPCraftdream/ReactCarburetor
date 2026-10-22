@@ -1,4 +1,4 @@
-import {IWritePatch} from "@/Carburetor/Models/Paths";
+import {IWritePatch} from "../../../../Models/Paths";
 import {isOrderedStringKey} from "./isOrderedStringKey";
 
 /** Collision-free identity of a patch's container path, for one entry's plan cache. */

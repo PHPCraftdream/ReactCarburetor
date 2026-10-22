@@ -1,4 +1,4 @@
-import {ITestClock as ITestClockApi} from '@/Testing/ITestClock';
+import {ITestClock as ITestClockApi} from './ITestClock';
 
 /**
  * Create an isolated deterministic clock for scope-owned store timers.

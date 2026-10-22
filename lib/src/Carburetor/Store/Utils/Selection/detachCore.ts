@@ -1,6 +1,6 @@
-import {viewKeys} from "@/Carburetor/Store/Tracking/Models";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
+import {viewKeys} from "../../Tracking/Models";
+import {isTrackable} from "../../Tracking/isTrackable";
+import {liveViews} from "../../Tracking/Proxy/liveViews";
 
 /** The per-instance report a caller can wire in: fired for each live class instance handed over. */
 type TReportLiveInstance = (instance: object) => void;

@@ -1,8 +1,8 @@
-import {CarburetorScope} from "@/Carburetor/Component/Scope/CarburetorScope";
-import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
-import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
-import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
+import {CarburetorScope} from "./CarburetorScope";
+import {ICarburetorToken} from "../../Models/Tooling";
+import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
+import {IS_DEVELOPMENT} from "../../Store/Utils/DevelopmentFlag";
+import {sharedSingleton} from "../../Store/Utils/sharedSingleton";
 
 /** Names already claimed in this process, across library copies (see sharedSingleton). */
 const takenNames: Set<string> = sharedSingleton('takenNames', () => new Set<string>());

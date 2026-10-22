@@ -1,5 +1,5 @@
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
-import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
+import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
+import {IS_DEVELOPMENT} from "../../Store/Utils/DevelopmentFlag";
 
 /** Reports a failed restore to onError, or loudly in development when the caller gave none.
  *

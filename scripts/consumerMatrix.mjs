@@ -3,6 +3,7 @@ import path from 'node:path';
 import {checkFormat, installConsumer} from './consumer-matrix/cell.mjs';
 import {runCrossFormatSelection} from './consumer-matrix/crossFormatSelection.mjs';
 import {runNextCheck} from './consumer-matrix/nextCheck.mjs';
+import {sourceConditionScenario} from './consumer-fixture/sourceCondition.mjs';
 import {MODULE_FORMATS, PACKAGE_MANAGERS, REACT_VERSIONS, REPO_ROOT, WORKDIR, run} from './consumer-matrix/matrix.mjs';
 
 /**
@@ -93,6 +94,7 @@ if (crossFormatDir) {
 }
 
 runNextCheck(WORKDIR, tarballPath).forEach(({cell, ...outcome}) => record(cell, outcome));
+record('source condition', sourceConditionScenario());
 
 const failed = results.filter((entry) => !entry.ok && !entry.skip);
 const skipped = results.filter((entry) => entry.skip);

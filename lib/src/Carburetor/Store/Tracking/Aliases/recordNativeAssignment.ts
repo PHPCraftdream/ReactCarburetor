@@ -1,6 +1,6 @@
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
-import {isOrdinaryDate} from '@/Carburetor/Store/Tracking/Proxy/Definitions/isOrdinaryDate';
-import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
+import {isTrackable} from '../isTrackable';
+import {isOrdinaryDate} from '../Proxy/Definitions/isOrdinaryDate';
+import {nativeAliasIndex} from './NativeAliasIndex';
 
 /** Refreshes ownership after a value assignment on a draft target.
  *

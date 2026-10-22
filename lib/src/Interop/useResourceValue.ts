@@ -1,12 +1,12 @@
 "use client";
 
 import {useCallback, useEffect, useInsertionEffect, useLayoutEffect, useMemo, useSyncExternalStore} from 'react';
-import {TResourceArgs, IResourceSource, IResourceView} from '@/Carburetor/Models/Resource';
-import {TReadonly} from '@/Carburetor/Models/Base';
-import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
-import {resourceReader} from '@/Carburetor/Resource/Cache/Reader/resourceReader';
-import {IS_DEVELOPMENT} from '@/Carburetor/Store/Utils/DevelopmentFlag';
-import {diagnostics} from '@/Carburetor/Store/Diagnostics/DiagnosticsInstance';
+import {TResourceArgs, IResourceSource, IResourceView} from '../Carburetor/Models/Resource';
+import {TReadonly} from '../Carburetor/Models/Base';
+import {EResourceStatus} from '../Carburetor/Models/Enums/EResourceStatus';
+import {resourceReader} from '../Carburetor/Resource/Cache/Reader/resourceReader';
+import {IS_DEVELOPMENT} from '../Carburetor/Store/Utils/DevelopmentFlag';
+import {diagnostics} from '../Carburetor/Store/Diagnostics/DiagnosticsInstance';
 import {TSelector, TValueComparator} from './Models';
 import {createResourceReader} from './createResourceReader';
 

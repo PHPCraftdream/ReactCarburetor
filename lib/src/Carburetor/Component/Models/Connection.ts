@@ -1,9 +1,9 @@
-import {TReadonly} from "@/Carburetor/Models/Base";
-import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {TPath, TPathRecorder, TPathSet} from "@/Carburetor/Models/Paths";
-import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
-import {TargetsHold} from "@/Carburetor/Store/Utils/Selection/Patch/TargetsHold";
-import {ReadLedger} from "@/Carburetor/Store/Paths/Markers/ReadLedger";
+import {TReadonly} from "../../Models/Base";
+import {IReadableCarburetor, ICarburetorSubscription} from "../../Models/Store";
+import {TPath, TPathRecorder, TPathSet} from "../../Models/Paths";
+import {TCompletedReads} from "../../Store/Tracking/Observation/Models";
+import {TargetsHold} from "../../Store/Utils/Selection/Patch/TargetsHold";
+import {ReadLedger} from "../../Store/Paths/Markers/ReadLedger";
 
 /**
  * What one commit established about a dependency: the carburetor a render attempt resolved,

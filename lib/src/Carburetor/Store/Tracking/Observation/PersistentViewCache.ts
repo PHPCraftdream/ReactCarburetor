@@ -1,6 +1,6 @@
-import {TReadonly} from '@/Carburetor/Models/Base';
-import {TPath} from '@/Carburetor/Models/Paths';
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
+import {TReadonly} from '../../../Models/Base';
+import {TPath} from '../../../Models/Paths';
+import {isTrackable} from '../isTrackable';
 
 /** A source able to mint a tracked view, with a data object whose identity can be checked. */
 interface IViewSource<T> {

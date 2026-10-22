@@ -1,5 +1,5 @@
-import {viewKeys} from "@/Carburetor/Store/Tracking/Models";
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
+import {viewKeys} from "../../Store/Tracking/Models";
+import {liveViews} from "../../Store/Tracking/Proxy/liveViews";
 import {isPlainObject} from "./isPlainObject";
 
 const hasPrototype = (value: object, prototype: object): boolean =>

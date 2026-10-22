@@ -1,22 +1,22 @@
 "use client";
 
 import {useCallback, useEffect, useLayoutEffect, useRef, useSyncExternalStore} from "react";
-import {IReadableCarburetor, TReadonly, TSubscriber} from "@/Carburetor";
-import {TPath, TPathRecorder} from "@/Carburetor/Models/Paths";
-import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
-import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
-import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconcileFlatSelection";
-import {sameSelection} from "@/Carburetor/Component/Connection/sameSelection";
-import {patchFromWriteLog} from "@/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog";
-import {TargetsHold} from "@/Carburetor/Store/Utils/Selection/Patch/TargetsHold";
-import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
-import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
-import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
-import {readCoverage} from "@/Carburetor/Store/Paths/Markers/readCoverage";
-import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
-import {ReadLedger} from "@/Carburetor/Store/Paths/Markers/ReadLedger";
-import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
+import {IReadableCarburetor, TReadonly, TSubscriber} from "../Carburetor/index";
+import {TPath, TPathRecorder} from "../Carburetor/Models/Paths";
+import {detachOpaque} from "../Carburetor/Store/Utils/Selection/detachOpaque";
+import {reconcileSelection} from "../Carburetor/Store/Utils/Selection/reconcileSelection";
+import {reconcileFlatSelection} from "../Carburetor/Store/Utils/Selection/reconcileFlatSelection";
+import {sameSelection} from "../Carburetor/Component/Connection/sameSelection";
+import {patchFromWriteLog} from "../Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog";
+import {TargetsHold} from "../Carburetor/Store/Utils/Selection/Patch/TargetsHold";
+import {completeReads} from "../Carburetor/Store/Tracking/Observation/completeReads";
+import {isTrackable} from "../Carburetor/Store/Tracking/isTrackable";
+import {TCompletedReads} from "../Carburetor/Store/Tracking/Observation/Models";
+import {transferCompletedReads} from "../Carburetor/Store/Tracking/Observation/transferCompletedReads";
+import {readCoverage} from "../Carburetor/Store/Paths/Markers/readCoverage";
+import {sameReads} from "../Carburetor/Store/Tracking/Observation/sameReads";
+import {ReadLedger} from "../Carburetor/Store/Paths/Markers/ReadLedger";
+import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "../Carburetor/Store/Utils/Models";
 import {TSelector, TValueComparator} from "./Models";
 
 const coversReads = (reads: ReadonlySet<TPath>, filed: TCompletedReads): boolean => {

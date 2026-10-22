@@ -1,7 +1,7 @@
 import * as React from "react";
 import {createRoot} from "react-dom/client";
 import './styles.css';
-import {CarburetorProvider, connectDevTools, diagnostics} from "@/Carburetor";
+import {CarburetorProvider, connectDevTools, diagnostics} from "./Carburetor/index";
 import {TodoApp} from "./ToDo/TodoApp";
 import {MockToDoClientAPI} from "./ToDo/API/MockToDoClientAPI";
 import {createTodoScope} from "./ToDo/Scope/createTodoScope";

@@ -1,5 +1,5 @@
-import {IDict} from "@/Carburetor/Models/Base";
-import {ICarburetorSubscription, IUpdateScheduler} from "@/Carburetor/Models/Store";
+import {IDict} from "./Base";
+import {ICarburetorSubscription, IUpdateScheduler} from "./Store";
 import {EResourceStatus} from "./Enums/EResourceStatus";
 
 export interface IResourceData<T> {

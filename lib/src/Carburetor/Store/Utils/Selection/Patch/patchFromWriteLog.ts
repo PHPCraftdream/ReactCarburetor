@@ -1,10 +1,10 @@
-import {RAW_EXPOSURE, TPath} from "@/Carburetor/Models/Paths";
-import {VIEW_PATH} from "@/Carburetor/Store/Tracking/Models";
+import {RAW_EXPOSURE, TPath} from "../../../../Models/Paths";
+import {VIEW_PATH} from "../../../Tracking/Models";
 import {
     CARBURETOR_PATHS_SINCE, CARBURETOR_TARGETS_SINCE, IInternalSubscriptionProtocol,
-} from "@/Carburetor/Store/Utils/Models";
-import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+} from "../../Models";
+import {PATH_SEPARATOR} from "../../../Paths/PathSeparator";
+import {WILDCARD_PATH} from "../../../Paths/WildcardPath";
 import {patchSelection} from "./patchSelection";
 import {planSelectionPatch} from "./Plan/planSelectionPatch";
 import {patchStructure} from "./Structure/patchStructure";

@@ -1,4 +1,4 @@
-import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
+import {TPath, TPathSet} from "../../../Models/Paths";
 
 declare const COMPLETED_READS: unique symbol;
 

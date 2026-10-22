@@ -1,4 +1,4 @@
-import {IRenderAttempt} from "@/Carburetor/Component/Models/Connection";
+import {IRenderAttempt} from "./Connection";
 
 /**
  * Returns configuration-free selection attribution.

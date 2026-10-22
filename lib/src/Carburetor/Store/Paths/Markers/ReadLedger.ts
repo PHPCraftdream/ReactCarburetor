@@ -1,6 +1,6 @@
-import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
-import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
+import {TPath, TPathSet} from "../../../Models/Paths";
+import {completeReads} from "../../Tracking/Observation/completeReads";
+import {TCompletedReads} from "../../Tracking/Observation/Models";
 
 /** The recording a ledger is counting; it copies its counted paths out before another one starts. */
 type TLedgerOwner = {spill(): unknown};

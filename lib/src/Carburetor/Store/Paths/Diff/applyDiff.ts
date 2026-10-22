@@ -1,5 +1,5 @@
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
-import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
+import {isTrackable} from "../../Tracking/isTrackable";
+import {deepClone} from "../../Utils/deepClone";
 import {DIFF_PATH_THRESHOLD} from "./Threshold/DIFF_PATH_THRESHOLD";
 import {shouldCollapseDiff} from "./Threshold/shouldCollapseDiff";
 import {scanBranch} from "./Order/scanBranch";

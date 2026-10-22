@@ -1,4 +1,4 @@
-import {ITestClock} from '@/Testing/ITestClock';
+import {ITestClock} from '../../../../Testing/ITestClock';
 /** Per-store disposal state kept outside the store: lazy signal, owned timers, disposed flag. */
 class StoreLifecycle {
     /** Lifecycle state per store, created on first need. */

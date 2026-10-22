@@ -1,9 +1,9 @@
 import * as React from "react";
-import {bind, ScopedAntiHookComponent, transaction} from "@/Carburetor";
-import {ETodoFilter} from "@/ToDo/Models/Enums/ETodoFilter";
-import {filterToken} from "@/ToDo/Scope/Tokens/filterToken";
-import {todoToken} from "@/ToDo/Scope/Tokens/todoToken";
-import {undoToken} from "@/ToDo/Scope/Tokens/undoToken";
+import {bind, ScopedAntiHookComponent, transaction} from "../../../Carburetor/index";
+import {ETodoFilter} from "../../Models/Enums/ETodoFilter";
+import {filterToken} from "../../Scope/Tokens/filterToken";
+import {todoToken} from "../../Scope/Tokens/todoToken";
+import {undoToken} from "../../Scope/Tokens/undoToken";
 
 const BUTTON = 'rounded-md px-2 py-1 text-xs font-medium text-slate-600 transition hover:bg-slate-200/70 '
     + 'disabled:cursor-not-allowed disabled:opacity-40 dark:text-slate-300 dark:hover:bg-slate-700/60';

@@ -1,6 +1,6 @@
 import {TDisposer, TReadonly, TSubscriber, TUpdater} from "./Base";
 import {IPatchObserver} from "./Paths";
-import {CARBURETOR_EVENT_TYPES} from "@/Carburetor/Store/Utils/Graph/Events/EventTypes";
+import {CARBURETOR_EVENT_TYPES} from "../Store/Utils/Graph/Events/EventTypes";
 
 /** Event subscription capability exposed separately from existing carburetor interfaces. */
 export interface ICarburetorEvents<TEvents extends object> {

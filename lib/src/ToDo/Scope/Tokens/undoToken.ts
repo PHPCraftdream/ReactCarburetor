@@ -1,6 +1,6 @@
-import {carburetorToken} from "@/Carburetor";
-import {ITodoList} from "@/ToDo/API/Models";
-import {UndoCarburetor} from "@/ToDo/Carburetors/UndoCarburetor";
+import {carburetorToken} from "../../../Carburetor/index";
+import {ITodoList} from "../../API/Models";
+import {UndoCarburetor} from "../../Carburetors/UndoCarburetor";
 
 /** Undo/redo over one scope's list; createTodoScope seeds it. */
 export const undoToken = carburetorToken<UndoCarburetor<ITodoList>>(() => {

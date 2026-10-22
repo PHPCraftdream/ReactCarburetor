@@ -1,5 +1,5 @@
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
-import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
+import {isTrackable} from '../../../Tracking/isTrackable';
+import {liveViews} from '../../../Tracking/Proxy/liveViews';
 
 /** R39-05: independent index clones cannot preserve a repeated container or cycle. */
 export const hasRepeatedContainer = (value: unknown): boolean => {

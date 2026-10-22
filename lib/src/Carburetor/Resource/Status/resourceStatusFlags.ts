@@ -1,4 +1,4 @@
-import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
+import {EResourceStatus} from '../../Models/Enums/EResourceStatus';
 
 /** The four status flags derived from the authoritative `status`. */
 export const resourceStatusFlags = (status: EResourceStatus): {

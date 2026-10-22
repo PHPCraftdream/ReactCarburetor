@@ -1,6 +1,6 @@
-import {TPathSet} from "@/Carburetor/Models/Paths";
-import {ISubscribeOptions} from "@/Carburetor/Models/Store";
-import {transferReads} from "@/Carburetor/Store/Paths/Markers/transferReads";
+import {TPathSet} from "../../../Models/Paths";
+import {ISubscribeOptions} from "../../../Models/Store";
+import {transferReads} from "../../Paths/Markers/transferReads";
 import {TCompletedReads} from "./Models";
 
 /** Transfers a closed observation set into the subscriber index's mutable ownership.

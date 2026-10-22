@@ -1,5 +1,5 @@
-import {Carburetor} from "@/Carburetor";
-import {ETodoFilter} from "@/ToDo/Models/Enums/ETodoFilter";
+import {Carburetor} from "../../Carburetor/index";
+import {ETodoFilter} from "../Models/Enums/ETodoFilter";
 import {IFilterData} from "./Models";
 
 const applyFilter = (draft: IFilterData, filter: ETodoFilter): void => {

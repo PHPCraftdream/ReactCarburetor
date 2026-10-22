@@ -1,5 +1,5 @@
-import {ICarburetorSubscription} from '@/Carburetor/Models/Store';
-import {isNativeStoreSource} from '@/Carburetor/Store/Scheduling/isNativeStoreSource';
+import {ICarburetorSubscription} from '../../Models/Store';
+import {isNativeStoreSource} from '../../Store/Scheduling/isNativeStoreSource';
 
 /** The data object a native store holds right now; other sources have no object to strand.
  *

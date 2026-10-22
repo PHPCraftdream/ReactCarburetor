@@ -1,5 +1,5 @@
-import {TPathSet} from "@/Carburetor/Models/Paths";
-import {readCoverage} from "@/Carburetor/Store/Paths/Markers/readCoverage";
+import {TPathSet} from "../../../Models/Paths";
+import {readCoverage} from "../../Paths/Markers/readCoverage";
 import {TCompletedReads} from "./Models";
 
 /** Closes an internal read collection without copying.

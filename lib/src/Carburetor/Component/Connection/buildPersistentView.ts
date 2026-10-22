@@ -1,8 +1,8 @@
-import {TReadonly} from "@/Carburetor/Models/Base";
-import {IConnectionSource} from "@/Carburetor/Component/Models/Connection";
-import {ConnectionFacadeHandler} from "@/Carburetor/Component/Connection/ConnectionFacadeHandler";
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
+import {TReadonly} from "../../Models/Base";
+import {IConnectionSource} from "../Models/Connection";
+import {ConnectionFacadeHandler} from "./ConnectionFacadeHandler";
+import {liveViews} from "../../Store/Tracking/Proxy/liveViews";
+import {WILDCARD_PATH} from "../../Store/Paths/WildcardPath";
 
 /**
  * The empty targets every connect()-family facade forwards through, shared by every

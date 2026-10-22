@@ -1,22 +1,22 @@
 "use client";
 
-import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
+import {C} from "../Models/ComponentSymbols";
 
-import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
-import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
-import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
-import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
-import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
+import {transferCompletedReads} from "../../Store/Tracking/Observation/transferCompletedReads";
+import {sameReads} from "../../Store/Tracking/Observation/sameReads";
+import {ICarburetorSubscription} from "../../Models/Store";
+import {TCompletedReads} from "../../Store/Tracking/Observation/Models";
+import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "../../Store/Utils/Models";
+import {getComputedSnapshotVersion} from "../../Derived/Freshness/getComputedSnapshotVersion";
 import {
     IAttemptEntry,
     IConnection,
     IDependencyDescription,
     IDependencySlot,
     ITrackedCarburetor,
-} from "@/Carburetor/Component/Models/Connection";
+} from "../Models/Connection";
 import {AntiHookComponentEffects} from "./Effects";
-import {diagnostics} from '@/Carburetor/Store/Diagnostics/DiagnosticsInstance';
+import {diagnostics} from '../../Store/Diagnostics/DiagnosticsInstance';
 declare const process: {env: {NODE_ENV?: string}};
 
 export abstract class AntiHookComponentSubscriptions<P = {}, S = {}> extends AntiHookComponentEffects<P, S> {

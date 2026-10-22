@@ -1,10 +1,10 @@
-import {IDict} from '@/Carburetor/Models/Base';
-import {IComputedOptions} from '@/Carburetor/Models/Derived';
-import {C} from '@/Carburetor/Derived/Models';
+import {IDict} from '../../Models/Base';
+import {IComputedOptions} from '../../Models/Derived';
+import {C} from '../Models';
 import {ILeafVersion} from './Models';
 import {driftedSince} from './driftedSince';
-import {containsExoticValue} from "@/Carburetor/Store/Utils/Graph/containsExoticValue";
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
+import {containsExoticValue} from "../../Store/Utils/Graph/containsExoticValue";
+import {liveViews} from "../../Store/Tracking/Proxy/liveViews";
 /** Only engine-created facades can contribute a canonical underlying result identity. */
 const canonicalResult = (value: unknown): unknown =>
     value !== null && typeof value === 'object' ? (liveViews.readTarget(value) ?? value) : value;

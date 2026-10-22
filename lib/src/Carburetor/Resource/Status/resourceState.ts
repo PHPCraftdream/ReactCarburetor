@@ -1,5 +1,5 @@
-import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
-import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
+import {EResourceStatus} from '../../Models/Enums/EResourceStatus';
+import {resourceStatusFlags} from './resourceStatusFlags';
 
 /** The two derived views users otherwise hand-assemble: `isLoading` before the first data
  * lands, `refreshFailed` on a failed refresh.

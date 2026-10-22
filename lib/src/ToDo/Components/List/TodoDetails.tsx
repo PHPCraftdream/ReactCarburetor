@@ -1,6 +1,6 @@
 import * as React from "react";
-import {bind, EResourceStatus, ScopedAntiHookComponent} from "@/Carburetor";
-import {detailsToken} from "@/ToDo/Scope/Tokens/detailsToken";
+import {bind, EResourceStatus, ScopedAntiHookComponent} from "../../../Carburetor/index";
+import {detailsToken} from "../../Scope/Tokens/detailsToken";
 
 interface ITodoDetailsProps {
     id: string;

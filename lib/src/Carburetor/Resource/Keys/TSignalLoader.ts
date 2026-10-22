@@ -1,4 +1,4 @@
-import {TResourceArgs} from "@/Carburetor/Models/Resource";
+import {TResourceArgs} from "../../Models/Resource";
 
 /**
  * Loader tuples must be fixed-length without optional members: the runtime appends the signal,

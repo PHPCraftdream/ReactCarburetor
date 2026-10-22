@@ -1,6 +1,6 @@
-import {TPath} from "@/Carburetor/Models/Paths";
-import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
+import {TPath} from "../../../Models/Paths";
+import {PATH_SEPARATOR} from "../../Paths/PathSeparator";
+import {isTrackable} from "../isTrackable";
 
 /** The inverse of `joinPath`'s escape: `~1` back to the separator first, then `~0` to `~`. */
 const unescapeKey = (segment: string): string =>

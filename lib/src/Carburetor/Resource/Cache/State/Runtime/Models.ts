@@ -1,5 +1,5 @@
-import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
-import {IResourceEntry} from "@/Carburetor/Models/Resource";
+import {EResourceStatus} from "../../../../Models/Enums/EResourceStatus";
+import {IResourceEntry} from "../../../../Models/Resource";
 
 /** Default freshness duration for successful resource entries. */
 export const DEFAULT_TTL: number = 30_000;

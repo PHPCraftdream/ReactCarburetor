@@ -1,6 +1,6 @@
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
-import {KEYS_HATCH} from "@/Carburetor/Store/Tracking/Models";
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
+import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
+import {KEYS_HATCH} from "../../Store/Tracking/Models";
+import {liveViews} from "../../Store/Tracking/Proxy/liveViews";
 import {isPlainObject} from "./isPlainObject";
 
 /** Renders one path segment for the report: a symbol reads as `[Symbol(...)]`, a string as-is. */

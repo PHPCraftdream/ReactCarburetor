@@ -1,6 +1,6 @@
-import {carburetorToken, ComponentUpdateThrottle} from "@/Carburetor";
-import {getInitialStatus} from "@/ToDo/Carburetors/getInitialStatus";
-import {StatusCarburetor} from "@/ToDo/Carburetors/StatusCarburetor";
+import {carburetorToken, ComponentUpdateThrottle} from "../../../Carburetor/index";
+import {getInitialStatus} from "../../Carburetors/getInitialStatus";
+import {StatusCarburetor} from "../../Carburetors/StatusCarburetor";
 
 /**
  * The footer's emit status, one instance per scope. It changes on every list write, so its

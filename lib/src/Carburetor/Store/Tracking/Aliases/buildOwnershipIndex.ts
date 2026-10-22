@@ -1,5 +1,5 @@
-import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
+import {joinPath} from "../../Paths/joinPath";
+import {isTrackable} from "../isTrackable";
 
 /** Walk ordinary own enumerable string data, recording cycle backlinks but not recursing
  * through them. A visitor streams the same walk without allocating a full result map.

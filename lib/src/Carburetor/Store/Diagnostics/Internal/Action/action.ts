@@ -1,7 +1,7 @@
-import {storeLifecycle} from "@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle";
-import {updateBatch} from "@/Carburetor/Store/Transaction/UpdateBatchInstance";
-import {warnIfAsyncMutate} from "@/Carburetor/Store/Diagnostics/warnIfAsyncMutate";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {storeLifecycle} from "../StoreLifecycle";
+import {updateBatch} from "../../../Transaction/UpdateBatchInstance";
+import {warnIfAsyncMutate} from "../../warnIfAsyncMutate";
+import {diagnostics} from "../../DiagnosticsInstance";
 
 declare const process: {env: {NODE_ENV?: string}};
 type IActionStore = {draft: unknown; emitUpdate: () => void};

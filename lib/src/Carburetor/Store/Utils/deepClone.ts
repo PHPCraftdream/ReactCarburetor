@@ -1,4 +1,4 @@
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
+import {isTrackable} from "../Tracking/isTrackable";
 
 /**
  * A detached copy of plain data.

@@ -1,6 +1,6 @@
-import {TPathSet} from "@/Carburetor/Models/Paths";
-import {ISubscribeOptions} from "@/Carburetor/Models/Store";
-import {READS_RETAIN} from "@/Carburetor/Store/Paths/Markers/RetainDeliveryBrand";
+import {TPathSet} from "../../../Models/Paths";
+import {ISubscribeOptions} from "../../../Models/Store";
+import {READS_RETAIN} from "./RetainDeliveryBrand";
 import {READS_TRANSFER} from "./ReadsTransferBrand";
 
 /**

@@ -1,4 +1,4 @@
-import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
+import {liveViews} from '../../../Tracking/Proxy/liveViews';
 import {probesSparse} from './probesSparse';
 
 /** Differing positions up to which membership is answered by scanning, with no Set built. */

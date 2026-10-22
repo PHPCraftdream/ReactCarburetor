@@ -1,10 +1,10 @@
-import {TDisposer} from "@/Carburetor/Models/Base";
-import {ICarburetor} from "@/Carburetor/Models/Store";
-import {IStorageLike, IPersistOptions} from "@/Carburetor/Models/Tooling";
-import {CARBURETOR_PERSIST_DRAIN} from "@/Carburetor/Store/Utils/Models";
-import {readFallback} from "@/Carburetor/Tooling/Persist/ReadFallback";
-import {reportRemovalFailure} from "@/Carburetor/Tooling/Persist/ReportRemovalFailure";
-import {reportRestoreFailure} from "@/Carburetor/Tooling/Persist/ReportRestoreFailure";
+import {TDisposer} from "../../Models/Base";
+import {ICarburetor} from "../../Models/Store";
+import {IStorageLike, IPersistOptions} from "../../Models/Tooling";
+import {CARBURETOR_PERSIST_DRAIN} from "../../Store/Utils/Models";
+import {readFallback} from "./ReadFallback";
+import {reportRemovalFailure} from "./ReportRemovalFailure";
+import {reportRestoreFailure} from "./ReportRestoreFailure";
 
 type TPersistOptions = Pick<IPersistOptions, "onError" | "coalesce" | "throttleMs" | "partitions" | "previousKeys">;
 

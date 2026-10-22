@@ -1,5 +1,5 @@
-import {TResourceArgs, TResourceKey} from "@/Carburetor/Models/Resource";
-import {IUpdateScheduler} from "@/Carburetor/Models/Store";
+import {TResourceArgs, TResourceKey} from "../Models/Resource";
+import {IUpdateScheduler} from "../Models/Store";
 
 /** Construction options for `ResourceCarburetor`; every field is optional. */
 export interface IResourceCarburetorOptions<TArgs extends TResourceArgs = []> {

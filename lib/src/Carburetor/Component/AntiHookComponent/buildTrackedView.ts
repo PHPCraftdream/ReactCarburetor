@@ -1,8 +1,8 @@
-import {TReadonly} from "@/Carburetor/Models/Base";
-import {TPath} from "@/Carburetor/Models/Paths";
-import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {IAttemptEntry, IRenderAttempt, ITrackedView} from "@/Carburetor/Component/Models/Connection";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
+import {TReadonly} from "../../Models/Base";
+import {TPath} from "../../Models/Paths";
+import {IReadableCarburetor, ICarburetorSubscription} from "../../Models/Store";
+import {IAttemptEntry, IRenderAttempt, ITrackedView} from "../Models/Connection";
+import {isTrackable} from "../../Store/Tracking/isTrackable";
 
 /**
  * Records against the mutable route, without closing over the proxy-creation call.

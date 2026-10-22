@@ -1,4 +1,4 @@
-import {TPath} from "@/Carburetor/Models/Paths";
+import {TPath} from "../../../Models/Paths";
 
 /**
  * Whether two closed read sets hold the same paths.

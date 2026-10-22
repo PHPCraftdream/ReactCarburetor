@@ -1,6 +1,6 @@
-import {TReadonly} from "@/Carburetor/Models/Base";
-import {IConnectionSource} from "@/Carburetor/Component/Models/Connection";
-import {PROXY_CACHE} from "@/Carburetor/Store/Tracking/Models";
+import {TReadonly} from "../../Models/Base";
+import {IConnectionSource} from "../Models/Connection";
+import {PROXY_CACHE} from "../../Store/Tracking/Models";
 
 /**
  * Refuses a write. Shared by every write-forbidding trap of every connect()-family facade —

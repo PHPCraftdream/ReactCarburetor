@@ -1,7 +1,7 @@
-import {computed, Computed, shallowEqual, TComputedReader} from "@/Carburetor";
-import {FilterCarburetor} from "@/ToDo/Carburetors/FilterCarburetor";
-import {TodoCarburetor} from "@/ToDo/Carburetors/TodoCarburetor";
-import {ETodoFilter} from "@/ToDo/Models/Enums/ETodoFilter";
+import {computed, Computed, shallowEqual, TComputedReader} from "../../Carburetor/index";
+import {FilterCarburetor} from "../Carburetors/FilterCarburetor";
+import {TodoCarburetor} from "../Carburetors/TodoCarburetor";
+import {ETodoFilter} from "../Models/Enums/ETodoFilter";
 
 /**
  * Values derived from the list and the filter. Each computed reads only what it needs, so

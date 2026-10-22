@@ -1,7 +1,7 @@
-import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
-import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
-import {cloneOwnedGraph} from '@/Carburetor/Store/Utils/Graph/cloneOwnedGraph';
-import {applyResourceStatus} from '@/Carburetor/Resource/Status/applyResourceStatus';
+import {EResourceStatus} from '../../../Models/Enums/EResourceStatus';
+import {IResourceCacheData, IResourceEntry} from '../../../Models/Resource';
+import {cloneOwnedGraph} from '../../../Store/Utils/Graph/cloneOwnedGraph';
+import {applyResourceStatus} from '../../Status/applyResourceStatus';
 
 const requestFields: Readonly<Record<string, true>> = {
     status: true, data: true, error: true, updatedAt: true,

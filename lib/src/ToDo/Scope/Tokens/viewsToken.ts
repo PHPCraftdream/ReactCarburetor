@@ -1,5 +1,5 @@
-import {carburetorToken} from "@/Carburetor";
-import {TodoViews} from "@/ToDo/Derived/TodoViews";
+import {carburetorToken} from "../../../Carburetor/index";
+import {TodoViews} from "../../Derived/TodoViews";
 
 /** The derived values over one scope's list and filter; createTodoScope seeds it. */
 export const viewsToken = carburetorToken<TodoViews>(() => {

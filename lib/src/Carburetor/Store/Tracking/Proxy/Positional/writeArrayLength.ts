@@ -1,12 +1,12 @@
 import {
     PATCH_ARRAY_LENGTH_LOCK, PATCH_OPAQUE, TAliasLedger, TPath, TPatchPort, TPatchRecorder,
     TWriteRecorder,
-} from '@/Carburetor/Models/Paths';
-import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
-import {keysPath} from '@/Carburetor/Store/Paths/Markers/KeysMarker';
-import {invalidateTruncatedOwnership} from '@/Carburetor/Store/Tracking/Aliases/invalidateTruncatedOwnership';
-import {clonePatchValue} from '@/Carburetor/Store/Tracking/Proxy/clonePatchValue';
-import {deliverPatches} from '@/Carburetor/Store/Tracking/Proxy/deliverPatches';
+} from '../../../../Models/Paths';
+import {joinPath} from '../../../Paths/joinPath';
+import {keysPath} from '../../../Paths/Markers/KeysMarker';
+import {invalidateTruncatedOwnership} from '../../Aliases/invalidateTruncatedOwnership';
+import {clonePatchValue} from '../clonePatchValue';
+import {deliverPatches} from '../deliverPatches';
 
 /** Native ArraySetLength can delete a suffix even when it ultimately refuses the request.
  *

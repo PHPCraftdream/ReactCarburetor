@@ -1,5 +1,5 @@
-import {detachOpaque} from "@/Carburetor/Store/Utils/Selection/detachOpaque";
-import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
+import {detachOpaque} from "../../Store/Utils/Selection/detachOpaque";
+import {rejectArraySubclass} from "../../Store/Utils/Selection/rejectArraySubclass";
 
 /**
  * The detached form of a selection, sharing the tracked-view/raw-target graph ledger with

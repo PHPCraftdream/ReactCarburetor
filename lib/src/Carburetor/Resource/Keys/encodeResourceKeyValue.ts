@@ -1,4 +1,4 @@
-import {escapeCacheKey} from "@/Carburetor/Resource/Cache/escapeCacheKey";
+import {escapeCacheKey} from "../Cache/escapeCacheKey";
 import {checkResourceKeyValue} from "./checkResourceKeyValue";
 
 /**

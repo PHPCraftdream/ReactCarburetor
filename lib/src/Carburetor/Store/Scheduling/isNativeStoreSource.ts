@@ -1,4 +1,4 @@
-import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
+import {ICarburetorSubscription} from "../../Models/Store";
 import {nativeStoreWriteEpoch} from "./nativeStoreWriteEpoch";
 
 /** Excludes adapters overriding the version reader or publication path.

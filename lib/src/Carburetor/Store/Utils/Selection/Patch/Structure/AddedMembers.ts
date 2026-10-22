@@ -1,5 +1,5 @@
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
-import {detachOpaqueInto} from "@/Carburetor/Store/Utils/Selection/detachCore";
+import {liveViews} from "../../../../Tracking/Proxy/liveViews";
+import {detachOpaqueInto} from "../../detachCore";
 
 /** A scratch ledger that remembers every key the detach files, so the batch can be verified. */
 class RecordingCopies extends WeakMap<object, unknown> {

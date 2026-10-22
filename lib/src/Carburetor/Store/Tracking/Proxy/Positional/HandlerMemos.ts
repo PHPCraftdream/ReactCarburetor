@@ -1,4 +1,4 @@
-import {TPath} from '@/Carburetor/Models/Paths';
+import {TPath} from '../../../../Models/Paths';
 
 /** Lazy per-branch path memos; enumeration-only wrappers allocate none. */
 export class HandlerMemos {

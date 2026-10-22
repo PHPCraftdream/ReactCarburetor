@@ -1,4 +1,4 @@
-import {CarburetorScope, TDisposer} from "@/Carburetor";
+import {CarburetorScope, TDisposer} from "../../Carburetor/index";
 
 export interface ITodoScope {
     scope: CarburetorScope;

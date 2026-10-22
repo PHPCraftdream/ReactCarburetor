@@ -1,8 +1,8 @@
-import {PATCH_ARRAY_LENGTH_LOCK, PATCH_OPAQUE, TPathSet, TPatchRecorder} from '@/Carburetor/Models/Paths';
-import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
-import {keysPath} from '@/Carburetor/Store/Paths/Markers/KeysMarker';
-import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
-import {clonePatchValue} from '@/Carburetor/Store/Tracking/Proxy/clonePatchValue';
+import {PATCH_ARRAY_LENGTH_LOCK, PATCH_OPAQUE, TPathSet, TPatchRecorder} from '../../../../Models/Paths';
+import {joinPath} from '../../joinPath';
+import {keysPath} from '../../Markers/KeysMarker';
+import {liveViews} from '../../../Tracking/Proxy/liveViews';
+import {clonePatchValue} from '../../../Tracking/Proxy/clonePatchValue';
 import {ArrayIdentity} from './ArrayIdentity';
 import {probesSparse} from './probesSparse';
 import {hasRepeatedContainer} from './hasRepeatedContainer';

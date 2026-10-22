@@ -1,5 +1,5 @@
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
-import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
+import {liveViews} from "../../../Tracking/Proxy/liveViews";
+import {reconcileSelection} from "../reconcileSelection";
 import {IPatchNode} from "./Models";
 
 /** Raised inside a patch that meets a shape it cannot patch exactly; never escapes patchSelection. */

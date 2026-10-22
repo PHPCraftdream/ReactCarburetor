@@ -1,4 +1,4 @@
-import {PATH_SEPARATOR} from "@/Carburetor/Store/Paths/PathSeparator";
+import {PATH_SEPARATOR} from "../../Store/Paths/PathSeparator";
 
 /**
  * Escapes an already-serialized JSON string into a key safe to use as one path segment.

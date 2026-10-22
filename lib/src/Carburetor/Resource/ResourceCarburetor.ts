@@ -1,31 +1,31 @@
-import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
-import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
-import {storeLifecycle} from "@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle";
-import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {R} from "../Store/Diagnostics/Internal/ResourceSymbols";
+import {S} from "../Store/Diagnostics/Internal/StoreIdentity";
+import {storeLifecycle} from "../Store/Diagnostics/Internal/StoreLifecycle";
+import {EResourceStatus} from "../Models/Enums/EResourceStatus";
 import {
     IResourceData, IResourceSnapshot, TResourceArgs, TResourceKey, TResourceLoader,
-} from "@/Carburetor/Models/Resource";
-import {ISlotRequest, ISlotRuntime} from "@/Carburetor/Resource/Keys/Models";
-import {TSignalLoader} from "@/Carburetor/Resource/Keys/TSignalLoader";
-import {defaultResourceKey} from "@/Carburetor/Resource/Keys/defaultResourceKey";
-import {encodeResourceKeyValue} from "@/Carburetor/Resource/Keys/encodeResourceKeyValue";
-import {validateResourceKey} from "@/Carburetor/Resource/Keys/validateResourceKey";
+} from "../Models/Resource";
+import {ISlotRequest, ISlotRuntime} from "./Keys/Models";
+import {TSignalLoader} from "./Keys/TSignalLoader";
+import {defaultResourceKey} from "./Keys/defaultResourceKey";
+import {encodeResourceKeyValue} from "./Keys/encodeResourceKeyValue";
+import {validateResourceKey} from "./Keys/validateResourceKey";
 import {IResourceCarburetorOptions} from "./ResourceOptions";
 import {validateResourceLimits} from "./validateResourceLimits";
 import {dropEventArgs} from "./Slot/dropEventArgs";
-import {TDisposer} from "@/Carburetor/Models/Base";
+import {TDisposer} from "../Models/Base";
 import {
     IStateInstallation, IStateRestoreClaim, IPatchObserver, STATE_PUBLIC_REPLACEMENT,
-} from "@/Carburetor/Models/Paths";
-import {Carburetor} from "@/Carburetor/Store/Carburetor";
+} from "../Models/Paths";
+import {Carburetor} from "../Store/Carburetor";
 import {prepareSlotRequest} from "./Slot/prepareSlotRequest";
 import {restoreSlotData} from "./Slot/restoreSlotData";
 import {createAnswerMemory} from "./Slot/answerMemory";
 import {getInitialResourceData} from "./Slot/getInitialResourceData";
 import {prepareSlotPublication} from "./Keys/prepareSlotPublication";
-import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
-import {DEFAULT_MAX_ENTRIES, DEFAULT_TTL} from "@/Carburetor/Resource/Cache/State/Runtime/Models";
-import {describeError} from "@/Carburetor/Resource/Status/describeError";
+import {applyResourceStatus} from "./Status/applyResourceStatus";
+import {DEFAULT_MAX_ENTRIES, DEFAULT_TTL} from "./Cache/State/Runtime/Models";
+import {describeError} from "./Status/describeError";
 
 const noop = (): void => undefined;
 

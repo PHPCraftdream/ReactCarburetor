@@ -1,5 +1,5 @@
-import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
-import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
+import {CARBURETOR_HAS_DRIFT, IInternalSubscriptionProtocol} from "../../Models";
+import {rejectArraySubclass} from "../rejectArraySubclass";
 import {patchFromWriteLog} from "./patchFromWriteLog";
 import {IReuseConnection} from "./Models";
 

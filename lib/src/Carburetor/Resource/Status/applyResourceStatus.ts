@@ -1,5 +1,5 @@
-import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
-import {IResourceData} from '@/Carburetor/Models/Resource';
+import {EResourceStatus} from '../../Models/Enums/EResourceStatus';
+import {IResourceData} from '../../Models/Resource';
 
 type TStatusFlag = 'isIdle' | 'isPending' | 'isSuccess' | 'isError';
 

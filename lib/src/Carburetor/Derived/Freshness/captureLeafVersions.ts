@@ -1,6 +1,6 @@
-import {IDict} from '@/Carburetor/Models/Base';
-import {isNativeStoreSource} from '@/Carburetor/Store/Scheduling/isNativeStoreSource';
-import {computedDependencies} from '@/Carburetor/Derived/computedDependencies';
+import {IDict} from '../../Models/Base';
+import {isNativeStoreSource} from '../../Store/Scheduling/isNativeStoreSource';
+import {computedDependencies} from '../computedDependencies';
 import {ILeafVersion, IReadSet} from './Models';
 import {readStoreData} from './readStoreData';
 

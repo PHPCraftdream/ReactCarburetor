@@ -1,7 +1,7 @@
-import {carburetorToken, ResourceCache} from "@/Carburetor";
-import {ITodoDetails} from "@/ToDo/API/Models";
-import {MockToDoClientAPI} from "@/ToDo/API/MockToDoClientAPI";
-import {createDetailsCache} from "@/ToDo/Scope/createDetailsCache";
+import {carburetorToken, ResourceCache} from "../../../Carburetor/index";
+import {ITodoDetails} from "../../API/Models";
+import {MockToDoClientAPI} from "../../API/MockToDoClientAPI";
+import {createDetailsCache} from "../createDetailsCache";
 
 /** Per-todo server details, cached by id, one cache per scope. */
 export const detailsToken = carburetorToken<ResourceCache<ITodoDetails, [id: string]>>(

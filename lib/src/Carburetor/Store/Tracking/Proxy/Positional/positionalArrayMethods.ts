@@ -1,12 +1,12 @@
 import {
     PATCH_OPAQUE, TAliasLedger, TPath, TPatchPort, TPatchRecorder, TWriteRecorder,
-} from "@/Carburetor/Models/Paths";
-import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
-import {clonePatchValue} from "@/Carburetor/Store/Tracking/Proxy/clonePatchValue";
-import {deliverPatches} from "@/Carburetor/Store/Tracking/Proxy/deliverPatches";
-import {IProxyCache} from "@/Carburetor/Store/Tracking/Models";
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
-import {nativeAliasIndex} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex";
+} from "../../../../Models/Paths";
+import {joinPath} from "../../../Paths/joinPath";
+import {clonePatchValue} from "../clonePatchValue";
+import {deliverPatches} from "../deliverPatches";
+import {IProxyCache} from "../../Models";
+import {liveViews} from "../liveViews";
+import {nativeAliasIndex} from "../../Aliases/NativeAliasIndex";
 
 /** The write-proxy facilities a positional method needs, mirroring what the set trap uses. */
 interface IPositionalHost {

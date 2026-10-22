@@ -1,41 +1,41 @@
 "use client";
 
-import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
+import {C} from "../Models/ComponentSymbols";
 
-import {TReadonly} from "@/Carburetor/Models/Base";
-import {TPath} from "@/Carburetor/Models/Paths";
-import {transferCompletedReads} from "@/Carburetor/Store/Tracking/Observation/transferCompletedReads";
-import {completeReads} from "@/Carburetor/Store/Tracking/Observation/completeReads";
-import {readCoverage} from "@/Carburetor/Store/Paths/Markers/readCoverage";
-import {sameReads} from "@/Carburetor/Store/Tracking/Observation/sameReads";
-import {IComputed} from "@/Carburetor/Models/Derived";
-import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
-import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
-import {isCacheSupersededError} from "@/Carburetor/Resource/Cache/Reader/isCacheSupersededError";
-import {resourceReader} from "@/Carburetor/Resource/Cache/Reader/resourceReader";
-import {TResourceArgs, IResourceSource, IResourceView} from "@/Carburetor/Models/Resource";
-import {IReadableCarburetor, ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {WILDCARD_PATH} from "@/Carburetor/Store/Paths/WildcardPath";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
-import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
+import {TReadonly} from "../../Models/Base";
+import {TPath} from "../../Models/Paths";
+import {transferCompletedReads} from "../../Store/Tracking/Observation/transferCompletedReads";
+import {completeReads} from "../../Store/Tracking/Observation/completeReads";
+import {readCoverage} from "../../Store/Paths/Markers/readCoverage";
+import {sameReads} from "../../Store/Tracking/Observation/sameReads";
+import {IComputed} from "../../Models/Derived";
+import {getComputedSnapshotVersion} from "../../Derived/Freshness/getComputedSnapshotVersion";
+import {EResourceStatus} from "../../Models/Enums/EResourceStatus";
+import {isCacheSupersededError} from "../../Resource/Cache/Reader/isCacheSupersededError";
+import {resourceReader} from "../../Resource/Cache/Reader/resourceReader";
+import {TResourceArgs, IResourceSource, IResourceView} from "../../Models/Resource";
+import {IReadableCarburetor, ICarburetorSubscription} from "../../Models/Store";
+import {WILDCARD_PATH} from "../../Store/Paths/WildcardPath";
+import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
+import {IS_DEVELOPMENT} from "../../Store/Utils/DevelopmentFlag";
 import {
     IAttemptEntry,
     IConnection,
     IConnectionSource,
     IRenderAttempt,
-} from "@/Carburetor/Component/Models/Connection";
-import {buildTrackedView} from "@/Carburetor/Component/AntiHookComponent/buildTrackedView";
-import {buildPersistentView} from "@/Carburetor/Component/Connection/buildPersistentView";
-import {declareConnection} from "@/Carburetor/Component/Connection/declareConnection";
-import {reportLiveViewEscape} from "@/Carburetor/Component/Connection/reportLiveViewEscape";
-import {reuseSelection} from "@/Carburetor/Store/Utils/Selection/Patch/reuseSelection";
-import {TargetsHold} from "@/Carburetor/Store/Utils/Selection/Patch/TargetsHold";
-import {reconcileSelection} from "@/Carburetor/Store/Utils/Selection/reconcileSelection";
-import {reconcileFlatSelection} from "@/Carburetor/Store/Utils/Selection/reconcileFlatSelection";
-import {rejectArraySubclass} from "@/Carburetor/Store/Utils/Selection/rejectArraySubclass";
-import {TCompletedReads} from "@/Carburetor/Store/Tracking/Observation/Models";
-import {getSelectionAttemptIdentity} from "@/Carburetor/Component/Models/getSelectionAttemptIdentity";
-import {AttemptEntry} from "@/Carburetor/Component/Models/AttemptEntry";
+} from "../Models/Connection";
+import {buildTrackedView} from "./buildTrackedView";
+import {buildPersistentView} from "../Connection/buildPersistentView";
+import {declareConnection} from "../Connection/declareConnection";
+import {reportLiveViewEscape} from "../Connection/reportLiveViewEscape";
+import {reuseSelection} from "../../Store/Utils/Selection/Patch/reuseSelection";
+import {TargetsHold} from "../../Store/Utils/Selection/Patch/TargetsHold";
+import {reconcileSelection} from "../../Store/Utils/Selection/reconcileSelection";
+import {reconcileFlatSelection} from "../../Store/Utils/Selection/reconcileFlatSelection";
+import {rejectArraySubclass} from "../../Store/Utils/Selection/rejectArraySubclass";
+import {TCompletedReads} from "../../Store/Tracking/Observation/Models";
+import {getSelectionAttemptIdentity} from "../Models/getSelectionAttemptIdentity";
+import {AttemptEntry} from "../Models/AttemptEntry";
 import {AntiHookComponentFoundation} from "./Foundation";
 
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {

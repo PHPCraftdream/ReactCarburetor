@@ -1,7 +1,7 @@
 import * as React from "react";
-import {bind, ScopedAntiHookComponent} from "@/Carburetor";
-import {ETodoFilter} from "@/ToDo/Models/Enums/ETodoFilter";
-import {filterToken} from "@/ToDo/Scope/Tokens/filterToken";
+import {bind, ScopedAntiHookComponent} from "../../../Carburetor/index";
+import {ETodoFilter} from "../../Models/Enums/ETodoFilter";
+import {filterToken} from "../../Scope/Tokens/filterToken";
 
 /**
  * One filter tab.

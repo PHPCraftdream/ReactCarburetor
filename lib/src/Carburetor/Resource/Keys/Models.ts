@@ -1,4 +1,4 @@
-import {IResourceData} from '@/Carburetor/Models/Resource';
+import {IResourceData} from '../../Models/Resource';
 
 /** One request in flight for a resource slot's key.
  *

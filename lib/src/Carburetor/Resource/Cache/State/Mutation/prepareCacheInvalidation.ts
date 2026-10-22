@@ -1,5 +1,5 @@
-import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
-import {cloneOwnedGraph} from '@/Carburetor/Store/Utils/Graph/cloneOwnedGraph';
+import {IResourceCacheData, IResourceEntry} from '../../../../Models/Resource';
+import {cloneOwnedGraph} from '../../../../Store/Utils/Graph/cloneOwnedGraph';
 
 const needsOwnership = <T>(data: IResourceCacheData<T>, key: string): boolean => {
     const entry = data.entries[key];

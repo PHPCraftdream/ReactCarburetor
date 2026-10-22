@@ -1,5 +1,5 @@
-import {TDisposer} from "@/Carburetor/Models/Base";
-import {CARBURETOR_TRACK_TARGETS, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
+import {TDisposer} from "../../../../Models/Base";
+import {CARBURETOR_TRACK_TARGETS, IInternalSubscriptionProtocol} from "../../Models";
 
 const nothing: TDisposer = () => undefined;
 

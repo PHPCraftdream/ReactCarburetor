@@ -1,4 +1,4 @@
-import {viewKeys} from "@/Carburetor/Store/Tracking/Models";
+import {viewKeys} from "../../../../Tracking/Models";
 import {AddedMembers} from "./AddedMembers";
 
 const hasOwn = Object.prototype.hasOwnProperty;

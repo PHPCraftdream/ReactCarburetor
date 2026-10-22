@@ -1,4 +1,4 @@
-import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
+import {sharedSingleton} from "../Utils/sharedSingleton";
 import {UpdateWave} from "./UpdateWave";
 
 /**

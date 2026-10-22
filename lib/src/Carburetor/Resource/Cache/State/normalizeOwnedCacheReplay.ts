@@ -1,7 +1,7 @@
-import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
-import {IResourceCacheData, IResourceEntry} from '@/Carburetor/Models/Resource';
-import {cloneOwnedGraph} from '@/Carburetor/Store/Utils/Graph/cloneOwnedGraph';
-import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
+import {EResourceStatus} from '../../../Models/Enums/EResourceStatus';
+import {IResourceCacheData, IResourceEntry} from '../../../Models/Resource';
+import {cloneOwnedGraph} from '../../../Store/Utils/Graph/cloneOwnedGraph';
+import {resourceStatusFlags} from '../../Status/resourceStatusFlags';
 
 const statusFlags = ['isIdle', 'isPending', 'isSuccess', 'isError'] as const;
 type TFlagField = typeof statusFlags[number];

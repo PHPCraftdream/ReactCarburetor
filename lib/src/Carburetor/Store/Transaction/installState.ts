@@ -1,15 +1,15 @@
-import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
+import {S} from "../Diagnostics/Internal/StoreIdentity";
 import {
     IStateInstallation, PATCH_OPAQUE,
     STATE_PUBLIC_REPLACEMENT, TPath,
-} from '@/Carburetor/Models/Paths';
-import {IStateInstallPort} from '@/Carburetor/Store/Transaction/Models';
-import {diffPaths} from '@/Carburetor/Store/Paths/Diff/diffPaths';
-import {deliverPatches} from '@/Carburetor/Store/Tracking/Proxy/deliverPatches';
-import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
-import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
-import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
+} from '../../Models/Paths';
+import {IStateInstallPort} from './Models';
+import {diffPaths} from '../Paths/Diff/diffPaths';
+import {deliverPatches} from '../Tracking/Proxy/deliverPatches';
+import {nativeAliasIndex} from '../Tracking/Aliases/NativeAliasIndex';
+import {isTrackable} from '../Tracking/isTrackable';
+import {liveViews} from '../Tracking/Proxy/liveViews';
+import {WILDCARD_PATH} from '../Paths/WildcardPath';
 
 /** Maximum detailed history patches retained for one public replacement. */
 const PATCH_HISTORY_CAP = 1_000;

@@ -1,13 +1,13 @@
-import {IDict} from "@/Carburetor/Models/Base";
-import {IInspectable} from "@/Carburetor/Models/Store";
-import {SCOPE_TESTING_VISIT, ITestingScopeVisit} from '@/Carburetor/Store/Utils/Models';
-import {ICarburetorToken} from "@/Carburetor/Models/Tooling";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
-import {storeLifecycle} from '@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle';
-import {Carburetor} from '@/Carburetor/Store/Carburetor';
-import {ITestClock} from '@/Testing/ITestClock';
-import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
-import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
+import {IDict} from "../../Models/Base";
+import {IInspectable} from "../../Models/Store";
+import {SCOPE_TESTING_VISIT, ITestingScopeVisit} from '../../Store/Utils/Models';
+import {ICarburetorToken} from "../../Models/Tooling";
+import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
+import {storeLifecycle} from '../../Store/Diagnostics/Internal/StoreLifecycle';
+import {Carburetor} from '../../Store/Carburetor';
+import {ITestClock} from '../../../Testing/ITestClock';
+import {IS_DEVELOPMENT} from "../../Store/Utils/DevelopmentFlag";
+import {deepClone} from "../../Store/Utils/deepClone";
 import {createChildScope} from './ChildCarburetorScope';
 
 const quoteKey = (key: string): string => '"' + key + '"';

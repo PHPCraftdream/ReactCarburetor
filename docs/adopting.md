@@ -165,26 +165,33 @@ as callbacks, and subscriptions without disposal.
 
 ## 7. Use a local copy of the library
 
-Link the built package, not the sources. The `exports` map is what makes
-`react-carburetor`, `react-carburetor/interop` and `react-carburetor/lint` resolve, and it picks the
-`development` or `production` build from your bundler's conditions.
+Link the built package by default; its `exports` map resolves `react-carburetor`,
+`react-carburetor/interop` and `react-carburetor/lint`, selecting `development` or `production`
+from your bundler's conditions.
 
 1. Build the library once and after each change: `npm run build` in the library checkout.
 2. Depend on the checkout by path from the app's `package.json`, then reinstall:
    `"react-carburetor": "file:../ReactCarburetor"` (or a workspace entry for a monorepo).
 3. Import as usual: `import {Carburetor} from 'react-carburetor'` and
    `import {useCarburetorValue} from 'react-carburetor/interop'`.
-4. In the app's `pretest`, check the checkout's build stamp with
+4. In the app's `pretest`, run `npm run check:dist` in the library checkout to verify its build stamp:
    `"pretest": "node ../ReactCarburetor/scripts/tools/buildInfo/checkDistFresh.mjs ../ReactCarburetor"`.
+
+For an optional live-source `file:` link, keep the same package imports and configure both resolvers:
+`resolve.conditionNames: ['carburetor-source', '...']` in Rsbuild and
+`compilerOptions.customConditions: ['carburetor-source']` in the app tsconfig (`moduleResolution: 'bundler'`).
+The app bundler must be configured to compile the linked library's TS/TSX; the app's TypeScript settings
+apply to that source. No aliases or subpath list are needed. The default remains built `dist`, with the
+build-stamp check above.
 
 The build writes `dist/build-info.json` with the package version, source hash, optional Git
 revision, and dirty state. The checker lives in the framework checkout and is not shipped with the
 package.
 
-Do not alias `react-carburetor` to `lib/src` in `tsconfig` or the bundler. An alias on the sources only
-covers the paths you list (the root and `@/*`, never `/interop`), bypasses the `development` /
-`production` conditions, and the library's own `@/` imports collide with the app's `@/` alias.
-Keep a single copy of `react` and `react-dom` in the app: the library declares them as peers.
+Do not alias `react-carburetor` to `lib/src` in `tsconfig` or the bundler. Aliases bypass the package
+exports and their conditions; the optional source condition above resolves the root and supported
+subpaths through the package map without aliases. Keep a single copy of `react` and `react-dom` in
+the app: the library declares them as peers.
 
 ## Order of adoption
 

@@ -1,4 +1,4 @@
-import {IDict} from '@/Carburetor/Models/Base';
+import {IDict} from '../../Models/Base';
 import {ILeafVersion} from './Models';
 
 /** Compares announcement leaf baselines.

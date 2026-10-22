@@ -1,10 +1,10 @@
-import {TDisposer} from '@/Carburetor/Models/Base';
+import {TDisposer} from '../../Models/Base';
 import {
     IStatePublication, IStateRestoreClaim, IPatchObserver,
     STATE_MIXED_PUBLICATION, STATE_MUTATION_PUBLICATION, TPatchPort, TPatchRecorder,
-} from '@/Carburetor/Models/Paths';
-import {IUpdateScheduler} from '@/Carburetor/Models/Store';
-import {getUid} from '@/Carburetor/Store/Utils/getUid';
+} from '../../Models/Paths';
+import {IUpdateScheduler} from '../../Models/Store';
+import {getUid} from '../Utils/getUid';
 
 /** One attachment's identity and delivery guard. */
 interface IRegistration {

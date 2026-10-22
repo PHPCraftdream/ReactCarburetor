@@ -1,4 +1,4 @@
-import {TPath} from "@/Carburetor/Models/Paths";
+import {TPath} from "../../Models/Paths";
 import {PATH_SEPARATOR} from "./PathSeparator";
 
 /**

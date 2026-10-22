@@ -1,4 +1,4 @@
-import {viewKeys} from '@/Carburetor/Store/Tracking/Models';
+import {viewKeys} from '../../Tracking/Models';
 
 type TFlatResult = {value: unknown} | undefined;
 

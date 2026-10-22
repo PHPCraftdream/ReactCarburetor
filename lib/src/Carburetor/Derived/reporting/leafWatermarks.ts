@@ -1,6 +1,6 @@
-import {IDict} from '@/Carburetor/Models/Base';
-import {ILeafVersion} from '@/Carburetor/Derived/Freshness/Models';
-import {sharedSingleton} from '@/Carburetor/Store/Utils/sharedSingleton';
+import {IDict} from '../../Models/Base';
+import {ILeafVersion} from '../Freshness/Models';
+import {sharedSingleton} from '../../Store/Utils/sharedSingleton';
 
 const growth = sharedSingleton('computedLeafReadGrowth', () => ({value: 0}));
 const watermarks = sharedSingleton('computedLeafWatermarks', () =>

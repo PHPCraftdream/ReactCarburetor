@@ -1,8 +1,8 @@
-import {TDisposer} from '@/Carburetor/Models/Base';
-import {TUpdateTraceListener} from '@/Carburetor/Store/Diagnostics/TraceListener';
-import {traceListeners} from '@/Carburetor/Store/Diagnostics/Internal/listeners';
-import {metadata} from '@/Carburetor/Store/Diagnostics/Internal/metadata';
-import {IS_DEVELOPMENT} from '@/Carburetor/Store/Utils/DevelopmentFlag';
+import {TDisposer} from '../../Models/Base';
+import {TUpdateTraceListener} from './TraceListener';
+import {traceListeners} from './Internal/listeners';
+import {metadata} from './Internal/metadata';
+import {IS_DEVELOPMENT} from '../Utils/DevelopmentFlag';
 
 declare const process: {env: {NODE_ENV?: string}};
 

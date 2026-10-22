@@ -1,6 +1,6 @@
-import {TTimerHandle, TUpdater} from "@/Carburetor/Models/Base";
-import {IUpdateScheduler} from "@/Carburetor/Models/Store";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {TTimerHandle, TUpdater} from "../../Models/Base";
+import {IUpdateScheduler} from "../../Models/Store";
+import {diagnostics} from "../Diagnostics/DiagnosticsInstance";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}};

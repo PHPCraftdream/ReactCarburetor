@@ -1,4 +1,4 @@
-import {IComputedOptions, TComputeBody} from "@/Carburetor/Models/Derived";
+import {IComputedOptions, TComputeBody} from "../Models/Derived";
 import {Computed} from "./Computed";
 
 /**

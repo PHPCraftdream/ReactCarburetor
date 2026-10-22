@@ -1,4 +1,4 @@
-import {IResourceEntry, IResourceView} from "@/Carburetor/Models/Resource";
+import {IResourceEntry, IResourceView} from "../../../Models/Resource";
 
 /** Check whether a cached view still reflects its entry.
  *

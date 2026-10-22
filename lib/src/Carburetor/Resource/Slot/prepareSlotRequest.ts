@@ -1,7 +1,7 @@
-import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
-import {IResourceData} from '@/Carburetor/Models/Resource';
-import {cloneOwnedGraph} from '@/Carburetor/Store/Utils/Graph/cloneOwnedGraph';
-import {resourceStatusFlags} from '@/Carburetor/Resource/Status/resourceStatusFlags';
+import {EResourceStatus} from '../../Models/Enums/EResourceStatus';
+import {IResourceData} from '../../Models/Resource';
+import {cloneOwnedGraph} from '../../Store/Utils/Graph/cloneOwnedGraph';
+import {resourceStatusFlags} from '../Status/resourceStatusFlags';
 
 /** The slot owns these fields through request publication and eventual settlement. */
 const isRequestField = (field: PropertyKey): boolean =>

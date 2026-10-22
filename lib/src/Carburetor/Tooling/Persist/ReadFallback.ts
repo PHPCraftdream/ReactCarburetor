@@ -1,4 +1,4 @@
-import {IStorageLike} from "@/Carburetor/Models/Tooling";
+import {IStorageLike} from "../../Models/Tooling";
 
 /** Reads previous storage keys in priority order after the current key was already read.
  *

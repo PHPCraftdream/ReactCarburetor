@@ -1,8 +1,8 @@
 "use client";
 
 import {useCallback, useSyncExternalStore} from "react";
-import {IComputed} from "@/Carburetor";
-import {getComputedSnapshotVersion} from "@/Carburetor/Derived/Freshness/getComputedSnapshotVersion";
+import {IComputed} from "../Carburetor/index";
+import {getComputedSnapshotVersion} from "../Carburetor/Derived/Freshness/getComputedSnapshotVersion";
 
 interface IComputedSnapshot<R> {
     readonly source: IComputed<R>;

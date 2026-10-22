@@ -1,6 +1,6 @@
-import {IResourceResolution, IResourceView} from '@/Carburetor/Models/Resource';
-import {TPathRecorder} from '@/Carburetor/Models/Paths';
-import {resourceReader} from '@/Carburetor/Resource/Cache/Reader/resourceReader';
+import {IResourceResolution, IResourceView} from '../../../Models/Resource';
+import {TPathRecorder} from '../../../Models/Paths';
+import {resourceReader} from './resourceReader';
 /** A captured field facade with shared traps and own enumerable field values.
  *
  * @param resolution - resource fields and path captured by this resolution.

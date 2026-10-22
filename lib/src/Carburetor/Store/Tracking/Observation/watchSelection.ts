@@ -1,17 +1,17 @@
-import {TDisposer, TReadonly} from '@/Carburetor/Models/Base';
-import {TPath} from '@/Carburetor/Models/Paths';
-import {ICarburetorSubscription, TSelector} from '@/Carburetor/Models/Store';
-import {readCoverage} from '@/Carburetor/Store/Paths/Markers/readCoverage';
-import {ReadLedger} from '@/Carburetor/Store/Paths/Markers/ReadLedger';
-import {transferCompletedReads} from '@/Carburetor/Store/Tracking/Observation/transferCompletedReads';
-import {sameReads} from '@/Carburetor/Store/Tracking/Observation/sameReads';
-import {TCompletedReads} from '@/Carburetor/Store/Tracking/Observation/Models';
-import {PersistentViews} from '@/Carburetor/Store/Tracking/Observation/PersistentViewCache';
-import {reconcileFlatSelection} from '@/Carburetor/Store/Utils/Selection/reconcileFlatSelection';
-import {reconcileSelection} from '@/Carburetor/Store/Utils/Selection/reconcileSelection';
-import {patchFromWriteLog} from '@/Carburetor/Store/Utils/Selection/Patch/patchFromWriteLog';
-import {TargetsHold} from '@/Carburetor/Store/Utils/Selection/Patch/TargetsHold';
-import {getUid} from '@/Carburetor/Store/Utils/getUid';
+import {TDisposer, TReadonly} from '../../../Models/Base';
+import {TPath} from '../../../Models/Paths';
+import {ICarburetorSubscription, TSelector} from '../../../Models/Store';
+import {readCoverage} from '../../Paths/Markers/readCoverage';
+import {ReadLedger} from '../../Paths/Markers/ReadLedger';
+import {transferCompletedReads} from './transferCompletedReads';
+import {sameReads} from './sameReads';
+import {TCompletedReads} from './Models';
+import {PersistentViews} from './PersistentViewCache';
+import {reconcileFlatSelection} from '../../Utils/Selection/reconcileFlatSelection';
+import {reconcileSelection} from '../../Utils/Selection/reconcileSelection';
+import {patchFromWriteLog} from '../../Utils/Selection/Patch/patchFromWriteLog';
+import {TargetsHold} from '../../Utils/Selection/Patch/TargetsHold';
+import {getUid} from '../../Utils/getUid';
 
 type TPathRecorder = (path: TPath) => void;
 

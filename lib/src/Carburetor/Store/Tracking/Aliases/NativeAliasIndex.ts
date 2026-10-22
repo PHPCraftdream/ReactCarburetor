@@ -1,6 +1,6 @@
-import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
-import {liveViews} from "@/Carburetor/Store/Tracking/Proxy/liveViews";
+import {joinPath} from "../../Paths/joinPath";
+import {isTrackable} from "../isTrackable";
+import {liveViews} from "../Proxy/liveViews";
 import {buildOwnershipIndex} from "./buildOwnershipIndex";
 
 /** Every ordinary own path to each raw object, scoped to one live root. */

@@ -1,4 +1,4 @@
-import {IWritePatch} from '@/Carburetor/Models/Paths';
+import {IWritePatch} from '../../Models/Paths';
 
 const primitive = (value: unknown): boolean => value === null ||
     (typeof value !== 'object' && typeof value !== 'function');

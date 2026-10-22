@@ -1,5 +1,5 @@
-import {IWritePatch} from '@/Carburetor/Models/Paths';
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
+import {IWritePatch} from '../../Models/Paths';
+import {isTrackable} from '../../Store/Tracking/isTrackable';
 
 /** Collision-free join of raw segments into one index key (length-prefixed, pipe-separated). */
 const joinSegments = (segments: readonly string[]): string => {

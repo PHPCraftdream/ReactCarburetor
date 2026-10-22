@@ -1,9 +1,9 @@
-import {TPathRecorder} from "@/Carburetor/Models/Paths";
-import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
-import {GRAPH_READS, IProxyCache, RAW_TARGET} from "@/Carburetor/Store/Tracking/Models";
-import {recordNativeAliasReads} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasReads";
-import {nativeAliasIndex} from "@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
+import {TPathRecorder} from "../../../Models/Paths";
+import {sharedSingleton} from "../../Utils/sharedSingleton";
+import {GRAPH_READS, IProxyCache, RAW_TARGET} from "../Models";
+import {recordNativeAliasReads} from "../Aliases/NativeAliasReads";
+import {nativeAliasIndex} from "../Aliases/NativeAliasIndex";
+import {isTrackable} from "../isTrackable";
 
 /**
  * Read proxies, draft proxies and native collection facades answer RAW_TARGET with their raw

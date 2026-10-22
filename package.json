@@ -7,6 +7,7 @@
   "types": "./dist/cjs/Carburetor/index.d.ts",
   "exports": {
     ".": {
+      "carburetor-source": "./lib/src/Carburetor/index.ts",
       "import": {
         "types": "./dist/esm/Carburetor/index.d.mts",
         "production": "./dist/esm-prod/Carburetor/index.mjs",
@@ -21,6 +22,7 @@
       }
     },
     "./interop": {
+      "carburetor-source": "./lib/src/Interop/index.ts",
       "import": {
         "types": "./dist/esm/Interop/index.d.mts",
         "production": "./dist/esm-prod/Interop/index.mjs",
@@ -35,6 +37,7 @@
       }
     },
     "./testing": {
+      "carburetor-source": "./lib/src/Testing/index.ts",
       "import": {
         "types": "./dist/esm/Testing/index.d.mts",
         "production": "./dist/esm-prod/Testing/index.mjs",

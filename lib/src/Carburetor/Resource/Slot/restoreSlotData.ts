@@ -1,7 +1,7 @@
-import {IResourceData, IResourceSnapshot} from "@/Carburetor/Models/Resource";
-import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
-import {cloneOwnedGraph} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
-import {resourceStatusFlags} from "@/Carburetor/Resource/Status/resourceStatusFlags";
+import {IResourceData, IResourceSnapshot} from "../../Models/Resource";
+import {deepClone} from "../../Store/Utils/deepClone";
+import {cloneOwnedGraph} from "../../Store/Utils/Graph/cloneOwnedGraph";
+import {resourceStatusFlags} from "../Status/resourceStatusFlags";
 
 const STATUS_FLAGS = ['isIdle', 'isPending', 'isSuccess', 'isError'] as const;
 

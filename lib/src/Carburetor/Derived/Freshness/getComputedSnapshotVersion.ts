@@ -1,5 +1,5 @@
-import {ICarburetorSubscription} from '@/Carburetor/Models/Store';
-import {CARBURETOR_SNAPSHOT_VERSION, IInternalSubscriptionProtocol} from '@/Carburetor/Store/Utils/Models';
+import {ICarburetorSubscription} from '../../Models/Store';
+import {CARBURETOR_SNAPSHOT_VERSION, IInternalSubscriptionProtocol} from '../../Store/Utils/Models';
 
 /** The render-to-subscription token also covers changes before a native source is observed. */
 export const getComputedSnapshotVersion = (source: ICarburetorSubscription): number => {

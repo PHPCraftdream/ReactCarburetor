@@ -1,6 +1,6 @@
-import {IWritePatch} from "@/Carburetor/Models/Paths";
-import {isTrackable} from "@/Carburetor/Store/Tracking/isTrackable";
-import {deepClone} from "@/Carburetor/Store/Utils/deepClone";
+import {IWritePatch} from "../../../Models/Paths";
+import {isTrackable} from "../../Tracking/isTrackable";
+import {deepClone} from "../../Utils/deepClone";
 import {isOrderedStringKey} from "./Order/isOrderedStringKey";
 import {orderReplayGuard} from "./Order/orderReplayGuard";
 

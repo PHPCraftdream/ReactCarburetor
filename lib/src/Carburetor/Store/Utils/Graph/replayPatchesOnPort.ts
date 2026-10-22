@@ -1,7 +1,7 @@
-import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
-import {IStateInstallation, IWritePatch} from '@/Carburetor/Models/Paths';
-import {installPatch} from '@/Carburetor/Store/Paths/Diff/installPatch';
-import {IStateInstallPort} from '@/Carburetor/Store/Transaction/Models';
+import {S} from "../../Diagnostics/Internal/StoreIdentity";
+import {IStateInstallation, IWritePatch} from '../../../Models/Paths';
+import {installPatch} from '../../Paths/Diff/installPatch';
+import {IStateInstallPort} from '../../Transaction/Models';
 
 /**
  * Replays history patches through the store's draft and keeps the owner's fact on the closed

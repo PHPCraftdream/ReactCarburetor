@@ -1,12 +1,12 @@
 "use client";
 
-import {C} from "@/Carburetor/Component/Models/ComponentSymbols";
+import {C} from "../Models/ComponentSymbols";
 
-import {IDict, TEffect, TEffectDeps, TDisposer} from "@/Carburetor/Models/Base";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {IDict, TEffect, TEffectDeps, TDisposer} from "../../Models/Base";
+import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
 import {AntiHookComponentReads} from "./Reads";
-import {shallowEqual} from "@/Carburetor/Component/shallowEqual";
-import {ICarburetorEvents} from "@/Carburetor/Models/Store";
+import {shallowEqual} from "../shallowEqual";
+import {ICarburetorEvents} from "../../Models/Store";
 
 declare const process: {env: {NODE_ENV?: string}};
 

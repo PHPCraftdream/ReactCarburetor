@@ -1,4 +1,4 @@
-import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
+import {sharedSingleton} from "./sharedSingleton";
 
 interface IUidCounter {
     next: number;

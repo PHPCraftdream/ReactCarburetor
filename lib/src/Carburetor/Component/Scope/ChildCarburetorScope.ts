@@ -1,5 +1,5 @@
-import {CarburetorScope} from '@/Carburetor/Component/Scope/CarburetorScope';
-import {ICarburetorToken} from '@/Carburetor/Models/Tooling';
+import {CarburetorScope} from './CarburetorScope';
+import {ICarburetorToken} from '../../Models/Tooling';
 
 /** Creates a child scope while preserving the parent's normal get() behavior.
  *

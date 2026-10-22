@@ -1,6 +1,6 @@
-import {Carburetor} from '@/Carburetor/Store/Carburetor';
-import {CarburetorScope} from '@/Carburetor/Component/Scope/CarburetorScope';
-import {CARBURETOR_FLUSH, CARBURETOR_PERSIST_DRAIN, SCOPE_TESTING_VISIT} from '@/Carburetor/Store/Utils/Models';
+import {Carburetor} from '../Carburetor/Store/Carburetor';
+import {CarburetorScope} from '../Carburetor/Component/Scope/CarburetorScope';
+import {CARBURETOR_FLUSH, CARBURETOR_PERSIST_DRAIN, SCOPE_TESTING_VISIT} from '../Carburetor/Store/Utils/Models';
 
 interface IFlushableStore {
     [CARBURETOR_FLUSH]?: () => boolean;

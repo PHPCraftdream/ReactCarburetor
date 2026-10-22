@@ -1,5 +1,5 @@
 import {hasRepeatedContainer} from './hasRepeatedContainer';
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
+import {isTrackable} from '../../../Tracking/isTrackable';
 import {sameKind} from './sameKind';
 
 /** R39-05: a changed array with repeated containers requires whole-graph restore.

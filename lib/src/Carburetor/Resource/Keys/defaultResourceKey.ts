@@ -1,5 +1,5 @@
-import {TResourceArgs} from "@/Carburetor/Models/Resource";
-import {IS_DEVELOPMENT} from "@/Carburetor/Store/Utils/DevelopmentFlag";
+import {TResourceArgs} from "../../Models/Resource";
+import {IS_DEVELOPMENT} from "../../Store/Utils/DevelopmentFlag";
 
 /** Rejects an argument the default key cannot encode without collisions (development only). */
 const checkJsonSafe = (value: unknown, seen: WeakSet<object>, depth: number): void => {

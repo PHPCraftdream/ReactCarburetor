@@ -1,7 +1,7 @@
-import {TSubscriber} from '@/Carburetor/Models/Base';
+import {TSubscriber} from '../../Models/Base';
 import {
     IStateInstallation, IWritePatch, TPath, TPathSet,
-} from '@/Carburetor/Models/Paths';
+} from '../../Models/Paths';
 
 /**
  * Internal subscription protocol, keyed by shared symbols so two copies of the package in one

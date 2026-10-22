@@ -1,4 +1,4 @@
-import {TPath} from '@/Carburetor/Models/Paths';
+import {TPath} from '../../../Models/Paths';
 
 /** Reusable pending pairs; a bounded recording budget makes oversized drafts conservative. */
 export class WriteTargetLedger {

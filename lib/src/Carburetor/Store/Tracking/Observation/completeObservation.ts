@@ -1,5 +1,5 @@
 import {completeReads} from "./completeReads";
-import {TPathSet} from "@/Carburetor/Models/Paths";
+import {TPathSet} from "../../../Models/Paths";
 import {TCompletedObservation} from "./Models";
 
 /** Closes an existing value/read pair without another wrapper allocation.

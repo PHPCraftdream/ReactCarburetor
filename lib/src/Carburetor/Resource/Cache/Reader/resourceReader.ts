@@ -1,7 +1,7 @@
-import {EResourceStatus} from '@/Carburetor/Models/Enums/EResourceStatus';
-import {IResourceResolution, IResourceView} from '@/Carburetor/Models/Resource';
-import {TPath, TPathRecorder} from '@/Carburetor/Models/Paths';
-import {joinPath} from '@/Carburetor/Store/Paths/joinPath';
+import {EResourceStatus} from '../../../Models/Enums/EResourceStatus';
+import {IResourceResolution, IResourceView} from '../../../Models/Resource';
+import {TPath, TPathRecorder} from '../../../Models/Paths';
+import {joinPath} from '../../../Store/Paths/joinPath';
 
 /** Own view fields whose joined paths are memoized per entry path. */
 const FIELD_PATH_FIELDS = ['invalidated', 'failed', 'refreshing', 'updatedAt', 'isIdle', 'status',

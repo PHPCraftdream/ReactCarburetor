@@ -1,9 +1,9 @@
 import * as React from "react";
-import {CarburetorContext, CarburetorScope, TReadonly} from "@/Carburetor";
-import {useCarburetorValue, useComputedValue} from "@/Interop";
-import {ITodoList} from "@/ToDo/API/Models";
-import {todoToken} from "@/ToDo/Scope/Tokens/todoToken";
-import {viewsToken} from "@/ToDo/Scope/Tokens/viewsToken";
+import {CarburetorContext, CarburetorScope, TReadonly} from "../../../Carburetor/index";
+import {useCarburetorValue, useComputedValue} from "../../../Interop/index";
+import {ITodoList} from "../../API/Models";
+import {todoToken} from "../../Scope/Tokens/todoToken";
+import {viewsToken} from "../../Scope/Tokens/viewsToken";
 
 /**
  * How many todos exist.

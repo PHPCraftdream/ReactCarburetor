@@ -55,7 +55,6 @@
                 "max-line-length": {},
                 "no-parent-import": {
                     "roots": [
-                        {"path": "lib/src", "prefix": "@/"},
                         {"path": "plugin/src", "prefix": "@plugin/"}
                     ]
                 },

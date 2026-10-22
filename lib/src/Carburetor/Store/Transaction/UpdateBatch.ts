@@ -1,7 +1,7 @@
-import {TPath, TPathSet} from "@/Carburetor/Models/Paths";
-import {CARBURETOR_NOTIFY_WRITES, IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
-import {updateWave} from "@/Carburetor/Store/Scheduling/UpdateWaveInstance";
-import {diagnostics} from "@/Carburetor/Store/Diagnostics/DiagnosticsInstance";
+import {TPath, TPathSet} from "../../Models/Paths";
+import {CARBURETOR_NOTIFY_WRITES, IInternalSubscriptionProtocol} from "../Utils/Models";
+import {updateWave} from "../Scheduling/UpdateWaveInstance";
+import {diagnostics} from "../Diagnostics/DiagnosticsInstance";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}};

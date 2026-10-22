@@ -1,4 +1,4 @@
-import {TPatchRecorder} from '@/Carburetor/Models/Paths';
+import {TPatchRecorder} from '../../../Models/Paths';
 
 /** Deliver every already-applied patch, even when one observer rejects an earlier patch.
  *

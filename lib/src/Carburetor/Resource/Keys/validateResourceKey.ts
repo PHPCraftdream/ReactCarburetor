@@ -1,4 +1,4 @@
-import {TResourceKey} from "@/Carburetor/Models/Resource";
+import {TResourceKey} from "../../Models/Resource";
 
 /** Rejects a malformed `key` option at construction, before it can hide a broken call. */
 export const validateResourceKey = (key: TResourceKey<never> | undefined): TResourceKey<never> => {

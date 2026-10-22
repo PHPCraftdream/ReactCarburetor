@@ -1,4 +1,4 @@
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
+import {isTrackable} from '../isTrackable';
 
 /** Detaches plain patch values without normalizing restrictions needed by owned history.
  *

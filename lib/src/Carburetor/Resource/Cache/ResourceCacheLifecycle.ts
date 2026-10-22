@@ -1,22 +1,22 @@
-import {R} from "@/Carburetor/Store/Diagnostics/Internal/ResourceSymbols";
-import {storeLifecycle} from "@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle";
-import {EResourceStatus} from "@/Carburetor/Models/Enums/EResourceStatus";
+import {R} from "../../Store/Diagnostics/Internal/ResourceSymbols";
+import {storeLifecycle} from "../../Store/Diagnostics/Internal/StoreLifecycle";
+import {EResourceStatus} from "../../Models/Enums/EResourceStatus";
 import {
     IResourceCacheData,
     IResourceCacheOptions,
     IResourceEntry,
     TResourceArgs,
     TResourceLoader,
-} from "@/Carburetor/Models/Resource";
-import {describeError} from "@/Carburetor/Resource/Status/describeError";
-import {dropEventArgs} from "@/Carburetor/Resource/Slot/dropEventArgs";
-import {createCacheSupersededError} from "@/Carburetor/Resource/Slot/createCacheSupersededError";
+} from "../../Models/Resource";
+import {describeError} from "../Status/describeError";
+import {dropEventArgs} from "../Slot/dropEventArgs";
+import {createCacheSupersededError} from "../Slot/createCacheSupersededError";
 import {getInitialCacheEntry} from "./State/getInitialCacheEntry";
 import {prepareCacheRequest} from "./State/prepareCacheRequest";
 import {ICacheRequest, ICacheRuntime} from "./State/Runtime/Models";
 import {ResourceCacheState} from "./State/Runtime/ResourceCacheState";
 import {trimCacheRuntime} from "./State/Runtime/Registry";
-import {applyResourceStatus} from "@/Carburetor/Resource/Status/applyResourceStatus";
+import {applyResourceStatus} from "../Status/applyResourceStatus";
 
 const noop = (): void => undefined;
 

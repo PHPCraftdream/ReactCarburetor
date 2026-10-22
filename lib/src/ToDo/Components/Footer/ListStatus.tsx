@@ -1,8 +1,8 @@
 import * as React from "react";
-import {bind, EResourceStatus, ScopedAntiHookComponent} from "@/Carburetor";
-import {detailsToken} from "@/ToDo/Scope/Tokens/detailsToken";
-import {todoToken} from "@/ToDo/Scope/Tokens/todoToken";
-import {undoToken} from "@/ToDo/Scope/Tokens/undoToken";
+import {bind, EResourceStatus, ScopedAntiHookComponent} from "../../../Carburetor/index";
+import {detailsToken} from "../../Scope/Tokens/detailsToken";
+import {todoToken} from "../../Scope/Tokens/todoToken";
+import {undoToken} from "../../Scope/Tokens/undoToken";
 
 const BUTTON = 'rounded-md px-2 py-0.5 font-medium text-slate-600 transition hover:bg-slate-200/70 '
     + 'dark:text-slate-300 dark:hover:bg-slate-700/60';

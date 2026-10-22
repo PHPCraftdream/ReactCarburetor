@@ -1,4 +1,4 @@
-import {Carburetor, CarburetorHistory, ICarburetor, IPatchSource, TDisposer} from "@/Carburetor";
+import {Carburetor, CarburetorHistory, ICarburetor, IPatchSource, TDisposer} from "../../Carburetor/index";
 import {IUndoData} from "./Models";
 
 /**

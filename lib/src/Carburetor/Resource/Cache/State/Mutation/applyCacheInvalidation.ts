@@ -1,4 +1,4 @@
-import {IResourceCacheData} from '@/Carburetor/Models/Resource';
+import {IResourceCacheData} from '../../../../Models/Resource';
 
 /** Apply only effective invalidation changes, leaving locked no-op fields untouched.
  *

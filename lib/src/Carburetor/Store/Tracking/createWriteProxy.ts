@@ -1,12 +1,12 @@
 import {
     PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPath, TAliasLedger, TPatchRecorder,
     TPatchPort, TWriteRecorder,
-} from "@/Carburetor/Models/Paths";
-import {diffPaths} from "@/Carburetor/Store/Paths/Diff/diffPaths";
-import {orderReplayGuard} from "@/Carburetor/Store/Paths/Diff/Order/orderReplayGuard";
-import {orderedTailMemo} from "@/Carburetor/Store/Paths/Diff/Order/orderedTailMemo";
-import {joinPath} from "@/Carburetor/Store/Paths/joinPath";
-import {keysPath} from "@/Carburetor/Store/Paths/Markers/KeysMarker";
+} from "../../Models/Paths";
+import {diffPaths} from "../Paths/Diff/diffPaths";
+import {orderReplayGuard} from "../Paths/Diff/Order/orderReplayGuard";
+import {orderedTailMemo} from "../Paths/Diff/Order/orderedTailMemo";
+import {joinPath} from "../Paths/joinPath";
+import {keysPath} from "../Paths/Markers/KeysMarker";
 import {clonePatchValue} from "./Proxy/clonePatchValue";
 import {createProxyCache} from "./Proxy/createProxyCache";
 import {IProxyCache, PROXY_CACHE, RAW_TARGET} from "./Models";

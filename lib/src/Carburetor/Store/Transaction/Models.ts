@@ -1,12 +1,12 @@
 import {
     IStateInstallation, IStatePublication, IStateRestoreClaim,
     TAliasLedger, TPath, TPathSet, TPatchPort,
-} from '@/Carburetor/Models/Paths';
-import {WriteLog} from '@/Carburetor/Store/Paths/WriteLog';
-import {WriteTargetLedger} from '@/Carburetor/Store/Utils/Graph/WriteTargetLedger';
-import {CARBURETOR_NOTIFY_WRITES} from '@/Carburetor/Store/Utils/Models';
+} from '../../Models/Paths';
+import {WriteLog} from '../Paths/WriteLog';
+import {WriteTargetLedger} from '../Utils/Graph/WriteTargetLedger';
+import {CARBURETOR_NOTIFY_WRITES} from '../Utils/Models';
 
-import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
+import {S} from "../Diagnostics/Internal/StoreIdentity";
 
 /** Store boundary consumed by the shared mutation commit implementation. */
 export interface IStorePublicationPort<T extends object> {

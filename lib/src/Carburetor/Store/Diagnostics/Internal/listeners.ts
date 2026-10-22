@@ -1,5 +1,5 @@
-import {TUpdateTraceListener} from '@/Carburetor/Store/Diagnostics/TraceListener';
-import {IUpdateTrace} from '@/Carburetor/Store/Diagnostics/UpdateTrace';
+import {TUpdateTraceListener} from '../TraceListener';
+import {IUpdateTrace} from '../UpdateTrace';
 
 /** One independent traceUpdates registration; the same listener may hold several. */
 interface ITraceRegistration {

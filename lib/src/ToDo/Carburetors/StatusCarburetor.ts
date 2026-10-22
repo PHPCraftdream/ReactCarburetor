@@ -1,4 +1,4 @@
-import {Carburetor} from "@/Carburetor";
+import {Carburetor} from "../../Carburetor/index";
 import {IStatusData} from "./Models";
 
 const applyEmittedMessage = (draft: IStatusData, emittedMessage: string): void => {

@@ -1,4 +1,4 @@
-import {countChanges} from "@/Carburetor/Store/Paths/Diff/Threshold/countChanges";
+import {countChanges} from "../Threshold/countChanges";
 import {keyOrderRequiresReplay} from "./keyOrderRequiresReplay";
 
 /** Outcome of the raw pre-pass: the difference cannot be installed natively, nothing differs,

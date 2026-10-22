@@ -1,14 +1,14 @@
 import {IReplayAttempt} from './IReplayAttempt';
 import {sameHistoryGraph} from './sameHistoryGraph';
 import {isSafeScalarPatch} from './isSafeScalarPatch';
-import {IWritePatch} from '@/Carburetor/Models/Paths';
-import {ICarburetor, IPatchSource} from '@/Carburetor/Models/Store';
-import {Carburetor} from '@/Carburetor/Store/Carburetor';
-import {installPatch} from '@/Carburetor/Store/Paths/Diff/installPatch';
-import {cloneOwnedGraph as own} from '@/Carburetor/Store/Utils/Graph/cloneOwnedGraph';
+import {IWritePatch} from '../../Models/Paths';
+import {ICarburetor, IPatchSource} from '../../Models/Store';
+import {Carburetor} from '../../Store/Carburetor';
+import {installPatch} from '../../Store/Paths/Diff/installPatch';
+import {cloneOwnedGraph as own} from '../../Store/Utils/Graph/cloneOwnedGraph';
 import {
     CARBURETOR_REPLAY_PATCHES, IInternalSubscriptionProtocol,
-} from '@/Carburetor/Store/Utils/Models';
+} from '../../Store/Utils/Models';
 
 /** The private history state the draft replay drives; realized by CarburetorHistory. */
 interface IReplayHost<T extends object> {

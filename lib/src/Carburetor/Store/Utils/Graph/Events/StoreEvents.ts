@@ -1,5 +1,5 @@
-import {TDisposer} from "@/Carburetor/Models/Base";
-import {reportDeliveryFailure} from "@/Carburetor/Store/Diagnostics/reportDeliveryFailure";
+import {TDisposer} from "../../../../Models/Base";
+import {reportDeliveryFailure} from "../../../Diagnostics/reportDeliveryFailure";
 
 interface IEventListener {
     callback: (payload: never) => void;

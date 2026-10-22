@@ -1,6 +1,6 @@
 import * as React from "react";
-import {ScopedAntiHookComponent} from "@/Carburetor";
-import {statusToken} from "@/ToDo/Scope/Tokens/statusToken";
+import {ScopedAntiHookComponent} from "../../../Carburetor/index";
+import {statusToken} from "../../Scope/Tokens/statusToken";
 
 /**
  * The last emit timestamp changes on every write to the list, so it has to be read by

@@ -1,21 +1,21 @@
-import {TDisposer} from "@/Carburetor/Models/Base";
+import {TDisposer} from "../Models/Base";
 import {
     IStatePublication, IWritePatch, IPatchObserver, PATCH_ARRAY_LENGTH_LOCK,
     PATCH_KEY_ORDER_CHANGE, PATCH_OPAQUE, TPatchRecorder,
-} from "@/Carburetor/Models/Paths";
-import {ICarburetor, IPatchSource} from "@/Carburetor/Models/Store";
-import {IHistoryOptions} from "@/Carburetor/Models/Tooling";
-import {installPatch} from "@/Carburetor/Store/Paths/Diff/installPatch";
-import {resolveOrderPlans} from "@/Carburetor/Store/Paths/Diff/Order/resolveOrderPlans";
-import {IInternalSubscriptionProtocol} from "@/Carburetor/Store/Utils/Models";
+} from "../Models/Paths";
+import {ICarburetor, IPatchSource} from "../Models/Store";
+import {IHistoryOptions} from "../Models/Tooling";
+import {installPatch} from "../Store/Paths/Diff/installPatch";
+import {resolveOrderPlans} from "../Store/Paths/Diff/Order/resolveOrderPlans";
+import {IInternalSubscriptionProtocol} from "../Store/Utils/Models";
 import {applyPatchesEntryOnDraft} from "./Graph/replayPatchesOnDraft";
 import {foldDependentPatch} from './Graph/foldDependentPatch';
 import {preflightOwnedPatches} from "./Graph/canInstallOwnedPatch";
-import {cloneOwnedGraph as own} from "@/Carburetor/Store/Utils/Graph/cloneOwnedGraph";
+import {cloneOwnedGraph as own} from "../Store/Utils/Graph/cloneOwnedGraph";
 import {IReplayAttempt} from './Graph/IReplayAttempt';
 import {sameHistoryGraph} from "./Graph/sameHistoryGraph";
 import {isSafeScalarPatch} from './Graph/isSafeScalarPatch';
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
+import {isTrackable} from '../Store/Tracking/isTrackable';
 import {sameExistingScalarPath} from './Graph/sameExistingScalarPath';
 /** One change recorded as the patches to invert it — the fast path (R16-07). */
 interface IPatchesEntry {

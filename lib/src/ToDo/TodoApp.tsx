@@ -1,5 +1,5 @@
 import * as React from "react";
-import {bind, ScopedAntiHookComponent, TReadonly} from "@/Carburetor";
+import {bind, ScopedAntiHookComponent, TReadonly} from "../Carburetor/index";
 import {ITodoList} from "./API/Models";
 import {EmitStatus} from "./Components/Footer/EmitStatus";
 import {ListStatus} from "./Components/Footer/ListStatus";

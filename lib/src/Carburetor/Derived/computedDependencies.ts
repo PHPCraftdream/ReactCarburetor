@@ -1,11 +1,11 @@
-import {IDict, TSubscriber} from '@/Carburetor/Models/Base';
-import {ICarburetorSubscription, ISubscribeOptions} from '@/Carburetor/Models/Store';
-import {getUid} from '@/Carburetor/Store/Utils/getUid';
-import {sharedSingleton} from '@/Carburetor/Store/Utils/sharedSingleton';
-import {updateWave} from '@/Carburetor/Store/Scheduling/UpdateWaveInstance';
+import {IDict, TSubscriber} from '../Models/Base';
+import {ICarburetorSubscription, ISubscribeOptions} from '../Models/Store';
+import {getUid} from '../Store/Utils/getUid';
+import {sharedSingleton} from '../Store/Utils/sharedSingleton';
+import {updateWave} from '../Store/Scheduling/UpdateWaveInstance';
 import {IDependency, IActiveReadSlot} from './Models';
 import {ILeafVersion} from './Freshness/Models';
-import {leafWatermarks} from '@/Carburetor/Derived/reporting/leafWatermarks';
+import {leafWatermarks} from './reporting/leafWatermarks';
 
 /** Flattened native metadata shared across module copies. */
 interface IVersion {

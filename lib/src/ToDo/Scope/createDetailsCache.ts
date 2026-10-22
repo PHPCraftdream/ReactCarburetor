@@ -1,5 +1,5 @@
-import {ResourceCache} from "@/Carburetor";
-import {ITodoDetails, IToDoClientAPI} from "@/ToDo/API/Models";
+import {ResourceCache} from "../../Carburetor/index";
+import {ITodoDetails, IToDoClientAPI} from "../API/Models";
 
 /**
  * Details for many todos from one loader: each id is its own entry, fresh for 30 s, at most 50

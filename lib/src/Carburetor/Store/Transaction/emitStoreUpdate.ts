@@ -1,17 +1,17 @@
 import {IStateInstallation, PATCH_OPAQUE, TPath, TPathSet,
-} from '@/Carburetor/Models/Paths';
-import {CARBURETOR_NOTIFY_WRITES} from '@/Carburetor/Store/Utils/Models';
-import {IStorePublicationPort} from '@/Carburetor/Store/Transaction/Models';
-import {storeLifecycle} from '@/Carburetor/Store/Diagnostics/Internal/StoreLifecycle';
-import {WILDCARD_PATH} from '@/Carburetor/Store/Paths/WildcardPath';
-import {dateExposureLedger} from '@/Carburetor/Store/Tracking/Proxy/dateExposureLedger';
-import {nativeAliasIndex} from '@/Carburetor/Store/Tracking/Aliases/NativeAliasIndex';
-import {isTrackable} from '@/Carburetor/Store/Tracking/isTrackable';
-import {nativeStoreWriteEpoch} from '@/Carburetor/Store/Scheduling/nativeStoreWriteEpoch';
-import {updateBatch} from '@/Carburetor/Store/Transaction/UpdateBatchInstance';
-import {orderedTailMemo} from '@/Carburetor/Store/Paths/Diff/Order/orderedTailMemo';
+} from '../../Models/Paths';
+import {CARBURETOR_NOTIFY_WRITES} from '../Utils/Models';
+import {IStorePublicationPort} from './Models';
+import {storeLifecycle} from '../Diagnostics/Internal/StoreLifecycle';
+import {WILDCARD_PATH} from '../Paths/WildcardPath';
+import {dateExposureLedger} from '../Tracking/Proxy/dateExposureLedger';
+import {nativeAliasIndex} from '../Tracking/Aliases/NativeAliasIndex';
+import {isTrackable} from '../Tracking/isTrackable';
+import {nativeStoreWriteEpoch} from '../Scheduling/nativeStoreWriteEpoch';
+import {updateBatch} from './UpdateBatchInstance';
+import {orderedTailMemo} from '../Paths/Diff/Order/orderedTailMemo';
 
-import {S} from "@/Carburetor/Store/Diagnostics/Internal/StoreIdentity";
+import {S} from "../Diagnostics/Internal/StoreIdentity";
 
 /** Closes writes, records their publication owner and delivers despite earlier observer failure.
  *

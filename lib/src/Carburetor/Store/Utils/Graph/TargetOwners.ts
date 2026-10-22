@@ -1,5 +1,5 @@
-import {TDisposer} from '@/Carburetor/Models/Base';
-import {WriteLog} from '@/Carburetor/Store/Paths/WriteLog';
+import {TDisposer} from '../../../Models/Base';
+import {WriteLog} from '../../Paths/WriteLog';
 import {WriteTargetLedger} from './WriteTargetLedger';
 
 /**

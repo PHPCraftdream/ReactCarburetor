@@ -1,4 +1,4 @@
-import {ICarburetorSubscription} from '@/Carburetor/Models/Store';
+import {ICarburetorSubscription} from '../../Models/Store';
 
 export interface ILeafVersion {
     source: ICarburetorSubscription;

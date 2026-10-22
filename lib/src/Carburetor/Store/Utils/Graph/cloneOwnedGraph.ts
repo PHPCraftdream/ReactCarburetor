@@ -1,4 +1,4 @@
-import {liveViews} from '@/Carburetor/Store/Tracking/Proxy/liveViews';
+import {liveViews} from '../../Tracking/Proxy/liveViews';
 
 type TGraphOwnershipPolicy = 'history' | 'operational';
 

@@ -1,7 +1,7 @@
 "use client";
 
 import {useEffect} from "react";
-import type {ICarburetorEvents} from "@/Carburetor/Models/Store";
+import type {ICarburetorEvents} from "../Carburetor/Models/Store";
 
 /** Subscribes a carburetor event handler for the lifetime of the supplied subscription arguments.
  *

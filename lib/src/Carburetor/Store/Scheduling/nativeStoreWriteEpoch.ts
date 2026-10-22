@@ -1,5 +1,5 @@
-import {ICarburetorSubscription} from "@/Carburetor/Models/Store";
-import {sharedSingleton} from "@/Carburetor/Store/Utils/sharedSingleton";
+import {ICarburetorSubscription} from "../../Models/Store";
+import {sharedSingleton} from "../Utils/sharedSingleton";
 
 /** Base methods whose writes and versions are covered by the shared epoch. */
 interface INativeStoreMethods {

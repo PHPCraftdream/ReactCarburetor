@@ -1,4 +1,4 @@
-import type {CarburetorScope} from "@/Carburetor/Component/Scope/CarburetorScope";
+import type {CarburetorScope} from "../Component/Scope/CarburetorScope";
 import {TDisposer} from "./Base";
 
 /**
