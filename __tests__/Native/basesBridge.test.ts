@@ -63,6 +63,8 @@ type TNativeSpawn = typeof spawnSync;
 const nativeSpawn = rstest.hoisted(() => rstest.fn<TNativeSpawn>());
 
 rstest.mock('node:child_process', () => ({spawnSync: nativeSpawn}));
+// The handshake has its own tests and would add a --version call to the counted spawns.
+rstest.mock('@plugin/Utils/assertProtocol.mts', () => ({assertProtocol: () => undefined}));
 
 /** The lock path `runNative` would use for this cwd and base key, mirroring its digest formula. */
 const lockPathFor = (cwd: string, key: string): string => {
