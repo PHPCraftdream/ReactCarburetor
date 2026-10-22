@@ -1,7 +1,9 @@
 /* oxlint-disable react/globals, carburetor/max-line-length, carburetor/require-tsdoc */
+import {execFileSync} from 'node:child_process';
 import {appendFileSync, cpSync, mkdirSync, readFileSync, writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {resolve} from 'node:path';
+import {pathToFileURL} from 'node:url';
 import {prepareBaseline} from '../contract/baseline.mjs';
 import {sampleScenario, summarize, show} from '../../harness/measure.mjs';
 import {evaluate, compare} from '../../harness/evaluate.mjs';
@@ -41,6 +43,17 @@ const modules = modulePaths.map(path => {
     }
     return row;
 });
+// A mix of baseline modules into the current build only loads while the baseline's imports still exist
+// in the current layout; a mix that cannot load is left out of the attribution instead of failing every gate.
+const mixes = {noResourceChanges, lifecycleOnly, cacheOnly, noComputedChanges};
+const unusableMixes = Object.entries(mixes).filter(([, root]) => {
+    try {
+        execFileSync(process.execPath, ['--input-type=module', '-e', 'await import(process.argv[1])',
+            pathToFileURL(resolve(root, 'Carburetor/index.mjs')).href], {stdio: 'ignore'});
+        return false;
+    } catch { return true; }
+}).map(([name]) => name);
+const usable = (name, root) => (unusableMixes.includes(name) ? [] : [{name, dir: root}]);
 const ids = ['cache/key-memo@4096', 'cache/key-memo@8192-budget', 'cache/eviction-scaling@1k',
     'resource43/lookup-operations', 'computed/diamond-ladder@26', 'computed/hook-publication@100',
     'selection43/timing-dense@16', 'selection43/timing-dense@4096', 'history43/timing@32-32-one-update',
@@ -57,18 +70,18 @@ for (const id of ids) {
     try {
         const scenario = resolve('perf/scenarios', entry.scenario + '.mjs');
         const results = sampleScenario(scenario, entry.args ?? [], [{name: 'before', dir: report.roots.before},
-            {name: 'after', dir: current}, {name: 'noResourceChanges', dir: noResourceChanges},
-            {name: 'lifecycleOnly', dir: lifecycleOnly}, {name: 'cacheOnly', dir: cacheOnly},
-            {name: 'noComputedChanges', dir: noComputedChanges},
+            {name: 'after', dir: current}, ...usable('noResourceChanges', noResourceChanges),
+            ...usable('lifecycleOnly', lifecycleOnly), ...usable('cacheOnly', cacheOnly),
+            ...usable('noComputedChanges', noComputedChanges),
             {name: 'relocatedBefore', dir: relocatedBefore}, {name: 'relocatedAfter', dir: relocatedAfter},
             {name: 'sameA', dir: current}, {name: 'sameB', dir: current}], 9, entry.nodeArgs ?? []);
         const summary = Object.fromEntries([...results].map(([name, samples]) => [name, summarize(samples)]));
         const row = {id, raw: Object.fromEntries(results), summaries: Object.fromEntries(Object.entries(summary)
             .map(([name, metrics]) => [name, Object.fromEntries(Object.entries(metrics).map(([metric, value]) => [metric, show(value)]))])),
             ab: compare(entry, summary.after, summary.before), aa: compare(entry, summary.sameB, summary.sameA),
-            resourceCutover: compare(entry, summary.noResourceChanges, summary.before),
+            resourceCutover: summary.noResourceChanges ? compare(entry, summary.noResourceChanges, summary.before) : [],
             cutovers: Object.fromEntries(['lifecycleOnly', 'cacheOnly', 'noComputedChanges']
-                .map(name => [name, compare(entry, summary[name], summary.before)])),
+                .map(name => [name, summary[name] ? compare(entry, summary[name], summary.before) : []])),
             relocated: compare(entry, summary.relocatedAfter, summary.relocatedBefore),
             gates: Object.fromEntries(Object.entries(summary).map(([name, value]) => [name, evaluate(entry, value, new Map())]))};
         report.rows.push(row);
@@ -95,11 +108,14 @@ const aaFlags = classified.flatMap(row => (row.aa ?? []).filter(result => !resul
     .map(result => ({id: row.id, detail: result.detail})));
 report.interpretation = 'Byte-identical A/A on this runner already reaches up to ' + report.aaNoiseCeiling
     + 'x median ratio, so only A/B flags above that ceiling are confirmed regressions; everything else is informational.';
+report.unusableMixes = unusableMixes;
 report.completed = report.rows.length === ids.length; save();
 const summaryPath = process.env.GITHUB_STEP_SUMMARY;
 if (summaryPath) appendFileSync(summaryPath, '\n### Timing attribution (informational)\n\n'
     + `A/B flags: ${abFlags.length}, A/A flags (identical-build noise): ${aaFlags.length}, `
     + `A/A noise ceiling: ${report.aaNoiseCeiling}x, persistent A/B flags above the A/A ceiling: ${report.confirmedAlerts.length}.\n\n`
+    + (unusableMixes.length ? 'Baseline mixes left out (their imports no longer exist in the current layout): '
+        + unusableMixes.join(', ') + '.\n\n' : '')
     + '| Alert | Detail |\n|---|---|\n'
     + abFlags.map(flag => `| ${flag.id}${flag.confirmed ? ' *' : ''} | ${flag.detail} |`).join('\n')
     + (aaFlags.length ? '\n\nA/A noise flags: ' + aaFlags.map(flag => flag.id + ' ' + flag.detail).join('; ') : '')
