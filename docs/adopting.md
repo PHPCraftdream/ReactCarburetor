@@ -174,6 +174,12 @@ Link the built package, not the sources. The `exports` map is what makes
    `"react-carburetor": "file:../ReactCarburetor"` (or a workspace entry for a monorepo).
 3. Import as usual: `import {Carburetor} from 'react-carburetor'` and
    `import {useCarburetorValue} from 'react-carburetor/interop'`.
+4. In the app's `pretest`, check the checkout's build stamp with
+   `"pretest": "node ../ReactCarburetor/scripts/tools/buildInfo/checkDistFresh.mjs ../ReactCarburetor"`.
+
+The build writes `dist/build-info.json` with the package version, source hash, optional Git
+revision, and dirty state. The checker lives in the framework checkout and is not shipped with the
+package.
 
 Do not alias `react-carburetor` to `lib/src` in `tsconfig` or the bundler. An alias on the sources only
 covers the paths you list (the root and `@/*`, never `/interop`), bypasses the `development` /

@@ -1,5 +1,10 @@
 import {defineConfig} from '@rslib/core';
+import {fileURLToPath} from 'node:url';
+import {writeBuildInfo} from './scripts/tools/buildInfo/writeBuildInfo.mjs';
 import {generateHouseStyleOxlintJson} from './plugin/src/Rules/Style/HouseStyle/house-style.oxlintrc.mts';
+
+const root = fileURLToPath(new URL('.', import.meta.url));
+const writeStamp = () => writeBuildInfo(root);
 
 const entry = {
     index: ['./lib/src/Carburetor/**', './lib/src/Interop/**', './lib/src/Testing/**'],
@@ -58,6 +63,12 @@ const pluginAssets = [
 ];
 
 export default defineConfig({
+    plugins: [{
+        name: 'build-info',
+        setup(api) {
+            api.onAfterBuild(writeStamp);
+        },
+    }],
     lib: [
         {
             format: 'esm',
