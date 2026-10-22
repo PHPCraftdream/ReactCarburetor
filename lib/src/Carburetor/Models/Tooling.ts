@@ -45,8 +45,9 @@ export interface IPersistOptions {
     /**
      * Minimum time in milliseconds between two storage writes. The first write still happens
      * right away; later flushes wait until the window since the previous write has passed, and
-     * the disposer writes a state still held back. Requires the default coalescing; a negative
-     * or non-finite value throws.
+     * the disposer writes a state still held back. `flush(store)` or `flush(scope)` from testing
+     * also commits pending persistence immediately, ignoring the throttle window.
+     * Requires the default coalescing; a negative or non-finite value throws.
      */
     throttleMs?: number;
     /**
@@ -66,8 +67,12 @@ export interface IPersistOptions {
     version?: number;
     /** Synchronous migrations; each key `n` converts version `n - 1` into `n`. */
     migrate?: Record<number, (state: unknown) => unknown>;
-    /** Prunes closed schemas, or controls merging for custom dictionaries. */
-    prune?: boolean | ((saved: unknown, current: unknown) => unknown);
+    /**
+     * After migrations, receives saved data and current defaults. `true` prunes unknown keys and
+     * fills defaults; for a callback, the third `merge` argument does the same with the saved data.
+     * A callback that ignores it behaves as before.
+     */
+    prune?: boolean | ((saved: unknown, current: unknown, merge: (saved: unknown) => unknown) => unknown);
     /** Ordered fallback keys read only when the current key is absent. */
     previousKeys?: readonly string[];
 }

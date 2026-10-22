@@ -1,6 +1,7 @@
 import {TDisposer} from "@/Carburetor/Models/Base";
 import {ICarburetor} from "@/Carburetor/Models/Store";
 import {IStorageLike, IPersistOptions} from "@/Carburetor/Models/Tooling";
+import {CARBURETOR_PERSIST_DRAIN} from "@/Carburetor/Store/Utils/Models";
 import {readFallback} from "@/Carburetor/Tooling/Persist/ReadFallback";
 import {reportRemovalFailure} from "@/Carburetor/Tooling/Persist/ReportRemovalFailure";
 import {reportRestoreFailure} from "@/Carburetor/Tooling/Persist/ReportRestoreFailure";
@@ -222,11 +223,11 @@ export const persistPartitions = <T extends object>(
         throttleMs === undefined ? 0 : Math.max(0, throttleMs - (Date.now() - lastWriteAt));
 
     /** Writes every dirty branch once the throttle window allows it. */
-    const dispatch = (): void => {
+    const dispatch = (forced: boolean = false): void => {
         if (disposed || (pending.size === 0 && failed.size === 0)) {
             return;
         }
-        const wait = windowRemainder();
+        const wait = forced ? 0 : windowRemainder();
         if (wait > 0) {
             if (timer === undefined) {
                 timer = setTimeout(() => {
@@ -266,6 +267,11 @@ export const persistPartitions = <T extends object>(
             });
         }
     };
+    const drains = coalesce === false ? undefined : ((carburetor as ICarburetor<T> & {
+        [CARBURETOR_PERSIST_DRAIN]?: Set<() => void>;
+    })[CARBURETOR_PERSIST_DRAIN] ??= new Set<() => void>());
+    const drain = (): void => dispatch(true);
+    drains?.add(drain);
     const ids = partitions.map((branch: string) =>
         carburetor.subscribe(
             coalesce === false ? () => writeBranch(branch) : () => markDirty(branch),
@@ -274,6 +280,7 @@ export const persistPartitions = <T extends object>(
     );
     return () => {
         disposed = true;
+        drains?.delete(drain);
         ids.forEach(id => carburetor.unsubscribe(id));
         if (timer !== undefined) {
             clearTimeout(timer);

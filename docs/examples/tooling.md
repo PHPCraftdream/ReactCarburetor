@@ -62,6 +62,9 @@ outlives the history to stop recording, and `clear()` to drop all entries in pla
 every change. Storage is any object with `getItem`/`setItem`/`removeItem` (`IStorageLike`), so
 `localStorage` and in-memory test doubles both fit.
 
+`flush(store)` or `flush(scope)` from testing also commits pending persistence synchronously,
+ignoring any `throttleMs` window.
+
 <!-- example:file examples/api/tooling/Persist.ts -->
 ```ts
 import {bind, Carburetor, IPersistOptions, IStorageLike, persist} from 'react-carburetor';
@@ -113,7 +116,10 @@ names to store under their own keys (`todos.items` next to `todos.filters`), rew
 the branches that changed — a flush then pays for the dirty partitions instead of the whole
 state. The first write seals every partition once; restore composes the stored branches over
 the current state, and a legacy single-key entry is still read when no partition entries
-exist yet.
+exist yet. A function `prune` callback receives migrated saved data before merging and the
+current wire baseline. Its third argument, `merge(saved)`, opts into filling defaults and
+pruning unknown keys; a callback that ignores it behaves as before.
+`partitions` continues to reject `version`, `migrate`, and `prune`.
 
 ## Redux DevTools
 

@@ -32,6 +32,8 @@ export const CARBURETOR_REPLAY_PATCHES: unique symbol = Symbol.for('react-carbur
 
 /** Flushes one store's pending scheduler callbacks for test execution. */
 export const CARBURETOR_FLUSH: unique symbol = Symbol.for('react-carburetor/v1/testing-flush-store');
+/** Registers one persistence write-drain callback on a store. */
+export const CARBURETOR_PERSIST_DRAIN: unique symbol = Symbol.for('react-carburetor/v1/persist-drain');
 /** Visits owned scope instances and descendants without exposing ownership collections. */
 export const SCOPE_TESTING_VISIT: unique symbol = Symbol.for('react-carburetor/v1/testing-scope-visit');
 

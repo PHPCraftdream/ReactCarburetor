@@ -1,6 +1,7 @@
 import {TDisposer} from "@/Carburetor/Models/Base";
 import {ICarburetor} from "@/Carburetor/Models/Store";
 import {IPersistOptions} from "@/Carburetor/Models/Tooling";
+import {CARBURETOR_PERSIST_DRAIN} from '@/Carburetor/Store/Utils/Models';
 import {mergeSaved} from '@/Carburetor/Tooling/Persist/MergeSaved';
 import {persistPartitions} from '@/Carburetor/Tooling/Persist/PersistPartitions';
 import {readFallback} from '@/Carburetor/Tooling/Persist/ReadFallback';
@@ -12,8 +13,9 @@ import {reportRestoreFailure} from '@/Carburetor/Tooling/Persist/ReportRestoreFa
  * writes its wire form (`toJSON()`) on every change. Returns a disposer that stops the mirroring.
  *
  * Writes are coalesced by default: one stringify per microtask instead of one per write (R33-07)
- * — the latest state is still what gets stored, and the disposer writes any state a deferred
- * scheduler had not yet delivered. `coalesce: false` writes on every notification, so with the
+ * — the latest state is still what gets stored, and `flush()` forces any pending persistence,
+ * ignoring the throttle window. The disposer writes any state a deferred scheduler had not yet
+ * delivered. `coalesce: false` writes on every notification, so with the
  * default immediate delivery a write lands in storage before the call that caused it returns; a
  * deferring scheduler or a transaction delays the notification, and the write with it.
  * `throttleMs` bounds how often storage is written: the first write still happens right away,
@@ -40,6 +42,10 @@ import {reportRestoreFailure} from '@/Carburetor/Tooling/Persist/ReportRestoreFa
  * composite restore over several stored partitions keeps every entry (the culprit is unknown)
  * and is only reported. With `version`, a failed migration or a newer stored version keeps the
  * entry untouched and blocks this subscription's writes.
+ * With a function `prune`, the callback sees migrated saved data before merging and the current
+ * wire baseline. Its third argument is an opt-in `merge(saved)` helper that fills defaults and
+ * prunes unknown keys; a callback that ignores it behaves as before.
+ * Partitions reject `version`, `migrate`, and `prune` unchanged.
  *
  * @param carburetor - both read and written: its snapshot is stored, stored data is restored into it
  * @param options - `key` and `storage` are required; a failed load or write reaches `onError` when given
@@ -147,7 +153,8 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
                 const needsWireBaseline = version !== undefined || prune === true || typeof prune === 'function';
                 const currentWire = needsWireBaseline ? carburetor.toJSON() : undefined;
                 if (typeof prune === 'function') {
-                    data = prune(data, currentWire);
+                    data = prune(data, currentWire, saved =>
+                        mergeSaved(saved, currentWire, true, carburetor.getData()));
                 }
                 if (version !== undefined || prune === true) {
                     data = mergeSaved(data, currentWire, prune === true, carburetor.getData());
@@ -234,9 +241,10 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     // stringify, since write() reads fresh state rather than a scheduled snapshot. A
     // throttleMs window holds the write back until the time since the previous write passed.
     let pending = false;
+    let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const flush = (forced: boolean = false): void => {
-        if (!pending) {
+        if (disposed || !pending) {
             return;
         }
         if (!forced && throttleMs !== undefined) {
@@ -258,6 +266,11 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         pending = false;
         write();
     };
+    const drains = ((carburetor as ICarburetor<T> & {
+        [CARBURETOR_PERSIST_DRAIN]?: Set<() => void>;
+    })[CARBURETOR_PERSIST_DRAIN] ??= new Set<() => void>());
+    const drain = (): void => flush(true);
+    drains.add(drain);
     const id = carburetor.subscribe(() => {
         if (pending) {
             return;
@@ -266,14 +279,14 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         queueMicrotask(() => flush());
     });
     return () => {
+        drains.delete(drain);
         carburetor.unsubscribe(id);
         if (timer !== undefined) {
             clearTimeout(timer);
             timer = undefined;
         }
-        // A flush the scheduler had not delivered yet was cancelled by unsubscribe; persist
-        // any drift. Forced: a write held back by the throttle window must not be lost.
         flush(true);
+        disposed = true;
         if (carburetor.getVersion() !== lastSeenVersion) {
             write();
         }
