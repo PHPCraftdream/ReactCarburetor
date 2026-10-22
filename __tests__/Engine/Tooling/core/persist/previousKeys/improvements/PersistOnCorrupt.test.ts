@@ -177,7 +177,7 @@ describe('persist onCorrupt', () => {
         let removals = 0;
         const writes: string[] = [];
         const storage: IStorageLike = {
-            getItem: () => JSON.stringify({__carburetorVersion: 1, data: {count: 5}}),
+            getItem: () => JSON.stringify({__carburetorVersion: 0, data: {count: 5}}),
             removeItem: () => { removals++; },
             setItem: (_key, value) => { writes.push(value); },
         };

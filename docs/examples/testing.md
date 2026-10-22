@@ -4,7 +4,8 @@ Use `createTestClock()` for timer-driven behavior of scope-owned stores, or runn
 options argument. `clock.now()` returns simulated time, `clock.advance(ms)` runs due timers in the window,
 `clock.pending` reports queued timers, and `clock.runAll()` drains them, with a 10,000-callback guard for
 recurring timers. Constructor-time timers of override stores and any store passed to `clock.attach(store)`
-run on the clock, with the remaining delay preserved; only stores never attached keep global timers.
+run on the clock with their full delay counted from the attachment; only stores never attached keep
+global timers.
 
 <!-- example:file examples/readme/App/StoreTesting.ts#clock-test -->
 ```ts

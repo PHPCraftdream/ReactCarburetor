@@ -32,8 +32,15 @@ export const assertProtocol = (binary: string): void => {
     }
 
     const result = spawnSync(binary, ['--version'], {encoding: 'utf8'});
-    // An old build rejects the unknown flag with exit 2; a launch failure looks the same to us.
-    const missing = Boolean(result.error) || result.status !== 0;
+    // A launch failure (missing file, not executable) is not a version problem: name it as such.
+    if (result.error) {
+        throw new Error(
+            `react-carburetor/lint: could not run the native binary at ${binary}: ${result.error.message}`
+        );
+    }
+
+    // An old build rejects the unknown flag with exit 2.
+    const missing = result.status !== 0;
     const firstLine = (result.stdout || '').trim().split('\n')[0];
     const found = missing
         ? 'no --version support (older build)'

@@ -22,7 +22,9 @@ class StoreLifecycle {
     /** Attach a test clock to a real Carburetor store at scope handout.
      *
      * Attaching the same clock again is a no-op. Attaching a different clock moves every pending
-     * timer onto it; the remaining delay is preserved on the old clock's timeline.
+     * timer onto it. A real timer starts its full delay on the clock (wall time never mixes into the
+     * simulated timeline, so the result is deterministic); a timer moving between clocks keeps
+     * its remaining delay.
      *
      * @param store - store that will use the test clock
      * @param clock - optional test clock to associate with the store
@@ -46,7 +48,7 @@ class StoreLifecycle {
         } else if (entry.globalId !== undefined) clearTimeout(entry.globalId);
     }
 
-    /** Re-schedule a pending entry on a clock, preserving the remaining delay.
+    /** Re-schedule a pending entry on a clock: full delay from a real timer, remaining delay from a clock.
      *
      * @param state - lifecycle state of the store owning the timer
      * @param entry - pending timer entry to move
@@ -58,7 +60,7 @@ class StoreLifecycle {
         clock: ITestClock
     ): void {
         this.cancelEntry(entry);
-        const elapsed = (entry.clock !== undefined ? entry.clock.now() : Date.now()) - entry.startedAt;
+        const elapsed = entry.clock !== undefined ? entry.clock.now() - entry.startedAt : 0;
         entry.delay = Math.max(0, entry.delay - elapsed);
         entry.startedAt = clock.now();
         entry.clock = clock;
