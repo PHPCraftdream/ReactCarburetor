@@ -107,7 +107,10 @@ through the engine diagnostics in development, or the caller's `onError` (in pro
 `onError` the removal is silent). A restore the store rejects is reported too, and the stored
 data is removed only when the culprit is known — a single key or the single stored partition;
 with several partitions every stored entry is kept (the culprit is unknown) and the failure is
-only reported.
+only reported. `onCorrupt: 'reset'` makes persist remove an unparseable entry or one the store
+rejects and keep writing the live state, instead of the default keep-and-stop-writing under
+`version` or a function `prune`; it never applies to fallback keys, newer versions, failed
+migrations, or throwing prune callbacks, and it cannot be combined with `partitions`.
 
 Two options bound the cost of mirroring large stores. `throttleMs` sets the minimum time
 between storage writes: the first write still happens right away, later flushes wait out the

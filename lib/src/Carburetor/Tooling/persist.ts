@@ -41,17 +41,21 @@ import {reportRestoreFailure} from './Persist/ReportRestoreFailure';
  * removal is silent there, while development reports it through the engine diagnostics. A
  * composite restore over several stored partitions keeps every entry (the culprit is unknown)
  * and is only reported. With `version`, a failed migration or a newer stored version keeps the
- * entry untouched and blocks this subscription's writes.
+ * entry untouched and blocks this subscription's writes. With `onCorrupt: 'reset'`, an
+ * unparseable entry or a restore the store rejects is removed and reported even under `version`
+ * or a function `prune`, and the subscription keeps writing instead of blocking; failed
+ * migrations, newer stored versions, throwing prune callbacks, and fallback keys still keep the
+ * entry and block.
  * With a function `prune`, the callback sees migrated saved data before merging and the current
  * wire baseline. Its third argument is an opt-in `merge(saved)` helper that fills defaults and
  * prunes unknown keys; a callback that ignores it behaves as before.
- * Partitions reject `version`, `migrate`, and `prune` unchanged.
+ * Partitions reject `version`, `migrate`, `prune`, and `onCorrupt` unchanged.
  *
  * @param carburetor - both read and written: its snapshot is stored, stored data is restored into it
  * @param options - `key` and `storage` are required; a failed load or write reaches `onError` when given
  */
 export const persist = <T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions): TDisposer => {
-    const {key, storage, coalesce, throttleMs, partitions, version, migrate, prune, previousKeys} = options;
+    const {key, storage, coalesce, throttleMs, partitions, version, migrate, prune, previousKeys, onCorrupt} = options;
 
     if (previousKeys !== undefined && (!Array.isArray(previousKeys)
         || previousKeys.some(
@@ -73,8 +77,12 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
             }
         }
     }
-    if (partitions !== undefined && (version !== undefined || migrate !== undefined || prune !== undefined)) {
-        throw new Error('persist: version, migrate, and prune cannot be combined with partitions');
+    if (onCorrupt !== undefined && onCorrupt !== 'keep' && onCorrupt !== 'reset') {
+        throw new RangeError("persist: onCorrupt must be 'keep' or 'reset'");
+    }
+    if (partitions !== undefined
+        && (version !== undefined || migrate !== undefined || prune !== undefined || onCorrupt !== undefined)) {
+        throw new Error('persist: version, migrate, prune, and onCorrupt cannot be combined with partitions');
     }
     if (throttleMs !== undefined) {
         if (!Number.isFinite(throttleMs) || throttleMs < 0) {
@@ -119,13 +127,14 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         stored = null;
     }
 
+    const keepCorrupt = version !== undefined || typeof prune === 'function';
     let blocked = false;
     if (stored !== null) {
         let data: unknown;
         try {
             data = JSON.parse(stored);
         } catch (error: unknown) {
-            if (source !== key || version !== undefined || typeof prune === 'function') {
+            if (source !== key || (keepCorrupt && onCorrupt !== 'reset')) {
                 blocked = source === key;
                 if (source === key && !options.onError) {
                     throw error;
@@ -145,6 +154,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
 
         if (stored !== null) {
             let restored = false;
+            let restoreFailed = false;
             try {
                 if (version !== undefined) {
                     const decoded = readVersioned(data, version, migrate as NonNullable<typeof migrate>);
@@ -159,15 +169,25 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
                 if (version !== undefined || prune === true) {
                     data = mergeSaved(data, currentWire, prune === true, carburetor.getData());
                 }
+                restoreFailed = true;
                 carburetor.restore(data as T);
+                restoreFailed = false;
                 restored = true;
             } catch (error: unknown) {
-                if (version !== undefined || typeof prune === 'function') {
+                // A migration or prune-callback throw is never reset: only a restore rejection is.
+                if (keepCorrupt && (onCorrupt !== 'reset' || !restoreFailed)) {
                     blocked = true;
                     if (source === key && !options.onError) {
                         throw error;
                     }
                     reportRestoreFailure(source, error, options.onError, 'the stored data is kept');
+                } else if (restoreFailed && onCorrupt === 'reset' && source === key) {
+                    reportRestoreFailure(key, error, options.onError, 'the stored data was removed');
+                    try {
+                        storage.removeItem(key);
+                    } catch (removeError: unknown) {
+                        reportRemovalFailure(options.onError, removeError);
+                    }
                 } else if (source !== key) {
                     reportRestoreFailure(source, error, options.onError, 'the stored data is kept');
                 } else {

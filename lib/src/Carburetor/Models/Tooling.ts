@@ -73,6 +73,16 @@ export interface IPersistOptions {
      * A callback that ignores it behaves as before.
      */
     prune?: boolean | ((saved: unknown, current: unknown, merge: (saved: unknown) => unknown) => unknown);
+    /**
+     * Policy for corrupt stored data under `key`: an entry that cannot be parsed, or a restore
+     * the store rejects. 'keep' (default) preserves today's behaviour: with `version` or a
+     * function `prune` the entry is kept and this subscription stops writing; otherwise the
+     * entry is removed and reported. 'reset' always removes the entry, reports it, and keeps
+     * writing the live state. Never applies to a fallback `previousKeys` source, a newer stored
+     * version, a failed or throwing migration, a throwing prune callback, or a failed read.
+     * Cannot be combined with `partitions`.
+     */
+    onCorrupt?: 'keep' | 'reset';
     /** Ordered fallback keys read only when the current key is absent. */
     previousKeys?: readonly string[];
 }
