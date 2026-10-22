@@ -59,19 +59,20 @@ Raw references from `getData()` cannot be revoked.
 | `undo` / `redo` | `(): boolean` | Moves to the prior / next recorded state; returns whether it moved. | [same](../lib/src/Carburetor/Tooling/CarburetorHistory.ts) |
 | `clear` | `(): void` | Drops past, future and pending changes, captures current baseline, and continues observing. | [same](../lib/src/Carburetor/Tooling/CarburetorHistory.ts) |
 | `disconnect` | `(): void` | Detaches history observation; does not clear stored steps. | [same](../lib/src/Carburetor/Tooling/CarburetorHistory.ts) |
-| `persist<T extends object>` | `(carburetor: ICarburetor<T>, options: IPersistOptions): TDisposer` | Restores once and coalesces writes per microtask by default; see [persist](#persist) for versioning and merge behavior. | [`persist.ts`](../lib/src/Carburetor/Tooling/persist.ts) |
+| `persist<T extends object>` | `(carburetor: ICarburetor<T>, options: IPersistOptions<T>): TDisposer` | Restores once and coalesces writes per microtask by default; see [persist](#persist) for versioning and merge behavior. | [`persist.ts`](../lib/src/Carburetor/Tooling/persist.ts) |
 | `connectDevTools` | `(carburetors: IDict<IInspectable>, options?: IDevToolsOptions): TDisposer` | One action per store update; never echoes a time-travel jump, even under a deferring scheduler; no-op without the extension; disposes store and extension subscriptions when present, without closing the connection. | [`connectDevTools.ts`](../lib/src/Carburetor/Tooling/connectDevTools.ts) |
 | `watch<R>` | `(select: TSelector<T, R>, onChange: (next: TReadonly<R>, previous: TReadonly<R>) => void): TDisposer` | Watches changed detached selections; no initial callback. The disposer stops watching. | [`Carburetor.ts`](../lib/src/Carburetor/Store/Carburetor.ts) |
 | `waitForUpdate` | `(source: ICarburetorSubscription, timeout?: number): Promise<void>` | Resolves on the next notification. Timeout defaults to `1000` ms; on timeout rejects with `Error("waitForUpdate: no update within " + timeout + "ms")`; unsubscribes on either path. | [`waitForUpdate.ts`](../lib/src/Carburetor/Tooling/waitForUpdate.ts) |
 
 ### persist
 
-`persist<T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions): TDisposer`
+`persist<T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions<T>): TDisposer`
 restores once and returns a disposer. Options are `key` and `storage` (required),
 `onError?: (error: unknown) => void`, `coalesce?: boolean`, `throttleMs?: number`,
 `partitions?: ReadonlyArray<string>`, `version?: number`,
 `migrate?: Record<number, (state: unknown) => unknown>`, and
-`prune?: boolean | ((saved: unknown, current: unknown) => unknown)`,
+`prune?: boolean | ((saved: unknown, current: T, merge: (saved: unknown) => T) => T)`,
+`writeAfterRestore?: 'changed' | 'always' | 'never'`, and
 `previousKeys?: readonly string[]`.
 
 `version` must be a non-negative integer. Each `migrate[n]` converts version n-1 to n; the whole
@@ -84,6 +85,13 @@ absent; the first present entry is restored, normalized to the current key immed
 only after that write succeeds. Invalid stored data leaves the old entry intact. An empty list is
 valid; entries must be non-empty, unique, and distinct from the current key. For partitions, old
 whole-key fallback applies only when the current key and its partition entries are absent.
+
+`writeAfterRestore` controls whether a successful restore from the current key is written back
+at connect: `'changed'` (default) writes only when the wire form no longer matches the stored
+text, so prune, migration, or default filling fix stale entries immediately; `'always'` writes
+after every restore from the key; `'never'` restores without writing. The connect write does not
+move the `throttleMs` window, never applies to a `previousKeys` fallback source, and cannot be
+combined with `partitions`.
 
 Versioned restores and `prune: true` preserve missing current defaults recursively. Pruning only
 removes unknown keys at populated plain-object schemas; empty objects are open dictionaries.
@@ -183,7 +191,7 @@ The four lint types below come from `react-carburetor/lint`.
 |---|---|---|---|
 | `TDisposer` | `() => void` | Disposes an observation or subscription. | [`Base.ts`](../lib/src/Carburetor/Models/Base.ts) |
 | `IHistoryOptions` | `{limit?: number}` | Maximum history entries; positive safe integer, default `50`. | [`CarburetorHistory.ts`](../lib/src/Carburetor/Tooling/CarburetorHistory.ts) |
-| `IPersistOptions` | `{key: string; storage: IStorageLike; onError?: (error: unknown) => void; coalesce?: boolean; throttleMs?: number; partitions?: ReadonlyArray<string>; version?: number; migrate?: Record<number, (state: unknown) => unknown>; prune?: boolean \| ((saved: unknown, current: unknown) => unknown)}` | Persistence key, storage adapter and optional write, versioning and schema options. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
+| `IPersistOptions` | `{key: string; storage: IStorageLike; onError?: (error: unknown) => void; coalesce?: boolean; throttleMs?: number; partitions?: ReadonlyArray<string>; version?: number; migrate?: Record<number, (state: unknown) => unknown>; prune?: boolean \| ((saved: unknown, current: T, merge: (saved: unknown) => T) => T); writeAfterRestore?: 'changed' \| 'always' \| 'never'}` | Persistence key, storage adapter and optional write, versioning and schema options. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
 | `IUpdateScheduler` | `{schedule(uid: string, updater: TUpdater): void; cancel(uid: string): void}` | Update delivery policy. | [`Store.ts`](../lib/src/Carburetor/Models/Store.ts) |
 | `IStorageLike` | `{getItem(key: string): string \| null; setItem(key: string, value: string): void; removeItem(key: string): void}` | Persistence storage adapter. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
 | `IDevToolsExtension` | `{connect(options: {name?: string}): IDevToolsConnection}` | Extension adapter. | [same](../lib/src/Carburetor/Models/Tooling.ts) |

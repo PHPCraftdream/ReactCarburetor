@@ -21,7 +21,7 @@ const memoryStorage = (): IStorageLike => {
 };
 
 const store = new TodoCarburetor({items: []});
-const options: IPersistOptions = {
+const options: IPersistOptions<{items: string[]}> = {
     key: 'todos',
     storage: memoryStorage(),
     coalesce: false,

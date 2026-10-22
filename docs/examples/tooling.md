@@ -89,7 +89,7 @@ const memoryStorage = (): IStorageLike => {
 };
 
 const store = new TodoCarburetor({items: []});
-const options: IPersistOptions = {
+const options: IPersistOptions<{items: string[]}> = {
     key: 'todos',
     storage: memoryStorage(),
     coalesce: false,
@@ -111,6 +111,14 @@ only reported. `onCorrupt: 'reset'` makes persist remove an unparseable entry or
 rejects and keep writing the live state, instead of the default keep-and-stop-writing under
 `version` or a function `prune`; it never applies to fallback keys, newer versions, failed
 migrations, or throwing prune callbacks, and it cannot be combined with `partitions`.
+
+After a successful restore from the current key, `writeAfterRestore` decides whether persist
+writes the restored state back at connect: `'changed'` (the default) rewrites only when the
+serialization a normal write would produce no longer matches the stored text — so prune,
+migration, or default filling clean up stale entries right away instead of at the first change —
+`'always'` rewrites after every restore from the key, and `'never'` opts out and keeps the old
+write-only-on-change behaviour. The write never moves a `throttleMs` window and never applies
+to a `previousKeys` fallback source, whose transfer write already covers it.
 
 Two options bound the cost of mirroring large stores. `throttleMs` sets the minimum time
 between storage writes: the first write still happens right away, later flushes wait out the

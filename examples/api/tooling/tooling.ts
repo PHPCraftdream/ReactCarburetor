@@ -6,7 +6,7 @@ import {
 interface State {count: number}
 const store = new Carburetor<State>({count: 0});
 const storage: IStorageLike = {getItem: () => null, setItem: () => undefined, removeItem: () => undefined};
-const persistenceOptions: IPersistOptions = {key: 'counter', storage};
+const persistenceOptions: IPersistOptions<State> = {key: 'counter', storage};
 const historyOptions: IHistoryOptions = {limit: 20};
 const message: IDevToolsMessage = {type: 'DISPATCH'};
 const connection: IDevToolsConnection = {init: () => undefined, send: () => undefined, subscribe: () => undefined};

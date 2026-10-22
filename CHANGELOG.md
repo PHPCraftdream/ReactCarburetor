@@ -65,6 +65,7 @@ Entries below record development history in change order; where contracts differ
 
 ### Added
 
+- `persist` option `writeAfterRestore: 'changed' | 'always' | 'never'` (default 'changed'): right after a successful restore from `key`, the restored state is written back when its serialization differs from the stored text, so a `prune`, a migration or filled defaults no longer leave the old entry in storage until the first change. The write at connect does not move the `throttleMs` window; `'never'` keeps the previous behaviour; it cannot be combined with `partitions`.
 - `persist` option `onCorrupt: 'keep' | 'reset'` (default 'keep', the previous behaviour): with `version` or a function `prune`, an unparseable stored entry or one the store rejects is kept and the subscription stops writing for the session; `'reset'` removes and reports it like `prune: true` does and keeps writing. Newer stored versions, failed migrations and throwing prune callbacks are never reset; it cannot be combined with `partitions`.
 - `createTestClock()` takes over timers a store already scheduled: attaching a clock (`createTestScope(overrides, {clock})` for the overrides, or `clock.attach(store)` for a store outside a scope) moves the store's pending `after()` timers onto the clock with their full delay counted from the attachment, so constructor-time timers of instances built earlier run on it too. Disposers returned earlier keep working.
 - `react-carburetor/lint` checks the native binary before linting: `carburetor-lint --version` prints `carburetor-lint <version> protocol <N>` and the bridge compares N with its own once per binary. A binary from another build, or an older one without the flag, now gives one error that says to rebuild (`cargo build --release`) or install a matching `carburetor-lint`, instead of the config parser's `unknown key`.
@@ -153,6 +154,7 @@ Entries below record development history in change order; where contracts differ
 
 ### Breaking
 
+- `IPersistOptions` is generic, `IPersistOptions<T>`, and `persist` takes the store's data type: `prune` as a function is `(saved: unknown, current: T, merge: (saved: unknown) => T) => T`, so `merge(saved)` and the result need no cast. `current` is the store's wire form, which is `T` only for stores that do not override `toJSON`. An options object annotated with the bare `IPersistOptions` that carries a `prune` function no longer passes to a typed `persist`; annotate it with the store's data type.
 - **Breaking:** the repository-private `carburetor-internal` lint plugin is gone; its rules are the
   native opt-in `carburetor/*` house-style rules, so disable comments name `carburetor/<rule>`.
 - **Breaking:** Class `useResource` returns a read-only view of the entry: assigning, defining or deleting a

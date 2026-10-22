@@ -17,7 +17,8 @@
     "__tests__/Engine/Resource/ResourceCache/Views/resource40/Surface.test.ts",
     "__tests__/Engine/Resource/Handles/EventHandles.typing.ts",
     "__tests__/Engine/Resource/Handles/CacheD2.test.tsx",
-    "__tests__/Engine/Store/Scheduling/subclass40/Contract.types.ts"
+    "__tests__/Engine/Store/Scheduling/subclass40/Contract.types.ts",
+    "__tests__/Engine/Tooling/core/persist/previousKeys/PersistOptions.typing.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

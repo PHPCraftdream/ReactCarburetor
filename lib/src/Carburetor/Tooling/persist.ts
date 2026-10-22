@@ -47,15 +47,25 @@ import {reportRestoreFailure} from './Persist/ReportRestoreFailure';
  * migrations, newer stored versions, throwing prune callbacks, and fallback keys still keep the
  * entry and block.
  * With a function `prune`, the callback sees migrated saved data before merging and the current
- * wire baseline. Its third argument is an opt-in `merge(saved)` helper that fills defaults and
- * prunes unknown keys; a callback that ignores it behaves as before.
+ * wire baseline. `saved` stays `unknown` (raw stored JSON — validate it yourself); `current` is
+ * typed as the store's data type `T`, exact only for stores whose wire form (`toJSON()`) equals
+ * their data type — stores overriding `toJSON` see their wire form instead. The third argument
+ * is an opt-in `merge(saved): T` helper that fills defaults and prunes unknown keys; a callback
+ * that ignores it behaves as before, and its result is what `restore()` receives.
  * Partitions reject `version`, `migrate`, `prune`, and `onCorrupt` unchanged.
+ * After a successful restore from `key`, `writeAfterRestore` decides whether the restored state
+ * is written back: 'changed' (default) rewrites only when the wire form no longer matches the
+ * stored text — prune, migration, or default filling then clean up stale entries at connect —
+ * 'always' rewrites after every restore from `key`, and 'never' keeps the previous
+ * write-only-on-change behaviour. The write never moves the `throttleMs` window and does not
+ * apply to a `previousKeys` fallback source, whose transfer write already covers it.
  *
  * @param carburetor - both read and written: its snapshot is stored, stored data is restored into it
  * @param options - `key` and `storage` are required; a failed load or write reaches `onError` when given
  */
-export const persist = <T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions): TDisposer => {
-    const {key, storage, coalesce, throttleMs, partitions, version, migrate, prune, previousKeys, onCorrupt} = options;
+export const persist = <T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions<T>): TDisposer => {
+    const {key, storage, coalesce, throttleMs, partitions, version, migrate, prune, previousKeys, onCorrupt,
+        writeAfterRestore} = options;
 
     if (previousKeys !== undefined && (!Array.isArray(previousKeys)
         || previousKeys.some(
@@ -80,9 +90,15 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     if (onCorrupt !== undefined && onCorrupt !== 'keep' && onCorrupt !== 'reset') {
         throw new RangeError("persist: onCorrupt must be 'keep' or 'reset'");
     }
+    if (writeAfterRestore !== undefined
+        && writeAfterRestore !== 'changed' && writeAfterRestore !== 'always' && writeAfterRestore !== 'never') {
+        throw new RangeError("persist: writeAfterRestore must be 'changed', 'always', or 'never'");
+    }
     if (partitions !== undefined
-        && (version !== undefined || migrate !== undefined || prune !== undefined || onCorrupt !== undefined)) {
-        throw new Error('persist: version, migrate, prune, and onCorrupt cannot be combined with partitions');
+        && (version !== undefined || migrate !== undefined || prune !== undefined || onCorrupt !== undefined
+            || writeAfterRestore !== undefined)) {
+        throw new Error(
+            'persist: version, migrate, prune, onCorrupt, and writeAfterRestore cannot be combined with partitions');
     }
     if (throttleMs !== undefined) {
         if (!Number.isFinite(throttleMs) || throttleMs < 0) {
@@ -129,6 +145,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
 
     const keepCorrupt = version !== undefined || typeof prune === 'function';
     let blocked = false;
+    let restoredFromKey = false;
     if (stored !== null) {
         let data: unknown;
         try {
@@ -163,8 +180,10 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
                 const needsWireBaseline = version !== undefined || prune === true || typeof prune === 'function';
                 const currentWire = needsWireBaseline ? carburetor.toJSON() : undefined;
                 if (typeof prune === 'function') {
-                    data = prune(data, currentWire, saved =>
-                        mergeSaved(saved, currentWire, true, carburetor.getData()));
+                    // `data` is unknown here (stored JSON, possibly migrated); the prune result is
+                    // typed T but the runtime cannot verify raw stored data.
+                    data = prune(data, currentWire as T, saved =>
+                        mergeSaved(saved, currentWire, true, carburetor.getData()) as T);
                 }
                 if (version !== undefined || prune === true) {
                     data = mergeSaved(data, currentWire, prune === true, carburetor.getData());
@@ -173,6 +192,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
                 carburetor.restore(data as T);
                 restoreFailed = false;
                 restored = true;
+                restoredFromKey = source === key;
             } catch (error: unknown) {
                 // A migration or prune-callback throw is never reset: only a restore rejection is.
                 if (keepCorrupt && (onCorrupt !== 'reset' || !restoreFailed)) {
@@ -222,6 +242,28 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     let lastSeenVersion = carburetor.getVersion();
     let lastWriteAt = 0;
 
+    // The store's wire form: JSON.stringify invokes its toJSON(), without cloning it.
+    const serialize = (): string => version === undefined
+        ? JSON.stringify(carburetor)
+        : JSON.stringify({__carburetorVersion: version, data: carburetor.toJSON()});
+
+    // Fix up what restore changed (prune, migration, defaults) at connect instead of waiting for
+    // the first change. It must not move the throttle window; the previousKeys transfer above
+    // already wrote the new key.
+    if (writeAfterRestore !== 'never' && restoredFromKey && stored !== null) {
+        const value = serialize();
+        if (writeAfterRestore === 'always' || value !== stored) {
+            lastSeenVersion = carburetor.getVersion();
+            try {
+                storage.setItem(key, value);
+            } catch (error: unknown) {
+                if (options.onError) {
+                    options.onError(error);
+                }
+            }
+        }
+    }
+
     // A failing write must reach onError like a failed restore does, and must not cut off the
     // subscribers notified after this one; the last good entry stays in place.
     const write = (): void => {
@@ -230,11 +272,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         if (blocked) return;
         lastSeenVersion = carburetor.getVersion();
         try {
-            // The store's wire form: JSON.stringify invokes its toJSON(), without cloning it.
-            const value = version === undefined
-                ? JSON.stringify(carburetor)
-                : JSON.stringify({__carburetorVersion: version, data: carburetor.toJSON()});
-            storage.setItem(key, value);
+            storage.setItem(key, serialize());
             lastWriteAt = Date.now();
         } catch (error: unknown) {
             if (options.onError) {

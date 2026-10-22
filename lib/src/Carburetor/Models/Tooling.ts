@@ -21,7 +21,7 @@ export interface IStorageLike {
     removeItem: (key: string) => void;
 }
 
-export interface IPersistOptions {
+export interface IPersistOptions<T = unknown> {
     key: string;
     storage: IStorageLike;
     /**
@@ -71,8 +71,13 @@ export interface IPersistOptions {
      * After migrations, receives saved data and current defaults. `true` prunes unknown keys and
      * fills defaults; for a callback, the third `merge` argument does the same with the saved data.
      * A callback that ignores it behaves as before.
+     *
+     * Type notes: `saved` is raw stored JSON and stays `unknown` — validate it yourself. `current`
+     * is the store's wire form (`toJSON()`): the data type `T` for ordinary stores, but NOT `T`
+     * for stores overriding `toJSON` (Map-backed ones, for example). The callback result is what
+     * `restore()` receives, so it must be `T`.
      */
-    prune?: boolean | ((saved: unknown, current: unknown, merge: (saved: unknown) => unknown) => unknown);
+    prune?: boolean | ((saved: unknown, current: T, merge: (saved: unknown) => T) => T);
     /**
      * Policy for corrupt stored data under `key`: an entry that cannot be parsed, or a restore
      * the store rejects. 'keep' (default) preserves today's behaviour: with `version` or a
@@ -83,6 +88,17 @@ export interface IPersistOptions {
      * Cannot be combined with `partitions`.
      */
     onCorrupt?: 'keep' | 'reset';
+    /**
+     * Whether persist writes the restored state back to storage right after a successful
+     * restore from `key`. 'changed' (default) writes only when the serialization that a normal
+     * write would produce differs from the stored text — prune, migration, or default filling
+     * then clean up stale entries at connect instead of waiting for the first change. 'always'
+     * writes after every successful restore from `key`. 'never' restores without writing — the
+     * previous behaviour. Never applies to a `previousKeys` fallback source (its transfer write
+     * already covers it), a blocked subscription, or a reset-removed entry, and the write does
+     * not move the `throttleMs` window. Cannot be combined with `partitions`.
+     */
+    writeAfterRestore?: 'changed' | 'always' | 'never';
     /** Ordered fallback keys read only when the current key is absent. */
     previousKeys?: readonly string[];
 }
