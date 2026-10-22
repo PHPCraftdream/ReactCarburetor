@@ -4,10 +4,11 @@ import {CarburetorProvider, CarburetorScope} from '@/Carburetor';
 import {RoundStore, countKinds, countWrong} from '../../../../examples/readme/App/RoundStore';
 import {RoundKindView, ScopedVisibleRound, scopedRoundToken} from
     '../../../../examples/readme/Computed/ScopedRound';
-import {registerStoreTest, scopeTest} from '../../../../examples/readme/App/StoreTesting';
+import {clockTest, registerStoreTest, scopeTest} from '../../../../examples/readme/App/StoreTesting';
 
 registerStoreTest();
 test('testing helper flushes throttled watch', scopeTest);
+test('test clock drives after()', clockTest);
 
 test('module const object mutators take arguments and readonly helper reads its input', () => {
     const store = new RoundStore({round: {kind: 'quiz', wrong: [0, 0], locked: false}});

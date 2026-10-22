@@ -1,4 +1,4 @@
-import {createTestScope, flush} from 'react-carburetor/testing';
+import {createTestClock, createTestScope, flush} from 'react-carburetor/testing';
 import {Carburetor, ComponentUpdateThrottle, waitForUpdate, carburetorToken} from 'react-carburetor';
 import {test, expect, rstest} from '@rstest/core';
 import {RoundStore} from './RoundStore';
@@ -91,3 +91,24 @@ export const registerStoreTest = (): void => {
 };
 // #endregion test-body
 
+// #region clock-test
+class TimerStore extends Carburetor<{count: number}> {
+    public delay(ms: number, task: () => void): void { this.after(ms, task); }
+}
+const timerToken = carburetorToken(() => new TimerStore({count: 0}), 'readme/store-testing-timer');
+
+export const clockTest = (): void => {
+    const clock = createTestClock();
+    const scope = createTestScope(undefined, {clock});
+    try {
+        const fired: string[] = [];
+        scope.get(timerToken).delay(25, () => { fired.push('done'); });
+        clock.advance(24);
+        expect(fired).toEqual([]);
+        clock.advance(1);
+        expect(fired).toEqual(['done']);
+    } finally {
+        scope.dispose();
+    }
+};
+// #endregion clock-test

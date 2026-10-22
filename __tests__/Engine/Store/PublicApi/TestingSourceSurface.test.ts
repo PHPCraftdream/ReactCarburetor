@@ -1,7 +1,7 @@
 import * as Testing from '@/Testing';
 
 /** The public subpath is deliberately limited to framework testing helpers. */
-const TESTING_SURFACE = ['createTestScope', 'flush'].sort();
+const TESTING_SURFACE = ['createTestClock', 'createTestScope', 'flush'].sort();
 
 describe('testing source surface', () => {
     test('exports exactly the documented helpers', () => {

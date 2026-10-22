@@ -19,7 +19,7 @@ describe('persist prune merge callback', () => {
         let seen: unknown;
         const stop = persist(store, options(storage, {
             prune: (saved, current, merge) => {
-                seen = [saved, current];
+                seen = JSON.parse(JSON.stringify([saved, current]));
                 return merge(saved);
             },
         }));

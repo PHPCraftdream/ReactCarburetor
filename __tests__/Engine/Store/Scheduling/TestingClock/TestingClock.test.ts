@@ -1,4 +1,5 @@
 import {rstest, expect} from '@rstest/core';
+import {Carburetor} from '@/Carburetor/Store/Carburetor';
 import {carburetorToken} from '@/Carburetor/Component/Scope/carburetorToken';
 import {createTestClock, createTestScope} from '@/Testing';
 

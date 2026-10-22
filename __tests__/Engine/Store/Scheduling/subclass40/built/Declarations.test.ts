@@ -39,12 +39,12 @@ describe('R40-01 built subclass contract', () => {
         const reexports = [...text.matchAll(/export\s*\{\s*([^}]+)\s*\}\s*from\s*['"][^'"]+['"]/g)]
             .flatMap(match => match[1].split(',').map(specifier => specifier.trim().split(/\s+as\s+/)[0]))
             .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-        expect(reexports).toEqual(['createTestScope', 'flush']);
+        expect(reexports).toEqual(['createTestClock', 'createTestScope', 'flush']);
     });
 
     test('complete built testing namespace contains only the documented helpers', async () => {
         const testing = await import('../../../../../../dist/esm/Testing/index.mjs');
-        expect(Object.keys(testing).sort()).toEqual(['createTestScope', 'flush']);
+        expect(Object.keys(testing).sort()).toEqual(['createTestClock', 'createTestScope', 'flush']);
     });
 
     test('component prototype string names contain only documented APIs and lifecycle', async () => {
