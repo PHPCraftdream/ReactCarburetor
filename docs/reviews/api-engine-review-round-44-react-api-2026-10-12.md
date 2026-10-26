@@ -1,5 +1,8 @@
 # Раунд 44 — React API, адаптеры и время жизни — 2026-10-12
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 ## База, объём и способ проверки
 
 - Reviewed base: **`acfd3e2b8e58210ce1076bf1683f666283216af5`**.
@@ -167,14 +170,14 @@ Actual frozen published `Interop/*.d.mts` прочитаны: эти разли�
 Ниже **точный source исполненных probes**, без временных implementation mutations. Агент подавал source через stdin из `Bun.spawn`; probe files не создавались. Рабочая директория — repo root; оба commands выполнялись последовательно:
 
 ```text
-node --expose-gc --input-type=module - D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/esm-prod
+node --expose-gc --input-type=module - ./worktrees/bench-dist/acfd3e2b8e58/esm-prod
 ```
 
 В stdin подавался соответственно A01 или A02 block. Parent может сохранить blocks в ignored `worktrees/r44-probes/react-a01.mjs` и `react-a02.mjs` и выполнить эквивалентно, также последовательно:
 
 ```text
-node --expose-gc worktrees/r44-probes/react-a01.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/esm-prod
-node --expose-gc worktrees/r44-probes/react-a02.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/esm-prod
+node --expose-gc worktrees/r44-probes/react-a01.mjs ./worktrees/bench-dist/acfd3e2b8e58/esm-prod
+node --expose-gc worktrees/r44-probes/react-a02.mjs ./worktrees/bench-dist/acfd3e2b8e58/esm-prod
 ```
 
 Текущие assertions **требуют наблюдённого baseline retention**. Для future fix acceptance A01 заменить только expected before-retained vector `[0, 0, count]` на `[0, 0, 0]`; A02 — `[false, true, false, true]` на `[false, false, false, false]`. Controls/DOM/re-arm assertions оставляются. Snippets непосредственно поддерживают ESM directories; CJS/four-format расширение loader — задача parent, не исполненный здесь matrix claim.
@@ -345,13 +348,13 @@ console.log(JSON.stringify({node: process.version, react: React.version, bundle,
 ### A01
 
 ```json
-{"node":"v24.12.0","react":"19.3.0","bundle":"D:\\dev\\ReactCarburetor\\worktrees\\bench-dist\\acfd3e2b8e58\\esm-prod","count":4,"before":[{"kind":"raw","retained":0,"active":0,"dom":"off"},{"kind":"connect","retained":0,"active":0,"dom":"off"},{"kind":"selection","retained":4,"active":0,"dom":"off"}],"after":[{"kind":"raw","retained":0,"active":0,"dom":"off"},{"kind":"connect","retained":0,"active":0,"dom":"off"},{"kind":"selection","retained":0,"active":0,"dom":"off"}],"emptyCollected":true,"strongAlive":true,"hiddenWritesSilent":true,"rearmDom":"78","warmRegistrationReuse":true}
+{"node":"v24.12.0","react":"19.3.0","bundle":".\\worktrees\\bench-dist\\acfd3e2b8e58\\esm-prod","count":4,"before":[{"kind":"raw","retained":0,"active":0,"dom":"off"},{"kind":"connect","retained":0,"active":0,"dom":"off"},{"kind":"selection","retained":4,"active":0,"dom":"off"}],"after":[{"kind":"raw","retained":0,"active":0,"dom":"off"},{"kind":"connect","retained":0,"active":0,"dom":"off"},{"kind":"selection","retained":0,"active":0,"dom":"off"}],"emptyCollected":true,"strongAlive":true,"hiddenWritesSilent":true,"rearmDom":"78","warmRegistrationReuse":true}
 ```
 
 ### A02
 
 ```json
-{"node":"v24.12.0","react":"19.3.0","bundle":"D:\\dev\\ReactCarburetor\\worktrees\\bench-dist\\acfd3e2b8e58\\esm-prod","before":[{"kind":"external","viaHook":false,"oldMarkerRetained":false},{"kind":"external","viaHook":true,"oldMarkerRetained":true},{"kind":"native","viaHook":false,"oldMarkerRetained":false},{"kind":"native","viaHook":true,"oldMarkerRetained":true}],"after":[{"kind":"external","viaHook":false,"oldMarkerRetained":false},{"kind":"external","viaHook":true,"oldMarkerRetained":false},{"kind":"native","viaHook":false,"oldMarkerRetained":false},{"kind":"native","viaHook":true,"oldMarkerRetained":false}],"emptyCollected":true,"strongAlive":true,"serverHtml":["<p>1</p>","<p>2</p>"]}
+{"node":"v24.12.0","react":"19.3.0","bundle":".\\worktrees\\bench-dist\\acfd3e2b8e58\\esm-prod","before":[{"kind":"external","viaHook":false,"oldMarkerRetained":false},{"kind":"external","viaHook":true,"oldMarkerRetained":true},{"kind":"native","viaHook":false,"oldMarkerRetained":false},{"kind":"native","viaHook":true,"oldMarkerRetained":true}],"after":[{"kind":"external","viaHook":false,"oldMarkerRetained":false},{"kind":"external","viaHook":true,"oldMarkerRetained":false},{"kind":"native","viaHook":false,"oldMarkerRetained":false},{"kind":"native","viaHook":true,"oldMarkerRetained":false}],"emptyCollected":true,"strongAlive":true,"serverHtml":["<p>1</p>","<p>2</p>"]}
 ```
 
 ## Пределы проверки и hand-off

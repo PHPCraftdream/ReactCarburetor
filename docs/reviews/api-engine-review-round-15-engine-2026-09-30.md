@@ -1,6 +1,9 @@
 # API and engine review, round 15 — engine — 2026-09-30
 
-**Scope and provenance.** Independent engine review by **xs1 / GPT-6 Sol6 / xhigh** of `D:/dev/ReactCarburetor/worktrees/cycle-review-r15-engine-xs`, base `475a12d6a99c77fb5a059f699499f1183ca6ff77`, frozen 1,198-file product snapshot with supplied LF-normalized SHA-256 **`d7b29d33f251facccdeb597588c59fa0b44927848870eb980609012e7f1da6fb`** (`local://r15-freeze-manifest.json`). This is a report-only review; the existing uncommitted source, tests, documentation and generated bundles are protected, not changes by this reviewer. The manifest attributes typecheck/lint/layout, 130/130 focused tests, 1299/1299 full tests and 16/16 packed consumers to the frozen product; **this review did not rerun those checks**.
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
+**Scope and provenance.** Independent engine review by **xs1 / GPT-6 Sol6 / xhigh** of `./worktrees/cycle-review-r15-engine-xs`, base `475a12d6a99c77fb5a059f699499f1183ca6ff77`, frozen 1,198-file product snapshot with supplied LF-normalized SHA-256 **`d7b29d33f251facccdeb597588c59fa0b44927848870eb980609012e7f1da6fb`** (`local://r15-freeze-manifest.json`). This is a report-only review; the existing uncommitted source, tests, documentation and generated bundles are protected, not changes by this reviewer. The manifest attributes typecheck/lint/layout, 130/130 focused tests, 1299/1299 full tests and 16/16 packed consumers to the frozen product; **this review did not rerun those checks**.
 
 **Result on this freeze: P0 = 0, P1 = 0, P2 = 2, P3 = 0.** Both P2s are independently executed, supported public-store/history scenarios. This is **not** a zero-P0–P3 round. They are separate reentrancy defects in the history recorder and in its replay: fixing only either one leaves the other. No measured performance claim is made.
 

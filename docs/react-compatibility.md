@@ -25,10 +25,11 @@ entirely the consumer's job.
 
 The package declares Node.js `>=24.0.0`. CI installs the packed package on Node 24.0.0, on the newest
 24 and on the newest Node release. The cache uses `WeakRef`; browser runtimes need support
-for it (Chrome 84+, Firefox 79+, Safari 14.1+). A native `AbortController` is a global in Node and in
-every browser that has `WeakRef`; an embedded runtime without one uses a fallback for cooperative
-abortion and ignores late results, but cannot provide a native fetch signal. See [resource cancellation](../README.md) for using a
-compatible `AbortController` with APIs that require a native signal. Native linter packages are published for Windows x64/arm64,
+for it (Chrome 84+, Firefox 79+, Safari 14.1+). Async resources and store lifecycle signals also
+require a global `AbortController`, available in Node and supported browsers. Neither API is
+polyfilled. An embedded runtime must provide a compatible `AbortController` before using resource
+loading or store lifecycle signals; the library has no fallback. A signal passed to `fetch` must
+also be accepted by that runtime's implementation. Native linter packages are published for Windows x64/arm64,
 macOS x64/arm64, and Linux x64/arm64 on glibc and musl; these are not JavaScript runtime
 limits.
 

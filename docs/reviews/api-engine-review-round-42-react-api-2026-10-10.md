@@ -1,5 +1,8 @@
 # Раунд 42 — React API, подписки и update waves
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Дата: **2026-10-10**. Reviewed base: **`fa1ad08f8cd6b26f175235a435976fcb9d94dd22`**.
 Ветка: `review-r42-react-api-20261010`.
 
@@ -15,8 +18,8 @@
 
 ## База, границы и метод
 
-- Все исходники, git-команды и пробы использовали `D:/dev/ReactCarburetor/worktrees/review-r42-react-api-20261010`.
-- Текущий `dist` в этом worktree — read-only junction на поставленную orchestrator distribution `D:/dev/ReactCarburetor/worktrees/bench-dist/fa1ad08f8cd6`, собранную именно из reviewed base. Использовался только `worktree/dist`; повторная сборка не выполнялась. Общие `node_modules` не изменялись.
+- Все исходники, git-команды и пробы использовали `./worktrees/review-r42-react-api-20261010`.
+- Текущий `dist` в этом worktree — read-only junction на поставленную orchestrator distribution `./worktrees/bench-dist/fa1ad08f8cd6`, собранную именно из reviewed base. Использовался только `worktree/dist`; повторная сборка не выполнялась. Общие `node_modules` не изменялись.
 - Наблюдаемые версии: Node **v24.12.0**, `react` **19.3.0**, `react-dom` **19.3.0**, `jsdom` **30.0.1**. Реальный ReactDOM `createRoot`, а не mock renderer; окружение DOM — JSDOM, не браузер.
 - Поставленная база имеет authoritative GREEN [GitHub CI 38075943238](https://github.com/PHPCraftdream/ReactCarburetor/actions/runs/38075943238), 11/11 jobs. Это сведения baseline от orchestrator, **не запущенная здесь проверка отчета**.
 - Прочитаны оба external-store hooks, class `Foundation/Reads/Subscriptions/Effects`, `declareConnection`, connection models, Scope/provider/token и публичные subscription/selector types; вся реализация `UpdateWave`, sync scheduler, throttle и transaction boundary. Resource reader использовался лишь для понимания границы class API; resource internals и общий selection algorithm не относятся к этой теме.
@@ -135,7 +138,7 @@ Raw class `useCarburetor` и `useCarburetorValue` на тех же операц�
 Все следующие shell-команды исполнялись с cwd:
 
 ```text
-D:/dev/ReactCarburetor/worktrees/review-r42-react-api-20261010
+./worktrees/review-r42-react-api-20261010
 ```
 
 ### Идентичность

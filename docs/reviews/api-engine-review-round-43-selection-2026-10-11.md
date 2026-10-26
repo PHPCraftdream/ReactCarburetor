@@ -1,5 +1,8 @@
 # Раунд 43 — Store: selection, paths, transactions и history
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Дата: **2026-10-11**. Reviewed base: **`90a1c6041c2d33d3e9d307a79856deb67a9a67db`**, завершённая реализация R42. Исполнитель: **xxs / R43Selection**. Worktree и branch: `worktrees/review-r43-selection-20261011` / `review-r43-selection-20261011`.
 
 Review-only. Единственный изменяемый файл — этот отчёт. Production, tests, benchmarks, конфигурация, зависимости и версии намеренно не изменены; implementation и push отсутствуют. Runtime, build, tests, lint, formatters, GC/heap и timing probes **мною не запускались**. Все прогнозы результатов и сложности ниже — **[INFERENCE] из текущего source**, а не измерения. Parent сообщил о готовых immutable bundles `worktrees/bench-dist/90a1c6041c2d/{esm,esm-prod,cjs,cjs-prod}`; это supplied provenance, не моя проверка сборки. `xd://lsp` недоступен: mounted devices — только `ast_edit`, `debug`; символы/callers прослежены чтением source.
@@ -357,7 +360,7 @@ console.log(JSON.stringify({root, format: bundleFormat(root), controlsValid, bef
 **Никакой код выше не исполнен мной.** Parent сохраняет три fenced blocks в собственные ignored scratch files с именами `r43-selection-s01.mjs`, `r43-selection-s02.mjs`, `r43-selection-s03.mjs`; в моей ветке таких файлов нет. Перед запуском используется immutable root, не пересборка shared dist. Пример PowerShell, одна команда за раз:
 
 ```powershell
-$env:DIST_ROOT = 'D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm-prod'
+$env:DIST_ROOT = './worktrees/bench-dist/90a1c6041c2d/esm-prod'
 node r43-selection-s01.mjs
 node r43-selection-s02.mjs
 node --expose-gc r43-selection-s03.mjs
@@ -366,7 +369,7 @@ node --expose-gc r43-selection-s03.mjs
 1. S01: raw/history/flat controls обязаны пройти; сравнить every phase discrepancies. Если source prediction не подтверждается, изучить actual returned snapshots/format до утверждения defect. После fix — discrepancies пусты. Numeric graph + scalar API correctness — раньше оптимизаций.
 2. S02: сопоставить printed `checks` с analytical count, проверить separate/empty/positive/owned-fold controls. Никаких bytes/latency выводов из getter reads. После fix scalar coalesced checks должны быть 0, controls неизменны.
 3. S03: сначала `controlsValid`; при false liveness окно inconclusive. При true сравнить cached root/payload before и after overwrite, затем precision/getter checks. Повторить отдельными processes; при неоднозначности heap retaining-path proof без предварительного `deref`.
-4. Повторить serially с root suffixes `esm`, `cjs-prod`, `cjs`; argv вместо env также допустим: `node r43-selection-s01.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm`. CJS extension **`index.js`**, ESM **`index.mjs`**, loader взят из existing fixture convention. Не mix-ить module copies внутри одного source probe.
+4. Повторить serially с root suffixes `esm`, `cjs-prod`, `cjs`; argv вместо env также допустим: `node r43-selection-s01.mjs ./worktrees/bench-dist/90a1c6041c2d/esm`. CJS extension **`index.js`**, ESM **`index.mjs`**, loader взят из existing fixture convention. Не mix-ить module copies внутри одного source probe.
 5. При последующей реализации main agent запускает affected selection/history/native-alias suites и единый existing+new benchmark runner. Existing `selection37`, `selection38`, `selection42`, `subscribe42`, `writelog39`, `readset40`, `history31`, `history39`, `aliases`, `alias39` contracts сохраняются. Whole-operation A/B и heap bytes — только отдельные наблюдения после correctness/counter controls; здесь они не заявлены.
 
 ## Raw-source citations

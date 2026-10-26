@@ -1,8 +1,11 @@
 # Independent public API / React / resource review — round 20 — 2026-09-30
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 ## Verdict and provenance
 
-Reviewed **only** `D:/dev/ReactCarburetor/worktrees/cycle-review-r20-api-xs`, frozen product revision `60795449d72b00b97f8b63ee461aa6be59326085`. This is the independent xs1 API review, not an adoption of the previous round's findings or the integration owner's test and browser results. No product file, existing test, dependency, or generated distribution was changed.
+Reviewed **only** `./worktrees/cycle-review-r20-api-xs`, frozen product revision `60795449d72b00b97f8b63ee461aa6be59326085`. This is the independent xs1 API review, not an adoption of the previous round's findings or the integration owner's test and browser results. No product file, existing test, dependency, or generated distribution was changed.
 
 **API-slice findings: P0 = 0; P1 = 0; P2 = 0; P3 = 0.** No additional supported-input, consumer-visible defect with a defensible actual/expected discrepancy was established. Zero here describes the findings established by this review, **not** proof that every combination, React version, or build environment works; the independent engine reviewer has a separate verdict.
 

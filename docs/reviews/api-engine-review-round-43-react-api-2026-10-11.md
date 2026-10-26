@@ -1,5 +1,8 @@
 # Раунд 43 — React API, source selection и lifecycle — 2026-10-11
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 - Reviewed base: **`90a1c6041c2d33d3e9d307a79856deb67a9a67db`**, завершённая реализация R42.
 - Исполнитель: **xxs / R43ReactApi**.
 - Изолированная ветка/worktree: `review-r43-react-api-20261011`.
@@ -18,7 +21,7 @@
 
 R43-A01 — не повтор stale-DOM finding R42-A01: речь о времени жизни **raw class tracked view**, не о notification-time selection gate. R43-A02 — remaining **другой hook route**, а не повтор уже исправленного resource SSR route. В обоих случаях proposed fix не реализован.
 
-Physical evidence: прочитаны исходники и supplied `dist` declarations/ESM counterpart, но модули не исполнялись. Parent сообщил immutable distributions `D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/{esm,esm-prod,cjs,cjs-prod}` из already-built reviewed base и successful baseline smoke четырёх форматов; это **provenance от parent**, не проверки этого исполнителя. В recipes `DIST_ROOT` выбирает **одну format directory**; fallback argv выбирает `dist/<format>`.
+Physical evidence: прочитаны исходники и supplied `dist` declarations/ESM counterpart, но модули не исполнялись. Parent сообщил immutable distributions `./worktrees/bench-dist/90a1c6041c2d/{esm,esm-prod,cjs,cjs-prod}` из already-built reviewed base и successful baseline smoke четырёх форматов; это **provenance от parent**, не проверки этого исполнителя. В recipes `DIST_ROOT` выбирает **одну format directory**; fallback argv выбирает `dist/<format>`.
 
 ## R43-A01 — transient render ownership остаётся в persistent tracked-view cache
 
@@ -228,9 +231,9 @@ try {
 PowerShell, cwd assigned worktree:
 
 ```powershell
-$env:DIST_ROOT = 'D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm-prod'
+$env:DIST_ROOT = './worktrees/bench-dist/90a1c6041c2d/esm-prod'
 node --expose-gc worktrees/r43-a01-lifetime.mjs esm-prod
-$env:DIST_ROOT = 'D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm'
+$env:DIST_ROOT = './worktrees/bench-dist/90a1c6041c2d/esm'
 node --expose-gc worktrees/r43-a01-lifetime.mjs esm
 ```
 
@@ -238,7 +241,7 @@ node --expose-gc worktrees/r43-a01-lifetime.mjs esm
 
 ### Recipe A02: `worktrees/r43-a02-ssr.mjs`
 
-`REACT_ROOT` — project с выбранной consumer React installation. Для React 18 уже обнаружен `D:/dev/ReactCarburetor/.consumer-matrix/react18-npm`. Нельзя просто require-ить React 18 рядом с original bundle, который разрешит React 19: snippet делает **собственные disposable copies** выбранного immutable format и junction к выбранным dependencies. Server import идёт без DOM globals, client — из второй copy после появления DOM. Исходный `DIST_ROOT` никогда не меняется; cleanup сперва удаляет только собственную junction. Console diagnostics записываются **и передаются оригинальному console.error**, не подавляются.
+`REACT_ROOT` — project с выбранной consumer React installation. Для React 18 уже обнаружен `./.consumer-matrix/react18-npm`. Нельзя просто require-ить React 18 рядом с original bundle, который разрешит React 19: snippet делает **собственные disposable copies** выбранного immutable format и junction к выбранным dependencies. Server import идёт без DOM globals, client — из второй copy после появления DOM. Исходный `DIST_ROOT` никогда не меняется; cleanup сперва удаляет только собственную junction. Console diagnostics записываются **и передаются оригинальному console.error**, не подавляются.
 
 ```js
 import assert from 'node:assert/strict';
@@ -384,15 +387,15 @@ try {
 PowerShell, cwd assigned worktree; каждый command — отдельный Node process:
 
 ```powershell
-$env:REACT_ROOT = 'D:/dev/ReactCarburetor/.consumer-matrix/react18-npm'
-$env:DIST_ROOT = 'D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm-prod'
+$env:REACT_ROOT = './.consumer-matrix/react18-npm'
+$env:DIST_ROOT = './worktrees/bench-dist/90a1c6041c2d/esm-prod'
 node worktrees/r43-a02-ssr.mjs esm-prod
-$env:DIST_ROOT = 'D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm'
+$env:DIST_ROOT = './worktrees/bench-dist/90a1c6041c2d/esm'
 node worktrees/r43-a02-ssr.mjs esm
 $env:GAP = '1'
 node worktrees/r43-a02-ssr.mjs esm
 Remove-Item Env:GAP
-$env:REACT_ROOT = 'D:/dev/ReactCarburetor/worktrees/review-r43-react-api-20261011'
+$env:REACT_ROOT = './worktrees/review-r43-react-api-20261011'
 node worktrees/r43-a02-ssr.mjs esm
 ```
 

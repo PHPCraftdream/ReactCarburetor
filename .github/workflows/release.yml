@@ -77,11 +77,13 @@ jobs:
         with:
           node-version: 24
 
-      # One version for all packages, the launcher's optionalDependencies must pin it, and the
-      # changelog must have a section for it. The platform list comes from the launcher, so a
-      # platform is added in one place.
+      # Версии пакетов и optionalDependencies должны совпадать.
+      # Для публикации нужен датированный changelog; dry run допускает Unreleased.
+      # Список платформ берётся из launcher.
       - name: Check that the package versions and the changelog agree
         id: versions
+        env:
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           node -e '
             const fs = require("fs");
@@ -97,8 +99,13 @@ jobs:
             }
             if (lint.version !== root.version) bad.push("carburetor-lint");
             const heading = new RegExp(`^## \\[${root.version.replace(/\./g, "\\.")}\\] - \\d{4}-\\d{2}-\\d{2}$`, "m");
-            if (!heading.test(fs.readFileSync("CHANGELOG.md", "utf8"))) {
+            const changelog = fs.readFileSync("CHANGELOG.md", "utf8");
+            const unreleasedDryRun = process.env.DRY_RUN === "true" && /^## \[Unreleased\]$/m.test(changelog);
+            if (!heading.test(changelog) && !unreleasedDryRun) {
               bad.push(`CHANGELOG.md has no "## [${root.version}] - YYYY-MM-DD" section`);
+            }
+            if (!heading.test(changelog) && unreleasedDryRun) {
+              console.log("Dry run uses [Unreleased]; publishing still requires a dated version section.");
             }
             if (bad.length) { console.error("version mismatch:", bad.join(", ")); process.exit(1); }
             fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${root.version}\nplatforms=${platforms.join(" ")}\n`);

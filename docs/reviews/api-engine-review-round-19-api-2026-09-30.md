@@ -1,8 +1,11 @@
 # Independent API / React / resources review — round 19 — 2026-09-30
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 ## Verdict and provenance
 
-Reviewed the frozen `D:/dev/ReactCarburetor/worktrees/cycle-review-r19-api-xs` product at **`f1f1f06e7a07725ae977697e9a5d6cc94d8734f9`**. This is an independent public-API review; earlier reports and the parent's validation results are context, not evidence of this round's outcome. No product file was edited.
+Reviewed the frozen `./worktrees/cycle-review-r19-api-xs` product at **`f1f1f06e7a07725ae977697e9a5d6cc94d8734f9`**. This is an independent public-API review; earlier reports and the parent's validation results are context, not evidence of this round's outcome. No product file was edited.
 
 **API-slice findings: P0 = 0; P1 = 0; P2 = 2; P3 = 0. The round is not zero.** The findings below occur with documented, supported inputs through the public package/classes. Neither is the repaired native-alias/history defect from round 18. Counts concern this API slice only; the independent engine review has its own verdict.
 

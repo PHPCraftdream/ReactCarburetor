@@ -1,6 +1,9 @@
 # API, React bridge, resource and module-contract review — round 15 (2026-09-30)
 
-**Review target:** only `D:/dev/ReactCarburetor/worktrees/cycle-review-r15-api-xs`. Frozen product baseline: commit `475a12d6a99c77fb5a059f699499f1183ca6ff77` plus the integration owner's uncommitted tracked/new generated changes; supplied LF-normalized SHA-256 **`d7b29d33f251facccdeb597588c59fa0b44927848870eb980609012e7f1da6fb`** over **1198** frozen files. Reviewer **xs1, GPT-6 Sol6, xhigh**. Review-only: no product, test, generated output or other pre-existing dirty file edited; no `/rush`, project suite, build, linter, formatter or benchmark run. Source probes import this worktree's `lib/src/Carburetor/index.ts`; the mixed-format consumer probe imports this worktree's existing `dist/esm` and `dist/cjs` artifacts.
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
+**Review target:** only `./worktrees/cycle-review-r15-api-xs`. Frozen product baseline: commit `475a12d6a99c77fb5a059f699499f1183ca6ff77` plus the integration owner's uncommitted tracked/new generated changes; supplied LF-normalized SHA-256 **`d7b29d33f251facccdeb597588c59fa0b44927848870eb980609012e7f1da6fb`** over **1198** frozen files. Reviewer **xs1, GPT-6 Sol6, xhigh**. Review-only: no product, test, generated output or other pre-existing dirty file edited; no `/rush`, project suite, build, linter, formatter or benchmark run. Source probes import this worktree's `lib/src/Carburetor/index.ts`; the mixed-format consumer probe imports this worktree's existing `dist/esm` and `dist/cjs` artifacts.
 
 **Established findings: P0=0, P1=0, P2=1, P3=0.** This is not a zero-findings round. No other supported P0–P3 was established in the reviewed areas; a passing control is not a proof of every possible combination.
 
