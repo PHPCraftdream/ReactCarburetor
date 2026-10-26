@@ -12,9 +12,10 @@ compiled binary (`win32-x64`, `win32-arm64`, `darwin-arm64`, `darwin-x64`, `linu
 the launcher's `optionalDependencies`; the release workflow, the tests and the checks read
 the list from there.
 
-1. Confirm the intended version, rename `[Unreleased]` in `CHANGELOG.md` to
-   `## [0.1.0] - YYYY-MM-DD` (the workflow refuses to run without that section), and
-   verify the npm package names are available to the publisher.
+1. Confirm the intended version and verify the npm package names are available to the publisher.
+   A dry run accepts the existing `[Unreleased]` changelog section, so packaging can be verified
+   before the release date is chosen. Before publishing, rename it to
+   `## [0.1.0] - YYYY-MM-DD` with the actual release date; a real publish requires that section.
 2. Require a green full-tier CI run for the release commit: the React 18 Engine/Demo
    compatibility suites, the native tests, the Node floor jobs, the consumer matrix and all
    eight platform-binary legs. The Release workflow starts that run itself when the commit
@@ -83,10 +84,10 @@ when started by hand (Actions → Release → Run workflow) and only from `maste
 successful full-tier `.github/workflows/ci.yml` run on that exact SHA and starts one itself,
 waiting for it, when there is none; a `ci-fast.yml` success does not qualify. The platform
 packages are artifacts produced by that full CI run, so what is published is what was built and
-executed on its own targets. The workflow also refuses to run when the package versions
-disagree, when `CHANGELOG.md` has no section for the version, or when
-`.github/workflows/audit.yml` finds a known vulnerability in the shipped npm dependencies or in
-the Rust crates linked into the binaries.
+executed on its own targets. Both dry runs and real publishes reject mismatched package versions
+and a failing `.github/workflows/audit.yml` check of the shipped npm dependencies or the Rust
+crates linked into the binaries. A real publish also requires a dated changelog section for the
+version; a dry run can use `[Unreleased]` instead. This exception never permits publication.
 
 ### Two ways to authenticate
 
@@ -133,19 +134,22 @@ runs with `id-token: write`, which is what lets npm exchange the identity and si
 
 ### Cutting a release
 
-1. Set the same version in `package.json`, `npm/carburetor-lint/package.json`, the eight
-   `npm/carburetor-lint-*/package.json` and the `optionalDependencies` of `carburetor-lint`, and
-   rename `[Unreleased]` in `CHANGELOG.md` to that version with its date. The workflow refuses to
-   run if any of the versions disagree or the changelog section is missing.
+1. Confirm the same intended version in `package.json`, `npm/carburetor-lint/package.json`, the eight
+   `npm/carburetor-lint-*/package.json` and the `optionalDependencies` of `carburetor-lint`.
+   Do not change versions just to run a dry run. The workflow always rejects version mismatches;
+   `[Unreleased]` is sufficient only while `dry_run` is on.
 2. Push to `master`. A full-tier run for that exact SHA is optional: the Release workflow starts
    one when there is none (`gh workflow run ci.yml --ref master` does the same by hand). A
    fast-tier `ci-fast.yml` run does not count.
 3. Actions → Release → Run workflow, branch `master`, with `dry_run` left on (the default). It
    downloads platform artifacts from the qualifying run, packs and verifies all packages, and runs
    `npm publish --dry-run` without publishing.
-4. Run it again with `dry_run` off (approve the `npm` environment if reviewers are set). It publishes
-   the eight platform packages, then `carburetor-lint`, then `react-carburetor`, and then installs
-   them from the registry on every platform.
+4. Before a real publish, rename `[Unreleased]` to `## [<version>] - YYYY-MM-DD` with the release
+   date, commit and push that change, and repeat the dry run on the exact final commit. Only after
+   it passes and the maintainer explicitly authorizes publication, run with `dry_run` off
+   (approve the `npm` environment if reviewers are set). It publishes the eight platform packages,
+   then `carburetor-lint`, then `react-carburetor`, and then installs them from the registry on
+   every platform.
 5. A version already on the registry is skipped, so a run that stopped halfway is simply started
    again. `post-publish.yml` can also be started alone against any published version.
 
