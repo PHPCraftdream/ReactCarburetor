@@ -15,7 +15,7 @@ npx carburetor-lint --format=json src   # machine-readable output
 The installing machine downloads exactly one compiled binary: this package lists one
 `carburetor-lint-<platform>` package per supported platform under `optionalDependencies`, and
 npm keeps only the one whose `os`/`cpu`/`libc` fields match. Supported platforms:
-`win32-x64`, `win32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-x64-musl`,
+`w32-x64`, `w32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-x64-musl`,
 `linux-arm64-gnu`, `linux-arm64-musl`. The glibc builds run on glibc 2.28 and newer (RHEL 8, Debian 10,
 Ubuntu 18.10 and later); the musl builds are static; the macOS builds target macOS 11 and later.
 

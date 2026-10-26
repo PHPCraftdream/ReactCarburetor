@@ -40,6 +40,32 @@ const runInVm = (scenario: IScenario): number => {
     return exitCode;
 };
 
+describe('native launcher package selection', () => {
+    test.each(['x64', 'arm64'])('selects the Windows %s package', (arch) => {
+        let stderr = '';
+        const exitSentinel = {};
+        const sandbox = {
+            require: (name: string): unknown => {
+                if (name === 'child_process') return {spawnSync: () => ({status: 0})};
+                if (name === 'fs') return {existsSync: () => false};
+                if (name === 'path') return path;
+                throw new Error(`unexpected require ${name}`);
+            },
+            process: {
+                platform: 'win32', arch, env: {}, argv: ['node', LAUNCHER],
+                stderr: {write: (text: string) => { stderr += text; }},
+                exit: () => { throw exitSentinel; },
+            },
+        };
+        try {
+            runInNewContext(source, sandbox);
+        } catch (error) {
+            if (error !== exitSentinel) throw error;
+        }
+        expect(stderr).toContain(`expected package carburetor-lint-w32-${arch}`);
+    });
+});
+
 describe('native launcher failures', () => {
     test('spawn errors exit 2 and include the error', () => {
         expect(runInVm({

@@ -28,13 +28,13 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - package: carburetor-lint-win32-x64
+          - package: carburetor-lint-w32-x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
             bin_ext: .exe
             expect: windows
             arch: x64
-          - package: carburetor-lint-win32-arm64
+          - package: carburetor-lint-w32-arm64
             os: windows-11-arm
             target: aarch64-pc-windows-msvc
             bin_ext: .exe
@@ -188,10 +188,10 @@ jobs:
         include:
           - name: Windows x64
             os: windows-latest
-            expect: carburetor-lint-win32-x64
+            expect: carburetor-lint-w32-x64
           - name: Windows arm64
             os: windows-11-arm
-            expect: carburetor-lint-win32-arm64
+            expect: carburetor-lint-w32-arm64
           - name: macOS arm64
             os: macos-15
             expect: carburetor-lint-darwin-arm64

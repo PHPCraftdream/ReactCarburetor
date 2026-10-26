@@ -41,7 +41,9 @@ const packageNames = () => {
         return linuxCandidates().map((libc) => `carburetor-lint-linux-${process.arch}-${libc}`);
     }
 
-    return [`carburetor-lint-${process.platform}-${process.arch}`];
+    const platform = process.platform === 'win32' ? 'w32' : process.platform;
+
+    return [`carburetor-lint-${platform}-${process.arch}`];
 };
 
 const findBinary = () => {

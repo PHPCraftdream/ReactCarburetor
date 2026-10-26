@@ -7,7 +7,7 @@ decision. The first release is `0.1.0`.
 
 Ten packages ship under one version: the library `react-carburetor`, the launcher
 `carburetor-lint`, and eight `carburetor-lint-<platform>` packages that each carry one
-compiled binary (`win32-x64`, `win32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`,
+compiled binary (`w32-x64`, `w32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`,
 `linux-arm64-gnu`, `linux-x64-musl`, `linux-arm64-musl`). A platform is added in one place,
 the launcher's `optionalDependencies`; the release workflow, the tests and the checks read
 the list from there.

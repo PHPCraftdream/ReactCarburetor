@@ -90,7 +90,7 @@ describe('verifyGating', () => {
             writeFileSync(path.join(directory, 'carburetor-lint-linux-x64-gnu-0.1.0.tgz'), '');
 
             expect(() => verifyGating(['--launcher', 'launcher.tgz', '--packages', directory,
-                '--expect', 'carburetor-lint-win32-x64'])).toThrow('is not among the offered packages');
+                '--expect', 'carburetor-lint-w32-x64'])).toThrow('is not among the offered packages');
         } finally {
             rmSync(directory, {recursive: true, force: true});
         }

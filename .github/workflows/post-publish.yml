@@ -28,9 +28,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: win32-x64
+          - name: w32-x64
             os: windows-latest
-          - name: win32-arm64
+          - name: w32-arm64
             os: windows-11-arm
           - name: darwin-arm64
             os: macos-15

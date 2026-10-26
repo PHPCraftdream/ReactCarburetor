@@ -216,13 +216,16 @@ describe('platformPackageNames', () => {
         // The -gnu suffix assumes Node's process.report is enabled and names glibc, which is
         // true everywhere this suite runs; a musl machine flipping the order is exactly the
         // kind of environment drift this assertion exists to surface.
-        const expected = `carburetor-lint-${process.platform}-${process.arch}` +
+        const platform = process.platform === 'win32' ? 'w32' : process.platform;
+        const expected = `carburetor-lint-${platform}-${process.arch}` +
             (process.platform === 'linux' ? '-gnu' : '');
 
         expect(platformPackageNames()[0]).toBe(expected);
     });
 
     test('single-binary platforms name exactly one package, whatever the machine', () => {
+        expect(platformPackageNames('win32', 'x64')).toEqual(['carburetor-lint-w32-x64']);
+        expect(platformPackageNames('win32', 'arm64')).toEqual(['carburetor-lint-w32-arm64']);
         expect(platformPackageNames('darwin', 'arm64')).toEqual(['carburetor-lint-darwin-arm64']);
         expect(platformPackageNames('sunos', 'x64')).toEqual(['carburetor-lint-sunos-x64']);
     });

@@ -11,8 +11,8 @@ const PACKAGES = [
     'carburetor-lint-linux-arm64-musl',
     'carburetor-lint-linux-x64-gnu',
     'carburetor-lint-linux-x64-musl',
-    'carburetor-lint-win32-arm64',
-    'carburetor-lint-win32-x64',
+    'carburetor-lint-w32-arm64',
+    'carburetor-lint-w32-x64',
 ];
 
 interface IPackageManifest {

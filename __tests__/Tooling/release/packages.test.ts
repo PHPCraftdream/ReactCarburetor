@@ -80,7 +80,8 @@ describe('the platform packages', () => {
     test.each(cases)('%s is built for what its manifest declares', (name, leg) => {
         const declared = manifest(`npm/${name}`);
         const target = parts(leg.target);
-        const suffix = [target.os, target.cpu, target.abi].filter(Boolean).join('-');
+        const packageOs = target.os === 'win32' ? 'w32' : target.os;
+        const suffix = [packageOs, target.cpu, target.abi].filter(Boolean).join('-');
 
         expect(name).toEqual(`carburetor-lint-${suffix}`);
         expect(declared.os).toEqual([target.os]);

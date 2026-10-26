@@ -145,8 +145,8 @@ that finds the compiled binary and hands it your arguments, stdio and exit code,
 megabytes live in a platform package beside it, `carburetor-lint-<platform>`. The launcher
 package lists all eight under `optionalDependencies`, and each platform package declares `os` and
 `cpu` — `libc` too on linux, where glibc and musl builds are not interchangeable — so an
-install downloads exactly the one binary that runs on the installing machine: `win32-x64`,
-`win32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-x64-musl`,
+install downloads exactly the one binary that runs on the installing machine: `w32-x64`,
+`w32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-x64-musl`,
 `linux-arm64-gnu`, `linux-arm64-musl`.
 
 ```bash

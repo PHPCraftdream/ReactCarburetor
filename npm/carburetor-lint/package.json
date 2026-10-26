@@ -37,7 +37,7 @@
     "carburetor-lint-linux-arm64-musl": "0.1.0",
     "carburetor-lint-linux-x64-gnu": "0.1.0",
     "carburetor-lint-linux-x64-musl": "0.1.0",
-    "carburetor-lint-win32-arm64": "0.1.0",
-    "carburetor-lint-win32-x64": "0.1.0"
+    "carburetor-lint-w32-arm64": "0.1.0",
+    "carburetor-lint-w32-x64": "0.1.0"
   }
 }
