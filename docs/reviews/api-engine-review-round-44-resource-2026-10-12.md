@@ -1,5 +1,8 @@
 # API/engine review — раунд 44: ресурсы, cache ownership и lookup
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Дата: **2026-10-12**. Reviewed base: **`acfd3e2b8e58210ce1076bf1683f666283216af5`**. Исполнитель: **xxs**, тема Resource.
 
 Это **review-only**. Единственный созданный файл — этот русский Markdown-отчёт. Production, tests, benchmarks, configs, зависимости, версии и `.claude/scheduled_tasks.lock` не изменялись; commit/push, build, test suites, lint и formatters не запускались. Других исполнителей автор не запускал.
@@ -146,9 +149,9 @@ Existing `cache/pg-c1/eviction-scaling` включает `Promise.all(args.map(c
 **Исполнен**, frozen ESM-production. Source ниже — exact stdin `error_boundary_probe`. Actual command/env:
 
 ```text
-cwd = D:/dev/ReactCarburetor
+cwd = .
 NODE_ENV = production
-R44_ROOT = D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/esm-prod
+R44_ROOT = ./worktrees/bench-dist/acfd3e2b8e58/esm-prod
 node --input-type=module -
 ```
 
@@ -326,7 +329,7 @@ Exact Node stdout P1 (primary dist):
 Exact Node stdout P2 (frozen R44 root):
 
 ```json
-{"node":"v24.12.0","dist":"D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/esm-prod","rows":[{"kind":"cache","action":"plain","calls":1,"coercions":1,"phase":{"status":"error","data":null,"error":"obsolete offline","failed":true,"rawRetained":true},"end":{"status":"error","data":null,"error":"obsolete offline","failed":true},"replacementStillInstalled":null},{"kind":"cache","action":"replace","calls":1,"coercions":1,"phase":{"status":"error","data":"manual","error":"obsolete offline","failed":true,"rawRetained":false},"end":{"status":"error","data":"manual","error":"obsolete offline","failed":true},"replacementStillInstalled":true},{"kind":"cache","action":"start","calls":2,"coercions":1,"phase":{"status":"error","data":null,"error":"obsolete offline","failed":true,"rawRetained":true},"end":{"status":"success","data":"current","error":null,"failed":false},"replacementStillInstalled":null},{"kind":"slot","action":"plain","calls":1,"coercions":1,"phase":{"status":"error","data":null,"error":"obsolete offline","failed":null,"rawRetained":true},"end":{"status":"error","data":null,"error":"obsolete offline","failed":null},"replacementStillInstalled":null},{"kind":"slot","action":"replace","calls":1,"coercions":1,"phase":{"status":"error","data":"manual","error":"obsolete offline","failed":null,"rawRetained":true},"end":{"status":"error","data":"manual","error":"obsolete offline","failed":null},"replacementStillInstalled":true},{"kind":"slot","action":"start","calls":2,"coercions":1,"phase":{"status":"error","data":null,"error":"obsolete offline","failed":null,"rawRetained":true},"end":{"status":"error","data":null,"error":"obsolete offline","failed":null},"replacementStillInstalled":null}]}
+{"node":"v24.12.0","dist":"./worktrees/bench-dist/acfd3e2b8e58/esm-prod","rows":[{"kind":"cache","action":"plain","calls":1,"coercions":1,"phase":{"status":"error","data":null,"error":"obsolete offline","failed":true,"rawRetained":true},"end":{"status":"error","data":null,"error":"obsolete offline","failed":true},"replacementStillInstalled":null},{"kind":"cache","action":"replace","calls":1,"coercions":1,"phase":{"status":"error","data":"manual","error":"obsolete offline","failed":true,"rawRetained":false},"end":{"status":"error","data":"manual","error":"obsolete offline","failed":true},"replacementStillInstalled":true},{"kind":"cache","action":"start","calls":2,"coercions":1,"phase":{"status":"error","data":null,"error":"obsolete offline","failed":true,"rawRetained":true},"end":{"status":"success","data":"current","error":null,"failed":false},"replacementStillInstalled":null},{"kind":"slot","action":"plain","calls":1,"coercions":1,"phase":{"status":"error","data":null,"error":"obsolete offline","failed":null,"rawRetained":true},"end":{"status":"error","data":null,"error":"obsolete offline","failed":null},"replacementStillInstalled":null},{"kind":"slot","action":"replace","calls":1,"coercions":1,"phase":{"status":"error","data":"manual","error":"obsolete offline","failed":null,"rawRetained":true},"end":{"status":"error","data":"manual","error":"obsolete offline","failed":null},"replacementStillInstalled":true},{"kind":"slot","action":"start","calls":2,"coercions":1,"phase":{"status":"error","data":null,"error":"obsolete offline","failed":null,"rawRetained":true},"end":{"status":"error","data":null,"error":"obsolete offline","failed":null},"replacementStillInstalled":null}]}
 ```
 
 ### P3 — focused fresh identity pilot

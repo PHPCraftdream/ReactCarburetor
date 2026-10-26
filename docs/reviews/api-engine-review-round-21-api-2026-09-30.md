@@ -1,8 +1,11 @@
 # Independent public API / React / resources review — round 21 — 2026-09-30
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 ## Verdict and provenance
 
-Reviewed the frozen `D:/dev/ReactCarburetor/worktrees/cycle-review-r21-api-xs` product at **`9008b8f749bb63b25d335c6ba4dab5bb213a4def`**. This is an independent API-slice verdict, not a rerun of the parent's suites or an adoption of the round-20 findings. I changed no product source, existing tests, generated distribution or dependencies.
+Reviewed the frozen `./worktrees/cycle-review-r21-api-xs` product at **`9008b8f749bb63b25d335c6ba4dab5bb213a4def`**. This is an independent API-slice verdict, not a rerun of the parent's suites or an adoption of the round-20 findings. I changed no product source, existing tests, generated distribution or dependencies.
 
 **Established API findings: P0 = 0; P1 = 0; P2 = 1; P3 = 0. This slice is not zero.** The finding changes an actual enumerable data value in an accepted state object; it does not depend on unsupported accessor state, symbol-keyed state, array subclasses or direct raw mutation. A separate metadata-only observation below is **not** counted as a finding. The independent engine slice must supply its own verdict.
 

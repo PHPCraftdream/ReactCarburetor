@@ -1,8 +1,11 @@
 # Independent API / React / resources review — round 18 — 2026-09-30
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 ## Verdict and provenance
 
-Reviewed only `D:/dev/ReactCarburetor/worktrees/cycle-review-r18-api-xs`, based on `d61ee16f5d4323ebb85febcc381f3b1edb3ebc67` (product `60e4cb8`). The supplied freeze manifest records 1,224 LF-normalized source/doc/copied-built files and SHA-256 `1f12fed4f048d138743f13613b8f4e231544849b93bd321207af6276b5452828` for each review tree; I did **not** independently recalculate that hash. Product remained read-only. This is my own API-slice investigation of the round-18 freeze, not an endorsement of the round-17 API zero or the parent's green gates.
+Reviewed only `./worktrees/cycle-review-r18-api-xs`, based on `d61ee16f5d4323ebb85febcc381f3b1edb3ebc67` (product `60e4cb8`). The supplied freeze manifest records 1,224 LF-normalized source/doc/copied-built files and SHA-256 `1f12fed4f048d138743f13613b8f4e231544849b93bd321207af6276b5452828` for each review tree; I did **not** independently recalculate that hash. Product remained read-only. This is my own API-slice investigation of the round-18 freeze, not an endorsement of the round-17 API zero or the parent's green gates.
 
 **Independent API-slice P0/P1/P2/P3: 0/0/0/0.** I established no deterministic supported consumer-visible failure in the paths inspected. No finding ID is assigned to a probe error, an intentionally unsupported graph/receiver, or uninspected state space. This verdict does not assert that the independent engine slice is clean or that all possible consumers have been exercised.
 

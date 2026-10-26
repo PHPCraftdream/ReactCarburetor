@@ -1,8 +1,11 @@
 # Independent public API / React / resource review — round 22 — 2026-09-30
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 ## Verdict and provenance
 
-Reviewed the frozen product revision **`3df804e5fa0d5d0ef09aa0afdda035320fb0c87e`** in `D:/dev/ReactCarburetor/worktrees/cycle-review-r22-api-xs`. This is an independent API-slice source review with bounded actual-source Bun 1.4.2 and copied built-package Node 24.12.0 consumer probes, not an adoption of the round-21 reports or the parent's validation. I made no product, test, dependency, or distribution edits.
+Reviewed the frozen product revision **`3df804e5fa0d5d0ef09aa0afdda035320fb0c87e`** in `./worktrees/cycle-review-r22-api-xs`. This is an independent API-slice source review with bounded actual-source Bun 1.4.2 and copied built-package Node 24.12.0 consumer probes, not an adoption of the round-21 reports or the parent's validation. I made no product, test, dependency, or distribution edits.
 
 **Established API findings: P0 = 0; P1 = 0; P2 = 1; P3 = 0. This slice is not zero.** The one finding concerns a valid, own enumerable data property and a value-changing `snapshot()` → `restore()` operation; it is **not** the withdrawn metadata-only ordinary-descriptor observation. The separate engine slice determines its own verdict.
 

@@ -1,7 +1,10 @@
 # API/engine review — раунд 42: resource API и lifecycle
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Дата: **2026-10-10**. Reviewed base: **`fa1ad08f8cd6b26f175235a435976fcb9d94dd22`**.
-Worktree: `D:/dev/ReactCarburetor/worktrees/review-r42-resource-20261010`, ветка `review-r42-resource-20261010`.
+Worktree: `./worktrees/review-r42-resource-20261010`, ветка `review-r42-resource-20261010`.
 
 Это **исследование, не реализация**. Единственное tracked изменение — этот отчёт. Исследованы resource-facing selection/resolve, ownership запроса, invalidate/load/refresh/forget/restore/eviction и освобождение reader. Общий selection algorithm и React scheduling не пересматриваются.
 
@@ -21,7 +24,7 @@ Worktree: `D:/dev/ReactCarburetor/worktrees/review-r42-resource-20261010`, ве�
 - Реально использованы Node **v24.12.0**, React **19.3.0**, ReactDOM **19.3.0**, JSDOM **30.0.1**; `NODE_ENV=production` устанавливается до dynamic imports.
 - Каждый subprocess запущен с cwd назначенного worktree. Imports — только его `dist/esm-prod`, зависимости — предоставленный read-only `node_modules` junction. DOM globals устанавливаются **до** загрузки interop, поэтому это client lane, не SSR.
 - `git status --short --branch && git rev-parse HEAD && node --version` до исследования дал чистую ветку `review-r42-resource-20261010`, полный base SHA выше и `v24.12.0`.
-- Реальный `realpathSync` разрешил `dist/esm-prod` в `D:/dev/ReactCarburetor/worktrees/bench-dist/fa1ad08f8cd6/esm-prod`. SHA-256 прочитанных compiled modules:
+- Реальный `realpathSync` разрешил `dist/esm-prod` в `./worktrees/bench-dist/fa1ad08f8cd6/esm-prod`. SHA-256 прочитанных compiled modules:
 
 | Module относительно `dist/esm-prod` | SHA-256 |
 |---|---|
@@ -140,7 +143,7 @@ Actual `node worktrees/r42-resource-probes/cancellation.mjs`:
 Все четыре tiny proofs сохранены **внутри назначенного worktree**, в игнорируемом `worktrees/r42-resource-probes/`. Они не входят в tracked diff. Команды реально выполнены по одному разу, exit code каждого **0**; assertions фиксируют observed bug/control states, а не заявляют исправление:
 
 ```text
-cwd = D:/dev/ReactCarburetor/worktrees/review-r42-resource-20261010
+cwd = ./worktrees/review-r42-resource-20261010
 node worktrees/r42-resource-probes/cancellation.mjs
 node worktrees/r42-resource-probes/removal-boundary.mjs
 node worktrees/r42-resource-probes/warm-cost.mjs

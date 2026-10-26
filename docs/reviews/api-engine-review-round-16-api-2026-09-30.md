@@ -1,6 +1,9 @@
 # Independent API, React bridge, resource and tooling review — round 16 — 2026-09-30
 
-**Assignment / provenance.** Reviewed only `D:/dev/ReactCarburetor/worktrees/cycle-review-r16-api-xs`. Configured reviewer: **xs1 / GPT-6 Sol6 / xhigh** (`openai-codex/gpt-6-sol`). Supplied frozen source: base `54e5ca9d2915ce482381d1d664b5e8a2f61221ba`, **1209 files**, LF-normalized SHA-256 **`51acd25dbe4641da3435c40822c44faa51a5a22cd1f397591eea2455c72d0112`** (`local://r16-freeze-manifest.json`). The manifest's integration gates are context, not checks run in this review. This independent round is **not zero**: **P0=0, P1=0, P2=3, P3=0**. No product/source/test/dist file was changed, no project build, lint, tests, formatter, packaging or benchmark was run, and no product commit or push was made. The only authored artifact is this report.
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
+**Assignment / provenance.** Reviewed only `./worktrees/cycle-review-r16-api-xs`. Configured reviewer: **xs1 / GPT-6 Sol6 / xhigh** (`openai-codex/gpt-6-sol`). Supplied frozen source: base `54e5ca9d2915ce482381d1d664b5e8a2f61221ba`, **1209 files**, LF-normalized SHA-256 **`51acd25dbe4641da3435c40822c44faa51a5a22cd1f397591eea2455c72d0112`** (`local://r16-freeze-manifest.json`). The manifest's integration gates are context, not checks run in this review. This independent round is **not zero**: **P0=0, P1=0, P2=3, P3=0**. No product/source/test/dist file was changed, no project build, lint, tests, formatter, packaging or benchmark was run, and no product commit or push was made. The only authored artifact is this report.
 
 | ID | Priority | Supported consumer consequence |
 | --- | --- | --- |

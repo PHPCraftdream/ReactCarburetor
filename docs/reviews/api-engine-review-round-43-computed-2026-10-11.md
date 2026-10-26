@@ -1,5 +1,8 @@
 # API / engine review — раунд 43: Computed, capture и lifetime
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Дата: **2026-10-11**. Reviewed base: **`90a1c6041c2d33d3e9d307a79856deb67a9a67db`**. Исполнитель: **xxs / R43Computed**. Worktree/branch: `worktrees/review-r43-computed-20261011` / `review-r43-computed-20261011`.
 
 Scope: `lib/src/Carburetor/Derived/`, Derived-facing public models, связанные Computed tests, computed/derived/computed41/computed42 manifests и Computed-facing consumer callsites. Это **review-only**: production, tests, benchmarks, config и dependencies не изменены; writable только этот отчёт.
@@ -333,18 +336,18 @@ assert.equal(before.find(row => row.kind === 'equal').alive, false,
 
 ## Порядок parent verification и точные команды
 
-Parent сообщил, что frozen bundles скопированы из уже built/smoked current dist в **`D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/{esm,esm-prod,cjs,cjs-prod}`**, без rebuild; это provenance от parent, не собственный runtime evidence агента. CJS entry — **index.js**, не index.cjs; loader выбирает реальные файлы через existing `bundleFormat`/`importPart` (`resource42/fixture.mjs:13–24`).
+Parent сообщил, что frozen bundles скопированы из уже built/smoked current dist в **`./worktrees/bench-dist/90a1c6041c2d/{esm,esm-prod,cjs,cjs-prod}`**, без rebuild; это provenance от parent, не собственный runtime evidence агента. CJS entry — **index.js**, не index.cjs; loader выбирает реальные файлы через existing `bundleFormat`/`importPart` (`resource42/fixture.mjs:13–24`).
 
 1. Сохранить три полных snippets выше в assigned worktree, **вне tracked scope отчёта**, и запускать serially C01 → C02 → C03. C01/С03 проверяют acceptance/lifetime, C02 — только mechanism work; каждый сначала проверяет independent controls и печатает diagnostics, затем проверяет **desired invariant**. **[INFERENCE]** На текущем source финальный assert каждого recipe должен обнаружить описанный gap; exit !=0 здесь ожидаемый reproduction outcome, не уже полученный результат и не suite pass. Если раньше падает control/import, это invalid probe, не подтверждение finding.
-2. Минимальная production/development пара из cwd `D:/dev/ReactCarburetor/worktrees/review-r43-computed-20261011`:
+2. Минимальная production/development пара из cwd `./worktrees/review-r43-computed-20261011`:
 
 ```text
-node worktrees/r43-computed-c01.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm-prod
-node worktrees/r43-computed-c01.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm
-node worktrees/r43-computed-c02.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm-prod
-node worktrees/r43-computed-c02.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm
-node --expose-gc worktrees/r43-computed-c03.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm-prod
-node --expose-gc worktrees/r43-computed-c03.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm
+node worktrees/r43-computed-c01.mjs ./worktrees/bench-dist/90a1c6041c2d/esm-prod
+node worktrees/r43-computed-c01.mjs ./worktrees/bench-dist/90a1c6041c2d/esm
+node worktrees/r43-computed-c02.mjs ./worktrees/bench-dist/90a1c6041c2d/esm-prod
+node worktrees/r43-computed-c02.mjs ./worktrees/bench-dist/90a1c6041c2d/esm
+node --expose-gc worktrees/r43-computed-c03.mjs ./worktrees/bench-dist/90a1c6041c2d/esm-prod
+node --expose-gc worktrees/r43-computed-c03.mjs ./worktrees/bench-dist/90a1c6041c2d/esm
 ```
 
 3. При подтверждении повторить с `/cjs` и `/cjs-prod` по тем же argv/DIST_ROOT conventions, затем добавить adversarial comparator/transaction/retained-snapshot controls до реализации. GC control failures диагностировать отдельно; не выводить collection из одного metadata boolean.

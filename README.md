@@ -59,8 +59,8 @@ they fail.
 
 Node.js 24 or newer is required (the package engines floor; CI installs the packed package on 24.0.0,
 on the newest 24 and on the newest Node release, as CommonJS and as ESM). `WeakRef` is required in the
-browser: Chrome 84+, Firefox 79+, or Safari 14.1+. The `AbortController` fallback described below does
-not polyfill `WeakRef`.
+browser: Chrome 84+, Firefox 79+, or Safari 14.1+. Neither `WeakRef` nor `AbortController` is
+polyfilled by the library.
 
 `@types/react` is an optional peer, `^18.0.0 || ^19.0.0`: a TypeScript project sees a warning
 only on a real version mismatch, and a plain-JS project needs nothing. See
@@ -71,12 +71,10 @@ With React Server Components (Next.js App Router), components and hooks ship as 
 modules while stores, caches and scopes stay importable on the server; your own components that
 extend `AntiHookComponent` still live in a `"use client"` file. Details are in the same document.
 
-Async resources use a global `AbortController`, which Node and every browser that has `WeakRef`
-provide. In an embedded runtime that lacks it, a stand-in signal
-supports abort listeners, `onabort` and `throwIfAborted`; late answers are still discarded.
-The stand-in is not a native `AbortSignal`, so APIs that require native signal identity
-(including `fetch`) may reject it. Provide a compatible `AbortController` in that runtime
-when passing the signal to such APIs; development reports the limitation once.
+Async resources and store lifecycle signals require a global `AbortController`, which Node and
+supported browsers provide. An embedded runtime that lacks it must install a compatible
+`AbortController` before using those APIs; the library has no fallback. When a loader passes its
+signal to `fetch` or another runtime API, that API must accept the controller's signal.
 
 <!-- example:file examples/readme/Counter.tsx -->
 ```tsx

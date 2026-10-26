@@ -1,5 +1,8 @@
 # Раунд 42 — selection / proxy / path-index / write-proof
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Дата: **2026-10-10**. Reviewed base: **`fa1ad08f8cd6b26f175235a435976fcb9d94dd22`**.
 
 Review-only: production, tests, benchmarks, config и версии не менялись. Исследование выполнено в `worktrees/review-r42-selection-20261010`, ветка `review-r42-selection-20261010`. Единственный tracked change — этот отчёт.
@@ -151,7 +154,7 @@ Live lane доставил 9 раз, включая warming edit, final source v
 
 ### Identity и точные команды
 
-Все команды ниже запускались с cwd `D:/dev/ReactCarburetor/worktrees/review-r42-selection-20261010`:
+Все команды ниже запускались с cwd `./worktrees/review-r42-selection-20261010`:
 
 ```text
 git branch --show-current && git rev-parse HEAD && git status --short
@@ -164,7 +167,7 @@ Preflight: branch `review-r42-selection-20261010`, HEAD `fa1ad08f8cd6b26f175235a
 `dist` — read-only junction; исполнялся production ESM из `dist/esm-prod`, не TS и не другая сборка. `costs.mjs` напечатал realpath и SHA256 двух relevant compiled modules:
 
 ```json
-{"node":"v24.12.0","v8":"13.6.233.17-node.37","dist":"D:\\dev\\ReactCarburetor\\worktrees\\bench-dist\\fa1ad08f8cd6\\esm-prod","patchSHA256":"be25105cc7f9a34ae3b51222cd84adc10821f8c1625c84493f6490dedb8f2f02","indexSHA256":"612a9b971b40af819b627ee11b24121ef8a506f2dbe722dd4ad108c6cc25b205"}
+{"node":"v24.12.0","v8":"13.6.233.17-node.37","dist":".\\worktrees\\bench-dist\\fa1ad08f8cd6\\esm-prod","patchSHA256":"be25105cc7f9a34ae3b51222cd84adc10821f8c1625c84493f6490dedb8f2f02","indexSHA256":"612a9b971b40af819b627ee11b24121ef8a506f2dbe722dd4ad108c6cc25b205"}
 ```
 
 Compiled baseline identity supplied orchestrator: exactly reviewed SHA. Supplied authoritative GitHub CI **38075943238**, **GREEN 11/11**, относится к опубликованной базе; не выдаётся за запущенную этим review локальную проверку.

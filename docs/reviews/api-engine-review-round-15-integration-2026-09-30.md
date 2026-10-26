@@ -1,5 +1,8 @@
 # API and engine review, round 15 — integrated repairs — 2026-09-30
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Round 15 was **not zero**: the independent xs1 API review established one P2 and the xs1 engine review established two P2s. Integration then reproduced two additional P2 history regressions. All five are closed individually by actual behavior proof; the next complete independent round must still establish zero P0–P3.
 
 Source repairs came from hs1 / GPT-6 Sol6 / high isolated worktrees. Product source, tests, docs and tracked/new generated bundles remain uncommitted in `worktrees/cycle-integration`. Only review reports are committed; no push, version change or /rush. Other dirty worktrees were not reset. `dist` is tracked, not disposable ignored scaffolding.
@@ -20,7 +23,7 @@ Actual-source proof artifacts: `local://r15-slot-ownership-smoke.json`, `r15-his
 
 ## Performance measurements
 
-All nine existing paired drivers were rerun sequentially after the final registry and sentinel repair, with no concurrent owned suite/packaging run. Node used the real library and below-normal priority. Baseline: `D:/system_artefact/Temp/carburetor-r11-baseline-z3akesas/dist`; candidate: integration `dist`. Raw stdout/stderr and exact driver paths are preserved in `local://r15-repaired-paired-benchmark-observations.json`. Medians are milliseconds; wall times are noisy and are not allocated-byte measurements or attribution to one isolated change.
+All nine existing paired drivers were rerun sequentially after the final registry and sentinel repair, with no concurrent owned suite/packaging run. Node used the real library and below-normal priority. Baseline: `<temp>/carburetor-r11-baseline-z3akesas/dist`; candidate: integration `dist`. Raw stdout/stderr and exact driver paths are preserved in `local://r15-repaired-paired-benchmark-observations.json`. Medians are milliseconds; wall times are noisy and are not allocated-byte measurements or attribution to one isolated change.
 
 | Driver / workload | Baseline → candidate | Observable work / tradeoff |
 |---|---|---|

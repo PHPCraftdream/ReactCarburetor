@@ -1,7 +1,10 @@
 # API/engine review — раунд 43: ресурсы, отмена и lifetime cache
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Дата: **2026-10-11**. Reviewed base: **`90a1c6041c2d33d3e9d307a79856deb67a9a67db`**. Исполнитель: **xxs**.
-Worktree/ветка: `D:/dev/ReactCarburetor/worktrees/review-r43-resource-20261011`, `review-r43-resource-20261011`.
+Worktree/ветка: `./worktrees/review-r43-resource-20261011`, `review-r43-resource-20261011`.
 
 Это **review-only**, не реализация. Источники, tests, benchmarks, distributions и зависимости не изменялись. Единственный writable/committed файл — этот отчёт. Область: `Carburetor/Resource/`, `Models/Resource.ts`, `Interop/{createResourceReader,useResourceValue}.ts`; React-файлы использованы только для границ владения ресурсами, не для общего class/hook selection.
 
@@ -333,14 +336,14 @@ console.log(JSON.stringify({root, format: bundleFormat(root), retainedAfterClean
 ## Parent verification order и точные команды
 
 1. **Recipe A**, отдельный процесс на format: сначала capacity/cancellation states с controls; это не heap/timing test. Затем **Recipe B** с `--expose-gc`, не одновременно с другими GC/CPU workloads.
-2. Read-only immutable current bundles для проверки предоставлены parent: `D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/{esm,esm-prod,cjs,cjs-prod}`. По сообщению parent, они скопированы из уже built/smoked primary dist этого base, без rebuild. Автор отчёта **не проверял их исполнением**. `DIST_ROOT` означает конкретный format directory; argv root используется, когда переменная не установлена.
+2. Read-only immutable current bundles для проверки предоставлены parent: `./worktrees/bench-dist/90a1c6041c2d/{esm,esm-prod,cjs,cjs-prod}`. По сообщению parent, они скопированы из уже built/smoked primary dist этого base, без rebuild. Автор отчёта **не проверял их исполнением**. `DIST_ROOT` означает конкретный format directory; argv root используется, когда переменная не установлена.
 3. Сохранить code blocks A/B вне source/distribution как два указанных scratch files. Команды (cwd назначенного worktree; `worktrees/r43-parent-probes/` — пример scratch parent, автор его не создавал):
 
 ```text
-node worktrees/r43-parent-probes/r43-resource-abort-eviction.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm-prod production
-node worktrees/r43-parent-probes/r43-resource-abort-eviction.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm development
-node --expose-gc worktrees/r43-parent-probes/r43-resource-object-args-lifetime.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm-prod production
-node --expose-gc worktrees/r43-parent-probes/r43-resource-object-args-lifetime.mjs D:/dev/ReactCarburetor/worktrees/bench-dist/90a1c6041c2d/esm development
+node worktrees/r43-parent-probes/r43-resource-abort-eviction.mjs ./worktrees/bench-dist/90a1c6041c2d/esm-prod production
+node worktrees/r43-parent-probes/r43-resource-abort-eviction.mjs ./worktrees/bench-dist/90a1c6041c2d/esm development
+node --expose-gc worktrees/r43-parent-probes/r43-resource-object-args-lifetime.mjs ./worktrees/bench-dist/90a1c6041c2d/esm-prod production
+node --expose-gc worktrees/r43-parent-probes/r43-resource-object-args-lifetime.mjs ./worktrees/bench-dist/90a1c6041c2d/esm development
 ```
 
 Для CJS заменить format directory на `cjs-prod`/`cjs`; helper обнаруживает suffix по реальным файлам. Если используется `DIST_ROOT`, unset перед argv matrix, иначе он намеренно имеет precedence. Никакой зависимости от расположения scratch файла или node_modules junction для этих двух recipes нет.

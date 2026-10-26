@@ -1,8 +1,11 @@
 # Independent public API / React / resource review — round 23 — 2026-09-30
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 ## Verdict and provenance
 
-Reviewed the frozen product commit **`889ed14351b900b095fb40f26aaed5acca4be1db`** in `D:/dev/ReactCarburetor/worktrees/cycle-review-r23-api-xs`. This is an independent inspection of the public API and its actual source, with bounded Bun 1.4.2 source and Node 24.12.0 copied-distribution consumer probes. It does not adopt the round-22 reports, the parent's suites, or a newly built artifact as proof. The product, copied distribution, dependencies and existing tests were not changed.
+Reviewed the frozen product commit **`889ed14351b900b095fb40f26aaed5acca4be1db`** in `./worktrees/cycle-review-r23-api-xs`. This is an independent inspection of the public API and its actual source, with bounded Bun 1.4.2 source and Node 24.12.0 copied-distribution consumer probes. It does not adopt the round-22 reports, the parent's suites, or a newly built artifact as proof. The product, copied distribution, dependencies and existing tests were not changed.
 
 **Established API-slice findings: P0 = 0, P1 = 0, P2 = 0, P3 = 0.** No supported, consumer-visible defect was established in this slice. This is a bounded zero verdict, not a proof that every state graph, React scheduling interleaving, renderer or package manager works. The independent engine slice and parent determine their own and the combined verdicts.
 

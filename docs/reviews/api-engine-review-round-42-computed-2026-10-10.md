@@ -1,5 +1,8 @@
 # API / engine review — раунд 42: Computed, граф и freshness
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Дата: **2026-10-10**. Reviewed base: **`fa1ad08f8cd6b26f175235a435976fcb9d94dd22`**.
 Тема: dependency graph, leaf-version capture, eager/cached reads, observer lifetime, recorder ownership и публичный `computed(body, {equals})`.
 
@@ -23,7 +26,7 @@
 - Novelty: прочитаны R41 resolution `:238–337`, R40, связанные R32/R33/R34 findings/resolutions и intentional limits R37 `:39–43`, R39 `:60–66,118–121`. Не переобъявляются symbol cutover, O(D) fresh membership, last-release announcement/strong filing, recorder lexical-scope fix или уже отмеченные native/selection/WriteLog floors.
 - `xd://lsp` недоступен: device ответил `No such tool: xd://lsp` (смонтированы ast_edit/debug). Definitions/references установлены чтением текущих исходников, не выдуманными LSP-ответами.
 - Пробы запускают реальный переданный `dist` **read-only** из назначенного worktree, без сборки и source patching. Node **v24.12.0**, установленный React **19.3.0**; React rendering в этой теме не запускался.
-- `realpathSync('./dist')` во всех четырёх процессах: `D:\dev\ReactCarburetor\worktrees\bench-dist\fa1ad08f8cd6`. Связь этого compiled distribution с полным reviewed SHA предоставлена orchestrator; локальный `git log -1` показал этот SHA и ветку `review-r42-computed-20261010`.
+- `realpathSync('./dist')` во всех четырёх процессах: `.\worktrees\bench-dist\fa1ad08f8cd6`. Связь этого compiled distribution с полным reviewed SHA предоставлена orchestrator; локальный `git log -1` показал этот SHA и ветку `review-r42-computed-20261010`.
 
 ## R42-C01 — потеря constituent paths при merged + merged
 
@@ -159,7 +162,7 @@ Public signature не меняется. Preserve Object.is short circuit, canoni
 
 ## Точные команды, результаты и пределы доказательства
 
-Все subprocess имели **cwd** `D:/dev/ReactCarburetor/worktrees/review-r42-computed-20261010`. Не запускать команды из primary checkout. Начальная identity-команда:
+Все subprocess имели **cwd** `./worktrees/review-r42-computed-20261010`. Не запускать команды из primary checkout. Начальная identity-команда:
 
 ```text
 git log -1 --format="%H%n%D"
@@ -179,7 +182,7 @@ node worktrees/r42-computed-probe.mjs esm-prod
 Каждая команда завершилась **exit 0**, stderr пуст. Это исследовательские JSON probes, не assert-based suite: exit 0 не означает, что найденные incorrect values правильны. Фактический cjs stdout приведён ниже; остальные три отличаются только `format`, результаты и counters те же. Полные argv/cwd/stdout/stderr всех четырёх процессов сохранены в ignored `worktrees/r42-computed-receipts.json`. Сам executable probe тоже ignored, не входит в report commit; его полный текст включён в следующий раздел для воспроизведения после удаления worktree.
 
 ```jsonl
-{"probe":"identity","format":"cjs","node":"v24.12.0","react":"19.3.0","dist":"D:\\dev\\ReactCarburetor\\worktrees\\bench-dist\\fa1ad08f8cd6"}
+{"probe":"identity","format":"cjs","node":"v24.12.0","react":"19.3.0","dist":".\\worktrees\\bench-dist\\fa1ad08f8cd6"}
 {"probe":"merge","format":"cjs","cases":[{"shape":"merged-plus-merged","field":"a","observed":false,"reverse":false,"initial":10,"expected":20,"initialParts":["c","d"],"during":10,"after":10,"deliveries":[],"runs":[1,1,1,1,1,1,1]},{"shape":"merged-plus-merged","field":"c","observed":false,"reverse":false,"initial":10,"expected":20,"initialParts":["c","d"],"during":20,"after":20,"deliveries":[],"runs":[1,1,2,1,1,2,2]},{"shape":"merged-plus-merged","field":"a","observed":false,"reverse":true,"initial":10,"expected":20,"initialParts":["a","b"],"during":20,"after":20,"deliveries":[],"runs":[2,1,1,1,2,1,2]},{"shape":"flat","field":"a","observed":false,"reverse":false,"initial":10,"expected":20,"initialParts":["a","b","c","d"],"during":20,"after":20,"deliveries":[],"runs":[2,1,1,1,0,0,2]},{"shape":"merged-plus-bare","field":"a","observed":false,"reverse":false,"initial":10,"expected":20,"initialParts":["a","b","c","d"],"during":20,"after":20,"deliveries":[],"runs":[2,1,1,1,2,0,2]},{"shape":"merged-plus-merged","field":"noise","observed":false,"reverse":false,"initial":10,"expected":10,"initialParts":["c","d"],"during":10,"after":10,"deliveries":[],"runs":[1,1,1,1,1,1,1]},{"shape":"merged-plus-merged","field":"a","observed":true,"reverse":false,"initial":10,"expected":20,"initialParts":["c","d"],"during":10,"after":20,"deliveries":[20],"runs":[2,1,1,1,2,1,2]}]}
 {"probe":"fanin","format":"cjs","emptyControl":0,"positiveControl":2,"cases":[{"K":8,"shared":true,"initial":28,"current":29,"runs":2,"deliveries":1,"copiedRefs":35,"finalParts":8,"oldPartsUnchanged":true},{"K":16,"shared":true,"initial":120,"current":121,"runs":2,"deliveries":1,"copiedRefs":135,"finalParts":16,"oldPartsUnchanged":true},{"K":32,"shared":true,"initial":496,"current":497,"runs":2,"deliveries":1,"copiedRefs":527,"finalParts":32,"oldPartsUnchanged":true},{"K":32,"shared":false,"initial":496,"current":497,"runs":2,"deliveries":1,"copiedRefs":0,"finalParts":0,"oldPartsUnchanged":true}]}
 {"probe":"equals","format":"cjs","cases":[{"start":false,"observed":true,"initial":"undefined","initialComparisons":0,"current":"null","version":1,"comparisons":[],"seen":["null"]},{"start":true,"observed":true,"initial":"null","initialComparisons":0,"current":"null","version":0,"comparisons":[["null","undefined"]],"seen":[]},{"start":false,"observed":false,"initial":"undefined","initialComparisons":0,"current":"null","version":0,"comparisons":[],"seen":[]},{"start":true,"observed":false,"initial":"null","initialComparisons":0,"current":"null","version":0,"comparisons":[["null","undefined"]],"seen":[]}]}

@@ -1,5 +1,8 @@
 # API / engine review — раунд 44: Computed, checkpoints и fan-in
 
+> Примечание: машинно-зависимые пути нормализованы: `.` обозначает корень репозитория,
+> `<temp>` — временный каталог. Остальные данные исторического отчёта сохранены.
+
 Дата: **2026-10-12**. Reviewed base: **`acfd3e2b8e58210ce1076bf1683f666283216af5`**. Исполнитель: **xxs / R44Computed**.
 
 Scope: `lib/src/Carburetor/Derived/**`, включая `Computed.ts`, `computedDependencies.ts`, `renderOwner.ts` и Freshness helpers; Derived-facing public models, `TodoViews`, hook consumer, dependency/lifecycle/freshness coverage и computed/derived/computed41/computed42/computed43 benchmark families. Это **review-only**: изменён только назначенный Markdown-отчёт. Production, tests, configs, dependencies, версии, lock и Git не записывались; commit/push не выполнялись.
@@ -177,19 +180,19 @@ Cold first subscribe: 1 call / 0 entries. Positive control явным pre-body s
 
 ## Точные исполненные commands и полный source recipes
 
-Восемь subprocess commands ниже реально исполнялись с `cwd=D:/dev/ReactCarburetor`, `text=True`, `capture_output=True`, `timeout=30`; **stdin = полный соответствующий JavaScript source**. Сначала все четыре C01 children, затем все четыре C02, без parallelism. Дополнительных probe files на диске агент не создавал.
+Восемь subprocess commands ниже реально исполнялись с `cwd=.`, `text=True`, `capture_output=True`, `timeout=30`; **stdin = полный соответствующий JavaScript source**. Сначала все четыре C01 children, затем все четыре C02, без parallelism. Дополнительных probe files на диске агент не создавал.
 
 ```text
 # stdin: R44-C01-PROBE
-node --input-type=module - D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/esm esm
-node --input-type=module - D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/esm-prod esm-prod
-node --input-type=module - D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/cjs cjs
-node --input-type=module - D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/cjs-prod cjs-prod
+node --input-type=module - ./worktrees/bench-dist/acfd3e2b8e58/esm esm
+node --input-type=module - ./worktrees/bench-dist/acfd3e2b8e58/esm-prod esm-prod
+node --input-type=module - ./worktrees/bench-dist/acfd3e2b8e58/cjs cjs
+node --input-type=module - ./worktrees/bench-dist/acfd3e2b8e58/cjs-prod cjs-prod
 # stdin: R44-C02-PROBE
-node --input-type=module - D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/esm esm
-node --input-type=module - D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/esm-prod esm-prod
-node --input-type=module - D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/cjs cjs
-node --input-type=module - D:/dev/ReactCarburetor/worktrees/bench-dist/acfd3e2b8e58/cjs-prod cjs-prod
+node --input-type=module - ./worktrees/bench-dist/acfd3e2b8e58/esm esm
+node --input-type=module - ./worktrees/bench-dist/acfd3e2b8e58/esm-prod esm-prod
+node --input-type=module - ./worktrees/bench-dist/acfd3e2b8e58/cjs cjs
+node --input-type=module - ./worktrees/bench-dist/acfd3e2b8e58/cjs-prod cjs-prod
 ```
 
 ### Recipe R44-C01
@@ -393,7 +396,7 @@ import re
 import subprocess
 from pathlib import Path
 
-cwd = Path('D:/dev/ReactCarburetor')
+cwd = Path('.')
 report = (cwd / 'docs/reviews/api-engine-review-round-44-computed-2026-10-12.md').read_text(encoding='utf-8')
 for probe in ('R44-C01', 'R44-C02'):
     pattern = rf'<!-- {probe}-PROBE -->\n```js\n(.*?)\n```'
