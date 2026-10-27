@@ -1,6 +1,6 @@
 import {useMemo} from 'react';
-import {useCarburetorValue} from 'react-carburetor/interop';
-import {Carburetor} from 'react-carburetor';
+import {useCarburetorValue} from '@react-carburetor/core/interop';
+import {Carburetor} from '@react-carburetor/core';
 
 type TState = {count: number};
 const selectCount = (value: TState): number => value.count;

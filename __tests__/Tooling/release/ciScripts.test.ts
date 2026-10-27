@@ -68,10 +68,10 @@ describe('smokePacked', () => {
     });
 
     test('fails clearly when the package directory holds no tarball', async () => {
-        const directory = path.join(ROOT, 'npm', 'carburetor-lint-linux-x64-gnu');
+        const directory = path.join(ROOT, 'npm', 'lint-linux-x64-gnu');
 
         expect(existsSync(path.join(directory, 'package.json'))).toBe(true);
-        await expect(smokePacked(['--launcher', 'npm/carburetor-lint', '--package', directory, '--fixture', 'x']))
+        await expect(smokePacked(['--launcher', 'npm/lint', '--package', directory, '--fixture', 'x']))
             .rejects.toThrow('No packed tarball');
     });
 });
@@ -87,10 +87,10 @@ describe('verifyGating', () => {
         const directory = mkdtempSync(path.join(os.tmpdir(), 'gating-'));
 
         try {
-            writeFileSync(path.join(directory, 'carburetor-lint-linux-x64-gnu-0.1.0.tgz'), '');
+            writeFileSync(path.join(directory, 'react-carburetor-lint-linux-x64-gnu-0.1.0.tgz'), '');
 
             expect(() => verifyGating(['--launcher', 'launcher.tgz', '--packages', directory,
-                '--expect', 'carburetor-lint-w32-x64'])).toThrow('is not among the offered packages');
+                '--expect', '@react-carburetor/lint-w32-x64'])).toThrow('is not among the offered packages');
         } finally {
             rmSync(directory, {recursive: true, force: true});
         }

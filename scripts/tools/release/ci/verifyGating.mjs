@@ -3,6 +3,7 @@ import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { installedPlatforms } from './installedPlatforms.mjs';
 
 const USAGE = 'Usage: verifyGating.mjs --launcher <tgz> --packages <dir of platform tgz files> ' +
   '--expect <package name> [--skip-run]';
@@ -47,7 +48,9 @@ const fileSpec = file => `file:${path.resolve(file).split(path.sep).join('/')}`;
 export function verifyGating(args = process.argv.slice(2)) {
   const options = parseArguments(args);
   const tarballs = readdirSync(options.packages).filter(name => name.endsWith('.tgz'));
-  const names = tarballs.map(name => name.replace(/-\d+\.\d+\.\d+.*\.tgz$/, ''));
+  // npm names the tarball of a scoped package `<scope>-<name>-<version>.tgz`.
+  const names = tarballs.map(name => name.replace(/-\d+\.\d+\.\d+.*\.tgz$/, '')
+    .replace(/^react-carburetor-/, '@react-carburetor/'));
   if (!names.includes(options.expect)) {
     throw new Error(`${options.expect} is not among the offered packages: ${names.join(', ') || 'none'}`);
   }
@@ -58,21 +61,21 @@ export function verifyGating(args = process.argv.slice(2)) {
     writeFileSync(path.join(work, 'package.json'), JSON.stringify({
       name: 'consumer',
       private: true,
-      dependencies: { 'carburetor-lint': fileSpec(options.launcher) },
+      dependencies: { '@react-carburetor/lint': fileSpec(options.launcher) },
       optionalDependencies,
     }));
     execFileSync('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts'],
       { cwd: work, stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32' });
 
     const modules = path.join(work, 'node_modules');
-    const installed = readdirSync(modules).filter(name => name.startsWith('carburetor-lint-')).sort();
+    const installed = installedPlatforms(modules);
     console.log(`offered: ${names.length} platform packages; installed: ${installed.join(', ') || 'none'}`);
     if (installed.length !== 1 || installed[0] !== options.expect) {
       throw new Error(`Expected only ${options.expect} to be installed, got: ${installed.join(', ') || 'none'}`);
     }
     if (options.skipRun) return;
 
-    const launcher = path.join(modules, 'carburetor-lint', 'bin', 'carburetor-lint.js');
+    const launcher = path.join(modules, '@react-carburetor', 'lint', 'bin', 'carburetor-lint.js');
     if (!existsSync(launcher)) throw new Error('The launcher was not installed');
     const env = { ...process.env };
     delete env.CARBURETOR_LINT_BIN;

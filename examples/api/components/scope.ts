@@ -1,4 +1,4 @@
-import {Carburetor, CarburetorScope, ICarburetorToken, carburetorToken} from 'react-carburetor';
+import {Carburetor, CarburetorScope, ICarburetorToken, carburetorToken} from '@react-carburetor/core';
 
 interface State {count: number}
 const countToken: ICarburetorToken<Carburetor<State>> = carburetorToken(() => new Carburetor({count: 0}), 'example-count');

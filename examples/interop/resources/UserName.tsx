@@ -1,7 +1,7 @@
 // #region name
 import type {ReactElement} from 'react';
-import {ResourceCache} from 'react-carburetor';
-import {useResourceValue} from 'react-carburetor/interop';
+import {ResourceCache} from '@react-carburetor/core';
+import {useResourceValue} from '@react-carburetor/core/interop';
 
 interface User {
     id: number;

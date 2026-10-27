@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor, CarburetorHistory} from 'react-carburetor';
+import {AntiHookComponent, Carburetor, CarburetorHistory} from '@react-carburetor/core';
 
 const todoCarburetor = new Carburetor({items: []});
 

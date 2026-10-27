@@ -21,7 +21,7 @@ change.
 
 <!-- example:file examples/api/components/UseCarburetor.tsx#doc -->
 ```tsx
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
 
 interface ICounterData {
     count: number;
@@ -58,7 +58,7 @@ so the props gate can bail out of parent-driven re-renders.
 
 <!-- example:file examples/api/components/connect/Bind.tsx#doc -->
 ```tsx
-import {AntiHookComponent, bind, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, bind, Carburetor} from '@react-carburetor/core';
 
 interface ICounterData {
     count: number;
@@ -102,7 +102,7 @@ fixes the object kind (a later array root fails with a boundary error) — read 
 
 <!-- example:file examples/api/components/connect/Connect.tsx#doc -->
 ```tsx
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
 
 interface IGreetingData {
     name: string;
@@ -131,7 +131,7 @@ only when the selected content changes — safe to hand a child gated by shallow
 <!-- example:file examples/api/components/connect/ConnectSelection.tsx#doc -->
 ```tsx
 import * as React from 'react';
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
 
 interface IItemListData {
     items: Array<{id: string; title: string}>;
@@ -179,7 +179,7 @@ import {
     TEffectCleanup,
     TEffectDeps,
     TTimerHandle,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface IDraftData {
     text: string;
@@ -243,7 +243,7 @@ import {
     CarburetorScope,
     ICarburetorToken,
     ScopedAntiHookComponent,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface ICounterData {
     count: number;
@@ -298,7 +298,7 @@ import {
     CarburetorContext,
     CarburetorScope,
     ScopedAntiHookComponent,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 const statusToken = carburetorToken(
     () => ({message: 'ready'}),

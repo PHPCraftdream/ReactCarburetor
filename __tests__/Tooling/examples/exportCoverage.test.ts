@@ -73,9 +73,9 @@ const exampleIdentifiers = (directory: string): Set<string> => {
 describe('runnable examples cover the public API', () => {
     const covered = exampleIdentifiers(path.join(root, 'examples'));
     const entryPoints: Array<[string, string]> = [
-        ['react-carburetor', 'lib/src/Carburetor/index.ts'],
-        ['react-carburetor/interop', 'lib/src/Interop/index.ts'],
-        ['react-carburetor/lint', 'plugin/lint.d.ts'],
+        ['@react-carburetor/core', 'lib/src/Carburetor/index.ts'],
+        ['@react-carburetor/core/interop', 'lib/src/Interop/index.ts'],
+        ['@react-carburetor/core/lint', 'plugin/lint.d.ts'],
     ];
     test.each(entryPoints)('every export of %s is used by an example', (_entry, file) => {
         const names = [...exportedNames(path.join(root, file))];

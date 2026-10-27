@@ -4,15 +4,15 @@ import path from 'node:path';
 const ROOT = process.cwd();
 const LICENSES = ['LICENSE', 'LICENSE-MIT', 'LICENSE-APACHE'];
 const PACKAGES = [
-    'carburetor-lint',
-    'carburetor-lint-darwin-arm64',
-    'carburetor-lint-darwin-x64',
-    'carburetor-lint-linux-arm64-gnu',
-    'carburetor-lint-linux-arm64-musl',
-    'carburetor-lint-linux-x64-gnu',
-    'carburetor-lint-linux-x64-musl',
-    'carburetor-lint-w32-arm64',
-    'carburetor-lint-w32-x64',
+    'lint',
+    'lint-darwin-arm64',
+    'lint-darwin-x64',
+    'lint-linux-arm64-gnu',
+    'lint-linux-arm64-musl',
+    'lint-linux-x64-gnu',
+    'lint-linux-x64-musl',
+    'lint-w32-arm64',
+    'lint-w32-x64',
 ];
 
 interface IPackageManifest {
@@ -20,7 +20,7 @@ interface IPackageManifest {
     license: string;
 }
 
-const PLATFORM_PACKAGES = PACKAGES.filter((name: string) => name !== 'carburetor-lint');
+const PLATFORM_PACKAGES = PACKAGES.filter((name: string) => name !== 'lint');
 
 describe('third-party attribution in the platform packages', () => {
     test.each(PLATFORM_PACKAGES)('%s ships the attribution for its statically linked crates', (name: string) => {
@@ -33,7 +33,7 @@ describe('third-party attribution in the platform packages', () => {
 
     test('the launcher carries no binary, so no attribution file', () => {
         const manifest = JSON.parse(
-            readFileSync(path.join(ROOT, 'npm', 'carburetor-lint', 'package.json'), 'utf8')
+            readFileSync(path.join(ROOT, 'npm', 'lint', 'package.json'), 'utf8')
         ) as IPackageManifest;
 
         expect(manifest.files).not.toContain('THIRD-PARTY-LICENSES.txt');

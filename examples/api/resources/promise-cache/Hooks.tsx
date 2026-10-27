@@ -1,4 +1,4 @@
-import {ResourceCache} from 'react-carburetor';
+import {ResourceCache} from '@react-carburetor/core';
 
 interface User {
     id: string;
@@ -6,8 +6,8 @@ interface User {
 }
 const users = new ResourceCache<User, [string]>(async (id) => ({id, name: `User ${id}`}));
 // #region doc
-import {IResourceView, TReadonly} from 'react-carburetor';
-import {useResourceValue} from 'react-carburetor/interop';
+import {IResourceView, TReadonly} from '@react-carburetor/core';
+import {useResourceValue} from '@react-carburetor/core/interop';
 
 const selectName = (view: TReadonly<IResourceView<User>>) => view.data?.name;
 function UserName({id}: {id: string}) {

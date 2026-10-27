@@ -1,4 +1,4 @@
-import {TEffect, TEffectCleanup, TEffectDeps, TDisposer, TReadonly, TSubscriber, TTimerHandle} from 'react-carburetor';
+import {TEffect, TEffectCleanup, TEffectDeps, TDisposer, TReadonly, TSubscriber, TTimerHandle} from '@react-carburetor/core';
 
 const disposer: TDisposer = () => undefined;
 const subscriber: TSubscriber = () => disposer();

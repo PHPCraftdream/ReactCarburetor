@@ -21,7 +21,7 @@ detached, and an unbound `inc` passed to `onClick` fails at the first `this.upda
 
 <!-- example:file examples/interop/adopting/Store.ts#doc -->
 ```ts
-import {bind, Carburetor} from 'react-carburetor';
+import {bind, Carburetor} from '@react-carburetor/core';
 
 const incrementValue = (draft: {value: number}): void => { draft.value += 1; };
 
@@ -38,7 +38,7 @@ const counterCarburetor = new CounterCarburetor({value: 0});
 ## 2. Read it from existing components
 
 Functional components need no rewrite. `useCarburetorValue(carburetor, select)` from
-`react-carburetor/interop` subscribes to exactly the paths the selector reads — the same
+`@react-carburetor/core/interop` subscribes to exactly the paths the selector reads — the same
 precision the class API gets — and returns a detached readonly selection. The selector is
 required; an optional third argument overrides the structural equality check. Existing
 hook-based components can adopt the store one component at a time, mixed freely with the
@@ -46,8 +46,8 @@ state they still hold in `useState`.
 
 <!-- example:file examples/interop/adopting/InteropCounter.tsx#doc -->
 ```tsx
-import {bind, Carburetor} from 'react-carburetor';
-import {useCarburetorValue} from 'react-carburetor/interop';
+import {bind, Carburetor} from '@react-carburetor/core';
+import {useCarburetorValue} from '@react-carburetor/core/interop';
 
 const incrementValue = (draft: {value: number}): void => { draft.value += 1; };
 const selectValue = (state: {value: number}): number => state.value;
@@ -84,7 +84,7 @@ across renders.
 
 <!-- example:file examples/interop/adopting/ClassCounter.tsx -->
 ```tsx
-import {AntiHookComponent, bind, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, bind, Carburetor} from '@react-carburetor/core';
 
 const incrementValue = (draft: {value: number}): void => { draft.value += 1; };
 
@@ -130,7 +130,7 @@ subscribes for one notification and resolves on the next update (or rejects afte
 
 <!-- example:file examples/interop/adopting/Testing.ts -->
 ```ts
-import {bind, Carburetor, waitForUpdate} from 'react-carburetor';
+import {bind, Carburetor, waitForUpdate} from '@react-carburetor/core';
 
 const fetchCount = async (): Promise<number> => 1;
 
@@ -165,15 +165,15 @@ as callbacks, and subscriptions without disposal.
 
 ## 7. Use a local copy of the library
 
-Link the built package by default; its `exports` map resolves `react-carburetor`,
-`react-carburetor/interop` and `react-carburetor/lint`, selecting `development` or `production`
+Link the built package by default; its `exports` map resolves `@react-carburetor/core`,
+`@react-carburetor/core/interop` and `@react-carburetor/core/lint`, selecting `development` or `production`
 from your bundler's conditions.
 
 1. Build the library once and after each change: `npm run build` in the library checkout.
 2. Depend on the checkout by path from the app's `package.json`, then reinstall:
-   `"react-carburetor": "file:../ReactCarburetor"` (or a workspace entry for a monorepo).
-3. Import as usual: `import {Carburetor} from 'react-carburetor'` and
-   `import {useCarburetorValue} from 'react-carburetor/interop'`.
+   `"@react-carburetor/core": "file:../ReactCarburetor"` (or a workspace entry for a monorepo).
+3. Import as usual: `import {Carburetor} from '@react-carburetor/core'` and
+   `import {useCarburetorValue} from '@react-carburetor/core/interop'`.
 4. In the app's `pretest`, run `npm run check:dist` in the library checkout to verify its build stamp:
    `"pretest": "node ../ReactCarburetor/scripts/tools/buildInfo/checkDistFresh.mjs ../ReactCarburetor"`.
 
@@ -188,7 +188,7 @@ The build writes `dist/build-info.json` with the package version, source hash, o
 revision, and dirty state. The checker lives in the framework checkout and is not shipped with the
 package.
 
-Do not alias `react-carburetor` to `lib/src` in `tsconfig` or the bundler. Aliases bypass the package
+Do not alias `@react-carburetor/core` to `lib/src` in `tsconfig` or the bundler. Aliases bypass the package
 exports and their conditions; the optional source condition above resolves the root and supported
 subpaths through the package map without aliases. Keep a single copy of `react` and `react-dom` in
 the app: the library declares them as peers.

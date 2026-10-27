@@ -8,8 +8,8 @@ import {
     Computed,
     ScopedAntiHookComponent,
     carburetorToken,
-} from "react-carburetor";
-import {useCarburetorValue, useComputedValue} from "react-carburetor/interop";
+} from "@react-carburetor/core";
+import {useCarburetorValue, useComputedValue} from "@react-carburetor/core/interop";
 
 /** Store shape shared by the scoped and the hooks consumer. */
 class ScopeStore extends Carburetor<{count: number}> {}

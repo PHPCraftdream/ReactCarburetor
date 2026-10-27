@@ -9,7 +9,7 @@ const React = require('react');
 const renderToString = require('react-dom/server').renderToString;
 
 // dist/cjs/Carburetor/index.js is the package's CJS entry; the package root exports no package.json.
-const dist = path.resolve(path.dirname(require.resolve('react-carburetor')), '..', '..');
+const dist = path.resolve(path.dirname(require.resolve('@react-carburetor/core')), '..', '..');
 
 const fail = function (message) {
   console.error('probe: ' + message);
@@ -50,9 +50,9 @@ const exercise = function (label, lib) {
 const flavor = process.argv[2];
 
 if (flavor === 'require-development') {
-  require('react-carburetor/interop');
-  require('react-carburetor/testing');
-  exercise(flavor, require('react-carburetor'));
+  require('@react-carburetor/core/interop');
+  require('@react-carburetor/core/testing');
+  exercise(flavor, require('@react-carburetor/core'));
 } else if (flavor === 'require-production') {
   exercise(flavor, require(path.join(dist, 'cjs-prod', 'Carburetor', 'index.js')));
 } else if (flavor === 'import-development' || flavor === 'import-production') {

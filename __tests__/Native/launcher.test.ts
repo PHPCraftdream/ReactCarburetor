@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import {runInNewContext} from 'node:vm';
 import {describe, expect, test} from '@rstest/core';
 
-const LAUNCHER = path.join(process.cwd(), 'npm', 'carburetor-lint', 'bin', 'carburetor-lint.js');
+const LAUNCHER = path.join(process.cwd(), 'npm', 'lint', 'bin', 'carburetor-lint.js');
 const source = readFileSync(LAUNCHER, 'utf8');
 
 interface IScenario {
@@ -62,7 +62,7 @@ describe('native launcher package selection', () => {
         } catch (error) {
             if (error !== exitSentinel) throw error;
         }
-        expect(stderr).toContain(`expected package carburetor-lint-w32-${arch}`);
+        expect(stderr).toContain(`expected package @react-carburetor/lint-w32-${arch}`);
     });
 });
 

@@ -5,14 +5,16 @@ import {trustPublishers} from '../../../scripts/tools/release/trust/trustPublish
 
 const ROOT = process.cwd();
 const read = (file: string): string => readFileSync(path.join(ROOT, file), 'utf8');
-const launcher = JSON.parse(read('npm/carburetor-lint/package.json')) as {
+const launcher = JSON.parse(read('npm/lint/package.json')) as {
     optionalDependencies: Record<string, string>;
 };
 
 describe('trusted publisher plan', () => {
     test('covers the library, the launcher and every platform package of the launcher', () => {
         const {packages} = trustPlan(ROOT);
-        const expected = [...Object.keys(launcher.optionalDependencies), 'carburetor-lint', 'react-carburetor'];
+        const expected = [
+            ...Object.keys(launcher.optionalDependencies), '@react-carburetor/lint', '@react-carburetor/core',
+        ];
 
         expect(packages).toEqual(expected);
         expect(packages).toHaveLength(10);
@@ -46,7 +48,8 @@ describe('trustPublishers', () => {
 
         expect(lines).toHaveLength(10);
         expect(lines[9]).toBe(
-            'npm trust github react-carburetor --repo PHPCraftdream/ReactCarburetor --file release.yml --env npm --yes',
+            'npm trust github @react-carburetor/core --repo PHPCraftdream/ReactCarburetor ' +
+            '--file release.yml --env npm --yes',
         );
     });
 });

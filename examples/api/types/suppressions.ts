@@ -1,5 +1,5 @@
 // #region doc
-import {AntiHookComponent} from 'react-carburetor';
+import {AntiHookComponent} from '@react-carburetor/core';
 
 class Counter extends AntiHookComponent {
     value = 0;

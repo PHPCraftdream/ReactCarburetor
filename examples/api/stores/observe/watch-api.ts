@@ -1,5 +1,5 @@
 // #region watch-api
-import {Carburetor, TDisposer, TReadonly, TSelector} from 'react-carburetor';
+import {Carburetor, TDisposer, TReadonly, TSelector} from '@react-carburetor/core';
 
 const store = new Carburetor({items: [{done: false}, {done: true}]});
 

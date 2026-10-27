@@ -1,4 +1,4 @@
-import {AntiHookComponent, bind} from 'react-carburetor';
+import {AntiHookComponent, bind} from '@react-carburetor/core';
 
 export class WrongField extends AntiHookComponent {
     // #region doc

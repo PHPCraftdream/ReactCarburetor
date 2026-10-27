@@ -1,6 +1,6 @@
-import {bind} from 'react-carburetor';
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
-import type {ICarburetorEvents} from 'react-carburetor';
+import {bind} from '@react-carburetor/core';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
+import type {ICarburetorEvents} from '@react-carburetor/core';
 
 interface IStatus {online: boolean}
 interface IEvents {connected: {at: number}}

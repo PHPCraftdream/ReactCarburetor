@@ -1,4 +1,4 @@
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 // #region doc
 const increment = (draft: {count: number}): void => {

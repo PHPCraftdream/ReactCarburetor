@@ -1,4 +1,4 @@
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 class Todos extends Carburetor<{items: Record<string, {done: boolean}>}> {}
 

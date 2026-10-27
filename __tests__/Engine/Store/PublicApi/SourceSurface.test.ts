@@ -1,6 +1,6 @@
 import * as Carburetor from '@/Carburetor';
 
-/** The public surface of `react-carburetor`, pinned name by name: anything not on
+/** The public surface of `@react-carburetor/core`, pinned name by name: anything not on
  * this list fails here before it can slip under the semver contract. */
 const PUBLIC_SURFACE = [
     'AntiHookComponent',

@@ -1,5 +1,5 @@
 // #region doc
-import {AntiHookComponent, bind, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, bind, Carburetor} from '@react-carburetor/core';
 
 const incrementValue = (draft: {value: number}): void => { draft.value += 1; };
 

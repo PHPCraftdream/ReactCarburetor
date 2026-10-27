@@ -217,24 +217,24 @@ describe('platformPackageNames', () => {
         // true everywhere this suite runs; a musl machine flipping the order is exactly the
         // kind of environment drift this assertion exists to surface.
         const platform = process.platform === 'win32' ? 'w32' : process.platform;
-        const expected = `carburetor-lint-${platform}-${process.arch}` +
+        const expected = `@react-carburetor/lint-${platform}-${process.arch}` +
             (process.platform === 'linux' ? '-gnu' : '');
 
         expect(platformPackageNames()[0]).toBe(expected);
     });
 
     test('single-binary platforms name exactly one package, whatever the machine', () => {
-        expect(platformPackageNames('win32', 'x64')).toEqual(['carburetor-lint-w32-x64']);
-        expect(platformPackageNames('win32', 'arm64')).toEqual(['carburetor-lint-w32-arm64']);
-        expect(platformPackageNames('darwin', 'arm64')).toEqual(['carburetor-lint-darwin-arm64']);
-        expect(platformPackageNames('sunos', 'x64')).toEqual(['carburetor-lint-sunos-x64']);
+        expect(platformPackageNames('win32', 'x64')).toEqual(['@react-carburetor/lint-w32-x64']);
+        expect(platformPackageNames('win32', 'arm64')).toEqual(['@react-carburetor/lint-w32-arm64']);
+        expect(platformPackageNames('darwin', 'arm64')).toEqual(['@react-carburetor/lint-darwin-arm64']);
+        expect(platformPackageNames('sunos', 'x64')).toEqual(['@react-carburetor/lint-sunos-x64']);
     });
 
     test('linux offers both libc builds, arm64 included', () => {
         const names = platformPackageNames('linux', 'arm64');
 
-        expect(names).toContain('carburetor-lint-linux-arm64-gnu');
-        expect(names).toContain('carburetor-lint-linux-arm64-musl');
+        expect(names).toContain('@react-carburetor/lint-linux-arm64-gnu');
+        expect(names).toContain('@react-carburetor/lint-linux-arm64-musl');
     });
 });
 
@@ -258,7 +258,7 @@ describe('a missing binary fails loudly', () => {
 
             expect(failure).toBeInstanceOf(Error);
             expect((failure as Error).message).toContain('no native binary for this platform');
-            expect((failure as Error).message).toContain('npm install --save-dev carburetor-lint');
+            expect((failure as Error).message).toContain('npm install --save-dev @react-carburetor/lint');
             expect((failure as Error).message).toContain(platformPackageNames()[0]);
 
             // The failure is written where the other workers of a multithreaded host are
@@ -520,9 +520,9 @@ describe('the bridge, through the real host', () => {
 /**
  * The launcher resolution step: finding the binary through the consumer's own install.
  *
- * A consumer installs `carburetor-lint` as a dev dependency of their project, and that launcher
+ * A consumer installs `@react-carburetor/lint` as a dev dependency of their project, and that launcher
  * package's `optionalDependencies` carry the platform binaries. In an isolated layout (pnpm) those
- * platform packages sit under the launcher's own `node_modules`, invisible from react-carburetor's
+ * platform packages sit under the launcher's own `node_modules`, invisible from @react-carburetor/core's
  * position — so `resolveBinary` must resolve *from the project working directory*. These tests
  * build that nested layout in the OS temp directory, far from this repository, and point
  * `process.cwd` at it: a shape only the launcher step can see. The negative control proves the
@@ -542,16 +542,19 @@ const stubProjectCwd = (dir: string): void => {
     delete process.env.CARBURETOR_LINT_BIN;
 };
 
-describe('resolveBinary through the carburetor-lint launcher package', () => {
+describe('resolveBinary through the @react-carburetor/lint launcher package', () => {
     test('finds the platform binary nested under the launcher in the project', () => {
         projectDir = mkdtempSync(path.join(os.tmpdir(), 'carburetor-launcher-'));
-        const launcherDir = path.join(projectDir, 'node_modules', 'carburetor-lint');
+        const launcherDir = path.join(projectDir, 'node_modules', '@react-carburetor', 'lint');
         const platformDir = path.join(launcherDir, 'node_modules', platformPackageNames()[0]);
         const stubBinary = path.join(platformDir, BINARY_NAME);
 
         try {
             mkdirSync(platformDir, {recursive: true});
-            writeFileSync(path.join(launcherDir, 'package.json'), '{"name":"carburetor-lint","version":"0.1.0"}');
+            writeFileSync(
+                path.join(launcherDir, 'package.json'),
+                '{"name":"@react-carburetor/lint","version":"0.1.0"}',
+            );
             writeFileSync(stubBinary, 'stub binary');
 
             stubProjectCwd(projectDir);

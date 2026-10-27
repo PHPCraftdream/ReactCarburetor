@@ -1,4 +1,4 @@
-import {Carburetor, computed} from 'react-carburetor';
+import {Carburetor, computed} from '@react-carburetor/core';
 
 const store = new Carburetor({visible: 2});
 const visibleCount = computed(read => read(store).visible);

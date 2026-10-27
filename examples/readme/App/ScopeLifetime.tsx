@@ -1,5 +1,5 @@
 import React from 'react';
-import {CarburetorProvider, CarburetorScope, carburetorToken, Carburetor} from 'react-carburetor';
+import {CarburetorProvider, CarburetorScope, carburetorToken, Carburetor} from '@react-carburetor/core';
 
 const tick = (draft: {ticks: number}): void => {
     draft.ticks += 1;

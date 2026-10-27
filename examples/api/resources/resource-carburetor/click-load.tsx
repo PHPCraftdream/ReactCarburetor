@@ -1,4 +1,4 @@
-import {AntiHookComponent, ResourceCarburetor, resourceState} from 'react-carburetor';
+import {AntiHookComponent, ResourceCarburetor, resourceState} from '@react-carburetor/core';
 import {type JSX} from 'react';
 
 interface Config {

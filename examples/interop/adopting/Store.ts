@@ -1,5 +1,5 @@
 // #region doc
-import {bind, Carburetor} from 'react-carburetor';
+import {bind, Carburetor} from '@react-carburetor/core';
 
 const incrementValue = (draft: {value: number}): void => { draft.value += 1; };
 

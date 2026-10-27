@@ -1,4 +1,4 @@
-import {AntiHookComponent} from 'react-carburetor';
+import {AntiHookComponent} from '@react-carburetor/core';
 
 export class GoodMount extends AntiHookComponent {
     private load(): void {

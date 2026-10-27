@@ -1,5 +1,5 @@
 // #region doc
-import {bind, Carburetor, IPersistOptions, IStorageLike, persist} from 'react-carburetor';
+import {bind, Carburetor, IPersistOptions, IStorageLike, persist} from '@react-carburetor/core';
 
 class TodoCarburetor extends Carburetor<{items: string[]}> {
     @bind

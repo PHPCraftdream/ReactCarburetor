@@ -1,4 +1,4 @@
-import {AntiHookComponent} from 'react-carburetor';
+import {AntiHookComponent} from '@react-carburetor/core';
 
 declare function connect(url: string): () => void;
 

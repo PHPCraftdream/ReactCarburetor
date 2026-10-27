@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
 
 class Seen extends Carburetor<{seen: number}> {
     public markSeen(): void {

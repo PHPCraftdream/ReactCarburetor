@@ -1,5 +1,5 @@
 // #region rates
-import {IResourceSnapshot, ResourceCarburetor} from 'react-carburetor';
+import {IResourceSnapshot, ResourceCarburetor} from '@react-carburetor/core';
 
 interface Currency {
     code: string;

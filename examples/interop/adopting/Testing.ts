@@ -1,5 +1,5 @@
 // #region doc
-import {bind, Carburetor, waitForUpdate} from 'react-carburetor';
+import {bind, Carburetor, waitForUpdate} from '@react-carburetor/core';
 
 const fetchCount = async (): Promise<number> => 1;
 

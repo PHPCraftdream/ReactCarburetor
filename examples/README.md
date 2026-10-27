@@ -1,6 +1,6 @@
 # Documentation examples and native lint rules
 
-Runnable examples live in `examples/`, separately from prose and generated output. Add TypeScript or TSX source there, import public APIs through `react-carburetor`, `react-carburetor/interop`, or `react-carburetor/lint`, and keep each directory to seven entries. `examples/tsconfig.json` checks the proper examples as a consumer against repository sources; it does not emit files.
+Runnable examples live in `examples/`, separately from prose and generated output. Add TypeScript or TSX source there, import public APIs through `@react-carburetor/core`, `@react-carburetor/core/interop`, or `@react-carburetor/core/lint`, and keep each directory to seven entries. `examples/tsconfig.json` checks the proper examples as a consumer against repository sources; it does not emit files.
 
 Every `ts`/`tsx`/`js`/`jsx` block in README and docs Markdown is generated from an `examples/` source file with an `<!-- example:file examples/path/File.tsx -->` marker; a `#name` suffix copies a named `// #region name` excerpt. `npm run docs:build` copies sources into the fences and `npm run docs:check` verifies the generated output is current and rejects any unmarked code block. Keep examples self-contained and meaningful rather than listing names solely for coverage.
 

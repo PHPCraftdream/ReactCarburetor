@@ -1,6 +1,6 @@
 name: Dependency audit
 
-# Known vulnerabilities in what ships: the npm packages (react-carburetor has no runtime
+# Known vulnerabilities in what ships: the npm packages (@react-carburetor/core has no runtime
 # dependencies, so this guards the day it gets one) and the Rust crates linked into the
 # carburetor-lint binaries. Advisories appear independently of our commits, so it also runs
 # weekly. The release workflow calls it and publishes only when it passes.

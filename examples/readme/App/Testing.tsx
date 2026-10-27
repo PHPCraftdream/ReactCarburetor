@@ -11,7 +11,7 @@ import {
     bind,
     persist,
     waitForUpdate,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 const selectCount = (data: {count: number}) => data.count;
 
 class CounterStore extends Carburetor<{count: number}> {

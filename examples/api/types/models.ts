@@ -2,7 +2,7 @@ import {
     Computed, CarburetorContext, CarburetorProvider, Diagnostics, EDevToolsAction, EDevToolsMessageType,
     EResourceStatus, ICarburetor, IComputed, IPatchSource, ScopedAntiHookComponent, TDisposer, TSelector, TUpdater,
     deepClone, diagnostics, getInitialResourceData, transaction,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 const action: EDevToolsAction = EDevToolsAction.Rollback;
 const message: EDevToolsMessageType = EDevToolsMessageType.Dispatch;

@@ -9,13 +9,13 @@ import {checkKeylessAnswer} from './round41/keylessAnswerChecks.mjs';
 /**
  * A packed CJS store's plain-object/Map-key selection and plain/array/native-root
  * connections must preserve detached graph identity for ESM class and hook readers.
- * Runs against `<installDir>/node_modules/react-carburetor`, not the repo's `dist/`.
+ * Runs against `<installDir>/node_modules/@react-carburetor/core`, not the repo's `dist/`.
  */
 const SCRIPT = `
 'use strict';
 const path = require('path');
 const assert = require('node:assert/strict');
-const pkgRoot = path.join(process.cwd(), 'node_modules', 'react-carburetor');
+const pkgRoot = path.join(process.cwd(), 'node_modules', '@react-carburetor/core');
 const toFileUrl = (file) => 'file:///' + path.resolve(file).split(path.sep).join('/');
 const checkEngineBoundaries = (${checkEngineBoundaries.toString()});
 const engineCases = [];

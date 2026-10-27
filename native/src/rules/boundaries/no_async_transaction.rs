@@ -1,7 +1,7 @@
 //! H17: an asynchronous body given to `transaction()` or `this.update()`.
 //!
 //! The rule fires on a bare `transaction()` only when the call resolves, through the semantic
-//! model, to the symbol of a value import named `transaction` from `'react-carburetor'` — a
+//! model, to the symbol of a value import named `transaction` from `'@react-carburetor/core'` — a
 //! same-named binding defined locally is somebody else's API.
 //!
 //! Both are open only while the body runs synchronously. At the first `await` the body returns a
@@ -40,7 +40,7 @@ fn imported_transaction_symbols(program: &Program<'_>) -> HashSet<SymbolId> {
         let Statement::ImportDeclaration(import) = statement else {
             continue;
         };
-        if import.source.value != "react-carburetor"
+        if import.source.value != "@react-carburetor/core"
             || import.import_kind != ImportOrExportKind::Value
         {
             continue;
@@ -247,7 +247,7 @@ mod tests {
     #[test]
     fn an_async_transaction_body_is_reported() {
         let source =
-            "import {transaction} from 'react-carburetor';\n\ntransaction(async () => {\n    await load();\n});\n";
+            "import {transaction} from '@react-carburetor/core';\n\ntransaction(async () => {\n    await load();\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [3]);
     }
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn a_transaction_imported_under_another_name_is_reported_by_that_name() {
         let source =
-            "import {transaction as tx} from 'react-carburetor';\n\ntx(async () => {\n    await load();\n});\n";
+            "import {transaction as tx} from '@react-carburetor/core';\n\ntx(async () => {\n    await load();\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [3]);
     }
@@ -272,7 +272,7 @@ mod tests {
     #[test]
     fn a_type_only_import_is_not_a_transaction() {
         let source =
-            "import type {transaction} from 'react-carburetor';\n\ntransaction(async () => {\n    await load();\n});\n";
+            "import type {transaction} from '@react-carburetor/core';\n\ntransaction(async () => {\n    await load();\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn an_await_in_a_nested_iife_does_not_close_the_outer_batch() {
         // The IIFE is a function boundary of its own, same as the JS rule's findEnclosingFunction.
-        let source = "import {transaction} from 'react-carburetor';\n\ntransaction(() => {\n    void (async () => {\n        await load();\n    })();\n});\n";
+        let source = "import {transaction} from '@react-carburetor/core';\n\ntransaction(() => {\n    void (async () => {\n        await load();\n    })();\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
@@ -294,14 +294,14 @@ mod tests {
 
     #[test]
     fn a_synchronous_transaction_is_correct() {
-        let source = "import {transaction} from 'react-carburetor';\n\ntransaction(() => {\n    store.a.set(1);\n    store.b.set(2);\n});\n";
+        let source = "import {transaction} from '@react-carburetor/core';\n\ntransaction(() => {\n    store.a.set(1);\n    store.b.set(2);\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn an_await_in_a_nested_function_belongs_to_its_own_timeline() {
-        let source = "import {transaction} from 'react-carburetor';\n\ntransaction(() => {\n    const later = async () => {\n        await load();\n    };\n\n    later();\n});\n";
+        let source = "import {transaction} from '@react-carburetor/core';\n\ntransaction(() => {\n    const later = async () => {\n        await load();\n    };\n\n    later();\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
@@ -338,28 +338,28 @@ mod tests {
 
     #[test]
     fn a_parameter_shadowing_the_imported_transaction_is_not_reported() {
-        let source = "import {transaction} from 'react-carburetor';\n\nfunction wrap(transaction: (cb: () => void) => void) {\n    transaction(async () => {\n        await save();\n    });\n}\n";
+        let source = "import {transaction} from '@react-carburetor/core';\n\nfunction wrap(transaction: (cb: () => void) => void) {\n    transaction(async () => {\n        await save();\n    });\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn a_namespace_import_call_is_not_a_bare_transaction() {
-        let source = "import * as C from 'react-carburetor';\n\nC.transaction(async () => {\n    await load();\n});\n";
+        let source = "import * as C from '@react-carburetor/core';\n\nC.transaction(async () => {\n    await load();\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn an_await_computing_the_transaction_argument_is_not_reported() {
-        let source = "import {transaction} from 'react-carburetor';\n\nasync function run() {\n    transaction(await Promise.resolve(() => 42));\n}\n";
+        let source = "import {transaction} from '@react-carburetor/core';\n\nasync function run() {\n    transaction(await Promise.resolve(() => 42));\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
 
     #[test]
     fn an_await_loading_the_callback_argument_is_not_reported() {
-        let source = "import {transaction} from 'react-carburetor';\n\nasync function run() {\n    transaction(await makeCallback());\n}\n";
+        let source = "import {transaction} from '@react-carburetor/core';\n\nasync function run() {\n    transaction(await makeCallback());\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
@@ -373,7 +373,7 @@ mod tests {
 
     #[test]
     fn an_await_in_a_later_argument_evaluation_is_not_reported() {
-        let source = "import {transaction} from 'react-carburetor';\n\nasync function run() {\n    transaction(cb, await x);\n}\n";
+        let source = "import {transaction} from '@react-carburetor/core';\n\nasync function run() {\n    transaction(cb, await x);\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
     }
@@ -381,7 +381,7 @@ mod tests {
     #[test]
     fn an_await_directly_in_the_transaction_body_is_reported() {
         // A non-async body cannot legally contain an await, so the smallest parseable positive is an async body.
-        let source = "import {transaction} from 'react-carburetor';\n\ntransaction(async function handle() {\n    await load();\n});\n";
+        let source = "import {transaction} from '@react-carburetor/core';\n\ntransaction(async function handle() {\n    await load();\n});\n";
 
         assert_eq!(lines(&diagnose(source, check)), [3]);
     }

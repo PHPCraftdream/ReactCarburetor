@@ -6,7 +6,7 @@ import {
     CarburetorScope,
     ICarburetorToken,
     ScopedAntiHookComponent,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface ICounterData {
     count: number;

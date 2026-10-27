@@ -58,7 +58,7 @@ fn callback_identifier_referencing_store_binding_is_reported() {
 #[test]
 fn round_four_function_declaration_deriving_store_value_with_memo_and_callback() {
     assert_lines(
-        "import {useMemo} from 'react';\nimport {useCarburetorValue} from 'react-carburetor/interop';\nconst selectCount = (s: {count: number}) => s.count;\nexport function Panel({store}: {store: any}) {\n    const value = useCarburetorValue(store, selectCount);\n    function derive() { return value * 2; }\n    const doubled = useMemo(derive, [value]);\n    return <span>{doubled}</span>;\n}",
+        "import {useMemo} from 'react';\nimport {useCarburetorValue} from '@react-carburetor/core/interop';\nconst selectCount = (s: {count: number}) => s.count;\nexport function Panel({store}: {store: any}) {\n    const value = useCarburetorValue(store, selectCount);\n    function derive() { return value * 2; }\n    const doubled = useMemo(derive, [value]);\n    return <span>{doubled}</span>;\n}",
         &[7],
     );
     assert_lines(

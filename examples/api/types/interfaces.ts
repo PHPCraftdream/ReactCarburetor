@@ -1,7 +1,7 @@
 import {
     ComponentUpdateThrottle, ICarburetor, ICarburetorSubscription, IInspectable, IReadableCarburetor,
     ISubscribeOptions, IUpdateScheduler, TSelector,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface Model {value: number}
 declare const store: ICarburetor<Model>;

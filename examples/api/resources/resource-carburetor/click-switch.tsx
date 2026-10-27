@@ -1,4 +1,4 @@
-import {AntiHookComponent, bind, ResourceCarburetor} from 'react-carburetor';
+import {AntiHookComponent, bind, ResourceCarburetor} from '@react-carburetor/core';
 import {type JSX} from 'react';
 
 interface User {

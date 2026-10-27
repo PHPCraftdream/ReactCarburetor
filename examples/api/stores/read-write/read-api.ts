@@ -1,5 +1,5 @@
 // #region read-api
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 const store = new Carburetor({user: {name: 'ada', age: 36}});
 

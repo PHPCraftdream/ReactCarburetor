@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
 
 class Todos extends Carburetor<{orderIds: string[]}> {
     public toggle(id: string): void {

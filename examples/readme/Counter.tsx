@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
+import {AntiHookComponent, Carburetor, bind} from '@react-carburetor/core';
 
 const incrementBy = (draft: {value: number}, step: number): void => {
     draft.value += step;

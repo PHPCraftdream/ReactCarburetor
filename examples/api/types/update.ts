@@ -1,5 +1,5 @@
 // #region doc
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 interface CounterState { count: number; name: string }
 declare function normalizeName(name: string): string;

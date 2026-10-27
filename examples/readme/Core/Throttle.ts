@@ -1,4 +1,4 @@
-import {Carburetor, ComponentUpdateThrottle} from 'react-carburetor';
+import {Carburetor, ComponentUpdateThrottle} from '@react-carburetor/core';
 
 interface IPresence {online: string[]}
 

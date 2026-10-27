@@ -27,7 +27,7 @@ const repoTypescript = () => {
  * Writes the app and installs it; shared by both bundler builds.
  *
  * @param installDir - the fresh directory the Next app is written into
- * @param tarballPath - the packed tarball installed as the `react-carburetor` dependency
+ * @param tarballPath - the packed tarball installed as the `@react-carburetor/core` dependency
  */
 const installNextApp = (installDir, tarballPath) => {
     rmSync(installDir, {recursive: true, force: true});
@@ -45,7 +45,7 @@ const installNextApp = (installDir, tarballPath) => {
             next: NEXT_VERSION,
             react: REACT_VERSION,
             'react-dom': REACT_VERSION,
-            'react-carburetor': `file:${tarballPath}`,
+            '@react-carburetor/core': `file:${tarballPath}`,
         },
         devDependencies: {
             typescript: repoTypescript(),

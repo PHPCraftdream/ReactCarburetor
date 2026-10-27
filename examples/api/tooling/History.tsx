@@ -1,5 +1,5 @@
 // #region doc
-import {AntiHookComponent, bind, Carburetor, CarburetorHistory, IHistoryOptions} from 'react-carburetor';
+import {AntiHookComponent, bind, Carburetor, CarburetorHistory, IHistoryOptions} from '@react-carburetor/core';
 import {ReactElement} from 'react';
 
 const increment = (draft: {count: number}): void => { draft.count += 1; };

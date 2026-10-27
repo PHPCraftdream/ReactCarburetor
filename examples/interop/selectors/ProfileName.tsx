@@ -1,7 +1,7 @@
 // #region name
 import type {ReactElement} from 'react';
-import {Carburetor, bind} from 'react-carburetor';
-import {useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor, bind} from '@react-carburetor/core';
+import {useCarburetorValue} from '@react-carburetor/core/interop';
 
 class ProfileCarburetor extends Carburetor<{name: string; email: string}> {
     public constructor() {

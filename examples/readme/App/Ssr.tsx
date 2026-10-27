@@ -6,7 +6,7 @@ import {
     ScopedAntiHookComponent,
     ResourceCache,
     carburetorToken,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 const loadUser = async (id: string): Promise<{name: string}> => ({name: `User ${id}`});
 const userToken = carburetorToken(
     () => new ResourceCache(loadUser, {ttl: 30_000}),

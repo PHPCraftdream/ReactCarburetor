@@ -1,4 +1,4 @@
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 interface IToggleState {items: Record<string, {done: boolean}>}
 

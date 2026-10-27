@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor, computed} from 'react-carburetor';
+import {AntiHookComponent, Carburetor, computed} from '@react-carburetor/core';
 
 const store = new Carburetor({visible: 3});
 const visibleCount = computed(read => read(store).visible);

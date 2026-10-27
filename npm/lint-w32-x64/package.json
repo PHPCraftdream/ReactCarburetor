@@ -1,7 +1,7 @@
 {
-  "name": "carburetor-lint-w32-x64",
+  "name": "@react-carburetor/lint-w32-x64",
   "version": "0.1.0",
-  "description": "The w32-x64 carburetor-lint binary, React Carburetor's native linter. Installed through carburetor-lint's optionalDependencies; never a direct dependency.",
+  "description": "The w32-x64 carburetor-lint binary, React Carburetor's native linter. Installed through @react-carburetor/lint's optionalDependencies; never a direct dependency.",
   "license": "MIT OR Apache-2.0",
   "repository": {
     "type": "git",
@@ -20,5 +20,8 @@
     "LICENSE-MIT",
     "LICENSE-APACHE"
   ],
-  "preferUnplugged": true
+  "preferUnplugged": true,
+  "publishConfig": {
+    "access": "public"
+  }
 }

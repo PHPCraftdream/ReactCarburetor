@@ -53,7 +53,7 @@ fn h11_reports_store_writes_in_render_but_not_event_handlers() {
     )
     .is_empty());
 
-    let probe = "import {useCarburetorValue} from 'react-carburetor/interop';\n\
+    let probe = "import {useCarburetorValue} from '@react-carburetor/core/interop';\n\
                   const selectCount = (s: {count: number}) => s.count;\n\
                   export function StorePanel({source}: {source: any}) {\n\
                   const value = useCarburetorValue(source, selectCount);\n\

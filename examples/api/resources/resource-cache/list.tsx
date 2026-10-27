@@ -1,5 +1,5 @@
 // #region list
-import {AntiHookComponent, bind, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, bind, ResourceCache} from '@react-carburetor/core';
 import {type JSX} from 'react';
 import {fetchPost} from '../endpoints/posts';
 

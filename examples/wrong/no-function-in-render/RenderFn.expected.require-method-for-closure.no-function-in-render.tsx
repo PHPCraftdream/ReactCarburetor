@@ -1,4 +1,4 @@
-import {AntiHookComponent} from 'react-carburetor';
+import {AntiHookComponent} from '@react-carburetor/core';
 
 interface Item {id: string; name: string}
 

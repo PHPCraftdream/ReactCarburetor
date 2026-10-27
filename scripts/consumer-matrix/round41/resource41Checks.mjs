@@ -69,11 +69,11 @@ try {
     flushSync(() => root.render(React.createElement(Resource41Consumer, {tick: 2})));
     check('base selection after overlay', container.textContent === 'Grace');
     const alternateEngine = ${format === 'esm'
-        ? "await import('node:module').then(({createRequire}) => createRequire(import.meta.url)('react-carburetor'))"
-        : "await import('react-carburetor')"};
+        ? "await import('node:module').then(({createRequire}) => createRequire(import.meta.url)('@react-carburetor/core'))"
+        : "await import('@react-carburetor/core')"};
     const alternateInterop = ${format === 'esm'
-        ? "await import('node:module').then(({createRequire}) => createRequire(import.meta.url)('react-carburetor/interop'))"
-        : "await import('react-carburetor/interop')"};
+        ? "await import('node:module').then(({createRequire}) => createRequire(import.meta.url)('@react-carburetor/core/interop'))"
+        : "await import('@react-carburetor/core/interop')"};
     const crossSource = new alternateEngine.ResourceCache(
         async () => ({nested: {name: 'cross', unread: 0}}), {ttl: Infinity});
     await crossSource.load('user');

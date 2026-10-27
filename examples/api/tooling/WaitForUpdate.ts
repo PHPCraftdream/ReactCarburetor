@@ -1,4 +1,4 @@
-import {bind, Carburetor, waitForUpdate} from 'react-carburetor';
+import {bind, Carburetor, waitForUpdate} from '@react-carburetor/core';
 import {fetchUser} from '../resources/endpoints/user';
 
 interface User {

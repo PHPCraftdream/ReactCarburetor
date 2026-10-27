@@ -1,5 +1,5 @@
-import {TSelector, TValueComparator, useCarburetorValue, useComputedValue, useResourceValue} from 'react-carburetor/interop';
-import {Carburetor} from 'react-carburetor';
+import {TSelector, TValueComparator, useCarburetorValue, useComputedValue, useResourceValue} from '@react-carburetor/core/interop';
+import {Carburetor} from '@react-carburetor/core';
 
 interface Model {count: number}
 const selectCount: TSelector<Model, number> = data => data.count;

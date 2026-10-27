@@ -1,6 +1,6 @@
 // #region doc
-import {bind, Carburetor} from 'react-carburetor';
-import {useCarburetorValue} from 'react-carburetor/interop';
+import {bind, Carburetor} from '@react-carburetor/core';
+import {useCarburetorValue} from '@react-carburetor/core/interop';
 
 const incrementValue = (draft: {value: number}): void => { draft.value += 1; };
 const selectValue = (state: {value: number}): number => state.value;

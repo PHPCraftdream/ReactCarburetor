@@ -2,7 +2,7 @@ import {
     EResourceStatus, IResourceCacheData, IResourceCacheOptions, IResourceData, IResourceEntry, IResourceResolution,
     IResourceSnapshot, IResourceSource, IResourceView, ResourceCache, ResourceCarburetor, TResourceArgs,
     TResourceKey, TResourceLoader,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 // Variadic resource arguments: the tuple types and key fn are part of the public surface.
 const toKey: TResourceKey<[string]> = (id) => id;

@@ -14,16 +14,16 @@
       "DOM"
     ],
     "paths": {
-      "react-carburetor": [
+      "@react-carburetor/core": [
         "../lib/src/Carburetor/index.ts"
       ],
-      "react-carburetor/interop": [
+      "@react-carburetor/core/interop": [
         "../lib/src/Interop/index.ts"
       ],
-      "react-carburetor/testing": [
+      "@react-carburetor/core/testing": [
         "../lib/src/Testing/index.ts"
       ],
-      "react-carburetor/lint": [
+      "@react-carburetor/core/lint": [
         "../plugin/lint.d.ts"
       ],
       "@/*": [

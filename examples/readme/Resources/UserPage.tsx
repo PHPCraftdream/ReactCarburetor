@@ -4,7 +4,7 @@ import {
     AntiHookComponent,
     ResourceCache,
     bind,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface User {
     id: string;

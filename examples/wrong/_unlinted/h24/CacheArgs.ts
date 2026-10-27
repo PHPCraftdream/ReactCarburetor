@@ -1,4 +1,4 @@
-import {ResourceCache} from 'react-carburetor';
+import {ResourceCache} from '@react-carburetor/core';
 
 interface IUser {name: string}
 

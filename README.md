@@ -25,8 +25,8 @@ literal `process.env.NODE_ENV` expression with `"production"`. Without a bundler
 
 ## Install
 
-The first public npm release is still being prepared: `react-carburetor` and
-`carburetor-lint` are not published on npm yet. To try the current source and demo:
+The first public npm release is still being prepared: `@react-carburetor/core` and
+`@react-carburetor/lint` are not published on npm yet. To try the current source and demo:
 
 ```bash
 git clone https://github.com/PHPCraftdream/ReactCarburetor.git
@@ -41,7 +41,7 @@ npm start
 After the npm release, install the library in a React project with:
 
 ```bash
-npm install react-carburetor
+npm install @react-carburetor/core
 ```
 
 React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal build
@@ -78,7 +78,7 @@ signal to `fetch` or another runtime API, that API must accept the controller's 
 
 <!-- example:file examples/readme/Counter.tsx -->
 ```tsx
-import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
+import {AntiHookComponent, Carburetor, bind} from '@react-carburetor/core';
 
 const incrementBy = (draft: {value: number}, step: number): void => {
     draft.value += step;
@@ -109,7 +109,7 @@ Use the runner's clock APIs (for example, `rstest.useFakeTimers()` and
 `rstest.advanceTimersByTimeAsync()`); do not wrap or replace the clock APIs.
 
 For work that does not involve clocks, import `flush` and `createTestScope` from
-`react-carburetor/testing`. `flush(target)` delivers recorded notifications synchronously; it does
+`@react-carburetor/core/testing`. `flush(target)` delivers recorded notifications synchronously; it does
 not advance `after()` timers or promises. When stores share a scheduler, flushing one drains that
 scheduler queue. Active update waves and transactions still determine atomic delivery.
 `createTestScope(overrides?)` creates an isolated scope with optional token overrides; dispose it
@@ -147,9 +147,9 @@ watch delivery and `after()` cleanup.
 
 <!-- example:file examples/readme/Interop/OneOffEvents.tsx -->
 ```tsx
-import {bind} from 'react-carburetor';
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
-import type {ICarburetorEvents} from 'react-carburetor';
+import {bind} from '@react-carburetor/core';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
+import type {ICarburetorEvents} from '@react-carburetor/core';
 
 interface IStatus {online: boolean}
 interface IEvents {connected: {at: number}}
@@ -211,8 +211,8 @@ Use a stable `@bind` method; each handler owns one registration, replaced when s
 
 <!-- example:file examples/readme/Interop/HookOneOffEvents.tsx -->
 ```tsx
-import {Carburetor} from 'react-carburetor';
-import {useCarburetorEvent} from 'react-carburetor/interop';
+import {Carburetor} from '@react-carburetor/core';
+import {useCarburetorEvent} from '@react-carburetor/core/interop';
 
 interface IEvents {connected: {at: number}}
 
@@ -941,7 +941,7 @@ import {
     AntiHookComponent,
     ResourceCache,
     bind,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface User {
     id: string;
@@ -1053,7 +1053,7 @@ and `refreshFailed` (a Success whose error is set — a failed refresh). Reading
 
 <!-- example:file examples/api/resources/resource-carburetor/click-load.tsx -->
 ```tsx
-import {AntiHookComponent, ResourceCarburetor, resourceState} from 'react-carburetor';
+import {AntiHookComponent, ResourceCarburetor, resourceState} from '@react-carburetor/core';
 import {type JSX} from 'react';
 
 interface Config {
@@ -1134,7 +1134,7 @@ import {
     ScopedAntiHookComponent,
     ResourceCache,
     carburetorToken,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 const loadUser = async (id: string): Promise<{name: string}> => ({name: `User ${id}`});
 const userToken = carburetorToken(
     () => new ResourceCache(loadUser, {ttl: 30_000}),
@@ -1243,7 +1243,7 @@ wire format.
 
 <!-- example:file examples/readme/Tooling/Persist.ts -->
 ```ts
-import {Carburetor, IStorageLike, persist} from 'react-carburetor';
+import {Carburetor, IStorageLike, persist} from '@react-carburetor/core';
 
 interface IProfile {
     name: string;
@@ -1357,7 +1357,7 @@ import {
     bind,
     persist,
     waitForUpdate,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 const selectCount = (data: {count: number}) => data.count;
 
 class CounterStore extends Carburetor<{count: number}> {
@@ -1424,7 +1424,7 @@ value at that boundary. Keep store data unfrozen if those read guarantees matter
 
 <!-- example:file examples/readme/Interop/NameBadge.tsx#nameBadge -->
 ```tsx
-import {useCarburetorValue, useComputedValue} from 'react-carburetor/interop';
+import {useCarburetorValue, useComputedValue} from '@react-carburetor/core/interop';
 
 const selectProfileName = (data: {name: string}) => data.name;
 
@@ -1459,8 +1459,8 @@ Using the `User` and `users` declarations from the cached-resource example above
 
 <!-- example:file examples/readme/Interop/HookUserBadge.tsx#hookUserBadge -->
 ```tsx
-import type {IResourceView, TReadonly} from 'react-carburetor';
-import {useResourceValue} from 'react-carburetor/interop';
+import type {IResourceView, TReadonly} from '@react-carburetor/core';
+import {useResourceValue} from '@react-carburetor/core/interop';
 
 const selectUserBadge = (view: TReadonly<IResourceView<User>>) =>
     view.data === undefined ? undefined : {name: view.data.name};
@@ -1507,7 +1507,7 @@ One plugin serves both hosts, because oxlint's JS plugin API is ESLint's.
 
 ```json
 {
-  "extends": ["./node_modules/react-carburetor/dist/lint/recommended.oxlintrc.json"]
+  "extends": ["./node_modules/@react-carburetor/core/dist/lint/recommended.oxlintrc.json"]
 }
 ```
 
@@ -1516,7 +1516,7 @@ configured:
 
 <!-- example:file examples/readme/Tooling/EslintConfig.js -->
 ```js
-import carburetor from 'react-carburetor/lint';
+import carburetor from '@react-carburetor/core/lint';
 
 export default [
     {...carburetor.configs.recommended, files: ['src/**/*.{ts,tsx}']},
@@ -1550,13 +1550,13 @@ case.
 
 ### The binary and the bridge
 
-The rules are implemented once, in Rust (`native/src/rules/`). What `react-carburetor/lint`
+The rules are implemented once, in Rust (`native/src/rules/`). What `@react-carburetor/core/lint`
 ships is a bridge: it runs that binary once per lint run and reports through the host's own
 `context.report`. It reports diagnostics for saved files on disk, not unsaved buffers, which are not
 analyzed. Disk changes invalidate cached results. Two ways to run them, good at different things.
 
 **Standalone (`carburetor-lint`)** — after its first npm release,
-`npm i -D carburetor-lint` fetches the one binary matching your machine, and
+`npm i -D @react-carburetor/lint` fetches the one binary matching your machine, and
 the rules run without starting a linter: `npx carburetor-lint
 --fix-dry-run src` to see what would change, `--fix` to change it. This is the fast path —
 about 20 ms over this repository against 585 ms for the same rules through oxlint — and the
@@ -1564,13 +1564,13 @@ only one that rewrites code. It reads its own `.carburetorrc.json` (or `--rule`/
 not your oxlint or ESLint config; it honours its own `carburetor-disable` comments; it has no
 editor integration. It is a command, not a plugin.
 
-**The bridge (`react-carburetor/lint`)** — the `extends` line or flat-config snippet above.
+**The bridge (`@react-carburetor/core/lint`)** — the `extends` line or flat-config snippet above.
 Everything the host already does keeps working for these rules: one config file, one
 suppression-comment syntax, per-project severity, and diagnostics for saved files on disk; unsaved
 buffers are not analyzed. What it cannot do is
 apply fixes: diagnostics arrive through `context.report`, and no host exposes a plugin API that
-could hand a native fix back. It also needs the binary on disk — `carburetor-lint` is installed
-as a dev dependency of your project (`pnpm add -D carburetor-lint`) and the bridge finds the
+could hand a native fix back. It also needs the binary on disk — `@react-carburetor/lint` is installed
+as a dev dependency of your project (`pnpm add -D @react-carburetor/lint`) and the bridge finds the
 platform binary through it, so no extra step is needed; alternatively point `CARBURETOR_LINT_BIN`
 at a built binary, or run
 `cargo build --release` inside `native/` in a checkout of this repository. With none of those,
@@ -1667,14 +1667,14 @@ do not redeclare it.
 | `ResourceCache` `load`, `refresh`, `resolve`, `getFailure` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): resource loading, refreshing, resolution and failure access. |
 | `CarburetorHistory` `undo`, `redo`, `canUndo`, `canRedo`, `clear`, `disconnect` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): history navigation and lifecycle. |
 | `ResourceCarburetor` `load`, `refresh`, `clear`, `abort` | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): resource loading, refreshing, clearing and cancellation. |
-| `useCarburetorValue`, `useComputedValue`, `useResourceValue` (from `react-carburetor/interop`) | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): three opt-in interop readers. |
+| `useCarburetorValue`, `useComputedValue`, `useResourceValue` (from `@react-carburetor/core/interop`) | [Consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md): three opt-in interop readers. |
 | `deepClone`, `shallowEqual`                   | Building blocks, exported for extensions.    |
 
 The selected surface is about extensions, not user-facing adapter recipes: `Carburetor` takes initial data, `getInitialResourceData` returns only an Idle resource state, and a custom adapter can seed its own state. A plain `Carburetor` is not a resource loader. A new `Diagnostics` instance is independent; it does not replace the engine's `diagnostics` singleton. Toggling that singleton affects development complaints, but cannot restore warning strings stripped from production builds.
 
 <!-- example:file examples/readme/Tooling/Adapter.ts -->
 ```ts
-import {Carburetor, Diagnostics, diagnostics, getInitialResourceData} from 'react-carburetor';
+import {Carburetor, Diagnostics, diagnostics, getInitialResourceData} from '@react-carburetor/core';
 interface User {name: string}
 const adapterState = new Carburetor(getInitialResourceData<User>());
 const localDiagnostics = new Diagnostics();
@@ -1720,7 +1720,7 @@ cannot be revoked after disposal.
 <!-- example:file examples/readme/App/ChildScope.tsx -->
 ```tsx
 import React from 'react';
-import {CarburetorChildScope, CarburetorScope, carburetorToken} from 'react-carburetor';
+import {CarburetorChildScope, CarburetorScope, carburetorToken} from '@react-carburetor/core';
 
 const serviceToken = carburetorToken(() => ({name: 'shared'}), 'example/shared');
 const panelToken = carburetorToken(owner => ({service: owner.get(serviceToken)}), 'example/panel');
@@ -1748,7 +1748,7 @@ screen. No React effect owns scope disposal, avoiding StrictMode effect-replay d
 <!-- example:file examples/readme/App/ScopeLifetime.tsx -->
 ```tsx
 import React from 'react';
-import {CarburetorProvider, CarburetorScope, carburetorToken, Carburetor} from 'react-carburetor';
+import {CarburetorProvider, CarburetorScope, carburetorToken, Carburetor} from '@react-carburetor/core';
 
 const tick = (draft: {ticks: number}): void => {
     draft.ticks += 1;

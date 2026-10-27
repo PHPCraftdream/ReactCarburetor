@@ -1,5 +1,5 @@
 // #region doc
-import {AntiHookComponent, bind} from 'react-carburetor';
+import {AntiHookComponent, bind} from '@react-carburetor/core';
 
 interface Item { id: string; name: string }
 const renderRow = (item: Item): React.ReactElement => <ItemRow key={item.id} item={item}/>;

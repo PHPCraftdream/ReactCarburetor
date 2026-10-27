@@ -1,5 +1,5 @@
 // #region ttl
-import {EResourceStatus, IResourceCacheData, IResourceCacheOptions, IResourceEntry, ResourceCache} from 'react-carburetor';
+import {EResourceStatus, IResourceCacheData, IResourceCacheOptions, IResourceEntry, ResourceCache} from '@react-carburetor/core';
 
 interface Quote {
     text: string;

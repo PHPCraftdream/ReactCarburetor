@@ -68,19 +68,19 @@ Entries below record development history in change order; where contracts differ
 - `persist` option `writeAfterRestore: 'changed' | 'always' | 'never'` (default 'changed'): right after a successful restore from `key`, the restored state is written back when its serialization differs from the stored text, so a `prune`, a migration or filled defaults no longer leave the old entry in storage until the first change. The write at connect does not move the `throttleMs` window; `'never'` keeps the previous behaviour; it cannot be combined with `partitions`.
 - `persist` option `onCorrupt: 'keep' | 'reset'` (default 'keep', the previous behaviour): with `version` or a function `prune`, an unparseable stored entry or one the store rejects is kept and the subscription stops writing for the session; `'reset'` removes and reports it like `prune: true` does and keeps writing. Newer stored versions, failed migrations and throwing prune callbacks are never reset; it cannot be combined with `partitions`.
 - `createTestClock()` takes over timers a store already scheduled: attaching a clock (`createTestScope(overrides, {clock})` for the overrides, or `clock.attach(store)` for a store outside a scope) moves the store's pending `after()` timers onto the clock with their full delay counted from the attachment, so constructor-time timers of instances built earlier run on it too. Disposers returned earlier keep working.
-- `react-carburetor/lint` checks the native binary before linting: `carburetor-lint --version` prints `carburetor-lint <version> protocol <N>` and the bridge compares N with its own once per binary. A binary from another build, or an older one without the flag, now gives one error that says to rebuild (`cargo build --release`) or install a matching `carburetor-lint`, instead of the config parser's `unknown key`.
-- `flush(store)` and `flush(scope)` from `react-carburetor/testing` also complete the writes `persist()` has queued for the stores they cover, past any `throttleMs` window and in `partitions` mode, so a test reads storage right after `flush` without `await`. A disposed `persist` writes nothing.
+- `@react-carburetor/core/lint` checks the native binary before linting: `carburetor-lint --version` prints `carburetor-lint <version> protocol <N>` and the bridge compares N with its own once per binary. A binary from another build, or an older one without the flag, now gives one error that says to rebuild (`cargo build --release`) or install a matching `carburetor-lint`, instead of the config parser's `unknown key`.
+- `flush(store)` and `flush(scope)` from `@react-carburetor/core/testing` also complete the writes `persist()` has queued for the stores they cover, past any `throttleMs` window and in `partitions` mode, so a test reads storage right after `flush` without `await`. A disposed `persist` writes nothing.
 - `persist` option `prune` as a function receives a third argument, `merge(saved)`, that fills defaults and prunes unknown keys, so the callback can read the raw stored data and keep the built-in merge. Callbacks that ignore it behave as before.
-- `createTestClock()` and `createTestScope(overrides, {clock})` in `react-carburetor/testing`: stores handed out by that scope run `after()` on the clock (`advance(ms)`, `runAll()`, `now()`, `pending`) instead of the global `setTimeout`. Stores outside the scope, and timers set before a store is handed out, keep global timers.
+- `createTestClock()` and `createTestScope(overrides, {clock})` in `@react-carburetor/core/testing`: stores handed out by that scope run `after()` on the clock (`advance(ms)`, `runAll()`, `now()`, `pending`) instead of the global `setTimeout`. Stores outside the scope, and timers set before a store is handed out, keep global timers.
 - The build writes `dist/build-info.json` (version, commit, dirty flag and a hash of the sources), and `npm run check:dist` fails when `dist` is older than the sources or has no stamp. An app can run the checker from its `pretest` against a local checkout; it is not shipped in the package.
-- Library sources are linkable with one export condition: `react-carburetor`, `/interop` and `/testing` have a `carburetor-source` condition pointing at `lib/src` (rsbuild `resolve.conditionNames`, tsconfig `customConditions`), and imports inside `lib/src` are relative, so the app needs no `@/` alias or sub-path list. `dist` and the published files are unchanged; the consumer matrix gains a source-condition scenario.
-- Release readiness: two more native platform packages, `carburetor-lint-linux-arm64-musl` (Alpine on Apple Silicon and Graviton) and `carburetor-lint-w32-arm64`, so the launcher covers eight platforms. Every platform package now ships `THIRD-PARTY-LICENSES.txt`, the notices of the Rust crates linked into its binary, generated from `cargo metadata` by `scripts/tools/release/attribution` and re-checked by the license workflow whenever the dependencies change.
+- Library sources are linkable with one export condition: `@react-carburetor/core`, `/interop` and `/testing` have a `carburetor-source` condition pointing at `lib/src` (rsbuild `resolve.conditionNames`, tsconfig `customConditions`), and imports inside `lib/src` are relative, so the app needs no `@/` alias or sub-path list. `dist` and the published files are unchanged; the consumer matrix gains a source-condition scenario.
+- Release readiness: two more native platform packages, `@react-carburetor/lint-linux-arm64-musl` (Alpine on Apple Silicon and Graviton) and `@react-carburetor/lint-w32-arm64`, so the launcher covers eight platforms. Every platform package now ships `THIRD-PARTY-LICENSES.txt`, the notices of the Rust crates linked into its binary, generated from `cargo metadata` by `scripts/tools/release/attribution` and re-checked by the license workflow whenever the dependencies change.
 - Release readiness: each platform binary is read and verified before it is packed (`scripts/tools/release/portability`): glibc builds need nothing newer than glibc 2.28 (they are built in `manylinux_2_28`), musl builds are static, Windows builds import no Visual C++ runtime (the C runtime is linked in), macOS builds link system libraries only and target macOS 11. The packed tarball is then installed next to the launcher and run, and `post-publish.yml` installs the published packages on every platform; `audit.yml` gates the release on known vulnerabilities; `node-floor` installs the packed library on the declared Node floor and the maintained lines above it.
 - `CarburetorScope.child(localTokens)` and the `CarburetorChildScope` boundary: tokens listed as local are created and owned by the child scope, every other token resolves through the parent. Disposing the child leaves the parent alone; disposing the parent closes live children first. The boundary renders nothing on the server and before mount, creates its scope after commit and disposes it on unmount (StrictMode safe); its `tokens` are fixed for its lifetime, change them with a React `key`.
 - `@action` (Stage 3 decorator): a synchronous store method that writes to `this.draft` publishes as one update, nested actions and `transaction` calls publish once, the return value is forwarded, and a `Promise`/thenable result warns in development. Types come from the method signature; the name `update` stays reserved.
 - `persist(store, {previousKeys})`: when the current key is absent, the first existing key of the list is read (version envelope or legacy payload, through `migrate`), written under the new key, and removed only after a successful write. A present current key never reads the old ones.
-- `react-carburetor/testing`: `flush(target)` delivers a store's or scope tree's throttled notifications synchronously, without fake clocks; `createTestScope(overrides)` returns a scope with token overrides installed and a `Symbol.dispose` disposer.
-- Lint: the opt-in `react-carburetor/lint/house-style.oxlintrc.json` preset (`max-line-length`, `no-blank-line-after-tsdoc`, `no-parent-import`, `prefer-readonly-array-param`, `require-tsdoc`, `tsdoc-blank-line-before-tags`, `one-export-per-file`) and `plugin.configs['house-style']`; it complements `recommended`.
+- `@react-carburetor/core/testing`: `flush(target)` delivers a store's or scope tree's throttled notifications synchronously, without fake clocks; `createTestScope(overrides)` returns a scope with token overrides installed and a `Symbol.dispose` disposer.
+- Lint: the opt-in `@react-carburetor/core/lint/house-style.oxlintrc.json` preset (`max-line-length`, `no-blank-line-after-tsdoc`, `no-parent-import`, `prefer-readonly-array-param`, `require-tsdoc`, `tsdoc-blank-line-before-tags`, `one-export-per-file`) and `plugin.configs['house-style']`; it complements `recommended`.
 - Native linter: `.carburetorrc.json` `overrides: [{files, rules}]` set per-file severities and options (the last matching override wins, command-line severities still win); globs compile once at load.
 - CI: a `Dependency licenses` workflow checks npm and native Rust dependency licenses against `scripts/tools/licenses/policy.json` (allow / review / deny, shipped and dev scopes) and is skipped while the dependency fingerprint is unchanged since the last passing run.
 - Docs: the props gate and how to replace it with `shouldComponentUpdate() { return true; }` for in-place mutated props; using a local copy through a `file:` dependency.
@@ -95,7 +95,7 @@ Entries below record development history in change order; where contracts differ
 - Typed one-off store events: `Carburetor<T, TEvents>`, protected `emit(name, payload)` and public
   `on(name, listener)`; delivery is synchronous outside a transaction and after the outermost one
   inside it. Components subscribe with `this.useEvent(store, name, handler)` in `useEffects()`, hooks
-  with `useCarburetorEvent` from `react-carburetor/interop`. Events never touch data, history or
+  with `useCarburetorEvent` from `@react-carburetor/core/interop`. Events never touch data, history or
   persistence, and `dispose()` drops their listeners.
 - Development diagnostics: `diagnostics.traceUpdates(listener)` reports each woken subscriber with
   the store and the written paths that matched its reads; `diagnostics.setWideReadThreshold(n)`
@@ -201,7 +201,7 @@ Entries below record development history in change order; where contracts differ
 
 ### Changed
 
-- `engines.node` is `>=24.0.0` (was `>=14.6.0`), on `react-carburetor` and `carburetor-lint`. The old floor was never exercised and was false for the ES module build, which cannot load on Node before 14.13 (it imports React's named exports). CI now installs the packed package on Node 24.0.0, the newest 24 and the newest Node release, as CommonJS and ESM, development and production builds.
+- `engines.node` is `>=24.0.0` (was `>=14.6.0`), on `@react-carburetor/core` and `carburetor-lint`. The old floor was never exercised and was false for the ES module build, which cannot load on Node before 14.13 (it imports React's named exports). CI now installs the packed package on Node 24.0.0, the newest 24 and the newest Node release, as CommonJS and ESM, development and production builds.
 - Resources use the runtime's `AbortController` directly. The stand-in signal for runtimes without one is removed: the library already requires `WeakRef`, and every runtime that has it (Node 24, current browsers, Deno, Bun) also has `AbortController`.
 - The Release workflow starts the full-tier CI run for the release commit when there is none and waits for it, requires a changelog section for the version, derives the platform list from the launcher's `optionalDependencies`, and verifies the published packages from the registry.
 - Native builds use `--locked` everywhere, and the shipped binaries are built with a pinned toolchain (`RUST_VERSION` in `native-packages.yml`).
@@ -421,12 +421,12 @@ Entries below record development history in change order; where contracts differ
   seen through. Where `require-method-for-closure` or `require-module-function` reports the same
   function, their more specific advice is the one shown.
 - `docs/examples/`: a self-contained, type-checked example for every public export of
-  `react-carburetor`, `react-carburetor/interop` and `react-carburetor/lint`, grouped by area, with a
+  `@react-carburetor/core`, `@react-carburetor/core/interop` and `@react-carburetor/core/lint`, grouped by area, with a
   guide to choosing an API; `docs/adopting.md` and `docs/faq.md`. A test fails when an export has no
   marked example, and the fast CI tier runs it for documentation changes.
 - `npm run check:examples` typechecks documentation blocks marked with `<!-- example:compile -->`,
   reports errors against the document's own lines, and gates documentation changes in CI.
-- `useResourceValue(source, args, select, isEqual?)` in `react-carburetor/interop` (R40-04, selector form since R41): the hooks
+- `useResourceValue(source, args, select, isEqual?)` in `@react-carburetor/core/interop` (R40-04, selector form since R41): the hooks
   counterpart of the class `useResource`, with a subscription to only the fields the selector reads, a stale entry
   loaded after commit (never during render), and re-arming after an invalidated refresh. Both readers share one
   decision module.
@@ -513,7 +513,7 @@ Entries below record development history in change order; where contracts differ
   property — and the reference stays stable across renders, which is what the props gate needs:
   a handler built in render makes a child's props compare as changed every time. Requires no
   `experimentalDecorators`.
-- `react-carburetor/lint`: 24 lint rules for the ways consumer code can go wrong silently — a write
+- `@react-carburetor/core/lint`: 24 lint rules for the ways consumer code can go wrong silently — a write
   that reaches no subscriber, a component reading state it never subscribed to, an effect whose
   cleanup is dropped, a computed that never invalidates, an allocation rebuilt for nothing. One
   plugin serves both hosts, since oxlint's JS plugin API is ESLint's: oxlint consumers add one
@@ -589,7 +589,7 @@ Entries below record development history in change order; where contracts differ
 - Tooling: `connectDevTools` (Redux DevTools protocol with time travel, injectable connector),
   `persist` (injectable storage), `CarburetorHistory` (undo/redo over snapshots) and
   `waitForUpdate` for tests.
-- Optional `react-carburetor/interop` entry point with `useCarburetorValue` and
+- Optional `@react-carburetor/core/interop` entry point with `useCarburetorValue` and
   `useComputedValue`, for embedding a carburetor into a hooks-based subtree. Built on
   `useSyncExternalStore`, and it derives the subscription from the selector's read paths.
 - ESM output alongside CommonJS, with an `exports` map carrying per-condition types.
@@ -1041,11 +1041,11 @@ Entries below record development history in change order; where contracts differ
   (`transaction(await load())`); only the function passed as the first argument is the batch body.
 - The lint bridge no longer fails with "no native binary" in isolated installs (pnpm): the binary is
   also resolved through the project's own `carburetor-lint` dependency, not only from
-  `react-carburetor`'s position in `node_modules`.
+  `@react-carburetor/core`'s position in `node_modules`.
 - `no-async-effect` resolves the callee returned by an effect body to its binding through the semantic
   model (parameters, imports and non-function initialisers of the same name no longer cause a false
   report), and `no-async-transaction` reports a bare `transaction()` only when it resolves to a value
-  import from `react-carburetor`.
+  import from `@react-carburetor/core`.
 - `no-async-effect`, `no-duplicate-effect-name` and `require-effect-deps` only check `this.useEffect(...)`,
   and `no-async-effect` resolves the name of a returned call lexically, so an unrelated `useEffect`
   method or a shadowing local function no longer produces an error. `no-async-transaction` reports a
@@ -1067,7 +1067,7 @@ Entries below record development history in change order; where contracts differ
 - `CarburetorHistory` no longer corrupts a node holding a literal `__proto__` key added in the same
   update as its parent: folding assigned the key through the inherited setter, so undo/redo restored a
   different prototype instead of an own key.
-- The lint bridge (`react-carburetor/lint`) no longer keeps the first answer for the life of a long-lived
+- The lint bridge (`@react-carburetor/core/lint`) no longer keeps the first answer for the life of a long-lived
   host: a file saved after the cached native run began triggers one fresh scan. Unsaved editor buffers
   are still not analyzed; native reads saved files.
 - Truncating an array through `draft` (`draft.rows.length = n`) now invalidates the native-alias ownership

@@ -8,15 +8,15 @@ import {resolve} from 'node:path';
 if (process.env.GITHUB_ACTIONS !== 'true') throw new Error('Packed lint smoke is GitHub-only');
 const cwd = resolve('.consumer-matrix/react19-npm');
 const require = createRequire(resolve(cwd, 'package.json'));
-const preset = require.resolve('react-carburetor/lint/no-hooks.oxlintrc.json');
-assert.ok(preset.replaceAll('\\', '/').startsWith(cwd.replaceAll('\\', '/') + '/node_modules/react-carburetor/dist/lint/'));
+const preset = require.resolve('@react-carburetor/core/lint/no-hooks.oxlintrc.json');
+assert.ok(preset.replaceAll('\\', '/').startsWith(cwd.replaceAll('\\', '/') + '/node_modules/@react-carburetor/core/dist/lint/'));
 const native = resolve('native/target/release/carburetor-lint' + (process.platform === 'win32' ? '.exe' : ''));
 assert.ok(existsSync(native), 'actual current release binary');
 const output = resolve('worktrees/ci-results', process.env.GITHUB_RUN_ID + '-' + process.env.GITHUB_RUN_ATTEMPT);
 mkdirSync(output, {recursive: true});
 copyFileSync('plugin/__fixtures__/consumer/noHooks.jsx', resolve(cwd, 'noHooks.jsx'));
 writeFileSync(resolve(cwd, 'noHooks.oxlintrc.json'), JSON.stringify({extends: [preset]}) + '\n');
-writeFileSync(resolve(cwd, 'noHooks.eslint.config.mjs'), `import carburetor from 'react-carburetor/lint';
+writeFileSync(resolve(cwd, 'noHooks.eslint.config.mjs'), `import carburetor from '@react-carburetor/core/lint';
 export default [{...carburetor.configs['no-hooks'], files: ['**/*.jsx'], languageOptions: {
     ecmaVersion: 'latest', sourceType: 'module', parserOptions: {ecmaFeatures: {jsx: true}}
 }}];\n`);
@@ -31,7 +31,7 @@ function run(host, args, expectedStatus = 1) {
     assert.equal(child.status, expectedStatus, row.stdout + row.stderr); assert.equal(child.signal, null); assert.equal(child.error, undefined);
     return row.stdout;
 }
-const recommended = require.resolve('react-carburetor/lint/recommended.oxlintrc.json');
+const recommended = require.resolve('@react-carburetor/core/lint/recommended.oxlintrc.json');
 const allowed = run('node_modules/oxlint/bin/oxlint', ['-c', recommended, '--format', 'agent', 'noHooks.jsx'], 0);
 assert.ok(!allowed.includes('carburetor(no-react-hooks-in-components)'));
 const oxlint = run('node_modules/oxlint/bin/oxlint', ['-c', 'noHooks.oxlintrc.json', '--format', 'agent', 'noHooks.jsx']);
@@ -43,7 +43,7 @@ assert.deepEqual(eslint.flatMap(result => result.messages.map(message => [messag
     ['carburetor/no-react-hooks-in-components', 2, 9, 5],
     ['carburetor/no-react-hooks-in-components', 2, 14, 16],
 ]);
-const manifest = JSON.parse(readFileSync(resolve(cwd, 'node_modules/react-carburetor/package.json'), 'utf8'));
+const manifest = JSON.parse(readFileSync(resolve(cwd, 'node_modules/@react-carburetor/core/package.json'), 'utf8'));
 const proof = {preset, hosts: 2, rejectedReactCallsPerHost: 3, recommendedAllowsReactHooks: true,
     version: manifest.version, native, passed: true};
 writeFileSync(resolve(output, 'packed-lint-proof.json'), JSON.stringify(proof, null, 2) + '\n');

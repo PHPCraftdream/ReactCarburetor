@@ -1,4 +1,4 @@
-import type {IDict, IResourceEntry} from 'react-carburetor';
+import type {IDict, IResourceEntry} from '@react-carburetor/core';
 // #region doc
 interface IResourceCacheData<T> {
     entries: IDict<IResourceEntry<T>>;

@@ -1,4 +1,4 @@
-import {createTestScope, flush} from 'react-carburetor/testing';
+import {createTestScope, flush} from '@react-carburetor/core/testing';
 import * as React from "react";
 import {
     AntiHookComponent,
@@ -15,8 +15,8 @@ import {
     TReadonly,
     TSubscriber,
     carburetorToken,
-} from "react-carburetor";
-import {useCarburetorValue, useComputedValue, useResourceValue} from "react-carburetor/interop";
+} from "@react-carburetor/core";
+import {useCarburetorValue, useComputedValue, useResourceValue} from "@react-carburetor/core/interop";
 
 /**
  * Consumer-matrix fixture: compiled and run against the packed tarball, once per cell,

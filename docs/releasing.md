@@ -1,12 +1,12 @@
 # Release checklist
 
-The repository is preparing its first public npm release. `react-carburetor`
-and `carburetor-lint` were not on npm when this checklist was written. Do not
+The repository is preparing its first public npm release. `@react-carburetor/core`
+and `@react-carburetor/lint` were not on npm when this checklist was written. Do not
 publish or change package versions without the maintainer's explicit release
 decision. The first release is `0.1.0`.
 
-Ten packages ship under one version: the library `react-carburetor`, the launcher
-`carburetor-lint`, and eight `carburetor-lint-<platform>` packages that each carry one
+Ten packages ship under one version: the library `@react-carburetor/core`, the launcher
+`@react-carburetor/lint`, and eight `@react-carburetor/lint-<platform>` packages that each carry one
 compiled binary (`w32-x64`, `w32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`,
 `linux-arm64-gnu`, `linux-x64-musl`, `linux-arm64-musl`). A platform is added in one place,
 the launcher's `optionalDependencies`; the release workflow, the tests and the checks read
@@ -23,12 +23,12 @@ the list from there.
    linter with `cargo build --release --locked` from `native/`, then `npm run typecheck`,
    `npm run lint`, `npm run check:layout` and `npm test`.
 3. Inspect `npm pack --dry-run --json` for the root library, the launcher under
-   `npm/carburetor-lint`, and each platform package. Every tarball must include
+   `npm/lint`, and each platform package. Every tarball must include
    `LICENSE`, `LICENSE-MIT`, and `LICENSE-APACHE`. The platform tarballs must
    also include the binary built for their declared `os`/`cpu`/`libc` target and
    `THIRD-PARTY-LICENSES.txt`, the attribution for the Rust crates linked into it.
-4. Publish the eight platform packages first, then `carburetor-lint` (whose
-   optional dependencies name those exact versions), then `react-carburetor`.
+4. Publish the eight platform packages first, then `@react-carburetor/lint` (whose
+   optional dependencies name those exact versions), then `@react-carburetor/core`.
    The `native-packages.yml` workflow builds and packs the platform artifacts; the Release
    workflow (below) publishes them, and only when a maintainer starts it.
 5. The Release workflow ends by installing the published packages from the registry on
@@ -101,7 +101,11 @@ package and as a fallback. Both modes run the same steps and differ only in cred
 
 #### Setup common to both
 
-1. Settings → Environments → New environment, named `npm`. Required reviewers are optional but
+1. npmjs.com → Add Organization, named `react-carburetor` (free for public packages). All ten
+   packages live in its scope `@react-carburetor`, so the organization has to exist before the
+   first publish, and the publishing account (or the owner of the token) must be a member that can
+   publish to it.
+2. Settings → Environments → New environment, named `npm`. Required reviewers are optional but
    recommended: the publish job waits for approval. The name is part of the trusted-publisher
    configuration below; change both or neither.
 
@@ -154,8 +158,8 @@ runs with `id-token: write`, which is what lets npm exchange the identity and si
 
 ### Cutting a release
 
-1. Confirm the same intended version in `package.json`, `npm/carburetor-lint/package.json`, the eight
-   `npm/carburetor-lint-*/package.json` and the `optionalDependencies` of `carburetor-lint`.
+1. Confirm the same intended version in `package.json`, `npm/lint/package.json`, the eight
+   `npm/lint-*/package.json` and the `optionalDependencies` of `@react-carburetor/lint`.
    Do not change versions just to run a dry run. The workflow always rejects version mismatches;
    `[Unreleased]` is sufficient only while `dry_run` is on.
 2. Push to `master`. A full-tier run for that exact SHA is optional: the Release workflow starts
@@ -168,7 +172,7 @@ runs with `id-token: write`, which is what lets npm exchange the identity and si
    date, commit and push that change, and repeat the dry run on the exact final commit. Only after
    it passes and the maintainer explicitly authorizes publication, run with `dry_run` off
    (approve the `npm` environment if reviewers are set). It publishes the eight platform packages,
-   then `carburetor-lint`, then `react-carburetor`, and then installs them from the registry on
+   then `@react-carburetor/lint`, then `@react-carburetor/core`, and then installs them from the registry on
    every platform.
 5. A version already on the registry is skipped, so a run that stopped halfway is simply started
    again. `post-publish.yml` can also be started alone against any published version.

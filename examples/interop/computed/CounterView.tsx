@@ -1,7 +1,7 @@
 // #region view
 import {memo, type ReactElement} from 'react';
-import {Carburetor, Computed} from 'react-carburetor';
-import {useComputedValue, useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor, Computed} from '@react-carburetor/core';
+import {useComputedValue, useCarburetorValue} from '@react-carburetor/core/interop';
 
 class CounterCarburetor extends Carburetor<{count: number}> {
     public constructor() {

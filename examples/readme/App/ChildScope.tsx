@@ -1,5 +1,5 @@
 import React from 'react';
-import {CarburetorChildScope, CarburetorScope, carburetorToken} from 'react-carburetor';
+import {CarburetorChildScope, CarburetorScope, carburetorToken} from '@react-carburetor/core';
 
 const serviceToken = carburetorToken(() => ({name: 'shared'}), 'example/shared');
 const panelToken = carburetorToken(owner => ({service: owner.get(serviceToken)}), 'example/panel');

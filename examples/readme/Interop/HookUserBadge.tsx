@@ -1,4 +1,4 @@
-import {ResourceCache} from 'react-carburetor';
+import {ResourceCache} from '@react-carburetor/core';
 
 interface User {id: string; name: string}
 
@@ -9,8 +9,8 @@ const users = new ResourceCache<User, [string]>(async (id, signal) => {
 }, {ttl: 30_000, maxEntries: 200});
 
 // #region hookUserBadge
-import type {IResourceView, TReadonly} from 'react-carburetor';
-import {useResourceValue} from 'react-carburetor/interop';
+import type {IResourceView, TReadonly} from '@react-carburetor/core';
+import {useResourceValue} from '@react-carburetor/core/interop';
 
 const selectUserBadge = (view: TReadonly<IResourceView<User>>) =>
     view.data === undefined ? undefined : {name: view.data.name};

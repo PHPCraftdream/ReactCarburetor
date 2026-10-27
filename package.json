@@ -1,5 +1,5 @@
 {
-  "name": "react-carburetor",
+  "name": "@react-carburetor/core",
   "version": "0.1.0",
   "description": "Fine-grained React state management with a hook-free class-component core, async resources, and native lint rules.",
   "main": "./dist/cjs/Carburetor/index.js",
@@ -98,6 +98,9 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/PHPCraftdream/ReactCarburetor.git"
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "peerDependencies": {
     "react": "^18.0.0 || ^19.0.0",

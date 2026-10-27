@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor, bind} from 'react-carburetor';
+import {AntiHookComponent, Carburetor, bind} from '@react-carburetor/core';
 
 class Todos extends Carburetor<{ids: string[]}> {}
 

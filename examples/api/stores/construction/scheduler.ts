@@ -1,5 +1,5 @@
 // #region scheduler
-import {Carburetor, IUpdateScheduler, TUpdater} from 'react-carburetor';
+import {Carburetor, IUpdateScheduler, TUpdater} from '@react-carburetor/core';
 
 /** Delivers every update on the next macrotask instead of synchronously. */
 class NextTickScheduler implements IUpdateScheduler {

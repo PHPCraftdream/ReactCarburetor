@@ -1,4 +1,4 @@
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 export class WrongIndex extends Carburetor<{index: Map<string, number>}> {
     public set(id: string): void {

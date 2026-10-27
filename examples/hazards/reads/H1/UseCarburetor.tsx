@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
 
 const todoCarburetor = new Carburetor({count: 0});
 

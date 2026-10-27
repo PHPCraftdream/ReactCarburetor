@@ -8,7 +8,7 @@ One line in `.oxlintrc.json`; the plugin file travels next to the preset inside 
 
 ```json
 {
-  "extends": ["react-carburetor/lint/recommended.oxlintrc.json"]
+  "extends": ["@react-carburetor/core/lint/recommended.oxlintrc.json"]
 }
 ```
 
@@ -16,7 +16,7 @@ The direct path works too:
 
 ```json
 {
-  "extends": ["./node_modules/react-carburetor/dist/lint/recommended.oxlintrc.json"],
+  "extends": ["./node_modules/@react-carburetor/core/dist/lint/recommended.oxlintrc.json"],
   "rules": {
     "carburetor/require-module-function": ["warn", {"scope": "classes"}]
   }
@@ -30,8 +30,8 @@ The recommended preset also switches oxlint's `typescript/unbound-method` off: i
 ```json
 {
   "extends": [
-    "react-carburetor/lint/recommended.oxlintrc.json",
-    "react-carburetor/lint/no-hooks.oxlintrc.json"
+    "@react-carburetor/core/lint/recommended.oxlintrc.json",
+    "@react-carburetor/core/lint/no-hooks.oxlintrc.json"
   ]
 }
 ```
@@ -43,7 +43,7 @@ For `eslint.config.ts` or `eslint.config.mjs`, spread the shareable configs. `@t
 <!-- example:file examples/api/tooling/eslint.config.js#doc -->
 ```js
 import tsParser from '@typescript-eslint/parser';
-import carburetor from 'react-carburetor/lint';
+import carburetor from '@react-carburetor/core/lint';
 
 export default [
     {
@@ -66,7 +66,7 @@ import carburetor, {
     ICarburetorPlugin,
     ICarburetorRule,
     TSeverity,
-} from 'react-carburetor/lint';
+} from '@react-carburetor/core/lint';
 
 const plugin: ICarburetorPlugin = carburetor;
 const severity: TSeverity = 'error';
@@ -80,7 +80,7 @@ const catalogue = Object.entries(plugin.rules).map(([id, rule]) => `${id}: ${des
 `carburetor-lint` runs native rules without a host linter:
 
 ```shell
-pnpm add -D carburetor-lint
+pnpm add -D @react-carburetor/lint
 ```
 
 It ships a compiled binary per platform through `optionalDependencies`, so nothing is compiled at install time.
@@ -126,7 +126,7 @@ A line is silenced with `// carburetor-disable-next-line <rule>` directly above 
 
 <!-- example:file examples/api/types/suppressions.ts#doc -->
 ```ts
-import {AntiHookComponent} from 'react-carburetor';
+import {AntiHookComponent} from '@react-carburetor/core';
 
 class Counter extends AntiHookComponent {
     value = 0;
@@ -145,7 +145,7 @@ Inline function callbacks passed to synchronous array methods in render are find
 
 <!-- example:file examples/wrong/no-function-in-render/List.expected.no-function-in-render.require-module-function.tsx#doc -->
 ```tsx
-import {AntiHookComponent, bind} from 'react-carburetor';
+import {AntiHookComponent, bind} from '@react-carburetor/core';
 
 interface Item { id: string; name: string }
 const renderRow = (item: Item): React.ReactElement => <ItemRow key={item.id} item={item}/>;
@@ -186,7 +186,7 @@ A callback that captures a member parameter, local binding, or `this` allocates 
 
 <!-- example:file examples/wrong/no-closure-in-update/Counter.ts#doc -->
 ```ts
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 interface CounterState { count: number; name: string }
 
@@ -203,7 +203,7 @@ class Counter extends Carburetor<CounterState> {
 
 <!-- example:file examples/api/types/update.ts#doc -->
 ```ts
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 interface CounterState { count: number; name: string }
 declare function normalizeName(name: string): string;

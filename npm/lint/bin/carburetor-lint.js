@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-// Thin launcher: `npm i -D carburetor-lint` installs exactly one platform package through
+// Thin launcher: `npm i -D @react-carburetor/lint` installs exactly one platform package through
 // optionalDependencies — npm's `os`/`cpu`/`libc` fields gate the rest — and this script finds
 // that package's binary and hands it the arguments, stdio and exit code it was given.
 // The same platform logic lives in plugin/src/Utils/Native/platformPackage.mts for the lint
@@ -38,12 +38,12 @@ const linuxCandidates = () => {
 
 const packageNames = () => {
     if (process.platform === 'linux') {
-        return linuxCandidates().map((libc) => `carburetor-lint-linux-${process.arch}-${libc}`);
+        return linuxCandidates().map((libc) => `@react-carburetor/lint-linux-${process.arch}-${libc}`);
     }
 
     const platform = process.platform === 'win32' ? 'w32' : process.platform;
 
-    return [`carburetor-lint-${platform}-${process.arch}`];
+    return [`@react-carburetor/lint-${platform}-${process.arch}`];
 };
 
 const findBinary = () => {

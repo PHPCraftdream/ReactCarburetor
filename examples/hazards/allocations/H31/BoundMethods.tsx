@@ -1,5 +1,5 @@
 import type {JSX} from 'react';
-import {AntiHookComponent, bind} from 'react-carburetor';
+import {AntiHookComponent, bind} from '@react-carburetor/core';
 
 interface Item {id: string; name: string}
 

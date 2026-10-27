@@ -1,4 +1,4 @@
-import {Carburetor, IComputedOptions, TComputeBody, TComputedReader, computed} from 'react-carburetor';
+import {Carburetor, IComputedOptions, TComputeBody, TComputedReader, computed} from '@react-carburetor/core';
 
 interface State {count: number}
 const store = new Carburetor<State>({count: 2});

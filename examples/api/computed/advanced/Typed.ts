@@ -1,5 +1,5 @@
-import {Carburetor, Computed} from 'react-carburetor';
-import type {IComputed, IComputedOptions, TComputedReader, TComputeBody} from 'react-carburetor';
+import {Carburetor, Computed} from '@react-carburetor/core';
+import type {IComputed, IComputedOptions, TComputedReader, TComputeBody} from '@react-carburetor/core';
 
 class CartCarburetor extends Carburetor<{items: string[]}> {}
 

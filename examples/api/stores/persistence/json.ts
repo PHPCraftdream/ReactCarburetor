@@ -1,5 +1,5 @@
 // #region json
-import {Carburetor, IInspectable} from 'react-carburetor';
+import {Carburetor, IInspectable} from '@react-carburetor/core';
 
 const store = new Carburetor({value: 1});
 

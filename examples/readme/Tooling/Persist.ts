@@ -1,4 +1,4 @@
-import {Carburetor, IStorageLike, persist} from 'react-carburetor';
+import {Carburetor, IStorageLike, persist} from '@react-carburetor/core';
 
 interface IProfile {
     name: string;

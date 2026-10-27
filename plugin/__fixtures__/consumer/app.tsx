@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor} from "react-carburetor";
+import {AntiHookComponent, Carburetor} from "@react-carburetor/core";
 import {store} from "../sources";
 
 /** A consumer-shaped file: two hazards, one of each severity the preset assigns. */

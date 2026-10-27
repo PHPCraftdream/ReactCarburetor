@@ -1,5 +1,5 @@
 // #region subscribe-api
-import {Carburetor, ICarburetorSubscription, ISubscribeOptions, TSubscriber} from 'react-carburetor';
+import {Carburetor, ICarburetorSubscription, ISubscribeOptions, TSubscriber} from '@react-carburetor/core';
 
 const store = new Carburetor({value: 0});
 const logging: ICarburetorSubscription = store; // the subscription surface every store has

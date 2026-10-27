@@ -1,4 +1,4 @@
-import {AntiHookComponent, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, ResourceCache} from '@react-carburetor/core';
 
 interface IUser {name: string}
 

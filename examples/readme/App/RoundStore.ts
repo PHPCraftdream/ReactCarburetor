@@ -1,5 +1,5 @@
-import {Carburetor, transaction} from 'react-carburetor';
-import type {TReadonly} from 'react-carburetor';
+import {Carburetor, transaction} from '@react-carburetor/core';
+import type {TReadonly} from '@react-carburetor/core';
 
 export interface IRound {
     round: {kind: string; wrong: number[]; locked: boolean};

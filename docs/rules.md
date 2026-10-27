@@ -1,6 +1,6 @@
 # Lint rules
 
-The rules ship with the package as `react-carburetor/lint`. This page is the reference by rule
+The rules ship with the package as `@react-carburetor/core/lint`. This page is the reference by rule
 name; [hazards.md](hazards.md) is the same material organised by mistake, with the code that
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
@@ -67,15 +67,15 @@ additive, not a replacement: extend it second so the recommended correctness rul
 ```json
 {
   "extends": [
-    "react-carburetor/lint/recommended.oxlintrc.json",
-    "react-carburetor/lint/house-style.oxlintrc.json"
+    "@react-carburetor/core/lint/recommended.oxlintrc.json",
+    "@react-carburetor/core/lint/house-style.oxlintrc.json"
   ]
 }
 ```
 
 The preset enables `max-line-length`, `no-blank-line-after-tsdoc`, `no-parent-import`,
 `require-tsdoc`, `tsdoc-blank-line-before-tags`, and `one-export-per-file` as errors. It enables
-`prefer-readonly-array-param` as a warning. The corresponding `react-carburetor/lint` plugin config
+`prefer-readonly-array-param` as a warning. The corresponding `@react-carburetor/core/lint` plugin config
 is available as `house-style`.
 
 `no-parent-import` reports nothing until your config names the source roots it may alias, under
@@ -109,7 +109,7 @@ available options. These configurations are not promised to override the plugin'
 
 ```json
 {
-  "extends": ["react-carburetor/lint/recommended.oxlintrc.json"]
+  "extends": ["@react-carburetor/core/lint/recommended.oxlintrc.json"]
 }
 ```
 
@@ -117,7 +117,7 @@ The direct path works where a host does not resolve package exports:
 
 ```json
 {
-  "extends": ["./node_modules/react-carburetor/dist/lint/recommended.oxlintrc.json"]
+  "extends": ["./node_modules/@react-carburetor/core/dist/lint/recommended.oxlintrc.json"]
 }
 ```
 
@@ -128,7 +128,7 @@ parsing itself.
 <!-- example:file examples/api/lint/Recommended.js#doc -->
 ```js
 import tsParser from '@typescript-eslint/parser';
-import carburetor from 'react-carburetor/lint';
+import carburetor from '@react-carburetor/core/lint';
 
 export default [
     {
@@ -143,7 +143,7 @@ Either way, a rule can be changed or switched off afterwards, since a later entr
 
 ```json
 {
-  "extends": ["./node_modules/react-carburetor/dist/lint/recommended.oxlintrc.json"],
+  "extends": ["./node_modules/@react-carburetor/core/dist/lint/recommended.oxlintrc.json"],
   "rules": {
     "carburetor/no-escaping-tracked-data": "off",
     "carburetor/no-module-level-store": "error"
@@ -162,19 +162,19 @@ React hooks remain allowed by `recommended`. Enable the optional preset explicit
 ```json
 {
   "extends": [
-    "./node_modules/react-carburetor/dist/lint/recommended.oxlintrc.json",
-    "./node_modules/react-carburetor/dist/lint/no-hooks.oxlintrc.json"
+    "./node_modules/@react-carburetor/core/dist/lint/recommended.oxlintrc.json",
+    "./node_modules/@react-carburetor/core/dist/lint/no-hooks.oxlintrc.json"
   ]
 }
 ```
 
-The JSON is also exported as `react-carburetor/lint/no-hooks.oxlintrc.json`. ESLint v9+ uses the
+The JSON is also exported as `@react-carburetor/core/lint/no-hooks.oxlintrc.json`. ESLint v9+ uses the
 same policy through the plugin's shareable config:
 
 <!-- example:file examples/api/lint/NoHooks.js#doc -->
 ```js
 import tsParser from '@typescript-eslint/parser';
-import carburetor from 'react-carburetor/lint';
+import carburetor from '@react-carburetor/core/lint';
 
 export default [
     {
@@ -218,7 +218,7 @@ until your project changes shape.
 | `require-tsdoc` | off | A function, method or function-valued member without a short TSDoc block; house style, opt-in | — |
 | `tsdoc-blank-line-before-tags` | off | A missing blank line between a TSDoc description and its first block tag; house style, opt-in | — |
 | `no-async-effect` | error | An `async` effect body, whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
-| `no-async-transaction` | error | An `async` body given to `transaction()` (a value import from `react-carburetor`) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
+| `no-async-transaction` | error | An `async` body given to `transaction()` (a value import from `@react-carburetor/core`) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
 | `no-closure-in-update` | warn | A capturing inline callback passed to `this.update` in a recognized store member; pass a module-level mutator and its arguments to `this.update` instead | [H32](hazards.md) |
 | `no-computed-get-in-computed` | error | A computed reading a source with `get()`/`getData()` instead of its reader, so it registers no dependency and never invalidates | [H3](hazards.md) |
 | `no-computed-get-in-render` | error | A computed read with `get()` in render, which registers no subscription | [H2](hazards.md) |

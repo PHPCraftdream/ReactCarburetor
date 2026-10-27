@@ -1,7 +1,7 @@
 // #region ids
 import type {ReactElement} from 'react';
-import {Carburetor} from 'react-carburetor';
-import {TSelector, TValueComparator, useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor} from '@react-carburetor/core';
+import {TSelector, TValueComparator, useCarburetorValue} from '@react-carburetor/core/interop';
 
 class SelectionCarburetor extends Carburetor<{ids: number[]}> {
     public constructor() {

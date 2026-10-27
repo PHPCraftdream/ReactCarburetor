@@ -45,10 +45,10 @@ export async function smokePacked(args = process.argv.slice(2)) {
     const packed = JSON.parse(execFileSync('npm', ['pack', '--json', '--pack-destination', work],
       { cwd: launcher, encoding: 'utf8', shell: process.platform === 'win32' }));
     const modules = path.join(work, 'node_modules');
-    await extractTarball(path.join(work, packed[0].filename), path.join(modules, 'carburetor-lint'));
+    await extractTarball(path.join(work, packed[0].filename), path.join(modules, '@react-carburetor', 'lint'));
     await extractTarball(path.join(packageDir, platformTarball), path.join(modules, platformName));
 
-    const bin = path.join(modules, 'carburetor-lint', 'bin', 'carburetor-lint.js');
+    const bin = path.join(modules, '@react-carburetor', 'lint', 'bin', 'carburetor-lint.js');
     const env = { ...process.env };
     delete env.CARBURETOR_LINT_BIN;
     /** Runs the unpacked launcher with the given arguments. */

@@ -10,7 +10,7 @@ import {
     IDevToolsMessage,
     IDevToolsOptions,
     TDisposer,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 const incrementCount = (draft: {count: number}): void => { draft.count += 1; };
 const sendDevTools = (action: string, state: unknown): void => { console.log(action, state); };

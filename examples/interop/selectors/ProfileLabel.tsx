@@ -1,7 +1,7 @@
 // #region label
 import type {ReactElement} from 'react';
-import {Carburetor} from 'react-carburetor';
-import {TValueComparator, useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor} from '@react-carburetor/core';
+import {TValueComparator, useCarburetorValue} from '@react-carburetor/core/interop';
 
 class ProfileCarburetor extends Carburetor<{name: string; email: string}> {
     public constructor() {

@@ -1,5 +1,5 @@
 // #region suspense
-import {AntiHookComponent, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, ResourceCache} from '@react-carburetor/core';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
 
 interface Avatar {

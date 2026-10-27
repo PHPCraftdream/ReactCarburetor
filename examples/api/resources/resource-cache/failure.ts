@@ -1,5 +1,5 @@
 // #region failure
-import {IResourceView, ResourceCache} from 'react-carburetor';
+import {IResourceView, ResourceCache} from '@react-carburetor/core';
 
 interface Report {
     rows: string[];

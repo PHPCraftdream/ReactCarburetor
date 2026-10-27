@@ -177,7 +177,7 @@ export class Carburetor<T extends object, TEvents extends object = {}> implement
     protected get data(): T { return this[S.data]; }
     /** Unique engine identity. */
     public getUID(): string { return this[S.uid]; }
-    /** Delivers pending throttled notifications on behalf of react-carburetor/testing. */
+    /** Delivers pending throttled notifications on behalf of @react-carburetor/core/testing. */
     public [CARBURETOR_FLUSH](): boolean {
         if (storeLifecycle.isDisposed(this) || updateBatch.isActive() || updateWave.isActive()) return false;
         return (this[S.scheduler] as {flushPendingUpdates?: () => boolean}).flushPendingUpdates?.() ?? false;

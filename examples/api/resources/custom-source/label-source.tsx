@@ -7,7 +7,7 @@ import {
     IResourceResolution,
     IResourceSource,
     IResourceView,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 import {type JSX} from 'react';
 
 interface Label {

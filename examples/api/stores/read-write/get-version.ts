@@ -1,5 +1,5 @@
 // #region get-version
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 const store = new Carburetor({value: 0});
 

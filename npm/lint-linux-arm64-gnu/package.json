@@ -1,7 +1,7 @@
 {
-  "name": "carburetor-lint-linux-x64-musl",
+  "name": "@react-carburetor/lint-linux-arm64-gnu",
   "version": "0.1.0",
-  "description": "The linux-x64-musl carburetor-lint binary, React Carburetor's native linter. Installed through carburetor-lint's optionalDependencies; never a direct dependency.",
+  "description": "The linux-arm64-gnu carburetor-lint binary, React Carburetor's native linter. Installed through @react-carburetor/lint's optionalDependencies; never a direct dependency.",
   "license": "MIT OR Apache-2.0",
   "repository": {
     "type": "git",
@@ -11,10 +11,10 @@
     "linux"
   ],
   "cpu": [
-    "x64"
+    "arm64"
   ],
   "libc": [
-    "musl"
+    "glibc"
   ],
   "files": [
     "carburetor-lint",
@@ -23,5 +23,8 @@
     "LICENSE-MIT",
     "LICENSE-APACHE"
   ],
-  "preferUnplugged": true
+  "preferUnplugged": true,
+  "publishConfig": {
+    "access": "public"
+  }
 }

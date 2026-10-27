@@ -1,4 +1,4 @@
-import {bind, shallowEqual} from 'react-carburetor';
+import {bind, shallowEqual} from '@react-carburetor/core';
 
 class Input {value = 0; @bind increment(): void { this.value += 1; }}
 const input = new Input();

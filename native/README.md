@@ -140,9 +140,9 @@ form the base class actually dispatches to.
 The packages below are prepared but not yet published on npm. Build from source
 using the command above until the first public release.
 
-The binary ships the way oxlint ships its own: `carburetor-lint` on npm is a launcher script
+The binary ships the way oxlint ships its own: `@react-carburetor/lint` on npm is a launcher script
 that finds the compiled binary and hands it your arguments, stdio and exit code, and the
-megabytes live in a platform package beside it, `carburetor-lint-<platform>`. The launcher
+megabytes live in a platform package beside it, `@react-carburetor/lint-<platform>`. The launcher
 package lists all eight under `optionalDependencies`, and each platform package declares `os` and
 `cpu` — `libc` too on linux, where glibc and musl builds are not interchangeable — so an
 install downloads exactly the one binary that runs on the installing machine: `w32-x64`,
@@ -150,7 +150,7 @@ install downloads exactly the one binary that runs on the installing machine: `w
 `linux-arm64-gnu`, `linux-arm64-musl`.
 
 ```bash
-npm install --save-dev carburetor-lint
+npm install --save-dev @react-carburetor/lint
 npx carburetor-lint --format=json src
 npx carburetor-lint --fix src
 ```
@@ -164,12 +164,12 @@ the result — packs it with `THIRD-PARTY-LICENSES.txt`, installs the packed tar
 launcher and runs it from there, and uploads the tarball as an artifact. The manual Release
 workflow requires a successful full-tier CI run on the exact SHA (it starts one when there is
 none), downloads those artifacts, packs and verifies the packages, then publishes the eight
-platform packages, `carburetor-lint`, and `react-carburetor` in that order, and finally installs
+platform packages, `@react-carburetor/lint`, and `@react-carburetor/core` in that order, and finally installs
 the published packages from the registry on every platform. Its default is `dry_run: true`; trusted OIDC publishing or `NPM_TOKEN` is supported,
 and already-published versions are skipped. See [`../docs/releasing.md`](../docs/releasing.md).
 
 The lint bridge in `../plugin/src` looks the binary up through the same platform packages, so a
-project using `react-carburetor/lint` should install `carburetor-lint` alongside it. When
+project using `@react-carburetor/core/lint` should install `@react-carburetor/lint` alongside it. When
 neither a platform package nor a `CARBURETOR_LINT_BIN` override nor a workspace build is
 present, the bridge fails loudly, naming the missing platform package — a missing binary is a
 broken install to report, never a silent, wrong "no problems". The bridge also checks the

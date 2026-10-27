@@ -20,7 +20,7 @@ const checkPreflight = ({dryRun, changelog, mismatch}: IPreflightOptions): strin
         readFileSync(file: string): string {
             if (file === 'CHANGELOG.md') return changelog;
             const text = read(file);
-            if (mismatch && file === 'npm/carburetor-lint/package.json') {
+            if (mismatch && file === 'npm/lint/package.json') {
                 return JSON.stringify({...JSON.parse(text), version: '0.0.0'});
             }
             return text;

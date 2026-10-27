@@ -4,7 +4,7 @@ const RULE = '='.repeat(72);
 
 /** The runtime the musl packages link statically; not a crate, so it is stated here. */
 const MUSL_NOTICE = [
-  'musl libc (the carburetor-lint-linux-*-musl packages only)',
+  'musl libc (the @react-carburetor/lint-linux-*-musl packages only)',
   '-'.repeat(57),
   'The musl binaries link musl libc statically. musl is distributed under the MIT license:',
   'https://git.musl-libc.org/cgit/musl/tree/COPYRIGHT',
@@ -66,7 +66,7 @@ export function renderThirdParty(crates) {
     'THIRD-PARTY LICENSES',
     RULE,
     '',
-    'The carburetor-lint binaries in the carburetor-lint-<platform> packages statically include the',
+    'The carburetor-lint binaries in the @react-carburetor/lint-<platform> packages statically include the',
     'components below. Each is used under the terms of its own license; the texts follow the list.',
     'The Rust standard library, also linked in, is available under MIT OR Apache-2.0.',
     '',

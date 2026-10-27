@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn decorated_action_publishes_on_exit() {
         let source = concat!(
-            "import {Carburetor, action} from 'react-carburetor';\n",
+            "import {Carburetor, action} from '@react-carburetor/core';\n",
             "class Store extends Carburetor {\n",
             "    @action\n",
             "    rename() { this.draft.count++; }\n",

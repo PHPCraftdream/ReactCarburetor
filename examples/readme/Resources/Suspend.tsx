@@ -1,4 +1,4 @@
-import {AntiHookComponent} from 'react-carburetor';
+import {AntiHookComponent} from '@react-carburetor/core';
 import {profile} from './Resource';
 
 interface IProfile {name: string}

@@ -5,14 +5,14 @@ read touches, and wakes only the subscribers a write actually concerns. This pag
 covers the store part of the public API outside React — construction, writes,
 subscriptions, snapshots and the small utilities that ship with it.
 
-All examples import from `'react-carburetor'` and compile standalone. External
+All examples import from `'@react-carburetor/core'` and compile standalone. External
 I/O is stubbed with `declare` where it appears.
 
 ## Creating a store
 
 <!-- example:file examples/api/stores/construction/counter.ts#creating-store -->
 ```ts
-import {Carburetor, ICarburetor} from 'react-carburetor';
+import {Carburetor, ICarburetor} from '@react-carburetor/core';
 
 const increment = (draft: {value: number}): void => { draft.value += 1; };
 
@@ -36,7 +36,7 @@ later writes unpublished.
 
 <!-- example:file examples/api/stores/read-write/get-version.ts#get-version -->
 ```ts
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 const store = new Carburetor({value: 0});
 
@@ -54,7 +54,7 @@ moments to detect that a write landed in between, without inspecting the data.
 
 <!-- example:file examples/api/stores/construction/scheduler.ts#scheduler -->
 ```ts
-import {Carburetor, IUpdateScheduler, TUpdater} from 'react-carburetor';
+import {Carburetor, IUpdateScheduler, TUpdater} from '@react-carburetor/core';
 
 /** Delivers every update on the next macrotask instead of synchronously. */
 class NextTickScheduler implements IUpdateScheduler {
@@ -86,7 +86,7 @@ immediately; implement your own when updates need deferring or coalescing.
 
 <!-- example:file examples/api/stores/construction/throttle.ts#throttle -->
 ```ts
-import {Carburetor, ComponentUpdateThrottle} from 'react-carburetor';
+import {Carburetor, ComponentUpdateThrottle} from '@react-carburetor/core';
 
 interface ICursor {x: number; y: number}
 
@@ -108,7 +108,7 @@ where `{scheduler}` carries the identical delivery policy.
 
 <!-- example:file examples/api/stores/construction/scheduler-options.ts#scheduler-options -->
 ```ts
-import {Carburetor, ICarburetorOptions, UpdateThrottle} from 'react-carburetor';
+import {Carburetor, ICarburetorOptions, UpdateThrottle} from '@react-carburetor/core';
 
 interface ICursor {x: number; y: number}
 
@@ -127,7 +127,7 @@ for the window (at least `updateTimeout` ms) before asserting.
 
 <!-- example:file examples/api/stores/construction/raw-writes.ts#raw-writes -->
 ```ts
-import {Carburetor, IDict} from 'react-carburetor';
+import {Carburetor, IDict} from '@react-carburetor/core';
 
 interface IUser {name: string}
 
@@ -161,7 +161,7 @@ hydrated objects, external mutation). Ordinary writes belong in `draft`.
 
 <!-- example:file examples/api/stores/read-write/set-get-data.ts#set-get-data -->
 ```ts
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 const store = new Carburetor({items: ['a'], done: false});
 
@@ -181,7 +181,7 @@ the protected `markAllChanged()` inside a store method (see
 
 <!-- example:file examples/api/stores/read-write/read-api.ts#read-api -->
 ```ts
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 const store = new Carburetor({user: {name: 'ada', age: 36}});
 
@@ -204,7 +204,7 @@ build them — the grammar is not a stable format.
 
 <!-- example:file examples/api/stores/observe/watch-api.ts#watch-api -->
 ```ts
-import {Carburetor, TDisposer, TReadonly, TSelector} from 'react-carburetor';
+import {Carburetor, TDisposer, TReadonly, TSelector} from '@react-carburetor/core';
 
 const store = new Carburetor({items: [{done: false}, {done: true}]});
 
@@ -235,7 +235,7 @@ as a comparison baseline — copy before editing.
 
 <!-- example:file examples/api/stores/observe/subscribe-api.ts#subscribe-api -->
 ```ts
-import {Carburetor, ICarburetorSubscription, ISubscribeOptions, TSubscriber} from 'react-carburetor';
+import {Carburetor, ICarburetorSubscription, ISubscribeOptions, TSubscriber} from '@react-carburetor/core';
 
 const store = new Carburetor({value: 0});
 const logging: ICarburetorSubscription = store; // the subscription surface every store has
@@ -262,7 +262,7 @@ devtools. A throwing callback does not stop the other subscribers.
 
 <!-- example:file examples/api/stores/persistence/snapshot-restore.ts#snapshot-restore -->
 ```ts
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 const store = new Carburetor({count: 1, tags: ['a']});
 
@@ -288,7 +288,7 @@ installs its own copy.
 
 <!-- example:file examples/api/stores/utilities/deep-clone.ts#deep-clone -->
 ```ts
-import {Carburetor, deepClone} from 'react-carburetor';
+import {Carburetor, deepClone} from '@react-carburetor/core';
 
 const store = new Carburetor({profile: {name: 'ada'}});
 
@@ -306,7 +306,7 @@ detach data before handing it to code that must not touch live state.
 
 <!-- example:file examples/api/stores/persistence/json.ts#json -->
 ```ts
-import {Carburetor, IInspectable} from 'react-carburetor';
+import {Carburetor, IInspectable} from '@react-carburetor/core';
 
 const store = new Carburetor({value: 1});
 
@@ -331,7 +331,7 @@ freshly for each call instead of reusing a cached object.
 
 <!-- example:file examples/api/stores/utilities/transaction.ts#transaction -->
 ```ts
-import {Carburetor, transaction} from 'react-carburetor';
+import {Carburetor, transaction} from '@react-carburetor/core';
 
 const profile = new Carburetor({name: 'ada'});
 const settings = new Carburetor({theme: 'light'});
@@ -357,7 +357,7 @@ the part before its first await.
 
 <!-- example:file examples/api/stores/utilities/shallow-equal.ts#shallow-equal -->
 ```ts
-import {shallowEqual} from 'react-carburetor';
+import {shallowEqual} from '@react-carburetor/core';
 
 console.log(shallowEqual({a: 1, b: 2}, {a: 1, b: 2}));  // true
 console.log(shallowEqual({a: {b: 1}}, {a: {b: 1}}));    // false: nested objects by reference
@@ -373,7 +373,7 @@ already does that precisely).
 
 <!-- example:file examples/api/stores/utilities/diagnostics.ts#diagnostics -->
 ```ts
-import {Diagnostics, diagnostics} from 'react-carburetor';
+import {Diagnostics, diagnostics} from '@react-carburetor/core';
 
 // The shared instance the engine reports misuse through.
 diagnostics.setEnabled(true);
@@ -399,7 +399,7 @@ import {
     ICarburetor,
     IReadableCarburetor,
     IPatchSource, // unstable, do not implement: internal engine protocol, no stability guarantee
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface IState {value: number}
 

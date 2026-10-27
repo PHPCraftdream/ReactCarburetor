@@ -1,5 +1,5 @@
 // #region diagnostics
-import {Diagnostics, diagnostics} from 'react-carburetor';
+import {Diagnostics, diagnostics} from '@react-carburetor/core';
 
 // The shared instance the engine reports misuse through.
 diagnostics.setEnabled(true);

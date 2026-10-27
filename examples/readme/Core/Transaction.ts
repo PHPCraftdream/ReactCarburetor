@@ -1,4 +1,4 @@
-import {Carburetor, transaction} from 'react-carburetor';
+import {Carburetor, transaction} from '@react-carburetor/core';
 
 class TodoStore extends Carburetor<{count: number}> {
     public createTodo(): void {}

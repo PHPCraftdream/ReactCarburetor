@@ -1,5 +1,5 @@
 // #region load
-import {AntiHookComponent, bind, ResourceCarburetor, TResourceLoader} from 'react-carburetor';
+import {AntiHookComponent, bind, ResourceCarburetor, TResourceLoader} from '@react-carburetor/core';
 import {type JSX} from 'react';
 
 interface User {

@@ -89,15 +89,15 @@ jobs:
             const fs = require("fs");
             const read = p => JSON.parse(fs.readFileSync(p, "utf8"));
             const root = read("package.json");
-            const lint = read("npm/carburetor-lint/package.json");
+            const lint = read("npm/lint/package.json");
             const platforms = Object.keys(lint.optionalDependencies);
             const bad = [];
             for (const name of platforms) {
-              const manifest = read(`npm/${name}/package.json`);
+              const manifest = read(`npm/${name.split("/").pop()}/package.json`);
               if (manifest.name !== name || manifest.version !== root.version) bad.push(name);
               if (lint.optionalDependencies[name] !== root.version) bad.push(`optional ${name}`);
             }
-            if (lint.version !== root.version) bad.push("carburetor-lint");
+            if (lint.version !== root.version) bad.push("@react-carburetor/lint");
             const heading = new RegExp(`^## \\[${root.version.replace(/\./g, "\\.")}\\] - \\d{4}-\\d{2}-\\d{2}$`, "m");
             const changelog = fs.readFileSync("CHANGELOG.md", "utf8");
             const unreleasedDryRun = process.env.DRY_RUN === "true" && /^## \[Unreleased\]$/m.test(changelog);
@@ -176,9 +176,9 @@ jobs:
           CI_RUN: ${{ needs.prepare.outputs.ci_run }}
         run: |
           set -e
-          gh run download "$CI_RUN" --pattern 'carburetor-lint-*' --dir artifacts
+          gh run download "$CI_RUN" --pattern 'lint-*' --dir artifacts
           for name in $PLATFORMS; do
-            [ -d "artifacts/$name" ] || { echo "CI run $CI_RUN produced no artifact for $name" >&2; exit 1; }
+            [ -d "artifacts/${name##*/}" ] || { echo "CI run $CI_RUN produced no artifact for $name" >&2; exit 1; }
           done
 
       - name: Install
@@ -187,9 +187,9 @@ jobs:
       # prepack builds dist/ for the library; the launcher has no build step.
       - name: Pack the library and the launcher
         run: |
-          mkdir -p artifacts/react-carburetor artifacts/carburetor-lint
-          npm pack --pack-destination artifacts/react-carburetor
-          npm pack ./npm/carburetor-lint --pack-destination artifacts/carburetor-lint
+          mkdir -p artifacts/core artifacts/lint
+          npm pack --pack-destination artifacts/core
+          npm pack ./npm/lint --pack-destination artifacts/lint
 
       # Each tarball must hold what its package promises before anything is published.
       - name: Inspect the tarballs
@@ -205,8 +205,8 @@ jobs:
             grep -q '^package/LICENSE-MIT$' "$RUNNER_TEMP/files.txt"
             grep -q '^package/LICENSE-APACHE$' "$RUNNER_TEMP/files.txt"
             case "$name" in
-              react-carburetor) grep -q '^package/dist/cjs/Carburetor/index.js$' "$RUNNER_TEMP/files.txt" ;;
-              carburetor-lint) grep -q '^package/bin/carburetor-lint.js$' "$RUNNER_TEMP/files.txt" ;;
+              core) grep -q '^package/dist/cjs/Carburetor/index.js$' "$RUNNER_TEMP/files.txt" ;;
+              lint) grep -q '^package/bin/carburetor-lint.js$' "$RUNNER_TEMP/files.txt" ;;
               *)
                 grep -q '^package/carburetor-lint' "$RUNNER_TEMP/files.txt"
                 grep -q '^package/THIRD-PARTY-LICENSES.txt$' "$RUNNER_TEMP/files.txt"
@@ -226,13 +226,13 @@ jobs:
           else
             flags+=(--provenance)
           fi
-          for name in $PLATFORMS carburetor-lint react-carburetor; do
+          for name in $PLATFORMS @react-carburetor/lint @react-carburetor/core; do
             if npm view "$name@$VERSION" version >/dev/null 2>&1; then
               echo "== $name@$VERSION is already published, skipping"
               continue
             fi
             echo "== publishing $name@$VERSION"
-            npm publish "$(ls artifacts/$name/*.tgz)" "${flags[@]}"
+            npm publish "$(ls artifacts/${name##*/}/*.tgz)" "${flags[@]}"
           done
 
   # What was published must install and run from the registry on every supported platform.

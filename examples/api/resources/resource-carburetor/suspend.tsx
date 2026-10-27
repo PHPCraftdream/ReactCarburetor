@@ -1,5 +1,5 @@
 // #region suspend
-import {AntiHookComponent, IResourceCarburetorOptions, IResourceData, ResourceCarburetor} from 'react-carburetor';
+import {AntiHookComponent, IResourceCarburetorOptions, IResourceData, ResourceCarburetor} from '@react-carburetor/core';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
 import {fetchConfig} from '../endpoints/config';
 

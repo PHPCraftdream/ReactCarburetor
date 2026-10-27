@@ -23,7 +23,7 @@ const dependencies = {
     '@types/react-dom': packageManifest.devDependencies['@types/react-dom'],
     '@rsbuild/core': pinned('@rsbuild/core') || library.devDependencies['@rsbuild/core'],
     '@rsbuild/plugin-react': pinned('@rsbuild/plugin-react') || library.devDependencies['@rsbuild/plugin-react'],
-    'react-carburetor': `file:${source}`,
+    '@react-carburetor/core': `file:${source}`,
 };
 
 /** Run the linked-source consumer typecheck, resolution assertion, and bundler build. */
@@ -38,9 +38,9 @@ export const sourceConditionScenario = () => {
         esModuleInterop: true, types: [],
     }, include: ['src/**/*']}, null, 2));
     writeFileSync(path.join(dir, 'src', 'index.tsx'), [
-        "import {Carburetor} from 'react-carburetor';",
-        "import {useCarburetorValue} from 'react-carburetor/interop';",
-        "import {flush, createTestScope} from 'react-carburetor/testing';",
+        "import {Carburetor} from '@react-carburetor/core';",
+        "import {useCarburetorValue} from '@react-carburetor/core/interop';",
+        "import {flush, createTestScope} from '@react-carburetor/core/testing';",
         "import {createRoot} from 'react-dom/client';",
         'const store = new Carburetor({count: 1});',
         'const App = () => <span>{useCarburetorValue(store, value => value.count)}</span>;',
@@ -54,13 +54,13 @@ export const sourceConditionScenario = () => {
         "import {defineConfig} from '@rsbuild/core';",
         "import {pluginReact} from '@rsbuild/plugin-react';",
         "export default defineConfig({plugins: [pluginReact()], source: {entry: {index: './src/index.tsx'},",
-        "include: [realpathSync('./node_modules/react-carburetor/lib/src')]}, html: {template: './index.html'},",
+        "include: [realpathSync('./node_modules/@react-carburetor/core/lib/src')]}, html: {template: './index.html'},",
         "resolve: {conditionNames: ['carburetor-source', '...']}});",
     ].join('\n'));
     const install = run('npm', ['install', '--install-links=false', '--ignore-scripts', '--no-audit', '--no-fund'],
         {cwd: dir});
     if (!install.ok) return {ok: false, stage: 'install', stderr: install.stdout + install.stderr};
-    if (normalize(path.join(dir, 'node_modules', 'react-carburetor')) !== source)
+    if (normalize(path.join(dir, 'node_modules', '@react-carburetor/core')) !== source)
         return {ok: false, stage: 'link', stderr: 'file dependency does not resolve to the checkout'};
     const typecheck = run(process.execPath, [TSC_BIN, '--noEmit', '-p', 'tsconfig.json'], {cwd: dir});
     if (!typecheck.ok) return {ok: false, stage: 'typecheck', stderr: typecheck.stdout + typecheck.stderr};

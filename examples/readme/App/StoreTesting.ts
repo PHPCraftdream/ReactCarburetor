@@ -1,5 +1,5 @@
-import {createTestClock, createTestScope, flush} from 'react-carburetor/testing';
-import {Carburetor, ComponentUpdateThrottle, waitForUpdate, carburetorToken} from 'react-carburetor';
+import {createTestClock, createTestScope, flush} from '@react-carburetor/core/testing';
+import {Carburetor, ComponentUpdateThrottle, waitForUpdate, carburetorToken} from '@react-carburetor/core';
 import {test, expect, rstest} from '@rstest/core';
 import {RoundStore} from './RoundStore';
 

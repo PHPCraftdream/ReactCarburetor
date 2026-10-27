@@ -1,7 +1,7 @@
 // #region count
 import type {ReactElement} from 'react';
-import {Carburetor} from 'react-carburetor';
-import {useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor} from '@react-carburetor/core';
+import {useCarburetorValue} from '@react-carburetor/core/interop';
 
 class CounterCarburetor extends Carburetor<{count: number}> {
     public constructor() {

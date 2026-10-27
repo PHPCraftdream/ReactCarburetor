@@ -1,4 +1,4 @@
-import {computed, carburetorToken, ScopedAntiHookComponent} from 'react-carburetor';
+import {computed, carburetorToken, ScopedAntiHookComponent} from '@react-carburetor/core';
 import {RoundStore} from '../App/RoundStore';
 
 const unmarkedIndex = (wrong: number, index: number): number[] => wrong === 0 ? [index] : [];

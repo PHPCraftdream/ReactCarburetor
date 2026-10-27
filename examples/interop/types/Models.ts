@@ -1,5 +1,5 @@
 // #region shared
-import {TSelector, TValueComparator} from 'react-carburetor/interop';
+import {TSelector, TValueComparator} from '@react-carburetor/core/interop';
 
 interface Settings {
     ids: number[];

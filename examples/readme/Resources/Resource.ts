@@ -1,4 +1,4 @@
-import {ResourceCarburetor} from 'react-carburetor';
+import {ResourceCarburetor} from '@react-carburetor/core';
 
 interface IProfile {name: string}
 

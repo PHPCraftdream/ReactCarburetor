@@ -163,8 +163,8 @@ run; unchanged entries retain their raw failures. Raw-failure reconciliation doe
 
 <!-- example:file examples/api/resources/promise-cache/Hooks.tsx#doc -->
 ```tsx
-import {IResourceView, TReadonly} from 'react-carburetor';
-import {useResourceValue} from 'react-carburetor/interop';
+import {IResourceView, TReadonly} from '@react-carburetor/core';
+import {useResourceValue} from '@react-carburetor/core/interop';
 
 const selectName = (view: TReadonly<IResourceView<User>>) => view.data?.name;
 function UserName({id}: {id: string}) {

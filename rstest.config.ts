@@ -23,10 +23,10 @@ const shared = {
     },
     resolve: {
         alias: {
-            'react-carburetor$': path.resolve(process.cwd(), 'lib/src/Carburetor/index.ts'),
-            'react-carburetor/interop': path.resolve(process.cwd(), 'lib/src/Interop/index.ts'),
-            'react-carburetor/testing': path.resolve(process.cwd(), 'lib/src/Testing/index.ts'),
-            'react-carburetor/lint': path.resolve(process.cwd(), 'plugin/lint.d.ts'),
+            '@react-carburetor/core$': path.resolve(process.cwd(), 'lib/src/Carburetor/index.ts'),
+            '@react-carburetor/core/interop': path.resolve(process.cwd(), 'lib/src/Interop/index.ts'),
+            '@react-carburetor/core/testing': path.resolve(process.cwd(), 'lib/src/Testing/index.ts'),
+            '@react-carburetor/core/lint': path.resolve(process.cwd(), 'plugin/lint.d.ts'),
             react$: rootReact,
         },
     },

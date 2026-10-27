@@ -1,10 +1,10 @@
-# carburetor-lint
+# @react-carburetor/lint
 
 React Carburetor's native linter: 27 rules for state mistakes and avoidable allocations, run as one
 process over a directory tree instead of once per file through a linter's plugin bridge.
 
 ```bash
-npm install --save-dev carburetor-lint
+npm install --save-dev @react-carburetor/lint
 
 npx carburetor-lint src                 # report
 npx carburetor-lint --fix src           # apply the fixes rules can make
@@ -13,7 +13,7 @@ npx carburetor-lint --format=json src   # machine-readable output
 ```
 
 The installing machine downloads exactly one compiled binary: this package lists one
-`carburetor-lint-<platform>` package per supported platform under `optionalDependencies`, and
+`@react-carburetor/lint-<platform>` package per supported platform under `optionalDependencies`, and
 npm keeps only the one whose `os`/`cpu`/`libc` fields match. Supported platforms:
 `w32-x64`, `w32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`, `linux-x64-musl`,
 `linux-arm64-gnu`, `linux-arm64-musl`. The glibc builds run on glibc 2.28 and newer (RHEL 8, Debian 10,
@@ -21,7 +21,7 @@ Ubuntu 18.10 and later); the musl builds are static; the macOS builds target mac
 
 ### Only your platform's binary is installed
 
-Each `carburetor-lint-<platform>` package declares the one `os`, `cpu` and (on Linux) `libc` it runs
+Each `@react-carburetor/lint-<platform>` package declares the one `os`, `cpu` and (on Linux) `libc` it runs
 on, so npm, pnpm and Yarn install the matching package and skip the other seven; none of them runs an
 install script. CI proves it on every supported system, Alpine included: all eight packages are
 offered to a fresh project and only the machine's own one may appear. Node 24 or newer is required
@@ -31,7 +31,7 @@ What to know when the install and the run happen on different machines:
 
 - **Docker, CI caches, copied `node_modules`.** Install where the code runs. A `node_modules` copied from
   macOS into a Linux container holds the macOS binary; the launcher says so (`no binary for
-  linux-x64 (expected package carburetor-lint-linux-x64-gnu)`) and exits `2`. Reinstall instead.
+  linux-x64 (expected package @react-carburetor/lint-linux-x64-gnu)`) and exits `2`. Reinstall instead.
 - **Lockfiles made on another OS.** The lockfile keeps every platform package, so one lockfile serves
   all machines. If a package manager installed an old lockfile without them, regenerate it with a
   current npm/pnpm/Yarn.
@@ -45,8 +45,8 @@ What to know when the install and the run happen on different machines:
   the binary's `--version` protocol before the first run, so keep the binary current with the
   plugin — an old one fails lint with a rebuild instruction.
 
-The same binary powers the `react-carburetor/lint` oxlint/ESLint plugin — install this package
-next to `react-carburetor` and the plugin finds it.
+The same binary powers the `@react-carburetor/core/lint` oxlint/ESLint plugin — install this package
+next to `@react-carburetor/core` and the plugin finds it.
 
 | Kind | Recognised names |
 |------|------------------|

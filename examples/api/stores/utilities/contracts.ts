@@ -4,7 +4,7 @@ import {
     ICarburetor,
     IReadableCarburetor,
     IPatchSource, // unstable, do not implement: internal engine protocol, no stability guarantee
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface IState {value: number}
 

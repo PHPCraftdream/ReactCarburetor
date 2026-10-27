@@ -1,6 +1,6 @@
 // #region doc
 import * as React from 'react';
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
 
 interface IItemListData {
     items: Array<{id: string; title: string}>;

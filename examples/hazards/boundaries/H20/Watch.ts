@@ -1,4 +1,4 @@
-import {Carburetor, TSelector} from 'react-carburetor';
+import {Carburetor, TSelector} from '@react-carburetor/core';
 
 interface IData {items: string[]}
 

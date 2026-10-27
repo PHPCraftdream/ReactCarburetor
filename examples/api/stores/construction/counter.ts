@@ -1,5 +1,5 @@
 // #region creating-store
-import {Carburetor, ICarburetor} from 'react-carburetor';
+import {Carburetor, ICarburetor} from '@react-carburetor/core';
 
 const increment = (draft: {value: number}): void => { draft.value += 1; };
 

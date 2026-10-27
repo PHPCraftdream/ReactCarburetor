@@ -43,7 +43,7 @@ export const sharedSingleton = <T>(name: string, create: () => T, react?: unknow
             existing.reported = true;
 
             diagnostics.report(
-                `two copies of react-carburetor share this process for "${name}" — a duplicated ` +
+                `two copies of @react-carburetor/core share this process for "${name}" — a duplicated ` +
                 'install, or the package loaded through two different module formats at once. ' +
                 'Dedupe the install, or make sure only one module format is loaded.' +
                 (foreignReact

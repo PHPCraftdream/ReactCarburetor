@@ -1,5 +1,5 @@
 // #region forget
-import {ResourceCache} from 'react-carburetor';
+import {ResourceCache} from '@react-carburetor/core';
 
 interface Draft {
     body: string;

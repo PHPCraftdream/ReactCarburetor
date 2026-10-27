@@ -1,7 +1,7 @@
 import {
     Carburetor, CarburetorHistory, IDevToolsConnection, IDevToolsExtension, IDevToolsMessage, IDevToolsOptions,
     IDict, IHistoryOptions, IPersistOptions, IStorageLike, TDisposer, connectDevTools, persist, waitForUpdate,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface State {count: number}
 const store = new Carburetor<State>({count: 0});

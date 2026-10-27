@@ -1,4 +1,4 @@
-import {Carburetor, CarburetorHistory, connectDevTools, persist, waitForUpdate} from 'react-carburetor';
+import {Carburetor, CarburetorHistory, connectDevTools, persist, waitForUpdate} from '@react-carburetor/core';
 import {presenceCarburetor} from '../Core/Throttle';
 
 const log = (next: number, previous: number): void => {console.log(next, previous);};

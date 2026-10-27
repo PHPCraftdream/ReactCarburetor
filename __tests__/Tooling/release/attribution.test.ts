@@ -140,7 +140,7 @@ describe('renderThirdParty', () => {
     });
 
     test('states the statically linked musl runtime', () => {
-        expect(renderThirdParty(crates)).toContain('musl libc (the carburetor-lint-linux-*-musl packages only)');
+        expect(renderThirdParty(crates)).toContain('musl libc (the @react-carburetor/lint-linux-*-musl packages only)');
     });
 });
 

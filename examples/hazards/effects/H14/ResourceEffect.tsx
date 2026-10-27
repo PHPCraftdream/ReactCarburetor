@@ -1,4 +1,4 @@
-import {AntiHookComponent, ResourceCarburetor, TResourceLoader, bind} from 'react-carburetor';
+import {AntiHookComponent, ResourceCarburetor, TResourceLoader, bind} from '@react-carburetor/core';
 
 interface TTodo {id: string}
 

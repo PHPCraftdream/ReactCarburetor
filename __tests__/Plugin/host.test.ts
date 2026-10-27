@@ -116,7 +116,7 @@ describe('lint plugin in the oxlint host', () => {
 
         try {
             writeFileSync(fixture,
-                'import {AntiHookComponent} from "react-carburetor";\n' +
+                'import {AntiHookComponent} from "@react-carburetor/core";\n' +
                 'export class View extends AntiHookComponent { render() { return <Child onClick={() => console.log(1)}/>; } }\n'
             );
 
@@ -224,7 +224,7 @@ describe('lint plugin in the oxlint host', () => {
                 'export function Row() { return <Child onSelect={enabled ? () => act() : undefined}/>;\n}\nconst enabled = true;\nfunction act() {}\n',
                 'export function Row() { return <Child onSelect={enabled && (() => act())}/>;\n}\nconst enabled = true;\nfunction act() {}\n',
                 'export function Row() { return <Child onSelect={(enabled ? () => act() : undefined) as Handler}/>;\n}\ntype Handler = (() => void) | undefined;\nconst enabled = true;\nfunction act() {}\n',
-                'import {AntiHookComponent} from "react-carburetor";\nexport class View extends AntiHookComponent {\n    render() {\n        return <Child onSelect={(enabled ? () => act() : undefined) as Handler}/>;\n    }\n}\ntype Handler = (() => void) | undefined;\nconst enabled = true;\nfunction act() {}\n',
+                'import {AntiHookComponent} from "@react-carburetor/core";\nexport class View extends AntiHookComponent {\n    render() {\n        return <Child onSelect={(enabled ? () => act() : undefined) as Handler}/>;\n    }\n}\ntype Handler = (() => void) | undefined;\nconst enabled = true;\nfunction act() {}\n',
             ]) {
                 writeFileSync(fixture, source);
 

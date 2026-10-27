@@ -8,9 +8,9 @@ This catalog contains self-contained typechecked recipes covering the whole publ
 - [derived.md](derived.md) — computed values and factories.
 - [components.md](components.md) — AntiHookComponent/ScopedAntiHookComponent, connect/connectSelection, effects, bind, CarburetorScope/per-request stores.
 - [resources.md](resources.md) — ResourceCarburetor and ResourceCache (TTL, limits, hydration).
-- [hooks.md](hooks.md) — the hooks interop layer from 'react-carburetor/interop' (useCarburetorValue, useComputedValue, useResourceValue).
+- [hooks.md](hooks.md) — the hooks interop layer from '@react-carburetor/core/interop' (useCarburetorValue, useComputedValue, useResourceValue).
 - [tooling.md](tooling.md) — devtools, waitForUpdate, history/undo, persist.
-- [testing.md](testing.md) — non-clock testing helpers from `react-carburetor/testing`.
+- [testing.md](testing.md) — non-clock testing helpers from `@react-carburetor/core/testing`.
 - [lint.md](lint.md) — oxlint/ESLint/standalone CLI setup for the lint rules.
 
 ## Choosing an API
@@ -18,7 +18,7 @@ This catalog contains self-contained typechecked recipes covering the whole publ
 | Task | API | Example |
 | --- | --- | --- |
 | Read store state in a class component | `this.useCarburetor(store)` inside AntiHookComponent | [components.md](components.md) |
-| Read store state in an existing hook-based component | `useCarburetorValue(store, selector)` from 'react-carburetor/interop' | [hooks.md](hooks.md) |
+| Read store state in an existing hook-based component | `useCarburetorValue(store, selector)` from '@react-carburetor/core/interop' | [hooks.md](hooks.md) |
 | Subscribe to a derived value | `Computed` / `this.useComputed(computed)`; hook: `useComputedValue` | [derived.md](derived.md) / [hooks.md](hooks.md) |
 | Precise selection with comparator | `this.connectSelection(...)` | [components.md](components.md) |
 | Read a store fixed for the component's lifetime through one persistent view | `this.connect(...)` | [components.md](components.md) |

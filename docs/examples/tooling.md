@@ -13,7 +13,7 @@ so all later `this.update(...)` calls are captured automatically.
 
 <!-- example:file examples/api/tooling/History.tsx -->
 ```tsx
-import {AntiHookComponent, bind, Carburetor, CarburetorHistory, IHistoryOptions} from 'react-carburetor';
+import {AntiHookComponent, bind, Carburetor, CarburetorHistory, IHistoryOptions} from '@react-carburetor/core';
 import {ReactElement} from 'react';
 
 const increment = (draft: {count: number}): void => { draft.count += 1; };
@@ -67,7 +67,7 @@ ignoring any `throttleMs` window.
 
 <!-- example:file examples/api/tooling/Persist.ts -->
 ```ts
-import {bind, Carburetor, IPersistOptions, IStorageLike, persist} from 'react-carburetor';
+import {bind, Carburetor, IPersistOptions, IStorageLike, persist} from '@react-carburetor/core';
 
 class TodoCarburetor extends Carburetor<{items: string[]}> {
     @bind
@@ -154,7 +154,7 @@ import {
     IDevToolsMessage,
     IDevToolsOptions,
     TDisposer,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 const incrementCount = (draft: {count: number}): void => { draft.count += 1; };
 const sendDevTools = (action: string, state: unknown): void => { console.log(action, state); };

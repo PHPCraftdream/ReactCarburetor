@@ -1,7 +1,7 @@
 # API reference
 
-Compact reference for public exports. Core symbols come from `react-carburetor`; React hooks
-come from `react-carburetor/interop`. Source links are repository-relative.
+Compact reference for public exports. Core symbols come from `@react-carburetor/core`; React hooks
+come from `@react-carburetor/core/interop`. Source links are repository-relative.
 
 ## Diagnostics
 
@@ -103,7 +103,7 @@ are not traversed. Native values retain normal JSON serialization limits. Schema
 
 ## Testing
 
-Import `flush` and `createTestScope` from `react-carburetor/testing`. `flush(target)` synchronously
+Import `flush` and `createTestScope` from `@react-carburetor/core/testing`. `flush(target)` synchronously
 flushes pending work for a `Carburetor` or `CarburetorScope`. `createTestScope(overrides?)` creates
 an isolated scope, optionally installing token/value pairs; its returned scope has
 `[Symbol.dispose]()` for cleanup. See [Testing your code](../README.md#testing-your-code).
@@ -133,7 +133,7 @@ Event names and payloads are inferred from that map.
   handler's sole registration is replaced if its store or event name changes and disposed on
   component cleanup.
 - `useCarburetorEvent(store, name, handler): void` subscribes in an effect with dependencies
-  `[store, name, handler]`. Import it from `react-carburetor/interop`.
+  `[store, name, handler]`. Import it from `@react-carburetor/core/interop`.
 
 Events do not participate in versions, history, persistence, DevTools, or dehydration. See
 [One-off events](../README.md#one-off-events), the
@@ -142,7 +142,7 @@ Events do not participate in versions, history, persistence, DevTools, or dehydr
 
 ## Types index
 
-The four lint types below come from `react-carburetor/lint`.
+The four lint types below come from `@react-carburetor/core/lint`.
 
 | Symbol | Shape | Contract | Link |
 |---|---|---|---|
@@ -171,8 +171,8 @@ The four lint types below come from `react-carburetor/lint`.
 | `IResourceResolution<T>` | `{key: string; path: string; view: IResourceView<T>; present?: boolean; fieldView?: (resolution: IResourceResolution<T>, record: (path: string) => void) => IResourceView<T>}` | Key, subscription path and current view resolved together. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `IResourceSource<T, TArgs extends TResourceArgs = []>` | Extends subscription; `resolve(...args: TArgs): IResourceResolution<T>; load(...args: TArgs): Promise<void>` | Minimal resource source for readers. | [same](../lib/src/Carburetor/Models/Resource.ts) |
 | `ICarburetorToken<T>` | `{id: string; create(scope: CarburetorScope): T}` | Stable scope identity and scope-aware factory; a zero-argument factory is assignable. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
-| `TValueComparator<R>` | `(a: TReadonly<R>, b: TReadonly<R>) => boolean` | Interop comparator; imported from `react-carburetor/interop`, not the root entry. | [`Models.ts`](../lib/src/Interop/Models.ts) |
-| `TSeverity` | `'error' \| 'warn' \| 'off'` | Lint-rule severity; from `react-carburetor/lint`. | [`lint.d.ts`](../plugin/lint.d.ts) |
+| `TValueComparator<R>` | `(a: TReadonly<R>, b: TReadonly<R>) => boolean` | Interop comparator; imported from `@react-carburetor/core/interop`, not the root entry. | [`Models.ts`](../lib/src/Interop/Models.ts) |
+| `TSeverity` | `'error' \| 'warn' \| 'off'` | Lint-rule severity; from `@react-carburetor/core/lint`. | [`lint.d.ts`](../plugin/lint.d.ts) |
 | `ICarburetorRule` | `{meta?: {type?: string; docs?: {description: string; url?: string}; schema?: readonly unknown[]; fixable?: string}; create(context: unknown): Record<string, (node: never) => void>}` | Public lint rule shape. | [same](../plugin/lint.d.ts) |
 | `ICarburetorFlatConfig` | `{plugins: {carburetor: ICarburetorPlugin}; rules: Readonly<Record<string, TSeverity>>}` | Flat config using the plugin and severity map. | [same](../plugin/lint.d.ts) |
 | `ICarburetorPlugin` | `{meta: {name: string; version?: string}; rules: Record<string, ICarburetorRule>; configs: {recommended: ICarburetorFlatConfig; 'no-hooks': ICarburetorFlatConfig}}` | Packaged lint plugin. | [same](../plugin/lint.d.ts) |

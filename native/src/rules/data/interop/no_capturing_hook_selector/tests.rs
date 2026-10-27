@@ -50,7 +50,7 @@ fn respects_shadowing_and_nested_callback_references() {
 #[test]
 fn round_four_comparator_captures_are_clean_but_selectors_are_reported() {
     assert_lines(
-        "import {useCarburetorValue} from 'react-carburetor/interop';\nconst selectCount = (s: {count: number}) => s.count;\nexport function Panel({store, epsilon}: {store: any; epsilon: number}) {\n    const value = useCarburetorValue(store, selectCount, (a: number, b: number) => Math.abs(a - b) < epsilon);\n    return <span>{value}</span>;\n}",
+        "import {useCarburetorValue} from '@react-carburetor/core/interop';\nconst selectCount = (s: {count: number}) => s.count;\nexport function Panel({store, epsilon}: {store: any; epsilon: number}) {\n    const value = useCarburetorValue(store, selectCount, (a: number, b: number) => Math.abs(a - b) < epsilon);\n    return <span>{value}</span>;\n}",
         &[],
     );
     assert_lines(
@@ -84,7 +84,7 @@ fn round_five_resource_named_selector_with_inline_comparator_is_clean() {
 #[test]
 fn accepts_comparator_capturing_typescript_source() {
     assert_lines(
-        "import {useCarburetorValue} from 'react-carburetor/interop';\nconst selectCount = (s: {count: number}) => s.count;\nexport function Panel({store, epsilon}: {store: any; epsilon: number}) {\n    const value = useCarburetorValue(store, selectCount, (a: number, b: number) => Math.abs(a - b) < epsilon);\n    return <span>{value}</span>;\n}",
+        "import {useCarburetorValue} from '@react-carburetor/core/interop';\nconst selectCount = (s: {count: number}) => s.count;\nexport function Panel({store, epsilon}: {store: any; epsilon: number}) {\n    const value = useCarburetorValue(store, selectCount, (a: number, b: number) => Math.abs(a - b) < epsilon);\n    return <span>{value}</span>;\n}",
         &[],
     );
 }

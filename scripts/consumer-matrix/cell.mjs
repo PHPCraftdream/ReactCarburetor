@@ -9,7 +9,7 @@ import {FIXTURE, TSC_BIN, pnpmCommand, run} from './matrix.mjs';
  * @param installDir - the fresh directory the consumer project is written into
  * @param reactVersion - the cell's react/react-dom/@types version set
  * @param packageManager - 'npm' or 'pnpm'
- * @param tarballPath - the packed tarball installed as the `react-carburetor` dependency
+ * @param tarballPath - the packed tarball installed as the `@react-carburetor/core` dependency
  */
 export const installConsumer = (installDir, reactVersion, packageManager, tarballPath) => {
     rmSync(installDir, {recursive: true, force: true});
@@ -24,7 +24,7 @@ export const installConsumer = (installDir, reactVersion, packageManager, tarbal
             'react-dom': reactVersion.reactDom,
             '@types/react': `^${reactVersion.types}`,
             '@types/react-dom': `^${reactVersion.types}`,
-            'react-carburetor': `file:${tarballPath}`,
+            '@react-carburetor/core': `file:${tarballPath}`,
         },
     }, null, 2));
 
@@ -62,7 +62,7 @@ const TSCONFIG = (format) => ({
 
 const HARNESS_ESM = `import * as React from 'react';
 import {renderToString} from 'react-dom/server';
-import {flush, createTestScope} from 'react-carburetor/testing';
+import {flush, createTestScope} from '@react-carburetor/core/testing';
 import {App, registry, publishReadable} from './out/consumer.js';
 
 const scope = createTestScope();
@@ -93,7 +93,7 @@ console.log('OK');
 
 const HARNESS_CJS = `const React = require('react');
 const {renderToString} = require('react-dom/server');
-const {flush, createTestScope} = require('react-carburetor/testing');
+const {flush, createTestScope} = require('@react-carburetor/core/testing');
 const {App, registry, publishReadable} = require('./out/consumer.js');
 
 const scope = createTestScope();
@@ -159,7 +159,7 @@ export const checkFormat = (installDir, format) => {
     ));
     writeFileSync(path.join(formatDir, 'computed41.mjs'), `
 import assert from 'node:assert/strict';
-${format === 'esm' ? "import * as engine from 'react-carburetor';" : "import {createRequire} from 'node:module'; const engine = createRequire(import.meta.url)('react-carburetor');"}
+${format === 'esm' ? "import * as engine from '@react-carburetor/core';" : "import {createRequire} from 'node:module'; const engine = createRequire(import.meta.url)('@react-carburetor/core');"}
 import {computed41Checks} from './computed41Checks.mjs';
 computed41Checks(assert, engine, engine, ${JSON.stringify(format)});
 `);

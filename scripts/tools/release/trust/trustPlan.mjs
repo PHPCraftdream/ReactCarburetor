@@ -17,7 +17,7 @@ const ENVIRONMENT = 'npm';
 export function trustPlan(root = process.cwd()) {
   const read = file => JSON.parse(readFileSync(path.join(root, file), 'utf8'));
   const library = read('package.json');
-  const launcher = read('npm/carburetor-lint/package.json');
+  const launcher = read('npm/lint/package.json');
   const url = typeof library.repository === 'string' ? library.repository : library.repository?.url ?? '';
   const match = /github\.com[:/]([^/]+\/[^/]+?)(?:\.git)?$/.exec(url);
   if (!match) throw new Error(`package.json repository is not a GitHub URL: ${url || 'missing'}`);

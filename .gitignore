@@ -32,7 +32,7 @@ native/target/
 /.consumer-matrix/
 
 # Platform packages carry their compiled binary only in CI artifacts, never in git; the
-# launcher script lives in npm/carburetor-lint/bin/ and must stay tracked.
-npm/carburetor-lint-*/carburetor-lint
-npm/carburetor-lint-*/carburetor-lint.exe
-npm/carburetor-lint-*/*.tgz
+# launcher script lives in npm/lint/bin/ and must stay tracked.
+npm/lint-*/carburetor-lint
+npm/lint-*/carburetor-lint.exe
+npm/lint-*/*.tgz

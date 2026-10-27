@@ -1,5 +1,5 @@
 // #region transaction
-import {Carburetor, transaction} from 'react-carburetor';
+import {Carburetor, transaction} from '@react-carburetor/core';
 
 const profile = new Carburetor({name: 'ada'});
 const settings = new Carburetor({theme: 'light'});

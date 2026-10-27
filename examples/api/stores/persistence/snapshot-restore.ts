@@ -1,5 +1,5 @@
 // #region snapshot-restore
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 const store = new Carburetor({count: 1, tags: ['a']});
 

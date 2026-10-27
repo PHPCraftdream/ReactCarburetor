@@ -1,0 +1,30 @@
+{
+  "name": "@react-carburetor/lint-linux-arm64-musl",
+  "version": "0.1.0",
+  "description": "The linux-arm64-musl carburetor-lint binary, React Carburetor's native linter. Installed through @react-carburetor/lint's optionalDependencies; never a direct dependency.",
+  "license": "MIT OR Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/PHPCraftdream/ReactCarburetor.git"
+  },
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "libc": [
+    "musl"
+  ],
+  "files": [
+    "carburetor-lint",
+    "THIRD-PARTY-LICENSES.txt",
+    "LICENSE",
+    "LICENSE-MIT",
+    "LICENSE-APACHE"
+  ],
+  "preferUnplugged": true,
+  "publishConfig": {
+    "access": "public"
+  }
+}

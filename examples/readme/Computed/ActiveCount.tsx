@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor, computed} from 'react-carburetor';
+import {AntiHookComponent, Carburetor, computed} from '@react-carburetor/core';
 
 interface ITodoItem {done: boolean}
 

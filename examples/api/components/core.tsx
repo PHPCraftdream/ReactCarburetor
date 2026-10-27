@@ -1,4 +1,4 @@
-import {AntiHookComponent, Carburetor, ResourceCarburetor, ResourceCache, bind, computed} from 'react-carburetor';
+import {AntiHookComponent, Carburetor, ResourceCarburetor, ResourceCache, bind, computed} from '@react-carburetor/core';
 
 interface Model {count: number}
 class CounterStore extends Carburetor<Model> {

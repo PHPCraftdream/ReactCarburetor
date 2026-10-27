@@ -1,5 +1,5 @@
 // #region scheduler-options
-import {Carburetor, ICarburetorOptions, UpdateThrottle} from 'react-carburetor';
+import {Carburetor, ICarburetorOptions, UpdateThrottle} from '@react-carburetor/core';
 
 interface ICursor {x: number; y: number}
 

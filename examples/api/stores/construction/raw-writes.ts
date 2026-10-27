@@ -1,5 +1,5 @@
 // #region raw-writes
-import {Carburetor, IDict} from 'react-carburetor';
+import {Carburetor, IDict} from '@react-carburetor/core';
 
 interface IUser {name: string}
 

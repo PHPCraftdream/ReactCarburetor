@@ -1,4 +1,4 @@
-import {AntiHookComponent} from "react-carburetor";
+import {AntiHookComponent} from "@react-carburetor/core";
 
 /** Fixture for the overlap tests: linted by a test, not by `npm run lint`. */
 export class OverlapRow extends AntiHookComponent {

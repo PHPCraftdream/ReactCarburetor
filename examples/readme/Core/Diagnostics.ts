@@ -1,5 +1,5 @@
-import {diagnostics} from 'react-carburetor';
-import type {IUpdateTrace} from 'react-carburetor';
+import {diagnostics} from '@react-carburetor/core';
+import type {IUpdateTrace} from '@react-carburetor/core';
 
 // #region diagnostics
 diagnostics.setEnabled(false);   // silence them anywhere

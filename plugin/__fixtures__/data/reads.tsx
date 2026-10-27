@@ -1,4 +1,4 @@
-import {AntiHookComponent, computed} from "react-carburetor";
+import {AntiHookComponent, computed} from "@react-carburetor/core";
 import {store, visibleCount} from "./sources";
 
 /**

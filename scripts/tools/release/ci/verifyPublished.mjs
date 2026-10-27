@@ -1,8 +1,9 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { installedPlatforms } from './installedPlatforms.mjs';
 
 const USAGE = 'Usage: verifyPublished.mjs --version <x.y.z> --fixture <file> [--attempts 12]';
 
@@ -52,8 +53,8 @@ export async function verifyPublished(args = process.argv.slice(2)) {
     writeFileSync(path.join(work, 'package.json'), '{"name":"consumer","private":true}\n');
     for (let attempt = 1; ; attempt += 1) {
       try {
-        npm(['install', '--no-audit', '--no-fund', `carburetor-lint@${version}`,
-          `react-carburetor@${version}`, 'react@19', 'react-dom@19'], work);
+        npm(['install', '--no-audit', '--no-fund', `@react-carburetor/lint@${version}`,
+          `@react-carburetor/core@${version}`, 'react@19', 'react-dom@19'], work);
         break;
       } catch (error) {
         if (attempt >= attempts) throw error;
@@ -62,13 +63,13 @@ export async function verifyPublished(args = process.argv.slice(2)) {
       }
     }
 
-    const installed = readdirSync(path.join(work, 'node_modules')).filter(name => name.startsWith('carburetor-lint-'));
+    const installed = installedPlatforms(path.join(work, 'node_modules'));
     if (installed.length !== 1) {
       throw new Error(`Expected exactly one platform package, found: ${installed.join(', ') || 'none'}`);
     }
     console.log(`platform package: ${installed[0]}`);
 
-    const launcher = path.join(work, 'node_modules', 'carburetor-lint', 'bin', 'carburetor-lint.js');
+    const launcher = path.join(work, 'node_modules', '@react-carburetor', 'lint', 'bin', 'carburetor-lint.js');
     const env = { ...process.env };
     delete env.CARBURETOR_LINT_BIN;
     /** Runs the installed launcher with the given arguments. */
@@ -81,13 +82,13 @@ export async function verifyPublished(args = process.argv.slice(2)) {
       throw new Error(`The fixture lint exited ${lint.status}: ${lint.stderr}${lint.stdout}`);
     }
 
-    const probe = 'const c = require("react-carburetor"); if (typeof c.Carburetor !== "function") process.exit(3);';
-    const esm = 'import("react-carburetor").then(m => { if (typeof m.Carburetor !== "function") process.exit(4); });';
+    const probe = 'const c = require("@react-carburetor/core"); if (typeof c.Carburetor !== "function") process.exit(3);';
+    const esm = 'import("@react-carburetor/core").then(m => { if (typeof m.Carburetor !== "function") process.exit(4); });';
     for (const [label, code] of [['require', probe], ['import', esm]]) {
       const result = spawnSync(process.execPath, ['-e', code], { cwd: work, encoding: 'utf8' });
-      if (result.status !== 0) throw new Error(`react-carburetor ${label} failed (${result.status}): ${result.stderr}`);
+      if (result.status !== 0) throw new Error(`@react-carburetor/core ${label} failed (${result.status}): ${result.stderr}`);
     }
-    console.log(`verified: carburetor-lint@${version} and react-carburetor@${version} ` +
+    console.log(`verified: @react-carburetor/lint@${version} and @react-carburetor/core@${version} ` +
       `work on ${process.platform}-${process.arch}`);
   } finally {
     rmSync(work, { recursive: true, force: true });

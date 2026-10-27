@@ -35,7 +35,7 @@ export const assertProtocol = (binary: string): void => {
     // A launch failure (missing file, not executable) is not a version problem: name it as such.
     if (result.error) {
         throw new Error(
-            `react-carburetor/lint: could not run the native binary at ${binary}: ${result.error.message}`
+            `@react-carburetor/core/lint: could not run the native binary at ${binary}: ${result.error.message}`
         );
     }
 
@@ -48,7 +48,7 @@ export const assertProtocol = (binary: string): void => {
 
     if (missing || !isCompatible(result.stdout || '')) {
         throw new Error(
-            `react-carburetor/lint: the native binary at ${binary} is from a different version ` +
+            `@react-carburetor/core/lint: the native binary at ${binary} is from a different version ` +
             `(found: ${found}; this plugin needs protocol ${NATIVE_PROTOCOL}): rebuild it with ` +
             '"cargo build --release" inside native/, or install a matching carburetor-lint.'
         );

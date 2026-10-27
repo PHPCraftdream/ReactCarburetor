@@ -1,5 +1,5 @@
 import * as React from "react";
-import {Carburetor} from "react-carburetor";
+import {Carburetor} from "@react-carburetor/core";
 import {Counter} from "./Counter";
 import {Scope} from "./Scope";
 

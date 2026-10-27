@@ -1,4 +1,4 @@
-import {computed} from 'react-carburetor';
+import {computed} from '@react-carburetor/core';
 import {activeCount} from './ActiveCount';
 
 // #region summary

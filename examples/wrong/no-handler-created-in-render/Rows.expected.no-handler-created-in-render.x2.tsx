@@ -1,4 +1,4 @@
-import {AntiHookComponent, bind} from 'react-carburetor';
+import {AntiHookComponent, bind} from '@react-carburetor/core';
 
 class TodoRow extends AntiHookComponent<{onToggle(): void}> {
     public render() {

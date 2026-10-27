@@ -1,7 +1,7 @@
 THIRD-PARTY LICENSES
 ========================================================================
 
-The carburetor-lint binaries in the carburetor-lint-<platform> packages statically include the
+The carburetor-lint binaries in the @react-carburetor/lint-<platform> packages statically include the
 components below. Each is used under the terms of its own license; the texts follow the list.
 The Rust standard library, also linked in, is available under MIT OR Apache-2.0.
 
@@ -95,7 +95,7 @@ zerotrie 0.2.5 - Unicode-3.0 - https://github.com/unicode-org/icu4x
 zerovec 0.11.8 - Unicode-3.0 - https://github.com/unicode-org/icu4x
 zmij 1.0.23 - MIT - https://github.com/dtolnay/zmij
 
-musl libc (the carburetor-lint-linux-*-musl packages only)
+musl libc (the @react-carburetor/lint-linux-*-musl packages only)
 ---------------------------------------------------------
 The musl binaries link musl libc statically. musl is distributed under the MIT license:
 https://git.musl-libc.org/cgit/musl/tree/COPYRIGHT

@@ -1,4 +1,4 @@
-import {Carburetor, ICarburetor} from 'react-carburetor';
+import {Carburetor, ICarburetor} from '@react-carburetor/core';
 
 interface State {value: number}
 const store = new Carburetor<State>({value: 0});

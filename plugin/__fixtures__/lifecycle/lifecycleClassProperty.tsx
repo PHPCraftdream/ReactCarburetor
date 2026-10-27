@@ -1,4 +1,4 @@
-import {AntiHookComponent} from "react-carburetor";
+import {AntiHookComponent} from "@react-carburetor/core";
 
 /** Fixture for the end-to-end host check: this file is linted by a test, not by `npm run lint`. */
 export class BadRow extends AntiHookComponent {

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {AntiHookComponent, Carburetor} from "react-carburetor";
+import {AntiHookComponent, Carburetor} from "@react-carburetor/core";
 
 /** A client-side store read through connect(). */
 class CounterStore extends Carburetor<{count: number}> {}

@@ -1,4 +1,4 @@
-import {AntiHookComponent} from "react-carburetor";
+import {AntiHookComponent} from "@react-carburetor/core";
 
 class View extends AntiHookComponent {
     public render() {

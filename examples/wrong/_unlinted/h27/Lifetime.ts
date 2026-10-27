@@ -1,4 +1,4 @@
-import {ResourceCache} from 'react-carburetor';
+import {ResourceCache} from '@react-carburetor/core';
 
 declare function loadDraft(id: string): Promise<string>;
 

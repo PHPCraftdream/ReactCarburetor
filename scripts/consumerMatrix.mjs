@@ -16,7 +16,7 @@ import {MODULE_FORMATS, PACKAGE_MANAGERS, REACT_VERSIONS, REPO_ROOT, WORKDIR, ru
  * tsc choice: the repo's own pinned TypeScript (not a consumer devDependency, so a per-cell
  * install would add an uncontrolled variable and a slow extra install) runs against a tsconfig
  * written into each cell's own directory — module resolution is relative to that file, so it
- * still resolves the cell's own installed react/@types/react-carburetor, not the repo's.
+ * still resolves the cell's own installed react, @types/react and @react-carburetor/core, not the repo's.
  */
 const results = [];
 

@@ -68,7 +68,7 @@ The registry contains 27 rules: 26 catalogue rules plus the optional `no-react-h
 
 There are two, and the line between them is what a rule is *about*.
 
-`plugin/src` — **shipped**, as `react-carburetor/lint`. These rules are about the safety of
+`plugin/src` — **shipped**, as `@react-carburetor/core/lint`. These rules are about the safety of
 carburetor logic: a write nobody hears, a component that never subscribes, an effect whose cleanup
 is dropped. Those are the library's business wherever the code lives, so consumers get them. They
 are catalogued in `docs/hazards.md` and listed in `docs/rules.md`.
@@ -210,7 +210,7 @@ cannot be configured; only rule severity can be set to `error`, `warn` or `off`.
 
 ## Documentation examples
 
-Runnable examples live under `examples/` and are checked as consumer code against source aliases for `react-carburetor`, `react-carburetor/interop`, and `react-carburetor/lint`. Add practical, self-contained recipes that demonstrate actual API usage; do not add lists of export names merely to satisfy coverage. Proper examples are included in `npm run typecheck` and linted under normal allocation rules.
+Runnable examples live under `examples/` and are checked as consumer code against source aliases for `@react-carburetor/core`, `@react-carburetor/core/interop`, and `@react-carburetor/core/lint`. Add practical, self-contained recipes that demonstrate actual API usage; do not add lists of export names merely to satisfy coverage. Proper examples are included in `npm run typecheck` and linted under normal allocation rules.
 
 In Markdown, every `ts`/`tsx`/`js`/`jsx` block in README and docs is generated from `examples/`: place `<!-- example:file examples/path/File.tsx -->` directly before the fence, or append `#name` (`examples/path/File.tsx#name`) to include a named region delimited by `// #region name` and `// #endregion name`. Keep generated prose synchronized with `npm run docs:build`; `npm run docs:check` is strict — it reports stale copies, invalid markers, and any unmarked target-language fence without rewriting files. There is no allowlist: a code fence without a marker is an error.
 
@@ -267,13 +267,13 @@ Rust inputs skip straight through, including the nightly. Dispatching the
 workflow with `force_native: true` reruns them regardless. The eight platform
 packages (`native-packages.yml`) cache their binaries under `native-pkg-<target>-<toolchain>-<hash>`;
 the portability check, the run, the packing and the install smoke still happen on a cache hit, so
-the uploaded `carburetor-lint-*` artifacts are identical either way.
+the uploaded `lint-*` artifacts are identical either way.
 
 GitHub evicts caches after 7 days without use (and caps the total at 10 GB per
 repository), so an evicted entry simply means the affected job rebuilds — a
 miss is slower, never incorrect. `release.yml` is unaffected: it still requires
 a green full-tier run for the exact SHA (starting one when there is none) and
-downloads the `carburetor-lint-*` artifacts from that run.
+downloads the `lint-*` artifacts from that run.
 
 ## Pull requests
 

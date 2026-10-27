@@ -1,4 +1,4 @@
-import {Carburetor, computed} from 'react-carburetor';
+import {Carburetor, computed} from '@react-carburetor/core';
 
 class SettingsCarburetor extends Carburetor<{theme: string}> {}
 

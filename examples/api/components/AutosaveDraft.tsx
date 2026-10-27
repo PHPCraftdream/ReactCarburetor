@@ -6,7 +6,7 @@ import {
     TEffectCleanup,
     TEffectDeps,
     TTimerHandle,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface IDraftData {
     text: string;

@@ -1,5 +1,5 @@
 import type {JSX} from 'react';
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
 
 interface ITodoItem {title: string; done: boolean}
 interface ITodoList {orderIds: string[]; activeCount: number; items: Record<string, ITodoItem>}

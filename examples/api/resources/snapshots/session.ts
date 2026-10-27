@@ -1,5 +1,5 @@
 // #region session
-import {Carburetor, getInitialResourceData, IResourceData} from 'react-carburetor';
+import {Carburetor, getInitialResourceData, IResourceData} from '@react-carburetor/core';
 
 interface Session {
     token: string;

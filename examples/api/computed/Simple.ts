@@ -1,4 +1,4 @@
-import {Carburetor, bind, computed} from 'react-carburetor';
+import {Carburetor, bind, computed} from '@react-carburetor/core';
 
 class CartCarburetor extends Carburetor<{items: string[]}> {
     @bind

@@ -4,7 +4,7 @@ A computed is a memoized value over one or more stores. Its body declares what i
 those reads become its dependencies: the value is recomputed only when one of them is written,
 and subscribers are woken only when the result actually changed.
 
-All examples import from the root entry `react-carburetor`.
+All examples import from the root entry `@react-carburetor/core`.
 
 ## A store and a simple computed
 
@@ -13,7 +13,7 @@ through `read` becomes a dependency of the value.
 
 <!-- example:file examples/api/computed/Simple.ts -->
 ```ts
-import {Carburetor, bind, computed} from 'react-carburetor';
+import {Carburetor, bind, computed} from '@react-carburetor/core';
 
 class CartCarburetor extends Carburetor<{items: string[]}> {
     @bind
@@ -42,7 +42,7 @@ whole read API; the value stays cached between calls.
 
 <!-- example:file examples/api/computed/Get.ts -->
 ```ts
-import {Carburetor, computed} from 'react-carburetor';
+import {Carburetor, computed} from '@react-carburetor/core';
 
 class SettingsCarburetor extends Carburetor<{theme: string}> {}
 
@@ -64,7 +64,7 @@ depends on the inner one as a whole and is invalidated only when the inner value
 
 <!-- example:file examples/api/computed/advanced/Compose.ts -->
 ```ts
-import {Carburetor, computed} from 'react-carburetor';
+import {Carburetor, computed} from '@react-carburetor/core';
 
 class CartCarburetor extends Carburetor<{items: string[]}> {}
 
@@ -90,8 +90,8 @@ annotated, type them with `TComputeBody<R>` and `IComputedOptions<R>`; the value
 
 <!-- example:file examples/api/computed/advanced/Typed.ts -->
 ```ts
-import {Carburetor, Computed} from 'react-carburetor';
-import type {IComputed, IComputedOptions, TComputedReader, TComputeBody} from 'react-carburetor';
+import {Carburetor, Computed} from '@react-carburetor/core';
+import type {IComputed, IComputedOptions, TComputedReader, TComputeBody} from '@react-carburetor/core';
 
 class CartCarburetor extends Carburetor<{items: string[]}> {}
 
@@ -114,7 +114,7 @@ By default a settled result is compared by reference. Pass `equals` to judge res
 
 <!-- example:file examples/api/computed/advanced/ShallowEqual.ts -->
 ```ts
-import {Carburetor, computed, shallowEqual} from 'react-carburetor';
+import {Carburetor, computed, shallowEqual} from '@react-carburetor/core';
 
 class CartCarburetor extends Carburetor<{items: string[]}> {}
 
@@ -138,7 +138,7 @@ value changes.
 
 <!-- example:file examples/api/computed/read/UseComputed.tsx#doc -->
 ```tsx
-import {AntiHookComponent, Carburetor, bind, computed} from 'react-carburetor';
+import {AntiHookComponent, Carburetor, bind, computed} from '@react-carburetor/core';
 
 class CartCarburetor extends Carburetor<{items: string[]}> {
     @bind

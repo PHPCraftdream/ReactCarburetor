@@ -1,4 +1,4 @@
-import {Carburetor, computed, shallowEqual} from 'react-carburetor';
+import {Carburetor, computed, shallowEqual} from '@react-carburetor/core';
 
 interface ITodoItem {done: boolean}
 

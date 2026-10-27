@@ -40,7 +40,7 @@ const ruleOptionsMap = (value: unknown): Record<string, Record<string, unknown>>
 
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
         throw new Error(
-            'react-carburetor/lint: settings.carburetor.ruleOptions must be an object mapping ' +
+            '@react-carburetor/core/lint: settings.carburetor.ruleOptions must be an object mapping ' +
             'rule names (without the "carburetor/" prefix) to option objects.'
         );
     }
@@ -52,7 +52,7 @@ const ruleOptionsMap = (value: unknown): Record<string, Record<string, unknown>>
 
         if (options === null || typeof options !== 'object' || Array.isArray(options)) {
             throw new Error(
-                `react-carburetor/lint: settings.carburetor.ruleOptions["${name}"] must be an ` +
+                `@react-carburetor/core/lint: settings.carburetor.ruleOptions["${name}"] must be an ` +
                 'options object.'
             );
         }
@@ -69,7 +69,7 @@ const ruleOptionsMap = (value: unknown): Record<string, Record<string, unknown>>
  */
 const baseList = (value: unknown, prefix: string): readonly string[] => {
     if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string' || entry === '')) {
-        throw new Error(`react-carburetor/lint: ${prefix} must be an array of non-empty base class names.`);
+        throw new Error(`@react-carburetor/core/lint: ${prefix} must be an array of non-empty base class names.`);
     }
 
     return value;
@@ -98,7 +98,7 @@ const rcLists = (cwd: string): Record<TBaseKey, readonly string[]> => {
             return lists;
         }
 
-        throw new Error(`react-carburetor/lint: ${rcPath} could not be read: ${(error as Error).message}`);
+        throw new Error(`@react-carburetor/core/lint: ${rcPath} could not be read: ${(error as Error).message}`);
     }
 
     let parsed: unknown;
@@ -106,11 +106,11 @@ const rcLists = (cwd: string): Record<TBaseKey, readonly string[]> => {
     try {
         parsed = JSON.parse(text);
     } catch (error) {
-        throw new Error(`react-carburetor/lint: ${rcPath} is not valid JSON: ${(error as Error).message}`);
+        throw new Error(`@react-carburetor/core/lint: ${rcPath} is not valid JSON: ${(error as Error).message}`);
     }
 
     if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error(`react-carburetor/lint: ${rcPath} must hold a JSON object at the top level.`);
+        throw new Error(`@react-carburetor/core/lint: ${rcPath} must hold a JSON object at the top level.`);
     }
 
     for (const key of BASE_KEYS) {

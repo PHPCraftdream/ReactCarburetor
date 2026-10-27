@@ -4,7 +4,7 @@ import carburetor, {
     ICarburetorPlugin,
     ICarburetorRule,
     TSeverity,
-} from 'react-carburetor/lint';
+} from '@react-carburetor/core/lint';
 
 const plugin: ICarburetorPlugin = carburetor;
 const severity: TSeverity = 'error';

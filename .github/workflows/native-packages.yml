@@ -28,47 +28,47 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - package: carburetor-lint-w32-x64
+          - package: lint-w32-x64
             os: windows-latest
             target: x86_64-pc-windows-msvc
             bin_ext: .exe
             expect: windows
             arch: x64
-          - package: carburetor-lint-w32-arm64
+          - package: lint-w32-arm64
             os: windows-11-arm
             target: aarch64-pc-windows-msvc
             bin_ext: .exe
             expect: windows
             arch: arm64
-          - package: carburetor-lint-darwin-arm64
+          - package: lint-darwin-arm64
             os: macos-15
             target: aarch64-apple-darwin
             expect: macos
             arch: arm64
-          - package: carburetor-lint-darwin-x64
+          - package: lint-darwin-x64
             os: macos-15-intel
             target: x86_64-apple-darwin
             expect: macos
             arch: x64
-          - package: carburetor-lint-linux-x64-gnu
+          - package: lint-linux-x64-gnu
             os: ubuntu-latest
             container: quay.io/pypa/manylinux_2_28_x86_64
             target: x86_64-unknown-linux-gnu
             expect: gnu
             arch: x64
-          - package: carburetor-lint-linux-arm64-gnu
+          - package: lint-linux-arm64-gnu
             os: ubuntu-24.04-arm
             container: quay.io/pypa/manylinux_2_28_aarch64
             target: aarch64-unknown-linux-gnu
             expect: gnu
             arch: arm64
-          - package: carburetor-lint-linux-x64-musl
+          - package: lint-linux-x64-musl
             os: ubuntu-latest
             target: x86_64-unknown-linux-musl
             linker_var: CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER
             expect: musl
             arch: x64
-          - package: carburetor-lint-linux-arm64-musl
+          - package: lint-linux-arm64-musl
             os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-musl
             linker_var: CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER
@@ -166,7 +166,7 @@ jobs:
         shell: bash
         run: |
           node scripts/tools/release/ci/smokePacked.mjs \
-            --launcher npm/carburetor-lint --package "npm/${{ matrix.package }}" \
+            --launcher npm/lint --package "npm/${{ matrix.package }}" \
             --fixture plugin/__fixtures__/data/reads.tsx
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -188,30 +188,30 @@ jobs:
         include:
           - name: Windows x64
             os: windows-latest
-            expect: carburetor-lint-w32-x64
+            expect: '@react-carburetor/lint-w32-x64'
           - name: Windows arm64
             os: windows-11-arm
-            expect: carburetor-lint-w32-arm64
+            expect: '@react-carburetor/lint-w32-arm64'
           - name: macOS arm64
             os: macos-15
-            expect: carburetor-lint-darwin-arm64
+            expect: '@react-carburetor/lint-darwin-arm64'
           - name: macOS x64
             os: macos-15-intel
-            expect: carburetor-lint-darwin-x64
+            expect: '@react-carburetor/lint-darwin-x64'
           - name: Linux x64 glibc
             os: ubuntu-latest
-            expect: carburetor-lint-linux-x64-gnu
+            expect: '@react-carburetor/lint-linux-x64-gnu'
           - name: Linux arm64 glibc
             os: ubuntu-24.04-arm
-            expect: carburetor-lint-linux-arm64-gnu
+            expect: '@react-carburetor/lint-linux-arm64-gnu'
           - name: Linux x64 musl (Alpine)
             os: ubuntu-latest
             image: node:24-alpine
-            expect: carburetor-lint-linux-x64-musl
+            expect: '@react-carburetor/lint-linux-x64-musl'
           - name: Linux arm64 musl (Alpine)
             os: ubuntu-24.04-arm
             image: node:24-alpine
-            expect: carburetor-lint-linux-arm64-musl
+            expect: '@react-carburetor/lint-linux-arm64-musl'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -221,7 +221,7 @@ jobs:
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          pattern: carburetor-lint-*
+          pattern: lint-*
           merge-multiple: true
           path: packages
 
@@ -230,7 +230,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p launcher
-          npm pack ./npm/carburetor-lint --pack-destination launcher
+          npm pack ./npm/lint --pack-destination launcher
 
       - name: Install on this machine
         if: ${{ !matrix.image }}

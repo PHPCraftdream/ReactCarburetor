@@ -1,5 +1,5 @@
-import {Carburetor} from 'react-carburetor';
-import {useCarburetorEvent} from 'react-carburetor/interop';
+import {Carburetor} from '@react-carburetor/core';
+import {useCarburetorEvent} from '@react-carburetor/core/interop';
 
 interface IEvents {connected: {at: number}}
 

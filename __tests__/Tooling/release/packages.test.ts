@@ -52,15 +52,17 @@ const parts = (triple: string) => {
 const NPM_LIBC: Record<string, string> = {gnu: 'glibc', musl: 'musl'};
 
 describe('the platform packages', () => {
-    const launcher = manifest('npm/carburetor-lint');
+    const launcher = manifest('npm/lint');
     const platformDirectories = readdirSync(path.join(ROOT, 'npm'))
-        .filter(name => name.startsWith('carburetor-lint-')).sort((a, b) => a.localeCompare(b));
+        .filter(name => name.startsWith('lint-')).sort((a, b) => a.localeCompare(b));
 
     test('the matrix, the launcher and the npm directory name the same packages', () => {
         const matrix = legs().map(leg => leg.package).sort((a, b) => a.localeCompare(b));
 
         expect(matrix.length).toBeGreaterThan(0);
-        expect(Object.keys(launcher.optionalDependencies ?? {}).sort((a, b) => a.localeCompare(b))).toEqual(matrix);
+        const scoped = matrix.map(name => `@react-carburetor/${name}`);
+
+        expect(Object.keys(launcher.optionalDependencies ?? {}).sort((a, b) => a.localeCompare(b))).toEqual(scoped);
         expect(platformDirectories).toEqual(matrix);
     });
 
@@ -71,7 +73,7 @@ describe('the platform packages', () => {
 
         for (const name of platformDirectories) {
             expect(manifest(`npm/${name}`).version).toEqual(root.version);
-            expect(launcher.optionalDependencies?.[name]).toEqual(root.version);
+            expect(launcher.optionalDependencies?.[`@react-carburetor/${name}`]).toEqual(root.version);
         }
     });
 
@@ -83,7 +85,8 @@ describe('the platform packages', () => {
         const packageOs = target.os === 'win32' ? 'w32' : target.os;
         const suffix = [packageOs, target.cpu, target.abi].filter(Boolean).join('-');
 
-        expect(name).toEqual(`carburetor-lint-${suffix}`);
+        expect(name).toEqual(`lint-${suffix}`);
+        expect(declared.name).toEqual(`@react-carburetor/${name}`);
         expect(declared.os).toEqual([target.os]);
         expect(declared.cpu).toEqual([target.cpu]);
         expect(declared.libc).toEqual(target.abi ? [NPM_LIBC[target.abi]] : undefined);
@@ -123,7 +126,7 @@ describe('the platform-package workflow', () => {
         const ci = read('.github/workflows/ci.yml');
 
         expect(ci).toContain('uses: ./.github/workflows/native-packages.yml');
-        expect(ci).not.toContain('package: carburetor-lint-');
+        expect(ci).not.toContain('package: lint-');
     });
 
     test('shell scripts keep LF endings on every checkout', () => {
@@ -154,7 +157,7 @@ describe('the release workflows', () => {
 
     test('the release takes its platform list from the launcher and publishes it first', () => {
         expect(release).toContain('platforms=${platforms.join(" ")}');
-        expect(release).toContain('for name in $PLATFORMS carburetor-lint react-carburetor; do');
+        expect(release).toContain('for name in $PLATFORMS @react-carburetor/lint @react-carburetor/core; do');
         expect(release).toContain('uses: ./.github/workflows/audit.yml');
         expect(release).toContain('uses: ./.github/workflows/post-publish.yml');
     });
@@ -174,10 +177,10 @@ describe('the release workflows', () => {
         const names = [...postPublish.matchAll(/^\s+- name: (.+)$/gm)].map(match => match[1]);
 
         const platformPackages = readdirSync(path.join(ROOT, 'npm'))
-            .filter(entry => entry.startsWith('carburetor-lint-'));
+            .filter(entry => entry.startsWith('lint-'));
 
         for (const directory of platformPackages) {
-            const suffix = directory.replace('carburetor-lint-', '');
+            const suffix = directory.replace('lint-', '');
 
             expect(names.some(name => name.startsWith(suffix))).toBe(true);
         }
@@ -188,9 +191,9 @@ describe('the release workflows', () => {
 });
 
 describe('installing only the binary of the machine', () => {
-    const launcher = manifest('npm/carburetor-lint');
+    const launcher = manifest('npm/lint');
     const platformDirectories = readdirSync(path.join(ROOT, 'npm'))
-        .filter(name => name.startsWith('carburetor-lint-'));
+        .filter(name => name.startsWith('lint-'));
 
     test('the launcher reaches the binaries only through optionalDependencies', () => {
         expect(Object.keys(launcher.optionalDependencies ?? {}).length).toBeGreaterThan(0);
@@ -232,7 +235,7 @@ describe('installing only the binary of the machine', () => {
     test('the gating job offers every package to every supported machine and expects its own', () => {
         const workflow = read('.github/workflows/native-packages.yml');
         const section = workflow.slice(workflow.indexOf('\n  gating:'));
-        const expected = [...section.matchAll(/^\s+expect: (carburetor-lint-\S+)$/gm)].map(match => match[1]);
+        const expected = [...section.matchAll(/^\s+expect: '@react-carburetor\/(lint-\S+)'$/gm)].map(match => match[1]);
 
         expect(expected.length).toEqual(platformDirectories.length);
         expect([...expected].sort((a, b) => a.localeCompare(b)))

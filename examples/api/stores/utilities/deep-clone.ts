@@ -1,5 +1,5 @@
 // #region deep-clone
-import {Carburetor, deepClone} from 'react-carburetor';
+import {Carburetor, deepClone} from '@react-carburetor/core';
 
 const store = new Carburetor({profile: {name: 'ada'}});
 

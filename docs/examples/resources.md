@@ -14,7 +14,7 @@ subscribe, rendering from the derived flags — `view.isPending`, `view.isError`
 
 <!-- example:file examples/api/resources/resource-carburetor/load.tsx#load -->
 ```tsx
-import {AntiHookComponent, bind, ResourceCarburetor, TResourceLoader} from 'react-carburetor';
+import {AntiHookComponent, bind, ResourceCarburetor, TResourceLoader} from '@react-carburetor/core';
 import {type JSX} from 'react';
 
 interface User {
@@ -73,7 +73,7 @@ failure. `suspend()` never subscribes on its own, so the component also reads a 
 
 <!-- example:file examples/api/resources/resource-carburetor/suspend.tsx#suspend -->
 ```tsx
-import {AntiHookComponent, IResourceCarburetorOptions, IResourceData, ResourceCarburetor} from 'react-carburetor';
+import {AntiHookComponent, IResourceCarburetorOptions, IResourceData, ResourceCarburetor} from '@react-carburetor/core';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
 import {fetchConfig} from '../endpoints/config';
 
@@ -140,7 +140,7 @@ commit when the entry is stale.
 
 <!-- example:file examples/api/resources/resource-cache/list.tsx#list -->
 ```tsx
-import {AntiHookComponent, bind, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, bind, ResourceCache} from '@react-carburetor/core';
 import {type JSX} from 'react';
 import {fetchPost} from '../endpoints/posts';
 
@@ -195,7 +195,7 @@ actually subscribes and triggers the load.
 
 <!-- example:file examples/api/resources/resource-cache/suspense.tsx#suspense -->
 ```tsx
-import {AntiHookComponent, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, ResourceCache} from '@react-carburetor/core';
 import {Component, ReactNode, Suspense, type JSX} from 'react';
 
 interface Avatar {
@@ -256,7 +256,7 @@ least-recently-used unretained entries are evicted beyond `maxEntries`.
 
 <!-- example:file examples/api/resources/resource-cache/ttl.ts#ttl -->
 ```ts
-import {EResourceStatus, IResourceCacheData, IResourceCacheOptions, IResourceEntry, ResourceCache} from 'react-carburetor';
+import {EResourceStatus, IResourceCacheData, IResourceCacheOptions, IResourceEntry, ResourceCache} from '@react-carburetor/core';
 
 interface Quote {
     text: string;
@@ -299,7 +299,7 @@ of them.
 
 <!-- example:file examples/api/resources/resource-cache/invalidate.tsx#invalidate -->
 ```tsx
-import {AntiHookComponent, bind, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, bind, ResourceCache} from '@react-carburetor/core';
 import {Component, type JSX} from 'react';
 
 interface Settings {
@@ -351,7 +351,7 @@ you need the raw rejection (an `Error`, a server payload, whatever the loader th
 
 <!-- example:file examples/api/resources/resource-cache/failure.ts#failure -->
 ```ts
-import {IResourceView, ResourceCache} from 'react-carburetor';
+import {IResourceView, ResourceCache} from '@react-carburetor/core';
 
 interface Report {
     rows: string[];
@@ -378,7 +378,7 @@ entry and `clear()` for all of them — for example on logout or when leaving a 
 
 <!-- example:file examples/api/resources/resource-cache/forget.ts#forget -->
 ```ts
-import {ResourceCache} from 'react-carburetor';
+import {ResourceCache} from '@react-carburetor/core';
 
 interface Draft {
     body: string;
@@ -416,7 +416,7 @@ import {
     IResourceResolution,
     IResourceSource,
     IResourceView,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 import {type JSX} from 'react';
 
 interface Label {
@@ -499,7 +499,7 @@ across a serialization boundary (postMessage, storage, server payload) and back.
 
 <!-- example:file examples/api/resources/snapshots/rates.ts#rates -->
 ```ts
-import {IResourceSnapshot, ResourceCarburetor} from 'react-carburetor';
+import {IResourceSnapshot, ResourceCarburetor} from '@react-carburetor/core';
 
 interface Currency {
     code: string;
@@ -529,7 +529,7 @@ custom carburetor or to seed your own data structure.
 
 <!-- example:file examples/api/resources/snapshots/session.ts#session -->
 ```ts
-import {Carburetor, getInitialResourceData, IResourceData} from 'react-carburetor';
+import {Carburetor, getInitialResourceData, IResourceData} from '@react-carburetor/core';
 
 interface Session {
     token: string;

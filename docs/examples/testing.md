@@ -49,7 +49,7 @@ export const attachTest = (): void => {
 };
 ```
 
-For non-clock work, `flush` and `createTestScope` come from `react-carburetor/testing`. The
+For non-clock work, `flush` and `createTestScope` come from `@react-carburetor/core/testing`. The
 [store testing recipe](../../README.md#testing-your-code) combines the helpers with a meaningful watch
 flush and a fake-clock test for throttled delivery and `after()` cleanup.
 

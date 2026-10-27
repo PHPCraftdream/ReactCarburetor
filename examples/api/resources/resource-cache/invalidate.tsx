@@ -1,5 +1,5 @@
 // #region invalidate
-import {AntiHookComponent, bind, ResourceCache} from 'react-carburetor';
+import {AntiHookComponent, bind, ResourceCache} from '@react-carburetor/core';
 import {Component, type JSX} from 'react';
 
 interface Settings {

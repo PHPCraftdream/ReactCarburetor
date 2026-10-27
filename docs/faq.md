@@ -2,7 +2,7 @@
 
 ## Why classes instead of hooks?
 
-The core API is hook-free: components extend `AntiHookComponent` (or `ScopedAntiHookComponent`) and read state inside `render()` via `this.useCarburetor`, which records a per-path subscription for exactly the fields the component read. If your codebase is hooks-first, an opt-in entry point, `react-carburetor/interop`, exposes hook readers with the same path precision: `useCarburetorValue`, `useComputedValue` and `useResourceValue`. See [hooks interop in the README](../README.md#hooks-interop).
+The core API is hook-free: components extend `AntiHookComponent` (or `ScopedAntiHookComponent`) and read state inside `render()` via `this.useCarburetor`, which records a per-path subscription for exactly the fields the component read. If your codebase is hooks-first, an opt-in entry point, `@react-carburetor/core/interop`, exposes hook readers with the same path precision: `useCarburetorValue`, `useComputedValue` and `useResourceValue`. See [hooks interop in the README](../README.md#hooks-interop).
 
 ## Does it work with React 18 and 19?
 
@@ -22,7 +22,7 @@ Common causes: a write through `draft` without publishing (`update()` publishes;
 
 ## How do I test stores?
 
-Stores are plain classes: instantiate one, call its methods, and assert on its state — no renderer, no `act`, no mocked React. For writes that land asynchronously, `waitForUpdate` (exported from `react-carburetor`) resolves on the next notification, with a default timeout of 1000 ms. For component-level testing, see [testing your code in the README](../README.md#testing-your-code) and [testing-tiers.md](testing-tiers.md).
+Stores are plain classes: instantiate one, call its methods, and assert on its state — no renderer, no `act`, no mocked React. For writes that land asynchronously, `waitForUpdate` (exported from `@react-carburetor/core`) resolves on the next notification, with a default timeout of 1000 ms. For component-level testing, see [testing your code in the README](../README.md#testing-your-code) and [testing-tiers.md](testing-tiers.md).
 
 ## Is state global?
 
@@ -34,7 +34,7 @@ There are no actions, reducers or middleware. State changes are made by calling 
 
 ## How is it different from Zustand?
 
-A class component reads a store inside `render()` with `this.useCarburetor(store)` — it works for every store and every source shape. `connect()` is an optimization for a store fixed for the component's lifetime that a component reads many times: declared once (a field initializer is the intended call site), it hands back the same live view object across renders. A hook reader, `useCarburetorValue(store, selector)`, exists in the opt-in `react-carburetor/interop` entry point for hooks-first code. Updates are draft-based: a store method conducts its write through `update()`, which writes the draft and publishes the changed paths in one step, rather than replacing state through a setter.
+A class component reads a store inside `render()` with `this.useCarburetor(store)` — it works for every store and every source shape. `connect()` is an optimization for a store fixed for the component's lifetime that a component reads many times: declared once (a field initializer is the intended call site), it hands back the same live view object across renders. A hook reader, `useCarburetorValue(store, selector)`, exists in the opt-in `@react-carburetor/core/interop` entry point for hooks-first code. Updates are draft-based: a store method conducts its write through `update()`, which writes the draft and publishes the changed paths in one step, rather than replacing state through a setter.
 
 ## How is it different from MobX?
 
@@ -42,7 +42,7 @@ Tracking in React Carburetor is path-based: reads made through the tracked data 
 
 ## How do I configure lint rule scope?
 
-Most rules accept severity (`error`, `warn` or `off`). `require-module-function` also accepts `scope: "all"` (default) or `"classes"`; unknown scope values and option keys are errors. Recognition remains syntactic: store bases named `Carburetor` and `ResourceCarburetor`, component bases named `AntiHookComponent` and `ScopedAntiHookComponent`, and a `render` method. See [rules.md](rules.md) and [npm/carburetor-lint/README.md](../npm/carburetor-lint/README.md).
+Most rules accept severity (`error`, `warn` or `off`). `require-module-function` also accepts `scope: "all"` (default) or `"classes"`; unknown scope values and option keys are errors. Recognition remains syntactic: store bases named `Carburetor` and `ResourceCarburetor`, component bases named `AntiHookComponent` and `ScopedAntiHookComponent`, and a `render` method. See [rules.md](rules.md) and [npm/lint/README.md](../npm/lint/README.md).
 
 ## How big is it, and how fast?
 

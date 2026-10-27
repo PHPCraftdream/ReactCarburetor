@@ -6,7 +6,7 @@ import {
     CarburetorContext,
     CarburetorScope,
     ScopedAntiHookComponent,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 const statusToken = carburetorToken(
     () => ({message: 'ready'}),

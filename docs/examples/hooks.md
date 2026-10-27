@@ -1,9 +1,9 @@
 # Hooks (interop)
 
-The hooks re-exported from `react-carburetor/interop` are the **only hooks API** in the
+The hooks re-exported from `@react-carburetor/core/interop` are the **only hooks API** in the
 library. They are the bridge for hooks-based code — a router shell, a third-party UI kit,
 an existing hooks codebase — while the engine itself needs no hooks at all. Stores are
-still classes extending `Carburetor` from `'react-carburetor'`; these hooks only change
+still classes extending `Carburetor` from `'@react-carburetor/core'`; these hooks only change
 how components read them. All examples are compatible with React 18 and 19.
 
 Reminders that apply to every store below: no arrow-function class fields, decorate any
@@ -22,8 +22,8 @@ Use it whenever a function component needs a slice of a store.
 <!-- example:file examples/interop/selectors/ProfileName.tsx#name -->
 ```tsx
 import type {ReactElement} from 'react';
-import {Carburetor, bind} from 'react-carburetor';
-import {useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor, bind} from '@react-carburetor/core';
+import {useCarburetorValue} from '@react-carburetor/core/interop';
 
 class ProfileCarburetor extends Carburetor<{name: string; email: string}> {
     public constructor() {
@@ -58,8 +58,8 @@ A selector may build a small derived object from the fields it reads; the custom
 <!-- example:file examples/interop/selectors/ProfileLabel.tsx#label -->
 ```tsx
 import type {ReactElement} from 'react';
-import {Carburetor} from 'react-carburetor';
-import {TValueComparator, useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor} from '@react-carburetor/core';
+import {TValueComparator, useCarburetorValue} from '@react-carburetor/core/interop';
 
 class ProfileCarburetor extends Carburetor<{name: string; email: string}> {
     public constructor() {
@@ -96,8 +96,8 @@ actual membership changes:
 <!-- example:file examples/interop/selectors/IdList.tsx#ids -->
 ```tsx
 import type {ReactElement} from 'react';
-import {Carburetor} from 'react-carburetor';
-import {TSelector, TValueComparator, useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor} from '@react-carburetor/core';
+import {TSelector, TValueComparator, useCarburetorValue} from '@react-carburetor/core/interop';
 
 class SelectionCarburetor extends Carburetor<{ids: number[]}> {
     public constructor() {
@@ -124,8 +124,8 @@ For values you want compared by reference only, pass `Object.is`:
 <!-- example:file examples/interop/selectors/Count.tsx#count -->
 ```tsx
 import type {ReactElement} from 'react';
-import {Carburetor} from 'react-carburetor';
-import {useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor} from '@react-carburetor/core';
+import {useCarburetorValue} from '@react-carburetor/core/interop';
 
 class CounterCarburetor extends Carburetor<{count: number}> {
     public constructor() {
@@ -149,7 +149,7 @@ comparator such as `Object.is` must decide equality on copies, not live referenc
 ## Live computed values
 
 `useComputedValue(computed)` reads a `Computed` publication from
-`'react-carburetor'`. Unlike `useCarburetorValue` — which hands you a detached copy —
+`'@react-carburetor/core'`. Unlike `useCarburetorValue` — which hands you a detached copy —
 the returned value stays **live**: the hook caches a versioned snapshot record and
 detects publications without cloning. A scalar result is compared by value, so passing it to a
 memoized child is safe. A mutable or native object result can keep the same identity across
@@ -159,8 +159,8 @@ detached projection of objects and arrays instead (see "Derived lists" in the RE
 <!-- example:file examples/interop/computed/CounterView.tsx#view -->
 ```tsx
 import {memo, type ReactElement} from 'react';
-import {Carburetor, Computed} from 'react-carburetor';
-import {useComputedValue, useCarburetorValue} from 'react-carburetor/interop';
+import {Carburetor, Computed} from '@react-carburetor/core';
+import {useComputedValue, useCarburetorValue} from '@react-carburetor/core/interop';
 
 class CounterCarburetor extends Carburetor<{count: number}> {
     public constructor() {
@@ -207,8 +207,8 @@ after the commit, never during render. Select only the fields you render.
 <!-- example:file examples/interop/resources/UserName.tsx#name -->
 ```tsx
 import type {ReactElement} from 'react';
-import {ResourceCache} from 'react-carburetor';
-import {useResourceValue} from 'react-carburetor/interop';
+import {ResourceCache} from '@react-carburetor/core';
+import {useResourceValue} from '@react-carburetor/core/interop';
 
 interface User {
     id: number;
@@ -237,8 +237,8 @@ is true:
 <!-- example:file examples/interop/resources/UserStatusCard.tsx#status -->
 ```tsx
 import type {ReactElement} from 'react';
-import {ResourceCache} from 'react-carburetor';
-import {useResourceValue} from 'react-carburetor/interop';
+import {ResourceCache} from '@react-carburetor/core';
+import {useResourceValue} from '@react-carburetor/core/interop';
 
 interface User {
     id: number;
@@ -276,7 +276,7 @@ selectors and comparators with them instead of repeating inline parameter types:
 
 <!-- example:file examples/interop/types/Models.ts#shared -->
 ```ts
-import {TSelector, TValueComparator} from 'react-carburetor/interop';
+import {TSelector, TValueComparator} from '@react-carburetor/core/interop';
 
 interface Settings {
     ids: number[];

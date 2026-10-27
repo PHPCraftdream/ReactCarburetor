@@ -1,6 +1,6 @@
 import {
     Carburetor, ICarburetor, IReadableCarburetor, ISubscribeOptions, TDisposer, TReadonly, TSelector, transaction,
-} from 'react-carburetor';
+} from '@react-carburetor/core';
 
 interface State {value: number}
 const store = new Carburetor<State>({value: 1});

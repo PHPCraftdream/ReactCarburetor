@@ -1,6 +1,6 @@
 // #region doc
 import tsParser from '@typescript-eslint/parser';
-import carburetor from 'react-carburetor/lint';
+import carburetor from '@react-carburetor/core/lint';
 
 export default [
     {

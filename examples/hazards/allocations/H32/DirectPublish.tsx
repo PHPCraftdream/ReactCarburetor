@@ -1,4 +1,4 @@
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 export class Counter extends Carburetor<{count: number}> {
     // #region doc

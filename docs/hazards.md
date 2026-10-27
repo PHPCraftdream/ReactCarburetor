@@ -1,6 +1,6 @@
 # Hazard catalogue
 
-This document is the specification for the lint rules shipped in `react-carburetor/lint`.
+This document is the specification for the lint rules shipped in `@react-carburetor/core/lint`.
 Every hazard below is a way to use React Carburetor that compiles, runs, and produces wrong
 behaviour **without any error** — a component that never updates, a write nobody hears, an
 effect that never cleans up. That silence is the reason the rules exist: the type system
@@ -122,7 +122,7 @@ The thin host bridge reports native diagnostics. Real fixture and host coverage 
 
 <!-- example:file examples/wrong/no-get-data-in-render/Counter.tsx -->
 ```tsx
-import {AntiHookComponent, Carburetor} from 'react-carburetor';
+import {AntiHookComponent, Carburetor} from '@react-carburetor/core';
 
 const store = new Carburetor({count: 0});
 
@@ -827,7 +827,7 @@ unpublished. The rule covers both call shapes.
 
 **Detection.** The argument of `transaction(...)` or `this.update(...)` is an `async` function
 or a function containing an `await`. A bare `transaction()` counts only when the name resolves to a
-value import from `react-carburetor`; the same name from another module, or a local or parameter
+value import from `@react-carburetor/core`; the same name from another module, or a local or parameter
 binding that shadows the import, belongs to somebody else's API.
 
 **False positives.** None known: both APIs are documented as synchronous.

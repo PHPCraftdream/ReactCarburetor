@@ -1,4 +1,4 @@
-import {Carburetor} from 'react-carburetor';
+import {Carburetor} from '@react-carburetor/core';
 
 export class WrongTitle extends Carburetor<{title: string}> {
     // #region doc

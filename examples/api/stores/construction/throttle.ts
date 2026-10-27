@@ -1,5 +1,5 @@
 // #region throttle
-import {Carburetor, ComponentUpdateThrottle} from 'react-carburetor';
+import {Carburetor, ComponentUpdateThrottle} from '@react-carburetor/core';
 
 interface ICursor {x: number; y: number}
 

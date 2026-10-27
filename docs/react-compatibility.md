@@ -1,6 +1,6 @@
 # React compatibility
 
-`react-carburetor` never bundles React: every class extends the `React.Component` your app
+`@react-carburetor/core` never bundles React: every class extends the `React.Component` your app
 installs, and the interop hooks call straight into your app's own React runtime. This page
 covers the supported versions, how that binding works, the one hazard specific to this library
 (several copies sharing one process) and the generic one that isn't (a duplicate React install),
@@ -41,7 +41,7 @@ limits.
   transform, so there is no dependency on which `jsx-runtime` module a bundler resolves.
 - Because `React.Component` is read live from your own `react` install, `class Foo extends
   AntiHookComponent` really does extend *your* `React.Component`, not a vendored one.
-- `react-carburetor/lint` has no runtime dependency on React at all.
+- `@react-carburetor/core/lint` has no runtime dependency on React at all.
 
 `useComputedValue` returns the live value from `computed.get()`; unlike
 `useCarburetorValue` and `useResourceValue`, it does not return a detached, versioned selector
@@ -88,7 +88,7 @@ back to today's per-copy behavior instead of crashing on a shape mismatch.
 different copy, or (for `CarburetorContext` specifically) a different React identity — one
 warning fires per value, once:
 
-> two copies of react-carburetor share this process for "\<name>" — a duplicated install, or the
+> two copies of @react-carburetor/core share this process for "\<name>" — a duplicated install, or the
 > package loaded through two different module formats at once. Dedupe the install, or make sure
 > only one module format is loaded.
 
@@ -102,9 +102,9 @@ production builds.
 ## Duplicate React installs
 
 The shared registry above only compares copies of *this* library — it has nothing to compare
-against when there is exactly one copy of `react-carburetor` in the process, even if that one
+against when there is exactly one copy of `@react-carburetor/core` in the process, even if that one
 copy's own `react` resolution differs from your app's (for example a nested `react` under
-`node_modules/react-carburetor/node_modules/react`). That shape is the generic, well-known
+`node_modules/@react-carburetor/core/node_modules/react`). That shape is the generic, well-known
 "two React copies" hazard, and it can't be detected from inside a single call site — symptoms are
 the usual ones for that hazard: a hook throwing "Invalid hook call", a `<Context>` not
 propagating, or an `instanceof` check failing silently.
@@ -125,7 +125,7 @@ propagating, or an `instanceof` check failing silently.
 | Monorepo | Keep one `react` version range across every workspace package — hoisting failures are the most common real-world source of this hazard. |
 
 **`npm link` caveat.** A linked package resolves bare imports through its own real path first, so
-a linked `react-carburetor` can pick up its own `devDependency` react instead of your app's.
+a linked `@react-carburetor/core` can pick up its own `devDependency` react instead of your app's.
 Prefer `npm install <path>` or a `file:` dependency over `npm link` for local testing; if you do
 link, link `react` from your app into the library too.
 
@@ -139,7 +139,7 @@ cannot `export *`.
 
 What this gives a Server Component:
 
-- it can import from `react-carburetor` — a store or cache used on the server — without
+- it can import from `@react-carburetor/core` — a store or cache used on the server — without
   evaluating `createContext` or `React.Component` against the `react-server` build, which does
   not have them;
 - a client export it references arrives as a client reference, so a mistake surfaces as React's
@@ -176,8 +176,8 @@ instances in two module graphs; server data reaches the client through `scope.de
 re-evaluates the shared-registry module and mints a new per-module identity, so the next reload
 after a source edit logs one harmless "two copies… a duplicated install" message even though
 there is exactly one real copy — the shared objects built before the reload stay the ones handed
-out. This is specific to hot-reloading `react-carburetor`'s own sources; a consumer's app
-hot-reloading its own components never re-evaluates `react-carburetor`'s modules.
+out. This is specific to hot-reloading `@react-carburetor/core`'s own sources; a consumer's app
+hot-reloading its own components never re-evaluates `@react-carburetor/core`'s modules.
 
 ## How compatibility is tested
 

@@ -1,4 +1,4 @@
-import {Carburetor, computed, shallowEqual} from 'react-carburetor';
+import {Carburetor, computed, shallowEqual} from '@react-carburetor/core';
 
 class CartCarburetor extends Carburetor<{items: string[]}> {}
 

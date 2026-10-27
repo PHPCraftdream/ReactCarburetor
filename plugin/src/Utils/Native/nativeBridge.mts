@@ -186,7 +186,7 @@ const claimLock = (lock: string): {isRunner: boolean; identity: {dev: number; in
         }
     }
 
-    throw new Error('react-carburetor/lint: could not claim or read the native bridge lock.');
+    throw new Error('@react-carburetor/core/lint: could not claim or read the native bridge lock.');
 };
 
 /** Runs the binary over `cwd` with every rule forced on, so the host — not native — decides what
@@ -210,8 +210,8 @@ const runBinary = (
 
     if (!binary) {
         throw new Error(
-            'react-carburetor/lint: no native binary for this platform. Install it with ' +
-            '"npm install --save-dev carburetor-lint" (its optionalDependencies add the package ' +
+            '@react-carburetor/core/lint: no native binary for this platform. Install it with ' +
+            '"npm install --save-dev @react-carburetor/lint" (its optionalDependencies add the package ' +
             `this machine needs, ${platformPackageNames()[0]}), or set CARBURETOR_LINT_BIN to a ` +
             'built binary, or run "cargo build --release" inside native/ in a checkout of this ' +
             'repository.'
@@ -234,11 +234,13 @@ const runBinary = (
     // here instead, with `status: null` — checking only `status === 2` would silently swallow it
     // and every rule would report nothing, which is worse than a loud, immediate failure.
     if (result.error) {
-        throw new Error(`react-carburetor/lint: could not run the native binary at ${binary}: ${result.error.message}`);
+        throw new Error(
+            `@react-carburetor/core/lint: could not run the native binary at ${binary}: ${result.error.message}`,
+        );
     }
 
     if (result.status === 2) {
-        throw new Error(`react-carburetor/lint: the native binary failed: ${result.stderr}`);
+        throw new Error(`@react-carburetor/core/lint: the native binary failed: ${result.stderr}`);
     }
 
     return JSON.parse(result.stdout || '[]') as INativeDiagnostic[];
@@ -266,8 +268,8 @@ const runNativeText = (
 
     if (!binary) {
         throw new Error(
-            'react-carburetor/lint: no native binary for this platform. Install it with ' +
-            '"npm install --save-dev carburetor-lint" (its optionalDependencies add the package ' +
+            '@react-carburetor/core/lint: no native binary for this platform. Install it with ' +
+            '"npm install --save-dev @react-carburetor/lint" (its optionalDependencies add the package ' +
             `this machine needs, ${platformPackageNames()[0]}), or set CARBURETOR_LINT_BIN to a ` +
             'built binary, or run "cargo build --release" inside native/ in a checkout of this ' +
             'repository.'
@@ -285,11 +287,13 @@ const runNativeText = (
     );
 
     if (result.error) {
-        throw new Error(`react-carburetor/lint: could not run the native binary at ${binary}: ${result.error.message}`);
+        throw new Error(
+            `@react-carburetor/core/lint: could not run the native binary at ${binary}: ${result.error.message}`,
+        );
     }
 
     if (result.status === 2) {
-        throw new Error(`react-carburetor/lint: the native binary failed: ${result.stderr}`);
+        throw new Error(`@react-carburetor/core/lint: the native binary failed: ${result.stderr}`);
     }
 
     return JSON.parse(result.stdout || '[]') as INativeDiagnostic[];
@@ -417,7 +421,7 @@ export const runNative = (
 
     if (!existsSync(result)) {
         throw new Error(
-            'react-carburetor/lint: another worker ran the native binary but produced no ' +
+            '@react-carburetor/core/lint: another worker ran the native binary but produced no ' +
             `result within ${WAIT_TIMEOUT_MS} ms. Run the binary directly to see why.`
         );
     }
@@ -427,7 +431,7 @@ export const runNative = (
     const payload = JSON.parse(readFileSync(result, 'utf8')) as INativeDiagnostic[] | {error: string};
 
     if (!Array.isArray(payload)) {
-        throw new Error(`react-carburetor/lint: the worker that ran the native binary failed: ${payload.error}`);
+        throw new Error(`@react-carburetor/core/lint: the worker that ran the native binary failed: ${payload.error}`);
     }
 
     cached = payload;
