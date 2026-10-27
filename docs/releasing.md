@@ -111,23 +111,43 @@ package and as a fallback. Both modes run the same steps and differ only in cred
    packages, scope: all packages (the ten packages do not exist yet, so a token limited to named
    packages cannot create them). It must be able to publish without an interactive one-time
    password. Set an expiry.
-2. Settings → Secrets and variables → Actions → New secret `NPM_TOKEN` (repository secret, or a
-   secret of the `npm` environment).
+2. Store it as a secret of the `npm` environment (Settings → Environments → `npm`, or
+   `gh secret set NPM_TOKEN --env npm --repo PHPCraftdream/ReactCarburetor`, which asks for the
+   value and keeps it out of the shell history). A repository secret works too.
 
 #### Setup for `trusted`
 
-For each of the ten packages: npmjs.com → the package → Settings → Trusted Publisher → GitHub
-Actions, then
+Each of the ten packages needs a GitHub Actions trusted publisher with
 
 - organization or user: `PHPCraftdream`
 - repository: `ReactCarburetor`
 - workflow filename: `release.yml`
 - environment name: `npm`
 
-The setting lives on a package's own page, so the package has to exist first: publish the first
-version of all ten with `auth = token`, configure the trusted publisher on each, and use
-`trusted` from the next release on. After that the `NPM_TOKEN` secret can be deleted and the
-packages can be switched to "require two-factor authentication and disallow tokens".
+The setting lives on a package's own page (npmjs.com → the package → Settings → Trusted
+Publisher), so the package has to exist first. The order of the switch:
+
+1. Publish the first version of all ten with `auth = token` (the Release workflow above).
+2. `npm login` as a maintainer of the packages, then configure all ten at once with npm 11.10 or
+   newer. `--print` shows the commands, `--dry-run` asks npm without changing anything, no flag
+   applies them (npm asks for a one-time password), `--list` shows what each package trusts:
+
+   ```
+   node scripts/tools/release/trust/trustPublishers.mjs --print
+   node scripts/tools/release/trust/trustPublishers.mjs
+   node scripts/tools/release/trust/trustPublishers.mjs --list
+   ```
+
+   The script reads the package list from the launcher's `optionalDependencies`, the repository
+   from `package.json` and uses `release.yml` and `npm`, the values the release job runs with
+   (`__tests__/Tooling/release/trustPublishers.test.ts` keeps them in step).
+3. Prove it with the next release (a dry run first): `auth = trusted`, which is the default.
+   Nothing but the job's GitHub identity is used; the run fails if a package has no matching
+   trusted publisher.
+4. Delete the `NPM_TOKEN` secret (`gh secret delete NPM_TOKEN --env npm --repo
+   PHPCraftdream/ReactCarburetor`), revoke the token on npmjs.com, and set each package to
+   "Require two-factor authentication and disallow tokens" (package → Settings → Publishing
+   access). The `token` input stays only as a fallback and needs a new token if it is ever used.
 
 The job needs npm 11.5.1 or newer (Node 24 ships it); it checks and fails early otherwise. It
 runs with `id-token: write`, which is what lets npm exchange the identity and sign provenance.
