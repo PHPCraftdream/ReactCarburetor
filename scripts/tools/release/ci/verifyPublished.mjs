@@ -86,7 +86,9 @@ export async function verifyPublished(args = process.argv.slice(2)) {
     const esm = 'import("@react-carburetor/core").then(m => { if (typeof m.Carburetor !== "function") process.exit(4); });';
     for (const [label, code] of [['require', probe], ['import', esm]]) {
       const result = spawnSync(process.execPath, ['-e', code], { cwd: work, encoding: 'utf8' });
-      if (result.status !== 0) throw new Error(`@react-carburetor/core ${label} failed (${result.status}): ${result.stderr}`);
+      if (result.status !== 0) {
+        throw new Error(`@react-carburetor/core ${label} failed (${result.status}): ${result.stderr}`);
+      }
     }
     console.log(`verified: @react-carburetor/lint@${version} and @react-carburetor/core@${version} ` +
       `work on ${process.platform}-${process.arch}`);
