@@ -3,7 +3,7 @@ import {createHash} from "node:crypto";
 import {existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import {describe, expect, rstest, test} from "@rstest/core";
+import {beforeAll, describe, expect, rstest, test} from "@rstest/core";
 import {createRequire} from "node:module";
 import {basesConfig} from "@plugin/Utils/NativeBases.mts";
 import {writeAtomic} from "@plugin/Utils/atomicWrite.mts";
@@ -29,6 +29,10 @@ const BRIDGE_CONFIG_DIR = path.join(os.tmpdir(), 'carburetor-lint-bridge');
 /** The lock directory the bridge keeps its lock/result files in; ours are removed by the tests. */
 const BRIDGE_DIR = path.join(os.tmpdir(), 'carburetor-lint');
 
+/** The compiled binary the real-binary parts run; CI builds it before the tests. */
+const NATIVE_BINARY: string = path.join(ROOT, 'native', 'target', 'release',
+    process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint');
+
 /**
  * Whether the local binary already knows the `componentBases`/`storeBases` config keys.
  *
@@ -38,6 +42,11 @@ const BRIDGE_DIR = path.join(os.tmpdir(), 'carburetor-lint');
  * runs them for real.
  */
 const supportsBases = ((): boolean => {
+    // A missing binary is reported by the real-binary suite below, not mistaken for an old one.
+    if (!existsSync(NATIVE_BINARY)) {
+        return false;
+    }
+
     const dir = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-probe-'));
 
     try {
@@ -45,12 +54,7 @@ const supportsBases = ((): boolean => {
 
         writeFileSync(config, JSON.stringify({componentBases: ['__Probe__']}));
 
-        const run = realSpawnSync(
-            path.join(ROOT, 'native', 'target', 'release',
-                process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint'),
-            ['--config', config, '--format=json'],
-            {cwd: ROOT, encoding: 'utf8'},
-        );
+        const run = realSpawnSync(NATIVE_BINARY, ['--config', config, '--format=json'], {cwd: ROOT, encoding: 'utf8'});
 
         return !(run.status === 2 && run.stderr.includes('unknown key'));
     } finally {
@@ -454,6 +458,14 @@ test('a file saved after a waiter-accepted result is re-scanned, never answered 
 });
 
 describe('the custom base, through the real host and the real binary', () => {
+    beforeAll(() => {
+        if (!existsSync(NATIVE_BINARY)) {
+            throw new Error(
+                `Native tests require the built binary: ${NATIVE_BINARY} (cargo build --release in native/)`,
+            );
+        }
+    });
+
     const FIXTURE = path.join('plugin', '__fixtures__', 'lifecycle', 'bases.tsx');
     const runOxlint = (config: string): string => realSpawnSync(
         process.execPath,

@@ -1,5 +1,5 @@
 import {execFileSync} from "node:child_process";
-import {mkdtempSync, readFileSync, writeFileSync} from "node:fs";
+import {existsSync, mkdtempSync, readFileSync, writeFileSync} from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import {describe, expect, test} from "@rstest/core";
@@ -34,6 +34,9 @@ const NATIVE_BINARY: string = path.join(
     'release',
     process.platform === 'win32' ? 'carburetor-lint.exe' : 'carburetor-lint',
 );
+if (!existsSync(NATIVE_BINARY)) {
+    throw new Error(`Native tests require the built binary: ${NATIVE_BINARY} (cargo build --release in native/)`);
+}
 const NATIVE_STYLE_CONFIG_PATH: string = path.join('native', 'tests', 'fixtures', 'conformance.carburetorrc.json');
 const STYLE_CORPUS: readonly string[] = [
     path.join('plugin', '__fixtures__', 'style', 'maxLineLength.ts'),
