@@ -244,3 +244,31 @@ describe('installing only the binary of the machine', () => {
         expect(section).toContain('--expect ${{ matrix.expect }}');
     });
 });
+
+describe('the metadata npm shows for every package', () => {
+    interface IMetadata {
+        author?: string;
+        homepage?: string;
+        bugs?: {url: string};
+        repository?: {url: string; directory?: string};
+    }
+
+    const metadata = (directory: string) => JSON.parse(read(`${directory}/package.json`)) as IMetadata;
+    const root = metadata('.');
+    const platformPackages = readdirSync(path.join(ROOT, 'npm')).filter(name => name.startsWith('lint-'));
+    const packageDirectories = ['lint', ...platformPackages];
+
+    test.each(packageDirectories)('npm/%s names the author, the homepage, the tracker and its directory', directory => {
+        const declared = metadata(`npm/${directory}`);
+
+        expect(declared.author).toEqual(root.author);
+        expect(declared.homepage).toEqual(root.homepage);
+        expect(declared.bugs).toEqual(root.bugs);
+        expect(declared.repository?.url).toEqual(root.repository?.url);
+        expect(declared.repository?.directory).toEqual(`npm/${directory}`);
+    });
+
+    test.each(platformPackages)('npm/%s has a readme that names the package', directory => {
+        expect(read(`npm/${directory}/README.md`)).toContain(`# @react-carburetor/${directory}`);
+    });
+});

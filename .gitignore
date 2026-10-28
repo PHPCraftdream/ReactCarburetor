@@ -36,3 +36,7 @@ native/target/
 npm/lint-*/carburetor-lint
 npm/lint-*/carburetor-lint.exe
 npm/lint-*/*.tgz
+
+# Local scratch space and Claude Code runtime state
+/scratch/
+/.claude/scheduled_tasks.lock

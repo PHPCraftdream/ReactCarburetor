@@ -3,9 +3,21 @@
   "version": "0.1.0",
   "description": "The w32-arm64 carburetor-lint binary, React Carburetor's native linter. Installed through @react-carburetor/lint's optionalDependencies; never a direct dependency.",
   "license": "MIT OR Apache-2.0",
+  "author": "Marat K <phpcraftdream@gmail.com>",
+  "homepage": "https://github.com/PHPCraftdream/ReactCarburetor#readme",
+  "bugs": {
+    "url": "https://github.com/PHPCraftdream/ReactCarburetor/issues"
+  },
+  "keywords": [
+    "carburetor",
+    "lint",
+    "native",
+    "binary"
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/PHPCraftdream/ReactCarburetor.git"
+    "url": "git+https://github.com/PHPCraftdream/ReactCarburetor.git",
+    "directory": "npm/lint-w32-arm64"
   },
   "os": [
     "win32"

@@ -12,17 +12,19 @@
     "LICENSE-APACHE"
   ],
   "license": "MIT OR Apache-2.0",
+  "author": "Marat K <phpcraftdream@gmail.com>",
+  "homepage": "https://github.com/PHPCraftdream/ReactCarburetor#readme",
+  "bugs": {
+    "url": "https://github.com/PHPCraftdream/ReactCarburetor/issues"
+  },
   "engines": {
     "node": ">=24.0.0"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/PHPCraftdream/ReactCarburetor.git"
+    "url": "git+https://github.com/PHPCraftdream/ReactCarburetor.git",
+    "directory": "npm/lint"
   },
-  "bugs": {
-    "url": "https://github.com/PHPCraftdream/ReactCarburetor/issues"
-  },
-  "homepage": "https://github.com/PHPCraftdream/ReactCarburetor#readme",
   "keywords": [
     "react",
     "lint",
