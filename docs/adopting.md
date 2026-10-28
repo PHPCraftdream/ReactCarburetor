@@ -182,7 +182,8 @@ For an optional live-source `file:` link, keep the same package imports and conf
 `compilerOptions.customConditions: ['carburetor-source']` in the app tsconfig (`moduleResolution: 'bundler'`).
 The app bundler must be configured to compile the linked library's TS/TSX; the app's TypeScript settings
 apply to that source. No aliases or subpath list are needed. The default remains built `dist`, with the
-build-stamp check above.
+build-stamp check above. The condition only works on a checkout (a `file:` or workspace link): the package
+installed from npm ships `dist` alone, without `lib/src`.
 
 The build writes `dist/build-info.json` with the package version, source hash, optional Git
 revision, and dirty state. The checker lives in the framework checkout and is not shipped with the

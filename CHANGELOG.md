@@ -9,6 +9,13 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 Entries below record development history in change order; where contracts differ, the Public contract section is authoritative.
 
+### Packages
+
+- Published under the `@react-carburetor` scope: `@react-carburetor/core` (the library), `@react-carburetor/lint`
+  (the `carburetor-lint` command and its launcher) and eight `@react-carburetor/lint-<platform>` packages that each
+  carry one compiled binary: `w32-x64`, `w32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`,
+  `linux-arm64-gnu`, `linux-x64-musl`, `linux-arm64-musl`. npm installs only the one that matches the machine.
+
 ### Public contract at first release
 
 - **Components/effects:** Declare `render` as a method, not a class field.
