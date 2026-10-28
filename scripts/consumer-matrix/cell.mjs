@@ -60,6 +60,27 @@ const TSCONFIG = (format) => ({
     include: ['consumer.tsx'],
 });
 
+const DECLARATIONS = [
+    "import * as core from '@react-carburetor/core';",
+    "import * as interop from '@react-carburetor/core/interop';",
+    "import * as testing from '@react-carburetor/core/testing';",
+    "import * as lint from '@react-carburetor/core/lint';",
+    'export const entries = [core, interop, testing, lint];',
+    '',
+].join('\n');
+
+/** The strictest consumer: the shipped declarations are checked, not skipped, on a lib without ESNext. */
+const DECLARATIONS_TSCONFIG = (format) => ({
+    compilerOptions: {
+        ...TSCONFIG(format).compilerOptions,
+        skipLibCheck: false,
+        noEmit: true,
+        outDir: undefined,
+        rootDir: undefined,
+    },
+    include: ['declarations.ts'],
+});
+
 const HARNESS_ESM = `import * as React from 'react';
 import {renderToString} from 'react-dom/server';
 import {flush, createTestScope} from '@react-carburetor/core/testing';
@@ -142,6 +163,16 @@ export const checkFormat = (installDir, format) => {
 
     if (!typecheck.ok) {
         return {ok: false, stage: 'typecheck', stderr: typecheck.stdout + typecheck.stderr};
+    }
+
+    writeFileSync(path.join(formatDir, 'declarations.ts'), DECLARATIONS);
+    writeFileSync(path.join(formatDir, 'tsconfig.declarations.json'),
+        JSON.stringify(DECLARATIONS_TSCONFIG(format), null, 2));
+
+    const declarations = run(process.execPath, [TSC_BIN, '-p', 'tsconfig.declarations.json'], {cwd: formatDir});
+
+    if (!declarations.ok) {
+        return {ok: false, stage: 'declarations', stderr: declarations.stdout + declarations.stderr};
     }
 
     const harnessName = format === 'esm' ? 'harness.mjs' : 'harness.cjs';

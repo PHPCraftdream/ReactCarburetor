@@ -1,4 +1,4 @@
-/// <reference lib="esnext.disposable" />
+/// <reference lib="esnext.disposable" preserve="true" />
 import {ICarburetorToken} from '../Carburetor/Models/Tooling';
 import {CarburetorScope} from '../Carburetor/Component/Scope/CarburetorScope';
 import {ITestClock} from './ITestClock';
