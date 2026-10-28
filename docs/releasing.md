@@ -1,8 +1,6 @@
 # Release checklist
 
-The repository is preparing its first public npm release. `@react-carburetor/core`
-and `@react-carburetor/lint` were not on npm when this checklist was written. Do not
-publish or change package versions without the maintainer's explicit release
+Do not publish or change package versions without the maintainer's explicit release
 decision. The first release is `0.1.0`.
 
 Ten packages ship under one version: the library `@react-carburetor/core`, the launcher
@@ -34,8 +32,7 @@ the list from there.
 5. The Release workflow ends by installing the published packages from the registry on
    every supported platform (`post-publish.yml`). Also check the npm registry pages and
    package contents before announcing the release.
-6. Replace the README's pre-release notice and badge with a verified npm
-   release link or version badge only after publication succeeds.
+6. Check that the README install section and the npm version badge match what was published.
 
 The license copies under `npm/` are byte-identical to the root texts and are
 checked by `__tests__/Plugin/packageLicenses.test.ts`. Keep them in sync when

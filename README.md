@@ -3,7 +3,7 @@
 [![CI](https://github.com/PHPCraftdream/ReactCarburetor/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/PHPCraftdream/ReactCarburetor/actions/workflows/ci.yml)
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![React 18 and 19](https://img.shields.io/badge/React-18%20%7C%2019-61dafb.svg?logo=react)](#install)
-[![Status: pre-release](https://img.shields.io/badge/status-pre--release-orange.svg)](#install)
+[![npm](https://img.shields.io/npm/v/@react-carburetor/core.svg)](https://www.npmjs.com/package/@react-carburetor/core)
 
 State lives outside the React tree. Class components read it directly, and each component
 subscribes to **exactly the fields it read** — so a write wakes only the components that
@@ -25,21 +25,6 @@ literal `process.env.NODE_ENV` expression with `"production"`. Without a bundler
 
 ## Install
 
-The first public npm release is still being prepared: `@react-carburetor/core` and
-`@react-carburetor/lint` are not published on npm yet. To try the current source and demo:
-
-```bash
-git clone https://github.com/PHPCraftdream/ReactCarburetor.git
-cd ReactCarburetor
-npm ci
-npm run build
-cd lib
-npm ci
-npm start
-```
-
-After the npm release, install the library in a React project with:
-
 ```bash
 npm install @react-carburetor/core
 ```
@@ -54,6 +39,29 @@ locally and in CI against React 19.3. CI also runs the Engine and Demo suites ag
 run in that compatibility job. 18.3.1 is the newest of the 18.x line; the range's `18.0.0` floor
 and the point releases between are not separately exercised — a coverage gap, not a report that
 they fail.
+
+The native linter and its `carburetor-lint` command are a separate, optional package:
+
+```bash
+npm install --save-dev @react-carburetor/lint
+```
+
+It installs the one compiled binary that matches your machine; see
+[the binary and the bridge](#the-binary-and-the-bridge).
+
+### From source
+
+To work on the library or run the demo from a checkout:
+
+```bash
+git clone https://github.com/PHPCraftdream/ReactCarburetor.git
+cd ReactCarburetor
+npm ci
+npm run build
+cd lib
+npm ci
+npm start
+```
 
 ### Requirements
 
@@ -1555,7 +1563,7 @@ ships is a bridge: it runs that binary once per lint run and reports through the
 `context.report`. It reports diagnostics for saved files on disk, not unsaved buffers, which are not
 analyzed. Disk changes invalidate cached results. Two ways to run them, good at different things.
 
-**Standalone (`carburetor-lint`)** — after its first npm release,
+**Standalone (`carburetor-lint`)** —
 `npm i -D @react-carburetor/lint` fetches the one binary matching your machine, and
 the rules run without starting a linter: `npx carburetor-lint
 --fix-dry-run src` to see what would change, `--fix` to change it. This is the fast path —

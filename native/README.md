@@ -137,8 +137,7 @@ form the base class actually dispatches to.
 
 ## The npm packages
 
-The packages below are prepared but not yet published on npm. Build from source
-using the command above until the first public release.
+The packages are published on npm under the `@react-carburetor` scope.
 
 The binary ships the way oxlint ships its own: `@react-carburetor/lint` on npm is a launcher script
 that finds the compiled binary and hands it your arguments, stdio and exit code, and the

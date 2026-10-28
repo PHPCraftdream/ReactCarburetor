@@ -1,7 +1,7 @@
 # Security policy
 
-React Carburetor is preparing its first public npm release. Security reports
-against the current default branch are welcome; no older-version backport
+Security reports are welcome for the latest published version of `@react-carburetor/core`
+and `@react-carburetor/lint` and for the current default branch; no older-version backport
 policy or response-time guarantee is established yet.
 
 ## Report a vulnerability
