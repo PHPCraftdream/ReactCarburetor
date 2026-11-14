@@ -1,0 +1,37 @@
+name: CI retry
+
+# A hosted runner that is never acquired (macOS arm64 capacity: "The job was not acquired by Runner of
+# type hosted even after multiple attempts") fails the whole CI run without running any of our code.
+# Re-run those jobs once, and only those: a failed run in which any job started is left alone.
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  retry:
+    name: Re-run jobs that never got a runner
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: github.event.workflow_run.conclusion == 'failure' && github.event.workflow_run.run_attempt == 1
+    steps:
+      - name: Re-run when every failed job never started
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.event.workflow_run.id }}
+        run: |
+          set -e
+          counts=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json jobs --jq '
+            [.jobs[] | select(.conclusion | IN("failure", "cancelled", "timed_out"))]
+            | "\(length) \(map(select((.steps | length) > 0)) | length)"')
+          read -r failed started <<<"$counts"
+          echo "failed jobs: $failed, of which started: $started"
+          if [ "$failed" -gt 0 ] && [ "$started" -eq 0 ]; then
+            gh run rerun "$RUN_ID" --repo "$GITHUB_REPOSITORY" --failed
+          else
+            echo "a job ran and failed (or nothing failed): not re-running"
+          fi
