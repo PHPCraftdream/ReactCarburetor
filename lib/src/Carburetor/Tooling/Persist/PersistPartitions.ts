@@ -2,8 +2,8 @@ import {TDisposer} from "../../Models/Base";
 import {ICarburetor} from "../../Models/Store";
 import {IStorageLike, IPersistOptions} from "../../Models/Tooling";
 import {CARBURETOR_PERSIST_DRAIN} from "../../Store/Utils/Models";
+import {discardStored} from "./DiscardStored";
 import {readFallback} from "./ReadFallback";
-import {reportRemovalFailure} from "./ReportRemovalFailure";
 import {reportRestoreFailure} from "./ReportRestoreFailure";
 
 type TPersistOptions = Pick<IPersistOptions, "onError" | "coalesce" | "throttleMs" | "partitions" | "previousKeys">;
@@ -66,12 +66,7 @@ export const persistPartitions = <T extends object>(
             parsed[branch] = JSON.parse(entry);
         } catch (error: unknown) {
             delete lastWritten[branch];
-            reportRestoreFailure(branchKey(branch), error, onError, 'the stored data was removed');
-            try {
-                storage.removeItem(branchKey(branch));
-            } catch (removeError: unknown) {
-                reportRemovalFailure(onError, removeError);
-            }
+            discardStored(storage, branchKey(branch), error, onError);
             return;
         }
         restored.push(branch);
@@ -89,13 +84,8 @@ export const persistPartitions = <T extends object>(
                 // The only configured partition is the known culprit: report, then drop its
                 // entry like a malformed one, so the next connection starts from defaults.
                 const [branch] = partitions;
-                reportRestoreFailure(branchKey(branch), error, onError, 'the stored data was removed');
                 delete lastWritten[branch];
-                try {
-                    storage.removeItem(branchKey(branch));
-                } catch (removeError: unknown) {
-                    reportRemovalFailure(onError, removeError);
-                }
+                discardStored(storage, branchKey(branch), error, onError);
             } else {
                 // Several partitions are configured: the guilty one is unknown, so no stored
                 // entry is deleted — the next connection can retry once this is fixed.
@@ -128,18 +118,10 @@ export const persistPartitions = <T extends object>(
                     storage.removeItem(oldKey);
                 }
             } catch (error: unknown) {
-                reportRestoreFailure(
-                    oldKey ?? key,
-                    error,
-                    onError,
-                    oldKey ? 'the stored data is kept' : 'the stored data was removed'
-                );
                 if (oldKey === undefined) {
-                    try {
-                        storage.removeItem(key);
-                    } catch (removeError: unknown) {
-                        reportRemovalFailure(onError, removeError);
-                    }
+                    discardStored(storage, key, error, onError);
+                } else {
+                    reportRestoreFailure(oldKey, error, onError, 'the stored data is kept');
                 }
             }
         }

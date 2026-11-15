@@ -56,7 +56,8 @@ export interface IPersistOptions<T = unknown> {
      * for the dirty partitions instead of the whole state. The first write seals every
      * partition once. Restore composes the stored branches over the current state: branches
      * without a stored entry keep their value, and a legacy whole-store entry is read when no
-     * partition entries exist yet. A restore the store rejects removes the stored entry only
+     * partition entries exist (yet, or any more: it is never removed, so clearing every partition
+     * entry brings the old state back). A restore the store rejects removes the stored entry only
      * when the culprit is known — a single key, or the one stored partition; with several
      * stored partitions the entries are kept and the failure is only reported. A malformed
      * entry that cannot be parsed is still removed on its own. Branch names must be plain

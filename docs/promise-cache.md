@@ -230,7 +230,9 @@ later flushes wait out the window, and the final write is guaranteed — the dis
 state a throttled flush has not written yet. `partitions` lists top-level branch names stored
 under their own keys (`key + "." + branch`), so a flush stringifies and rewrites only the
 dirty branches; a legacy whole-store key is still read when no partition entries exist, and
-the first write seals the per-branch baseline once. A failed partition write or removal stays
+the first write seals the per-branch baseline once. The legacy key is never removed (an older
+version of the app can still read it), so clearing every partition entry restores the old
+state from it; remove the legacy key yourself to reset for good. A failed partition write or removal stays
 failed but retryable — the next notification and the disposer both retry it. A failed restore
 is reported in development (the stored data is removed for a single partition, and kept when
 several partitions are configured, since the guilty one is unknown).

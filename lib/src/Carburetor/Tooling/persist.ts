@@ -2,11 +2,11 @@ import {TDisposer} from "../Models/Base";
 import {ICarburetor} from "../Models/Store";
 import {IPersistOptions} from "../Models/Tooling";
 import {CARBURETOR_PERSIST_DRAIN} from '../Store/Utils/Models';
+import {discardStored} from './Persist/DiscardStored';
 import {mergeSaved} from './Persist/MergeSaved';
 import {persistPartitions} from './Persist/PersistPartitions';
 import {readFallback} from './Persist/ReadFallback';
 import {readVersioned} from './Persist/ReadVersioned';
-import {reportRemovalFailure} from './Persist/ReportRemovalFailure';
 import {reportRestoreFailure} from './Persist/ReportRestoreFailure';
 
 /** Keeps a carburetor mirrored in a storage: loads the stored state once on connect, then
@@ -27,9 +27,10 @@ import {reportRestoreFailure} from './Persist/ReportRestoreFailure';
  * `throttleMs` window is open covers all dirty branches together, and a partition whose
  * write or removal failed is retried by the next flush and by the disposer. Restore composes the stored
  * branches over the current state — branches without a stored entry keep their value, and a
- * legacy whole-store entry is restored when no partition entries exist yet (it stays in place,
- * shadowed by the partition entries). Each partition entry is written atomically on its own,
- * so a crash between two writes can compose a mixed state across branches. Branch names must
+ * legacy whole-store entry is restored when no partition entries exist (it stays in place,
+ * shadowed by the partition entries, and is read again if they all disappear). Each partition
+ * entry is written atomically on its own, so a crash between two writes can compose a mixed
+ * state across branches. Branch names must
  * be plain top-level keys of the wire form; custom wire forms and other non-plain roots are
  * rejected.
  * A failed storage read is reported without discarding the unread entry; when `onError`
@@ -159,12 +160,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
                 reportRestoreFailure(source, error, options.onError, 'the stored data is kept');
                 stored = null;
             } else {
-                reportRestoreFailure(key, error, options.onError, 'the stored data was removed');
-                try {
-                    storage.removeItem(key);
-                } catch (removeError: unknown) {
-                    reportRemovalFailure(options.onError, removeError);
-                }
+                discardStored(storage, key, error, options.onError);
                 stored = null;
             }
         }
@@ -202,21 +198,11 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
                     }
                     reportRestoreFailure(source, error, options.onError, 'the stored data is kept');
                 } else if (restoreFailed && onCorrupt === 'reset' && source === key) {
-                    reportRestoreFailure(key, error, options.onError, 'the stored data was removed');
-                    try {
-                        storage.removeItem(key);
-                    } catch (removeError: unknown) {
-                        reportRemovalFailure(options.onError, removeError);
-                    }
+                    discardStored(storage, key, error, options.onError);
                 } else if (source !== key) {
                     reportRestoreFailure(source, error, options.onError, 'the stored data is kept');
                 } else {
-                    reportRestoreFailure(key, error, options.onError, 'the stored data was removed');
-                    try {
-                        storage.removeItem(key);
-                    } catch (removeError: unknown) {
-                        reportRemovalFailure(options.onError, removeError);
-                    }
+                    discardStored(storage, key, error, options.onError);
                 }
             }
             if (restored && source !== key && !blocked) {
