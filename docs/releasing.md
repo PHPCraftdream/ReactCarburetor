@@ -3,10 +3,11 @@
 Do not publish or change package versions without the maintainer's explicit release
 decision. The first release is `0.1.0`.
 
-State after `0.1.0` (published 2026-10-28 with `auth = token`): all ten packages are on npm,
-each has its trusted publisher configured, and no release has gone through `auth = trusted`
-yet. The `NPM_TOKEN` secret stays in the `npm` environment until one does; see
-"Setup for `trusted`" below.
+State after `0.2.0` (published 2026-11-15): all ten packages are on npm. `0.1.0` went out on
+2026-10-28 with `auth = token`; `0.2.0` is the first release through `auth = trusted`, and the
+registry shows the GitHub Actions publisher (`npm-oidc-no-reply@github.com`) as the author of
+every package. The `NPM_TOKEN` secret may stay in the `npm` environment as the fallback until the
+maintainer removes it; see "Setup for `trusted`" below.
 
 Ten packages ship under one version: the library `@react-carburetor/core`, the launcher
 `@react-carburetor/lint`, and eight `@react-carburetor/lint-<platform>` packages that each carry one
@@ -99,7 +100,9 @@ version; a dry run can use `[Unreleased]` instead. This exception never permits 
 | `trusted` | none stored: npm exchanges the job's GitHub OIDC identity for a short-lived token | yes |
 
 `trusted` is the default and the one to keep using; `token` exists for the first publication of a
-package and as a fallback. Both modes run the same steps and differ only in credentials.
+package and as a fallback. Both modes run the same steps and differ only in credentials. A
+trusted record that was validated by a successful publish needs no renewal; one that was never
+used expires (see step 2 of "Setup for `trusted`").
 
 #### Setup common to both
 
@@ -154,10 +157,19 @@ Publisher), so the package has to exist first. The order of the switch:
    page sends `publish`, and newer npm refuses to run without `--allow-publish` (npm 11.21.1:
    "At least one permission flag is required"). The script now passes it. The same four values
    entered on each package's Settings page were accepted, and `--list` then showed them.
-3. Prove it with the next release: `auth = trusted`, which is the default. Nothing but the job's
+   **A new record expires in 48 hours.** Since 2026-10-02 npm drops a trusted publisher that has
+   not completed its first successful publish within 48 hours: it shows as expired and can no
+   longer be used or edited, only deleted and created again. So create the records right before
+   the release run in step 3, not days ahead. The records made after `0.1.0` expired before
+   `0.2.0`, and the symptom was a bare `ENEEDAUTH` from `npm publish` in the first package: npm
+   swallows the refused exchange. The publish job's "Why the trusted exchange failed" step prints
+   the `oidc` lines of npm's debug log when that happens; `--list` shows the state of every record.
+3. Prove it with a release: `auth = trusted`, which is the default. Nothing but the job's
    GitHub identity is used; the run fails if a package has no matching trusted publisher. Only
-   a real publish of a new version proves it: a dry run does not exchange the identity, and a
-   run for a version that is already on the registry skips every package.
+   a real publish of a new version proves it, and it is also what validates the records: a dry run
+   does not exchange the identity, and a run for a version that is already on the registry skips
+   every package. Check `npm view @react-carburetor/core@<version> _npmUser` afterwards: it must name
+   the GitHub Actions publisher, not a person.
 4. Delete the `NPM_TOKEN` secret (`gh secret delete NPM_TOKEN --env npm --repo
    PHPCraftdream/ReactCarburetor`), revoke the token on npmjs.com, and set each package to
    "Require two-factor authentication and disallow tokens" (package → Settings → Publishing
