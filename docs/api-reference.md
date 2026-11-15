@@ -1,9 +1,21 @@
 # API reference
 
 Compact reference for public exports. Core symbols come from `@react-carburetor/core`; React hooks
-come from `@react-carburetor/core/interop`. Source links are repository-relative.
+come from `@react-carburetor/core/interop`. `@react-carburetor/core/engine` exports the same stores,
+`computed`, resource caches, scopes, `persist`, history and DevTools without loading React (the same
+objects, so it mixes with the main entry; the component base classes, `bind` and the scope context,
+provider and child boundary are only in the main entry). Source links are repository-relative.
 
 ## Diagnostics
+
+`diagnostics.setFailureHandler(handler: ((error: unknown, source: string) => void) | undefined): void`
+receives, in every build and with the error as it was thrown, each failure the engine isolates instead
+of rethrowing: a subscriber, event listener, transaction delivery, deferred computation, throttled
+updater, computed subscriber or effect cleanup that threw. `source` is `delivery`, `transaction`,
+`settlement`, `update`, `computed` or `teardown`. Without a handler development reports text and
+production reports nothing. A handler that throws is ignored; one handler is kept, a new one replaces
+it, and `undefined` removes it. A transaction delivery or deferred-computation cascade that keeps
+going is cut after 1000 rounds and reported here (`transaction` or `settlement`) as an `Error`.
 
 `diagnostics.traceUpdates(listener): TDisposer` subscribes to immutable callback-delivery events.
 Events expose `subscriber`, `store`, `paths`, `version`, and `callback: 'invoked'`. A trace means

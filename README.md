@@ -29,7 +29,7 @@ literal `process.env.NODE_ENV` expression with `"production"`. Without a bundler
 npm install @react-carburetor/core
 ```
 
-React 18 or 19 is a peer dependency. The package ships ESM and CommonJS, each in a normal build
+React 18 or 19 is a peer dependency (optional: only the main entry and `/interop` load it). The package ships ESM and CommonJS, each in a normal build
 and in a pre-stripped production build that the `production` export condition selects. See
 [docs/troubleshooting.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/troubleshooting.md) for common issues and diagnostic guidance.
 

@@ -12,6 +12,7 @@ and how both are tested.
 |---|---|---|
 | `.` (core) | `^18.0.0 \|\| ^19.0.0` | CI's React 18 job installs exactly 18.3.1; it is not a claim that 18.0 is tested. |
 | `./interop` | same range | Uses `useSyncExternalStore`, added in React 18.0; there is no React 17 shim. |
+| `./engine` | none | The engine without the React layer; it never loads `react`. `react` is an **optional** peer for that reason. |
 
 `@types/react` is an **optional** peer, `^18.0.0 || ^19.0.0`: both major versions type-check the
 same consumer code cleanly (checked against `@types/react` 18.3.x and 19.3.x). A plain-JS

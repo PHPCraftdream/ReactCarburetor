@@ -6,7 +6,7 @@ The core API is hook-free: components extend `AntiHookComponent` (or `ScopedAnti
 
 ## Does it work with React 18 and 19?
 
-Yes — `react` (and the optional `@types/react`) are peer dependencies with the advertised range `^18.0.0 || ^19.0.0` in [package.json](../package.json). [react-compatibility.md](react-compatibility.md) covers how the library binds to your React, duplicate installs, RSC, and how compatibility is tested.
+Yes — `react` and `@types/react` are optional peer dependencies with the advertised range `^18.0.0 || ^19.0.0` in [package.json](../package.json); the main entry and `/interop` need `react`, the React-free `@react-carburetor/core/engine` entry does not. [react-compatibility.md](react-compatibility.md) covers how the library binds to your React, duplicate installs, RSC, and how compatibility is tested.
 
 ## How does it fit RSC / Next.js?
 

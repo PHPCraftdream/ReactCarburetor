@@ -70,7 +70,8 @@ which is what the hooks libraries use — would make every read refetch and leav
 but a deduplication layer, which is a surprising thing for something called a cache.
 
 An entry records `updatedAt`. Whether it is stale is computed when someone asks —
-`Date.now() - updatedAt > ttl` — and never by a timer. The cache treats an answer as stale
+`now - updatedAt > ttl`, where `now` is `Date.now()` (the store's time, which is the clock's time for a
+store with a `createTestClock()` attached) — and never by a timer. The cache treats an answer as stale
 strictly past `ttl`, while the slot answer memory treats `>= ttl` as stale — a documented
 difference. Timers would mean a handle per entry to leak,
 wake-ups in an idle tab, and a cache that keeps the process alive.
@@ -217,7 +218,7 @@ instance inside a loaded value is carried by reference, as with any snapshot. Th
 preserves `updatedAt` exactly as serialized; the client's first read
 judges freshness using its own clock. Clock skew can affect that verdict, so hydration does not
 guarantee freshness. An old timestamp or invalidated entry remains stale, and the normal TTL check
-is `Date.now() - updatedAt > ttl`. A stale entry read by a mounted hook may refetch after commit;
+is `now - updatedAt > ttl` (`Date.now()`, or a test clock's time). A stale entry read by a mounted hook may refetch after commit;
 hydration itself does not refetch every entry.
 
 ## Persistence of a store (`persist`)

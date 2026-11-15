@@ -5,7 +5,7 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-11-15
 
 ### Added
 
@@ -31,6 +31,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   that has the clock expire by the clock's time (continuing from wall time at the attach, so entries stamped earlier
   stay comparable), not by `Date.now()`. Stores without a clock are unchanged.
 - README: "Without React" shows a renderer driven by `computed` and `watch` from the engine entry.
+- Release and CI: `@react-carburetor/core` is published as the tarball the verified CI run packed, and its version
+  is checked before anything is published; the release scripts start `npm` without `shell: true` plus an argument
+  array; `npm trust github` is called with `--allow-publish`, which the registry now requires. The full test suite
+  runs in three shards and the React 18 suite in two.
 
 ### Fixed
 

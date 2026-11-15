@@ -18,7 +18,7 @@ the list from there.
 1. Confirm the intended version and verify the npm package names are available to the publisher.
    A dry run accepts the existing `[Unreleased]` changelog section, so packaging can be verified
    before the release date is chosen. Before publishing, rename it to
-   `## [0.1.0] - YYYY-MM-DD` with the actual release date; a real publish requires that section.
+   `## [<version>] - YYYY-MM-DD` with the actual release date; a real publish requires that section.
 2. Require a green full-tier CI run for the release commit: the React 18 Engine/Demo
    compatibility suites, the native tests, the Node floor jobs, the consumer matrix and all
    eight platform-binary legs. The Release workflow starts that run itself when the commit
