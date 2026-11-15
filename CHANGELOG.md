@@ -5,6 +5,38 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- `@react-carburetor/core/engine`: the engine without React (stores, `computed`, resource caches, scopes,
+  `persist`, history, DevTools), for a server, a CLI, a worker or an adapter for another UI library. It is the main
+  entry minus the component base classes, `bind`, and the scope context, provider and child boundary; the classes
+  are the same objects as in the main entry. React is now an optional peer dependency.
+- `diagnostics.setFailureHandler((error, source) => ...)`: receives, in every build and with the original error, the
+  exceptions the engine isolates instead of rethrowing (`delivery`, `transaction`, `settlement`, `update`,
+  `computed`, `teardown`). Without a handler nothing changes: development reports text, production reports nothing.
+
+### Changed
+
+- A notification cascade that keeps writing stores (`transaction` delivery) or keeps deferring computations is cut
+  after 1000 rounds and reported to the failure handler, instead of hanging the thread.
+- The documentation of `persist` partitions states that the legacy whole-store entry is never removed, so clearing
+  every partition entry restores the old state from it.
+- Every child scope (`scope.child()`, `CarburetorChildScope`) is an instance of one class; a class used to be created
+  per child, which made token lookups through many children polymorphic.
+- A reader of an absent resource cache entry no longer allocates per notification while it waits for the entry, and
+  `restore()` no longer keeps a write counter nothing read.
+- `createTestClock()` also drives resource freshness: `ResourceCache` entries and `ResourceCarburetor` answers of a store
+  that has the clock expire by the clock's time (continuing from wall time at the attach, so entries stamped earlier
+  stay comparable), not by `Date.now()`. Stores without a clock are unchanged.
+- README: "Without React" shows a renderer driven by `computed` and `watch` from the engine entry.
+
+### Fixed
+
+- The lint bridge treated any native exit status other than 2 as a clean run, so a crashed binary (a panic aborts
+  the process) reported "no problems". Any status other than 0 or 1 is now an error naming the exit code or signal.
+
 ## [0.1.0] - 2026-10-28
 
 Entries below record development history in change order; where contracts differ, the Public contract section is authoritative.

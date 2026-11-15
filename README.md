@@ -40,6 +40,14 @@ run in that compatibility job. 18.3.1 is the newest of the 18.x line; the range'
 and the point releases between are not separately exercised — a coverage gap, not a report that
 they fail.
 
+The engine alone — stores, `computed`, resource caches, scopes, `persist`, history — is also a
+separate entry point that never loads React: `import {Carburetor, computed} from
+'@react-carburetor/core/engine'`. Use it on a server, in a CLI or a worker, or as the base of an
+adapter for another UI library; it is the main entry minus the component base classes, `bind`, and
+the scope context, provider and child boundary, and the classes are the same objects, so the two
+entries can be mixed. React is an optional peer dependency for that reason: install it when you use
+the main entry or `/interop`. [Without React](#without-react) shows a renderer built on it.
+
 The native linter and its `carburetor-lint` command are a separate, optional package:
 
 ```bash
@@ -115,6 +123,12 @@ export class Counter extends AntiHookComponent {
 Runner fake clocks control scheduled work such as `ComponentUpdateThrottle` and `after()` timers.
 Use the runner's clock APIs (for example, `rstest.useFakeTimers()` and
 `rstest.advanceTimersByTimeAsync()`); do not wrap or replace the clock APIs.
+
+`createTestClock()` from `@react-carburetor/core/testing` is the alternative that needs no global
+fake: stores in a `createTestScope(overrides, {clock})` (or attached with `clock.attach(store)`) run
+`after()` on it, and it also drives the freshness of `ResourceCache` entries and `ResourceCarburetor`
+answers, so a `ttl` expires when the clock advances past it and not when wall time does. The
+`persist` throttle still uses real timers; complete its writes with `flush(store)`.
 
 For work that does not involve clocks, import `flush` and `createTestScope` from
 `@react-carburetor/core/testing`. `flush(target)` delivers recorded notifications synchronously; it does
@@ -821,6 +835,15 @@ guard, so a bundler drops the whole block — strings included — from a produc
 package also ships pre-stripped outputs selected by the `production` condition in `exports`,
 for toolchains that do not substitute `NODE_ENV` themselves.
 
+A subscriber, event listener, transaction delivery, deferred computation, throttled updater, computed
+subscriber or effect cleanup that throws does not stop the delivery behind it, so the engine isolates
+the error instead of rethrowing it. By default that error is reported in development only, as text, and
+a production build drops it. `diagnostics.setFailureHandler((error, source) => { ... })` receives the
+original error in every build, with `source` naming where it was isolated (`delivery`, `transaction`,
+`settlement`, `update`, `computed` or `teardown`); forward it to your monitoring. A handler that throws is
+ignored, and `setFailureHandler(undefined)` removes it. A cascade that keeps writing stores, or keeps
+deferring computations, is cut after 1000 rounds and reported the same way instead of hanging.
+
 `diagnostics.traceUpdates(listener)` observes delivered subscriber callbacks, not React renders.
 
 <!-- example:file examples/readme/Core/Diagnostics.ts#trace -->
@@ -1413,6 +1436,57 @@ test('publishes a counter update', async () => {
     }
 });
 ```
+
+## Without React
+
+`@react-carburetor/core/engine` is everything except the React layer, so the same stores can drive a
+terminal UI, a canvas, a native view or a server process. Two pieces of the engine are all a renderer
+needs. A `computed` whose body builds the output is re-run only when a path it read is written, over
+any number of stores, and its subscriber is called only when the output actually changed:
+
+<!-- example:file examples/readme/Tooling/WithoutReact.ts#frame -->
+```ts
+// The frame is derived state: its body runs again only when a field it read was written.
+const frame = computed<string>((read) => {
+    const {done, total} = read(progress);
+
+    return `[${'#'.repeat(done)}${'.'.repeat(total - done)}] ${done}/${total}`;
+});
+
+/** Paints the current frame; any renderer goes here: a terminal, a canvas, a native view. */
+const paint = (): void => {
+    console.log(frame.get());
+};
+
+const subscription = frame.subscribe(paint);
+
+progress.advance(3);        // repaints: the frame read `done`
+progress.rename('deploy');  // does not: the frame never read `label`
+
+frame.unsubscribe(subscription);
+```
+
+`watch(select, onChange)` does the same for one store and one selection, and hands the callback
+detached values:
+
+<!-- example:file examples/readme/Tooling/WithoutReact.ts#watch -->
+```ts
+/** Receives detached values, the new one and the one before it. */
+const logDone = (next: number, previous: number): void => {
+    console.log(`done: ${previous} -> ${next}`);
+};
+
+const selectDone = (data: IProgress): number => data.done;
+
+// One store, one selection; the returned function stops watching.
+const stopWatching = progress.watch(selectDone, logDone);
+
+stopWatching();
+```
+
+An adapter for another UI library is the same two calls behind that library's own subscription
+primitive. The class components, `connect()` and the hooks stay React-only: they are built on React's
+commit phase, not on a renderer-neutral one.
 
 ## Hooks interop
 
