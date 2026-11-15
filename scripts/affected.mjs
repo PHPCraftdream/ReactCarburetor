@@ -362,7 +362,7 @@ function runCommands(cmds, opts) {
             continue;
         }
         const cwd = cmd[0] === 'cargo' ? resolve(repo, 'native') : repo;
-        const r = spawnSync(cmd[0], cmd.slice(1), {stdio: 'inherit', cwd, shell: process.platform === 'win32'});
+        const r = spawnSync(cmd[0], cmd.slice(1), {stdio: 'inherit', cwd});
         if (r.status !== 0) {
             console.log('FAILED: ' + label);
             const code = typeof r.status === 'number' ? r.status : 1;

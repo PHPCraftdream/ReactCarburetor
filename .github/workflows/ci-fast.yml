@@ -114,6 +114,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.docsOnly != 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -191,6 +192,7 @@ jobs:
     needs: plan
     if: needs.plan.outputs.full == 'true' || needs.plan.outputs.react18 == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -216,11 +218,14 @@ jobs:
       - name: Test
         run: npx rstest run __tests__/Engine __tests__/Demo __tests__/Tooling/examples
 
+  # Runs beside `checks`, not after it: the two take about seven minutes each, and the fast gate
+  # below reports both, so neither result can hide the other.
   perf:
     name: Performance gates
-    needs: [plan, checks]
+    needs: plan
     if: needs.plan.outputs.docsOnly != 'true' && (needs.plan.outputs.full == 'true' || fromJSON(needs.plan.outputs.perfAreas || '[]')[0] != null)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 

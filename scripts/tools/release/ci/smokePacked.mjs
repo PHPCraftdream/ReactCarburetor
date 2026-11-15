@@ -1,8 +1,9 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { execNpm } from '../runNpm.mjs';
 import { extractTarball } from './extractTarball.mjs';
 
 const USAGE = 'Usage: smokePacked.mjs --launcher <dir> --package <dir> --fixture <file>';
@@ -42,8 +43,8 @@ export async function smokePacked(args = process.argv.slice(2)) {
   if (!platformTarball) throw new Error(`No packed tarball in ${packageDir}`);
   const work = mkdtempSync(path.join(tmpdir(), 'carburetor-smoke-'));
   try {
-    const packed = JSON.parse(execFileSync('npm', ['pack', '--json', '--pack-destination', work],
-      { cwd: launcher, encoding: 'utf8', shell: process.platform === 'win32' }));
+    const packed = JSON.parse(execNpm(['pack', '--json', '--pack-destination', work],
+      { cwd: launcher, encoding: 'utf8' }));
     const modules = path.join(work, 'node_modules');
     await extractTarball(path.join(work, packed[0].filename), path.join(modules, '@react-carburetor', 'lint'));
     await extractTarball(path.join(packageDir, platformTarball), path.join(modules, platformName));

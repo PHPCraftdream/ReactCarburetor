@@ -49,7 +49,20 @@ describe('trustPublishers', () => {
         expect(lines).toHaveLength(10);
         expect(lines[9]).toBe(
             'npm trust github @react-carburetor/core --repo PHPCraftdream/ReactCarburetor ' +
-            '--file release.yml --env npm --yes',
+            '--file release.yml --env npm --allow-publish --yes',
         );
+    });
+
+    test('every command grants the publish permission: the registry rejects a trust without one', () => {
+        const lines: string[] = [];
+        const log = rstest.spyOn(console, 'log').mockImplementation((line: string) => { lines.push(line); });
+
+        try {
+            trustPublishers(['--print']);
+        } finally {
+            log.mockRestore();
+        }
+
+        expect(lines.filter(line => !line.includes(' --allow-publish '))).toEqual([]);
     });
 });

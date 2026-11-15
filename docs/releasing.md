@@ -3,6 +3,11 @@
 Do not publish or change package versions without the maintainer's explicit release
 decision. The first release is `0.1.0`.
 
+State after `0.1.0` (published 2026-10-28 with `auth = token`): all ten packages are on npm,
+each has its trusted publisher configured, and no release has gone through `auth = trusted`
+yet. The `NPM_TOKEN` secret stays in the `npm` environment until one does; see
+"Setup for `trusted`" below.
+
 Ten packages ship under one version: the library `@react-carburetor/core`, the launcher
 `@react-carburetor/lint`, and eight `@react-carburetor/lint-<platform>` packages that each carry one
 compiled binary (`w32-x64`, `w32-arm64`, `darwin-arm64`, `darwin-x64`, `linux-x64-gnu`,
@@ -142,9 +147,17 @@ Publisher), so the package has to exist first. The order of the switch:
    The script reads the package list from the launcher's `optionalDependencies`, the repository
    from `package.json` and uses `release.yml` and `npm`, the values the release job runs with
    (`__tests__/Tooling/release/trustPublishers.test.ts` keeps them in step).
-3. Prove it with the next release (a dry run first): `auth = trusted`, which is the default.
-   Nothing but the job's GitHub identity is used; the run fails if a package has no matching
-   trusted publisher.
+
+   For `0.1.0` the apply step failed for every package with `400 Bad Request` from
+   `POST /-/package/<name>/trust` (npm 11.13.0, after the one-time password was accepted). The
+   cause is a missing permission: the registry wants the trust to say what it allows, the Settings
+   page sends `publish`, and newer npm refuses to run without `--allow-publish` (npm 11.21.1:
+   "At least one permission flag is required"). The script now passes it. The same four values
+   entered on each package's Settings page were accepted, and `--list` then showed them.
+3. Prove it with the next release: `auth = trusted`, which is the default. Nothing but the job's
+   GitHub identity is used; the run fails if a package has no matching trusted publisher. Only
+   a real publish of a new version proves it: a dry run does not exchange the identity, and a
+   run for a version that is already on the registry skips every package.
 4. Delete the `NPM_TOKEN` secret (`gh secret delete NPM_TOKEN --env npm --repo
    PHPCraftdream/ReactCarburetor`), revoke the token on npmjs.com, and set each package to
    "Require two-factor authentication and disallow tokens" (package → Settings → Publishing

@@ -24,6 +24,7 @@ jobs:
   library:
     name: Library
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -77,8 +78,6 @@ jobs:
       - name: Build
         run: npm run build
 
-      # The gates run last on purpose: one flaky timing ceiling can no longer hide the
-      # typecheck, lint or test results that come before it.
       - name: Typecheck
         run: npm run typecheck
 
@@ -103,13 +102,6 @@ jobs:
       - name: Test
         run: npm test
 
-      # Mechanism counters plus a few generous absolute ceilings (for example relatedWriteMs <= 10): gates,
-      # not benchmarks; the A/B timing comparisons live in Performance validation and are informational.
-      # They run last so a flaky timing ceiling can no longer hide the typecheck, lint or test
-      # results above it.
-      - name: Performance gates
-        run: node perf/run.mjs --runs 3 --counter-runs 1
-
       - name: Install hosted Chrome
         id: chrome
         uses: browser-actions/setup-chrome@c785b87e244131f27c9f19c1a33e2ead956ab7ce # v1
@@ -126,6 +118,31 @@ jobs:
           name: browser-smoke
           path: worktrees/ci-results/**/browser*
           if-no-files-found: warn
+
+  # Mechanism counters plus a few generous absolute ceilings (for example relatedWriteMs <= 10): gates,
+  # not benchmarks; the A/B timing comparisons live in Performance validation and are informational.
+  # A job of its own, beside Library: the sweep and the test suite take about seven minutes each,
+  # and a flaky timing ceiling cannot hide the typecheck, lint or test results.
+  perf:
+    name: Performance gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      # perf/run.mjs needs a built dist (esm-prod) to run the scenarios against.
+      - name: Build
+        run: npm run build
+
+      - name: Performance gates
+        run: node perf/run.mjs --runs 3 --counter-runs 1
 
   demo:
     name: Demo app
@@ -156,6 +173,7 @@ jobs:
   react-18:
     name: Library on React 18
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 

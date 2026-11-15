@@ -98,6 +98,11 @@ configuration, scripts, the lockfile — all map to full precisely because a loc
 selective run cannot see them, which is why the full tier also runs on a
 scheduled nightly basis.
 
+A full-tier run can fail without running any of our code: a hosted runner (macOS arm64 most
+often) is never assigned and the job is cancelled with no steps. `ci-retry.yml` re-runs the
+failed jobs of such a run once. It leaves a run alone as soon as one failed job has started,
+so a real failure stays red.
+
 ## Reading the fast tier's result
 
 The `Plan` job writes the selection to its job summary (`full`, `docsOnly`, `native`, the rstest paths

@@ -1,8 +1,9 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { execNpm } from '../runNpm.mjs';
 import { installedPlatforms } from './installedPlatforms.mjs';
 
 const USAGE = 'Usage: verifyGating.mjs --launcher <tgz> --packages <dir of platform tgz files> ' +
@@ -64,8 +65,8 @@ export function verifyGating(args = process.argv.slice(2)) {
       dependencies: { '@react-carburetor/lint': fileSpec(options.launcher) },
       optionalDependencies,
     }));
-    execFileSync('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts'],
-      { cwd: work, stdio: ['ignore', 'inherit', 'inherit'], shell: process.platform === 'win32' });
+    execNpm(['install', '--no-audit', '--no-fund', '--ignore-scripts'],
+      { cwd: work, stdio: ['ignore', 'inherit', 'inherit'] });
 
     const modules = path.join(work, 'node_modules');
     const installed = installedPlatforms(modules);

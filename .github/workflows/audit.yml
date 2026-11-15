@@ -43,12 +43,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      # The tool is cached by month, so it is rebuilt (and moves to a newer release) at least monthly;
+      # the advisory database it reads is fetched on every run regardless.
+      - name: Month of the tool cache
+        id: month
+        run: echo "value=$(date -u +%Y-%m)" >> "$GITHUB_OUTPUT"
       - name: cargo-audit cache
         id: tool
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cargo/bin/cargo-audit
-          key: cargo-audit-${{ runner.os }}-v1
+          key: cargo-audit-${{ runner.os }}-${{ steps.month.outputs.value }}
       - name: Install cargo-audit
         if: steps.tool.outputs.cache-hit != 'true'
         run: cargo install cargo-audit --locked

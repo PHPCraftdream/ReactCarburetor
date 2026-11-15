@@ -170,25 +170,24 @@ jobs:
           printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$RUNNER_TEMP/npmrc"
           echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/npmrc" >> "$GITHUB_ENV"
 
-      - name: Download the platform packages built by CI
+      # The library is published as the very tarball the verified CI run packed and installed in the
+      # consumer matrix and the Node floor jobs, not rebuilt here. Its commit is the one prepare checked.
+      - name: Download the packages built by CI
         env:
           GH_TOKEN: ${{ github.token }}
           CI_RUN: ${{ needs.prepare.outputs.ci_run }}
         run: |
           set -e
           gh run download "$CI_RUN" --pattern 'lint-*' --dir artifacts
-          for name in $PLATFORMS; do
+          gh run download "$CI_RUN" --name library-tarball --dir artifacts/core
+          for name in $PLATFORMS @react-carburetor/core; do
             [ -d "artifacts/${name##*/}" ] || { echo "CI run $CI_RUN produced no artifact for $name" >&2; exit 1; }
           done
 
-      - name: Install
-        run: npm ci
-
-      # prepack builds dist/ for the library; the launcher has no build step.
-      - name: Pack the library and the launcher
+      # The launcher has no build step.
+      - name: Pack the launcher
         run: |
-          mkdir -p artifacts/core artifacts/lint
-          npm pack --pack-destination artifacts/core
+          mkdir -p artifacts/lint
           npm pack ./npm/lint --pack-destination artifacts/lint
 
       # Each tarball must hold what its package promises before anything is published.
@@ -201,11 +200,16 @@ jobs:
             echo "== $name: $tgz"
             tar -tf "$tgz" > "$RUNNER_TEMP/files.txt"
             cat "$RUNNER_TEMP/files.txt"
+            packed=$(tar -xOf "$tgz" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0, "utf8")).version')
+            [ "$packed" = "$VERSION" ] || { echo "$name is packed at $packed, not $VERSION" >&2; exit 1; }
             grep -q '^package/LICENSE$' "$RUNNER_TEMP/files.txt"
             grep -q '^package/LICENSE-MIT$' "$RUNNER_TEMP/files.txt"
             grep -q '^package/LICENSE-APACHE$' "$RUNNER_TEMP/files.txt"
             case "$name" in
-              core) grep -q '^package/dist/cjs/Carburetor/index.js$' "$RUNNER_TEMP/files.txt" ;;
+              core)
+                grep -q '^package/dist/cjs/Carburetor/index.js$' "$RUNNER_TEMP/files.txt"
+                grep -q '^package/dist/cjs/Engine/index.js$' "$RUNNER_TEMP/files.txt"
+                ;;
               lint) grep -q '^package/bin/carburetor-lint.js$' "$RUNNER_TEMP/files.txt" ;;
               *)
                 grep -q '^package/carburetor-lint' "$RUNNER_TEMP/files.txt"
@@ -229,6 +233,7 @@ jobs:
           for name in $PLATFORMS @react-carburetor/lint @react-carburetor/core; do
             if npm view "$name@$VERSION" version >/dev/null 2>&1; then
               echo "== $name@$VERSION is already published, skipping"
+              echo "- \`$name@$VERSION\` is already on the registry: skipped, nothing was exercised for it" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
             echo "== publishing $name@$VERSION"

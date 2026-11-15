@@ -1,6 +1,6 @@
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { spawnNpm } from '../runNpm.mjs';
 import { trustPlan } from './trustPlan.mjs';
 
 const USAGE = 'Usage: trustPublishers.mjs [--print | --list | --dry-run]';
@@ -15,7 +15,7 @@ function commands(mode, plan) {
   return plan.packages.map(name => mode === 'list'
     ? ['trust', 'list', name]
     : ['trust', 'github', name, '--repo', plan.repository, '--file', plan.workflow,
-      '--env', plan.environment, '--yes', ...(mode === 'dry-run' ? ['--dry-run'] : [])]);
+      '--env', plan.environment, '--allow-publish', '--yes', ...(mode === 'dry-run' ? ['--dry-run'] : [])]);
 }
 
 /** Sets up (or lists) the GitHub Actions trusted publisher of every release package.
@@ -39,7 +39,7 @@ export function trustPublishers(args = process.argv.slice(2)) {
       continue;
     }
     console.log(`== npm ${npmArgs.join(' ')}`);
-    const result = spawnSync('npm', npmArgs, { stdio: 'inherit', shell: process.platform === 'win32' });
+    const result = spawnNpm(npmArgs, { stdio: 'inherit' });
     if (result.status !== 0) failed.push(npmArgs[2]);
   }
   if (failed.length) throw new Error(`trusted publisher failed for: ${failed.join(', ')}`);

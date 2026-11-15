@@ -1,8 +1,9 @@
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { execNpm } from '../runNpm.mjs';
 import { installedPlatforms } from './installedPlatforms.mjs';
 
 const USAGE = 'Usage: verifyPublished.mjs --version <x.y.z> --fixture <file> [--attempts 12]';
@@ -32,9 +33,7 @@ function parseArguments(args) {
  * @param cwd - Working directory.
  * @returns {string} Captured standard output.
  */
-const npm = (args, cwd) => execFileSync('npm', args, {
-  cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'], shell: process.platform === 'win32',
-});
+const npm = (args, cwd) => execNpm(args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] });
 
 /** Installs the published packages into a clean project and uses them as a consumer would:
  * the launcher runs the right platform's binary on a fixture, and the library loads from both
