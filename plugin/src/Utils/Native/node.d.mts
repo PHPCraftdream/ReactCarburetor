@@ -35,6 +35,8 @@ interface ImportMeta {
 declare module "node:child_process" {
     export interface ISpawnResult {
         status: number | null;
+        /** Set instead of `status` when a signal ended the process. */
+        signal?: string | null;
         stdout: string;
         stderr: string;
         error?: {message: string};

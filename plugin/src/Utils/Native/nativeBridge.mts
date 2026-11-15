@@ -12,6 +12,7 @@ import type {INativeDiagnostic} from "#src/Utils/Native/INativeDiagnostic.mts";
 import {cachedFileResult} from "#src/Utils/bufferCache.mts";
 import {writeAtomic} from "#src/Utils/atomicWrite.mts";
 import {assertProtocol} from "#src/Utils/assertProtocol.mts";
+import {nativeOutput} from "#src/Utils/nativeOutput.mts";
 import {basesConfig} from "#src/Utils/NativeBases.mts";
 
 /**
@@ -224,26 +225,13 @@ const runBinary = (
     const result = spawnSync(
         binary,
         ['--config', config, '--format=json', '--keep-overlaps', ...args, '.'],
-        // The JSON for a whole-project run is far bigger than 's 1 MiB default
+        // The JSON for a whole-project run is far bigger than spawnSync's 1 MiB default
         // buffer once the allocation rules scan every nested function, so the cap is raised
         // rather than left to fail as an ENOBUFS launch error.
         {cwd, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024},
     );
 
-    // `spawnSync` never throws; a launch failure (missing file, not executable, bad path) shows up
-    // here instead, with `status: null` — checking only `status === 2` would silently swallow it
-    // and every rule would report nothing, which is worse than a loud, immediate failure.
-    if (result.error) {
-        throw new Error(
-            `@react-carburetor/core/lint: could not run the native binary at ${binary}: ${result.error.message}`,
-        );
-    }
-
-    if (result.status === 2) {
-        throw new Error(`@react-carburetor/core/lint: the native binary failed: ${result.stderr}`);
-    }
-
-    return JSON.parse(result.stdout || '[]') as INativeDiagnostic[];
+    return nativeOutput(binary, result);
 };
 
 /** Runs the binary over one buffer, as if it were `filename`: the one way a host can have an
@@ -286,17 +274,7 @@ const runNativeText = (
         {cwd, encoding: 'utf8', input: text, maxBuffer: 64 * 1024 * 1024},
     );
 
-    if (result.error) {
-        throw new Error(
-            `@react-carburetor/core/lint: could not run the native binary at ${binary}: ${result.error.message}`,
-        );
-    }
-
-    if (result.status === 2) {
-        throw new Error(`@react-carburetor/core/lint: the native binary failed: ${result.stderr}`);
-    }
-
-    return JSON.parse(result.stdout || '[]') as INativeDiagnostic[];
+    return nativeOutput(binary, result);
 };
 
 
