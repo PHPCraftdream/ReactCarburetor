@@ -16,6 +16,7 @@ import {TSubscriber} from "../../../../Models/Base";
 import {ISubscribeOptions} from "../../../../Models/Store";
 import {IStateInstallation, IStateRestoreClaim, STATE_PUBLIC_REPLACEMENT} from "../../../../Models/Paths";
 import {Carburetor} from "../../../../Store/Carburetor";
+import {storeLifecycle} from "../../../../Store/Diagnostics/Internal/StoreLifecycle";
 import {joinPath} from "../../../../Store/Paths/joinPath";
 import {applyResourceStatus} from "../../../Status/applyResourceStatus";
 import {buildCacheRestore} from "../buildCacheRestore";
@@ -27,6 +28,15 @@ import {DEFAULT_MAX_ENTRIES, DEFAULT_TTL, ICacheRequest, ICacheRuntime} from "./
 import {trimCacheRuntime} from "./Registry";
 
 const abortCacheRequest = (request: ICacheRequest): void => request.controller.abort();
+
+/** The field names of an untouched entry, built once: `subscribe` only asks whether a field is one. */
+const DEFAULT_ENTRY_FIELDS: object = getInitialCacheEntry<unknown>();
+
+/** Whether an entry holds nothing but what a first request's Pending publication puts there. */
+const isDefaultPending = (entry: IResourceEntry<unknown> | undefined): boolean =>
+    entry === undefined || (entry.status === EResourceStatus.Pending && entry.data === undefined &&
+        entry.error === undefined && entry.updatedAt === undefined &&
+        !entry.refreshing && !entry.invalidated && !entry.failed);
 
 /** Owns cache root installation, cancellation, invalidation and eviction. */
 export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends Carburetor<IResourceCacheData<T>> {
@@ -187,7 +197,6 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
         // see exactly the absent defaults (status/isIdle/isPending excepted). Suppress only
         // that first default-only creation; all subsequent notifications remain untouched.
         const absent = new Set<string>();
-        const defaults = getInitialCacheEntry<T>();
         const reads = options.reads;
         if (reads !== undefined && reads.size > 0) {
             for (const path of reads) {
@@ -196,7 +205,7 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
                 const field = path.slice(end + 1);
                 if (!parent.startsWith(`entries${PATH_SEPARATOR}`) || field === 'status' ||
                     field === 'isIdle' || field === 'isPending' ||
-                    !Object.prototype.hasOwnProperty.call(defaults, field)) {
+                    !Object.prototype.hasOwnProperty.call(DEFAULT_ENTRY_FIELDS, field)) {
                     absent.clear();
                     break;
                 }
@@ -217,14 +226,21 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
             // reader has to reload what vanished.
             const removed = epoch !== this[R.removalEpoch];
             epoch = this[R.removalEpoch];
-            const defaultCreation = !removed && absent.size > 0 && Array.from(absent).every((key) => {
-                const entry = this.data.entries[key];
-                return entry === undefined || (entry.status === EResourceStatus.Pending && entry.data === undefined &&
-                    entry.error === undefined && entry.updatedAt === undefined &&
-                    !entry.refreshing && !entry.invalidated && !entry.failed);
-            });
+            // One pass, no copy of the set: every awaited entry still default, and whether all exist by now.
+            let defaultCreation = !removed && absent.size > 0;
+            let allCreated = true;
             if (defaultCreation) {
-                if (Array.from(absent).every(key => this.data.entries[key] !== undefined)) absent.clear();
+                for (const key of absent) {
+                    const entry = this.data.entries[key];
+                    if (entry === undefined) allCreated = false;
+                    else if (!isDefaultPending(entry)) {
+                        defaultCreation = false;
+                        break;
+                    }
+                }
+            }
+            if (defaultCreation) {
+                if (allCreated) absent.clear();
             } else {
                 absent.clear();
                 callback();
@@ -429,7 +445,7 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
     public [R.isStale](entry: IResourceEntry<T>): boolean {
         if (entry.invalidated || entry.updatedAt === undefined) return true;
         if (this[R.ttl] === Infinity) return false;
-        return Date.now() - entry.updatedAt > this[R.ttl];
+        return storeLifecycle.now(this) - entry.updatedAt > this[R.ttl];
     }
 
     /** Evict least-recently-used unretained entries.

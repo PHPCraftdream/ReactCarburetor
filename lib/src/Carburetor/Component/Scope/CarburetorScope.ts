@@ -5,7 +5,7 @@ import {ICarburetorToken} from "../../Models/Tooling";
 import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
 import {storeLifecycle} from '../../Store/Diagnostics/Internal/StoreLifecycle';
 import {Carburetor} from '../../Store/Carburetor';
-import {ITestClock} from '../../../Testing/ITestClock';
+import type {ITestClock} from '../../../Testing/ITestClock';
 import {IS_DEVELOPMENT} from "../../Store/Utils/DevelopmentFlag";
 import {deepClone} from "../../Store/Utils/deepClone";
 import {createChildScope} from './ChildCarburetorScope';

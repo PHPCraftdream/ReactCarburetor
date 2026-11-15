@@ -36,6 +36,7 @@ import {rejectArraySubclass} from "../../Store/Utils/Selection/rejectArraySubcla
 import {TCompletedReads} from "../../Store/Tracking/Observation/Models";
 import {getSelectionAttemptIdentity} from "../Models/getSelectionAttemptIdentity";
 import {AttemptEntry} from "../Models/AttemptEntry";
+import {CoveredReads} from "../Models/CoveredReads";
 import {AntiHookComponentFoundation} from "./Foundation";
 
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
@@ -273,18 +274,11 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                     && committed.carburetor === entry.source) {
                     for (const path of entry.reads) {
                         if (!committed.reads.has(path) && readCoverage.covers(committed.reads, path)) {
-                            candidate ??= new Set(entry.reads);
+                            candidate ??= new CoveredReads(entry.reads, ownReads!, committed.reads);
                             candidate.delete(path);
                         }
                     }
-                    if (candidate !== undefined) {
-                        entry.reads = candidate;
-                        candidate.add = (path: TPath): Set<TPath> => {
-                            ownReads!.add(path);
-                            if (!readCoverage.covers(committed.reads, path)) Set.prototype.add.call(candidate, path);
-                            return candidate!;
-                        };
-                    }
+                    if (candidate !== undefined) entry.reads = candidate;
                 }
                 const selectionReads = entry?.reads;
                 let reused: R | undefined;
@@ -301,7 +295,7 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                 if (reused !== undefined) {
                     if (entry !== undefined && committed !== undefined && !entry.sharedReads) {
                         completeReads(selectionReads!);
-                        if (Array.from(selectionReads!).every(path => readCoverage.covers(committed.reads, path))) {
+                        if (readCoverage.coversAll(committed.reads, selectionReads!)) {
                             entry.reads = committed.reads as unknown as Set<TPath>;
                             entry.sharedReads = true;
                         }

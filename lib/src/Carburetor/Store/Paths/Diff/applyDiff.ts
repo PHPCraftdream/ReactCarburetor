@@ -9,11 +9,9 @@ import {ownArrayRestore} from "./Kinds/ownArrayRestore";
 
 const hasOwn = Object.prototype.hasOwnProperty;
 
-/** Preallocated overflow sentinel: walk control flow without an Error stack capture. */
-const APPLY_DIFF_OVERFLOW: {readonly overflow: true} = Object.freeze({overflow: true});
-/** How many draft writes this call has made so far; threaded through, not module state. */
+/** What the raw pre-pass proved; threaded through the walk, not module state. */
 interface IBudget {
-    spent: number;
+    /** Previous/next pairs whose subtrees are fully equal, so the walk skips them. */
     unchanged: Map<object, object>;
 }
 
@@ -33,9 +31,6 @@ const countLeaves = (value: unknown): number => {
         count += isTrackable(child) ? countLeaves(child) : 1;
     }
     return count || 1;
-};
-const spend = (budget: IBudget): void => {
-    budget.spent++;
 };
 
 /**
@@ -86,7 +81,6 @@ const applyKey = (
         return;
     }
 
-    spend(budget);
     assign(target, key, deepClone(next));
 };
 
@@ -119,7 +113,6 @@ const applyArray = (
             // a key-set change (added or removed own index) at an unchanged length.
             if (previousValue === undefined
                 && hasOwn.call(previous, index) !== hasOwn.call(next, index)) {
-                spend(budget);
                 if (hasOwn.call(previous, index)) delete target[index];
                 else assign(target, String(index), deepClone(undefined));
             }
@@ -131,7 +124,6 @@ const applyArray = (
             continue;
         }
         if (nextValue === undefined && !Object.prototype.hasOwnProperty.call(next, index)) {
-            spend(budget);
             delete target[index];
 
             continue;
@@ -139,12 +131,10 @@ const applyArray = (
         applyKey(target, String(index), previousValue, nextValue, budget);
     }
     for (let index = shared; index < previousLength; index++) {
-        spend(budget);
         delete target[index];
     }
     for (let index = shared; index < nextLength; index++) {
         if (!Object.prototype.hasOwnProperty.call(next, index)) continue;
-        spend(budget);
         assign(target, String(index), deepClone(next[index]));
     }
 };
@@ -161,7 +151,6 @@ const applyBranch = (
     if (Array.isArray(previous) && nextLength !== previousLength) {
         // A sparse-tail growth adds no own index for the key loops below; a shrink must truncate,
         // not `delete` per index. The write proxy's `length` handling records either.
-        spend(budget);
         (target as unknown as {length: number}).length = nextLength;
     }
 
@@ -179,7 +168,6 @@ const applyBranch = (
         seen.add(key);
 
         if (!Object.prototype.hasOwnProperty.call(next, key)) {
-            spend(budget);
             delete target[key];
 
             continue;
@@ -193,7 +181,6 @@ const applyBranch = (
             continue;
         }
 
-        spend(budget);
         assign(target, key, deepClone(next[key]));
     }
 };
@@ -246,18 +233,9 @@ export const applyDiff = (
     if (scanBudget.changes > DIFF_PATH_THRESHOLD
         && shouldCollapseDiff(scanBudget.changes, countLeaves(previous))) return false;
 
-    // No fixed mid-apply cutoff: preflight above decides eligibility atomically. Bound writes by
-    // the relative limit so the draft walk cannot partially mutate and then overflow.
-    const budget: IBudget = {spent: 0, unchanged: scanBudget.unchanged};
-    try {
-        applyBranch(target, previous, next, budget);
-    } catch (error) {
-        if (error === APPLY_DIFF_OVERFLOW) {
-            return false;
-        }
-
-        throw error;
-    }
+    // No mid-apply cutoff: the preflight above decided eligibility atomically, so the draft walk
+    // either does not start or runs to the end.
+    applyBranch(target, previous, next, {unchanged: scanBudget.unchanged});
 
     return true;
 };

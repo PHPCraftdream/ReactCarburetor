@@ -1,20 +1,38 @@
 import {CarburetorScope} from './CarburetorScope';
 import {ICarburetorToken} from '../../Models/Tooling';
 
-/** Creates a child scope while preserving the parent's normal get() behavior.
- *
- * @param parent - owning scope used for delegated token resolution
- * @param localTokens - tokens instantiated and owned by this child
+type TChildScopeClass = new (
+    parent: CarburetorScope, localTokens: readonly ICarburetorToken<unknown>[]
+) => CarburetorScope;
+
+/** The one child scope class, defined on first use; see `defineChildScope`. */
+let childScopeClass: TChildScopeClass | undefined;
+
+/**
+ * Defines the child scope class. Inside a function, not at module level: `CarburetorScope`'s own
+ * module imports this one, so the base class may not exist yet while this module is evaluated.
+ * It runs once; every child scope is an instance of the same class, so call sites that resolve
+ * tokens through many children keep seeing one shape.
  */
-export function createChildScope(parent: CarburetorScope,
-    localTokens: readonly ICarburetorToken<unknown>[]): CarburetorScope {
+const defineChildScope = (): TChildScopeClass => {
     class ChildScope extends CarburetorScope {
-        /** The scope that resolves every token this child does not own. */
-        protected scopeParent: CarburetorScope = parent;
         /** Ids of the tokens this child creates and owns. */
-        protected readonly localIds = new Set(localTokens.map(token => token.id));
+        protected readonly localIds: Set<string>;
         /** Instances resolved through the parent, cached per token id. */
         protected readonly delegated = new Map<string, unknown>();
+
+        /** Binds the child to the scope that resolves every token it does not own.
+         *
+         * @param parent - owning scope used for delegated token resolution
+         * @param localTokens - tokens instantiated and owned by this child
+         */
+        public constructor(parent: CarburetorScope, localTokens: readonly ICarburetorToken<unknown>[]) {
+            super();
+            this.scopeParent = parent;
+            this.localIds = new Set<string>();
+            for (const token of localTokens) this.localIds.add(token.id);
+        }
+
         /** Resolve a local token or delegate to the parent.
          *
          * @param token - token to resolve
@@ -26,7 +44,7 @@ export function createChildScope(parent: CarburetorScope,
                 return value;
             }
             if (this.delegated.has(token.id)) return this.delegated.get(token.id) as T;
-            const value = this.scopeParent.get(token);
+            const value = (this.scopeParent as CarburetorScope).get(token);
             if (this.disposed) throw new Error('CarburetorScope: scope is disposed');
             this.delegated.set(token.id, value);
             return value;
@@ -60,5 +78,15 @@ export function createChildScope(parent: CarburetorScope,
         }
     }
 
-    return new ChildScope();
+    return ChildScope;
+};
+
+/** Creates a child scope while preserving the parent's normal get() behavior.
+ *
+ * @param parent - owning scope used for delegated token resolution
+ * @param localTokens - tokens instantiated and owned by this child
+ */
+export function createChildScope(parent: CarburetorScope,
+    localTokens: readonly ICarburetorToken<unknown>[]): CarburetorScope {
+    return new (childScopeClass ??= defineChildScope())(parent, localTokens);
 }

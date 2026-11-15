@@ -68,6 +68,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         this[R.memory] = createAnswerMemory<T>(
             options.ttl === undefined ? DEFAULT_TTL : options.ttl,
             options.maxEntries === undefined ? DEFAULT_MAX_ENTRIES : options.maxEntries,
+            () => storeLifecycle.now(this),
         );
         this[R.keyOption] = options.key;
         // Handles are bound so an event handler may adopt them directly (D2); bodies stay on the
@@ -520,7 +521,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         if (!this[R.isCurrent](request)) return;
         const runtime = this[R.ensureRuntime]();
         runtime.request = undefined;
-        const now = Date.now();
+        const now = storeLifecycle.now(this);
         const previous = this.data;
         const next = prepareSlotPublication(
             previous, {status: EResourceStatus.Success, data, error: undefined, updatedAt: now},
@@ -571,7 +572,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
         runtime.request = undefined;
         const previous = this.data;
         const next = prepareSlotPublication(previous,
-            {status: EResourceStatus.Error, data: previous.data, error: message, updatedAt: Date.now()});
+            {status: EResourceStatus.Error, data: previous.data, error: message, updatedAt: storeLifecycle.now(this)});
         runtime.answer = {key: request.key, owner: next ?? previous, failure: {value: error, message}};
         // A failed answer for this key must not be served from memory again (D4).
         this[R.memory].forget(request.key);
@@ -588,7 +589,7 @@ export class ResourceCarburetor<T, TArgs extends TResourceArgs = []> extends Car
                 const draft = this.draft;
                 applyResourceStatus(draft, EResourceStatus.Error);
                 draft.error = message;
-                draft.updatedAt = Date.now();
+                draft.updatedAt = storeLifecycle.now(this);
             } finally {
                 this.emitUpdate();
             }

@@ -1,3 +1,6 @@
+/** Wall time, looked up at every call so a replaced `Date.now` is seen. */
+const wallClock = (): number => Date.now();
+
 /** A remembered earlier answer; runtime-only, never part of state, snapshot or history (D1). */
 interface IMemoryAnswer<T> {
     data: T;
@@ -11,15 +14,18 @@ interface IMemoryAnswer<T> {
  *
  * @param ttl - the freshness window; `Infinity`, answers never go stale
  * @param maxEntries - the entry budget; `Infinity`, unbounded
+ * @param now - the time source; read at every use, so replacing `Date.now` afterwards is seen
  */
-export const createAnswerMemory = <T>(ttl: number | undefined, maxEntries: number | undefined) => {
+export const createAnswerMemory = <T>(
+    ttl: number | undefined, maxEntries: number | undefined, now: () => number = wallClock
+) => {
     const memory = new Map<string, IMemoryAnswer<T>>();
     return {
         /** Whether an answer at `updatedAt` is still usable without a new request. */
         isFresh(updatedAt: number | undefined): boolean {
             if (ttl === undefined) return true;
             if (updatedAt === undefined) return false;
-            return Date.now() - updatedAt < ttl;
+            return now() - updatedAt < ttl;
         },
         /** The answer for `key` while it is fresh, moved to most-recent. */
         fresh(key: string): IMemoryAnswer<T> | undefined {

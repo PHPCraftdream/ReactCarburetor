@@ -16,6 +16,7 @@ import {prepareCacheRequest} from "./State/prepareCacheRequest";
 import {ICacheRequest, ICacheRuntime} from "./State/Runtime/Models";
 import {ResourceCacheState} from "./State/Runtime/ResourceCacheState";
 import {trimCacheRuntime} from "./State/Runtime/Registry";
+import {writableEntry} from "./State/Mutation/writableEntry";
 import {applyResourceStatus} from "../Status/applyResourceStatus";
 
 const noop = (): void => undefined;
@@ -181,10 +182,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
                         } else if (!prepared && this.data === prior && entry &&
                             this.data.entries[key] === entry) {
                             try {
-                                const draft = this.draft;
-                                const root = this.data;
-                                const target = draft.entries[key];
-                                const current = () => root.entries[key] === entry ? target : draft.entries[key];
+                                const current = writableEntry(this.data, this.draft, key, entry);
                                 applyResourceStatus(current(), priorStatus as EResourceStatus);
                                 current().error = priorError;
                                 current().refreshing = priorRefreshing as boolean;
@@ -261,9 +259,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
             draft.entries[key] = next;
             this[R.eviction].create();
         } else if (entry.status !== EResourceStatus.Success) {
-            const root = this.data;
-            const target = draft.entries[key];
-            const current = () => root.entries[key] === entry ? target : draft.entries[key];
+            const current = writableEntry(this.data, draft, key, entry);
             applyResourceStatus(current(), EResourceStatus.Pending);
             current().error = undefined;
         } else {
@@ -307,14 +303,11 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
         runtime.answer = undefined;
         if (this[R.isRetentionFree](key)) this[R.eviction].release();
         try {
-            const draft = this.draft;
-            const root = this.data;
-            const target = draft.entries[key];
-            const current = () => root.entries[key] === entry ? target : draft.entries[key];
+            const current = writableEntry(this.data, this.draft, key, entry);
             applyResourceStatus(current(), EResourceStatus.Success);
             current().data = data;
             current().error = undefined;
-            current().updatedAt = Date.now();
+            current().updatedAt = storeLifecycle.now(this);
             current().refreshing = false;
             current().invalidated = invalidated;
             current().failed = false;
@@ -364,10 +357,7 @@ export abstract class ResourceCacheLifecycle<T, TArgs extends TResourceArgs> ext
         runtime.answer = {key, entry, failure: {value: error, message, status}};
         const invalidated = request.invalidationEpoch !== runtime.invalidationEpoch;
         try {
-            const draft = this.draft;
-            const root = this.data;
-            const target = draft.entries[key];
-            const current = () => root.entries[key] === entry ? target : draft.entries[key];
+            const current = writableEntry(this.data, this.draft, key, entry);
             current().error = message;
             current().refreshing = false;
             current().failed = !invalidated;

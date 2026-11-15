@@ -71,4 +71,29 @@ describe('child scope ownership', () => {
         child.get(token);
         expect(calls).toBe(1);
     });
+
+    test('every child scope is an instance of one class, each with its own parent and local tokens', () => {
+        const first = carburetorToken(() => ({name: 'first'}), 'cr2/shape-first');
+        const second = carburetorToken(() => ({name: 'second'}), 'cr2/shape-second');
+        const shared = carburetorToken(() => ({name: 'shared'}), 'cr2/shape-shared');
+        const parentA = new CarburetorScope();
+        const parentB = new CarburetorScope();
+        const childA = parentA.child([first]);
+        const childB = parentB.child([second]);
+
+        expect(Object.getPrototypeOf(childA)).toBe(Object.getPrototypeOf(childB));
+        expect(childA).toBeInstanceOf(CarburetorScope);
+        expect(Object.getPrototypeOf(childA)).not.toBe(CarburetorScope.prototype);
+
+        // Local tokens stay local to their own child; everything else resolves through its own parent.
+        expect(childA.get(first)).not.toBe(parentA.get(first));
+        expect(childB.get(first)).toBe(parentB.get(first));
+        expect(childA.get(shared)).toBe(parentA.get(shared));
+        expect(childB.get(shared)).toBe(parentB.get(shared));
+        expect(childA.get(shared)).not.toBe(childB.get(shared));
+
+        childA.dispose();
+        expect(() => childA.get(first)).toThrow('CarburetorScope: scope is disposed');
+        expect(childB.get(second).name).toBe('second');
+    });
 });

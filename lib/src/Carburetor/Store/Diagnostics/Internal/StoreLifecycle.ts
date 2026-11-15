@@ -1,4 +1,4 @@
-import {ITestClock} from '../../../../Testing/ITestClock';
+import type {ITestClock} from '../../../../Testing/ITestClock';
 /** A pending owned timer, re-homable between global and clock timelines. */
 interface TimerEntry {
     task: () => void;
@@ -16,7 +16,11 @@ class StoreLifecycle {
         controller?: AbortController;
         timers?: Set<TimerEntry>;
         clock?: ITestClock;
+        /** Wall time minus the clock's time when it was attached: maps the clock onto `Date.now()`'s scale. */
+        origin?: number;
     }>();
+    /** How many stores ever got a clock; while zero, `now` skips the lookup. */
+    private clockedStores = 0;
     /** The error every use after disposal throws. */
     private readonly disposedError = (): Error => new Error('Carburetor: store has been disposed');
     /** Attach a test clock to a real Carburetor store at scope handout.
@@ -33,12 +37,29 @@ class StoreLifecycle {
         if (!clock) return;
         const state = this.states.get(store);
         if (state?.clock === clock) return;
+        // Continuous across the attach: what `now` answers right now stays what it answers next.
+        const origin = this.now(store) - clock.now();
+        if (state?.clock === undefined) this.clockedStores++;
         if (!state) {
-            this.states.set(store, {disposed: false, clock});
+            this.states.set(store, {disposed: false, clock, origin});
             return;
         }
         state.clock = clock;
+        state.origin = origin;
         state.timers?.forEach((entry) => this.moveEntry(state!, entry, clock));
+    }
+
+    /** The store's current time in milliseconds on the scale of `Date.now()`.
+     *
+     * Wall time, until a test clock is attached; from then on the clock's own time, offset so that it
+     * continues from the wall time at the attach. Entries stamped before the attach stay comparable.
+     *
+     * @param store - store whose time is read
+     */
+    public now(store: object): number {
+        if (this.clockedStores === 0) return Date.now();
+        const state = this.states.get(store);
+        return state?.clock === undefined ? Date.now() : (state.origin as number) + state.clock.now();
     }
 
     /** Cancel the current handle of an entry. */
