@@ -37,6 +37,7 @@ import {TCompletedReads} from "../../Store/Tracking/Observation/Models";
 import {getSelectionAttemptIdentity} from "../Models/getSelectionAttemptIdentity";
 import {AttemptEntry} from "../Models/AttemptEntry";
 import {CoveredReads} from "../Models/CoveredReads";
+import {holdsResource} from "../Models/holdsResource";
 import {AntiHookComponentFoundation} from "./Foundation";
 
 export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookComponentFoundation<P, S> {
@@ -403,14 +404,13 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                         && this[C.renderAttempt] === undefined && this[C.pendingAttempt] === attempt
                         && this[C.committedAttempt] === attempt;
                     const slot = this[C.tracked]?.get(source);
-                    if (!ownsAttempt() || slot?.installed?.carburetor !== source
-                        || slot.committed?.carburetor !== source
-                        || !slot.committed.resourcePaths?.has(path)) return;
+                    if (!ownsAttempt() || slot === undefined || !holdsResource(slot, source, path)) return;
+                    // The slot this load started from is still the one filed for the entry.
+                    const stillFiled = (): boolean => this[C.tracked]?.get(source) === slot
+                        && holdsResource(slot, source, path);
                     const current = source.resolve(...args);
                     if (current.path !== path || !resourceReader.worthFetching(current.view)
-                        || !ownsAttempt() || this[C.tracked]?.get(source) !== slot
-                        || slot.installed?.carburetor !== source
-                        || !slot.committed?.resourcePaths?.has(path)) return;
+                        || !ownsAttempt() || !stillFiled()) return;
                     // Preserve custom-source rejection visibility without allocating terminal metadata.
                     if (fieldView === undefined) {
                         void source.load(...args);
@@ -423,14 +423,9 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                     const finish = (superseded: boolean): void => {
                         if (slot.resourceLoads !== loads || loads.get(path) !== loading) return;
                         loads.delete(path);
-                        if (this[C.tracked]?.get(source) !== slot || slot.installed?.carburetor !== source
-                            || slot.committed?.carburetor !== source
-                            || !slot.committed.resourcePaths?.has(path)) return;
+                        if (!stillFiled()) return;
                         const settled = source.resolve(...args);
-                        if (this[C.tracked]?.get(source) !== slot || slot.resourceLoads !== loads
-                            || loads.has(path) || slot.installed?.carburetor !== source
-                            || slot.committed?.carburetor !== source
-                            || !slot.committed.resourcePaths?.has(path)
+                        if (!stillFiled() || slot.resourceLoads !== loads || loads.has(path)
                             || settled.path !== path || (superseded
                             && (settled.view.status === EResourceStatus.Pending || settled.view.refreshing))) return;
                         if (resourceReader.rearm(settled.view)
@@ -456,15 +451,12 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                     // queue has run. Terminal ownership above precedes any adoption failure.
                     return (): void => {
                         const committed = slot.committed;
-                        if (!ownsAttempt() || this[C.tracked]?.get(source) !== slot
-                            || slot.installed?.carburetor !== source || committed?.carburetor !== source
-                            || !committed.resourcePaths?.has(path)
+                        if (!ownsAttempt() || !stillFiled() || committed === undefined
+                            || slot.installed === undefined
                             || slot.resourceLoads !== loads || loads.get(path) !== loading) return;
                         const adopted = source.resolve(...args);
-                        if (adopted.path !== path || !ownsAttempt()
-                            || this[C.tracked]?.get(source) !== slot
-                            || slot.committed !== committed || slot.installed?.carburetor !== source
-                            || !committed.resourcePaths?.has(path)
+                        if (adopted.path !== path || !ownsAttempt() || !stillFiled()
+                            || slot.committed !== committed
                             || slot.resourceLoads !== loads || loads.get(path) !== loading) return;
                         // Copy, then close and transfer: never extend a filed closed set.
                         const reads = new Set(committed.reads);
@@ -487,9 +479,8 @@ export abstract class AntiHookComponentReads<P = {}, S = {}> extends AntiHookCom
                         // Filing its Idle status cannot recover the notification already missed;
                         // its ordinary promise still waits for the retired loader's answer.
                         const demand = source.resolve(...args);
-                        if (!ownsAttempt() || this[C.tracked]?.get(source) !== slot
-                            || slot.committed !== committed || slot.installed?.carburetor !== source
-                            || !committed.resourcePaths?.has(path) || demand.path !== path
+                        if (!ownsAttempt() || !stillFiled() || slot.committed !== committed
+                            || demand.path !== path
                             || slot.resourceLoads !== loads || loads.get(path) !== loading) return;
                         if (publishedLoading && demand.view.status !== EResourceStatus.Pending
                             && !demand.view.refreshing && resourceReader.worthFetching(demand.view)) {
