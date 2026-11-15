@@ -136,6 +136,7 @@ export class UpdateBatch {
             // each pass is isolated and the failures are reported once the drain ends.
             const failures: unknown[] = [];
             let rounds = 0;
+            let overflowed = false;
 
             // Settlement may itself write stores. Close each wave, then deliver those
             // writes in another wave before allowing queued events to drain.
@@ -144,6 +145,7 @@ export class UpdateBatch {
                     if (++rounds > MAX_FLUSH_ROUNDS) {
                         this.pending.clear();
                         reportFlushOverflow();
+                        overflowed = true;
 
                         break;
                     }
@@ -160,6 +162,13 @@ export class UpdateBatch {
                 if (waveActive) {
                     waveActive = false;
                     updateWave.end();
+                }
+                // Closing the wave can run a settlement that writes again. After an overflow that
+                // write is dropped with the rest, not delivered and not reported a second time.
+                if (overflowed) {
+                    this.pending.clear();
+
+                    break;
                 }
                 if (this.pending.size === 0) break;
                 updateWave.begin();

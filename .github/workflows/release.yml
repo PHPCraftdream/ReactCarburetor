@@ -170,8 +170,9 @@ jobs:
           printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$RUNNER_TEMP/npmrc"
           echo "NPM_CONFIG_USERCONFIG=$RUNNER_TEMP/npmrc" >> "$GITHUB_ENV"
 
-      # The library is published as the very tarball the verified CI run packed and installed in the
-      # consumer matrix and the Node floor jobs, not rebuilt here. Its commit is the one prepare checked.
+      # The library is published as the very tarball the verified CI run packed, which its Node floor
+      # jobs installed and ran (the consumer matrix packs the same commit on its own), not rebuilt here.
+      # Its commit is the one prepare checked.
       - name: Download the packages built by CI
         env:
           GH_TOKEN: ${{ github.token }}

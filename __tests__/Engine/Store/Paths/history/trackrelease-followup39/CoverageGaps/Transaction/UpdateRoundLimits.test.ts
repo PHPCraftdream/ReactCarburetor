@@ -1,5 +1,6 @@
 import {diagnostics} from '@/Carburetor';
 import {UpdateWave} from '@/Carburetor/Store/Scheduling/UpdateWave';
+import {updateWave} from '@/Carburetor/Store/Scheduling/UpdateWaveInstance';
 import {UpdateBatch} from '@/Carburetor/Store/Transaction/UpdateBatch';
 import {CARBURETOR_NOTIFY_WRITES} from '@/Carburetor/Store/Utils/Models';
 
@@ -42,6 +43,34 @@ describe('delivery round limits', () => {
         expect(handled).toHaveLength(1);
         expect(handled[0][1]).toBe('transaction');
         expect((handled[0][0] as Error).message).toMatch(/exceeded 1000 delivery rounds/);
+    });
+
+    test('an overflow is reported once even when closing the wave writes again', () => {
+        const batch = new UpdateBatch();
+        let late = 0;
+        const afterwards = {[CARBURETOR_NOTIFY_WRITES]: (): void => { late++; }};
+        const settle = (): void => { batch.add(afterwards as never, new Set(['a'])); };
+        let deferred = false;
+        const loop = {
+            [CARBURETOR_NOTIFY_WRITES]: (): void => {
+                if (!deferred) {
+                    deferred = true;
+                    updateWave.defer('late-write', settle);
+                }
+                batch.add(loop as never, new Set(['a']));
+            },
+        };
+
+        const handled = record(() => {
+            batch.begin();
+            batch.add(loop as never, new Set(['a']));
+            batch.end();
+        });
+
+        expect(handled).toHaveLength(1);
+        expect(handled[0][1]).toBe('transaction');
+        expect(late).toBe(0);
+        expect(batch.isActive()).toBe(false);
     });
 
     test('after an overflow the batch delivers a later transaction normally', () => {
