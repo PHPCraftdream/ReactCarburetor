@@ -1,4 +1,5 @@
 import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} from '../support';
+import {diagnostics} from '@/Carburetor';
 
     describe('throwing teardowns (R2-09)', () => {
         test('a throwing effect cleanup still unmounts the rest and releases the subscription', () => {
@@ -370,3 +371,37 @@ import {getCounterData, CounterCarburetor, React, render, AntiHookComponent} fro
                 message.includes('cleanup a failed') && message.includes('unmount')).length).toEqual(1);
         });
     });
+
+describe('the failure handler sees a throwing teardown', () => {
+    test('a cleanup that throws on unmount reaches the handler as thrown, in every build', () => {
+        const store = new CounterCarburetor(getCounterData());
+        const boom = new Error('cleanup failed');
+        const handled: Array<[unknown, string]> = [];
+
+        class Cleanup extends AntiHookComponent {
+            protected useEffects(): void {
+                this.useEffect('a', () => () => { throw boom; }, []);
+            }
+
+            render() {
+                this.useCarburetor(store);
+
+                return <div/>;
+            }
+        }
+
+        diagnostics.setFailureHandler((error, source) => { handled.push([error, source]); });
+        diagnostics.setEnabled(false);
+
+        try {
+            render(<Cleanup />).unmount();
+        } finally {
+            diagnostics.setEnabled(true);
+            diagnostics.setFailureHandler(undefined);
+        }
+
+        expect(handled).toEqual([[boom, 'teardown']]);
+        expect(handled[0][0]).toBe(boom);
+        expect(store.subscriberCount()).toEqual(0);
+    });
+});

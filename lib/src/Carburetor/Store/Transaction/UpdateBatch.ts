@@ -7,12 +7,28 @@ import {diagnostics} from "../Diagnostics/DiagnosticsInstance";
 declare const process: {env: {NODE_ENV?: string}};
 
 const reportBatchFailure = (error: unknown): void => {
+    diagnostics.reportFailure(error, 'transaction');
     if (process.env.NODE_ENV !== 'production') {
         diagnostics.report(
             'a carburetor threw while a transaction was being delivered: ' +
             (error instanceof Error ? error.message : String(error)) +
             '. The other carburetors in the batch were notified anyway.'
         );
+    }
+};
+
+/** Delivery rounds one flush tolerates before it declares an infinite write cascade. */
+const MAX_FLUSH_ROUNDS = 1000;
+
+/** Reports a cascade that never stopped writing stores; the writes still pending were dropped. */
+const reportFlushOverflow = (): void => {
+    const error = new Error(
+        'UpdateBatch: exceeded ' + MAX_FLUSH_ROUNDS + ' delivery rounds. Notified carburetors keep ' +
+        'writing carburetors in turn — this is an infinite update loop; the remaining writes were not delivered.'
+    );
+    diagnostics.reportFailure(error, 'transaction');
+    if (process.env.NODE_ENV !== 'production') {
+        diagnostics.report(error.message);
     }
 };
 
@@ -119,11 +135,18 @@ export class UpdateBatch {
             // write: one failing to deliver must not abandon the others still queued, so
             // each pass is isolated and the failures are reported once the drain ends.
             const failures: unknown[] = [];
+            let rounds = 0;
 
             // Settlement may itself write stores. Close each wave, then deliver those
             // writes in another wave before allowing queued events to drain.
             while (true) {
                 while (this.pending.size > 0) {
+                    if (++rounds > MAX_FLUSH_ROUNDS) {
+                        this.pending.clear();
+                        reportFlushOverflow();
+
+                        break;
+                    }
                     const batch = Array.from(this.pending.entries());
                     this.pending.clear();
                     batch.forEach(([target, writes]: [IInternalSubscriptionProtocol, TPathSet]) => {

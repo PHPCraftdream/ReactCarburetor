@@ -20,6 +20,46 @@ export class Diagnostics {
     protected enabled: boolean = IS_DEVELOPMENT;
     /** Minimum committed read-path count that triggers a wide-read warning. */
     private wideReadThreshold = Infinity;
+    /** Receives every isolated failure, in every build; absent unless the application set one. */
+    private failureHandler: ((error: unknown, source: string) => void) | undefined = undefined;
+
+    /**
+     * Sets the handler that receives every failure the engine isolates instead of throwing.
+     *
+     * Those are a subscriber, event listener, transaction delivery, deferred computation, throttled
+     * updater, computed subscriber or effect teardown that threw. The rest of the delivery still
+     * runs, so without a handler such an error is reported only in development, as text.
+     *
+     * Unlike the development report, the handler is called in production builds too and gets the
+     * original error with its stack, so it is the place to forward them to monitoring. A handler
+     * that throws is ignored: it cannot break the delivery it observes. One handler is kept; setting
+     * another replaces it, and `undefined` removes it.
+     *
+     * @param handler - called with the thrown value and where it was isolated (`delivery`,
+     * `transaction`, `settlement`, `update`, `computed` or `teardown`); `undefined` removes it.
+     */
+    public setFailureHandler(handler: ((error: unknown, source: string) => void) | undefined): void {
+        if (handler !== undefined && typeof handler !== 'function') {
+            throw new TypeError('Expected a function or undefined');
+        }
+        this.failureHandler = handler;
+    }
+
+    /**
+     * Hands one isolated failure to the handler, if any; never throws.
+     *
+     * @param error - the thrown value, as it was thrown.
+     * @param source - where it was isolated; see `setFailureHandler`.
+     */
+    public reportFailure(error: unknown, source: string): void {
+        const handler = this.failureHandler;
+        if (handler === undefined) return;
+        try {
+            handler(error, source);
+        } catch {
+            // The handler observes a delivery; its own failure must not end it.
+        }
+    }
 
     /** Whether complaints are currently reported. */
     public isEnabled(): boolean { return this.enabled; }

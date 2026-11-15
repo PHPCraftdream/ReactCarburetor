@@ -286,6 +286,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         }
 
         const failures: string[] = [];
+        const errors: unknown[] = [];
 
         // Each stage is inlined rather than run through a shared helper taking a callback: a
         // fresh arrow per stage per unmount is exactly the kind of per-call allocation R16-09
@@ -294,6 +295,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         try {
             this.unUseEffects(this.props);
         } catch (error: unknown) {
+            errors.push(error);
             failures.push('the component-wide unUseEffects callback threw while a component ' +
                 'unmounted: ' + describeUnmountFailure(error) + '. The teardown completed anyway.');
         }
@@ -301,6 +303,7 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         try {
             this[C.releaseEffects]();
         } catch (error: unknown) {
+            errors.push(error);
             failures.push('an effect cleanup threw while a component unmounted: ' +
                 describeUnmountFailure(error) + '. The teardown completed anyway.');
         }
@@ -308,12 +311,13 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
         try {
             this[C.releaseSubscriptions]();
         } catch (error: unknown) {
+            errors.push(error);
             failures.push('releasing subscriptions threw while a component unmounted: ' +
                 describeUnmountFailure(error) + '. The teardown completed anyway.');
         }
 
         for (let i = 0; i < failures.length; i++) {
-            this[C.reportTeardownFailure](failures[i]);
+            this[C.reportTeardownFailure](failures[i], errors[i]);
         }
     }
 
@@ -413,5 +417,5 @@ export abstract class AntiHookComponentFoundation<P = {}, S = {}> extends React.
     public abstract [C.onCarburetorUpdate](): void;
     public abstract [C.commitSubscriptions](): void;
     public abstract [C.releaseSubscriptions](): void;
-    public abstract [C.reportTeardownFailure](failure: string): void;
+    public abstract [C.reportTeardownFailure](failure: string, error?: unknown): void;
 }

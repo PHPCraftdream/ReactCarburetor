@@ -5,12 +5,28 @@ declare const process: {env: {NODE_ENV?: string}};
 
 /** Reports one deferred settlement failure outside production builds. */
 const reportSettlementFailure = (error: unknown): void => {
+    diagnostics.reportFailure(error, 'settlement');
     if (process.env.NODE_ENV !== 'production') {
         diagnostics.report(
             'a computation threw while a wave was drained: ' +
             (error instanceof Error ? error.message : String(error)) +
             '. The remaining deferred computations were settled anyway.'
         );
+    }
+};
+
+/** Drain rounds one wave tolerates before it declares an infinite cascade. */
+const MAX_DRAIN_ROUNDS = 1000;
+
+/** Reports a cascade that never stopped producing deferred work; the rest of it was dropped. */
+const reportDrainOverflow = (): void => {
+    const error = new Error(
+        'UpdateWave: exceeded ' + MAX_DRAIN_ROUNDS + ' drain rounds. A deferred computation keeps ' +
+        'invalidating another — this is an infinite cascade; the remaining settlements were dropped.'
+    );
+    diagnostics.reportFailure(error, 'settlement');
+    if (process.env.NODE_ENV !== 'production') {
+        diagnostics.report(error.message);
     }
 };
 
@@ -67,8 +83,16 @@ export class UpdateWave {
             // Allocated only once something actually throws — the overwhelming majority of
             // drains never do (mirrors Carburetor.notifyWrites' own failures array).
             let failures: unknown[] | undefined;
+            let rounds = 0;
 
             while (this.pending.size > 0) {
+                if (++rounds > MAX_DRAIN_ROUNDS) {
+                    this.pending.clear();
+                    reportDrainOverflow();
+
+                    break;
+                }
+
                 const batch = this.pending;
                 this.pending = this.spare;
                 this.spare = batch;

@@ -8,6 +8,7 @@ declare const process: {env: {NODE_ENV?: string}};
 const clearEnclosingBatch = (batch: Map<string, TUpdater>): void => batch.clear();
 
 const reportFlushFailure = (error: unknown): void => {
+    diagnostics.reportFailure(error, 'update');
     if (process.env.NODE_ENV !== 'production') {
         diagnostics.report(
             'an updater threw while the throttle flushed: ' +

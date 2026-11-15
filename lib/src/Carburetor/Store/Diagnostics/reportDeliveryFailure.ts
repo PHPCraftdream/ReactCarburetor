@@ -7,6 +7,7 @@ declare const process: {env: {NODE_ENV?: string}};
  * @param error - the thrown value.
  */
 export const reportDeliveryFailure = (error: unknown): void => {
+    diagnostics.reportFailure(error, 'delivery');
     if (process.env.NODE_ENV !== 'production') {
         diagnostics.report(
             'a subscriber threw while a write was delivered: '

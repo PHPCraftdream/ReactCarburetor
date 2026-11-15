@@ -38,8 +38,11 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
      * build reports nothing.
      *
      * @param failure - the message to report, already naming what ran and what it cost
+     * @param error - the thrown value behind the message, handed to the failure handler as it was
+     * thrown; absent for a report that names no thrown value
      */
-    public [C.reportTeardownFailure](failure: string): void {
+    public [C.reportTeardownFailure](failure: string, error?: unknown): void {
+        diagnostics.reportFailure(error === undefined ? new Error(failure) : error, 'teardown');
         if (process.env.NODE_ENV !== 'production') {
             diagnostics.report(failure);
         }
@@ -209,7 +212,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
         } finally {
             failures.forEach((error: unknown) => this[C.reportTeardownFailure](
                 'an effect cleanup threw while an effect was replaced: ' +
-                describeFailure(error) + '. The new effect ran anyway.'
+                describeFailure(error) + '. The new effect ran anyway.', error
             ));
         }
     }
@@ -297,7 +300,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
         // One report per teardown, covering both string-keyed and function-keyed cleanups.
         failures.forEach((error: unknown) => this[C.reportTeardownFailure](
             'an effect cleanup threw while a component unmounted: ' +
-            describeFailure(error) + '. The teardown completed anyway.'
+            describeFailure(error) + '. The teardown completed anyway.', error
         ));
     }
 }
