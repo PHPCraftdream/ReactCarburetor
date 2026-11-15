@@ -241,6 +241,14 @@ jobs:
             npm publish "$(ls artifacts/${name##*/}/*.tgz)" "${flags[@]}"
           done
 
+      # When the registry refuses the OIDC exchange, npm swallows the reason and the publish ends
+      # with a bare "need auth". Its debug log keeps the reason; only the lines that name it are shown.
+      - name: Why the trusted exchange failed
+        if: ${{ failure() && inputs.auth == 'trusted' }}
+        run: |
+          logs="$(npm config get cache)/_logs"
+          grep -h -i -E 'oidc|ENEEDAUTH|E40[0-9]' "$logs"/*.log || echo "no oidc lines in the npm debug log"
+
   # What was published must install and run from the registry on every supported platform.
   verify:
     name: Verify the published packages
