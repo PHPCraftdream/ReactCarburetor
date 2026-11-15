@@ -30,6 +30,7 @@
   },
   "include": [
     "lib/src/Carburetor/**/*",
+    "lib/src/Engine/**/*",
     "lib/src/Interop/**/*",
     "lib/src/Testing/**/*"
   ],

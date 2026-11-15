@@ -14,8 +14,8 @@ const sourceFiles = (directory: string): string => readdirSync(path.join(root, d
 describe('source condition consumer contract', () => {
     test('keeps source targets first for every supported entry', () => {
         const exports = manifest.exports;
-        const targets = {'.': './lib/src/Carburetor/index.ts', './interop': './lib/src/Interop/index.ts',
-            './testing': './lib/src/Testing/index.ts'};
+        const targets = {'.': './lib/src/Carburetor/index.ts', './engine': './lib/src/Engine/index.ts',
+            './interop': './lib/src/Interop/index.ts', './testing': './lib/src/Testing/index.ts'};
         for (const [key, target] of Object.entries(targets)) {
             expect(Object.keys(exports[key])[0]).toBe('carburetor-source');
             expect(exports[key]['carburetor-source']).toBe(target);

@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 const writeStamp = () => writeBuildInfo(root);
 
 const entry = {
-    index: ['./lib/src/Carburetor/**', './lib/src/Interop/**', './lib/src/Testing/**'],
+    index: ['./lib/src/Carburetor/**', './lib/src/Engine/**', './lib/src/Interop/**', './lib/src/Testing/**'],
 };
 
 /**

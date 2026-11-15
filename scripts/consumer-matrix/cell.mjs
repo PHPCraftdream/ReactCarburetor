@@ -62,10 +62,11 @@ const TSCONFIG = (format) => ({
 
 const DECLARATIONS = [
     "import * as core from '@react-carburetor/core';",
+    "import * as engine from '@react-carburetor/core/engine';",
     "import * as interop from '@react-carburetor/core/interop';",
     "import * as testing from '@react-carburetor/core/testing';",
     "import * as lint from '@react-carburetor/core/lint';",
-    'export const entries = [core, interop, testing, lint];',
+    'export const entries = [core, engine, interop, testing, lint];',
     '',
 ].join('\n');
 
@@ -83,6 +84,8 @@ const DECLARATIONS_TSCONFIG = (format) => ({
 
 const HARNESS_ESM = `import * as React from 'react';
 import {renderToString} from 'react-dom/server';
+import * as core from '@react-carburetor/core';
+import * as engine from '@react-carburetor/core/engine';
 import {flush, createTestScope} from '@react-carburetor/core/testing';
 import {App, registry, publishReadable} from './out/consumer.js';
 
@@ -101,6 +104,9 @@ const checks = [
     ['readable class refresh', refreshed.includes('readable:9:9:9')],
     ['readable computed freshness', refreshed.includes('hooks:1:2:readable:9:9')],
     ['instanceof this React.Component', registry.instance instanceof React.Component],
+    ['engine entry shares the main entry classes', typeof engine.Carburetor === 'function'
+        && engine.Carburetor === core.Carburetor && engine.computed === core.computed
+        && engine.AntiHookComponent === undefined],
 ];
 const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
 
@@ -114,6 +120,8 @@ console.log('OK');
 
 const HARNESS_CJS = `const React = require('react');
 const {renderToString} = require('react-dom/server');
+const core = require('@react-carburetor/core');
+const engine = require('@react-carburetor/core/engine');
 const {flush, createTestScope} = require('@react-carburetor/core/testing');
 const {App, registry, publishReadable} = require('./out/consumer.js');
 
@@ -132,6 +140,9 @@ const checks = [
     ['readable class refresh', refreshed.includes('readable:9:9:9')],
     ['readable computed freshness', refreshed.includes('hooks:1:2:readable:9:9')],
     ['instanceof this React.Component', registry.instance instanceof React.Component],
+    ['engine entry shares the main entry classes', typeof engine.Carburetor === 'function'
+        && engine.Carburetor === core.Carburetor && engine.computed === core.computed
+        && engine.AntiHookComponent === undefined],
 ];
 const failed = checks.filter(([, ok]) => !ok).map(([name]) => name);
 

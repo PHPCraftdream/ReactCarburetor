@@ -74,6 +74,7 @@ describe('runnable examples cover the public API', () => {
     const covered = exampleIdentifiers(path.join(root, 'examples'));
     const entryPoints: Array<[string, string]> = [
         ['@react-carburetor/core', 'lib/src/Carburetor/index.ts'],
+        ['@react-carburetor/core/engine', 'lib/src/Engine/index.ts'],
         ['@react-carburetor/core/interop', 'lib/src/Interop/index.ts'],
         ['@react-carburetor/core/lint', 'plugin/lint.d.ts'],
     ];

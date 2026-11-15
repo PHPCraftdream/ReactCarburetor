@@ -37,6 +37,10 @@ FLAT_REGISTRIES.add('native/src/rules');
 // `npm` holds one directory per published package: the launcher and one platform package per
 // supported platform, so the count follows the platform list rather than the readability cap.
 FLAT_REGISTRIES.add('npm');
+// `lib/src` holds one directory per package entry point (the library, the React-free engine, the hooks
+// bridge, the testing helpers) next to the three root files of the demo app, so the count follows the
+// entry-point list rather than the readability cap.
+FLAT_REGISTRIES.add('lib/src');
 const MAX_LINES = 600;
 const TYPE_FILES = /^Models\.(ts|mts)$/;
 const BARREL_FILES = /^index\.(ts|tsx|mts)$/;

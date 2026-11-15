@@ -21,6 +21,21 @@
         "default": "./dist/cjs/Carburetor/index.js"
       }
     },
+    "./engine": {
+      "carburetor-source": "./lib/src/Engine/index.ts",
+      "import": {
+        "types": "./dist/esm/Engine/index.d.mts",
+        "production": "./dist/esm-prod/Engine/index.mjs",
+        "development": "./dist/esm/Engine/index.mjs",
+        "default": "./dist/esm/Engine/index.mjs"
+      },
+      "require": {
+        "types": "./dist/cjs/Engine/index.d.ts",
+        "production": "./dist/cjs-prod/Engine/index.js",
+        "development": "./dist/cjs/Engine/index.js",
+        "default": "./dist/cjs/Engine/index.js"
+      }
+    },
     "./interop": {
       "carburetor-source": "./lib/src/Interop/index.ts",
       "import": {
@@ -107,6 +122,9 @@
     "@types/react": "^18.0.0 || ^19.0.0"
   },
   "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
     "@types/react": {
       "optional": true
     }

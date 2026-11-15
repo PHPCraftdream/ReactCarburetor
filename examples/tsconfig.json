@@ -17,6 +17,9 @@
       "@react-carburetor/core": [
         "../lib/src/Carburetor/index.ts"
       ],
+      "@react-carburetor/core/engine": [
+        "../lib/src/Engine/index.ts"
+      ],
       "@react-carburetor/core/interop": [
         "../lib/src/Interop/index.ts"
       ],
