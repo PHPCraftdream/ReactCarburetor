@@ -95,12 +95,9 @@ jobs:
 
       # Run the plugin's own tests on their own first, so a broken bridge or a broken house-style
       # rule is distinguishable from a broken engine at a glance. They run again as part of the
-      # full suite, which costs seconds and is worth the clearer signal.
+      # full suite (the `tests` shards below), which costs seconds and is worth the clearer signal.
       - name: Test lint rules
         run: npm run test:rules
-
-      - name: Test
-        run: npm test
 
       - name: Install hosted Chrome
         id: chrome
@@ -118,6 +115,59 @@ jobs:
           name: browser-smoke
           path: worktrees/ci-results/**/browser*
           if-no-files-found: warn
+
+  # The full suite, in three shards beside Library. rstest sorts every test file by path and hands each
+  # shard one contiguous slice of the same size, so the shards together run each file exactly once.
+  # Every shard needs what the suite runs against: the built dist and the native linter binary.
+  tests:
+    name: Test ${{ matrix.shard }}/3
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      - name: Install
+        run: npm ci
+
+      - name: Native binary cache
+        id: native-bin
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: native/target/release/carburetor-lint
+          key: native-bin-linux-${{ hashFiles('native/src/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+
+      - name: Cargo cache
+        if: steps.native-bin.outputs.cache-hit != 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: cargo-${{ hashFiles('native/Cargo.lock') }}
+
+      - name: Build native linter
+        if: steps.native-bin.outputs.cache-hit != 'true'
+        working-directory: native
+        run: cargo build --release --locked
+
+      - name: Build
+        run: npm run build
+
+      # The suite spawns the type-aware linter; see the Allow full memory overcommit step in Library.
+      - name: Allow full memory overcommit
+        run: sudo sysctl -w vm.overcommit_memory=1
+
+      - name: Test
+        run: npx rstest run --shard ${{ matrix.shard }}/3
 
   # Mechanism counters plus a few generous absolute ceilings (for example relatedWriteMs <= 10): gates,
   # not benchmarks; the A/B timing comparisons live in Performance validation and are informational.
@@ -162,18 +212,22 @@ jobs:
         working-directory: lib
         run: npm run build
 
-  # The React 18 half of the advertised peer range (R5-08): the Library job runs the suite
+  # The React 18 half of the advertised peer range (R5-08): the `tests` shards run the suite
   # on React 19.3 only. This leg swaps React 18.3 into both trees — the root install and the
   # demo app's own copy, whose jsx runtime the lib/src sources resolve, since only exact
-  # `react` imports are aliased — and reruns the suite. The whole suite runs here since R6-07:
+  # `react` imports are aliased — and reruns the suite, in two shards. The whole suite runs here since R6-07:
   # the few AntiHookComponent assertions that observe React's own uncaught-error logging
   # (18 reports the throw and a component stack where 19 logs nothing) and error-replay
   # render counts (18's development replay doubles the retried attempts, 2 → 4) branch on the
   # installed major at runtime, so no file is excluded.
   react-18:
-    name: Library on React 18
+    name: Library on React 18 ${{ matrix.shard }}/2
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
@@ -204,7 +258,7 @@ jobs:
         run: npm run build
 
       - name: Test
-        run: npx rstest run __tests__/Engine __tests__/Demo __tests__/Tooling/examples
+        run: npx rstest run --shard ${{ matrix.shard }}/2 __tests__/Engine __tests__/Demo __tests__/Tooling/examples
 
   # Installs the packed tarball into fresh npm/pnpm consumers on React 18 and 19, ESM and CJS:
   # typecheck, render, instanceof the consumer's own React.Component, duplicate-copy diagnostic.

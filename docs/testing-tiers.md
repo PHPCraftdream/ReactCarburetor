@@ -71,6 +71,14 @@ full run. The `Checks` job also runs the pure-Node gate-contract freeze check
 A `react-18` leg runs when the plan is
 full or when Interop/Component files changed (`react18` output).
 
+A full plan runs the whole suite as three `Test n/3` shards (`rstest run --shard n/3`), and the
+React 18 leg is two shards of its own suite. rstest sorts the test files by path and gives each shard
+one contiguous slice of the same size, so the shards together run every file once; they differ in
+duration, not in coverage. Each shard installs and builds on its own runner (it needs the built dist
+and the native linter binary), so the split buys wall-clock time and costs runner minutes. A
+non-full plan still runs just the affected suites inside `Checks`. `ci.yml` splits the suite the
+same way, beside its `Library` job.
+
 ## Tier 3 — sprint end (full)
 
 `ci.yml` runs the complete suite on schedule, manually via
@@ -107,5 +115,6 @@ so a real failure stays red.
 
 The `Plan` job writes the selection to its job summary (`full`, `docsOnly`, `native`, the rstest paths
 and perf areas, and the reasons). A green `Fast gate` means only that the selected checks passed, so
-look at the summary: a docs-only change legitimately skips `Test` and the performance gates, while
-a change to workflows, scripts or shared engine code must show `full: true` and run the whole suite.
+look at the summary: a docs-only change legitimately skips the `Test` shards and the performance
+gates, while a change to workflows, scripts or shared engine code must show `full: true` and run
+the whole suite.
