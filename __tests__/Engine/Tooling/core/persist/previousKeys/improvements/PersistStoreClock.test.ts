@@ -1,5 +1,5 @@
 import {Carburetor, ComponentUpdateThrottle, IStorageLike, persist, transaction} from '@/Carburetor';
-import {createTestClock} from '@/Testing';
+import {createTestClock, flush} from '@/Testing';
 
 class MemoryStorage implements IStorageLike {
     public entries = new Map<string, string>();
@@ -54,6 +54,22 @@ describe('persist throttle on the store clock', () => {
         expect(clock.pending).toBe(1);
         clock.advance(60_000);
         expect(read(storage, 'v')).toEqual({value: 2});
+        stop();
+    });
+
+    test('the clock does not deliver what a delivery scheduler holds back; flush does', async () => {
+        const clock = createTestClock();
+        const storage = new MemoryStorage();
+        const store = new Carburetor({value: 0}, new ComponentUpdateThrottle(60_000));
+        clock.attach(store);
+        const stop = persist(store, {key: 'v', storage, throttleMs: 100});
+
+        store.setData({value: 1});
+        await tick();
+        clock.advance(60_000);
+        expect(storage.getItem('v')).toBeNull();
+        flush(store);
+        expect(read(storage, 'v')).toEqual({value: 1});
         stop();
     });
 
