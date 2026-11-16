@@ -5,7 +5,7 @@ options argument. `clock.now()` returns simulated time, `clock.advance(ms)` runs
 `clock.pending` reports queued timers, and `clock.runAll()` drains them, with a 10,000-callback guard for
 recurring timers. Constructor-time timers of override stores and any store passed to `clock.attach(store)`
 run on the clock with their full delay counted from the attachment; only stores never attached keep
-global timers.
+global timers. The `persist` `throttleMs` window of such a store runs on the clock too.
 
 <!-- example:file examples/readme/App/StoreTesting.ts#clock-test -->
 ```ts

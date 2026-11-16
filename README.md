@@ -128,7 +128,7 @@ Use the runner's clock APIs (for example, `rstest.useFakeTimers()` and
 fake: stores in a `createTestScope(overrides, {clock})` (or attached with `clock.attach(store)`) run
 `after()` on it, and it also drives the freshness of `ResourceCache` entries and `ResourceCarburetor`
 answers, so a `ttl` expires when the clock advances past it and not when wall time does. The
-`persist` throttle still uses real timers; complete its writes with `flush(store)`.
+`persist` throttle window runs on the same clock; `flush(store)` still forces its write at once.
 
 For work that does not involve clocks, import `flush` and `createTestScope` from
 `@react-carburetor/core/testing`. `flush(target)` delivers recorded notifications synchronously; it does

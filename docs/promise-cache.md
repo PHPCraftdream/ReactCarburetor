@@ -227,8 +227,8 @@ hydration itself does not refetch every entry.
 store is mirrored to any `IStorageLike` (`getItem`/`setItem`/`removeItem`) on every change,
 and the returned disposer stops the mirroring and flushes a state still held back. Two
 options bound its cost. `throttleMs` limits write frequency: the first write is immediate,
-later flushes wait out the window, and the final write is guaranteed — the disposer writes a
-state a throttled flush has not written yet. `partitions` lists top-level branch names stored
+later flushes wait out the window, and the final write is guaranteed — the disposer, or the
+store's own disposal, writes a state a throttled flush has not written yet. `partitions` lists top-level branch names stored
 under their own keys (`key + "." + branch`), so a flush stringifies and rewrites only the
 dirty branches; a legacy whole-store key is still read when no partition entries exist, and
 the first write seals the per-branch baseline once. The legacy key is never removed (an older

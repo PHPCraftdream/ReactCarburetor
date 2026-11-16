@@ -101,7 +101,10 @@ store.add('first');
 stop();
 ```
 
-The returned disposer stops persisting and flushes a pending write. Load and write errors
+The returned disposer stops persisting and flushes a pending write. Disposing the store does
+the same, synchronously, so a child scope that unmounts leaves its last state in storage before
+a remounted instance reads it; the disposer called after that, or a second time, writes nothing.
+To drop the entry instead, call the disposer and then `storage.removeItem(key)`. Load and write errors
 reach `onError`; without it a failed read throws. A malformed entry is removed and reported —
 through the engine diagnostics in development, or the caller's `onError` (in production without
 `onError` the removal is silent). A restore the store rejects is reported too, and the stored
@@ -122,7 +125,8 @@ to a `previousKeys` fallback source, whose transfer write already covers it.
 
 Two options bound the cost of mirroring large stores. `throttleMs` sets the minimum time
 between storage writes: the first write still happens right away, later flushes wait out the
-window, and the disposer writes a state still held back. `partitions` lists top-level branch
+window, and the disposer writes a state still held back. The window runs on the store's
+clock, which a test clock replaces. `partitions` lists top-level branch
 names to store under their own keys (`todos.items` next to `todos.filters`), rewriting only
 the branches that changed — a flush then pays for the dirty partitions instead of the whole
 state. The first write seals every partition once; restore composes the stored branches over

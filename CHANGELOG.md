@@ -46,10 +46,24 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `require-module-function` and `require-subscription-disposal` no longer report code inside a callback handed to a
   test registrar (`describe`, `it`, `test`, the `before*`/`after*` hooks and their `.only`/`.skip`/`.each(...)`
   chains), when that name is a global or an import. Test files no longer need an `overrides` entry for them.
+- The `persist` throttle window runs on the store's clock: a `createTestClock()` attached through
+  `createTestScope(overrides, {clock})` or `clock.attach(store)` advances it, so a test no longer needs
+  `flush(store)` or runner fake timers to see a throttled write. Stores without a test clock keep wall time.
 - README: a "Trade-offs" section answers what users found in the way — how the linter shapes the code and which
   rules to keep, writing lists without functions in render, the bridge's option and test-file behavior, effects
   driven by store data, the `0.x` status and minimum-release-age installs, `no-module-level-store` on client-only
   sites, and where precise subscriptions pay off.
+
+### Fixed
+
+- A `persist` write is no longer lost or late when the store is disposed first. `store.dispose()` (and so
+  `scope.dispose()` and a child scope's unmount) now writes what `persist` still holds — a `throttleMs` window, a
+  coalescing microtask, a notification a deferring scheduler or a transaction had not delivered — synchronously,
+  then ends the mirroring. Before, a notification cancelled by the disposal was not written until the disposer ran,
+  and a throttled write came from a timer that outlived the store and could overwrite what a new instance under the
+  same key had stored.
+- Calling a `persist` disposer a second time writes nothing, as the changelog for `flush` already promised; before,
+  a change made between the two calls was written.
 
 ## [0.2.0] - 2026-11-15
 

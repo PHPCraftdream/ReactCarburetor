@@ -1,6 +1,7 @@
 import {TDisposer} from "../../Models/Base";
 import {ICarburetor} from "../../Models/Store";
 import {IStorageLike, IPersistOptions} from "../../Models/Tooling";
+import {storeLifecycle} from "../../Store/Diagnostics/Internal/StoreLifecycle";
 import {CARBURETOR_PERSIST_DRAIN} from "../../Store/Utils/Models";
 import {discardStored} from "./DiscardStored";
 import {readFallback} from "./ReadFallback";
@@ -134,7 +135,7 @@ export const persistPartitions = <T extends object>(
     let sealed = false;
     const pending: Set<string> = new Set<string>();
     const failed: Set<string> = new Set<string>();
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelTimer: (() => void) | undefined;
     let queued = false;
     let disposed = false;
 
@@ -170,7 +171,7 @@ export const persistPartitions = <T extends object>(
             }
             storage.setItem(branchKey(branch), value);
             lastWritten[branch] = value;
-            lastWriteAt = Date.now();
+            lastWriteAt = storeLifecycle.now(carburetor);
             failed.delete(branch);
         } catch (error: unknown) {
             // The partition stays failed: the next dispatch (or the disposer) retries it.
@@ -202,7 +203,7 @@ export const persistPartitions = <T extends object>(
         batch.forEach(writeBranchDirect);
     };
     const windowRemainder = (): number =>
-        throttleMs === undefined ? 0 : Math.max(0, throttleMs - (Date.now() - lastWriteAt));
+        throttleMs === undefined ? 0 : Math.max(0, throttleMs - (storeLifecycle.now(carburetor) - lastWriteAt));
 
     /** Writes every dirty branch once the throttle window allows it. */
     const dispatch = (forced: boolean = false): void => {
@@ -210,18 +211,14 @@ export const persistPartitions = <T extends object>(
             return;
         }
         const wait = forced ? 0 : windowRemainder();
-        if (wait > 0) {
-            if (timer === undefined) {
-                timer = setTimeout(() => {
-                    timer = undefined;
-                    dispatch();
-                }, wait);
-            }
+        // A disposed store schedules nothing; what it still holds is written now.
+        if (wait > 0 && !storeLifecycle.isDisposed(carburetor)) {
+            cancelTimer ??= storeLifecycle.after(carburetor, wait, onTimer);
             return;
         }
-        if (timer !== undefined) {
-            clearTimeout(timer);
-            timer = undefined;
+        if (cancelTimer !== undefined) {
+            cancelTimer();
+            cancelTimer = undefined;
         }
         const batch = sealed
             ? Array.from(new Set([...pending, ...failed]))
@@ -230,6 +227,11 @@ export const persistPartitions = <T extends object>(
         failed.clear();
         sealed = true;
         batch.forEach(writeBranchDirect);
+    };
+
+    const onTimer = (): void => {
+        cancelTimer = undefined;
+        dispatch();
     };
 
     /** Marks one branch for the next coalesced dispatch.
@@ -241,7 +243,7 @@ export const persistPartitions = <T extends object>(
             return;
         }
         pending.add(branch);
-        if (!queued && timer === undefined) {
+        if (!queued && cancelTimer === undefined) {
             queued = true;
             queueMicrotask(() => {
                 queued = false;
@@ -260,20 +262,29 @@ export const persistPartitions = <T extends object>(
             {reads: new Set([branch])}
         )
     );
-    return () => {
-        disposed = true;
-        drains?.delete(drain);
-        ids.forEach(id => carburetor.unsubscribe(id));
-        if (timer !== undefined) {
-            clearTimeout(timer);
-            timer = undefined;
+    // The disposer and store disposal both end here, once.
+    const close = (): void => {
+        if (disposed) {
+            return;
         }
-        // Undelivered scheduler publications leave the storage behind; reconcile every
+        disposed = true;
+        if (cancelTimer !== undefined) {
+            cancelTimer();
+            cancelTimer = undefined;
+        }
+        // Undelivered or cancelled publications leave the storage behind; reconcile every
         // branch — identical ones skip their write, so this is cheap and exact. Failed
         // partitions are retried here even without new changes.
         if (carburetor.getVersion() !== lastSeenVersion || failed.size > 0) {
             sealed = true;
             partitions.forEach(writeBranchDirect);
         }
+    };
+    const release = storeLifecycle.onDispose(carburetor, close);
+    return () => {
+        release();
+        drains?.delete(drain);
+        ids.forEach(id => carburetor.unsubscribe(id));
+        close();
     };
 };

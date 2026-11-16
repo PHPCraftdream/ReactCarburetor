@@ -1,6 +1,7 @@
 import {TDisposer} from "../Models/Base";
 import {ICarburetor} from "../Models/Store";
 import {IPersistOptions} from "../Models/Tooling";
+import {storeLifecycle} from '../Store/Diagnostics/Internal/StoreLifecycle';
 import {CARBURETOR_PERSIST_DRAIN} from '../Store/Utils/Models';
 import {discardStored} from './Persist/DiscardStored';
 import {mergeSaved} from './Persist/MergeSaved';
@@ -20,7 +21,11 @@ import {reportRestoreFailure} from './Persist/ReportRestoreFailure';
  * deferring scheduler or a transaction delays the notification, and the write with it.
  * `throttleMs` bounds how often storage is written: the first write still happens right away,
  * later flushes wait until the window since the previous write has passed, and the disposer
- * writes a state still held back.
+ * writes a state still held back. The window runs on the store's clock, so a test clock
+ * (`createTestScope(overrides, {clock})`, `clock.attach(store)`) moves it.
+ * Disposing the store ends the mirroring as the disposer does: whatever is held back or was
+ * never delivered is written synchronously, and the disposer called afterwards writes nothing.
+ * Calling the disposer again writes nothing either.
  * `partitions` stores one key per named top-level branch (`key + "." + branch`) and rewrites
  * only the branches that changed, which keeps a flush proportional to the dirty branches
  * instead of the whole state. The first flush seals every partition once; a flush while a
@@ -259,7 +264,7 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         lastSeenVersion = carburetor.getVersion();
         try {
             storage.setItem(key, serialize());
-            lastWriteAt = Date.now();
+            lastWriteAt = storeLifecycle.now(carburetor);
         } catch (error: unknown) {
             if (options.onError) {
                 options.onError(error);
@@ -272,43 +277,63 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     // the whole tree to notice anything.
     if (coalesce === false) {
         const id = carburetor.subscribe(write);
-        return () => {
-            carburetor.unsubscribe(id);
-            // The write was this subscriber and just got cancelled; persist any drift.
+        let closed = false;
+        // The disposer and store disposal both end here, once: a notification a deferring
+        // scheduler or a transaction had not delivered yet is written out as drift.
+        const close = (): void => {
+            if (closed) return;
+            closed = true;
             if (carburetor.getVersion() !== lastSeenVersion) {
                 write();
             }
+        };
+        const release = storeLifecycle.onDispose(carburetor, close);
+        return () => {
+            release();
+            carburetor.unsubscribe(id);
+            close();
         };
     }
 
     // One write per microtask: further changes before it runs just move the value it will
     // stringify, since write() reads fresh state rather than a scheduled snapshot. A
-    // throttleMs window holds the write back until the time since the previous write passed.
+    // throttleMs window, measured on the store's clock, holds the write back until the time
+    // since the previous write passed.
     let pending = false;
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let closed = false;
+    let cancelTimer: (() => void) | undefined;
     const flush = (forced: boolean = false): void => {
-        if (disposed || !pending) {
+        if (closed || !pending) {
             return;
         }
         if (!forced && throttleMs !== undefined) {
-            const wait = Math.max(0, throttleMs - (Date.now() - lastWriteAt));
-            if (wait > 0) {
-                if (timer === undefined) {
-                    timer = setTimeout(() => {
-                        timer = undefined;
-                        flush();
-                    }, wait);
-                }
+            const wait = Math.max(0, throttleMs - (storeLifecycle.now(carburetor) - lastWriteAt));
+            // A disposed store schedules nothing; what it still holds is written now.
+            if (wait > 0 && !storeLifecycle.isDisposed(carburetor)) {
+                cancelTimer ??= storeLifecycle.after(carburetor, wait, onTimer);
                 return;
             }
         }
-        if (timer !== undefined) {
-            clearTimeout(timer);
-            timer = undefined;
+        if (cancelTimer !== undefined) {
+            cancelTimer();
+            cancelTimer = undefined;
         }
         pending = false;
         write();
+    };
+    const onTimer = (): void => {
+        cancelTimer = undefined;
+        flush();
+    };
+    // The disposer and store disposal both end here, once: the held-back write goes out, and so
+    // does drift whose notification was cancelled or not delivered yet.
+    const close = (): void => {
+        if (closed) return;
+        flush(true);
+        closed = true;
+        if (carburetor.getVersion() !== lastSeenVersion) {
+            write();
+        }
     };
     const drains = ((carburetor as ICarburetor<T> & {
         [CARBURETOR_PERSIST_DRAIN]?: Set<() => void>;
@@ -322,17 +347,11 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         pending = true;
         queueMicrotask(() => flush());
     });
+    const release = storeLifecycle.onDispose(carburetor, close);
     return () => {
+        release();
         drains.delete(drain);
         carburetor.unsubscribe(id);
-        if (timer !== undefined) {
-            clearTimeout(timer);
-            timer = undefined;
-        }
-        flush(true);
-        disposed = true;
-        if (carburetor.getVersion() !== lastSeenVersion) {
-            write();
-        }
+        close();
     };
 };

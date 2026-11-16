@@ -8,6 +8,8 @@ interface TimerEntry {
     clockId?: number;
     globalId?: ReturnType<typeof setTimeout>;
 }
+/** The disposer of a finalizer that was never registered. */
+const noop = (): void => {};
 /** Per-store disposal state kept outside the store: lazy signal, owned timers, disposed flag. */
 class StoreLifecycle {
     /** Lifecycle state per store, created on first need. */
@@ -15,6 +17,8 @@ class StoreLifecycle {
         disposed: boolean;
         controller?: AbortController;
         timers?: Set<TimerEntry>;
+        /** Work that must finish with the store, run first at disposal. */
+        finalizers?: Set<() => void>;
         clock?: ITestClock;
         /** Wall time minus the clock's time when it was attached: maps the clock onto `Date.now()`'s scale. */
         origin?: number;
@@ -102,7 +106,8 @@ class StoreLifecycle {
      * Dispose store resources, then run the cleanup steps, preserving the first failure.
      *
      * @param store - store whose resources are disposed
-     * @param steps - cleanup steps run in order after timers and signal; each runs even if one throws
+     * @param steps - cleanup steps run in order after the finalizers, timers and signal; each runs
+     * even if one throws
      */
     public dispose(store: object, steps: ReadonlyArray<() => void>): void {
         let state = this.states.get(store);
@@ -116,6 +121,11 @@ class StoreLifecycle {
         const recordFailure = (error: unknown): void => {
             if (!failed) { failed = true; failure = error; }
         };
+        const finalizers = state.finalizers;
+        state.finalizers = undefined;
+        finalizers?.forEach((task) => {
+            try { task(); } catch (error: unknown) { recordFailure(error); }
+        });
         try { state.controller?.abort(); } catch (error: unknown) { recordFailure(error); }
         state.timers?.forEach((entry) => this.cancelEntry(entry));
         state.timers?.clear();
@@ -135,6 +145,27 @@ class StoreLifecycle {
         state.controller ??= new AbortController();
         if (state.disposed && !state.controller.signal.aborted) state.controller.abort();
         return state.controller.signal;
+    }
+
+    /** Run `task` once when the store is disposed, before its signal aborts and its timers stop.
+     *
+     * Work the store owes to the outside (a deferred persist write) finishes here instead of on a
+     * timer that would outlive the store. A store already disposed never runs it.
+     *
+     * @param store - store whose disposal runs the task
+     * @param task - finalizer; a throw is reported by `dispose` after every other step ran
+     * @returns a disposer that unregisters the task
+     */
+    public onDispose(store: object, task: () => void): () => void {
+        let state = this.states.get(store);
+        if (state?.disposed) return noop;
+        if (!state) {
+            state = {disposed: false};
+            this.states.set(store, state);
+        }
+        const finalizers = state.finalizers ??= new Set<() => void>();
+        finalizers.add(task);
+        return (): void => { finalizers.delete(task); };
     }
 
     /** Schedule owned work and return a cancellation disposer.

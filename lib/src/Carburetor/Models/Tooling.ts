@@ -39,14 +39,16 @@ export interface IPersistOptions<T = unknown> {
      * False: one write per notification, with no extra microtask. With the default immediate
      * delivery it lands before the call that caused it returns; a deferring scheduler
      * (ComponentUpdateThrottle) or a transaction delays the notification, and the write with it.
-     * The disposer always flushes a write still pending (coalesce true or false).
+     * The disposer and the store's own disposal always flush a write still pending (coalesce
+     * true or false).
      */
     coalesce?: boolean;
     /**
      * Minimum time in milliseconds between two storage writes. The first write still happens
      * right away; later flushes wait until the window since the previous write has passed, and
-     * the disposer writes a state still held back. `flush(store)` or `flush(scope)` from testing
-     * also commits pending persistence immediately, ignoring the throttle window.
+     * the disposer or the store's disposal writes a state still held back. The window runs on
+     * the store's clock, so a test clock advances it. `flush(store)` or `flush(scope)` from
+     * testing also commits pending persistence immediately, ignoring the throttle window.
      * Requires the default coalescing; a negative or non-finite value throws.
      */
     throttleMs?: number;
