@@ -139,15 +139,24 @@ const canonize = (list: readonly string[]): readonly string[] => [...new Set(lis
  * bridge's `--rule id=error` flags, the options are what survive. A project rc's per-rule
  * options never reach this run; only the host's settings do.
  *
+ * `forwarded` carries the options rules were given in their own config entries, keyed the same
+ * way; they win over `settings.carburetor.ruleOptions` for the same rule, and they apply whether
+ * or not the host has a `carburetor` settings namespace.
+ *
  * Both lists empty and no rule options yields the shared neutral config, exactly `{}`; any
  * other set yields its own file, content-stable by name, with `ruleOptions` part of the
  * content hash.
  *
  * @param cwd - the project being linted; its `.carburetorrc.json` is the fallback source
  * @param settings - the host's settings object, carrying an optional `carburetor` namespace
+ * @param forwarded - the rules' own options by bare rule name, from their config entries
  * @returns the config file path for the binary and the key identifying this configuration
  */
-export const basesConfig = (cwd: string, settings?: Record<string, unknown>): IBases => {
+export const basesConfig = (
+    cwd: string,
+    settings?: Record<string, unknown>,
+    forwarded: Readonly<Record<string, Record<string, unknown>>> = {},
+): IBases => {
     const namespace = settings?.[SETTINGS_NAMESPACE];
     const fromSettings = namespace !== undefined && namespace !== null && typeof namespace === 'object';
     const namespaced = fromSettings ? (namespace as Record<string, unknown>) : {};
@@ -161,8 +170,12 @@ export const basesConfig = (cwd: string, settings?: Record<string, unknown>): IB
             : rc!.storeBases),
     };
 
-    // Rule options come from the host's settings only, never from the project rc.
-    const ruleOptions = fromSettings ? ruleOptionsMap(namespaced[RULE_OPTIONS_KEY]) : {};
+    // Rule options come from the host only, never from the project rc: its settings, and over
+    // them the options a rule was given in its own config entry.
+    const ruleOptions = {
+        ...(fromSettings ? ruleOptionsMap(namespaced[RULE_OPTIONS_KEY]) : {}),
+        ...ruleOptionsMap(forwarded),
+    };
 
     // Severity in the generated config is decorative — the bridge forces `--rule id=error` —
     // the options object is what the binary actually reads.

@@ -9,6 +9,14 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Through oxlint and ESLint, a rule's own options (`"carburetor/no-parent-import": ["error", {"roots": [...]}]`)
+  now reach the native run, as they do on the CLI; before, only `settings.carburetor.ruleOptions` did and the
+  entry's options were dropped without a word. This covers `no-parent-import`, `max-line-length`, `require-tsdoc`
+  and `max-render-depth` (whose `max` the bridge used to ignore). `settings.carburetor.ruleOptions` still works; the
+  rule's own entry wins for the same rule.
+- `no-parent-import` switched on without `roots` no longer stays silent: the plugin reports once per run that it
+  checks nothing, and the native CLI rejects such a configuration.
+
 - `require-module-function` and `require-subscription-disposal` no longer report code inside a callback handed to a
   test registrar (`describe`, `it`, `test`, the `before*`/`after*` hooks and their `.only`/`.skip`/`.each(...)`
   chains), when that name is a global or an import. Test files no longer need an `overrides` entry for them.

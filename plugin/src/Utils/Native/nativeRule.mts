@@ -33,6 +33,36 @@ interface IPointNode {
 /** Rules each file's run had enabled, keyed by the shared `sourceCode` both hosts pass to every rule. */
 const enabledRuns = new WeakMap<object, Set<string>>();
 
+/** The options each file's rules were given in their own config entries, by bare rule name: every
+ * rule of the file hands the same set to the bridge, so they all share one native run. */
+const forwardedRuns = new WeakMap<object, Record<string, Record<string, unknown>>>();
+
+/** Rules whose missing options were already reported in this process: once per run, not per file. */
+const reportedMissing = new Set<string>();
+
+/** The rule name the native config and `settings.carburetor.ruleOptions` key options by. */
+const bareName = (id: string): string => id.replace(/^carburetor\//, '');
+
+/** Whether a value is a plain options object, the only shape a rule's options entry can take. */
+const isOptionsObject = (value: unknown): value is Record<string, unknown> =>
+    value !== null && typeof value === 'object' && !Array.isArray(value);
+
+/** The options `settings.carburetor.ruleOptions` gives one rule, if any.
+ *
+ * @param settings - the host's settings object
+ * @param name - the bare rule name
+ */
+const settingsOptions = (
+    settings: Record<string, unknown> | undefined,
+    name: string,
+): Record<string, unknown> | undefined => {
+    const namespace = settings?.carburetor;
+    const ruleOptions = isOptionsObject(namespace) ? namespace.ruleOptions : undefined;
+    const options = isOptionsObject(ruleOptions) ? ruleOptions[name] : undefined;
+
+    return isOptionsObject(options) ? options : undefined;
+};
+
 /**
  * Builds a rule that reports whatever the native binary already found for it.
  *
@@ -81,10 +111,45 @@ export const nativeRule = (id: string, description: string, options: INativeRule
 
         enabled.add(id);
 
+        const own = context.options[0];
+
+        if (options.forwardOptions && isOptionsObject(own)) {
+            let forwarded = forwardedRuns.get(context.sourceCode);
+
+            if (!forwarded) {
+                forwarded = {};
+                forwardedRuns.set(context.sourceCode, forwarded);
+            }
+
+            forwarded[bareName(id)] = own;
+        }
+
         return {
             'Program:exit'(): void {
                 const text = context.sourceCode.getText();
-                const diagnostics = runNative(process.cwd(), undefined, context.filename, text, context.settings);
+                const forwarded = forwardedRuns.get(context.sourceCode);
+                const diagnostics = runNative(
+                    process.cwd(), undefined, context.filename, text, context.settings, forwarded,
+                );
+
+                // A rule switched on without what it needs would report nothing, which reads as a
+                // clean result; it says so instead, once per run.
+                if (options.missingOptions && !reportedMissing.has(id)) {
+                    const missing = options.missingOptions(
+                        forwarded?.[bareName(id)] ?? settingsOptions(context.settings, bareName(id)),
+                    );
+
+                    if (missing !== undefined) {
+                        reportedMissing.add(id);
+                        const start = {line: 1, column: 0};
+                        const node: IPointNode = {
+                            type: 'Program', start: 0, end: 0, range: [0, 0], loc: {start, end: start},
+                        };
+
+                        context.report({node, message: missing});
+                    }
+                }
+
                 const file = path.relative(process.cwd(), context.filename).replace(/\\/g, '/');
                 const enabled = enabledRuns.get(context.sourceCode);
                 diagnostics

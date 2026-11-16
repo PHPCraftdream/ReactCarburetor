@@ -478,6 +478,27 @@ mod tests {
     }
 
     #[test]
+    fn no_parent_import_switched_on_without_roots_is_a_config_error() {
+        for config in [
+            r#"{"rules": {"no-parent-import": "error"}}"#,
+            r#"{"rules": {"carburetor/no-parent-import": "warn"}}"#,
+            r#"{"rules": {"no-parent-import": ["warn", {}]}}"#,
+            r#"{"rules": {"no-parent-import": ["error", {"roots": []}]}}"#,
+            r#"{"overrides": [{"files": ["src/**"], "rules": {"no-parent-import": "error"}}]}"#,
+        ] {
+            let error = parse(config).expect_err(config);
+
+            assert!(
+                error.to_string().contains("names no roots"),
+                "{config}: {error}"
+            );
+        }
+
+        assert!(parse(r#"{"rules": {"no-parent-import": "off"}}"#).is_ok());
+        assert!(parse(r#"{"rules": {"no-parent-import": ["off", {}]}}"#).is_ok());
+    }
+
+    #[test]
     fn no_parent_import_rejects_unknown_and_mistyped_options() {
         assert!(parse(r#"{"rules": {"no-parent-import": ["warn", {"root": 1}]}}"#).is_err());
         assert!(

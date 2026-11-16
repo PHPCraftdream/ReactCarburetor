@@ -109,6 +109,17 @@ export interface INativeRuleOptions {
      * set this, to `'code'`.
      */
     fixable?: 'code';
+    /**
+     * Hands the rule's own options (`["error", {...}]`, the host's usual place) to the native run,
+     * merged over `settings.carburetor.ruleOptions`; set by the rules whose options the binary
+     * applies rather than the bridge's `filter`.
+     */
+    forwardOptions?: boolean;
+    /**
+     * Names what the effective options lack for the rule to check anything, or returns `undefined`
+     * when they are enough; the bridge then reports that once per run instead of staying silent.
+     */
+    missingOptions?(options: Readonly<Record<string, unknown>> | undefined): string | undefined;
 }
 
 /** A shareable config, in the shape ESLint v9 flat config consumes. */

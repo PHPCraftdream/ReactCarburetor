@@ -78,9 +78,11 @@ The preset enables `max-line-length`, `no-blank-line-after-tsdoc`, `no-parent-im
 `prefer-readonly-array-param` as a warning. The corresponding `@react-carburetor/core/lint` plugin config
 is available as `house-style`.
 
-`no-parent-import` reports nothing until your config names the source roots it may alias, under
-`settings.carburetor.ruleOptions["no-parent-import"].roots` (each entry a `{path, prefix}` pair, for
-example `{"path": "src", "prefix": "@/"}`).
+`no-parent-import` needs the source roots it may alias (each a `{path, prefix}` pair, for example
+`{"path": "src", "prefix": "@/"}`), in its own entry —
+`"carburetor/no-parent-import": ["error", {"roots": [...]}]` — or under
+`settings.carburetor.ruleOptions["no-parent-import"].roots`. Switched on without any, it reports once
+per run that it checks nothing, and the native CLI rejects such a config.
 
 The native CLI can use equivalent severities in `.carburetorrc.json`:
 
@@ -99,7 +101,8 @@ The native CLI can use equivalent severities in `.carburetorrc.json`:
 ```
 
 This preset applies those severities only; rule-specific options such as `no-parent-import` roots
-must be configured for the native CLI separately. See the individual rule entries below for
+must be configured for the native CLI separately (the CLI rejects `no-parent-import` switched on
+without roots). See the individual rule entries below for
 available options. These configurations are not promised to override the plugin's native bridge.
 
 ## Setup
@@ -416,19 +419,17 @@ This rule warns when an inline selector passed as argument 2 to `useCarburetorVa
 The five rules below are optional house-style rules native to the Rust binary; their JavaScript
 implementations no longer exist, so the plugin runs them through the same native bridge as every
 other rule. All five are `off` in the recommended preset: a project turns on the ones it wants.
-They are configured in `.carburetorrc.json` entries of the form `["warn", {…}]` on the CLI. In a
-plugin host, per-rule options go under `settings.carburetor.ruleOptions`, keyed by the bare rule
-name without the `carburetor/` prefix; inline option arrays on the rule entry itself are not
-supported by the host bridge (each rule is a thin `nativeRule` wrapper without a schema):
+They are configured in `.carburetorrc.json` entries of the form `["warn", {…}]` on the CLI, and the
+same entries work in a plugin host: the bridge hands a rule's own options to the native run. The
+older form still works too — `settings.carburetor.ruleOptions`, keyed by the bare rule name without
+the `carburetor/` prefix — and a rule's own entry wins over it for the same rule. `max-render-depth`
+takes its `max` the same way. Rules given different options per directory (through `overrides`)
+get one native run per distinct set:
 
 ```json
 {
-  "settings": {
-    "carburetor": {
-      "ruleOptions": {
-        "no-parent-import": {"roots": [{"path": "lib/src", "prefix": "@/"}]}
-      }
-    }
+  "rules": {
+    "carburetor/no-parent-import": ["error", {"roots": [{"path": "lib/src", "prefix": "@/"}]}]
   }
 }
 ```
@@ -456,8 +457,9 @@ reading as that declaration's documentation. No options.
 
 Reports a `../`-relative import that resolves out of a configured source root, with the aliased
 form as a fix. Options: `roots`, default `[]` — an array of `{path, prefix}` pairs naming where a
-source tree starts and the alias that reaches into it. With no roots configured the rule stays
-silent: an upward import has no aliased form to offer.
+source tree starts and the alias that reaches into it. An upward import has no aliased form to
+offer without a root, so the rule cannot be switched on without one: the native CLI rejects the
+config, and the plugin reports once per run that the rule checks nothing.
 
 ```json
 {"rules": {"carburetor/no-parent-import": ["warn", {"roots": [{"path": "lib/src", "prefix": "@/"}]}]}}

@@ -1,0 +1,6 @@
+{
+  "jsPlugins": ["../../../plugin/src/index.mts"],
+  "rules": {
+    "carburetor/no-parent-import": "error"
+  }
+}

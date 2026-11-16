@@ -19,7 +19,7 @@ import {basesConfig} from "#src/Utils/NativeBases.mts";
  * Runs the native binary once per lint run and hands every rule its own slice of the result.
  *
  * "Once" matters for speed (20 ms native vs. 270 ms in JS per native/README.md), so the first rule
- * any host asks to run triggers one process for the whole project; module-scope `cached` makes that
+ * any host asks to run triggers one process for the whole project; the module-scope `cachedRuns` makes that
  * free within one JS thread. ESLint's `--concurrency` mode is the exception — worker threads share
  * `process.pid` but not module state — so the cross-thread half uses the filesystem: a lock file
  * elects one runner, the rest poll for the result it writes. oxlint itself calls JS plugins from a
@@ -59,14 +59,20 @@ const STALE_LOCK_TOLERANCE_MS = 2_000;
 /** Bounds the claim retry loop against a lock that keeps vanishing mid-check. */
 const MAX_CLAIM_ATTEMPTS = 5;
 
-let cached: INativeDiagnostic[] | undefined;
+/** One finished run: what it found and when it started. */
+interface ICachedRun {
+    diagnostics: INativeDiagnostic[];
+    startMs: number;
+}
 
-/** The project, start time and base key of the run `cached` came from; two hosts settings with
- * different base lists in one process must not share a result, and a file saved after the run
- * it came from is not covered either. */
-let cachedCwd: string | undefined;
-let cachedKey = '';
-let cachedStartMs = 0;
+/** Finished runs by project and configuration key: two configurations in one process (host
+ * settings with different base lists, or `overrides` giving a rule different options per
+ * directory) each keep their own result instead of evicting each other on every file, and a file
+ * saved after the run it came from is not covered by it. */
+const cachedRuns = new Map<string, ICachedRun>();
+
+/** The cache entry name of a project and configuration key. */
+const runKey = (cwd: string, key: string): string => `${cwd}\u0000${key}`;
 
 /** This run's own lock/result files, deleted together once nothing can read them anymore. */
 const pendingCleanup = new Set<string>();
@@ -321,6 +327,8 @@ const diskText = (filename: string): string | undefined => {
  * @param settings - the host's settings object; its `carburetor` namespace carries the base
  * lists and per-rule options that reach the binary (see `basesConfig`), and keys this run's
  * caches
+ * @param forwarded - the options rules were given in their own config entries, by bare rule name;
+ * they win over `settings.carburetor.ruleOptions` for the same rule
  */
 export const runNative = (
     cwd: string,
@@ -328,8 +336,10 @@ export const runNative = (
     filename?: string,
     text?: string,
     settings?: Record<string, unknown>,
+    forwarded?: Readonly<Record<string, Record<string, unknown>>>,
 ): INativeDiagnostic[] => {
-    const {config, key} = basesConfig(cwd, settings);
+    const {config, key} = basesConfig(cwd, settings, forwarded);
+    const entry = runKey(cwd, key);
 
     // One re-scan path for both cache hits: a new start time is adopted only after the scan
     // succeeded, so a failed one cannot make stale results look fresh.
@@ -337,8 +347,7 @@ export const runNative = (
         const startMs = Date.now();
         const fresh = runBinary(cwd, config, resolve);
 
-        cachedStartMs = startMs;
-        cached = fresh;
+        cachedRuns.set(entry, {diagnostics: fresh, startMs});
 
         return fresh;
     };
@@ -348,9 +357,11 @@ export const runNative = (
         return cachedFileResult(filename, text, () => runNativeText(cwd, filename, text, config, resolve), key);
     }
 
-    if (cached && cachedCwd === cwd && cachedKey === key) {
-        if (!changedSince(filename, cachedStartMs)) {
-            return cached;
+    const known = cachedRuns.get(entry);
+
+    if (known) {
+        if (!changedSince(filename, known.startMs)) {
+            return known.diagnostics;
         }
 
         return rescan();
@@ -374,13 +385,10 @@ export const runNative = (
 
             // Published only after success: a failed run must leave no cache entry behind, or the
             // next call with the same key would be served another set's array instead of retrying.
-            cachedStartMs = startMs;
-            cachedCwd = cwd;
-            cachedKey = key;
-            cached = fresh;
-            writeAtomic(result, JSON.stringify(cached));
+            cachedRuns.set(entry, {diagnostics: fresh, startMs});
+            writeAtomic(result, JSON.stringify(fresh));
 
-            return cached;
+            return fresh;
         } catch (error) {
             // The waiters would otherwise spend their whole timeout waiting for a result that
             // will never come and then report nothing; hand them this failure so every worker
@@ -412,16 +420,15 @@ export const runNative = (
         throw new Error(`@react-carburetor/core/lint: the worker that ran the native binary failed: ${payload.error}`);
     }
 
-    cached = payload;
-    cachedCwd = cwd;
-    cachedKey = key;
-    cachedStartMs = statSync(lock).mtimeMs;
+    const startMs = statSync(lock).mtimeMs;
+
+    cachedRuns.set(entry, {diagnostics: payload, startMs});
 
     // A file result may describe a file as it stood before that file was last saved, so the same
     // freshness check the module cache applies decides between this answer and a re-scan.
-    if (changedSince(filename, cachedStartMs)) {
+    if (changedSince(filename, startMs)) {
         return rescan();
     }
 
-    return cached;
+    return payload;
 };

@@ -302,12 +302,12 @@ What people who built with it found in the way, and what to do about each.
   Pure helpers move to module functions that take one parameter object. It is more code to write,
   and less work on every render; `no-function-in-render` is a warning, so a spot where it does not
   pay can stay as it is.
-- **The bridge has rough edges.** Per-rule options do not go in the rule's own array
-  (`["error", {...}]`) when the rules run through oxlint or ESLint: they go under
-  `settings.carburetor.ruleOptions`, keyed by the bare rule name, and `no-parent-import` reports
-  nothing until its `roots` are set there ([docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md)).
-  The allocation and disposal rules do not report code inside `describe`/`it`/`before*` callbacks,
-  so test files need no `overrides` for them.
+- **The bridge used to have rough edges.** Per-rule options go in the rule's own entry
+  (`["error", {...}]`) through oxlint and ESLint as on the CLI, and `no-parent-import` switched on
+  without `roots` says so instead of staying silent
+  ([docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md)). The
+  allocation and disposal rules do not report code inside `describe`/`it`/`before*` callbacks, so
+  test files need no `overrides` for them.
 - **Effects on store data take one extra step.** `useEffects` runs after the commit, where a read is
   not tracked: a dependency taken with `getData()` is only compared again when something re-renders
   the component, which is why it seems to need the same field read in `render` as well. Do not
@@ -1658,7 +1658,7 @@ switch it on then.
 Detection is syntactic. Fixed component bases are `AntiHookComponent` and
 `ScopedAntiHookComponent`; fixed store bases are `Carburetor` and `ResourceCarburetor`; the
 recognized render method is `render`. Directly extending a recognized base works; inheritance
-through a custom intermediate subclass is not resolved transitively. Most rules accept severity; `require-module-function` additionally accepts `scope: "all"` (default) or `"classes"`. Use `off` or a host suppression comment for rules that do not fit, or the standalone linter's `carburetor-disable` comment.
+through a custom intermediate subclass is not resolved transitively. Most rules accept severity; `require-module-function` additionally accepts `scope: "all"` (default) or `"classes"`, `max-render-depth` accepts `max`, and the house-style rules take their options in the same `["error", {...}]` entry. Use `off` or a host suppression comment for rules that do not fit, or the standalone linter's `carburetor-disable` comment.
 
 ```json
 {

@@ -401,6 +401,33 @@ fn required_severity(text: &str) -> Result<Severity, ConfigError> {
 /// Reads one rule's value: a severity string, or `[severity, options]` ESLint-style. The options
 /// are stored verbatim; no rule consumes them yet, but the schema has to carry them.
 fn parse_setting(rule: &str, value: &serde_json::Value) -> Result<RuleSetting, ConfigError> {
+    let setting = parse_setting_unchecked(rule, value)?;
+
+    // A rule that needs options to check anything must not be switched on without them: it would
+    // report nothing, which reads as a clean result.
+    if rule == "no-parent-import" && setting.severity != Severity::Off {
+        let has_roots = setting
+            .options
+            .as_ref()
+            .and_then(|options| options.get("roots"))
+            .and_then(|roots| roots.as_array())
+            .is_some_and(|roots| !roots.is_empty());
+
+        if !has_roots {
+            return Err(malformed(
+                "no-parent-import is on but names no roots, so it would check nothing: give it                  [\"error\", {\"roots\": [{\"path\": \"src\", \"prefix\": \"@/\"}]}]",
+            ));
+        }
+    }
+
+    Ok(setting)
+}
+
+/// [`parse_setting`] without the check that a switched-on rule has the options it needs.
+fn parse_setting_unchecked(
+    rule: &str,
+    value: &serde_json::Value,
+) -> Result<RuleSetting, ConfigError> {
     match value {
         serde_json::Value::String(text) => Ok(RuleSetting {
             severity: required_severity(text)?,
