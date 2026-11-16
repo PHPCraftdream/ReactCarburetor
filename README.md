@@ -1703,6 +1703,12 @@ at a built binary, or run
 the run fails loudly and names the missing platform package; a missing binary never looks like
 a clean run.
 
+On Linux, `oxlint --type-aware` reserves a lot of address space up front, and the kernel's default
+overcommit heuristic can then refuse to start the binary from inside it: every file fails with
+`spawnSync ... ENOMEM` although memory is free. Run `sudo sysctl -w vm.overcommit_memory=1` before
+linting (in CI, as a step before the lint step), or run the rules with `npx carburetor-lint` instead;
+this repository's own CI does the former.
+
 The measurements are this repository's, taken the way [native/README.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/native/README.md)
 describes.
 

@@ -9,6 +9,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- When the system refuses to start the native binary from inside the host (`spawnSync ... ENOMEM`, which
+  `oxlint --type-aware` meets on Linux under the default overcommit heuristic), the error now names the cause and the
+  two ways out: `vm.overcommit_memory=1` before linting, or `npx carburetor-lint`. README and troubleshooting
+  describe the CI step.
+
 - Through oxlint and ESLint, a rule's own options (`"carburetor/no-parent-import": ["error", {"roots": [...]}]`)
   now reach the native run, as they do on the CLI; before, only `settings.carburetor.ruleOptions` did and the
   entry's options were dropped without a word. This covers `no-parent-import`, `max-line-length`, `require-tsdoc`

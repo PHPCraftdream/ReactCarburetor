@@ -39,7 +39,7 @@ declare module "node:child_process" {
         signal?: string | null;
         stdout: string;
         stderr: string;
-        error?: {message: string};
+        error?: {message: string; code?: string};
     }
 
     export function spawnSync(

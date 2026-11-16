@@ -29,6 +29,14 @@ describe('nativeOutput', () => {
             .toThrow(/the native binary failed \(exit code 3221226505\)/);
     });
 
+    test('a refused fork names the overcommit cause and both ways out', () => {
+        const error = {message: 'spawnSync /opt/x ENOMEM', code: 'ENOMEM'};
+        const refused = {status: null, stdout: '', stderr: '', error};
+
+        expect(() => nativeOutput(BINARY, refused)).toThrow(/vm\.overcommit_memory=1/);
+        expect(() => nativeOutput(BINARY, refused)).toThrow(/npx carburetor-lint/);
+    });
+
     test('a launch failure names the binary', () => {
         expect(() => nativeOutput(BINARY, {status: null, stdout: '', stderr: '', error: {message: 'ENOENT'}}))
             .toThrow(/could not run the native binary at \/opt\/carburetor-lint: ENOENT/);
