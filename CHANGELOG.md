@@ -12,6 +12,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `require-module-function` and `require-subscription-disposal` no longer report code inside a callback handed to a
   test registrar (`describe`, `it`, `test`, the `before*`/`after*` hooks and their `.only`/`.skip`/`.each(...)`
   chains), when that name is a global or an import. Test files no longer need an `overrides` entry for them.
+- README: a "Trade-offs" section answers what users found in the way — how the linter shapes the code and which
+  rules to keep, writing lists without functions in render, the bridge's option and test-file behavior, effects
+  driven by store data, the `0.x` status and minimum-release-age installs, `no-module-level-store` on client-only
+  sites, and where precise subscriptions pay off.
 
 ## [0.2.0] - 2026-11-15
 

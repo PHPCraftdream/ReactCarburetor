@@ -11,7 +11,7 @@ actually depend on it. The core API needs no hooks and no memoization: path-prec
 subscriptions avoid unnecessary re-renders without dependency arrays, so the unnecessary
 re-renders are never created in the first place.
 
-[Install and try it](#install) · [Core ideas](#core-ideas) · [API](#api) ·
+[Install and try it](#install) · [Trade-offs](#trade-offs) · [Core ideas](#core-ideas) · [API](#api) ·
 [Examples](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/examples/README.md) ·
 [FAQ](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/faq.md) ·
 [Lint rules](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) · [Async cache](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/promise-cache.md) ·
@@ -282,6 +282,50 @@ generates by design.
 React Carburetor removes the generator instead. State sits in a plain class outside React.
 A component reads what it needs, that read becomes its subscription, and a write invalidates
 only the intersecting paths.
+
+## Trade-offs
+
+What people who built with it found in the way, and what to do about each.
+
+- **The linter shapes the code.** Every rule switched on means a lot of small, single-purpose code.
+  The recommended preset is the intended setting: the hazard rules on, the house-style rules
+  (`one-export-per-file`, `max-line-length`, `require-tsdoc` and the rest of
+  [Lint rules](#lint-rules)) off. Turn the style rules on only if you want that style. This
+  repository also limits every directory to seven entries, but that is its own layout check
+  (`scripts/checkLayout.mjs`), not a lint rule: nothing in the package limits directory size.
+- **No functions in render makes JSX longer.** A closure in `render` is a new function every pass,
+  so the child it is handed to sees a changed prop and re-renders, and the collector has more to
+  do. Lists are where it shows: instead of `items.map(item => <Row onPick={() => pick(item.id)} />)`,
+  render one child component per item and give it the data it needs as props
+  ([Passing connected data to children](#passing-connected-data-to-children)); the child handles
+  its own events with a `@bind` method ([Handlers that survive the gate](#handlers-that-survive-the-gate-bind)).
+  Pure helpers move to module functions that take one parameter object. It is more code to write,
+  and less work on every render; `no-function-in-render` is a warning, so a spot where it does not
+  pay can stay as it is.
+- **The bridge has rough edges.** Per-rule options do not go in the rule's own array
+  (`["error", {...}]`) when the rules run through oxlint or ESLint: they go under
+  `settings.carburetor.ruleOptions`, keyed by the bare rule name, and `no-parent-import` reports
+  nothing until its `roots` are set there ([docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md)).
+  The allocation and disposal rules do not report code inside `describe`/`it`/`before*` callbacks,
+  so test files need no `overrides` for them.
+- **Effects on store data take one extra step.** `useEffects` runs after the commit, where a read is
+  not tracked: a dependency taken with `getData()` is only compared again when something re-renders
+  the component, which is why it seems to need the same field read in `render` as well. Do not
+  read it twice; subscribe to it instead. Start a mount effect (`deps` of `[store]`) that applies the
+  current value and returns `store.watch(select, apply)`: the effect then follows the store, not the
+  renders, and the disposer is its cleanup ([Effects without hooks](#effects-without-hooks)).
+- **It is young.** The version is `0.x`: a minor release may change behavior, and the
+  [changelog](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CHANGELOG.md) says what. Pin the minor you test against
+  (`~0.2.0`). If your installs require a minimum release age (pnpm `minimumReleaseAge`, npm
+  `--before`), a fresh release is refused for that long: wait, or exempt the `@react-carburetor`
+  scope. The ecosystem is small; the engine has no runtime dependencies of its own to wait for.
+- **`no-module-level-store` is not for client-only applications.** It is off in the recommended
+  preset because a module-level store is the right pattern there. Turn it on when the same code
+  renders on a server, where a module-level store is shared between requests; that is when
+  [per-request stores](#per-request-stores) and a scope earn their ceremony.
+- **The gain grows with the data.** A screen of a few dozen cells re-renders cheaply either way. The
+  precise subscriptions show on large tables with live updates, streaming data, and long sessions
+  on slow devices, where a write wakes the few components that read it and nothing else.
 
 ## Core ideas
 
