@@ -13,7 +13,7 @@ import {
     ITrackedView,
 } from "../Models/Connection";
 import {shallowEqual} from "../shallowEqual";
-import {renderOwner} from "../../Derived/renderOwner";
+import {renderOwner} from "../../Derived/reporting/renderOwner";
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
 declare const process: {env: {NODE_ENV?: string}};
 

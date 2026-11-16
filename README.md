@@ -1486,7 +1486,8 @@ test('publishes a counter update', async () => {
 `@react-carburetor/core/engine` is everything except the React layer, so the same stores can drive a
 terminal UI, a canvas, a native view or a server process. Two pieces of the engine are all a renderer
 needs. A `computed` whose body builds the output is re-run only when a path it read is written, over
-any number of stores, and its subscriber is called only when the output actually changed:
+any number of stores, and `frame.watch(onChange)` calls back only when the output actually changed,
+with the new and the previous value:
 
 <!-- example:file examples/readme/Tooling/WithoutReact.ts#frame -->
 ```ts
@@ -1497,21 +1498,22 @@ const frame = computed<string>((read) => {
     return `[${'#'.repeat(done)}${'.'.repeat(total - done)}] ${done}/${total}`;
 });
 
-/** Paints the current frame; any renderer goes here: a terminal, a canvas, a native view. */
-const paint = (): void => {
-    console.log(frame.get());
+/** Paints a frame; any renderer goes here: a terminal, a canvas, a native view. */
+const paint = (next: string): void => {
+    console.log(next);
 };
 
-const subscription = frame.subscribe(paint);
+// Called with the new frame (and the one before it) only when the output changed.
+const stopPainting = frame.watch(paint);
 
 progress.advance(3);        // repaints: the frame read `done`
 progress.rename('deploy');  // does not: the frame never read `label`
 
-frame.unsubscribe(subscription);
+stopPainting();
 ```
 
-`watch(select, onChange)` does the same for one store and one selection, and hands the callback
-detached values:
+A store's `watch(select, onChange)` does the same for one store and one selection, and hands the
+callback detached values:
 
 <!-- example:file examples/readme/Tooling/WithoutReact.ts#watch -->
 ```ts

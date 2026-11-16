@@ -1,4 +1,4 @@
-import {IRenderOwner} from "./Models";
+import {IRenderOwner} from "../Models";
 
 /**
  * Holds whichever component's render is on the stack right now, so a computed's live-read

@@ -1,4 +1,6 @@
+import {IDict, TSubscriber} from "../Models/Base";
 import {ICarburetorSubscription} from "../Models/Store";
+import {ILeafVersion} from "./Freshness/Models";
 import {TPath, TPathSet} from "../Models/Paths";
 import {IInternalSubscriptionProtocol} from "../Store/Utils/Models";
 
@@ -8,7 +10,7 @@ import {IInternalSubscriptionProtocol} from "../Store/Utils/Models";
 
 /**
  * What a computed's live-read diagnostic needs to know about the component whose render is
- * currently on the stack; see `Derived/renderOwner.ts`.
+ * currently on the stack; see `Derived/reporting/renderOwner.ts`.
  */
 export interface IRenderOwner {
     /** The id this component would subscribe to a computed under. */
@@ -58,6 +60,18 @@ export interface IActiveReadSlot {
     key: string;
     /** The persistent view's recorder for this route, minted once per slot. */
     recorder: ((path: TPath) => void) | undefined;
+}
+
+/** The value a computed's last notification carried, and the dependency versions it was read from. */
+export interface IAnnouncement<R> {
+    value: R;
+    versions: IDict<ILeafVersion>;
+}
+
+/** A computed subscriber's callback and the registration generation that owns it. */
+export interface IComputedSubscriber {
+    callback: TSubscriber;
+    generation: number;
 }
 
 /** Module-private engine keys: symbol fields match StoreIdentity without ES2020 private lowering. */

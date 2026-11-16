@@ -165,6 +165,7 @@ The four lint types below come from `@react-carburetor/core/lint`.
 | `TTimerHandle` | `ReturnType<typeof setTimeout> \| undefined` | Platform-inferred timeout handle. | [same](../lib/src/Carburetor/Models/Base.ts) |
 | `TReadonly<T>` | Recursive readonly mapped type | Functions remain unchanged; Maps/Sets and arrays/objects become readonly; Date setters are omitted. Compile-time only, not a runtime guard. | [same](../lib/src/Carburetor/Models/Base.ts) |
 | `IComputed<R>` | Extends `ICarburetorSubscription`; `get(): R` | Memoized derived value with tracked dependencies. | [`Derived.ts`](../lib/src/Carburetor/Models/Derived.ts) |
+| `Computed.watch` | `(onChange: (next: R, previous: R) => void): TDisposer` | Calls `onChange` after each change the computed delivers (judged by its `equals`), with the value before it; the disposer stops it and may run twice. A result changed in place arrives as the same object in both arguments. | [`Computed.ts`](../lib/src/Carburetor/Derived/Computed.ts) |
 | `TComputedReader` | Overloads: `<T extends object>(IReadableCarburetor<T>) => TReadonly<T>`; `<R>(IComputed<R>) => R` | Reader function; direct `computed.get()` does not register dependency. | [same](../lib/src/Carburetor/Models/Derived.ts) |
 | `TComputeBody<R>` | `(read: TComputedReader) => R` | Computed body; reads through `read` are dependencies. | [same](../lib/src/Carburetor/Models/Derived.ts) |
 | `IComputedOptions<R>` | `{equals?: (previous: R, next: R) => boolean}` | Optional result equality comparator. | [same](../lib/src/Carburetor/Models/Derived.ts) |

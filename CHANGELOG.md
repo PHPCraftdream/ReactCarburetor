@@ -7,6 +7,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- `computed.watch((next, previous) => ...)` returns a disposer and calls back after each change the computed delivers,
+  like a store's `watch(select, onChange)`; before, a computed offered only `subscribe(callback)` with an id to
+  unsubscribe and a callback that received no value.
+
 ### Changed
 
 - When the system refuses to start the native binary from inside the host (`spawnSync ... ENOMEM`, which

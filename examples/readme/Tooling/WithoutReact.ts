@@ -30,17 +30,18 @@ const frame = computed<string>((read) => {
     return `[${'#'.repeat(done)}${'.'.repeat(total - done)}] ${done}/${total}`;
 });
 
-/** Paints the current frame; any renderer goes here: a terminal, a canvas, a native view. */
-const paint = (): void => {
-    console.log(frame.get());
+/** Paints a frame; any renderer goes here: a terminal, a canvas, a native view. */
+const paint = (next: string): void => {
+    console.log(next);
 };
 
-const subscription = frame.subscribe(paint);
+// Called with the new frame (and the one before it) only when the output changed.
+const stopPainting = frame.watch(paint);
 
 progress.advance(3);        // repaints: the frame read `done`
 progress.rename('deploy');  // does not: the frame never read `label`
 
-frame.unsubscribe(subscription);
+stopPainting();
 // #endregion frame
 
 // #region watch

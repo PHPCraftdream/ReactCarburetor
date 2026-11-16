@@ -1,4 +1,4 @@
-import {IDict, TSubscriber} from "../Models/Base";
+import {IDict, TDisposer, TSubscriber} from "../Models/Base";
 import {IComputed, IComputedOptions, TComputeBody, TComputedReader} from "../Models/Derived";
 import {TPath} from "../Models/Paths";
 import {IReadableCarburetor, ISubscribeOptions} from "../Models/Store";
@@ -18,7 +18,8 @@ import {driftedSince} from "./Freshness/driftedSince";
 import {ILeafVersion} from "./Freshness/Models";
 import {leafVersionsDrifted} from "./Freshness/leafVersionsDrifted";
 import {computedDependencies} from "./computedDependencies";
-import {C, IDependency, IActiveReadSlot} from "./Models";
+import {watchComputed} from "./watchComputed";
+import {C, IDependency, IActiveReadSlot, IAnnouncement, IComputedSubscriber} from "./Models";
 import {PersistentViews} from "../Store/Tracking/Observation/PersistentViewCache";
 
 // See DevelopmentFlag.ts: the literal member expression is what bundlers substitute.
@@ -35,18 +36,6 @@ declare const process: {env: {NODE_ENV?: string}};
  */
 const invalidationEdges: WeakMap<TSubscriber, () => void> =
     sharedSingleton('invalidationEdges', () => new WeakMap<TSubscriber, () => void>());
-
-/** The value the last notification carried, and the dependency versions it was read from. */
-interface IAnnouncement<R> {
-    value: R;
-    versions: IDict<ILeafVersion>;
-}
-
-/** A subscriber's callback and the registration generation that owns it. */
-interface IComputedSubscriber {
-    callback: TSubscriber;
-    generation: number;
-}
 
 /**
  * Subclasses may add domain members. The reserved contract is constructor(body, options),
@@ -159,6 +148,14 @@ export class Computed<R> implements IComputed<R> {
         }
 
         return this[C.value] as R;
+    }
+
+    /** Calls `onChange(next, previous)` after each delivered change, until the returned disposer runs.
+     *
+     * @param onChange - receives the new value and the value the previous change delivered
+     */
+    public watch(onChange: (next: R, previous: R) => void): TDisposer {
+        return watchComputed(this, onChange);
     }
 
     /**
