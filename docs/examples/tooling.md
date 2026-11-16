@@ -242,7 +242,9 @@ exposing `snapshot()`/`fromJSON()`/`getVersion()`/`subscribe()` qualifies — pl
 
 `waitForUpdate` resolves on the next update of a carburetor (or a computed) and rejects after
 a timeout, 1000 ms by default. It is meant for orchestration code around throttled stores and
-async resources, where the update does not arrive within the current tick.
+async resources, where the update does not arrive within the current tick. The timeout runs on
+wall time even for a store on a test clock. A store disposed while the promise waits, or before
+the call, rejects it at once with `waitForUpdate: the store was disposed`.
 
 <!-- example:file examples/api/tooling/WaitForUpdate.ts#doc -->
 ```ts

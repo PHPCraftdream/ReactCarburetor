@@ -131,7 +131,8 @@ answers, so a `ttl` expires when the clock advances past it and not when wall ti
 `persist` throttle window runs on the same clock; `flush(store)` still forces its write at once.
 The clock moves what the store owns. A delivery scheduler such as `UpdateThrottle` is not owned by a
 store (one instance can serve many) and keeps global timers: `clock.advance` does not deliver what it
-holds back, while `flush(store)` delivers it and writes what `persist` holds at once.
+holds back, while `flush(store)` delivers it and writes what `persist` holds at once. The timeout of
+`waitForUpdate` guards the test and runs on wall time.
 
 For work that does not involve clocks, import `flush` and `createTestScope` from
 `@react-carburetor/core/testing`. `flush(target)` delivers recorded notifications synchronously; it does

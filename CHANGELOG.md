@@ -52,6 +52,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `require-module-function` and `require-subscription-disposal` no longer report code inside a callback handed to a
   test registrar (`describe`, `it`, `test`, the `before*`/`after*` hooks and their `.only`/`.skip`/`.each(...)`
   chains), when that name is a global or an import. Test files no longer need an `overrides` entry for them.
+- `waitForUpdate(store)` rejects at once with `waitForUpdate: the store was disposed` when the store is disposed
+  while it waits, or was disposed before the call; before, it waited out the timeout and reported `no update`. The
+  timeout stays on wall time.
 - The `persist` throttle window runs on the store's clock: a `createTestClock()` attached through
   `createTestScope(overrides, {clock})` or `clock.attach(store)` advances it, so a test no longer needs
   `flush(store)` or runner fake timers to see a throttled write. Stores without a test clock keep wall time.

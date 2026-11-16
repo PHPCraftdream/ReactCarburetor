@@ -11,6 +11,7 @@ import {
     transaction,
     waitForUpdate
 } from "@/Carburetor";
+import {createTestClock} from "@/Testing";
 
 interface ICounterData {
     value: number;
@@ -434,5 +435,46 @@ describe('waitForUpdate', () => {
         const carburetor = new CounterCarburetor(getData());
 
         await expect(waitForUpdate(carburetor, 20)).rejects.toThrow(/no update/);
+    });
+
+    test('rejects at once when the store is disposed while waiting', async () => {
+        const carburetor = new CounterCarburetor(getData());
+        const updated = waitForUpdate(carburetor, 60_000);
+
+        carburetor.dispose();
+
+        await expect(updated).rejects.toThrow(/the store was disposed/);
+    });
+
+    test('rejects at once for a store already disposed', async () => {
+        const carburetor = new CounterCarburetor(getData());
+        carburetor.dispose();
+
+        await expect(waitForUpdate(carburetor, 60_000)).rejects.toThrow(/the store was disposed/);
+    });
+
+    test('a store disposed after the update leaves the resolved promise alone', async () => {
+        const carburetor = new CounterCarburetor(getData());
+        const updated = waitForUpdate(carburetor);
+        carburetor.setValue(1);
+        await updated;
+
+        expect(() => carburetor.dispose()).not.toThrow();
+    });
+
+    test('a test clock does not time it out; wall time does', async () => {
+        const clock = createTestClock();
+        const carburetor = new CounterCarburetor(getData());
+        clock.attach(carburetor);
+        let rejected = false;
+        const updated = waitForUpdate(carburetor, 20).catch((error: unknown) => {
+            rejected = true;
+            throw error;
+        });
+
+        clock.advance(10_000);
+        await Promise.resolve();
+        expect(rejected).toBe(false);
+        await expect(updated).rejects.toThrow(/no update/);
     });
 });
