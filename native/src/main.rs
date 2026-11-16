@@ -37,7 +37,7 @@ const EXIT_BROKEN: u8 = 2;
 
 /// Bump this whenever the contract between the JS bridge and this binary changes: CLI flags,
 /// accepted config keys/shape, or rule ids.
-const PROTOCOL: u32 = 1;
+const PROTOCOL: u32 = 2;
 
 pub const USAGE: &str = "\
 carburetor-lint [options] [paths...]
@@ -390,7 +390,7 @@ mod tests {
         let line = version_line();
 
         assert!(line.starts_with("carburetor-lint "), "got {line:?}");
-        assert!(line.contains(" protocol 1"), "got {line:?}");
+        assert!(line.contains(" protocol 2"), "got {line:?}");
         assert!(!line.ends_with('\n'));
 
         let fields: Vec<&str> = line.split_whitespace().collect();
@@ -401,8 +401,8 @@ mod tests {
     }
 
     #[test]
-    fn protocol_starts_at_one() {
-        assert_eq!(PROTOCOL, 1);
+    fn protocol_is_two_since_the_rule_ids_of_0_3() {
+        assert_eq!(PROTOCOL, 2);
     }
 
     #[test]

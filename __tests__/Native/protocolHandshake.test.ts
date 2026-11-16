@@ -44,7 +44,7 @@ describe('native protocol handshake', () => {
         const other = mkdtempSync(path.join(os.tmpdir(), 'carburetor-proto-'));
 
         try {
-            stubNative({stdout: 'carburetor-lint 0.1.0 protocol 1', status: 0}, cwd);
+            stubNative({stdout: 'carburetor-lint 0.1.0 protocol 2', status: 0}, cwd);
             writeFileSync(path.join(cwd, 'a.ts'), 'first');
 
             expect(runNative(cwd, () => path.join('fake', 'bin-one'))[0].message).toBe('first');
@@ -52,7 +52,7 @@ describe('native protocol handshake', () => {
             // One `--version` per binary path, even across two runs: the cache is doing its job.
             expect(versionSpawns()).toBe(1);
 
-            stubNative({stdout: 'carburetor-lint 0.1.0 protocol 1', status: 0}, other);
+            stubNative({stdout: 'carburetor-lint 0.1.0 protocol 2', status: 0}, other);
             writeFileSync(path.join(other, 'a.ts'), 'first');
 
             // A different resolver path is a different binary, so it is checked again.
@@ -69,7 +69,7 @@ describe('native protocol handshake', () => {
         const binary = path.join('fake', 'bin-new');
 
         try {
-            stubNative({stdout: 'carburetor-lint 0.1.0 protocol 2', status: 0}, cwd);
+            stubNative({stdout: 'carburetor-lint 0.1.0 protocol 3', status: 0}, cwd);
 
             let message = '';
 
@@ -80,8 +80,8 @@ describe('native protocol handshake', () => {
             }
 
             expect(message).toContain(`the native binary at ${binary}`);
-            expect(message).toContain('found: "carburetor-lint 0.1.0 protocol 2"');
-            expect(message).toContain('needs protocol 1');
+            expect(message).toContain('found: "carburetor-lint 0.1.0 protocol 3"');
+            expect(message).toContain('needs protocol 2');
             expect(message).toContain('cargo build --release');
         } finally {
             rmSync(cwd, {recursive: true, force: true});
@@ -116,7 +116,7 @@ describe('native protocol handshake', () => {
 });
 
 /** The fingerprint of the bridge/binary contract the handshake exists to guard. */
-const EXPECTED_FINGERPRINT = '82d5e9e7fb79c90894716689376ddee6';
+const EXPECTED_FINGERPRINT = 'b0ab4cde6ebe4ccbfd8a492d1215cbba';
 
 /** The quoted CLI flag tokens `parse_options` in native/src/main.rs understands. */
 const cliFlags = (main: string): string[] => [
@@ -144,7 +144,7 @@ describe('bridge/binary contract guards', () => {
             protocol,
             'bump PROTOCOL in native/src/main.rs and NATIVE_PROTOCOL in ' +
             'plugin/src/Utils/assertProtocol.mts together',
-        ).toBe('1');
+        ).toBe('2');
         expect(
             expected,
             'bump NATIVE_PROTOCOL in plugin/src/Utils/assertProtocol.mts and PROTOCOL in ' +

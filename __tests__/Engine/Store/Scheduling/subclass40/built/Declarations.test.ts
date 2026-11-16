@@ -59,7 +59,8 @@ describe('R40-01 built subclass contract', () => {
         }
         expect([...names].sort()).toEqual(['componentDidMount', 'componentDidUpdate', 'componentWillUnmount',
             'connect', 'connectSelection', 'shouldComponentUpdate', 'unUseEffects', 'useCarburetor',
-            'useComputed', 'useEffect', 'useEffects', 'useEvent', 'useResource', 'suspendResource'].sort());
+            'useComputed', 'useEffect', 'useEffects', 'useEvent', 'useResource', 'useStoreEffect',
+            'suspendResource'].sort());
     });
 
     test('strict consumer fixture compiles against dist declarations', () => {

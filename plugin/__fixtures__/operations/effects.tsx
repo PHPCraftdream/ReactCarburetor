@@ -38,3 +38,5 @@ class DraftSaver extends AntiHookComponent<{draft: {getData(): {text: string}}}>
         return <span/>;
     }
 }
+
+void DraftSaver;

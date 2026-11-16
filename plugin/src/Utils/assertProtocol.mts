@@ -4,7 +4,7 @@ import {spawnSync} from "node:child_process";
  * Bump this together with `PROTOCOL` in `native/src/main.rs` whenever the bridge/binary
  * contract changes (CLI flags, config keys, rule ids).
  */
-const NATIVE_PROTOCOL = 1;
+const NATIVE_PROTOCOL = 2;
 
 /** `--version` already passed for these resolved binary paths; one check per path per process. */
 const checked = new Map<string, true>();

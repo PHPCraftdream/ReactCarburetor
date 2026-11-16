@@ -46,3 +46,5 @@ class Panel extends AppComponent {
         return this.useCarburetor(store).title;
     }
 }
+
+void Panel;
