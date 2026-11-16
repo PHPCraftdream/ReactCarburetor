@@ -5,6 +5,14 @@ All notable changes to this project are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- `require-module-function` and `require-subscription-disposal` no longer report code inside a callback handed to a
+  test registrar (`describe`, `it`, `test`, the `before*`/`after*` hooks and their `.only`/`.skip`/`.each(...)`
+  chains), when that name is a global or an import. Test files no longer need an `overrides` entry for them.
+
 ## [0.2.0] - 2026-11-15
 
 ### Added

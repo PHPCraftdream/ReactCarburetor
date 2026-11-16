@@ -325,6 +325,18 @@ shapes are malformed configuration. Suppress reports with
 a rule list silences all Carburetor rules.
 
 
+### Test registration callbacks
+
+`require-module-function` and `require-subscription-disposal` do not report code inside a function
+handed to a test registrar: `describe`, `it`, `test`, `suite`, `bench`, `beforeEach`, `afterEach`,
+`beforeAll`, `afterAll`, `before`, `after` and their `x`/`f` variants, through the chains runners add
+(`it.only`, `test.concurrent.skip`, `describe.each(table)`, `` test.each`table` ``,
+`test.skipIf(condition)`). The runner calls such a callback once, so nothing in it is rebuilt per
+call, and a subscription made in a test lives as long as the test, not the process. The registrar is
+recognised by its name only when that name is a global or an import; a function the file declares
+under the same name is ordinary code. Module-level code of a test file is checked as before, and no
+`overrides` entry for test files is needed for these two rules.
+
 ### `require-module-function`: `scope`
 
 ```json

@@ -280,3 +280,43 @@ class Widget extends AntiHookComponent {
     assert_eq!(lines(&found), [3]);
     assert_eq!(found[0].scope.as_deref(), Some("class"));
 }
+
+#[test]
+fn nothing_inside_a_test_registrar_callback_is_reported() {
+    let source = r#"
+describe('cart', () => {
+    beforeEach(() => { reset(); });
+    it('adds', () => {
+        const double = (n: number) => n * 2;
+        expect([1].map(item => double(item))).toEqual([2]);
+    });
+    it.each([1, 2])('n %s', (n) => { expect(n).toBeGreaterThan(0); });
+});
+"#;
+
+    assert_eq!(lines(&reported(source)), [] as [usize; 0]);
+}
+
+#[test]
+fn a_local_function_named_like_a_registrar_is_ordinary_code() {
+    let source = r#"
+function it(name: string, run: () => void) { run(); }
+function outer() {
+    it('x', () => { const value = 1; });
+}
+"#;
+
+    assert!(!reported(source).is_empty());
+}
+
+#[test]
+fn module_level_code_of_a_test_file_is_still_reported() {
+    let source = r#"
+function helper() {
+    return [1].map(item => item * 2);
+}
+describe('x', () => { it('y', () => helper()); });
+"#;
+
+    assert_eq!(lines(&reported(source)), [3]);
+}

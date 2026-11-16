@@ -13,6 +13,7 @@ use std::collections::HashSet;
 mod component;
 mod jsx_tag;
 pub(crate) mod functions;
+pub(crate) mod test_scope;
 
 use oxc_ast::ast::{
     Argument, ArrowFunctionExpression, AssignmentExpression, CallExpression, Class, Expression,

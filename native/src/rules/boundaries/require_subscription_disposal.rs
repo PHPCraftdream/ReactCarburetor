@@ -19,6 +19,7 @@ use crate::rules::report;
 use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::build_semantic;
 use crate::rules::support::names::{member_call_name, property_key_name, unwrap_expression};
+use crate::rules::support::walk::test_scope::retain_outside_tests;
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -130,7 +131,11 @@ pub(in crate::rules) fn check_with_semantic<'a>(
 
     check.visit_program(program);
 
-    check.diagnostics
+    // A subscription made inside a test lives as long as that test, not the process.
+    let mut diagnostics = check.diagnostics;
+    retain_outside_tests(&mut diagnostics, RULE, program, semantic, source);
+
+    diagnostics
 }
 
 #[cfg(test)]
@@ -141,6 +146,26 @@ mod tests {
     #[test]
     fn a_discarded_subscription_is_reported() {
         assert_eq!(lines(&diagnose("store.subscribe(callback);\n", check)), [1]);
+    }
+
+    #[test]
+    fn a_subscription_inside_a_test_is_not_reported() {
+        let source = "it('wakes', () => {
+    store.subscribe(() => { seen++; });
+});
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn the_same_subscription_outside_a_test_is_still_reported() {
+        let source = "setup(() => {
+    store.subscribe(() => { seen++; });
+});
+";
+
+        assert_eq!(lines(&diagnose(source, check)), [2]);
     }
 
     #[test]

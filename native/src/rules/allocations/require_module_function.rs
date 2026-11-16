@@ -38,6 +38,7 @@ use crate::rules::support::bases::RENDER_METHODS;
 use crate::rules::support::closures::{
     build_semantic, is_component_class, MemberAnalysis, MemberCache,
 };
+use crate::rules::support::walk::test_scope::retain_outside_tests;
 use crate::rules::support::walk::{walk_rule, Context, Rule};
 use crate::rules::{report, report_with_fix};
 use crate::{Diagnostic, Source};
@@ -364,6 +365,9 @@ pub(in crate::rules) fn finish_rule<'a>(
     diagnostics.retain(|diagnostic| {
         diagnostic.rule != RULE || seen.insert((diagnostic.line, diagnostic.column))
     });
+
+    // A test runner calls a registrar's callback once: nothing in it is rebuilt per call.
+    retain_outside_tests(&mut diagnostics, RULE, program, semantic, source);
 
     diagnostics
 }
