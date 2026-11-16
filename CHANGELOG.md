@@ -25,6 +25,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   like a store's `watch(select, onChange)`; before, a computed offered only `subscribe(callback)` with an id to
   unsubscribe and a callback that received no value.
 
+- `persist()` returns an `IPersistDisposer`: still a `TDisposer`, plus `flush()`, which writes now whatever storage
+  is behind (a `throttleMs` window, a coalescing microtask, a notification a deferring scheduler has not delivered)
+  and keeps mirroring, the window restarting from that write. It ignores `this` and its arguments, so it can be a
+  `pagehide` or `visibilitychange` listener; `docs/examples/tooling.md` has the recipe. A notification delivered
+  after it writes nothing more.
+
 ### Changed
 
 - The bridge/binary protocol is now 2: the two new rule ids are part of the contract, so the plugin checks for a

@@ -71,15 +71,18 @@ Raw references from `getData()` cannot be revoked.
 | `undo` / `redo` | `(): boolean` | Moves to the prior / next recorded state; returns whether it moved. | [same](../lib/src/Carburetor/Tooling/CarburetorHistory.ts) |
 | `clear` | `(): void` | Drops past, future and pending changes, captures current baseline, and continues observing. | [same](../lib/src/Carburetor/Tooling/CarburetorHistory.ts) |
 | `disconnect` | `(): void` | Detaches history observation; does not clear stored steps. | [same](../lib/src/Carburetor/Tooling/CarburetorHistory.ts) |
-| `persist<T extends object>` | `(carburetor: ICarburetor<T>, options: IPersistOptions<T>): TDisposer` | Restores once and coalesces writes per microtask by default; see [persist](#persist) for versioning and merge behavior. | [`persist.ts`](../lib/src/Carburetor/Tooling/persist.ts) |
+| `persist<T extends object>` | `(carburetor: ICarburetor<T>, options: IPersistOptions<T>): IPersistDisposer` | Restores once and coalesces writes per microtask by default; the disposer's `flush()` writes a held-back state now. See [persist](#persist) for versioning and merge behavior. | [`persist.ts`](../lib/src/Carburetor/Tooling/persist.ts) |
 | `connectDevTools` | `(carburetors: IDict<IInspectable>, options?: IDevToolsOptions): TDisposer` | One action per store update; never echoes a time-travel jump, even under a deferring scheduler; no-op without the extension; disposes store and extension subscriptions when present, without closing the connection. | [`connectDevTools.ts`](../lib/src/Carburetor/Tooling/connectDevTools.ts) |
 | `watch<R>` | `(select: TSelector<T, R>, onChange: (next: TReadonly<R>, previous: TReadonly<R>) => void): TDisposer` | Watches changed detached selections; no initial callback. The disposer stops watching. | [`Carburetor.ts`](../lib/src/Carburetor/Store/Carburetor.ts) |
 | `waitForUpdate` | `(source: ICarburetorSubscription, timeout?: number): Promise<void>` | Resolves on the next notification. Timeout defaults to `1000` ms; on timeout rejects with `Error("waitForUpdate: no update within " + timeout + "ms")`; unsubscribes on either path. | [`waitForUpdate.ts`](../lib/src/Carburetor/Tooling/waitForUpdate.ts) |
 
 ### persist
 
-`persist<T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions<T>): TDisposer`
-restores once and returns a disposer. Options are `key` and `storage` (required),
+`persist<T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions<T>): IPersistDisposer`
+restores once and returns a disposer. Calling it a second time does nothing; disposing the store
+ends persist the same way. Its `flush(): void` writes now what storage is behind (a `throttleMs`
+window, a coalescing microtask, an undelivered notification), restarts the window and keeps
+mirroring; it does nothing after disposal and can be passed as an event listener. Options are `key` and `storage` (required),
 `onError?: (error: unknown) => void`, `coalesce?: boolean`, `throttleMs?: number`,
 `partitions?: ReadonlyArray<string>`, `version?: number`,
 `migrate?: Record<number, (state: unknown) => unknown>`, and
@@ -210,6 +213,7 @@ The four lint types below come from `@react-carburetor/core/lint`.
 | `TDisposer` | `() => void` | Disposes an observation or subscription. | [`Base.ts`](../lib/src/Carburetor/Models/Base.ts) |
 | `IHistoryOptions` | `{limit?: number}` | Maximum history entries; positive safe integer, default `50`. | [`CarburetorHistory.ts`](../lib/src/Carburetor/Tooling/CarburetorHistory.ts) |
 | `IPersistOptions` | `{key: string; storage: IStorageLike; onError?: (error: unknown) => void; coalesce?: boolean; throttleMs?: number; partitions?: ReadonlyArray<string>; version?: number; migrate?: Record<number, (state: unknown) => unknown>; prune?: boolean \| ((saved: unknown, current: T, merge: (saved: unknown) => T) => T); writeAfterRestore?: 'changed' \| 'always' \| 'never'}` | Persistence key, storage adapter and optional write, versioning and schema options. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
+| `IPersistDisposer` | `{(): void; flush(): void}` | What `persist` returns: a `TDisposer` with `flush()`, which writes a held-back state now and keeps mirroring. | [same](../lib/src/Carburetor/Models/Tooling.ts) |
 | `IUpdateScheduler` | `{schedule(uid: string, updater: TUpdater): void; cancel(uid: string): void}` | Update delivery policy. | [`Store.ts`](../lib/src/Carburetor/Models/Store.ts) |
 | `IStorageLike` | `{getItem(key: string): string \| null; setItem(key: string, value: string): void; removeItem(key: string): void}` | Persistence storage adapter. | [`Tooling.ts`](../lib/src/Carburetor/Models/Tooling.ts) |
 | `IDevToolsExtension` | `{connect(options: {name?: string}): IDevToolsConnection}` | Extension adapter. | [same](../lib/src/Carburetor/Models/Tooling.ts) |

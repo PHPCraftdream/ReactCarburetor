@@ -106,6 +106,20 @@ export interface IPersistOptions<T = unknown> {
     previousKeys?: readonly string[];
 }
 
+/** What `persist()` returns: call it to stop mirroring; `flush()` writes now what it holds. */
+export interface IPersistDisposer {
+    /** Stops the mirroring, writing first whatever is still held back. Later calls do nothing. */
+    (): void;
+    /**
+     * Writes the current state now if storage is behind it: a `throttleMs` window, a coalescing
+     * microtask or a notification a deferring scheduler has not delivered yet. The window then
+     * restarts from this write. Mirroring goes on. It does nothing after the disposer or the
+     * store's disposal, and a failed write goes to `onError`. It ignores `this` and arguments,
+     * so it can be passed as an event listener (`pagehide`, `visibilitychange`).
+     */
+    flush(): void;
+}
+
 export interface IHistoryOptions {
     /** Maximum past states to retain. A positive safe integer; defaults to 50. Invalid values throw. */
     limit?: number;

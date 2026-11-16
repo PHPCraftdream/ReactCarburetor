@@ -1321,6 +1321,10 @@ history.disconnect();
 
 Call the returned disposers and `history.disconnect()` when the owner is done; see the [consumer API reference](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/api-reference.md).
 
+With `throttleMs`, call the disposer's `flush()` on `pagehide` and on `visibilitychange` to hidden, so a
+tab closed inside the window keeps its last change; see
+[Writing before the page goes away](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/examples/tooling.md#writing-before-the-page-goes-away).
+
 `persist` writes the store's wire form (`toJSON()`) and restores parsed JSON through `restore()`;
 a subclass with a different wire form overrides `toJSON()` to produce JSON its `restore()`
 accepts. `ResourceCarburetor` includes its settled argument key in the wire form, so a restored

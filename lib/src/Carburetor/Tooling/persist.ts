@@ -1,6 +1,5 @@
-import {TDisposer} from "../Models/Base";
 import {ICarburetor} from "../Models/Store";
-import {IPersistOptions} from "../Models/Tooling";
+import {IPersistDisposer, IPersistOptions} from "../Models/Tooling";
 import {storeLifecycle} from '../Store/Diagnostics/Internal/StoreLifecycle';
 import {CARBURETOR_PERSIST_DRAIN} from '../Store/Utils/Models';
 import {discardStored} from './Persist/DiscardStored';
@@ -25,7 +24,8 @@ import {reportRestoreFailure} from './Persist/ReportRestoreFailure';
  * (`createTestScope(overrides, {clock})`, `clock.attach(store)`) moves it.
  * Disposing the store ends the mirroring as the disposer does: whatever is held back or was
  * never delivered is written synchronously, and the disposer called afterwards writes nothing.
- * Calling the disposer again writes nothing either.
+ * Calling the disposer again writes nothing either. The disposer's `flush()` writes what is held
+ * back now and keeps mirroring, for `pagehide` and `visibilitychange` listeners.
  * `partitions` stores one key per named top-level branch (`key + "." + branch`) and rewrites
  * only the branches that changed, which keeps a flush proportional to the dirty branches
  * instead of the whole state. The first flush seals every partition once; a flush while a
@@ -69,7 +69,10 @@ import {reportRestoreFailure} from './Persist/ReportRestoreFailure';
  * @param carburetor - both read and written: its snapshot is stored, stored data is restored into it
  * @param options - `key` and `storage` are required; a failed load or write reaches `onError` when given
  */
-export const persist = <T extends object>(carburetor: ICarburetor<T>, options: IPersistOptions<T>): TDisposer => {
+export const persist = <T extends object>(
+    carburetor: ICarburetor<T>,
+    options: IPersistOptions<T>
+): IPersistDisposer => {
     const {key, storage, coalesce, throttleMs, partitions, version, migrate, prune, previousKeys, onCorrupt,
         writeAfterRestore} = options;
 
@@ -288,11 +291,17 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
             }
         };
         const release = storeLifecycle.onDispose(carburetor, close);
-        return () => {
+        const stop = ((): void => {
             release();
             carburetor.unsubscribe(id);
             close();
+        }) as IPersistDisposer;
+        stop.flush = (): void => {
+            if (!closed && carburetor.getVersion() !== lastSeenVersion) {
+                write();
+            }
         };
+        return stop;
     }
 
     // One write per microtask: further changes before it runs just move the value it will
@@ -304,6 +313,15 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
     let cancelTimer: (() => void) | undefined;
     const flush = (forced: boolean = false): void => {
         if (closed || !pending) {
+            return;
+        }
+        // A notification delivered after flush() wrote its version has nothing left to write.
+        if (carburetor.getVersion() === lastSeenVersion) {
+            pending = false;
+            if (cancelTimer !== undefined) {
+                cancelTimer();
+                cancelTimer = undefined;
+            }
             return;
         }
         if (!forced && throttleMs !== undefined) {
@@ -325,15 +343,23 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         cancelTimer = undefined;
         flush();
     };
-    // The disposer and store disposal both end here, once: the held-back write goes out, and so
-    // does drift whose notification was cancelled or not delivered yet.
-    const close = (): void => {
+    // The held-back write goes out, and so does drift whose notification was cancelled or not
+    // delivered yet; the window restarts from this write.
+    const settle = (): void => {
         if (closed) return;
-        flush(true);
-        closed = true;
-        if (carburetor.getVersion() !== lastSeenVersion) {
+        if (cancelTimer !== undefined) {
+            cancelTimer();
+            cancelTimer = undefined;
+        }
+        if (pending || carburetor.getVersion() !== lastSeenVersion) {
+            pending = false;
             write();
         }
+    };
+    // The disposer and store disposal both end here, once.
+    const close = (): void => {
+        settle();
+        closed = true;
     };
     const drains = ((carburetor as ICarburetor<T> & {
         [CARBURETOR_PERSIST_DRAIN]?: Set<() => void>;
@@ -348,10 +374,12 @@ export const persist = <T extends object>(carburetor: ICarburetor<T>, options: I
         queueMicrotask(() => flush());
     });
     const release = storeLifecycle.onDispose(carburetor, close);
-    return () => {
+    const stop = ((): void => {
         release();
         drains.delete(drain);
         carburetor.unsubscribe(id);
         close();
-    };
+    }) as IPersistDisposer;
+    stop.flush = settle;
+    return stop;
 };

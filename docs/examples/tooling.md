@@ -65,7 +65,7 @@ every change. Storage is any object with `getItem`/`setItem`/`removeItem` (`ISto
 `flush(store)` or `flush(scope)` from testing also commits pending persistence synchronously,
 ignoring any `throttleMs` window.
 
-<!-- example:file examples/api/tooling/Persist.ts -->
+<!-- example:file examples/api/tooling/Persist.ts#doc -->
 ```ts
 import {bind, Carburetor, IPersistOptions, IStorageLike, persist} from '@react-carburetor/core';
 
@@ -135,6 +135,35 @@ exist yet. A function `prune` callback receives migrated saved data before mergi
 current wire baseline. Its third argument, `merge(saved)`, opts into filling defaults and
 pruning unknown keys; a callback that ignores it behaves as before.
 `partitions` continues to reject `version`, `migrate`, and `prune`.
+
+### Writing before the page goes away
+
+A write held back by `throttleMs` waits for its window, so a tab closed inside it would lose
+the last change. The disposer carries `flush()`, which writes now whatever storage is behind
+(the window, a coalescing microtask, a notification a deferring scheduler has not delivered)
+and keeps mirroring; the window restarts from that write. It ignores `this` and its
+arguments, so it can be an event listener as it is. Listen to `visibilitychange` (the hidden
+state is the last event mobile browsers reliably deliver) and `pagehide` (navigation and the
+back/forward cache); `beforeunload` and `unload` are not reliable for this.
+
+<!-- example:file examples/api/tooling/Persist.ts#flush -->
+```ts
+// A throttled write is held back for up to throttleMs. Closing the tab inside that window
+// would lose it, so write it when the page is hidden or left.
+const persistDraft = (draft: Carburetor<{text: string}>): (() => void) => {
+    const stopPersist = persist(draft, {key: 'draft', storage: localStorage, throttleMs: 1000});
+    const flushWhenHidden = (): void => {
+        if (document.visibilityState === 'hidden') stopPersist.flush();
+    };
+    document.addEventListener('visibilitychange', flushWhenHidden);
+    window.addEventListener('pagehide', stopPersist.flush);
+    return (): void => {
+        document.removeEventListener('visibilitychange', flushWhenHidden);
+        window.removeEventListener('pagehide', stopPersist.flush);
+        stopPersist();
+    };
+};
+```
 
 ## Redux DevTools
 

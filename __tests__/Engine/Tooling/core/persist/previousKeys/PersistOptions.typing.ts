@@ -1,6 +1,6 @@
 // Type-only checks for the generic IPersistOptions<T>: prune inference from the store.
 // Runtime behavior is covered by the ordinary suites under Engine/Tooling/core/persist.
-import {Carburetor, IPersistOptions, IStorageLike, persist} from '@/Carburetor';
+import {Carburetor, IPersistDisposer, IPersistOptions, IStorageLike, TDisposer, persist} from '@/Carburetor';
 
 interface IProfile {
     name: string;
@@ -78,4 +78,16 @@ const storage: IStorageLike = {
         onCorrupt: 'drop',
     };
     void bad;
+}
+
+// persist() returns a disposer that is still a TDisposer and also has flush().
+{
+    const store = new Carburetor<IProfile>({name: 'a', age: 1});
+    const stop: TDisposer = persist(store, {key: 'profile', storage});
+    const disposer: IPersistDisposer = persist(store, {key: 'profile', storage});
+    const flushNow: () => void = disposer.flush;
+    const listener: (event: {type: string}) => void = disposer.flush;
+    void stop;
+    void flushNow;
+    void listener;
 }

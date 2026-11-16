@@ -1,6 +1,5 @@
-import {TDisposer} from "../../Models/Base";
 import {ICarburetor} from "../../Models/Store";
-import {IStorageLike, IPersistOptions} from "../../Models/Tooling";
+import {IPersistDisposer, IStorageLike, IPersistOptions} from "../../Models/Tooling";
 import {storeLifecycle} from "../../Store/Diagnostics/Internal/StoreLifecycle";
 import {CARBURETOR_PERSIST_DRAIN} from "../../Store/Utils/Models";
 import {discardStored} from "./DiscardStored";
@@ -23,7 +22,7 @@ export const persistPartitions = <T extends object>(
     key: string,
     storage: IStorageLike,
     options: TPersistOptions
-): TDisposer => {
+): IPersistDisposer => {
     const {onError, coalesce, throttleMs} = options;
     const partitions = options.partitions as ReadonlyArray<string>;
     const branchKey = (branch: string): string => key + "." + branch;
@@ -262,29 +261,35 @@ export const persistPartitions = <T extends object>(
             {reads: new Set([branch])}
         )
     );
-    // The disposer and store disposal both end here, once.
-    const close = (): void => {
+    // Undelivered or cancelled publications leave the storage behind; reconcile every
+    // branch — identical ones skip their write, so this is cheap and exact. Failed
+    // partitions are retried here even without new changes.
+    const settle = (): void => {
         if (disposed) {
             return;
         }
-        disposed = true;
         if (cancelTimer !== undefined) {
             cancelTimer();
             cancelTimer = undefined;
         }
-        // Undelivered or cancelled publications leave the storage behind; reconcile every
-        // branch — identical ones skip their write, so this is cheap and exact. Failed
-        // partitions are retried here even without new changes.
-        if (carburetor.getVersion() !== lastSeenVersion || failed.size > 0) {
+        if (carburetor.getVersion() !== lastSeenVersion || failed.size > 0 || pending.size > 0) {
+            pending.clear();
             sealed = true;
             partitions.forEach(writeBranchDirect);
         }
     };
+    // The disposer and store disposal both end here, once.
+    const close = (): void => {
+        settle();
+        disposed = true;
+    };
     const release = storeLifecycle.onDispose(carburetor, close);
-    return () => {
+    const stop = ((): void => {
         release();
         drains?.delete(drain);
         ids.forEach(id => carburetor.unsubscribe(id));
         close();
-    };
+    }) as IPersistDisposer;
+    stop.flush = settle;
+    return stop;
 };

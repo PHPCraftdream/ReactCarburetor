@@ -32,3 +32,22 @@ const stop = persist(store, options);
 store.add('first');
 stop();
 // #endregion doc
+
+// #region flush
+// A throttled write is held back for up to throttleMs. Closing the tab inside that window
+// would lose it, so write it when the page is hidden or left.
+const persistDraft = (draft: Carburetor<{text: string}>): (() => void) => {
+    const stopPersist = persist(draft, {key: 'draft', storage: localStorage, throttleMs: 1000});
+    const flushWhenHidden = (): void => {
+        if (document.visibilityState === 'hidden') stopPersist.flush();
+    };
+    document.addEventListener('visibilitychange', flushWhenHidden);
+    window.addEventListener('pagehide', stopPersist.flush);
+    return (): void => {
+        document.removeEventListener('visibilitychange', flushWhenHidden);
+        window.removeEventListener('pagehide', stopPersist.flush);
+        stopPersist();
+    };
+};
+// #endregion flush
+void persistDraft;
