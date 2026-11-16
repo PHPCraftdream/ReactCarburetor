@@ -1,10 +1,9 @@
 // #region component
 import {
     AntiHookComponent,
+    bind,
     Carburetor,
-    TEffect,
     TEffectCleanup,
-    TEffectDeps,
     TTimerHandle,
 } from '@react-carburetor/core';
 
@@ -17,24 +16,26 @@ interface IAutosaveProps {
     save: (text: string) => void;
 }
 
+const selectText = (data: IDraftData): string => data.text;
+
 const makeCleanup = (handle: TTimerHandle): TEffectCleanup => (): void => clearTimeout(handle);
 
-const makeAutosave = (props: IAutosaveProps): TEffect => (): TEffectCleanup => {
-    const handle = setTimeout(() => props.save(props.draft.getData().text), 500);
-    return makeCleanup(handle);
-};
-
 export class AutosaveDraft extends AntiHookComponent<IAutosaveProps> {
-    private readonly autosave = makeAutosave(this.props);
-
     public render() {
         const view = this.useCarburetor(this.props.draft);
         return <textarea value={view.text} readOnly/>;
     }
 
     protected useEffects(): void {
-        const deps: TEffectDeps = [this.props.draft.getData().text];
-        this.useEffect('autosave', this.autosave, deps);
+        // Follows the text itself: each change cancels the pending save through the run's cleanup,
+        // so the draft is saved 500 ms after it settles, and nothing is saved after unmount.
+        this.useStoreEffect('autosave', this.props.draft, selectText, this.scheduleSave);
+    }
+
+    @bind
+    private scheduleSave(text: string): TEffectCleanup {
+        const handle = setTimeout(this.props.save, 500, text);
+        return makeCleanup(handle);
     }
 }
 // #endregion component

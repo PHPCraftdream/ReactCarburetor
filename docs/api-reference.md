@@ -141,6 +141,11 @@ Event names and payloads are inferred from that map.
   registers a listener. Its idempotent disposer removes that registration; a listener removed
   before its turn during delivery is skipped. There is no replay, and listener errors are isolated.
 - `dispose(): void` removes listeners, prevents future registrations and cancels captured deliveries.
+- `AntiHookComponent.useStoreEffect(name, store, select, effect): void` (and
+  `useStoreEffect(name, computed, effect)`) runs `effect(value, previous)` after mount with the current
+  selection and again when the store publishes a change of it; `previous` is `undefined` on the first
+  run. What a run returns is its cleanup, called before the next run and on unmount. It shares the
+  name space of `useEffect`; `select` and `effect` are its dependencies, so keep them stable.
 - `AntiHookComponent.useEvent(store, name, handler): void` subscribes using a stable handler; that
   handler's sole registration is replaced if its store or event name changes and disposed on
   component cleanup.

@@ -1,4 +1,4 @@
-import {AntiHookComponent} from '@react-carburetor/core';
+import {AntiHookComponent, Carburetor, TStoreEffect} from '@react-carburetor/core';
 
 interface IChannel {close(): void}
 interface ITodoApi {loadData(): Promise<void>}
@@ -22,3 +22,25 @@ export class TodoApp extends AntiHookComponent<ITodoProps> {
     }
 }
 // #endregion useEffects
+
+interface ISettingsData {theme: string; lang: string}
+interface IShellProps {settings: Carburetor<ISettingsData>}
+
+const selectTheme = (data: ISettingsData): string => data.theme;
+
+const applyTheme: TStoreEffect<string> = (theme) => {
+    document.documentElement.dataset.theme = theme;
+};
+
+// #region storeEffect
+export class Shell extends AntiHookComponent<IShellProps> {
+    protected useEffects(): void {
+        // Runs after mount with the current theme and again on every change; render never reads it.
+        this.useStoreEffect('theme', this.props.settings, selectTheme, applyTheme);
+    }
+
+    public render() {
+        return null;
+    }
+}
+// #endregion storeEffect

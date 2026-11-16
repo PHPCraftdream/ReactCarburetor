@@ -17,6 +17,12 @@ export type TEffect = () => TEffectCleanup | void;
 /** Values an effect depends on; compared element by element with Object.is. */
 export type TEffectDeps = ReadonlyArray<unknown>;
 
+/**
+ * Body of a store effect: the current value, and the one before it (`undefined` on the first run).
+ * It may return its own cleanup, which runs before the next run and on unmount.
+ */
+export type TStoreEffect<V> = (value: V, previous: V | undefined) => TEffectCleanup | void;
+
 /** Removes a subscription established outside React. */
 export type TDisposer = () => void;
 

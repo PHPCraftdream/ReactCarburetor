@@ -9,6 +9,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `useStoreEffect(name, store, select, effect)` on `AntiHookComponent` (and `useStoreEffect(name, computed, effect)`):
+  an effect that follows store data. `effect(value, previous)` runs after mount and on each change of the selection,
+  without a read in `render`, and what it returns is the run's cleanup. Before, a `getData()` dependency was compared
+  only when something else re-rendered the component, so the field had to be read in `render` as well. The
+  `AutosaveDraft` example uses it.
 - `computed.watch((next, previous) => ...)` returns a disposer and calls back after each change the computed delivers,
   like a store's `watch(select, onChange)`; before, a computed offered only `subscribe(callback)` with an id to
   unsubscribe and a callback that received no value.

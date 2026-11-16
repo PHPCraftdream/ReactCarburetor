@@ -170,14 +170,19 @@ A subclass overrides the protected `useEffects()` method; it runs on mount and a
 committed update. Each effect is declared with `useEffect(name, callBack, deps)`; whatever the
 callback returns is that effect's cleanup, run before the effect runs again and on unmount.
 
+An effect that follows store data uses `useStoreEffect(name, store, select, effect)` instead: it
+watches the selection itself, so no read in `render` is needed to bring the effect back, and a
+dependency taken with `getData()` (which is compared only when something else re-renders the
+component) is not needed either. `effect(value, previous)` runs after mount with the current value
+and again on each change; what it returns is its cleanup. Here every edit cancels the pending save:
+
 <!-- example:file examples/api/components/AutosaveDraft.tsx#component -->
 ```tsx
 import {
     AntiHookComponent,
+    bind,
     Carburetor,
-    TEffect,
     TEffectCleanup,
-    TEffectDeps,
     TTimerHandle,
 } from '@react-carburetor/core';
 
@@ -190,24 +195,26 @@ interface IAutosaveProps {
     save: (text: string) => void;
 }
 
+const selectText = (data: IDraftData): string => data.text;
+
 const makeCleanup = (handle: TTimerHandle): TEffectCleanup => (): void => clearTimeout(handle);
 
-const makeAutosave = (props: IAutosaveProps): TEffect => (): TEffectCleanup => {
-    const handle = setTimeout(() => props.save(props.draft.getData().text), 500);
-    return makeCleanup(handle);
-};
-
 export class AutosaveDraft extends AntiHookComponent<IAutosaveProps> {
-    private readonly autosave = makeAutosave(this.props);
-
     public render() {
         const view = this.useCarburetor(this.props.draft);
         return <textarea value={view.text} readOnly/>;
     }
 
     protected useEffects(): void {
-        const deps: TEffectDeps = [this.props.draft.getData().text];
-        this.useEffect('autosave', this.autosave, deps);
+        // Follows the text itself: each change cancels the pending save through the run's cleanup,
+        // so the draft is saved 500 ms after it settles, and nothing is saved after unmount.
+        this.useStoreEffect('autosave', this.props.draft, selectText, this.scheduleSave);
+    }
+
+    @bind
+    private scheduleSave(text: string): TEffectCleanup {
+        const handle = setTimeout(this.props.save, 500, text);
+        return makeCleanup(handle);
     }
 }
 ```

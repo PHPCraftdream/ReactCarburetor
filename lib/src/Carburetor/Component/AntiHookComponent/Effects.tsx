@@ -2,11 +2,14 @@
 
 import {C} from "../Models/ComponentSymbols";
 
-import {IDict, TEffect, TEffectDeps, TDisposer} from "../../Models/Base";
+import {IDict, TEffect, TEffectDeps, TDisposer, TReadonly, TStoreEffect} from "../../Models/Base";
+import {IComputed} from "../../Models/Derived";
+import {watchComputed} from "../../Derived/watchComputed";
+import {startStoreEffect} from "../Models/startStoreEffect";
 import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
 import {AntiHookComponentReads} from "./Reads";
 import {shallowEqual} from "../shallowEqual";
-import {ICarburetorEvents} from "../../Models/Store";
+import {ICarburetor, ICarburetorEvents, TSelector} from "../../Models/Store";
 
 declare const process: {env: {NODE_ENV?: string}};
 
@@ -95,6 +98,71 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
             handler: handler as (payload: never) => void,
             dispose,
         });
+    }
+
+    /**
+     * Runs `effect` with a store's selection after the commit and again whenever the selection
+     * changes, with no read in `render` needed to bring it back: the effect watches the store.
+     *
+     * The first run gets the current selection and `undefined` as the previous one. What a run
+     * returns is its cleanup, called before the next run and on unmount. A change runs the effect
+     * when the store publishes it, not after a React commit; an effect that needs the DOM rendered
+     * from the same data belongs in `useEffect`. Keep `select` and `effect` stable (module
+     * functions or `@bind` methods): a new function restarts the watch, like a changed dependency.
+     *
+     * @param name - the key in the per-effect record, shared with `useEffect`
+     * @param store - the store to watch
+     * @param select - picks the value the effect depends on
+     * @param effect - runs with the selection and the one before it
+     */
+    protected useStoreEffect<T, R>(
+        name: string,
+        store: Pick<ICarburetor<T>, 'getData' | 'watch'>,
+        select: TSelector<T, R>,
+        effect: TStoreEffect<TReadonly<R>>
+    ): void;
+    /**
+     * The same for a computed value: `effect` runs with it after the commit and again whenever the
+     * computed delivers a change.
+     *
+     * @param name - the key in the per-effect record, shared with `useEffect`
+     * @param computed - the derived value to follow, over any number of stores
+     * @param effect - runs with the value and the one before it
+     */
+    protected useStoreEffect<R>(name: string, computed: IComputed<R>, effect: TStoreEffect<R>): void;
+    /**
+     * Implementation of both overloads: four arguments watch a store's selection, three a computed.
+     *
+     * @param name - the key in the per-effect record
+     * @param source - the store, or the computed
+     * @param selectOrEffect - the selector for a store, the effect for a computed
+     * @param effect - the effect for a store; absent for a computed
+     */
+    protected useStoreEffect(
+        name: string,
+        source: Pick<ICarburetor<unknown>, 'getData' | 'watch'> | IComputed<unknown>,
+        selectOrEffect: TSelector<unknown, unknown> | TStoreEffect<unknown>,
+        effect?: TStoreEffect<unknown>
+    ): void {
+        if (effect === undefined) {
+            const computed = source as IComputed<unknown>;
+            const run = selectOrEffect as TStoreEffect<unknown>;
+
+            this.useEffect(name, () => startStoreEffect(
+                (onChange) => watchComputed(computed, onChange), () => computed.get(), run
+            ), [computed, run]);
+
+            return;
+        }
+
+        const store = source as Pick<ICarburetor<unknown>, 'getData' | 'watch'>;
+        const select = selectOrEffect as TSelector<unknown, unknown>;
+
+        this.useEffect(name, () => startStoreEffect(
+            (onChange) => store.watch(select, onChange),
+            () => select(store.getData() as TReadonly<unknown>) as TReadonly<unknown>,
+            effect as TStoreEffect<TReadonly<unknown>>
+        ), [store, select, effect]);
     }
 
     /**

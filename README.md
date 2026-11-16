@@ -308,12 +308,12 @@ What people who built with it found in the way, and what to do about each.
   ([docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md)). The
   allocation and disposal rules do not report code inside `describe`/`it`/`before*` callbacks, so
   test files need no `overrides` for them.
-- **Effects on store data take one extra step.** `useEffects` runs after the commit, where a read is
-  not tracked: a dependency taken with `getData()` is only compared again when something re-renders
-  the component, which is why it seems to need the same field read in `render` as well. Do not
-  read it twice; subscribe to it instead. Start a mount effect (`deps` of `[store]`) that applies the
-  current value and returns `store.watch(select, apply)`: the effect then follows the store, not the
-  renders, and the disposer is its cleanup ([Effects without hooks](#effects-without-hooks)).
+- **Effects on store data need their own primitive.** `useEffects` runs after the commit, where a
+  read is not tracked: a dependency taken with `getData()` is only compared again when something
+  re-renders the component, which is why it seemed to need the same field read in `render` as well.
+  `useStoreEffect(name, store, select, effect)` watches the selection instead, so the field is read
+  once and the effect follows the store, not the renders
+  ([Effects without hooks](#effects-without-hooks)).
 - **It is young.** The version is `0.x`: a minor release may change behavior, and the
   [changelog](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CHANGELOG.md) says what. Pin the minor you test against
   (`~0.2.0`). If your installs require a minimum release age (pnpm `minimumReleaseAge`, npm
@@ -860,6 +860,31 @@ paired per effect — a changed dependency of one effect does not tear down the 
 An empty `deps` array means "once, on mount". `unUseEffects(prevProps)` is still available as a
 component-wide hook that runs before every `useEffects` pass and on unmount, for teardown that
 is not tied to one effect.
+
+An effect that follows store data does not take it as a dependency: `useEffects` runs after the
+commit, where a read is not tracked, so a `getData()` dependency is compared only when something
+else re-renders the component. `useStoreEffect(name, store, select, effect)` watches the selection
+itself. `effect(value, previous)` runs after mount with the current value and again whenever the
+selection changes, with no read in `render`; what it returns is its cleanup. A `computed` in place of
+the store and the selector follows several stores at once.
+
+<!-- example:file examples/readme/Core/UseEffects.tsx#storeEffect -->
+```tsx
+export class Shell extends AntiHookComponent<IShellProps> {
+    protected useEffects(): void {
+        // Runs after mount with the current theme and again on every change; render never reads it.
+        this.useStoreEffect('theme', this.props.settings, selectTheme, applyTheme);
+    }
+
+    public render() {
+        return null;
+    }
+}
+```
+
+It runs when the store publishes the change, not after a React commit: an effect that needs the DOM
+rendered from the same data stays a `useEffect`. Keep `select` and `effect` stable (module functions
+or `@bind` methods), since a new function restarts the watch the way a changed dependency would.
 
 ### Diagnostics
 
@@ -1780,6 +1805,7 @@ do not redeclare it.
 | `unUseEffects(prevProps)`         | Component-wide teardown, before every `useEffects` pass and on unmount. |
 | `useEffect(name, cb, deps)`       | Runs `cb` when `deps` changed; its return value is that effect's cleanup. |
 | `useEffect(effect, deps)`         | The same, keyed by the stable `effect` function itself (a module-level function or a `@bind` method) instead of a name. |
+| `useStoreEffect(name, store, select, effect)` | Runs `effect(value, previous)` after mount and on each change of the store's selection, with no read in `render`; its return value is the run's cleanup. Also `useStoreEffect(name, computed, effect)`. |
 | `shouldComponentUpdate(…)`        | The props/state gate. Override only with a `super` call.        |
 | `@bind` *(decorator)*             | Binds a method once per instance, keeping it on the prototype and its reference stable. |
 
