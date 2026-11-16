@@ -30,7 +30,12 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check, bool); 38] = [
+const REGISTRY: [(&str, Check, bool); 39] = [
+    (
+        effects::no_store_read_in_effect_deps::RULE,
+        effects::no_store_read_in_effect_deps::check,
+        false,
+    ),
     (
         setup::no_unrecognized_base::RULE,
         setup::no_unrecognized_base::check,
@@ -319,6 +324,9 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
 
     match rule {
         setup::no_unrecognized_base::RULE => text.contains("import") && text.contains("extends"),
+        effects::no_store_read_in_effect_deps::RULE => {
+            text.contains("getData") && text.contains("useEffects")
+        }
         allocations::no_closure_in_update::RULE => any(store) && text.contains("update"),
         lifecycle::no_lifecycle_class_property::RULE
         | lifecycle::require_super_in_lifecycle::RULE => {

@@ -25,3 +25,16 @@ export class Row extends AntiHookComponent<{url: string; interval: number}> {
         return <span>{this.props.url}</span>;
     }
 }
+
+const saveDraft = (): void => undefined;
+
+class DraftSaver extends AntiHookComponent<{draft: {getData(): {text: string}}}> {
+    protected useEffects(): void {
+        // no-store-read-in-effect-deps
+        this.useEffect('save', saveDraft, [this.props.draft.getData().text]);
+    }
+
+    public render() {
+        return <span/>;
+    }
+}

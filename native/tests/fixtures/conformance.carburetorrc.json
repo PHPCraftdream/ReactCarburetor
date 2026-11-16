@@ -18,6 +18,7 @@
     "carburetor/no-capturing-hook-selector": "error",
     "carburetor/no-module-level-store": "error",
     "carburetor/no-unrecognized-base": "error",
+    "carburetor/no-store-read-in-effect-deps": "error",
     "carburetor/no-store-write-in-render": "error",
     "carburetor/no-tracked-data-mutation": "error",
     "carburetor/no-untrackable-draft-mutation": "error",

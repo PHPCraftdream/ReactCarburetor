@@ -329,6 +329,7 @@ describe('lint plugin in the oxlint host', () => {
             'carburetor(no-async-effect)',
             'carburetor(no-duplicate-effect-name)',
             'carburetor(require-effect-deps)',
+            'carburetor(no-store-read-in-effect-deps)',
         ];
 
         expected.forEach((ruleId: string) => {

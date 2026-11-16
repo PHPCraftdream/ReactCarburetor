@@ -313,7 +313,8 @@ What people who built with it found in the way, and what to do about each.
   re-renders the component, which is why it seemed to need the same field read in `render` as well.
   `useStoreEffect(name, store, select, effect)` watches the selection instead, so the field is read
   once and the effect follows the store, not the renders
-  ([Effects without hooks](#effects-without-hooks)).
+  ([Effects without hooks](#effects-without-hooks)); `no-store-read-in-effect-deps` points out the
+  old pattern.
 - **It is young.** The version is `0.x`: a minor release may change behavior, and the
   [changelog](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/CHANGELOG.md) says what. Pin the minor you test against
   (`~0.2.0`). If your installs require a minimum release age (pnpm `minimumReleaseAge`, npm
@@ -1648,8 +1649,8 @@ projections.
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
 subscribed to, or when an effect's cleanup is silently dropped. The plugin and native registries each
-contain 38 rules: 31 catalogue rules, the `no-unrecognized-base` setup check, the optional
-`no-react-hooks-in-components` policy, and five house-style rules. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
+contain 39 rules: 31 catalogue rules, `no-store-read-in-effect-deps`, the `no-unrecognized-base`
+setup check, the optional `no-react-hooks-in-components` policy, and five house-style rules. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
 reference by rule name — what each catches, how to switch one off, and the optional `no-hooks`
 preset. [docs/hazards.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/hazards.md) is the same material by mistake, with the code that
 triggers it, why it is silent at runtime, and where the rule can be wrong.

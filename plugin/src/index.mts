@@ -15,6 +15,7 @@ import {requireSubscriptionDisposal} from "./Rules/Boundaries/requireSubscriptio
 import {noAsyncEffect} from "./Rules/Effects/noAsyncEffect.mts";
 import {noClosureInUpdate} from "./Rules/Allocations/noClosureInUpdate.mts";
 import {noDuplicateEffectName} from "./Rules/Effects/noDuplicateEffectName.mts";
+import {noStoreReadInEffectDeps} from "./Rules/Effects/noStoreReadInEffectDeps.mts";
 import {requireEffectDeps} from "./Rules/Effects/requireEffectDeps.mts";
 import {noComputedGetInComputed} from "./Rules/Reads/noComputedGetInComputed.mts";
 import {noComputedGetInRender} from "./Rules/Reads/noComputedGetInRender.mts";
@@ -64,6 +65,7 @@ const plugin: IPlugin = {
         'no-get-data-in-render': noGetDataInRender,
         'no-direct-data-write': noDirectDataWrite,
         'no-duplicate-effect-name': noDuplicateEffectName,
+        'no-store-read-in-effect-deps': noStoreReadInEffectDeps,
         'no-escaping-tracked-data': noEscapingTrackedData,
         'no-external-data-mutation': noExternalDataMutation,
         'no-function-in-render': noFunctionInRender,

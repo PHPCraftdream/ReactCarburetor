@@ -36,6 +36,7 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/tsdoc-blank-line-before-tags': 'off',
     'carburetor/no-module-level-store': 'off',
     'carburetor/no-unrecognized-base': 'warn',
+    'carburetor/no-store-read-in-effect-deps': 'warn',
     'carburetor/no-memo-over-store-read': 'warn',
     'carburetor/no-react-hooks-in-components': 'off',
     'carburetor/no-store-write-in-render': 'error',

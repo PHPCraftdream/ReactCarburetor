@@ -9,6 +9,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `carburetor/no-store-read-in-effect-deps` (`warn` in the recommended preset): inside `useEffects`, a `this.useEffect`
+  dependency taken with `getData()` (directly, through a constant of the method, or as a held dependency array) is
+  reported with a pointer to `useStoreEffect`.
 - `carburetor/no-unrecognized-base` (`warn` in the recommended preset): a class that extends a project base imported
   from another file, not listed in `componentBases`/`storeBases`, and plainly uses the engine (`this.useCarburetor`,
   `this.useEffect`, `useEffects`, `this.draft`, …) is reported once with the list to add the base to. Before, every
