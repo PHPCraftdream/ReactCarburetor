@@ -1,6 +1,7 @@
 import {
     Carburetor, CarburetorHistory, IDevToolsConnection, IDevToolsExtension, IDevToolsMessage, IDevToolsOptions,
-    IDict, IHistoryOptions, IPersistOptions, IStorageLike, TDisposer, connectDevTools, persist, waitForUpdate,
+    IDict, IHistoryOptions, IPersistDisposer, IPersistOptions, IStorageLike, TDisposer, connectDevTools, persist,
+    waitForUpdate,
 } from '@react-carburetor/core';
 
 interface State {count: number}
@@ -13,7 +14,7 @@ const connection: IDevToolsConnection = {init: () => undefined, send: () => unde
 const extension: IDevToolsExtension = {connect: () => connection};
 const devtools: IDevToolsOptions = {name: 'Counter', extension};
 const stores: IDict<Carburetor<State>> = {counter: store};
-const dispose: TDisposer = persist(store, persistenceOptions);
+const dispose: IPersistDisposer = persist(store, persistenceOptions);
 const history = new CarburetorHistory(store, historyOptions);
 const stopHistory: TDisposer = () => history.disconnect();
 const stopDevtools = connectDevTools(stores, devtools);
