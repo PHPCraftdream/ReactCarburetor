@@ -5,9 +5,9 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
-`no-hooks` preset adds a component-architecture policy. The plugin registry contains **37 rules**:
-31 catalogue rules, the optional `no-react-hooks-in-components` policy, and five house-style rules. The native registry also has 37
-entries. `no-module-level-store` and `one-export-per-file` are off in recommended configuration.
+`no-hooks` preset adds a component-architecture policy. The plugin registry contains **38 rules**:
+31 catalogue rules, the `no-unrecognized-base` setup check, the optional `no-react-hooks-in-components`
+policy, and five house-style rules. The native registry also has 38 entries. `no-module-level-store` and `one-export-per-file` are off in recommended configuration.
 
 ## Functional component reads
 
@@ -234,6 +234,7 @@ until your project changes shape.
 | `no-handler-created-in-render` | warn | A handler built in render and passed to a child, which defeats the props gate | [H21](hazards.md) |
 | `no-lifecycle-class-property` | error | A lifecycle method declared as a class property, shadowing the base implementation | [H13](hazards.md) |
 | `no-module-level-store` | off | A store created once per module, which a server shares across requests | [H18](hazards.md) |
+| `no-unrecognized-base` | warn | A class that uses the engine through an imported base class not listed in `componentBases`/`storeBases`, so no rule checks it; setup check | — |
 | `no-memo-over-store-read` | warn | `useMemo`/`useCallback` over hook-read values; derive in the selector or a `Computed` | [H33](hazards.md) |
 | `no-capturing-hook-selector` | warn | Inline hook selector captures render state; select whole record then pick, or use `AntiHookComponent#useCarburetor` without a selector | [H34](hazards.md) |
 | `one-export-per-file` | off | A second runtime-value export in one file; every file ships at most one value, type exports are unlimited | [H36](hazards.md) |
@@ -413,6 +414,18 @@ This rule warns when `useMemo` or `useCallback` in a recognized function-compone
 ## no-capturing-hook-selector (H34)
 
 This rule warns when an inline selector passed as argument 2 to `useCarburetorValue(source, select, isEqual?)` or argument 3 to `useResourceValue(source, args, select, isEqual?)` captures a parameter or local binding from the recognized component render. `useComputedValue(computed)` has no selector and is not covered by H34. It does not report capture-free selectors, which remain H30-only and are not duplicated by H34. Prefer selecting the whole record then picking fields during render; the default severity is `warn`.
+
+## Setup check: `no-unrecognized-base`
+
+Recognition is syntactic and follows `extends` only through classes declared in the same file. A
+component or store that extends the project's own base imported from another file
+(`class Screen extends AppComponent`) is invisible to every rule until that base is listed in
+`componentBases` or `storeBases` (`settings.carburetor` in the lint config, or `.carburetorrc.json`).
+This rule reports such a class once, at its `extends` clause, when its body plainly uses the engine:
+it calls `useCarburetor`, `useComputed`, `useResource`, `suspendResource`, `useEffect`,
+`useStoreEffect` or `useEvent` on `this`, declares `useEffects`/`unUseEffects`, or uses `this.draft` or
+`this.emitUpdate`. The message names the list to add the base to. A base declared in the same file, a
+built-in base and a listed one are never reported. It is `warn` in the recommended preset.
 
 ## House-style rules (optional, off by default)
 

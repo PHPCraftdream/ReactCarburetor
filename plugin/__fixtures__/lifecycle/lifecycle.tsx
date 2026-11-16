@@ -37,3 +37,12 @@ export class Row extends AntiHookComponent<{id: string}> {
         </div>;
     }
 }
+
+// no-unrecognized-base: a project base imported from another file and not listed in componentBases
+import {AppComponent} from "./app-component";
+
+class Panel extends AppComponent {
+    public render() {
+        return this.useCarburetor(store).title;
+    }
+}

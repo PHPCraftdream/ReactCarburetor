@@ -19,6 +19,7 @@ mod dispatch;
 mod dispatch_tests;
 mod effects;
 mod lifecycle;
+mod setup;
 mod shared;
 mod style;
 mod support;
@@ -29,7 +30,12 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check, bool); 37] = [
+const REGISTRY: [(&str, Check, bool); 38] = [
+    (
+        setup::no_unrecognized_base::RULE,
+        setup::no_unrecognized_base::check,
+        false,
+    ),
     (
         boundaries::max_render_depth::RULE,
         boundaries::max_render_depth::check,
@@ -312,6 +318,7 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
     let component = bases.components();
 
     match rule {
+        setup::no_unrecognized_base::RULE => text.contains("import") && text.contains("extends"),
         allocations::no_closure_in_update::RULE => any(store) && text.contains("update"),
         lifecycle::no_lifecycle_class_property::RULE
         | lifecycle::require_super_in_lifecycle::RULE => {

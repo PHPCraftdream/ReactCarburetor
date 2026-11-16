@@ -1648,8 +1648,8 @@ projections.
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
 subscribed to, or when an effect's cleanup is silently dropped. The plugin and native registries each
-contain 37 rules: 31 catalogue rules, the optional `no-react-hooks-in-components` policy, and five
-house-style rules. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
+contain 38 rules: 31 catalogue rules, the `no-unrecognized-base` setup check, the optional
+`no-react-hooks-in-components` policy, and five house-style rules. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
 reference by rule name — what each catches, how to switch one off, and the optional `no-hooks`
 preset. [docs/hazards.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/hazards.md) is the same material by mistake, with the code that
 triggers it, why it is silent at runtime, and where the rule can be wrong.
@@ -1684,8 +1684,9 @@ switch it on then.
 
 Detection is syntactic. Fixed component bases are `AntiHookComponent` and
 `ScopedAntiHookComponent`; fixed store bases are `Carburetor` and `ResourceCarburetor`; the
-recognized render method is `render`. Directly extending a recognized base works; inheritance
-through a custom intermediate subclass is not resolved transitively. Most rules accept severity; `require-module-function` additionally accepts `scope: "all"` (default) or `"classes"`, `max-render-depth` accepts `max`, and the house-style rules take their options in the same `["error", {...}]` entry. Use `off` or a host suppression comment for rules that do not fit, or the standalone linter's `carburetor-disable` comment.
+recognized render method is `render`. Directly extending a recognized base works, and so does a base declared in the same file;
+a project base imported from another file has to be listed in `componentBases`/`storeBases`, and
+`no-unrecognized-base` points out a class that needs it. Most rules accept severity; `require-module-function` additionally accepts `scope: "all"` (default) or `"classes"`, `max-render-depth` accepts `max`, and the house-style rules take their options in the same `["error", {...}]` entry. Use `off` or a host suppression comment for rules that do not fit, or the standalone linter's `carburetor-disable` comment.
 
 ```json
 {

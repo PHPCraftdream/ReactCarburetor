@@ -8,6 +8,7 @@ import {requireMethodForClosure} from "./Rules/Allocations/requireMethodForClosu
 import {requireModuleFunction} from "./Rules/Allocations/requireModuleFunction.mts";
 import {noAsyncTransaction} from "./Rules/Boundaries/noAsyncTransaction.mts";
 import {noModuleLevelStore} from "./Rules/Boundaries/noModuleLevelStore.mts";
+import {noUnrecognizedBase} from "./Rules/Boundaries/noUnrecognizedBase.mts";
 import {noUntrackableStoreData} from "./Rules/Boundaries/noUntrackableStoreData.mts";
 import {oneExportPerFile} from "./Rules/Boundaries/oneExportPerFile.mts";
 import {requireSubscriptionDisposal} from "./Rules/Boundaries/requireSubscriptionDisposal.mts";
@@ -76,6 +77,7 @@ const plugin: IPlugin = {
         'tsdoc-blank-line-before-tags': tsdocBlankLineBeforeTags,
         'no-lifecycle-class-property': noLifecycleClassProperty,
         'no-module-level-store': noModuleLevelStore,
+        'no-unrecognized-base': noUnrecognizedBase,
         'no-react-hooks-in-components': noReactHooksInComponents,
         'no-store-write-in-render': noStoreWriteInRender,
         'no-tracked-data-mutation': noTrackedDataMutation,

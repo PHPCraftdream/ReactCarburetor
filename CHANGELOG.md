@@ -9,6 +9,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `carburetor/no-unrecognized-base` (`warn` in the recommended preset): a class that extends a project base imported
+  from another file, not listed in `componentBases`/`storeBases`, and plainly uses the engine (`this.useCarburetor`,
+  `this.useEffect`, `useEffects`, `this.draft`, …) is reported once with the list to add the base to. Before, every
+  rule skipped such a class without a word.
 - `useStoreEffect(name, store, select, effect)` on `AntiHookComponent` (and `useStoreEffect(name, computed, effect)`):
   an effect that follows store data. `effect(value, previous)` runs after mount and on each change of the selection,
   without a read in `render`, and what it returns is the run's cleanup. Before, a `getData()` dependency was compared
