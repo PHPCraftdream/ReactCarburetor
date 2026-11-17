@@ -9,6 +9,9 @@ import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
 
 const noop = (): undefined => undefined;
 
+/** Every write: built once, since subscribe copies the reads it is given. */
+const EVERY_WRITE = new Set([WILDCARD_PATH]);
+
 const findExtension = (): IDevToolsExtension | undefined => {
     const host = globalThis as {__REDUX_DEVTOOLS_EXTENSION__?: IDevToolsExtension};
 
@@ -44,6 +47,12 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
     const jumpedVersions: IDict<number> = Object.create(null);
 
     const snapshots: IDict<{state: unknown; version: number}> = Object.create(null);
+    // Each store's action name, built once instead of on every publication.
+    const updateActions: IDict<string> = Object.create(null);
+
+    names.forEach((name: string) => {
+        updateActions[name] = name + '/update';
+    });
 
     // A payload copies each store once and then reuses that copy until the store's version
     // moves. Every version is checked on every composition: the notification is named after
@@ -84,11 +93,11 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
             }
         }
 
-        connection.send(name + '/update', composeState());
+        connection.send(updateActions[name], composeState());
     };
 
     names.forEach((name: string) => {
-        carburetors[name].subscribe(() => publish(name), {id: subscriberId, reads: new Set([WILDCARD_PATH])});
+        carburetors[name].subscribe(() => publish(name), {id: subscriberId, reads: EVERY_WRITE});
     });
 
     const applyState = (serialized: string | undefined) => {

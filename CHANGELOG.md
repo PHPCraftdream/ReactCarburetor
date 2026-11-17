@@ -12,6 +12,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `carburetor/no-store-read-in-effect-deps` (`warn` in the recommended preset): inside `useEffects`, a `this.useEffect`
   dependency taken with `getData()` (directly, through a constant of the method, or as a held dependency array) is
   reported with a pointer to `useStoreEffect`.
+- `carburetor/require-hoisted-constant` (`warn` in the recommended preset): a `Set`/`Map` of constants, or a string
+  assembled only from constants (imports and module-level `const`s), built inside a function on every call. Measured
+  on V8: a per-call `new Set([x])` is about fifteen times slower than a hoisted one and a concatenation about four
+  times, while a plain string literal costs nothing per call, so literals are not reported. Error messages and
+  `throw`s are left alone. The engine's own three cases (`waitForUpdate`, `connectDevTools`, a resource cache read
+  check) are hoisted.
 - `carburetor/no-inline-store-effect` (`error` in the recommended preset): a selector or effect handed to
   `this.useStoreEffect` that is built on every render (an arrow, a function expression, a `.bind(...)`, or a function a
   constant of the same method holds). `useStoreEffect` keeps it as a dependency, so each render would unsubscribe,

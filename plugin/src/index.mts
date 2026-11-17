@@ -14,6 +14,7 @@ import {oneExportPerFile} from "./Rules/Boundaries/oneExportPerFile.mts";
 import {requireSubscriptionDisposal} from "./Rules/Boundaries/requireSubscriptionDisposal.mts";
 import {noAsyncEffect} from "./Rules/Effects/noAsyncEffect.mts";
 import {noClosureInUpdate} from "./Rules/Allocations/noClosureInUpdate.mts";
+import {requireHoistedConstant} from "./Rules/Allocations/requireHoistedConstant.mts";
 import {noDuplicateEffectName} from "./Rules/Effects/noDuplicateEffectName.mts";
 import {noStoreReadInEffectDeps} from "./Rules/Effects/noStoreReadInEffectDeps.mts";
 import {noInlineStoreEffect} from "./Rules/Effects/noInlineStoreEffect.mts";
@@ -60,6 +61,7 @@ const plugin: IPlugin = {
         'no-async-effect': noAsyncEffect,
         'no-async-transaction': noAsyncTransaction,
         'no-closure-in-update': noClosureInUpdate,
+        'require-hoisted-constant': requireHoistedConstant,
         'no-computed-get-in-computed': noComputedGetInComputed,
         'no-computed-get-in-render': noComputedGetInRender,
         'no-capturing-hook-selector': noCapturingHookSelector,

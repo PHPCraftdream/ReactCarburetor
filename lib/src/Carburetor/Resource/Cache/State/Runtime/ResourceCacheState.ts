@@ -27,6 +27,9 @@ import {EvictionLedger} from "../../EvictionLedger";
 import {DEFAULT_MAX_ENTRIES, DEFAULT_TTL, ICacheRequest, ICacheRuntime} from "./Models";
 import {trimCacheRuntime} from "./Registry";
 
+/** The prefix of every entry path, built once rather than per checked read. */
+const ENTRIES_PREFIX = 'entries' + PATH_SEPARATOR;
+
 const abortCacheRequest = (request: ICacheRequest): void => request.controller.abort();
 
 /** The field names of an untouched entry, built once: `subscribe` only asks whether a field is one. */
@@ -203,7 +206,7 @@ export abstract class ResourceCacheState<T, TArgs extends TResourceArgs> extends
                 const end = path.lastIndexOf(PATH_SEPARATOR);
                 const parent = path.slice(0, end);
                 const field = path.slice(end + 1);
-                if (!parent.startsWith(`entries${PATH_SEPARATOR}`) || field === 'status' ||
+                if (!parent.startsWith(ENTRIES_PREFIX) || field === 'status' ||
                     field === 'isIdle' || field === 'isPending' ||
                     !Object.prototype.hasOwnProperty.call(DEFAULT_ENTRY_FIELDS, field)) {
                     absent.clear();

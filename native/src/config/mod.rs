@@ -93,6 +93,7 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("no-store-read-in-effect-deps", Severity::Warn),
     ("no-inline-store-effect", Severity::Error),
     ("prefer-store-effect", Severity::Warn),
+    ("require-hoisted-constant", Severity::Warn),
     ("no-parent-import", Severity::Off),
     ("prefer-readonly-array-param", Severity::Off),
     ("no-react-hooks-in-components", Severity::Off),

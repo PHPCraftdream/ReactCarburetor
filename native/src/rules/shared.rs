@@ -48,6 +48,9 @@ pub(super) fn check_with_shared<'a>(
                 program, source, semantic, bases,
             )
         }
+        allocations::require_hoisted_constant::RULE => {
+            allocations::require_hoisted_constant::check_with_semantic(program, source, semantic)
+        }
         allocations::no_closure_in_update::RULE => {
             allocations::no_closure_in_update::check_with_semantic(program, source, semantic, bases)
         }

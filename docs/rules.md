@@ -5,11 +5,11 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
-`no-hooks` preset adds a component-architecture policy. The plugin registry contains **41 rules**:
-31 catalogue rules, three `useStoreEffect` rules (`no-store-read-in-effect-deps`,
+`no-hooks` preset adds a component-architecture policy. The plugin registry contains **42 rules**:
+31 catalogue rules, `require-hoisted-constant`, three `useStoreEffect` rules (`no-store-read-in-effect-deps`,
 `no-inline-store-effect`, `prefer-store-effect`), the `no-unrecognized-base` setup check, the
 optional `no-react-hooks-in-components` policy, and five house-style rules. The native registry also
-has 41 entries. `no-module-level-store` and `one-export-per-file` are off in recommended configuration.
+has 42 entries. `no-module-level-store` and `one-export-per-file` are off in recommended configuration.
 
 ## Functional component reads
 
@@ -252,6 +252,7 @@ until your project changes shape.
 | `require-bind-for-passed-method` | error | A component method passed as a value without `@bind`, losing its receiver | [H22](hazards.md) |
 | `require-effect-deps` | warn | A prop or piece of state read by an effect but missing from its dependencies | [H16](hazards.md) |
 | `require-emit-after-draft-write` | error | A method that writes through `draft` and never publishes | [H6](hazards.md) |
+| `require-hoisted-constant` | warn | A `Set`/`Map` of constants, or a string assembled only from constants (an import or a module-level `const` with literals), built inside a function on every call; build it once at module level | — |
 | `require-method-for-closure` | warn | A closure inside a class member that depends only on the class, rebuilt on every call of the member — declare it as a method | [H29](hazards.md) |
 | `require-module-function` | warn | A clean nested function needing no surrounding invocation state, or an eligible component member needing no class; configurable scope | [H30](hazards.md) |
 | `require-subscription-disposal` | warn | A subscription whose id is discarded, or a `watch` whose disposer is, so it can never be released | [H20](hazards.md) |
@@ -429,6 +430,20 @@ the same field. The rule reports, inside a `useEffects` method, a `this.useEffec
 calls `getData()`, that names a constant of the same method initialized from `getData()` (destructured
 or not), or a whole dependency array held in such a constant. Follow store data with
 `useStoreEffect(name, store, select, effect)` instead. It is `warn` in the recommended preset.
+
+## `require-hoisted-constant`
+
+A string literal costs nothing per call: the engine keeps one copy, and moving it into an imported
+constant changes nothing (measured: no young-generation collections either way). What a function
+*builds* does cost, every call: `new Set([WILDCARD])` allocates a set and an array, `PREFIX + '.'`
+and `` `${PREFIX}.` `` allocate a new string, and none of them can differ between calls. On V8 a
+per-call `new Set([x])` measured about fifteen times slower than reading a hoisted one, a
+concatenation about four times, and both feed the collector. The rule reports such a value inside a
+function when every part is a literal, an import, a module-level `const` or a member of one. An
+empty collection (a fresh mutable value by intent), a concatenation of literals only (folded by the
+engine), and a message built for `new …Error(...)` or a `throw` (a cold path) are left alone, and
+so is code in test callbacks. Values that depend on an argument cannot be hoisted and are not this
+rule's business. It is `warn` in the recommended preset.
 
 ## `no-inline-store-effect`
 

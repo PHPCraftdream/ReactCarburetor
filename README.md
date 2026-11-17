@@ -1681,8 +1681,10 @@ projections.
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
 subscribed to, or when an effect's cleanup is silently dropped. The plugin and native registries each
-contain 41 rules: 31 catalogue rules, three `useStoreEffect` rules (`no-store-read-in-effect-deps`,
-`no-inline-store-effect`, `prefer-store-effect`), the `no-unrecognized-base` setup check, the optional `no-react-hooks-in-components` policy, and five house-style rules. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
+contain 42 rules: 31 catalogue rules, `require-hoisted-constant`, three `useStoreEffect` rules
+(`no-store-read-in-effect-deps`, `no-inline-store-effect`, `prefer-store-effect`), the
+`no-unrecognized-base` setup check, the optional `no-react-hooks-in-components` policy, and five
+house-style rules. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
 reference by rule name — what each catches, how to switch one off, and the optional `no-hooks`
 preset. [docs/hazards.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/hazards.md) is the same material by mistake, with the code that
 triggers it, why it is silent at runtime, and where the rule can be wrong.

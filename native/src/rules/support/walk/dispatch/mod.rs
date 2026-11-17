@@ -27,6 +27,7 @@ pub(super) fn run(
         data::interop::no_memo_over_store_read::RULE,
         data::interop::no_capturing_hook_selector::RULE,
         allocations::no_closure_in_update::RULE,
+        allocations::require_hoisted_constant::RULE,
         boundaries::no_async_transaction::RULE,
         effects::no_async_effect::RULE,
         allocations::no_react_hooks_in_components::RULE,

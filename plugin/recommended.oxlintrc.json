@@ -7,6 +7,7 @@
     "carburetor/no-computed-get-in-computed": "error",
     "carburetor/no-computed-get-in-render": "error",
     "carburetor/no-closure-in-update": "warn",
+    "carburetor/require-hoisted-constant": "warn",
     "carburetor/no-direct-data-write": "warn",
     "carburetor/no-duplicate-effect-name": "error",
     "carburetor/no-escaping-tracked-data": "warn",

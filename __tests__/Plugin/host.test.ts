@@ -350,6 +350,7 @@ describe('lint plugin in the oxlint host', () => {
             'carburetor(no-module-level-store)',
             'carburetor(no-untrackable-store-data)',
             'carburetor(require-subscription-disposal)',
+            'carburetor(require-hoisted-constant)',
         ];
 
         expected.forEach((ruleId: string) => {

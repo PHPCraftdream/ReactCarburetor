@@ -34,3 +34,9 @@ export const save = async (name: string): Promise<void> => {
 
 // require-subscription-disposal
 profileCarburetor.subscribe(() => api.log(profileCarburetor.getData().name), {reads});
+
+const EVERY_NAME = 'name';
+
+// require-hoisted-constant
+export const watchName = (onName: () => void): string =>
+    profileCarburetor.subscribe(onName, {reads: new Set([EVERY_NAME])});

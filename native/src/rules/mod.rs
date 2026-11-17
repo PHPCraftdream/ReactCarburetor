@@ -30,7 +30,12 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check, bool); 41] = [
+const REGISTRY: [(&str, Check, bool); 42] = [
+    (
+        allocations::require_hoisted_constant::RULE,
+        allocations::require_hoisted_constant::check,
+        false,
+    ),
     (
         effects::no_inline_store_effect::RULE,
         effects::no_inline_store_effect::check,
@@ -340,6 +345,9 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
             text.contains("getData") && text.contains("useEffects")
         }
         allocations::no_closure_in_update::RULE => any(store) && text.contains("update"),
+        allocations::require_hoisted_constant::RULE => {
+            text.contains("new ") || text.contains('+') || text.contains("${")
+        }
         lifecycle::no_lifecycle_class_property::RULE
         | lifecycle::require_super_in_lifecycle::RULE => {
             any(component) && LIFECYCLE_MARKERS.iter().any(|marker| text.contains(marker))
@@ -455,6 +463,7 @@ pub(super) fn run_sequential(
     let selector_severity = config.severity(data::interop::no_capturing_hook_selector::RULE);
     let module_scope = config.module_function_scope();
     let closure_severity = config.severity(allocations::no_closure_in_update::RULE);
+    let hoisted_severity = config.severity(allocations::require_hoisted_constant::RULE);
     let transaction_severity = config.severity(boundaries::no_async_transaction::RULE);
     let effect_severity = config.severity(effects::no_async_effect::RULE);
     let hooks_severity = config.severity(allocations::no_react_hooks_in_components::RULE);
@@ -471,6 +480,7 @@ pub(super) fn run_sequential(
         memo_severity,
         selector_severity,
         closure_severity,
+        hoisted_severity,
         transaction_severity,
         effect_severity,
         hooks_severity,
@@ -501,6 +511,7 @@ pub(super) fn run_sequential(
             | data::interop::no_memo_over_store_read::RULE
             | data::interop::no_capturing_hook_selector::RULE
             | allocations::no_closure_in_update::RULE
+            | allocations::require_hoisted_constant::RULE
             | boundaries::no_async_transaction::RULE
             | effects::no_async_effect::RULE
             | allocations::no_react_hooks_in_components::RULE

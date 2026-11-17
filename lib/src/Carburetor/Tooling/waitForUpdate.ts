@@ -2,6 +2,9 @@ import {ICarburetorSubscription} from "../Models/Store";
 import {storeLifecycle} from "../Store/Diagnostics/Internal/StoreLifecycle";
 import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
 
+/** Every write: built once, since subscribe copies the reads it is given. */
+const EVERY_WRITE = {reads: new Set([WILDCARD_PATH])};
+
 /**
  * Resolves on the next update of a carburetor or computed. Useful for throttled stores
  * and async resources, where an update does not arrive within the current tick.
@@ -24,7 +27,7 @@ export const waitForUpdate = (source: ICarburetorSubscription, timeout: number =
                 settle();
                 resolve();
             },
-            {reads: new Set([WILDCARD_PATH])}
+            EVERY_WRITE
         );
         const timer = setTimeout(() => {
             settle();
