@@ -245,7 +245,8 @@ fn stdin_checks_an_unsaved_stylesheet_in_place_of_its_file() {
     ]);
     let buffer = STYLES.replace(
         "@apply shape-control type-label;",
-        "@apply shape-control type-label px-2;",
+        // A Brick no Trait of the Pattern sets, so only the floor is wrong.
+        "@apply shape-control type-label mt-2;",
     );
 
     let output = run(

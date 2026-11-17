@@ -1,6 +1,7 @@
 import {Carburetor, computed, diagnostics, storeEffect, transaction} from '@/Carburetor';
 import {watchComputed} from '@/Carburetor/Derived/watchComputed';
 import type {IComputed} from '@/Carburetor/Models/Derived';
+import {S} from '@/Carburetor/Store/Diagnostics/Internal/StoreIdentity';
 
 interface ICounter {count: number; label: string}
 
@@ -10,6 +11,7 @@ const setLabel = (draft: ICounter, label: string): void => { draft.label = label
 class Counter extends Carburetor<ICounter> {
     public set(count: number): void { this.update(setCount, count); }
     public rename(label: string): void { this.update(setLabel, label); }
+    public subscriberCount(): number { return Object.keys(this[S.subscribers]).length; }
 }
 
 describe('computed.watch', () => {
