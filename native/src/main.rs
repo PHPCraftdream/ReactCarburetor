@@ -276,6 +276,21 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
             .read_to_string(&mut text)
             .map_err(|error| format!("could not read standard input: {error}"))?;
 
+        // The class index comes from disk, with this buffer standing in for its own file, so an
+        // unsaved TSX buffer is checked against the real CSS and an unsaved stylesheet against
+        // the rest of the project.
+        let project = load_classes(&mut config, Some((path.as_path(), text.as_str())))?;
+        if is_css(path) {
+            let effective = effective_config(&config, path, &options.overrides)?;
+            let mut diagnostics: Vec<Diagnostic> = project
+                .as_ref()
+                .and_then(|project| project.file(path))
+                .map(|file| rules::classes::css::check_css(file, path, &effective))
+                .unwrap_or_default();
+            sort_diagnostics(&mut diagnostics);
+            return Ok(diagnostics);
+        }
+
         // A buffer that does not parse is the editor's or compiler's problem to describe;
         // report nothing rather than half a diagnosis.
         let mut effective = config.overrides_for(path);
@@ -299,18 +314,37 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
         return Ok(diagnostics);
     }
 
-    let files = collect_files(&options.paths, config.ignores())?;
+    let project = load_classes(&mut config, None)?;
+    let accept = |path: &std::path::Path| rules::classes::css::is_configured_css(&config, path);
+    let all_files = collect_files(
+        &options.paths,
+        config.ignores(),
+        Some(&accept as &dyn Fn(&std::path::Path) -> bool),
+    )?;
+    let (stylesheets, files): (Vec<PathBuf>, Vec<PathBuf>) =
+        all_files.into_iter().partition(|path| is_css(path));
 
-    let mut diagnostics: Vec<Diagnostic> = match options.fix_mode {
+    // Stylesheets have no fixes: they are checked the same way in every mode.
+    let mut diagnostics: Vec<Diagnostic> = stylesheets
+        .par_iter()
+        .map(|path| {
+            let effective = effective_config(&config, path, &options.overrides)?;
+            Ok(project
+                .as_ref()
+                .and_then(|project| project.file(path))
+                .map(|file| rules::classes::css::check_css(file, path, &effective))
+                .unwrap_or_default())
+        })
+        .collect::<Result<Vec<_>, String>>()?
+        .into_iter()
+        .flatten()
+        .collect();
+
+    diagnostics.extend(match options.fix_mode {
         FixMode::Report => files
             .par_iter()
             .map(|path| {
-                let mut effective = config.overrides_for(path);
-                for (rule, severity) in &options.overrides {
-                    effective
-                        .override_rule(rule, *severity)
-                        .map_err(|error| error.to_string())?;
-                }
+                let effective = effective_config(&config, path, &options.overrides)?;
                 check_file(path, &effective, options.keep_overlaps)
             })
             .collect::<Result<Vec<_>, _>>()?
@@ -324,11 +358,45 @@ fn lint(options: &Options) -> Result<Vec<Diagnostic>, String> {
             &options.overrides,
             options.keep_overlaps,
         )?,
-    };
+    });
 
     sort_diagnostics(&mut diagnostics);
 
     Ok(diagnostics)
+}
+
+/// Whether a path is a stylesheet by its extension.
+fn is_css(path: &std::path::Path) -> bool {
+    path.extension().and_then(|value| value.to_str()) == Some("css")
+}
+
+/// The config one file is checked under: its overrides, then the command line's.
+fn effective_config(
+    config: &Config,
+    path: &std::path::Path,
+    overrides: &[(String, Severity)],
+) -> Result<Config, String> {
+    let mut effective = config.overrides_for(path);
+    for (rule, severity) in overrides {
+        effective
+            .override_rule(rule, *severity)
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(effective)
+}
+
+/// Loads the configured stylesheets and hands their class index to the config, when the config
+/// has a `classes` section; `None` otherwise.
+fn load_classes(
+    config: &mut Config,
+    stdin: Option<(&std::path::Path, &str)>,
+) -> Result<Option<rules::classes::css::Project>, String> {
+    if config.classes().is_none() {
+        return Ok(None);
+    }
+    let project = rules::classes::css::Project::load(config, stdin)?;
+    config.set_class_index(project.index.clone());
+    Ok(Some(project))
 }
 
 /// The one report order, shared by file runs and `--stdin`: file, line, column, rule.

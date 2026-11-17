@@ -1,5 +1,6 @@
 //! The parse/override tests for `Config`, split out of `mod.rs` for size.
 
+mod classes;
 mod options;
 mod overrides;
 

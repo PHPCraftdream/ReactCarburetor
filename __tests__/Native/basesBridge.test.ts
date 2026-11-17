@@ -144,6 +144,27 @@ describe('basesConfig', () => {
         }
     });
 
+    test('the rc classes section reaches the config with the project as root, with or without settings', () => {
+        const cwd = mkdtempSync(path.join(os.tmpdir(), 'carburetor-bases-'));
+        const classes = {css: ['src/**/*.css'], families: ['brand']};
+
+        try {
+            writeFileSync(path.join(cwd, '.carburetorrc.json'), JSON.stringify({classes}));
+
+            const fromRc = basesConfig(cwd);
+            const fromSettings = basesConfig(cwd, {carburetor: {componentBases: ['Screen']}});
+
+            expect(JSON.parse(readFileSync(fromRc.config, 'utf8')))
+                .toEqual({componentBases: [], storeBases: [], classes, root: path.resolve(cwd)});
+            expect(JSON.parse(readFileSync(fromSettings.config, 'utf8')))
+                .toEqual({componentBases: ['Screen'], storeBases: [], classes, root: path.resolve(cwd)});
+            expect(fromRc.key).not.toBe('');
+            expect(fromRc.key).not.toBe(fromSettings.key);
+        } finally {
+            rmSync(cwd, {recursive: true, force: true});
+        }
+    });
+
     test.each([
         ['a bare string', 'X'],
         ['a number entry', [1]],

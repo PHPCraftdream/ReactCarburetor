@@ -20,12 +20,12 @@ import {noStoreReadInEffectDeps} from "./Rules/Effects/noStoreReadInEffectDeps.m
 import {noInlineStoreEffect} from "./Rules/Effects/noInlineStoreEffect.mts";
 import {preferStoreEffect} from "./Rules/Effects/preferStoreEffect.mts";
 import {requireEffectDeps} from "./Rules/Effects/requireEffectDeps.mts";
-import {noComputedGetInComputed} from "./Rules/Reads/noComputedGetInComputed.mts";
-import {noComputedGetInRender} from "./Rules/Reads/noComputedGetInRender.mts";
-import {noEscapingTrackedData} from "./Rules/Reads/noEscapingTrackedData.mts";
-import {noGetDataInRender} from "./Rules/Reads/noGetDataInRender.mts";
-import {noMemoOverStoreRead} from "./Rules/Reads/noMemoOverStoreRead.mts";
-import {noCapturingHookSelector} from "./Rules/Reads/noCapturingHookSelector.mts";
+import {noComputedGetInComputed} from "./Rules/Data/Reads/noComputedGetInComputed.mts";
+import {noComputedGetInRender} from "./Rules/Data/Reads/noComputedGetInRender.mts";
+import {noEscapingTrackedData} from "./Rules/Data/Reads/noEscapingTrackedData.mts";
+import {noGetDataInRender} from "./Rules/Data/Reads/noGetDataInRender.mts";
+import {noMemoOverStoreRead} from "./Rules/Data/Reads/noMemoOverStoreRead.mts";
+import {noCapturingHookSelector} from "./Rules/Data/Reads/noCapturingHookSelector.mts";
 import {noHandlerCreatedInRender} from "./Rules/Lifecycle/noHandlerCreatedInRender.mts";
 import {maxRenderDepth} from "./Rules/Lifecycle/maxRenderDepth.mts";
 import {maxLineLength} from "./Rules/Style/maxLineLength.mts";
@@ -37,13 +37,22 @@ import {tsdocBlankLineBeforeTags} from "./Rules/Style/tsdocBlankLineBeforeTags.m
 import {noLifecycleClassProperty} from "./Rules/Lifecycle/noLifecycleClassProperty.mts";
 import {requireBindForPassedMethod} from "./Rules/Lifecycle/requireBindForPassedMethod.mts";
 import {requireSuperInLifecycle} from "./Rules/Lifecycle/requireSuperInLifecycle.mts";
-import {noUseCarburetorOutsideRender} from "./Rules/Reads/noUseCarburetorOutsideRender.mts";
-import {noDirectDataWrite} from "./Rules/Writes/noDirectDataWrite.mts";
-import {noExternalDataMutation} from "./Rules/Writes/noExternalDataMutation.mts";
-import {noStoreWriteInRender} from "./Rules/Writes/noStoreWriteInRender.mts";
-import {noTrackedDataMutation} from "./Rules/Writes/noTrackedDataMutation.mts";
-import {noUntrackableDraftMutation} from "./Rules/Writes/noUntrackableDraftMutation.mts";
-import {requireEmitAfterDraftWrite} from "./Rules/Writes/requireEmitAfterDraftWrite.mts";
+import {noUseCarburetorOutsideRender} from "./Rules/Data/Reads/noUseCarburetorOutsideRender.mts";
+import {noDirectDataWrite} from "./Rules/Data/Writes/noDirectDataWrite.mts";
+import {noExternalDataMutation} from "./Rules/Data/Writes/noExternalDataMutation.mts";
+import {noStoreWriteInRender} from "./Rules/Data/Writes/noStoreWriteInRender.mts";
+import {noTrackedDataMutation} from "./Rules/Data/Writes/noTrackedDataMutation.mts";
+import {noUntrackableDraftMutation} from "./Rules/Data/Writes/noUntrackableDraftMutation.mts";
+import {requireEmitAfterDraftWrite} from "./Rules/Data/Writes/requireEmitAfterDraftWrite.mts";
+import {validPaletteToken} from "./Rules/Classes/Colour/validPaletteToken.mts";
+import {validColorRole} from "./Rules/Classes/Colour/validColorRole.mts";
+import {validToneClass} from "./Rules/Classes/Colour/validToneClass.mts";
+import {validTraitClass} from "./Rules/Classes/Component/validTraitClass.mts";
+import {validPatternClass} from "./Rules/Classes/Component/validPatternClass.mts";
+import {validFunctionClass} from "./Rules/Classes/Component/validFunctionClass.mts";
+import {noUnknownClassReference} from "./Rules/Classes/Reference/noUnknownClassReference.mts";
+import {noDuplicateClass} from "./Rules/Classes/Reference/noDuplicateClass.mts";
+import {requireFunctionClass} from "./Rules/Classes/requireFunctionClass.mts";
 
 /**
  * The lint plugin for consumers of React Carburetor.
@@ -98,6 +107,15 @@ const plugin: IPlugin = {
         'require-emit-after-draft-write': requireEmitAfterDraftWrite,
         'require-method-for-closure': requireMethodForClosure,
         'require-module-function': requireModuleFunction,
+        'valid-palette-token': validPaletteToken,
+        'valid-color-role': validColorRole,
+        'valid-tone-class': validToneClass,
+        'valid-trait-class': validTraitClass,
+        'valid-pattern-class': validPatternClass,
+        'valid-function-class': validFunctionClass,
+        'no-unknown-class-reference': noUnknownClassReference,
+        'no-duplicate-class': noDuplicateClass,
+        'require-function-class': requireFunctionClass,
         'require-subscription-disposal': requireSubscriptionDisposal,
         'require-super-in-lifecycle': requireSuperInLifecycle,
     },

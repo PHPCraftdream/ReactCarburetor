@@ -55,4 +55,15 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/require-module-function': 'warn',
     'carburetor/require-subscription-disposal': 'warn',
     'carburetor/require-super-in-lifecycle': 'error',
+    // The functional-class rules need a `classes` section in `.carburetorrc.json` to know which
+    // CSS to read; the native binary turns them on at `error` when it finds one.
+    'carburetor/valid-palette-token': 'off',
+    'carburetor/valid-color-role': 'off',
+    'carburetor/valid-tone-class': 'off',
+    'carburetor/valid-trait-class': 'off',
+    'carburetor/valid-pattern-class': 'off',
+    'carburetor/valid-function-class': 'off',
+    'carburetor/no-unknown-class-reference': 'off',
+    'carburetor/no-duplicate-class': 'off',
+    'carburetor/require-function-class': 'off',
 };

@@ -29,8 +29,13 @@ fn exclusions(root: &Path, ignores: &[String]) -> Result<Override, String> {
     builder.build().map_err(|error| error.to_string())
 }
 
-/// Files worth parsing: TypeScript and JavaScript, minus what the ignore files and config exclude.
-pub fn collect_files(paths: &[PathBuf], ignores: &[String]) -> Result<Vec<PathBuf>, String> {
+/// Files worth parsing: TypeScript and JavaScript, plus the CSS files `css` accepts, minus what the
+/// ignore files and config exclude.
+pub fn collect_files(
+    paths: &[PathBuf],
+    ignores: &[String],
+    css: Option<&dyn Fn(&Path) -> bool>,
+) -> Result<Vec<PathBuf>, String> {
     let mut files: Vec<PathBuf> = Vec::new();
 
     for root in paths {
@@ -62,10 +67,11 @@ pub fn collect_files(paths: &[PathBuf], ignores: &[String]) -> Result<Vec<PathBu
                 continue;
             }
 
+            let extension = path.extension().and_then(|value| value.to_str());
             let is_source = matches!(
-                path.extension().and_then(|value| value.to_str()),
+                extension,
                 Some("ts" | "tsx" | "mts" | "cts" | "js" | "jsx" | "mjs" | "cjs")
-            );
+            ) || (extension == Some("css") && css.is_some_and(|accept| accept(path)));
 
             if is_source {
                 files.push(path.to_path_buf());

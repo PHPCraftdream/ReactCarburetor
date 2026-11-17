@@ -112,73 +112,18 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("require-super-in-lifecycle", Severity::Error),
     ("require-tsdoc", Severity::Off),
     ("tsdoc-blank-line-before-tags", Severity::Off),
+    // The functional-class rules: off here and in the preset; a `classes` section turns every one
+    // of them on at `error` (see `Config::severity`).
+    ("valid-palette-token", Severity::Off),
+    ("valid-color-role", Severity::Off),
+    ("valid-tone-class", Severity::Off),
+    ("valid-trait-class", Severity::Off),
+    ("valid-pattern-class", Severity::Off),
+    ("valid-function-class", Severity::Off),
+    ("no-unknown-class-reference", Severity::Off),
+    ("no-duplicate-class", Severity::Off),
+    ("require-function-class", Severity::Off),
 ];
-
-/// Why a configuration could not be used. `Malformed` with `path: None` comes from `parse`, which
-/// has no file in hand; `load` fills the path in.
-#[derive(Debug)]
-pub enum ConfigError {
-    /// The config file exists but could not be read.
-    Unreadable {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-    /// Bad JSON, or semantically invalid: unknown rule, bad severity, bad shape, bad glob,
-    /// unknown key. Every one of these must fail loudly — CI's exit code 2 exists for exactly this.
-    Malformed {
-        path: Option<PathBuf>,
-        reason: String,
-    },
-}
-
-impl std::fmt::Display for ConfigError {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ConfigError::Unreadable { path, source } => {
-                write!(
-                    formatter,
-                    "could not read config file {}: {source}",
-                    path.display()
-                )
-            }
-            ConfigError::Malformed { path: None, reason } => {
-                write!(formatter, "invalid configuration: {reason}")
-            }
-            ConfigError::Malformed {
-                path: Some(path),
-                reason,
-            } => {
-                write!(
-                    formatter,
-                    "{} is not a valid configuration: {reason}",
-                    path.display()
-                )
-            }
-        }
-    }
-}
-
-impl std::error::Error for ConfigError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            ConfigError::Unreadable { source, .. } => Some(source),
-            ConfigError::Malformed { .. } => None,
-        }
-    }
-}
-
-impl ConfigError {
-    /// Attaches the file being parsed to a `Malformed` raised by `parse`, which has no path.
-    fn with_path(self, path: &Path) -> ConfigError {
-        match self {
-            ConfigError::Malformed { reason, .. } => ConfigError::Malformed {
-                path: Some(path.to_path_buf()),
-                reason,
-            },
-            other => other,
-        }
-    }
-}
 
 /// The parsed configuration: per-rule overrides, extra ignore patterns, and extra base classes
 /// the rules recognise components and stores by. An empty `Config` is pure defaults — `severity`
@@ -195,6 +140,13 @@ pub struct Config {
     store_bases: Vec<String>,
     overrides: Vec<FileOverride>,
     root: PathBuf,
+    // The `classes` section, and the class index the run builds from its CSS before any file is
+    // checked. Shared, not copied, by every per-file config.
+    classes: Option<Arc<ClassesConfig>>,
+    class_index: Option<Arc<ClassIndex>>,
+    // The `root` key as written, resolved against the config file's directory by `load`. The
+    // bridge sets it: its generated config lives in a temp directory, not in the project.
+    root_setting: Option<PathBuf>,
 }
 
 impl Default for Config {
@@ -206,6 +158,9 @@ impl Default for Config {
             store_bases: Vec::new(),
             overrides: Vec::new(),
             root: absolute_from_cwd(Path::new(".")),
+            classes: None,
+            class_index: None,
+            root_setting: None,
         }
     }
 }
@@ -234,7 +189,7 @@ impl Config {
             return match fs::read_to_string(CONFIG_FILE) {
                 Ok(text) => parse(&text)
                     .map(|mut config| {
-                        config.root = absolute_from_cwd(Path::new("."));
+                        config.resolve_root(Path::new("."));
                         config
                     })
                     .map_err(|error| error.with_path(Path::new(CONFIG_FILE))),
@@ -260,7 +215,7 @@ impl Config {
                     .parent()
                     .filter(|parent| !parent.as_os_str().is_empty())
                     .unwrap_or(Path::new("."));
-                config.root = absolute_from_cwd(base);
+                config.resolve_root(base);
                 config
             })
             .map_err(|error| error.with_path(path))
@@ -296,6 +251,9 @@ impl Config {
             store_bases: self.store_bases.clone(),
             overrides: Vec::new(),
             root: self.root.clone(),
+            classes: self.classes.clone(),
+            class_index: self.class_index.clone(),
+            root_setting: self.root_setting.clone(),
         }
     }
 
@@ -305,6 +263,10 @@ impl Config {
 
         if let Some(setting) = self.rules.get(name) {
             return setting.severity;
+        }
+
+        if let Some(severity) = self.class_rule_default(name) {
+            return severity;
         }
 
         // A name outside DEFAULT_SEVERITIES is not one of our rules, so there is nothing to
@@ -384,14 +346,6 @@ impl Config {
 /// The rule id a config entry or command line names, with the presentation prefix stripped.
 fn bare_name(rule: &str) -> &str {
     rule.strip_prefix(PREFIX).unwrap_or(rule)
-}
-
-/// A `Malformed` error from `parse`, which has no file in hand.
-fn malformed(reason: impl Into<String>) -> ConfigError {
-    ConfigError::Malformed {
-        path: None,
-        reason: reason.into(),
-    }
 }
 
 /// Reads one severity string, carrying a user-readable message on failure.
@@ -506,10 +460,10 @@ fn parse(text: &str) -> Result<Config, ConfigError> {
     for key in object.keys() {
         if !matches!(
             key.as_str(),
-            "rules" | "ignore" | "componentBases" | "storeBases" | "overrides"
+            "rules" | "ignore" | "componentBases" | "storeBases" | "overrides" | "classes" | "root"
         ) {
             return Err(malformed(format!(
-                "unknown key {key:?}: expected \"rules\", \"ignore\", \"componentBases\", \"storeBases\" or \"overrides\""
+                "unknown key {key:?}: expected \"rules\", \"ignore\", \"componentBases\", \"storeBases\", \"overrides\", \"classes\" or \"root\""
             )));
         }
     }
@@ -569,23 +523,33 @@ fn parse(text: &str) -> Result<Config, ConfigError> {
         config.store_bases = parse_bases("storeBases", store)?;
     }
 
+    parse_project(object, &mut config)?;
+
     Ok(config)
 }
 
 mod bases;
-mod depth;
-mod scope;
+mod classes;
+mod error;
+mod options;
 mod style;
 
+pub(crate) use bases::absolute_from_cwd;
 use bases::parse_bases;
-use bases::{absolute_from_cwd, parse_overrides};
+use bases::parse_overrides;
 #[cfg(test)]
 use bases::{count_override_match, override_match_count, reset_override_match_count};
-use depth::validate_max_render_depth_options;
-pub(crate) use depth::DEFAULT_MAX;
-use scope::validate_module_function_options;
+use options::validate_max_render_depth_options;
+use options::validate_module_function_options;
+pub(crate) use options::DEFAULT_MAX;
 
-pub use scope::ModuleFunctionScope;
+use crate::rules::classes::css::index::ClassIndex;
+pub use crate::rules::classes::css::settings::{is_kebab, relative_to, ClassesConfig, SURFACE};
+use classes::parse_project;
+pub(crate) use error::malformed;
+pub use error::ConfigError;
+
+pub use options::ModuleFunctionScope;
 use style::{
     validate_max_line_length_options, validate_no_parent_import_options,
     validate_require_tsdoc_options,

@@ -43,6 +43,15 @@
     "carburetor/require-module-function": "warn",
     "carburetor/require-subscription-disposal": "warn",
     "carburetor/require-super-in-lifecycle": "error",
+    "carburetor/valid-palette-token": "off",
+    "carburetor/valid-color-role": "off",
+    "carburetor/valid-tone-class": "off",
+    "carburetor/valid-trait-class": "off",
+    "carburetor/valid-pattern-class": "off",
+    "carburetor/valid-function-class": "off",
+    "carburetor/no-unknown-class-reference": "off",
+    "carburetor/no-duplicate-class": "off",
+    "carburetor/require-function-class": "off",
     "typescript/unbound-method": "off"
   }
 }

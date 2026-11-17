@@ -11,6 +11,7 @@ use crate::{Diagnostic, Source};
 
 mod allocations;
 mod boundaries;
+pub(crate) mod classes;
 mod data;
 #[path = "support/walk/dispatch/mod.rs"]
 mod dispatch;
@@ -30,7 +31,12 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check, bool); 42] = [
+const REGISTRY: [(&str, Check, bool); 43] = [
+    (
+        classes::require_function_class::RULE,
+        classes::require_function_class::check,
+        false,
+    ),
     (
         allocations::require_hoisted_constant::RULE,
         allocations::require_hoisted_constant::check,
@@ -340,6 +346,7 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
     match rule {
         setup::no_unrecognized_base::RULE => text.contains("import") && text.contains("extends"),
         effects::no_inline_store_effect::RULE => text.contains("useStoreEffect"),
+        classes::require_function_class::RULE => text.contains("className"),
         effects::prefer_store_effect::RULE => text.contains("watch"),
         effects::no_store_read_in_effect_deps::RULE => {
             text.contains("getData") && text.contains("useEffects")
@@ -549,6 +556,13 @@ pub(super) fn run_sequential(
                 ),
                 style::prefer_readonly_array_param::RULE => {
                     style::prefer_readonly_array_param::check(program, source, &bases)
+                }
+                classes::require_function_class::RULE => {
+                    classes::require_function_class::check_with_index(
+                        program,
+                        source,
+                        config.class_index(),
+                    )
                 }
                 _ => check(program, source, &bases),
             },

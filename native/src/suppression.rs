@@ -101,11 +101,28 @@ pub struct Suppression {
 impl Suppression {
     /// Collects suppression directives from one parsed file's comments.
     pub fn build(program: &Program<'_>) -> Suppression {
-        let mut suppression = Suppression::default();
-        let lines = crate::rules::LineTable::new(program.source_text);
+        Suppression::from_comments(
+            program.source_text,
+            program.comments.iter().map(|comment| {
+                (
+                    &program.source_text[comment.content_span()],
+                    comment.span.end,
+                )
+            }),
+        )
+    }
 
-        for comment in &program.comments {
-            let Some(parsed) = parse_directive(&program.source_text[comment.content_span()]) else {
+    /// Collects suppression directives from comments given as (content, end offset) pairs — the
+    /// shape both the oxc parser and the CSS scanner can produce.
+    pub fn from_comments<'a>(
+        text: &str,
+        comments: impl IntoIterator<Item = (&'a str, u32)>,
+    ) -> Suppression {
+        let mut suppression = Suppression::default();
+        let lines = crate::rules::LineTable::new(text);
+
+        for (content, end) in comments {
+            let Some(parsed) = parse_directive(content) else {
                 continue;
             };
 
@@ -113,7 +130,7 @@ impl Suppression {
             // on one line, so their end is on their own line; a MULTI-line block ends at its
             // closing `*/`, so a next-line directive under it silences the first line after the
             // comment ends, not the line below where it opened.
-            let line = lines.line(program.source_text, comment.span.end);
+            let line = lines.line(text, end);
 
             match parsed.scope {
                 Scope::NextLine => {

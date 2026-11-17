@@ -208,6 +208,13 @@ pub(super) fn run(
                 style::prefer_readonly_array_param::RULE => {
                     style::prefer_readonly_array_param::check(program, source, &bases)
                 }
+                classes::require_function_class::RULE => {
+                    classes::require_function_class::check_with_index(
+                        program,
+                        source,
+                        config.class_index(),
+                    )
+                }
                 _ => check(program, source, &bases),
             });
         }

@@ -130,7 +130,7 @@ mod tests {
     }
 }
 
-pub(super) fn absolute_from_cwd(path: &Path) -> PathBuf {
+pub(crate) fn absolute_from_cwd(path: &Path) -> PathBuf {
     let normalized = path.to_string_lossy().replace('\\', "/");
     let path = Path::new(&normalized);
     lexical_normalize(&if path.is_absolute() {

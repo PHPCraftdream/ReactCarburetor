@@ -79,15 +79,13 @@ const baseList = (value: unknown, prefix: string): readonly string[] => {
 const settingList = (value: unknown, name: TBaseKey): readonly string[] =>
     value === undefined ? [] : baseList(value, `settings.carburetor.${name}`);
 
-/** The lists from `<cwd>/.carburetorrc.json`, reading only the two base keys and nothing else —
- * per-rule options from a project rc must not narrow the shared result, only these may pass. A
- * missing file is neutral; anything unreadable or malformed is the same loud error the CLI gives.
+/** `<cwd>/.carburetorrc.json` as a JSON object, or `undefined` when there is none. Anything
+ * unreadable or malformed is the same loud error the CLI gives.
  *
  * @param cwd - the project whose `.carburetorrc.json` is read
- * @returns the two base lists, empty when no rc exists
+ * @returns the parsed object, or `undefined` when the file does not exist
  */
-const rcLists = (cwd: string): Record<TBaseKey, readonly string[]> => {
-    const lists: Record<TBaseKey, readonly string[]> = {componentBases: [], storeBases: []};
+const readRc = (cwd: string): Record<string, unknown> | undefined => {
     const rcPath = path.join(cwd, '.carburetorrc.json');
     let text: string;
 
@@ -95,7 +93,7 @@ const rcLists = (cwd: string): Record<TBaseKey, readonly string[]> => {
         text = readFileSync(rcPath, 'utf8');
     } catch (error) {
         if ((error as {code?: string}).code === 'ENOENT') {
-            return lists;
+            return undefined;
         }
 
         throw new Error(`@react-carburetor/core/lint: ${rcPath} could not be read: ${(error as Error).message}`);
@@ -113,8 +111,23 @@ const rcLists = (cwd: string): Record<TBaseKey, readonly string[]> => {
         throw new Error(`@react-carburetor/core/lint: ${rcPath} must hold a JSON object at the top level.`);
     }
 
+    return parsed as Record<string, unknown>;
+};
+
+/** The lists from `<cwd>/.carburetorrc.json`, reading only the two base keys and nothing else —
+ * per-rule options from a project rc must not narrow the shared result, only these may pass. A
+ * missing file is neutral.
+ *
+ * @param cwd - the project whose `.carburetorrc.json` is read
+ * @returns the two base lists, empty when no rc exists
+ */
+const rcLists = (cwd: string): Record<TBaseKey, readonly string[]> => {
+    const lists: Record<TBaseKey, readonly string[]> = {componentBases: [], storeBases: []};
+    const rc = readRc(cwd);
+    const rcPath = path.join(cwd, '.carburetorrc.json');
+
     for (const key of BASE_KEYS) {
-        const value = (parsed as Record<string, unknown>)[key];
+        const value = rc?.[key];
 
         if (value !== undefined) {
             lists[key] = baseList(value, `${rcPath} "${key}"`);
@@ -123,6 +136,16 @@ const rcLists = (cwd: string): Record<TBaseKey, readonly string[]> => {
 
     return lists;
 };
+
+/** The project rc's `classes` section, passed through as written: it names the stylesheets the
+ * functional-class rules read and widens what they check without narrowing any other rule, and
+ * the binary validates it. Its globs are relative to the project, so the generated config carries
+ * `root` too.
+ *
+ * @param cwd - the project whose `.carburetorrc.json` is read
+ * @returns the section, or `undefined` when the rc has none
+ */
+const rcClasses = (cwd: string): unknown => readRc(cwd)?.classes;
 
 /** Base lists are sets: order and duplicates never change which classes are recognized. */
 const canonize = (list: readonly string[]): readonly string[] => [...new Set(list)].sort();
@@ -183,11 +206,13 @@ export const basesConfig = (
         ? undefined
         : Object.fromEntries(Object.entries(ruleOptions)
             .map(([name, options]) => [`carburetor/${name}`, ['error', options]]));
-    const content = rules === undefined ? source : {...source, rules};
+    const classes = rcClasses(cwd);
+    const withRules = rules === undefined ? source : {...source, rules};
+    const content = classes === undefined ? withRules : {...withRules, classes, root: path.resolve(cwd)};
 
     mkdirSync(BRIDGE_CONFIG_DIR, {recursive: true});
 
-    const neutral = rules === undefined &&
+    const neutral = rules === undefined && classes === undefined &&
         JSON.stringify(source) === JSON.stringify({componentBases: [], storeBases: []});
     const key = neutral ? '' : createHash('sha256').update(JSON.stringify(content)).digest('hex').slice(0, 16);
     const config = path.join(BRIDGE_CONFIG_DIR, key === '' ? 'bridge.carburetorrc.json' : `bases-${key}.json`);

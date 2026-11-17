@@ -116,7 +116,7 @@ describe('native protocol handshake', () => {
 });
 
 /** The fingerprint of the bridge/binary contract the handshake exists to guard. */
-const EXPECTED_FINGERPRINT = 'a590aa15941155f85f29d7cb760dc2c7';
+const EXPECTED_FINGERPRINT = 'e11825b47278d42905429d480773f126';
 
 /** The quoted CLI flag tokens `parse_options` in native/src/main.rs understands. */
 const cliFlags = (main: string): string[] => [
