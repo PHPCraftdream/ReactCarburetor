@@ -21,7 +21,7 @@ export const timingSummary = (title, rows) => {
 };
 
 /** Checks every contract present in the baseline, retaining raw alternating samples and all timing flags. */
-export const comparePrevious = async (baseline, currentRoot, runs, output) => {
+export const comparePrevious = async (baseline, currentRoot, runs, output, shard) => {
     const amendments = JSON.parse(readFileSync(resolve('perf/ci/contract/gate-amendments.json'), 'utf8'));
     const amendedGateFiles = [];
     for (const [file, expected] of Object.entries(baseline.gateHashes)) {
@@ -56,6 +56,11 @@ export const comparePrevious = async (baseline, currentRoot, runs, output) => {
         visiting.delete(entry.id); placed.add(entry.id); ordered.push(entry);
     };
     entries.forEach(visit);
+    if (shard !== undefined) {
+        const {index, count} = sampling.parseShard(shard);
+        const picked = sampling.shardOf(ordered, index, count, sampling.shardWeights('previous'));
+        ordered.splice(0, ordered.length, ...ordered.filter(entry => picked.has(entry.id)));
+    }
     const demands = demandByKey(entries, Number(process.env.BENCH_COUNTER_RUNS ?? 1), runs);
     const measured = new Map(), before = new Map(), after = new Map();
     const report = {baseline: baseline.sha, baselineEntries: entries.length, runs,

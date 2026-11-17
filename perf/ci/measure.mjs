@@ -12,7 +12,7 @@ import sampling from '../harness/sampling.mjs';
 
 
 /** Measures new completed-operation controls separately from mechanism counters, with alternating native children. */
-export const measureControls = async (baseline, gateFiles, runs, output) => {
+export const measureControls = async (baseline, gateFiles, runs, output, shard) => {
     assert.ok(Number.isInteger(runs) && runs >= 3, 'runs must be an integer >= 3');
     const scenarios = new Set(['computed44/repeated-flat-timing', 'computed44/observed-baseline-timing',
         'history44/timing', 'selection44/timing', 'components44/render-commit',
@@ -21,6 +21,11 @@ export const measureControls = async (baseline, gateFiles, runs, output) => {
     for (const file of gateFiles) {
         const gates = (await import(pathToFileURL(resolve('perf/gates', file)).href)).default;
         entries.push(...gates.filter(entry => scenarios.has(entry.scenario)));
+    }
+    if (shard !== undefined) {
+        const {index, count} = sampling.parseShard(shard);
+        const picked = sampling.shardOf(entries, index, count, sampling.shardWeights('controls'));
+        entries.splice(0, entries.length, ...entries.filter(entry => picked.has(entry.id)));
     }
     const raw = output.replace(/\.json$/, '.jsonl');
     const beforeSummaries = new Map(), afterSummaries = new Map();

@@ -34,7 +34,16 @@ npm run bench -- --require-all             # a missing `requires` path fails ins
 npm run bench -- --list                   # print the entries without running anything
 npm run bench -- --json report.json       # machine-readable results
 BENCH_JOBS=1 npm run bench                # one child at a time, timing-free scenarios included
+npm run bench -- --shard 2/3              # the second of three cost-balanced parts of the selection
 ```
+
+The Performance validation workflow spreads the suite over one Windows runner per phase part —
+`gains`, `current` in three parts, `controls` in four, `previous` in six — and a `native` runner
+for the lint-binary gates and the Rust benchmarks; every job is held to five minutes. `--shard i/n`
+keeps whole groups together: entries that share a sample key, and a scale gate with its source.
+Groups go to the lightest part by their last serial cost, recorded per phase and entry in
+`perf/shards.json`; a new entry costs the median until the file is regenerated from a run's
+artifacts.
 
 A failing entry — a crash, a non-zero child, no `@@` metrics line, including a baseline build that
 lacks an API the scenario needs — is reported as `FAIL <id>` with a short cause, counted as a

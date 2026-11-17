@@ -38,16 +38,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  performance:
-    name: All gates and baseline/fix measurements
+  # The suite is spread over one runner per phase part, each held to five minutes: a part that
+  # outgrows it fails instead of slowing every push. perf/shards.json holds the per-entry costs the
+  # parts are balanced by (perf/harness/sampling.mjs, shardOf); regenerate it when parts drift.
+  gates:
+    name: ${{ matrix.phase }} ${{ matrix.shard }}
     runs-on: windows-latest
-    timeout-minutes: 240
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {phase: gains, shard: ''}
+          - {phase: current, shard: 1/3}
+          - {phase: current, shard: 2/3}
+          - {phase: current, shard: 3/3}
+          - {phase: controls, shard: 1/4}
+          - {phase: controls, shard: 2/4}
+          - {phase: controls, shard: 3/4}
+          - {phase: controls, shard: 4/4}
+          - {phase: previous, shard: 1/6}
+          - {phase: previous, shard: 2/6}
+          - {phase: previous, shard: 3/6}
+          - {phase: previous, shard: 4/6}
+          - {phase: previous, shard: 5/6}
+          - {phase: previous, shard: 6/6}
     env:
       BENCH_BASELINE: ${{ inputs.baseline || '90829af804a64e0692abfb0917e03e281f49d9ef' }}
       BENCH_GAINS_BASELINE: ${{ inputs.gainsBaseline || 'acfd3e2b8e58210ce1076bf1683f666283216af5' }}
       BENCH_METADATA_BASELINE: ${{ inputs.metadataBaseline }}
       BENCH_RUNS: ${{ inputs.runs || '5' }}
       BENCH_COUNTER_RUNS: '1'
+      BENCH_PHASE: ${{ matrix.phase }}
+      BENCH_SHARD: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -61,51 +84,71 @@ jobs:
       - name: Install locked dependencies
         run: npm ci
 
-      - name: Build current native linter
-        working-directory: native
-        run: cargo build --release --locked --jobs 2
-
-      # bench-scale-tool runs each workload the count pinned in native/bench-iters.txt; a workload
-      # missing from it is calibrated on the spot and the file is uploaded below. The timings are
-      # informational; the step fails only when a generated corpus is not analysed as expected.
-      - name: Native linter benchmarks (timings informational)
-        working-directory: native
-        env:
-          BENCH_SCALE: '1'
-        run: |
-          cargo bench --locked --bench lint --jobs 2 | Tee-Object -FilePath "$env:RUNNER_TEMP/native-bench.txt"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Add-Content $env:GITHUB_STEP_SUMMARY "### Native linter benchmarks (fixed iterations)"
-          Add-Content $env:GITHUB_STEP_SUMMARY '```text'
-          Get-Content "$env:RUNNER_TEMP/native-bench.txt" | Add-Content $env:GITHUB_STEP_SUMMARY
-          Add-Content $env:GITHUB_STEP_SUMMARY '```'
-          New-Item -ItemType Directory -Force ../worktrees/ci-results | Out-Null
-          Copy-Item bench-iters.txt ../worktrees/ci-results/bench-iters.txt
-
       - name: Build all current library formats
         run: npm run build
 
-      - name: Exact pre-fix/fixed mechanism calibration in all formats
-        if: ${{ !cancelled() }}
-        run: npm run bench:ci -- --phase gains --gains-baseline "$env:BENCH_GAINS_BASELINE" --runs "$env:BENCH_RUNS"
-
-      - name: All current benchmark gates
-        if: ${{ !cancelled() }}
-        run: npm run bench:ci -- --phase current --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
-
-      - name: New completed-operation A/B controls (timing flags informational)
-        if: ${{ !cancelled() }}
-        run: npm run bench:ci -- --phase controls --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
-
-      - name: Unchanged baseline contracts (blocking) and informational timing comparison
-        if: ${{ !cancelled() }}
-        run: npm run bench:ci -- --phase previous --baseline "$env:BENCH_BASELINE" --runs "$env:BENCH_RUNS"
+      # gains: exact pre-fix/fixed mechanism calibration; current: every gate on this build;
+      # controls: completed-operation A/B (timing flags informational); previous: unchanged baseline
+      # contracts (blocking) with an informational timing comparison.
+      - name: Measure the phase part
+        run: |
+          $reference = if ($env:BENCH_PHASE -eq 'gains') { @('--gains-baseline', $env:BENCH_GAINS_BASELINE) } else { @('--baseline', $env:BENCH_BASELINE) }
+          $part = if ($env:BENCH_SHARD) { @('--shard', $env:BENCH_SHARD) } else { @() }
+          npm run bench:ci -- --phase $env:BENCH_PHASE @reference --runs $env:BENCH_RUNS @part
+          exit $LASTEXITCODE
 
       - name: Upload exact samples, flags and command receipts
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: performance-validation-${{ github.run_id }}-${{ github.run_attempt }}
+          name: performance-${{ matrix.phase }}-${{ strategy.job-index }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: worktrees/ci-results/
           if-no-files-found: warn
           retention-days: 30
+
+  # The release binary's own runner: the lint-binary gates, which need it, and the fixed-iteration
+  # benchmarks. Cargo's registry and target are cached by lockfile, so a push recompiles the crate only.
+  native:
+    name: native linter gates and benchmarks
+    runs-on: windows-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24.12.0
+          cache: npm
+
+      - name: Cargo cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            native/target
+          key: perf-cargo-windows-${{ hashFiles('native/Cargo.lock') }}
+
+      # bench-scale-tool runs each workload the count pinned in native/bench-iters.txt, scaled by
+      # BENCH_SCALE; the bench build is the release binary the gates below run. The timings are
+      # informational; the step fails only when a generated corpus is not analysed as expected.
+      - name: Native linter benchmarks (timings informational)
+        working-directory: native
+        env:
+          BENCH_SCALE: '0.5'
+        run: |
+          cargo bench --locked --bench lint | Tee-Object -FilePath "$env:RUNNER_TEMP/native-bench.txt"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Add-Content $env:GITHUB_STEP_SUMMARY "### Native linter benchmarks (fixed iterations, scale 0.5)"
+          Add-Content $env:GITHUB_STEP_SUMMARY '```text'
+          Get-Content "$env:RUNNER_TEMP/native-bench.txt" | Add-Content $env:GITHUB_STEP_SUMMARY
+          Add-Content $env:GITHUB_STEP_SUMMARY '```'
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Build all current library formats
+        run: npm run build
+
+      - name: Lint-binary gates
+        run: node perf/run.mjs --only lint-binary --runs 3 --require-all

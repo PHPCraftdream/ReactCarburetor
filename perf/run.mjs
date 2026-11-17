@@ -10,6 +10,7 @@
 //
 // Options: --dist <dir> (default dist/esm-prod)  --only <substring of an entry id>  --runs <n> (default 3)
 //          --against <ref>  --json <file>  --verbose  --require-all (a missing `requires` path fails)
+//          --shard <i>/<n> (the i-th of n cost-balanced parts of the selection)
 //
 // A failing entry does not abort the run: a crashed scenario, a non-zero child or a missing metrics
 // line is that entry's FAIL (counted as a violation) and the remaining entries still run. The same
@@ -205,6 +206,15 @@ const addWithSources = entry => {
     order.push(entry);
 };
 matched.forEach(addWithSources);
+// --shard i/n keeps the i-th of n cost-balanced groups (sampling.shardOf), so CI can spread the suite
+// over several runners; a scale gate's source always lands in its consumer's shard.
+const shard = option('shard', undefined);
+if (shard !== undefined) {
+    const {index, count} = sampling.parseShard(shard);
+    const picked = sampling.shardOf(order, index, count, sampling.shardWeights('current'));
+    order.splice(0, order.length, ...order.filter(entry => picked.has(entry.id)));
+    matched.splice(0, matched.length, ...matched.filter(entry => picked.has(entry.id)));
+}
 const hidden = new Set(order.filter(entry => !matched.includes(entry)).map(entry => entry.id));
 
 const dist = resolve(option('dist', 'dist/esm-prod'));

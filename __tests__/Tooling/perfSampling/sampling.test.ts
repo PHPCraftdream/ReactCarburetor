@@ -1,6 +1,6 @@
 import {describe, expect, it} from '@rstest/core';
 import sampling from '../../../perf/harness/sampling.mjs';
-const {classifySampling, demandByKey, phaseBudget, elapsedRow, timingSummary, concurrentKeys} = sampling;
+const {classifySampling, demandByKey, phaseBudget, elapsedRow, timingSummary, concurrentKeys, parseShard, shardOf} = sampling;
 
 // Scenario reader that reports clean, deterministic sources for every scenario name.
 const clean = (): string => '';
@@ -98,7 +98,7 @@ describe('counter sampling', () => {
         expect(text).not.toContain('| 0 | 0ms |');
     });
     it('reports centralized phase budgets and elapsed failures', () => {
-        expect(phaseBudget('combined')).toBe(40 * 60_000);
+        expect(phaseBudget('combined')).toBe(5 * 60_000);
         expect(elapsedRow({id: 'x'}, 12, new Error('bad')).elapsedMs).toBe(12);
         let text = '';
         timingSummary('t', Array.from({length: 25}, (_, i) => ({id: String(i), elapsedMs: i})),
@@ -137,5 +137,40 @@ describe('concurrent sampling', () => {
         const entries = [...await manifest('lintBinary.mjs'), ...await manifest('lintClasses.mjs')];
 
         expect(concurrentKeys(entries).size).toBe(0);
+    });
+});
+
+describe('shards', () => {
+    const entries = [
+        {id: 'heavy', scenario: 'h', gates: [{metric: 'n', equals: 1}]},
+        {id: 'shares', scenario: 'h', gates: [{metric: 'm', equals: 1}]},
+        {id: 'source', scenario: 's', args: [2], gates: [{metric: 'n', equals: 2}]},
+        {id: 'scaled', scenario: 's', args: [8], gates: [{metric: 'lintMs', scale: {from: 'source'}, max: 12}]},
+        {id: 'a', scenario: 'a', gates: [{metric: 'n', equals: 1}]},
+        {id: 'b', scenario: 'b', gates: [{metric: 'n', equals: 1}]},
+    ];
+    const weights = {heavy: 900, source: 300, scaled: 300, a: 100, b: 100};
+
+    it('covers every entry exactly once and keeps keys and scale pairs together', () => {
+        const parts = [1, 2, 3].map(index => shardOf(entries, index, 3, weights, clean));
+        const all = parts.flatMap(part => [...part]).sort((x, y) => x.localeCompare(y));
+
+        expect(all).toEqual(entries.map(entry => entry.id).sort((x, y) => x.localeCompare(y)));
+        const home = (id: string): number => parts.findIndex(part => part.has(id));
+        expect(home('shares')).toBe(home('heavy'));
+        expect(home('scaled')).toBe(home('source'));
+    });
+    it('balances by cost, a side-by-side key counting a third of its serial time', () => {
+        const part = (index: number): string[] =>
+            [...shardOf(entries, index, 3, weights, clean)].sort((x, y) => x.localeCompare(y));
+
+        // The timed scale pair costs 600; the counter key 'h' 900 / 3 = 300; a and b 33 each.
+        expect(part(1)).toEqual(['scaled', 'source']);
+        expect(part(2)).toEqual(['heavy', 'shares']);
+        expect(part(3)).toEqual(['a', 'b']);
+    });
+    it('parses i/n and rejects anything else', () => {
+        expect(parseShard('2/6')).toEqual({index: 2, count: 6});
+        for (const text of ['0/3', '4/3', '1/0', 'x', '1-3']) expect(() => parseShard(text)).toThrow();
     });
 });

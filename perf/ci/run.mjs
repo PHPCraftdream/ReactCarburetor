@@ -19,6 +19,9 @@ const phase = option('phase', 'current');
 // The gains calibration needs a build from before the round-44 fixes; every other phase compares against the previous release point.
 const reference = phase === 'gains' ? option('gains-baseline', 'acfd3e2b8e58210ce1076bf1683f666283216af5') : option('baseline', '90829af804a64e0692abfb0917e03e281f49d9ef');
 const runs = Number(option('runs', '3'));
+// --shard i/n measures one cost-balanced part of the phase; CI runs every part on its own runner.
+const shard = option('shard', undefined);
+if (shard !== undefined) sampling.parseShard(shard);
 if (!['current', 'previous', 'controls', 'gains'].includes(phase)) throw new Error('Expected --phase current, previous, controls or gains');
 if (!Number.isInteger(runs) || runs < 3) throw new Error('At least three independent samples are required');
 const npm = process.env.npm_execpath;
@@ -90,16 +93,16 @@ let accepted = true;
 if (phase === 'current') {
     command('validate-complete-manifest', ['perf/run.mjs', '--lint-gates']);
     command('all-current-benchmark-entries', ['perf/run.mjs', '--dist', resolve(baseline.currentDist, 'esm-prod'),
-        '--runs', String(runs), '--json', resolve(output, 'current-gates.json')]);
+        '--runs', String(runs), '--json', resolve(output, 'current-gates.json'), ...(shard ? ['--shard', shard] : [])]);
 } else if (phase === 'previous') {
-    const report = await comparePrevious(baseline, resolve(baseline.currentDist, 'esm-prod'), runs, resolve(output, 'previous-ab.json'));
+    const report = await comparePrevious(baseline, resolve(baseline.currentDist, 'esm-prod'), runs, resolve(output, 'previous-ab.json'), shard);
     accepted = report.accepted;
 } else if (phase === 'gains') {
     const report = await calibrateGains(baseline, resolve(output, 'mechanism-calibration.json'));
     accepted = report.accepted;
 } else {
     const files = readdirSync('perf/gates').filter(file => file.endsWith('.mjs')).sort();
-    const report = await measureControls(baseline, files, runs, resolve(output, 'new-controls-ab.json'));
+    const report = await measureControls(baseline, files, runs, resolve(output, 'new-controls-ab.json'), shard);
     if (report.entries === 0) throw new Error('No new completed-operation controls were selected');
     accepted = report.accepted;
 }

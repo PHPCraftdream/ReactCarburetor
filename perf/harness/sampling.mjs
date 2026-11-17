@@ -1,7 +1,8 @@
 import {appendFileSync, readFileSync} from 'node:fs';
 import {dirname, resolve} from 'node:path';
+import {fileURLToPath} from 'node:url';
 const phaseBudget = phase => ({
-    combined: 40 * 60_000,
+    combined: 5 * 60_000,
     ci: 5 * 60_000,
     focused: 60_000,
 })[phase] ?? 5 * 60_000;
@@ -96,4 +97,65 @@ const timingSummary = (title, rows, sink) => {
     if (sink) sink(text);
     else if (process.env.GITHUB_STEP_SUMMARY) appendFileSync(process.env.GITHUB_STEP_SUMMARY, text);
 };
-export default {phaseBudget, classifySampling, demandByKey, elapsedRow, timingSummary, keyFor, concurrentKeys};
+/** `--shard i/n`: the 1-based index and the count, validated. */
+const parseShard = text => {
+    const match = /^(\d+)\/(\d+)$/.exec(String(text));
+    const index = Number(match?.[1]), count = Number(match?.[2]);
+    if (!match || count < 1 || index < 1 || index > count) throw new Error(`--shard expects i/n with 1 <= i <= n, got ${text}`);
+    return {index, count};
+};
+
+/**
+ * The ids of shard `index` (1-based) of `count` shards of about equal cost. Entries that share a
+ * sample key or that a scale gate ties together form one group, and each group goes whole to the
+ * lightest shard so far, heaviest group first, so every shard measures what its gates compare.
+ * `weights` maps an entry id to its last serial cost in ms (perf/shards.json); an unknown entry
+ * that owns its key costs the median, and a key that runs side by side costs a third.
+ */
+const shardOf = (entries, index, count, weights = {}, read = readScenario) => {
+    const parent = new Map(entries.map(entry => [entry.id, entry.id]));
+    const find = id => {
+        while (parent.get(id) !== id) id = parent.get(id);
+        return id;
+    };
+    const union = (a, b) => {
+        if (parent.has(a) && parent.has(b) && find(a) !== find(b)) parent.set(find(a), find(b));
+    };
+    const owners = new Map();
+    for (const entry of entries) {
+        const key = keyFor(entry);
+        if (owners.has(key)) union(entry.id, owners.get(key));
+        else owners.set(key, entry.id);
+        for (const gate of entry.gates ?? []) if (gate?.scale) union(entry.id, gate.scale.from);
+    }
+    const known = Object.values(weights).filter(cost => cost > 0).sort((a, b) => a - b);
+    const median = known.length ? known[known.length >> 1] : 1;
+    const concurrent = concurrentKeys(entries, read);
+    const groups = new Map();
+    for (const entry of entries) {
+        const root = find(entry.id);
+        const group = groups.get(root) ?? {ids: [], cost: 0, name: entry.id};
+        const key = keyFor(entry);
+        const cost = weights[entry.id] ?? (owners.get(key) === entry.id ? median : 0);
+        group.ids.push(entry.id);
+        group.cost += concurrent.has(key) ? cost / 3 : cost;
+        if (entry.id < group.name) group.name = entry.id;
+        groups.set(root, group);
+    }
+    const loads = Array.from({length: count}, () => 0);
+    const picked = new Set();
+    const ordered = [...groups.values()].sort((a, b) => b.cost - a.cost || (a.name < b.name ? -1 : 1));
+    for (const group of ordered) {
+        let target = 0;
+        for (let shard = 1; shard < count; shard++) if (loads[shard] < loads[target]) target = shard;
+        loads[target] += group.cost;
+        if (target === index - 1) group.ids.forEach(id => picked.add(id));
+    }
+    return picked;
+};
+
+/** The per-phase entry costs perf/shards.json records. */
+const shardWeights = phase => JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'shards.json'), 'utf8'))[phase] ?? {};
+
+export default {phaseBudget, classifySampling, demandByKey, elapsedRow, timingSummary, keyFor, concurrentKeys,
+    parseShard, shardOf, shardWeights};
