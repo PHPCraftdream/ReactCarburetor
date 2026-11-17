@@ -160,7 +160,7 @@ const jsDiagnostics = (): IDiagnostic[] => {
 const CLASS_RULES: readonly string[] = [
     'valid-palette-token', 'valid-color-role', 'valid-tone-class', 'valid-trait-class',
     'valid-pattern-class', 'valid-function-class', 'no-unknown-class-reference', 'no-duplicate-class',
-    'require-function-class',
+    'require-function-class', 'no-conflicting-classes',
 ].map((name) => `carburetor/${name}`);
 
 describe('bridge round-trip: native binary vs the JavaScript plugin bridge', () => {

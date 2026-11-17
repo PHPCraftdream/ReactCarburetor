@@ -52,6 +52,7 @@
     "carburetor/no-unknown-class-reference": "off",
     "carburetor/no-duplicate-class": "off",
     "carburetor/require-function-class": "off",
+    "carburetor/no-conflicting-classes": "off",
     "typescript/unbound-method": "off"
   }
 }

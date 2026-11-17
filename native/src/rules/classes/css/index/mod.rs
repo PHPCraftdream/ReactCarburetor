@@ -29,6 +29,9 @@ pub struct Definition {
     pub name: String,
     pub floor: Floor,
     pub location: Location,
+    /// For a class: what its body applies, as written (`hover:px-4`), and each declaration as an
+    /// arbitrary property (`[width:auto]`), so a reader can expand it like a Brick list.
+    pub applies: Vec<String>,
 }
 
 /// What one file contributes to the index.
@@ -46,6 +49,7 @@ pub struct ClassIndex {
     palette: HashMap<String, Vec<Location>>,
     roles: HashMap<String, Vec<Location>>,
     classes: HashMap<String, Vec<(Floor, Location)>>,
+    applies: HashMap<String, Vec<String>>,
     color_reset: bool,
 }
 
@@ -66,11 +70,15 @@ impl ClassIndex {
                     .entry(definition.name)
                     .or_default()
                     .push(definition.location),
-                floor => self
-                    .classes
-                    .entry(definition.name)
-                    .or_default()
-                    .push((floor, definition.location)),
+                floor => {
+                    self.applies
+                        .entry(definition.name.clone())
+                        .or_insert(definition.applies);
+                    self.classes
+                        .entry(definition.name)
+                        .or_default()
+                        .push((floor, definition.location));
+                }
             }
         }
     }
@@ -82,6 +90,12 @@ impl ClassIndex {
             .get(class)
             .and_then(|definitions| definitions.first())
             .map(|(floor, _)| *floor)
+    }
+
+    /// What a class's first definition applies (see [`Definition::applies`]); empty for a name no
+    /// stylesheet defines.
+    pub fn applies(&self, class: &str) -> &[String] {
+        self.applies.get(class).map_or(&[], Vec::as_slice)
     }
 
     /// Whether a Role (the part after `--color-`) is defined in `@theme`.
@@ -116,6 +130,26 @@ impl ClassIndex {
     }
 }
 
+/// What a block applies, in order: its `@apply` classes as written, and its declarations as
+/// arbitrary properties.
+fn body(nodes: &[Node], text: &str) -> Vec<String> {
+    let mut applies = Vec::new();
+    for node in nodes {
+        match node {
+            Node::At(rule) if rule.name.text(text).eq_ignore_ascii_case("apply") => applies.extend(
+                crate::rules::classes::apply_classes(rule, text)
+                    .into_iter()
+                    .map(|applied| applied.class.to_string()),
+            ),
+            Node::Declaration(declaration) => {
+                applies.push(format!("[{}:x]", declaration.name.text(text)));
+            }
+            _ => {}
+        }
+    }
+    applies
+}
+
 /// The definitions one scanned file makes. `file` is its path relative to the config root.
 pub fn definitions(scan: &Scan<'_>, text: &str, file: &str) -> FileDefinitions {
     let lines = LineTable::new(text);
@@ -142,6 +176,7 @@ pub fn definitions(scan: &Scan<'_>, text: &str, file: &str) -> FileDefinitions {
                                 name: role.to_string(),
                                 floor: Floor::Role,
                                 location: location(declaration.name.start),
+                                applies: Vec::new(),
                             });
                         }
                     } else if let Some(token) = name.strip_prefix("--palette-") {
@@ -149,6 +184,7 @@ pub fn definitions(scan: &Scan<'_>, text: &str, file: &str) -> FileDefinitions {
                             name: token.to_string(),
                             floor: Floor::Palette,
                             location: location(declaration.name.start),
+                            applies: Vec::new(),
                         });
                     }
                 }
@@ -157,11 +193,13 @@ pub fn definitions(scan: &Scan<'_>, text: &str, file: &str) -> FileDefinitions {
                 name: name.to_string(),
                 floor,
                 location: location(block.at),
+                applies: body(block.nodes, text),
             }),
             BlockKind::Function { name } => result.definitions.push(Definition {
                 name: name.to_string(),
                 floor: Floor::Function,
                 location: location(block.at),
+                applies: body(block.nodes, text),
             }),
             BlockKind::State { .. } | BlockKind::ClassOutside { .. } => {}
         }

@@ -66,4 +66,5 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/no-unknown-class-reference': 'off',
     'carburetor/no-duplicate-class': 'off',
     'carburetor/require-function-class': 'off',
+    'carburetor/no-conflicting-classes': 'off',
 };

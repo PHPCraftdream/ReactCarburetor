@@ -13,7 +13,7 @@ use crate::rules::classes::css::settings::{parse_classes, ClassesConfig};
 
 /// The rules that check the functional-class methodology. They need the `classes` section to know
 /// which CSS to read, so they stay off without it and default to `error` with it.
-pub const CLASS_RULES: [&str; 9] = [
+pub const CLASS_RULES: [&str; 10] = [
     "valid-palette-token",
     "valid-color-role",
     "valid-tone-class",
@@ -23,6 +23,7 @@ pub const CLASS_RULES: [&str; 9] = [
     "no-unknown-class-reference",
     "no-duplicate-class",
     "require-function-class",
+    "no-conflicting-classes",
 ];
 
 /// The error for a class rule switched on without the section it checks against.

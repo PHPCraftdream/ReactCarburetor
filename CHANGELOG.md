@@ -9,7 +9,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- Functional CSS classes for Tailwind v4 projects (opt-in): nine native rules check a methodology in
+- Functional CSS classes for Tailwind v4 projects (opt-in): ten native rules check a methodology in
   which markup carries one class naming what an element does, and colours (Palette → Role → Tone)
   and components (Brick → Trait → Pattern → Function) are composed in floors that each use only the
   floor below. `valid-palette-token`, `valid-color-role`, `valid-tone-class`, `valid-trait-class`,
@@ -22,6 +22,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   config, and drops cached answers when a configured stylesheet changes. A stylesheet that does not
   scan gets one `valid-function-class` finding instead of passing unchecked. See
   `docs/functional-classes.md`.
+- `carburetor/no-conflicting-classes` (functional classes, with a `classes` section): two classes of one `@apply`
+  list that set the same property under the same variants — `px-4 px-2`, `shape-control shape-tall`, a Pattern and a
+  Trait both setting the height — are reported at the second, since the order of `@apply` would decide the value.
+  Classes are expanded through the index; properties Tailwind composes through its own variables are not compared.
 - A `root` key in `.carburetorrc.json` moves the directory `ignore`, `overrides` and `classes.css`
   resolve against.
 - `carburetor-lint --init-classes <path>` writes a stylesheet with every functional-class floor

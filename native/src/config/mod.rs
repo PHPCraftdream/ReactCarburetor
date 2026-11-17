@@ -123,6 +123,7 @@ pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("no-unknown-class-reference", Severity::Off),
     ("no-duplicate-class", Severity::Off),
     ("require-function-class", Severity::Off),
+    ("no-conflicting-classes", Severity::Off),
 ];
 
 /// The parsed configuration: per-rule overrides, extra ignore patterns, and extra base classes
