@@ -921,7 +921,9 @@ It releases the history subscriptions. Components' own `useCarburetor` subscript
 **Rule** `require-subscription-disposal` — **warn**.
 
 **Detection.** A `.subscribe(...)` call whose returned id is discarded — the call is an expression
-statement — and which passed no `id` option. An explicit `{id}` means the caller kept a handle and
+statement — and which passed no `id` option; likewise a `.watch(select, onChange)` or
+`.watch(onChange)` statement on anything but `this`, whose disposer is discarded (literal arguments,
+as in `fs.watch('dir')`, are another API and are not reported). An explicit `{id}` means the caller kept a handle and
 can release or replace the subscription by it, which is exactly how the engine subscribes components
 and computed values. Options the rule cannot see into — a forwarded parameter, a helper's result,
 an object spreading other options — may carry the caller's id and are not reported. That

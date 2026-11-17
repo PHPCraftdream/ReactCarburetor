@@ -56,6 +56,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `no-parent-import` switched on without `roots` no longer stays silent: the plugin reports once per run that it
   checks nothing, and the native CLI rejects such a configuration.
 
+- `require-subscription-disposal` also reports a `watch` whose disposer is thrown away (`store.watch(select,
+  onChange);` or `computed.watch(onChange);` as a statement); a store watching itself (`this.watch`) and code in test
+  callbacks are left alone.
 - `no-async-effect` also reports an `async` effect handed to `this.useStoreEffect` (inline, or a name bound to an
   async function), and `no-duplicate-effect-name` counts `this.useStoreEffect` names, which share one record with
   `this.useEffect`.

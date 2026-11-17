@@ -254,7 +254,7 @@ until your project changes shape.
 | `require-emit-after-draft-write` | error | A method that writes through `draft` and never publishes | [H6](hazards.md) |
 | `require-method-for-closure` | warn | A closure inside a class member that depends only on the class, rebuilt on every call of the member — declare it as a method | [H29](hazards.md) |
 | `require-module-function` | warn | A clean nested function needing no surrounding invocation state, or an eligible component member needing no class; configurable scope | [H30](hazards.md) |
-| `require-subscription-disposal` | warn | A subscription whose id is discarded, so it can never be released | [H20](hazards.md) |
+| `require-subscription-disposal` | warn | A subscription whose id is discarded, or a `watch` whose disposer is, so it can never be released | [H20](hazards.md) |
 | `require-super-in-lifecycle` | error | A lifecycle override that skips `super`, disabling effects, cleanup or the props gate | [H12](hazards.md) |
 
 ### prefer-readonly-array-param (H37)

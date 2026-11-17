@@ -6,6 +6,11 @@
 //! impossible to forget; components need neither, since `useCarburetor` subscribes and
 //! `componentWillUnmount` releases.
 //!
+//! A watch whose disposer is thrown away (`store.watch(select, onChange);` or
+//! `computed.watch(onChange);` as a statement) leaks the same way. A store watching itself
+//! (`this.watch(...)`) lives as long as the store and is not reported, nor are calls whose
+//! arguments cannot be callbacks (`fs.watch('dir')`).
+//!
 //! A subscription made with an explicit `{id}` is not reported: the caller kept a handle and can
 //! release or replace it by that id, which is exactly how the engine subscribes components and
 //! computed values. See docs/hazards.md, H20.
@@ -18,7 +23,9 @@ use oxc_span::{GetSpan, Span};
 use crate::rules::report;
 use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::build_semantic;
-use crate::rules::support::names::{member_call_name, property_key_name, unwrap_expression};
+use crate::rules::support::names::{
+    called_on_this, member_call_name, property_key_name, unwrap_expression,
+};
 use crate::rules::support::walk::test_scope::retain_outside_tests;
 use crate::{Diagnostic, Source};
 
@@ -29,6 +36,27 @@ const MESSAGE: &str =
     "this subscription's id is discarded, so it can never be released: the store \
     keeps the callback, and everything it closed over, for the lifetime of the process. Use \
     watch(select, onChange), which returns a disposer, or keep the id and unsubscribe.";
+
+const WATCH_MESSAGE: &str = "this watch's disposer is discarded, so it can never be stopped: the     store keeps the callback, and everything it closed over, for the lifetime of the process. Keep     the disposer and call it when the owner is done, or use useStoreEffect in a component.";
+
+/// Whether a call is a store's `watch(select, onChange)` or a computed's `watch(onChange)` on
+/// something other than `this`: literal arguments (`fs.watch('dir')`) are another API.
+fn is_foreign_watch(call: &CallExpression<'_>) -> bool {
+    member_call_name(&call.callee) == Some("watch")
+        && !called_on_this(&call.callee)
+        && matches!(call.arguments.len(), 1 | 2)
+        && call.arguments.iter().all(|argument| {
+            argument.as_expression().is_some_and(|expression| {
+                !matches!(
+                    unwrap_expression(expression),
+                    Expression::StringLiteral(_)
+                        | Expression::TemplateLiteral(_)
+                        | Expression::NumericLiteral(_)
+                        | Expression::ObjectExpression(_)
+                )
+            })
+        })
+}
 
 /// Whether the expression is the literal `null`, `void 0`, or an unresolved (global) `undefined`;
 /// a resolved shadowing binding named `undefined` is unknown options, not nullish.
@@ -94,16 +122,25 @@ impl<'a, 's> Visit<'a> for Check<'s> {
     }
 
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if self.discarded_expression == Some(call.span)
-            && member_call_name(&call.callee) == Some("subscribe")
-            && !has_stable_id(call, self.semantic.scoping())
-        {
-            self.diagnostics.push(report(
-                self.source,
-                call.span.start,
-                RULE,
-                MESSAGE.to_string(),
-            ));
+        if self.discarded_expression == Some(call.span) {
+            let message = if member_call_name(&call.callee) == Some("subscribe")
+                && !has_stable_id(call, self.semantic.scoping())
+            {
+                Some(MESSAGE)
+            } else if is_foreign_watch(call) {
+                Some(WATCH_MESSAGE)
+            } else {
+                None
+            };
+
+            if let Some(message) = message {
+                self.diagnostics.push(report(
+                    self.source,
+                    call.span.start,
+                    RULE,
+                    message.to_string(),
+                ));
+            }
         }
 
         walk::walk_call_expression(self, call);
@@ -307,5 +344,35 @@ mod tests {
             )),
             [1]
         );
+    }
+
+    #[test]
+    fn a_discarded_watch_disposer_is_reported() {
+        let source = concat!(
+            "store.watch(selectTitle, onTitle);
+",
+            "total.watch((value) => show(value));
+",
+            "const stop = store.watch(selectTitle, onTitle);
+",
+            "this.watch(selectTitle, onTitle);
+",
+            "fs.watch('dir', {recursive: true});
+",
+            "fs.watch(`dir`);
+",
+        );
+
+        assert_eq!(lines(&diagnose(source, check)), [1, 2]);
+    }
+
+    #[test]
+    fn a_discarded_watch_inside_a_test_is_not_reported() {
+        let source = "test('x', () => {
+    store.watch(selectTitle, onTitle);
+});
+";
+
+        assert!(diagnose(source, check).is_empty());
     }
 }

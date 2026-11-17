@@ -13,13 +13,14 @@ const {scope} = createTodoScope(new MockToDoClientAPI(400), window.localStorage)
 const todos = scope.get(todoToken);
 
 // watch() subscribes to exactly what the selector reads: the tab title follows the open
-// count and nothing else, with no path string in sight.
-todos.watch(
+// count and nothing else, with no path string in sight. It returns the disposer that ends it.
+const stopTitle = todos.watch(
     (data) => data.activeCount ?? 0,
     (next) => {
         document.title = next + ' open — Todo demo';
     }
 );
+window.addEventListener('pagehide', stopTitle);
 
 // Misuse warnings are development-only anyway; the switch is shown here explicitly.
 diagnostics.setEnabled(process.env.NODE_ENV !== 'production');
