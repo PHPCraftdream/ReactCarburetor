@@ -7,7 +7,8 @@ import {IComputed} from "../Models/Derived";
  * Every notification of a computed is a change: it wakes subscribers only when its settled value
  * differs from the last one it announced, judged by its own `equals`. A result changed in place
  * arrives as the same object in both arguments. A body that throws is rethrown by `get()` inside
- * the subscriber, so it is reported like any subscriber failure and `onChange` does not run.
+ * the subscriber, so it is reported like any subscriber failure and `onChange` does not run. A body
+ * that throws on the first read throws out of `watch` itself, which keeps no subscription.
  *
  * @param computed - the derived value to watch
  * @param onChange - receives the new value and the value the previous change delivered
@@ -27,7 +28,15 @@ export const watchComputed = <R>(
         onChange(next, before);
     });
 
-    previous = computed.get();
+    // The subscription exists before the first read, so a body that throws here must take it
+    // back: no disposer reaches the caller to do it.
+    try {
+        previous = computed.get();
+    } catch (error: unknown) {
+        stopped = true;
+        computed.unsubscribe(id);
+        throw error;
+    }
     ready = true;
 
     return (): void => {

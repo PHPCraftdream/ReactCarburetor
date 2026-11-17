@@ -1,4 +1,5 @@
-import {Carburetor, computed, diagnostics, transaction} from '@/Carburetor';
+import {rstest} from '@rstest/core';
+import {Carburetor, computed, diagnostics, storeEffect, transaction} from '@/Carburetor';
 
 interface ICounter {count: number; label: string}
 
@@ -98,6 +99,28 @@ describe('computed.watch', () => {
 
         expect(seen).toEqual([2]);
         expect(failures.length).toBeGreaterThan(0);
+    });
+
+    test('a body that throws on the first read throws out of watch and keeps no subscription', () => {
+        const counter = new Counter({count: 1, label: 'a'});
+        const value = computed(read => {
+            const {count} = read(counter);
+            if (count === 1) throw new Error('odd');
+            return count;
+        });
+        const subscribe = rstest.spyOn(value, 'subscribe');
+        const unsubscribe = rstest.spyOn(value, 'unsubscribe');
+        const seen: number[] = [];
+
+        expect(() => value.watch((next) => { seen.push(next); })).toThrow('odd');
+        expect(() => storeEffect(value, (next) => { seen.push(next); })).toThrow('odd');
+
+        expect(subscribe).toHaveBeenCalledTimes(2);
+        expect(unsubscribe).toHaveBeenCalledTimes(2);
+        expect(unsubscribe.mock.calls.map(([id]) => id)).toEqual(subscribe.mock.results.map(({value: id}) => id));
+
+        counter.set(2);
+        expect(seen).toEqual([]);
     });
 
     test('a transaction delivers one change for several writes', () => {

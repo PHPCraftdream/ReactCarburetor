@@ -1,4 +1,4 @@
-import {Carburetor, computed, storeEffect} from '@/Carburetor';
+import {Carburetor, computed, diagnostics, storeEffect} from '@/Carburetor';
 import * as Engine from '@/Engine';
 import {S} from '@/Carburetor/Store/Diagnostics/Internal/StoreIdentity';
 
@@ -96,6 +96,35 @@ describe('storeEffect', () => {
         }
 
         expect(seen).toEqual([0, 1, 2]);
+        expect(store.subscriberCount()).toBe(0);
+    });
+
+    test('a cleanup that throws still lets the next run happen, and its error is reported', () => {
+        const store = new Counter({count: 0, label: 'a'});
+        const seen: number[] = [];
+        const reported: unknown[] = [];
+        const original = console.error;
+        console.error = (): void => undefined;
+        diagnostics.setFailureHandler((error) => { reported.push(error); });
+        try {
+            const stop = storeEffect(store, selectCount, (count) => {
+                seen.push(count);
+                return (): void => {
+                    if (count === 0) throw new Error('cleanup of 0');
+                };
+            });
+
+            store.set(1);
+            store.set(2);
+            stop();
+        } finally {
+            console.error = original;
+            diagnostics.setFailureHandler(undefined);
+        }
+
+        // The run for 1 happened although the cleanup of 0 threw before it.
+        expect(seen).toEqual([0, 1, 2]);
+        expect(reported.some((entry) => entry instanceof Error && entry.message === 'cleanup of 0')).toBe(true);
         expect(store.subscriberCount()).toBe(0);
     });
 

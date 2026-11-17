@@ -21,12 +21,24 @@ const follow = <V>(
     effect: TStoreEffect<V>
 ): TDisposer => {
     let cleanup: TEffectCleanup | undefined;
+    // A cleanup that throws does not cost the new value its run: the effect still runs, and the
+    // first error is rethrown once both are done, so it is reported like any subscriber failure.
     const run = (value: V, previous: V | undefined): void => {
         const prior = cleanup;
         cleanup = undefined;
-        prior?.();
-        const result = effect(value, previous);
-        cleanup = typeof result === 'function' ? result : undefined;
+        let failure: {error: unknown} | undefined;
+        try {
+            prior?.();
+        } catch (error: unknown) {
+            failure = {error};
+        }
+        try {
+            const result = effect(value, previous);
+            cleanup = typeof result === 'function' ? result : undefined;
+        } catch (error: unknown) {
+            failure ??= {error};
+        }
+        if (failure !== undefined) throw failure.error;
     };
     const stop = subscribe(run);
 
@@ -49,7 +61,8 @@ const follow = <V>(
  * An effect that follows store data, outside a component: `useStoreEffect` without React.
  *
  * The effect runs at once with the current value, then after every change with the new value and
- * the previous one; a run's returned cleanup runs before the next run. The returned disposer stops
+ * the previous one; a run's returned cleanup runs before the next run, and a cleanup that throws
+ * still lets that run happen (the cleanup's error is reported afterwards). The returned disposer stops
  * following and runs the last cleanup. Unlike `watch`, which calls back only on a change, it also
  * runs for the value as it is now.
  *

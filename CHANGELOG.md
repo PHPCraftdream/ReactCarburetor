@@ -123,7 +123,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and a throttled write came from a timer that outlived the store and could overwrite what a new instance under the
   same key had stored.
 - A `useStoreEffect` (or `storeEffect`) whose first run throws releases its watch before the error leaves; before,
-  the watch stayed subscribed with no disposer to stop it.
+  the watch stayed subscribed with no disposer to stop it. The same holds for a computed whose body throws on the
+  first read: `computed.watch`, `storeEffect(computed, …)` and `useStoreEffect` with a computed throw that error and
+  keep no subscription.
+- A `storeEffect` (and `useStoreEffect`) run whose previous cleanup throws still runs; before, the new value was
+  skipped until the next change. The cleanup's error is reported after the run, like any subscriber failure.
 - A DevTools time-travel jump skips a store disposed since `connectDevTools` was called and applies to the rest;
   before, the disposed store threw in the middle of the jump, leaving the stores before it moved and the ones after it
   not.
