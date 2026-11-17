@@ -50,6 +50,7 @@ carburetor-lint [options] [paths...]
   --fix                    write every available fix to disk
   --fix-dry-run            print what --fix would change, without writing it
   --stdin <path>           lint standard input as this file instead of walking any path
+  --init-classes <path>    write a stylesheet with every functional-class floor and base classes
   -V, --version            print version and protocol, then exit
   -h, --help               print this
 
@@ -121,6 +122,8 @@ struct Options {
     /// Lint standard input as this file instead of walking any path: the one way a host can
     /// have an unsaved buffer analyzed. Its diagnostics report under the given path.
     stdin: Option<PathBuf>,
+    /// Write the functional-class scaffold to this path instead of linting.
+    init_classes: Option<PathBuf>,
 }
 
 /// Reads the command line. An unknown flag is an error rather than a warning: a typo'd flag that
@@ -134,6 +137,7 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
     let mut keep_overlaps = false;
     let mut fix_mode = FixMode::Report;
     let mut stdin: Option<PathBuf> = None;
+    let mut init_classes: Option<PathBuf> = None;
 
     let mut arguments = arguments.into_iter().skip(1);
 
@@ -207,9 +211,19 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
 
                 stdin = Some(path);
             }
+            "--init-classes" => init_classes = Some(PathBuf::from(value("--init-classes")?)),
             other if other.starts_with('-') => return Err(format!("unknown option {other}")),
             _ => paths.push(PathBuf::from(argument)),
         }
+    }
+
+    if init_classes.is_some()
+        && (stdin.is_some() || fix_mode != FixMode::Report || !paths.is_empty())
+    {
+        return Err(
+            "--init-classes writes a stylesheet and lints nothing; pass it with --config only"
+                .to_string(),
+        );
     }
 
     if stdin.is_some() && !paths.is_empty() {
@@ -229,6 +243,7 @@ fn parse_options(arguments: Vec<String>) -> Result<Option<Options>, String> {
         keep_overlaps,
         fix_mode,
         stdin,
+        init_classes,
     }))
 }
 
@@ -423,6 +438,22 @@ fn main() -> ExitCode {
             return ExitCode::from(EXIT_BROKEN);
         }
     };
+
+    if let Some(target) = &options.init_classes {
+        return match rules::classes::css::settings::scaffold::init(
+            options.config.as_deref(),
+            target,
+        ) {
+            Ok(report) => {
+                println!("{report}");
+                ExitCode::SUCCESS
+            }
+            Err(reason) => {
+                eprintln!("carburetor-lint: {reason}");
+                ExitCode::from(EXIT_BROKEN)
+            }
+        };
+    }
 
     let diagnostics = match lint(&options) {
         Ok(diagnostics) => diagnostics,

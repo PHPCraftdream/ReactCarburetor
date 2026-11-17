@@ -21,6 +21,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `require-function-class` also reports through oxlint and ESLint. See `docs/functional-classes.md`.
 - A `root` key in `.carburetorrc.json` moves the directory `ignore`, `overrides` and `classes.css`
   resolve against.
+- `carburetor-lint --init-classes <path>` writes a stylesheet with every functional-class floor
+  filled with base classes (Palette, Roles behind the reset with a dark theme, Tones per family and
+  delivery, base Traits, Patterns and example Functions), shaped by the configured vocabulary and
+  passing every class rule. Without a config it also creates `.carburetorrc.json` with a `classes`
+  section; it never edits an existing config or overwrites a stylesheet.
 
 - `carburetor/no-store-read-in-effect-deps` (`warn` in the recommended preset): inside `useEffects`, a `this.useEffect`
   dependency taken with `getData()` (directly, through a constant of the method, or as a held dependency array) is

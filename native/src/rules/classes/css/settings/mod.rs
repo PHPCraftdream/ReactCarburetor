@@ -9,6 +9,7 @@ use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde_json::{Map, Value};
 
 mod defaults;
+pub mod scaffold;
 
 use super::bricks::KNOWN_PROPERTIES;
 use crate::config::{malformed, ConfigError};

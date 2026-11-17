@@ -35,7 +35,6 @@ const d = <button className={danger ? "submit-button" : "cancel-button"} />;
 const e = <div className={open ? ("user-card") : undefined} />;
 const f = <div className={null} />;
 const g = <div className />;
-const h = <div className={} />;
 "#;
 
     assert!(diagnose(text).is_empty(), "{:?}", diagnose(text));

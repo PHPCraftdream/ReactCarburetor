@@ -345,3 +345,76 @@ fn a_root_key_points_the_globs_at_another_directory() {
     );
     assert_eq!(findings(&broken).len(), 1);
 }
+
+#[test]
+fn init_classes_writes_a_scaffold_the_rules_accept_and_a_config_that_reads_it() {
+    let dir = project(&[(
+        "src/App.tsx",
+        "export const A = () => <button className=\"submit-button\" />;\n",
+    )]);
+
+    let output = run(&dir, &["--init-classes", "src/styles/classes.css"], None);
+    assert_eq!(
+        code(&output),
+        0,
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = String::from_utf8_lossy(&output.stdout);
+    assert!(report.contains("wrote src/styles/classes.css"), "{report}");
+    assert!(report.contains("created .carburetorrc.json"), "{report}");
+
+    let config: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join(".carburetorrc.json")).unwrap())
+            .unwrap();
+    assert_eq!(config["classes"]["css"][0], "src/styles/classes.css");
+
+    let lint = run(&dir, &["--format=json", "src"], None);
+    assert_eq!(findings(&lint), []);
+    assert_eq!(code(&lint), 0);
+
+    let again = run(&dir, &["--init-classes", "src/styles/classes.css"], None);
+    assert_eq!(code(&again), 2);
+    assert!(String::from_utf8_lossy(&again.stderr).contains("already exists"));
+}
+
+#[test]
+fn init_classes_leaves_an_existing_config_alone_and_says_what_to_add() {
+    let rc = r#"{"componentBases": ["Screen"]}"#;
+    let dir = project(&[(".carburetorrc.json", rc)]);
+
+    let output = run(&dir, &["--init-classes", "styles/app.css"], None);
+    assert_eq!(code(&output), 0);
+    assert!(String::from_utf8_lossy(&output.stdout).contains("has no classes section"));
+    assert_eq!(
+        std::fs::read_to_string(dir.join(".carburetorrc.json")).unwrap(),
+        rc
+    );
+    assert!(dir.join("styles/app.css").exists());
+}
+
+#[test]
+fn init_classes_follows_the_configured_vocabulary() {
+    let dir = project(&[(
+        ".carburetorrc.json",
+        r#"{"classes": {"css": ["css/*.css"], "families": ["brand"]}}"#,
+    )]);
+
+    let output = run(&dir, &["--init-classes", "css/classes.css"], None);
+    assert_eq!(code(&output), 0);
+    let text = std::fs::read_to_string(dir.join("css/classes.css")).unwrap();
+    assert!(text.contains("@utility tone-brand-solid"));
+    assert!(!text.contains("tone-accent"));
+
+    let lint = run(&dir, &["--format=json", "css"], None);
+    assert_eq!(findings(&lint), []);
+}
+
+#[test]
+fn init_classes_lints_nothing_and_refuses_paths() {
+    let dir = project(&[("src/App.tsx", APP)]);
+
+    let output = run(&dir, &["--init-classes", "a.css", "src"], None);
+    assert_eq!(code(&output), 2);
+    assert!(!dir.join("a.css").exists());
+}

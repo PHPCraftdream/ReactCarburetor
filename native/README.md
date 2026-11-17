@@ -70,6 +70,8 @@ carburetor-lint [options] [paths...]
 | `--deny-warnings` | fail the run on warnings too |
 | `--fix` | write every available fix to disk |
 | `--fix-dry-run` | print what `--fix` would change, without writing it |
+| `--stdin <path>` | lint standard input as this file instead of walking any path |
+| `--init-classes <path>` | write a stylesheet with every functional-class floor filled with base classes, and a config naming it when there is none; lints nothing |
 | `-h`, `--help` | print the usage |
 
 Every valued flag takes both spellings, `--flag value` and `--flag=value`.

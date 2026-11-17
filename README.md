@@ -1685,7 +1685,30 @@ contain 51 rules: 31 catalogue rules, `require-hoisted-constant`, three `useStor
 (`no-store-read-in-effect-deps`, `no-inline-store-effect`, `prefer-store-effect`), the
 `no-unrecognized-base` setup check, the optional `no-react-hooks-in-components` policy, five
 house-style rules, and nine opt-in rules for [functional CSS classes](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/functional-classes.md)
-in Tailwind v4 projects. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
+in Tailwind v4 projects.
+
+### Functional CSS classes
+
+For a Tailwind v4 project, the linter can also hold a class methodology: markup carries one class
+per element that names what it does (`submit-button`), and everything visual is composed below it
+in floors — Palette → Role → Tone for colour, Brick → Trait → Pattern → Function for components —
+each using only the floor under it. Start with a generated stylesheet:
+
+```bash
+npx carburetor-lint --init-classes src/styles/classes.css
+```
+
+It writes every floor filled with base classes: a Palette, the Roles of every family and slot behind
+the `--color-*: initial` reset, a Tone per family and delivery plus the surface Tones, base Traits of
+every kind (`shape-control`, `type-label`, `layout-row`, `focus-ring`, …), Patterns over them
+(`pattern-button`, `pattern-field`, `pattern-card`, `pattern-badge`), a dark theme over the Roles, and
+a few example Functions to replace with your own. Without a `.carburetorrc.json` it creates one
+whose `classes` section names the new stylesheet, which turns the nine class rules on; an existing
+config is never edited (the command prints the section to add), an existing stylesheet is never
+overwritten, and a configured vocabulary (families, slots, deliveries, trait kinds) shapes what is
+generated. Import the file from your Tailwind entry (`@import "./classes.css";`) and lint as usual.
+[docs/functional-classes.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/functional-classes.md)
+describes the floors, the configuration and every rule. [docs/rules.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/rules.md) is the
 reference by rule name — what each catches, how to switch one off, and the optional `no-hooks`
 preset. [docs/hazards.md](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/hazards.md) is the same material by mistake, with the code that
 triggers it, why it is silent at runtime, and where the rule can be wrong.

@@ -156,6 +156,13 @@ const jsDiagnostics = (): IDiagnostic[] => {
     });
 };
 
+/** The functional-class rules, off without a `classes` section; see the corpus test. */
+const CLASS_RULES: readonly string[] = [
+    'valid-palette-token', 'valid-color-role', 'valid-tone-class', 'valid-trait-class',
+    'valid-pattern-class', 'valid-function-class', 'no-unknown-class-reference', 'no-duplicate-class',
+    'require-function-class',
+].map((name) => `carburetor/${name}`);
+
 describe('bridge round-trip: native binary vs the JavaScript plugin bridge', () => {
     test('both implementations report the same diagnostics over the shared corpus', () => {
         const native = nativeDiagnostics();
@@ -176,10 +183,12 @@ describe('bridge round-trip: native binary vs the JavaScript plugin bridge', () 
         // no-module-level-store is off by default in both implementations but is force-enabled by
         // both configs above specifically so this corpus can prove it fires identically too. The
         // five house-style rules are subtracted: they are native-only now (see the header), so
-        // the JS side cannot represent them and their corpus lives in the style test below.
+        // the JS side cannot represent them and their corpus lives in the style test below. The
+        // nine functional-class rules are subtracted too: they need a `classes` section and its
+        // stylesheets, which this corpus has none of, and native/tests/classes.rs covers them.
         const catalogue = nativeRegistryRules()
             .map((name) => 'carburetor/' + name)
-            .filter((rule) => !STYLE_RULES.includes(rule));
+            .filter((rule) => !STYLE_RULES.includes(rule) && !CLASS_RULES.includes(rule));
 
         expect([...seen].sort()).toEqual(catalogue.sort());
     });

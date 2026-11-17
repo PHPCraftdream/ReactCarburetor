@@ -116,6 +116,35 @@ reported. State goes into `data-*` and `aria-*` attributes.
 }
 ```
 
+## Starting a stylesheet
+
+```bash
+npx carburetor-lint --init-classes src/styles/classes.css
+```
+
+writes a stylesheet with every floor filled with base classes and passing every rule:
+
+- a Palette (Tailwind's grey, blue, red, green and amber for the default families; a custom family
+  gets tokens named after it, to recolour) and the white the `on-fill` slot uses;
+- the `--color-*: initial` reset and a Role for every family and slot, with `hover` and `active`
+  states on `fill` and `wash`, and every surface level;
+- a `[data-theme="dark"]` block that overrides the surface and neutral Roles;
+- a Tone for every family and delivery, each with its family's focus ring, and a Tone per surface;
+- the base Traits `shape-control`, `shape-field`, `shape-panel`, `shape-badge`, `type-body`,
+  `type-label`, `type-heading`, `layout-row`, `layout-stack`, `focus-ring`, `motion-press`,
+  `effect-raised` and `behavior-clickable`;
+- the Patterns `pattern-button`, `pattern-field`, `pattern-card` and `pattern-badge`;
+- example Functions — `submit-button`, `cancel-button`, `delete-button`, `search-field`,
+  `content-card`, and `status-badge` with `data-status` state blocks — to replace with your own.
+
+The vocabulary comes from the config's `classes` section when there is one, so custom families,
+slots, deliveries, surface levels and trait kinds are scaffolded too. A Trait whose Bricks the
+configured kinds do not own, a state with no Tailwind variant of its name (it gets a Role but no
+Brick), and an example Function whose Pattern or Tone is missing are left out rather than written
+wrong. Without a config the command creates `.carburetorrc.json` with a `classes` section naming the
+new file; an existing config is never edited — the command prints what to add — and an existing
+stylesheet is never overwritten. Import the file from your Tailwind entry and edit it from there.
+
 ## Turning the rules on
 
 Add a `classes` section to `.carburetorrc.json`. Only `css` is required: the glob patterns, relative

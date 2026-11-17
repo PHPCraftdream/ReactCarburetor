@@ -88,6 +88,28 @@ pub fn css_with(
     findings
 }
 
+/// Every CSS rule's findings for `target`, as `(rule, line, message)`, sorted.
+pub fn every_rule(
+    config: &str,
+    files: &[(&str, &str)],
+    target: &str,
+) -> Vec<(String, usize, String)> {
+    let mut config = Config::from_json(config).expect("test config is valid");
+    let project = Project::from_texts(&config, files);
+    config.set_class_index(project.index.clone());
+    let file = project
+        .file(&config.root().join(target))
+        .expect("the target is one of the files");
+    assert!(file.sheet.errors.is_empty(), "{:?}", file.sheet.errors);
+
+    let mut findings: Vec<(String, usize, String)> = check_css(file, Path::new(target), &config)
+        .into_iter()
+        .map(|diagnostic| (diagnostic.rule, diagnostic.line, diagnostic.message))
+        .collect();
+    findings.sort();
+    findings
+}
+
 /// [`css_with`] under [`CONFIG`].
 pub fn css(files: &[(&str, &str)], target: &str, rule: &str) -> Vec<(usize, usize, String)> {
     css_with(CONFIG, files, target, rule)
