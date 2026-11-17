@@ -83,6 +83,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   driven by store data, the `0.x` status and minimum-release-age installs, `no-module-level-store` on client-only
   sites, and where precise subscriptions pay off.
 
+- `useStoreEffect` called again with the same store, selector and effect (every re-render, since `useEffects` runs
+  after each commit) returns at once: it no longer builds an effect closure and a dependency array to compare. A perf
+  gate (`effects47/store-effect-rerender`) holds it.
+
 ### Fixed
 
 - A `persist` write is no longer lost or late when the store is disposed first. `store.dispose()` (and so

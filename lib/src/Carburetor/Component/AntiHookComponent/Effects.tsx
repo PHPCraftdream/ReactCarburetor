@@ -19,6 +19,20 @@ interface IEffectRecord {
 
 const describeFailure = (error: unknown): string =>
     (error instanceof Error ? error.message : String(error));
+
+/**
+ * Whether a store effect's recorded dependencies are still the ones given: the store form keeps
+ * `[store, select, effect]`, the computed form `[computed, effect]`.
+ *
+ * @param deps - the dependencies recorded under the effect's name
+ * @param source - the store or computed
+ * @param second - the selector, or the computed form's effect
+ * @param third - the store form's effect; absent for a computed
+ */
+const sameStoreEffect = (deps: TEffectDeps, source: unknown, second: unknown, third: unknown): boolean =>
+    third === undefined
+        ? deps.length === 2 && deps[0] === source && deps[1] === second
+        : deps.length === 3 && deps[0] === source && deps[1] === second && deps[2] === third;
 export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookComponentReads<P, S> {
     /**
      * Where a subclass declares its effects; called after every commit.
@@ -143,6 +157,14 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
         selectOrEffect: TSelector<unknown, unknown> | TStoreEffect<unknown>,
         effect?: TStoreEffect<unknown>
     ): void {
+        // useEffects runs on every render: with the same three references nothing is allocated.
+        const records = this[C.effects];
+        const known = records === undefined ? undefined : records[name];
+
+        if (known !== undefined && sameStoreEffect(known.deps, source, selectOrEffect, effect)) {
+            return;
+        }
+
         if (effect === undefined) {
             const computed = source as IComputed<unknown>;
             const run = selectOrEffect as TStoreEffect<unknown>;
