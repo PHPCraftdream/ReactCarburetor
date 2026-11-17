@@ -346,7 +346,7 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
     match rule {
         setup::no_unrecognized_base::RULE => text.contains("import") && text.contains("extends"),
         effects::no_inline_store_effect::RULE => text.contains("useStoreEffect"),
-        classes::require_function_class::RULE => text.contains("lassName"),
+        classes::require_function_class::RULE => text.contains("lassName") || text.contains("style"),
         effects::prefer_store_effect::RULE => {
             text.contains("watch") || text.contains("storeEffect")
         }

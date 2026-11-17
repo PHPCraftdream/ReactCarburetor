@@ -87,7 +87,10 @@ and for the props object of `createElement` and the automatic runtime's `jsx` ca
 built elsewhere is not followed. State goes into `data-*` and `aria-*` attributes; on an element whose
 `className` is one Function, a literal value of an attribute that Function's state blocks select by
 must be one they list (`data-status="payd"` is reported when the blocks select `paid` and `open`).
-A block that selects by presence (`[data-busy]`) or another operator lets any value through.
+A block that selects by presence (`[data-busy]`) or another operator lets any value through. A literal
+colour in an inline `style` object (`style={{color: '#fff'}}`) paints around the Roles and is reported
+too; a value computed at run time, such as a colour the user picked, and a `var(--color-…)` Role are
+not.
 
 ## A complete stylesheet
 

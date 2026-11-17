@@ -224,3 +224,29 @@ const h = <div data-state="idle" className={"user-card"} />;
     );
     assert_eq!(findings[0].1, 49);
 }
+
+#[test]
+fn literal_colours_in_inline_styles_are_reported() {
+    let text = r##"
+const a = <div className="user-card" style={{color: "#fff", width: "10px"}} />;
+const b = <div style={{backgroundColor: `red`, borderTopColor: "rgb(0 0 0)"}} />;
+const c = <div style={{color: "var(--color-accent-ink)"}} />;
+const d = <div style={{color: user.color, background: theme}} />;
+const e = <div style={styles} />;
+"##;
+    let findings = diagnose(text);
+
+    assert_eq!(
+        findings
+            .iter()
+            .map(|(line, _, _)| *line)
+            .collect::<Vec<_>>(),
+        [2, 3, 3]
+    );
+    assert!(
+        findings[0]
+            .2
+            .contains(r##"style color: "#fff" paints around the Roles"##),
+        "{findings:?}"
+    );
+}

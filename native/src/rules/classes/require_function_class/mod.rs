@@ -195,7 +195,53 @@ fn attribute_name<'a>(attribute: &'a JSXAttribute<'a>) -> Option<&'a str> {
     }
 }
 
+/// Whether a camelCase style property paints a colour.
+fn is_colour_style(property: &str) -> bool {
+    property.ends_with("Color") || matches!(property, "color" | "background" | "fill" | "stroke")
+}
+
+/// Whether a style value is exactly one Role: `var(--color-…)`.
+fn is_role_value(value: &str) -> bool {
+    value
+        .trim()
+        .strip_prefix("var(--color-")
+        .and_then(|rest| rest.strip_suffix(')'))
+        .is_some_and(|role| !role.is_empty() && !role.contains(['(', ')', ',']))
+}
+
 impl Finder<'_, '_> {
+    /// A literal colour in an inline `style` object paints around the Roles: the element's colour
+    /// belongs to its Function's Tone. A value computed at run time (a user's chosen colour) and a
+    /// `var(--color-…)` Role are left alone.
+    fn style(&mut self, object: &ObjectExpression<'_>) {
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else {
+                continue;
+            };
+            let Some(name) = property_key_name(&property.key).filter(|name| is_colour_style(name))
+            else {
+                continue;
+            };
+            let value = match &property.value {
+                Expression::StringLiteral(literal) => literal.value.as_str(),
+                Expression::TemplateLiteral(template)
+                    if template.expressions.is_empty() && template.quasis.len() == 1 =>
+                {
+                    template.quasis[0].value.raw.as_str()
+                }
+                _ => continue,
+            };
+            if !is_role_value(value) {
+                self.report(
+                    property.value.span().start,
+                    format!(
+                        "style {name}: {value:?} paints around the Roles; the element's colour belongs to its Function's Tone"
+                    ),
+                );
+            }
+        }
+    }
+
     /// An element whose `className` is one Function: every literal `data-*`/`aria-*` value its
     /// state blocks select by must be one of the values they list.
     fn states(&mut self, element: &JSXOpeningElement<'_>) {
@@ -282,6 +328,16 @@ impl<'a> Visit<'a> for Finder<'_, '_> {
     }
 
     fn visit_jsx_attribute(&mut self, attribute: &JSXAttribute<'a>) {
+        if attribute_name(attribute) == Some("style") {
+            if let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value {
+                if let Some(Expression::ObjectExpression(object)) =
+                    container.expression.as_expression()
+                {
+                    self.style(object);
+                }
+            }
+        }
+
         let is_class_name = matches!(
             &attribute.name,
             JSXAttributeName::Identifier(identifier) if is_class_prop(identifier.name.as_str())
