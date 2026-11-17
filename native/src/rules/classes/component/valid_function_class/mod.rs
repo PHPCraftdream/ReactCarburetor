@@ -227,7 +227,7 @@ pub fn check(context: &CssContext<'_>) -> Vec<Diagnostic> {
                 }
                 function_body(context, name, block.at, block.nodes, &mut diagnostics);
             }
-            BlockKind::State { name } => {
+            BlockKind::State { name, .. } => {
                 state_body(context, name, block.at, block.nodes, &mut diagnostics);
             }
             _ => {}

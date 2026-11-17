@@ -48,8 +48,8 @@ body { color: red; }
             "Utility { name: \"pattern-card\", floor: Pattern }",
             "Utility { name: \"submit-button\", floor: Unplaced }",
             "Function { name: \"user-card\" }",
-            "State { name: \"user-card\" }",
-            "State { name: \"user-card\" }",
+            "State { name: \"user-card\", attribute: \"[data-x]\" }",
+            "State { name: \"user-card\", attribute: \"[aria-busy]\" }",
             "ClassOutside { selector: \".loose-class\" }",
         ]
     );
@@ -113,4 +113,33 @@ fn class_selectors_are_found_outside_attributes_and_strings() {
     assert!(!has_class_selector("[data-x=\"a.b\"]"));
     assert!(!has_class_selector("a[href$='.pdf']"));
     assert!(!has_class_selector("h1"));
+}
+
+#[test]
+fn attribute_requirements_name_the_value_or_say_any() {
+    assert_eq!(
+        attribute_requirement(r#"[data-status="paid"]"#),
+        Some(("data-status", Some("paid")))
+    );
+    assert_eq!(
+        attribute_requirement("[aria-current='true']"),
+        Some(("aria-current", Some("true")))
+    );
+    assert_eq!(
+        attribute_requirement("[data-size=lg]"),
+        Some(("data-size", Some("lg")))
+    );
+    assert_eq!(
+        attribute_requirement("[data-busy]"),
+        Some(("data-busy", None))
+    );
+    assert_eq!(
+        attribute_requirement(r#"[data-tags~="new"]"#),
+        Some(("data-tags", None))
+    );
+    assert_eq!(
+        attribute_requirement(r#"[data-kind="a" i]"#),
+        Some(("data-kind", None))
+    );
+    assert_eq!(attribute_requirement("data-x"), None);
 }

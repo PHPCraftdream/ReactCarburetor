@@ -5,7 +5,7 @@
 use std::collections::HashMap;
 
 use super::parse::Node;
-use super::scan::{BlockKind, Floor, Scan};
+use super::scan::{attribute_requirement, BlockKind, Floor, Scan};
 use crate::rules::LineTable;
 
 /// Where a name is defined: the file relative to the config root, and the 1-based line.
@@ -40,6 +40,8 @@ pub struct FileDefinitions {
     pub definitions: Vec<Definition>,
     /// The file's `@theme` carries `--color-*: initial`.
     pub color_reset: bool,
+    /// State blocks: the Function, the attribute's name and the value it requires (`None`: any).
+    pub states: Vec<(String, String, Option<String>)>,
 }
 
 /// The index itself. Every list of locations is in file order, then source order, so "the first
@@ -50,6 +52,9 @@ pub struct ClassIndex {
     roles: HashMap<String, Vec<Location>>,
     classes: HashMap<String, Vec<(Floor, Location)>>,
     applies: HashMap<String, Vec<String>>,
+    /// Function → attribute → the values its state blocks select, or `None` once any block of that
+    /// attribute matches values it cannot list.
+    states: HashMap<String, HashMap<String, Option<Vec<String>>>>,
     color_reset: bool,
 }
 
@@ -57,6 +62,23 @@ impl ClassIndex {
     /// Adds one file's definitions; files must be added in their sorted order.
     pub fn add(&mut self, file: FileDefinitions) {
         self.color_reset |= file.color_reset;
+
+        for (function, attribute, value) in file.states {
+            let values = self
+                .states
+                .entry(function)
+                .or_default()
+                .entry(attribute)
+                .or_insert_with(|| Some(Vec::new()));
+            match (values.as_mut(), value) {
+                (Some(known), Some(value)) => {
+                    if !known.contains(&value) {
+                        known.push(value);
+                    }
+                }
+                _ => *values = None,
+            }
+        }
 
         for definition in file.definitions {
             match definition.floor {
@@ -90,6 +112,12 @@ impl ClassIndex {
             .get(class)
             .and_then(|definitions| definitions.first())
             .map(|(floor, _)| *floor)
+    }
+
+    /// The values a Function's state blocks select for an attribute, when they can all be listed;
+    /// `None` when no state block reads the attribute or one matches values it cannot list.
+    pub fn state_values(&self, function: &str, attribute: &str) -> Option<&[String]> {
+        self.states.get(function)?.get(attribute)?.as_deref()
     }
 
     /// What a class's first definition applies (see [`Definition::applies`]); empty for a name no
@@ -201,7 +229,16 @@ pub fn definitions(scan: &Scan<'_>, text: &str, file: &str) -> FileDefinitions {
                 location: location(block.at),
                 applies: body(block.nodes, text),
             }),
-            BlockKind::State { .. } | BlockKind::ClassOutside { .. } => {}
+            BlockKind::State { name, attribute } => {
+                if let Some((key, value)) = attribute_requirement(attribute) {
+                    result.states.push((
+                        name.to_string(),
+                        key.to_string(),
+                        value.map(str::to_string),
+                    ));
+                }
+            }
+            BlockKind::ClassOutside { .. } => {}
         }
     }
 

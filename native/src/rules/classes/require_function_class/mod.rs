@@ -5,8 +5,9 @@
 //! blocks select.
 
 use oxc_ast::ast::{
-    Argument, CallExpression, Expression, JSXAttribute, JSXAttributeName, JSXAttributeValue,
-    JSXSpreadAttribute, ObjectExpression, ObjectPropertyKind, Program, StringLiteral,
+    Argument, CallExpression, Expression, JSXAttribute, JSXAttributeItem, JSXAttributeName,
+    JSXAttributeValue, JSXOpeningElement, JSXSpreadAttribute, ObjectExpression, ObjectPropertyKind,
+    Program, StringLiteral,
 };
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
@@ -156,7 +157,83 @@ fn creates_element(call: &CallExpression<'_>) -> bool {
     )
 }
 
+/// The literal text an attribute holds: a string, or a template or string in braces. A boolean
+/// attribute (`<div data-busy />`) holds `"true"`, which is what React renders.
+fn literal_value<'a>(value: Option<&'a JSXAttributeValue<'a>>) -> Option<&'a str> {
+    match value {
+        None => Some("true"),
+        Some(JSXAttributeValue::StringLiteral(literal)) => Some(literal.value.as_str()),
+        Some(JSXAttributeValue::ExpressionContainer(container)) => {
+            match container.expression.as_expression()? {
+                Expression::StringLiteral(literal) => Some(literal.value.as_str()),
+                Expression::TemplateLiteral(template)
+                    if template.expressions.is_empty() && template.quasis.len() == 1 =>
+                {
+                    Some(template.quasis[0].value.raw.as_str())
+                }
+                _ => None,
+            }
+        }
+        Some(_) => None,
+    }
+}
+
+/// An attribute's name, when it is a plain one.
+fn attribute_name<'a>(attribute: &'a JSXAttribute<'a>) -> Option<&'a str> {
+    match &attribute.name {
+        JSXAttributeName::Identifier(identifier) => Some(identifier.name.as_str()),
+        JSXAttributeName::NamespacedName(_) => None,
+    }
+}
+
 impl Finder<'_, '_> {
+    /// An element whose `className` is one Function: every literal `data-*`/`aria-*` value its
+    /// state blocks select by must be one of the values they list.
+    fn states(&mut self, element: &JSXOpeningElement<'_>) {
+        let attributes = element.attributes.iter().filter_map(|item| match item {
+            JSXAttributeItem::Attribute(attribute) => Some(&**attribute),
+            JSXAttributeItem::SpreadAttribute(_) => None,
+        });
+        let function = attributes
+            .clone()
+            .find(|attribute| attribute_name(attribute) == Some("className"))
+            .and_then(|attribute| literal_value(attribute.value.as_ref()))
+            .map(str::trim)
+            .filter(|name| self.index.floor(name) == Some(Floor::Function));
+        let Some(function) = function else {
+            return;
+        };
+
+        for attribute in attributes {
+            let Some(name) = attribute_name(attribute)
+                .filter(|name| name.starts_with("data-") || name.starts_with("aria-"))
+            else {
+                continue;
+            };
+            let (Some(values), Some(value)) = (
+                self.index.state_values(function, name),
+                literal_value(attribute.value.as_ref()),
+            ) else {
+                continue;
+            };
+            if !values.iter().any(|known| known == value) {
+                let at = attribute
+                    .value
+                    .as_ref()
+                    .map_or(attribute.span.start, |value| value.span().start);
+                let message = format!(
+                    "{name}=\"{value}\" matches no state block of {function}, which selects {name} only by {}",
+                    values
+                        .iter()
+                        .map(|known| format!("\"{known}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+                self.report(at, message);
+            }
+        }
+    }
+
     /// The class props of a literal props object; other properties and spreads are not ours.
     fn object(&mut self, object: &ObjectExpression<'_>) {
         for property in &object.properties {
@@ -171,6 +248,12 @@ impl Finder<'_, '_> {
 }
 
 impl<'a> Visit<'a> for Finder<'_, '_> {
+    fn visit_jsx_opening_element(&mut self, element: &JSXOpeningElement<'a>) {
+        self.states(element);
+
+        walk::walk_jsx_opening_element(self, element);
+    }
+
     fn visit_jsx_spread_attribute(&mut self, spread: &JSXSpreadAttribute<'a>) {
         if let Expression::ObjectExpression(object) = &spread.argument {
             self.object(object);

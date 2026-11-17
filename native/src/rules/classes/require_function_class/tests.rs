@@ -161,13 +161,25 @@ const f = <div {...{"className": `submit-button`}} />;
     let findings = diagnose(text);
 
     assert_eq!(
-        findings.iter().map(|(line, _, _)| *line).collect::<Vec<_>>(),
+        findings
+            .iter()
+            .map(|(line, _, _)| *line)
+            .collect::<Vec<_>>(),
         [2, 3, 5, 6]
     );
-    assert!(findings[0].2.contains("px-4 is a Tailwind utility"), "{findings:?}");
-    assert!(findings[1].2.contains("tone-accent-solid is a Tone"), "{findings:?}");
+    assert!(
+        findings[0].2.contains("px-4 is a Tailwind utility"),
+        "{findings:?}"
+    );
+    assert!(
+        findings[1].2.contains("tone-accent-solid is a Tone"),
+        "{findings:?}"
+    );
     assert!(findings[2].2.contains("holds 2 classes"), "{findings:?}");
-    assert!(findings[3].2.contains("px-4 is a Tailwind utility"), "{findings:?}");
+    assert!(
+        findings[3].2.contains("px-4 is a Tailwind utility"),
+        "{findings:?}"
+    );
 }
 
 #[test]
@@ -181,4 +193,34 @@ const d = <div ClassName="px-4" />;
 "#;
 
     assert!(diagnose(text).is_empty(), "{:?}", diagnose(text));
+}
+
+#[test]
+fn literal_state_values_must_be_ones_the_state_blocks_select() {
+    let text = r#"
+const a = <div className="user-card" data-state="busy" />;
+const b = <div className="user-card" data-state="idle" />;
+const c = <div className="user-card" aria-current="false" />;
+const d = <div className="user-card" aria-current />;
+const e = <div className="user-card" data-state={state} />;
+const f = <div className="user-card" data-other="x" />;
+const g = <div className="submit-button" data-state="idle" />;
+const h = <div data-state="idle" className={"user-card"} />;
+"#;
+    let findings = diagnose(text);
+
+    assert_eq!(
+        findings
+            .iter()
+            .map(|(line, _, _)| *line)
+            .collect::<Vec<_>>(),
+        [3, 4, 9]
+    );
+    assert!(
+        findings[0]
+            .2
+            .contains(r#"data-state="idle" matches no state block of user-card, which selects data-state only by "busy""#),
+        "{findings:?}"
+    );
+    assert_eq!(findings[0].1, 49);
 }

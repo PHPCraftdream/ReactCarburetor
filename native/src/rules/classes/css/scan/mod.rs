@@ -44,7 +44,11 @@ pub enum BlockKind<'s> {
     /// `.name { … }` in `@layer components`.
     Function { name: &'s str },
     /// `.name[attr] { … }` in `@layer components`, or `&[attr] { … }` nested in a Function.
-    State { name: &'s str },
+    State {
+        name: &'s str,
+        /// The one attribute selector, brackets included: `[data-status="paid"]`.
+        attribute: &'s str,
+    },
     /// A rule with a class selector outside `@layer components`.
     ClassOutside { selector: &'s str },
 }
@@ -182,9 +186,9 @@ fn components<'s>(nodes: &'s [Node], text: &'s str, scan: &mut Scan<'s>) {
                     let attribute = selector
                         .strip_prefix('&')
                         .filter(|rest| is_one_attribute(rest));
-                    if attribute.is_some() {
+                    if let Some(attribute) = attribute {
                         scan.blocks.push(Block {
-                            kind: BlockKind::State { name },
+                            kind: BlockKind::State { name, attribute },
                             at: nested.selector.start,
                             nodes: &nested.body,
                         });
@@ -196,9 +200,9 @@ fn components<'s>(nodes: &'s [Node], text: &'s str, scan: &mut Scan<'s>) {
                     }
                 }
             }
-            Some((name, Some(_))) => {
+            Some((name, Some(attribute))) => {
                 scan.blocks.push(Block {
-                    kind: BlockKind::State { name },
+                    kind: BlockKind::State { name, attribute },
                     at: rule.selector.start,
                     nodes: &rule.body,
                 });
@@ -250,6 +254,35 @@ pub fn function_selector(selector: &str) -> Option<(&str, Option<&str>)> {
     } else {
         None
     }
+}
+
+/// An attribute selector's name and the value it requires: `[data-status="paid"]` is
+/// `("data-status", Some("paid"))`; a presence test or an operator other than `=` is `None`, since
+/// it matches values this reading cannot list.
+pub fn attribute_requirement(attribute: &str) -> Option<(&str, Option<&str>)> {
+    let inner = attribute.strip_prefix('[')?.strip_suffix(']')?.trim();
+    let Some((name, value)) = inner.split_once('=') else {
+        return Some((inner, None));
+    };
+    if name.ends_with(['~', '|', '^', '$', '*']) {
+        return Some((
+            name.trim_end_matches(['~', '|', '^', '$', '*']).trim(),
+            None,
+        ));
+    }
+    let value = value.trim();
+    // A case-sensitivity flag after the value (`"x" i`) widens what matches: treat as unknown.
+    let unquoted = value
+        .strip_prefix('"')
+        .and_then(|rest| rest.strip_suffix('"'))
+        .or_else(|| {
+            value
+                .strip_prefix('\'')
+                .and_then(|rest| rest.strip_suffix('\''))
+        })
+        .or_else(|| (!value.contains([' ', '"', '\''])).then_some(value));
+
+    Some((name.trim(), unquoted))
 }
 
 /// Whether the text is exactly one attribute selector, `[…]`, with quoted values allowed.

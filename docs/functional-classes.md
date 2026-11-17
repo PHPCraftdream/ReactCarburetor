@@ -84,7 +84,10 @@ arrays, several names, Bricks, Traits, Patterns, Tones and names no stylesheet d
 reported. The same holds for a component's class props (`inputClassName`, any prop ending in
 `ClassName`), for `className` in a literal object spread into an element (`{...{className: 'x'}}`),
 and for the props object of `createElement` and the automatic runtime's `jsx` calls. A props object
-built elsewhere is not followed. State goes into `data-*` and `aria-*` attributes.
+built elsewhere is not followed. State goes into `data-*` and `aria-*` attributes; on an element whose
+`className` is one Function, a literal value of an attribute that Function's state blocks select by
+must be one they list (`data-status="payd"` is reported when the blocks select `paid` and `open`).
+A block that selects by presence (`[data-busy]`) or another operator lets any value through.
 
 ## A complete stylesheet
 

@@ -114,3 +114,21 @@ fn a_project_is_ordered_by_path_whatever_order_files_arrive_in() {
     assert_eq!(forward.index, backward.index);
     assert_eq!(forward.index.floor("shape-x"), Some(Floor::Trait));
 }
+
+#[test]
+fn state_values_are_listed_until_a_block_matches_values_it_cannot_list() {
+    let mut index = ClassIndex::default();
+    index.add(defined(
+        "@layer components {\n  .order-status { @apply p-1; &[data-status=\"paid\"] { @apply p-2; } }\n  .order-status[data-status='open'] { @apply p-3; }\n  .order-status[data-busy] { @apply p-4; }\n  .order-status[data-tone~=\"x\"] { @apply p-4; }\n}\n",
+        "a.css",
+    ));
+
+    assert_eq!(
+        index.state_values("order-status", "data-status"),
+        Some(&["paid".to_string(), "open".to_string()][..])
+    );
+    assert_eq!(index.state_values("order-status", "data-busy"), None);
+    assert_eq!(index.state_values("order-status", "data-tone"), None);
+    assert_eq!(index.state_values("order-status", "data-other"), None);
+    assert_eq!(index.state_values("missing", "data-status"), None);
+}

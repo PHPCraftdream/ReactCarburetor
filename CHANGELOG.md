@@ -17,7 +17,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `no-duplicate-class` check the stylesheets; `require-function-class` checks `className`. They are
   off until `.carburetorrc.json` has a `classes` section naming the stylesheets, and report at
   `error` with it. `require-function-class` also reads `*ClassName` props, literal objects spread into an element and
-  the props of `createElement`/`jsx` calls. The binary reads the stylesheets once, in parallel, into a class index before any
+  the props of `createElement`/`jsx` calls, and checks a literal `data-*`/`aria-*` value against the values the
+  Function's state blocks select. The binary reads the stylesheets once, in parallel, into a class index before any
   file is checked; `--stdin` accepts a stylesheet buffer too. The plugin forwards the section, so
   `require-function-class` also reports through oxlint and ESLint once switched on in the host's
   config, and drops cached answers when a configured stylesheet changes. A stylesheet that does not
