@@ -72,6 +72,7 @@ pub struct RuleSetting {
 pub const DEFAULT_SEVERITIES: &[(&str, Severity)] = &[
     ("max-line-length", Severity::Off),
     ("max-render-depth", Severity::Warn),
+    ("max-render-lines", Severity::Warn),
     ("no-async-effect", Severity::Error),
     ("no-async-transaction", Severity::Error),
     ("no-blank-line-after-tsdoc", Severity::Off),
@@ -416,8 +417,8 @@ fn parse_setting_unchecked(
             if rule == "require-module-function" {
                 validate_module_function_options(map)?;
             }
-            if rule == "max-render-depth" {
-                validate_max_render_depth_options(map)?;
+            if rule == "max-render-depth" || rule == "max-render-lines" {
+                validate_max_options(rule, map)?;
             }
             if rule == "max-line-length" {
                 validate_max_line_length_options(map)?;
@@ -541,9 +542,9 @@ use bases::parse_bases;
 use bases::parse_overrides;
 #[cfg(test)]
 use bases::{count_override_match, override_match_count, reset_override_match_count};
-use options::validate_max_render_depth_options;
+use options::validate_max_options;
 use options::validate_module_function_options;
-pub(crate) use options::DEFAULT_MAX;
+pub(crate) use options::{DEFAULT_MAX, DEFAULT_RENDER_LINES};
 
 use crate::rules::classes::css::index::ClassIndex;
 pub use crate::rules::classes::css::settings::{is_kebab, relative_to, ClassesConfig, SURFACE};

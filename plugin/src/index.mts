@@ -28,6 +28,7 @@ import {noMemoOverStoreRead} from "./Rules/Data/Reads/noMemoOverStoreRead.mts";
 import {noCapturingHookSelector} from "./Rules/Data/Reads/noCapturingHookSelector.mts";
 import {noHandlerCreatedInRender} from "./Rules/Lifecycle/noHandlerCreatedInRender.mts";
 import {maxRenderDepth} from "./Rules/Lifecycle/maxRenderDepth.mts";
+import {maxRenderLines} from "./Rules/Lifecycle/maxRenderLines.mts";
 import {maxLineLength} from "./Rules/Style/maxLineLength.mts";
 import {noBlankLineAfterTsdoc} from "./Rules/Style/noBlankLineAfterTsdoc.mts";
 import {noParentImport} from "./Rules/Style/noParentImport.mts";
@@ -88,6 +89,7 @@ const plugin: IPlugin = {
         'no-function-in-render': noFunctionInRender,
         'no-handler-created-in-render': noHandlerCreatedInRender,
         'max-render-depth': maxRenderDepth,
+        'max-render-lines': maxRenderLines,
         'max-line-length': maxLineLength,
         'no-blank-line-after-tsdoc': noBlankLineAfterTsdoc,
         'no-parent-import': noParentImport,

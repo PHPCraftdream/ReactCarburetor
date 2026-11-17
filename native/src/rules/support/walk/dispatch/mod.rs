@@ -189,30 +189,7 @@ pub(super) fn run(
         } else {
             // The rules with options read them here too, so a configured limit or root set
             // behaves identically on both dispatch paths.
-            buckets[index].extend(match *rule {
-                style::max_line_length::RULE => style::max_line_length::check_with_options(
-                    program,
-                    source,
-                    &config.max_line_length(),
-                ),
-                style::no_parent_import::RULE => style::no_parent_import::check_with_options(
-                    program,
-                    source,
-                    &config.no_parent_import_roots(),
-                ),
-                style::require_tsdoc::RULE => style::require_tsdoc::check_with_options(
-                    program,
-                    source,
-                    &config.require_tsdoc(),
-                ),
-                style::prefer_readonly_array_param::RULE => {
-                    style::prefer_readonly_array_param::check(program, source, &bases)
-                }
-                classes::require_function_class::RULE => {
-                    classes::require_function_class::check_with_config(program, source, config)
-                }
-                _ => check(program, source, &bases),
-            });
+            buckets[index].extend(configured(rule, *check, program, source, config, &bases));
         }
     }
 
@@ -280,4 +257,46 @@ pub(super) fn run(
         });
     }
     diagnostics
+}
+
+/// One rule outside the shared walk and the shared semantic, run with the options it reads, so a
+/// configured limit or root set behaves identically on both dispatch paths; a rule without options
+/// runs its registry `check`.
+pub(super) fn configured(
+    rule: &str,
+    check: Check,
+    program: &Program<'_>,
+    source: &Source<'_>,
+    config: &Config,
+    bases: &support::bases::Bases,
+) -> Vec<Diagnostic> {
+    match rule {
+        boundaries::max_render_depth::RULE => boundaries::max_render_depth::check_with_max(
+            program,
+            source,
+            config.max_render_depth(),
+            bases,
+        ),
+        lifecycle::max_render_lines::RULE => lifecycle::max_render_lines::check_with_max(
+            program,
+            source,
+            bases,
+            config.max_render_lines(),
+        ),
+        style::max_line_length::RULE => {
+            style::max_line_length::check_with_options(program, source, &config.max_line_length())
+        }
+        style::no_parent_import::RULE => style::no_parent_import::check_with_options(
+            program,
+            source,
+            &config.no_parent_import_roots(),
+        ),
+        style::require_tsdoc::RULE => {
+            style::require_tsdoc::check_with_options(program, source, &config.require_tsdoc())
+        }
+        classes::require_function_class::RULE => {
+            classes::require_function_class::check_with_config(program, source, config)
+        }
+        _ => check(program, source, bases),
+    }
 }

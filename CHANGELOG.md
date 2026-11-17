@@ -9,6 +9,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- `carburetor/max-render-lines` (`warn` in the recommended preset): a `render()` whose body holds more than `max` lines
+  of code (30 by default; blank and comment-only lines do not count), with a pointer to split it into methods of the
+  component. `["warn", {"max": 40}]` sets the limit, in the CLI's config and through the plugin. The ToDo demo's three
+  longer renders are split into `render…()` methods.
 - Functional CSS classes for Tailwind v4 projects (opt-in): eleven native rules check a methodology in
   which markup carries one class naming what an element does, and colours (Palette → Role → Tone)
   and components (Brick → Trait → Pattern → Function) are composed in floors that each use only the

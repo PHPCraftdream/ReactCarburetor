@@ -5,11 +5,11 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
-`no-hooks` preset adds a component-architecture policy. The plugin registry contains **53 rules**:
-31 catalogue rules, `require-hoisted-constant`, three `useStoreEffect` rules (`no-store-read-in-effect-deps`,
+`no-hooks` preset adds a component-architecture policy. The plugin registry contains **54 rules**:
+31 catalogue rules, `require-hoisted-constant`, `max-render-lines`, three `useStoreEffect` rules (`no-store-read-in-effect-deps`,
 `no-inline-store-effect`, `prefer-store-effect`), the `no-unrecognized-base` setup check, the
 optional `no-react-hooks-in-components` policy, five house-style rules, and eleven opt-in
-[functional-class rules](#functional-classes). The native registries also have 53 entries: 43 over
+[functional-class rules](#functional-classes). The native registries also have 54 entries: 44 over
 TypeScript and ten over stylesheets. `no-module-level-store` and `one-export-per-file` are off in
 recommended configuration; the functional-class rules are off until a `classes` section turns them on.
 
@@ -218,6 +218,7 @@ until your project changes shape.
 | Rule | Level | Catches | Hazard |
 |------|-------|---------|--------|
 | `max-render-depth` | warn | A render whose component tree is deeper than the configured limit; configurable depth | [H35](hazards.md) |
+| `max-render-lines` | warn | A `render()` holding more lines of code than the configured limit (30); move its parts into methods of the component | — |
 | `max-line-length` | off | A source line longer than the configured limit; house style, opt-in | — |
 | `no-blank-line-after-tsdoc` | off | A blank line between a TSDoc block and the declaration it documents; house style, opt-in | — |
 | `no-parent-import` | off | An import reaching up out of its directory instead of through the configured alias; house style, opt-in | — |
@@ -343,7 +344,7 @@ oxlint's configuration.
 ```
 
 Most rules accept severity only: `error`, `warn` or `off`; `require-module-function` also accepts
-the `scope` option (`"all"` or `"classes"`) and `max-render-depth` accepts `max` (an integer >= 1).
+the `scope` option (`"all"` or `"classes"`) `max-render-depth` and `max-render-lines` accept `max` (an integer >= 1).
 Unknown option values, option keys and base-list
 shapes are malformed configuration. Suppress reports with
 `// carburetor-disable-next-line <rule>` or `// carburetor-disable <rule>`; either directive without
@@ -406,6 +407,25 @@ Native configuration rejects an unknown option key, a non-integer or a value bel
 malformed configuration and exits with code 2. The option is honored by the native CLI's
 configuration; the ESLint/oxlint bridge runs the binary with a neutral configuration, so the
 default depth of 3 applies there.
+
+### `max-render-lines`: `max`
+
+```json
+{
+  "rules": {
+    "carburetor/max-render-lines": ["warn", {"max": 40}]
+  }
+}
+```
+
+- `30` is the default. A `render()` is reported, at its name, when the body between its braces holds
+  more than `max` lines of code; blank lines and lines holding only comments do not count.
+- Every `render` method of a class that extends something is checked. Split a long one into methods
+  of the component (`renderHeader()`, `renderRow(item)`) and let `render()` assemble them; pass them
+  the values they show rather than tracked objects.
+
+Native configuration rejects an unknown option key, a non-integer or a value below 1 as malformed
+configuration and exits with code 2. The plugin forwards the host rule's `max`.
 
 ## One rule replaces a built-in
 

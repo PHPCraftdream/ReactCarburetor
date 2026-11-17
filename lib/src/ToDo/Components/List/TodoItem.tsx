@@ -105,65 +105,91 @@ export class TodoItem extends ScopedAntiHookComponent<ITodoItemProps, ITodoItemS
         const todo = items[id];
         this.renders++;
 
+        return (
+            <li className="group transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40" data-testid="todo-item">
+                <div className="flex items-center gap-3 px-5 py-3">
+                    {this.renderDone(todo.done)}
+                    {this.renderTitle(todo.title, todo.done)}
+                    {this.renderCounter()}
+                    {this.renderActions()}
+                </div>
+                {this.state.expanded ? <TodoDetails id={id}/> : null}
+            </li>
+        );
+    }
+
+    /** The done checkbox, drawn over a native input so it stays keyboard-accessible. */
+    protected renderDone(done: boolean) {
+        return (
+            <label className="relative flex cursor-pointer items-center">
+                <input
+                    type="checkbox"
+                    checked={done}
+                    onChange={this.handleChangeDone}
+                    data-testid="todo-done"
+                    className="peer size-5 shrink-0 cursor-pointer appearance-none rounded-md border border-slate-300 bg-white transition-colors hover:border-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:checked:border-slate-100 dark:checked:bg-slate-100"
+                />
+                {renderCheckIcon()}
+            </label>
+        );
+    }
+
+    /** The editable title, struck through and read-only once the todo is done. */
+    protected renderTitle(title: string, done: boolean) {
         const titleClass = 'w-full bg-transparent text-sm outline-none placeholder:text-slate-400 '
-            + (todo.done
+            + (done
                 ? 'text-slate-400 line-through dark:text-slate-500'
                 : 'text-slate-800 dark:text-slate-100');
 
         return (
-            <li className="group transition-colors hover:bg-slate-50/80 dark:hover:bg-slate-800/40" data-testid="todo-item">
-                <div className="flex items-center gap-3 px-5 py-3">
-                    <label className="relative flex cursor-pointer items-center">
-                        <input
-                            type="checkbox"
-                            checked={todo.done}
-                            onChange={this.handleChangeDone}
-                            data-testid="todo-done"
-                            className="peer size-5 shrink-0 cursor-pointer appearance-none rounded-md border border-slate-300 bg-white transition-colors hover:border-slate-400 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:checked:border-slate-100 dark:checked:bg-slate-100"
-                        />
-                        {renderCheckIcon()}
-                    </label>
-    
-                    <input
-                        value={todo.title}
-                        readOnly={todo.done}
-                        onChange={this.handleChangeTitle}
-                        placeholder="What needs to be done?"
-                        data-testid="todo-title"
-                        className={titleClass}
-                    />
-    
-                    <span
-                        className="font-mono text-[10px] tabular-nums text-slate-300 dark:text-slate-600"
-                        title="How many times this row has re-rendered"
-                        data-testid="todo-renders"
-                    >
-                        {this.renders}
-                    </span>
-    
-                    <button
-                        type="button"
-                        onClick={this.handleToggleDetails}
-                        aria-label="Toggle details"
-                        aria-expanded={this.state.expanded}
-                        data-testid="todo-details-toggle"
-                        className="rounded-lg px-1.5 py-1 font-mono text-[11px] text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                    >
-                        {this.state.expanded ? '−' : 'i'}
-                    </button>
-    
-                    <button
-                        type="button"
-                        onClick={this.handleClickDelete}
-                        aria-label="Delete todo"
-                        data-testid="todo-delete"
-                        className="rounded-lg p-1.5 text-slate-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 group-hover:opacity-100 max-sm:opacity-100 dark:hover:bg-red-500/10 dark:hover:text-red-400"
-                    >
-                        {renderTrashIcon()}
-                    </button>
-                </div>
-                {this.state.expanded ? <TodoDetails id={id}/> : null}
-            </li>
+            <input
+                value={title}
+                readOnly={done}
+                onChange={this.handleChangeTitle}
+                placeholder="What needs to be done?"
+                data-testid="todo-title"
+                className={titleClass}
+            />
+        );
+    }
+
+    /** Demo instrumentation: how many times this row has rendered. */
+    protected renderCounter() {
+        return (
+            <span
+                className="font-mono text-[10px] tabular-nums text-slate-300 dark:text-slate-600"
+                title="How many times this row has re-rendered"
+                data-testid="todo-renders"
+            >
+                {this.renders}
+            </span>
+        );
+    }
+
+    /** The details toggle and the delete button. */
+    protected renderActions() {
+        return (
+            <>
+                <button
+                    type="button"
+                    onClick={this.handleToggleDetails}
+                    aria-label="Toggle details"
+                    aria-expanded={this.state.expanded}
+                    data-testid="todo-details-toggle"
+                    className="rounded-lg px-1.5 py-1 font-mono text-[11px] text-slate-400 transition hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                >
+                    {this.state.expanded ? '−' : 'i'}
+                </button>
+                <button
+                    type="button"
+                    onClick={this.handleClickDelete}
+                    aria-label="Delete todo"
+                    data-testid="todo-delete"
+                    className="rounded-lg p-1.5 text-slate-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 group-hover:opacity-100 max-sm:opacity-100 dark:hover:bg-red-500/10 dark:hover:text-red-400"
+                >
+                    {renderTrashIcon()}
+                </button>
+            </>
         );
     }
 }

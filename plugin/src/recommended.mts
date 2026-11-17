@@ -29,6 +29,7 @@ export const RECOMMENDED: Readonly<Record<string, 'error' | 'warn' | 'off'>> = {
     'carburetor/no-handler-created-in-render': 'warn',
     'carburetor/no-lifecycle-class-property': 'error',
     'carburetor/max-render-depth': 'warn',
+    'carburetor/max-render-lines': 'warn',
     'carburetor/max-line-length': 'off',
     'carburetor/no-blank-line-after-tsdoc': 'off',
     'carburetor/no-parent-import': 'off',

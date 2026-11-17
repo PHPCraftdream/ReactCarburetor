@@ -161,7 +161,12 @@ pub(in crate::rules) fn make_rule<'a>(
     source: &'a Source<'a>,
     semantic: &'a Semantic<'a>,
 ) -> impl Rule<'a> + 'a {
-    Check { source, semantic, index: CaptureIndex::new(semantic), diagnostics: Vec::new() }
+    Check {
+        source,
+        semantic,
+        index: CaptureIndex::new(semantic),
+        diagnostics: Vec::new(),
+    }
 }
 
 /// Runs the rule with a semantic pass shared across rules.
@@ -518,3 +523,6 @@ class Widget extends AntiHookComponent {
         assert_ne!(diagnostics[0].column, diagnostics[1].column);
     }
 }
+
+#[cfg(test)]
+mod component_tests;

@@ -1,6 +1,7 @@
 {
   "rules": {
     "carburetor/max-render-depth": "error",
+    "carburetor/max-render-lines": "error",
     "carburetor/no-async-effect": "error",
     "carburetor/no-async-transaction": "error",
     "carburetor/no-computed-get-in-computed": "error",

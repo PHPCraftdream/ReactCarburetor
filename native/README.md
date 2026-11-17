@@ -89,8 +89,8 @@ than ignored, so a typo fails loudly. The keys of `.carburetorrc.json`:
 | `classes` | the functional-class section: the stylesheets to read and the methodology's vocabulary ([`../docs/functional-classes.md`](../docs/functional-classes.md)) |
 | `root` | the directory `ignore`, `overrides` and `classes.css` resolve against, relative to the config file; the plugin bridge sets it |
 
-Five rules take options, validated when the config loads: `require-module-function` (`scope`),
-`max-render-depth` (`max`), `max-line-length`, `no-parent-import` (`roots`) and `require-tsdoc`; see
+Six rules take options, validated when the config loads: `require-module-function` (`scope`),
+`max-render-depth` and `max-render-lines` (`max`), `max-line-length`, `no-parent-import` (`roots`) and `require-tsdoc`; see
 [`../docs/rules.md`](../docs/rules.md). A missing default config is not an error — the defaults
 apply — but a `--config` path that is not there is, because the caller asked for that exact file.
 

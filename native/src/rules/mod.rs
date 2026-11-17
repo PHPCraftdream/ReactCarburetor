@@ -31,7 +31,7 @@ type Check = fn(&Program<'_>, &Source<'_>, &support::bases::Bases) -> Vec<Diagno
 
 /// Every rule, by the id it reports under. Adding a rule is adding a row; the severity table in
 /// `config.rs` decides whether the row runs at all.
-const REGISTRY: [(&str, Check, bool); 43] = [
+const REGISTRY: [(&str, Check, bool); 44] = [
     (
         classes::require_function_class::RULE,
         classes::require_function_class::check,
@@ -66,6 +66,11 @@ const REGISTRY: [(&str, Check, bool); 43] = [
         boundaries::max_render_depth::RULE,
         boundaries::max_render_depth::check,
         true,
+    ),
+    (
+        lifecycle::max_render_lines::RULE,
+        lifecycle::max_render_lines::check,
+        false,
     ),
     (
         allocations::no_closure_in_update::RULE,
@@ -346,6 +351,7 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
     match rule {
         setup::no_unrecognized_base::RULE => text.contains("import") && text.contains("extends"),
         effects::no_inline_store_effect::RULE => text.contains("useStoreEffect"),
+        lifecycle::max_render_lines::RULE => text.contains("render"),
         classes::require_function_class::RULE => text.contains("lassName") || text.contains("style"),
         effects::prefer_store_effect::RULE => {
             text.contains("watch") || text.contains("storeEffect")
@@ -534,36 +540,7 @@ pub(super) fn run_sequential(
                 module_scope,
                 &bases,
             ),
-            _ => match rule {
-                boundaries::max_render_depth::RULE => boundaries::max_render_depth::check_with_max(
-                    program,
-                    source,
-                    config.max_render_depth(),
-                    &bases,
-                ),
-                style::max_line_length::RULE => style::max_line_length::check_with_options(
-                    program,
-                    source,
-                    &config.max_line_length(),
-                ),
-                style::no_parent_import::RULE => style::no_parent_import::check_with_options(
-                    program,
-                    source,
-                    &config.no_parent_import_roots(),
-                ),
-                style::require_tsdoc::RULE => style::require_tsdoc::check_with_options(
-                    program,
-                    source,
-                    &config.require_tsdoc(),
-                ),
-                style::prefer_readonly_array_param::RULE => {
-                    style::prefer_readonly_array_param::check(program, source, &bases)
-                }
-                classes::require_function_class::RULE => {
-                    classes::require_function_class::check_with_config(program, source, config)
-                }
-                _ => check(program, source, &bases),
-            },
+            _ => dispatch::configured(rule, check, program, source, config, &bases),
         };
 
         diagnostics.extend(reports.into_iter().map(|mut diagnostic| {

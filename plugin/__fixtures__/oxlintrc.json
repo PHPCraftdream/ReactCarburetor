@@ -19,6 +19,7 @@
     "carburetor/no-react-hooks-in-components": "error",
     "carburetor/no-lifecycle-class-property": "error",
     "carburetor/max-render-depth": "error",
+    "carburetor/max-render-lines": "error",
     "carburetor/no-memo-over-store-read": "error",
     "carburetor/no-capturing-hook-selector": "error",
     "carburetor/no-module-level-store": "error",

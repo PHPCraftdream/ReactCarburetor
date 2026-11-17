@@ -1681,7 +1681,7 @@ projections.
 The engine trades one class of mistake for another. Nothing here forces a re-render you did not ask
 for — and nothing tells you when a write reaches no subscriber, when a component reads state it never
 subscribed to, or when an effect's cleanup is silently dropped. The plugin and native registries each
-contain 53 rules: 31 catalogue rules, `require-hoisted-constant`, three `useStoreEffect` rules
+contain 54 rules: 31 catalogue rules, `require-hoisted-constant`, `max-render-lines`, three `useStoreEffect` rules
 (`no-store-read-in-effect-deps`, `no-inline-store-effect`, `prefer-store-effect`), the
 `no-unrecognized-base` setup check, the optional `no-react-hooks-in-components` policy, five
 house-style rules, and eleven opt-in rules for [functional CSS classes](https://github.com/PHPCraftdream/ReactCarburetor/blob/master/docs/functional-classes.md)
@@ -1745,7 +1745,7 @@ Detection is syntactic. Fixed component bases are `AntiHookComponent` and
 `ScopedAntiHookComponent`; fixed store bases are `Carburetor` and `ResourceCarburetor`; the
 recognized render method is `render`. Directly extending a recognized base works, and so does a base declared in the same file;
 a project base imported from another file has to be listed in `componentBases`/`storeBases`, and
-`no-unrecognized-base` points out a class that needs it. Most rules accept severity; `require-module-function` additionally accepts `scope: "all"` (default) or `"classes"`, `max-render-depth` accepts `max`, and the house-style rules take their options in the same `["error", {...}]` entry. Use `off` or a host suppression comment for rules that do not fit, or the standalone linter's `carburetor-disable` comment.
+`no-unrecognized-base` points out a class that needs it. Most rules accept severity; `require-module-function` additionally accepts `scope: "all"` (default) or `"classes"`, `max-render-depth` and `max-render-lines` accept `max`, and the house-style rules take their options in the same `["error", {...}]` entry. Use `off` or a host suppression comment for rules that do not fit, or the standalone linter's `carburetor-disable` comment.
 
 ```json
 {

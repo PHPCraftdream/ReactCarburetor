@@ -53,13 +53,31 @@ export class Toolbar extends ScopedAntiHookComponent {
 
         return (
             <div className="flex flex-wrap items-center gap-1 px-5 pb-3">
+                {this.renderBulkActions()}
+                <span className="flex-1"/>
+                {this.renderHistory(canUndo, canRedo)}
+            </div>
+        );
+    }
+
+    /** The buttons that change every item at once. */
+    protected renderBulkActions() {
+        return (
+            <>
                 <button type="button" onClick={this.handleCompleteAll} className={BUTTON} data-testid="complete-all">
                     complete all
                 </button>
                 <button type="button" onClick={this.handleClearCompleted} className={BUTTON} data-testid="clear-completed">
                     clear completed
                 </button>
-                <span className="flex-1"/>
+            </>
+        );
+    }
+
+    /** Undo and redo, each enabled only when there is a step to take. */
+    protected renderHistory(canUndo: boolean, canRedo: boolean) {
+        return (
+            <>
                 <button
                     type="button"
                     onClick={this.handleUndo}
@@ -80,7 +98,7 @@ export class Toolbar extends ScopedAntiHookComponent {
                 >
                     redo
                 </button>
-            </div>
+            </>
         );
     }
 }
