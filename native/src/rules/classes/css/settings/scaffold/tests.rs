@@ -45,7 +45,7 @@ fn a_custom_vocabulary_scaffolds_its_own_floors_and_still_passes() {
 
     assert!(text.contains("--palette-brand-600"));
     assert!(text.contains("--color-brand-fill-pressed"));
-    assert!(!text.contains("pressed:"));
+    assert!(!text.contains(" pressed:bg-"));
     assert!(text.contains("@utility tone-brand-filled"));
     assert!(text.contains("@utility tone-surface-base"));
     assert!(
