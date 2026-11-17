@@ -37,7 +37,7 @@ const MESSAGE: &str =
     keeps the callback, and everything it closed over, for the lifetime of the process. Use \
     watch(select, onChange), which returns a disposer, or keep the id and unsubscribe.";
 
-const WATCH_MESSAGE: &str = "this watch's disposer is discarded, so it can never be stopped: the     store keeps the callback, and everything it closed over, for the lifetime of the process. Keep     the disposer and call it when the owner is done, or use useStoreEffect in a component.";
+const WATCH_MESSAGE: &str = "this watch's disposer is discarded, so it can never be stopped: the store keeps the callback, and everything it closed over, for the lifetime of the process. Keep the disposer and call it when the owner is done, or use useStoreEffect in a component.";
 
 /// Whether a call is a store's `watch(select, onChange)` or a computed's `watch(onChange)` on
 /// something other than `this`: literal arguments (`fs.watch('dir')`) are another API.

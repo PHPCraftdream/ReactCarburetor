@@ -347,7 +347,9 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
         setup::no_unrecognized_base::RULE => text.contains("import") && text.contains("extends"),
         effects::no_inline_store_effect::RULE => text.contains("useStoreEffect"),
         classes::require_function_class::RULE => text.contains("className"),
-        effects::prefer_store_effect::RULE => text.contains("watch"),
+        effects::prefer_store_effect::RULE => {
+            text.contains("watch") || text.contains("storeEffect")
+        }
         effects::no_store_read_in_effect_deps::RULE => {
             text.contains("getData") && text.contains("useEffects")
         }

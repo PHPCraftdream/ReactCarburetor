@@ -6,6 +6,10 @@
 //! the run's cleanup against the watch's. `useStoreEffect(name, store, select, effect)` (or
 //! `(name, computed, effect)`) does all three. Calls on `this` (a store watching itself) and
 //! arguments that cannot be callbacks (`fs.watch('dir')`) are not reported.
+//!
+//! `storeEffect(store, select, effect)` started the same way is reported too: it is
+//! `useStoreEffect` without the component's bookkeeping. And a `storeEffect` or `watch` started in
+//! `render` subscribes again on every render, so it is reported with that reason.
 
 use oxc_ast::ast::{
     Argument, CallExpression, Class, ClassElement, Expression, Function, MethodDefinition, Program,
@@ -37,6 +41,18 @@ fn callback_like(argument: &Argument<'_>) -> bool {
     )
 }
 
+const RENDER_MESSAGE: &str = "this subscription starts in render, so every render adds another one and none is ever stopped. this.useStoreEffect(name, store, select, effect) in useEffects follows the store once, for the component's lifetime.";
+
+/// Whether a call is `storeEffect(store, select, effect)` or `storeEffect(computed, effect)`.
+fn is_store_effect(call: &CallExpression<'_>) -> bool {
+    let named = match &call.callee {
+        Expression::Identifier(identifier) => identifier.name == "storeEffect",
+        callee => member_call_name(callee) == Some("storeEffect") && !called_on_this(callee),
+    };
+
+    named && matches!(call.arguments.len(), 2 | 3)
+}
+
 /// Whether a call is a store's `watch(select, onChange)` or a computed's `watch(onChange)`.
 fn is_store_watch(call: &CallExpression<'_>) -> bool {
     if member_call_name(&call.callee) != Some("watch") || called_on_this(&call.callee) {
@@ -50,20 +66,21 @@ fn is_store_watch(call: &CallExpression<'_>) -> bool {
     }
 }
 
-/// The watches inside one effect body or one `componentDidMount`.
+/// The watches inside one effect body, one `componentDidMount` or one `render`.
 struct Watches<'s> {
     source: &'s Source<'s>,
     diagnostics: Vec<Diagnostic>,
+    message: &'static str,
 }
 
 impl<'a> Visit<'a> for Watches<'_> {
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
-        if is_store_watch(call) {
+        if is_store_watch(call) || is_store_effect(call) {
             self.diagnostics.push(report(
                 self.source,
                 call.span.start,
                 RULE,
-                MESSAGE.to_string(),
+                self.message.to_string(),
             ));
         }
 
@@ -85,6 +102,7 @@ impl Check<'_> {
         let mut watches = Watches {
             source: self.source,
             diagnostics: Vec::new(),
+            message: MESSAGE,
         };
 
         match argument {
@@ -101,11 +119,12 @@ impl Check<'_> {
         self.diagnostics.append(&mut watches.diagnostics);
     }
 
-    fn scan_function(&mut self, function: &Function<'_>) {
+    fn scan_function(&mut self, function: &Function<'_>, message: &'static str) {
         if let Some(body) = &function.body {
             let mut watches = Watches {
                 source: self.source,
                 diagnostics: Vec::new(),
+                message,
             };
 
             watches.visit_function_body(body);
@@ -154,8 +173,10 @@ impl<'a> Visit<'a> for Check<'_> {
 
 impl Check<'_> {
     fn inspect_method(&mut self, method: &MethodDefinition<'_>) {
-        if property_key_name(&method.key) == Some("componentDidMount") {
-            self.scan_function(&method.value);
+        match property_key_name(&method.key) {
+            Some("componentDidMount") => self.scan_function(&method.value, MESSAGE),
+            Some("render") => self.scan_function(&method.value, RENDER_MESSAGE),
+            _ => {}
         }
     }
 }
@@ -189,6 +210,66 @@ mod tests {
         );
 
         assert_eq!(lines(&diagnose(source, check)), [3, 4]);
+    }
+
+    #[test]
+    fn a_store_effect_inside_an_effect_or_component_did_mount_is_reported() {
+        let source = concat!(
+            "class A extends AntiHookComponent {
+",
+            "    useEffects() {
+",
+            "        this.useEffect('theme', () => storeEffect(settings, selectTheme, applyTheme), [settings]);
+",
+            "    }
+",
+            "    componentDidMount() {
+",
+            "        super.componentDidMount();
+",
+            "        this.stop = Engine.storeEffect(this.props.total, show);
+",
+            "    }
+",
+            "}
+",
+        );
+
+        assert_eq!(lines(&diagnose(source, check)), [3, 7]);
+    }
+
+    #[test]
+    fn a_subscription_started_in_render_is_reported_with_its_own_reason() {
+        let source = concat!(
+            "class A extends AntiHookComponent {
+",
+            "    render() {
+",
+            "        this.stop = storeEffect(settings, selectTheme, applyTheme);
+",
+            "        settings.watch(selectTheme, applyTheme);
+",
+            "        const items = list.map((item) => item.name);
+",
+            "        return <div>{items}</div>;
+",
+            "    }
+",
+            "}
+",
+        );
+        let found = diagnose(source, check);
+
+        assert_eq!(lines(&found), [3, 4]);
+        assert!(found[0].message.contains("starts in render"));
+    }
+
+    #[test]
+    fn a_store_effect_outside_components_is_not_this_rules_business() {
+        let source = "export const stop = storeEffect(settings, selectTheme, applyTheme);
+";
+
+        assert!(diagnose(source, check).is_empty());
     }
 
     #[test]

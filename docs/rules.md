@@ -241,7 +241,7 @@ until your project changes shape.
 | `no-unrecognized-base` | warn | A class that uses the engine through an imported base class not listed in `componentBases`/`storeBases`, so no rule checks it; setup check | — |
 | `no-store-read-in-effect-deps` | warn | An effect dependency taken with `getData()`, which is compared only when the component re-renders for another reason, so the effect does not follow the store; use `useStoreEffect` | — |
 | `no-inline-store-effect` | error | A selector or effect written inline (an arrow, a function expression, a `.bind(...)`, or a function a constant of the same method holds) and handed to `useStoreEffect`, which re-subscribes and re-runs the effect on every render | — |
-| `prefer-store-effect` | warn | A store's `watch(select, onChange)` or a computed's `watch(onChange)` started by hand in a `this.useEffect` callback or `componentDidMount`; use `useStoreEffect` | — |
+| `prefer-store-effect` | warn | A store's `watch(select, onChange)`, a computed's `watch(onChange)` or a `storeEffect(...)` started by hand in a `this.useEffect` callback or `componentDidMount`, or started in `render`, where every render subscribes again; use `useStoreEffect` | — |
 | `no-memo-over-store-read` | warn | `useMemo`/`useCallback` over hook-read values; derive in the selector or a `Computed` | [H33](hazards.md) |
 | `no-capturing-hook-selector` | warn | Inline hook selector captures render state; select whole record then pick, or use `AntiHookComponent#useCarburetor` without a selector | [H34](hazards.md) |
 | `one-export-per-file` | off | A second runtime-value export in one file; every file ships at most one value, type exports are unlimited | [H36](hazards.md) |
@@ -477,7 +477,8 @@ A `watch(select, onChange)` on a store, or `watch(onChange)` on a computed, star
 component has to run the effect for the current value itself, keep the disposer, and order the run's
 cleanup against the watch's. `this.useStoreEffect(name, store, select, effect)`, or
 `(name, computed, effect)`, does all three. A store watching itself (`this.watch`) and calls whose
-arguments cannot be callbacks (`fs.watch('dir')`) are not reported. It is `warn` in the recommended
+arguments cannot be callbacks (`fs.watch('dir')`) are not reported. A `storeEffect(...)` started the same way is reported too, and a `storeEffect` or `watch` started
+in `render` is reported because every render subscribes again and nothing stops the earlier ones. It is `warn` in the recommended
 preset.
 
 ## Functional classes
