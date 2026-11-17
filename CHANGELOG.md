@@ -9,6 +9,19 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Functional CSS classes for Tailwind v4 projects (opt-in): nine native rules check a methodology in
+  which markup carries one class naming what an element does, and colours (Palette → Role → Tone)
+  and components (Brick → Trait → Pattern → Function) are composed in floors that each use only the
+  floor below. `valid-palette-token`, `valid-color-role`, `valid-tone-class`, `valid-trait-class`,
+  `valid-pattern-class`, `valid-function-class`, `no-unknown-class-reference` and
+  `no-duplicate-class` check the stylesheets; `require-function-class` checks `className`. They are
+  off until `.carburetorrc.json` has a `classes` section naming the stylesheets, and report at
+  `error` with it. The binary reads the stylesheets once, in parallel, into a class index before any
+  file is checked; `--stdin` accepts a stylesheet buffer too. The plugin forwards the section, so
+  `require-function-class` also reports through oxlint and ESLint. See `docs/functional-classes.md`.
+- A `root` key in `.carburetorrc.json` moves the directory `ignore`, `overrides` and `classes.css`
+  resolve against.
+
 - `carburetor/no-store-read-in-effect-deps` (`warn` in the recommended preset): inside `useEffects`, a `this.useEffect`
   dependency taken with `getData()` (directly, through a constant of the method, or as a held dependency array) is
   reported with a pointer to `useStoreEffect`.

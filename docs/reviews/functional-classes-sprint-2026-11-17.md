@@ -1,6 +1,9 @@
 # Sprint plan: functional CSS classes and their native lint rules
 
-Status: planned 2026-11-17, not started. Task ids `CLS-1` … `CLS-11` match the session TaskList.
+Status: implemented 2026-11-17 on `ci/functional-classes` (CLS-1 … CLS-10); CLS-11 waits for approval
+of a Tailwind devDependency. Task ids match the session TaskList. The user-facing description is
+[`docs/functional-classes.md`](../functional-classes.md); §9 records where the implementation
+departed from this plan.
 
 Goal: native Rust rules that check, in one fast pass, that every floor of the class methodology
 below is built correctly, and that markup carries only top-floor functional classes — no lower
@@ -209,3 +212,30 @@ the Brick vocabulary for sizes for now).
 All eleven tasks closed with CI green on `ci/**` and fast-forwarded to `master`; the rule count,
 fingerprint, CHANGELOG `[Unreleased]` and docs updated; no version bump and no publication
 without an explicit command.
+
+## 9. Decisions taken during implementation
+
+- **Own scanner instead of `cssparser`.** The rules need structure only (blocks, at-rules, `@apply`,
+  declarations, comments, strings, brackets); a 300-line scanner covers it with no new dependency
+  and bounded recursion. `native/src/rules/classes/css/parse/`.
+- **Layout.** The front end lives in `native/src/rules/classes/css/` (parse, scan, names, index,
+  bricks, settings); the rules are grouped `colour/`, `component/`, `reference/` plus
+  `require_function_class/`. The repository's seven-entries rule also moved `config/depth.rs` and
+  `config/scope.rs` into `config/options.rs`, `ConfigError` into `config/error.rs`, the plugin's
+  `Rules/Reads` and `Rules/Writes` under `Rules/Data/`, and the plugin's class wrappers into
+  `Rules/Classes/{Colour,Component,Reference}`. Paths only.
+- **Two more trait kinds.** `effect` (opacity, shadows, filters, blend modes) and `behavior`
+  (cursor, pointer events, selection, touch, scroll), so every property the Brick table emits has
+  exactly one default owner (a unit test pins this).
+- **"A Function name is not a Brick" dropped.** The Brick table does not validate values, so
+  `order-status` would read as the `order` utility; reserved first words stay.
+- **A stylesheet that does not scan reports nothing**, like a TypeScript file that does not parse.
+- **The bridge.** It forces every rule on from the command line, so a class rule switched on there
+  without a `classes` section is not an error (it has nothing to read); in the config file it still
+  is. The bridge forwards the project rc's `classes` with a new top-level `root` key, because its
+  generated config lives in a temp directory.
+- **Conformance and `examples/wrong`.** Both run without a `classes` section, so the class rules are
+  covered by `native/tests/classes.rs` (the real binary over generated projects) and by
+  `__tests__/Native/basesBridge.test.ts` (the forwarded section) instead.
+- **Perf.** `perf/gates/lintClasses.mjs` (`lint-binary/classes@2k`, `@8k`), registered in the gate
+  contract.

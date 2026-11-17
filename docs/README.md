@@ -15,6 +15,8 @@ examples, and the public API.
 - [Testing tiers](testing-tiers.md) — what each local/CI tier runs.
 - [Async resource cache](promise-cache.md) — keys, freshness, invalidation, and hydration.
 - [Lint rule reference](rules.md) — rules, severities, and host setup.
+- [Functional CSS classes](functional-classes.md) — the opt-in Tailwind class methodology and the
+  nine rules that check it.
 - [Native linter](../native/README.md) — binary usage and supported platforms.
 - [React compatibility](react-compatibility.md) — supported versions, how the library binds to
   the consumer's React, the dual-package/duplicate-React hazard and its fixes, and how

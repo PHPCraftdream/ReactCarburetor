@@ -122,6 +122,14 @@ A warning alone does not fail the run, the line oxlint draws too; `--deny-warnin
 **The walk** honours `.gitignore` and the config's `ignore` patterns, and never enters
 `node_modules`, `dist`, `target` or `worktrees` whatever the ignore files say.
 
+**Stylesheets.** With a `classes` section in the config, the binary also reads the stylesheets its
+`css` globs name: all of them once, in parallel, before any file is checked, into an index of the
+classes they define. The walk then checks each matching `.css` file with the eight stylesheet rules,
+and `require-function-class` checks every `className` against the index. `--stdin` takes a
+stylesheet buffer as well as a component one. A `root` key moves the directory those globs (and
+`ignore` and `overrides`) resolve against; the plugin bridge sets it, because its generated config
+lives in a temporary directory. See [`../docs/functional-classes.md`](../docs/functional-classes.md).
+
 **Fixes.** A rule may attach a fix — a byte range and its replacement text — to a diagnostic;
 `--fix` applies every one it can and `--fix-dry-run` previews the same result as a diff without
 touching disk. Not every violation has one: a fix only exists where the rewrite is unambiguous, and
@@ -187,6 +195,8 @@ repository's [dual-license notice](../LICENSE).
 - `src/fix.rs` — applying a rule's suggested edit: overlap resolution, the atomic write, the dry-run
   diff.
 - `src/rules/` — one module per rule, named after it, with the hazard it detects in the header.
+  `src/rules/classes/css/` is the stylesheet front end the functional-class rules share: the
+  scanner, the Brick table, floor placement and the class index.
 - `tests/cli.rs` — the end-to-end tests, run against the built binary.
 
 Rules are specified in `../docs/hazards.md`: for each one, the code that triggers it, why it is

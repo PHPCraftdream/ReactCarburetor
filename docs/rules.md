@@ -5,11 +5,13 @@ name; [hazards.md](hazards.md) is the same material organised by mistake, with t
 triggers each one, why it is silent at runtime, and where the rule can be wrong.
 
 The recommended rules protect carburetor logic and allocation hygiene. The separately enabled
-`no-hooks` preset adds a component-architecture policy. The plugin registry contains **42 rules**:
+`no-hooks` preset adds a component-architecture policy. The plugin registry contains **51 rules**:
 31 catalogue rules, `require-hoisted-constant`, three `useStoreEffect` rules (`no-store-read-in-effect-deps`,
 `no-inline-store-effect`, `prefer-store-effect`), the `no-unrecognized-base` setup check, the
-optional `no-react-hooks-in-components` policy, and five house-style rules. The native registry also
-has 42 entries. `no-module-level-store` and `one-export-per-file` are off in recommended configuration.
+optional `no-react-hooks-in-components` policy, five house-style rules, and nine opt-in
+[functional-class rules](#functional-classes). The native registries also have 51 entries: 43 over
+TypeScript and eight over stylesheets. `no-module-level-store` and `one-export-per-file` are off in
+recommended configuration; the functional-class rules are off until a `classes` section turns them on.
 
 ## Functional component reads
 
@@ -257,6 +259,17 @@ until your project changes shape.
 | `require-module-function` | warn | A clean nested function needing no surrounding invocation state, or an eligible component member needing no class; configurable scope | [H30](hazards.md) |
 | `require-subscription-disposal` | warn | A subscription whose id is discarded, or a `watch` whose disposer is, so it can never be released | [H20](hazards.md) |
 | `require-super-in-lifecycle` | error | A lifecycle override that skips `super`, disabling effects, cleanup or the props gate | [H12](hazards.md) |
+| `valid-palette-token` | off¹ | A `--palette-*` token in `@theme`, outside a theme selector block, misnamed or not a literal colour; a Palette reference from anything but a Role | [Functional classes](#functional-classes) |
+| `valid-color-role` | off¹ | A missing `--color-*: initial` reset; a Role name outside the grammar or the closed lists; a Role value other than one `var(--palette-…)`; an override of an undefined Role | [Functional classes](#functional-classes) |
+| `valid-tone-class` | off¹ | A Tone name outside the grammar; a non-colour Brick, raw colour, another family's Role or a slot its delivery does not use | [Functional classes](#functional-classes) |
+| `valid-trait-class` | off¹ | A colour in a Trait; a property another kind owns or no kind owns; another floor applied | [Functional classes](#functional-classes) |
+| `valid-pattern-class` | off¹ | Anything but Traits in a Pattern | [Functional classes](#functional-classes) |
+| `valid-function-class` | off¹ | A Function outside `@layer components`, misnamed, with a bad selector, no Tone or several, a Brick, a declaration or a variant; a state block that does more than swap the Tone; a utility on no floor | [Functional classes](#functional-classes) |
+| `no-unknown-class-reference` | off¹ | An `@apply` class that is neither a Tailwind utility nor defined by the configured stylesheets, or a colour naming no Role | [Functional classes](#functional-classes) |
+| `no-duplicate-class` | off¹ | A second definition of a Palette token, Role, utility or Function | [Functional classes](#functional-classes) |
+| `require-function-class` | off¹ | A `className` that is not one Function written as a literal | [Functional classes](#functional-classes) |
+
+¹ `error` once `.carburetorrc.json` has a `classes` section.
 
 ### prefer-readonly-array-param (H37)
 
@@ -465,6 +478,17 @@ cleanup against the watch's. `this.useStoreEffect(name, store, select, effect)`,
 `(name, computed, effect)`, does all three. A store watching itself (`this.watch`) and calls whose
 arguments cannot be callbacks (`fs.watch('dir')`) are not reported. It is `warn` in the recommended
 preset.
+
+## Functional classes
+
+Nine rules enforce the [functional CSS class methodology](functional-classes.md) in Tailwind v4
+projects: markup carries one class that names what an element does, and colours and components are
+composed below it in floors that may each use only the floor under them. They are off until
+`.carburetorrc.json` has a `classes` section naming the stylesheets (`{"classes": {"css":
+["src/**/*.css"]}}`); with it, all nine report at `error`. Eight check the stylesheets and run only
+in the `carburetor-lint` CLI, because neither oxlint nor ESLint lints CSS; `require-function-class`
+checks markup and also reports through the plugin. The methodology page lists what each rule
+checks, the configuration keys and their defaults, and the limits.
 
 ## Setup check: `no-unrecognized-base`
 
