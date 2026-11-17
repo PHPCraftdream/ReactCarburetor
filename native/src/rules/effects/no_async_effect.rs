@@ -9,7 +9,8 @@
 //! body is resolved to its binding through the semantic model; only a binding that declares an
 //! async function — an async function declaration or a variable initialized to an async function
 //! — is reported, so parameters, imports, and non-function initializers of the same name are
-//! not. See docs/hazards.md, H14.
+//! not. The effect handed to `this.useStoreEffect` (its last argument) is held to the same rule:
+//! what it returns is the cleanup of its run. See docs/hazards.md, H14.
 
 use oxc_ast::ast::{
     Argument, ArrowFunctionBody, CallExpression, Expression, IdentifierReference, Program, Statement,
@@ -83,8 +84,38 @@ struct Check<'a, 's> {
     diagnostics: Vec<Diagnostic>,
 }
 
+impl<'a> Check<'a, '_> {
+    /// `useStoreEffect(name, store, select, effect)` or `(name, computed, effect)`: the effect is
+    /// the last of three or four arguments, written inline or named.
+    fn store_effect(&mut self, call: &CallExpression<'a>) {
+        let effect = match call.arguments.len() {
+            3 | 4 => call.arguments.last(),
+            _ => None,
+        };
+        let start = match effect {
+            Some(Argument::ArrowFunctionExpression(body)) if body.r#async => Some(body.span.start),
+            Some(Argument::FunctionExpression(body)) if body.r#async => Some(body.span.start),
+            Some(Argument::Identifier(identifier)) => referenced_symbol(identifier, self.semantic)
+                .filter(|symbol| is_async_binding(self.semantic, *symbol))
+                .map(|_| identifier.span.start),
+            _ => None,
+        };
+
+        if let Some(start) = start {
+            self.diagnostics
+                .push(report(self.source, start, RULE, MESSAGE.to_string()));
+        }
+    }
+}
+
 impl<'a, 's> Rule<'a> for Check<'a, 's> {
     fn call(&mut self, call: &CallExpression<'a>, _context: &Context) {
+        if called_on_this(&call.callee) && member_call_name(&call.callee) == Some("useStoreEffect") {
+            self.store_effect(call);
+
+            return;
+        }
+
         if called_on_this(&call.callee) && member_call_name(&call.callee) == Some("useEffect") {
             match call.arguments.get(1) {
                 Some(Argument::ArrowFunctionExpression(body)) if body.r#async => {
@@ -285,5 +316,23 @@ mod tests {
         let source = "import {subscribe} from './subscriptions';\n\nthis.useEffect('listen', () => subscribe(), []);\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn an_async_store_effect_is_reported() {
+        let source = concat!(
+            "const saveLater = async (text) => { await save(text); };
+",
+            "this.useStoreEffect('a', store, selectText, async (text) => { await save(text); });
+",
+            "this.useStoreEffect('b', total, async function (value) { await show(value); });
+",
+            "this.useStoreEffect('c', store, selectText, saveLater);
+",
+            "this.useStoreEffect('d', store, selectText, this.save);
+",
+        );
+
+        assert_eq!(lines(&diagnose(source, check)), [2, 3, 4]);
     }
 }

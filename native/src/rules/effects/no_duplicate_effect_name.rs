@@ -1,4 +1,5 @@
-//! H15: two effects registered under the same name in one component, via `this.useEffect`.
+//! H15: two effects registered under the same name in one component, via `this.useEffect` or
+//! `this.useStoreEffect` (which registers its effect under its name in the same record).
 //!
 //! The name is the effect's identity: its dependency array and its cleanup are stored under it. A
 //! second registration overwrites the first one's record, so the first effect's cleanup is lost and
@@ -32,7 +33,11 @@ impl<'a, 's> Rule<'a> for Check<'s> {
 
     fn call(&mut self, call: &CallExpression<'a>, context: &Context) {
         // Only the component's own effect API counts: a foreign object's `useEffect` is not this rule's business.
-        if member_call_name(&call.callee) != Some("useEffect") || !called_on_this(&call.callee) {
+        if !matches!(
+            member_call_name(&call.callee),
+            Some("useEffect" | "useStoreEffect")
+        ) || !called_on_this(&call.callee)
+        {
             return;
         }
 
@@ -133,5 +138,15 @@ mod tests {
         let source = "class A extends AntiHookComponent {\n    useEffects() {\n        this.useEffect('load', this.load, []);\n    }\n}\n\nclass B extends AntiHookComponent {\n    useEffects() {\n        this.useEffect('load', this.load, []);\n    }\n}\n";
 
         assert_eq!(lines(&diagnose(source, check)), [] as [usize; 0]);
+    }
+
+    #[test]
+    fn a_store_effect_shares_the_names_of_effects() {
+        let source = component(
+            "        this.useEffect('save', this.load, []);
+        this.useStoreEffect('save', store, selectText, this.save);",
+        );
+
+        assert_eq!(lines(&diagnose(&source, check)), [4]);
     }
 }

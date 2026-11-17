@@ -222,13 +222,13 @@ until your project changes shape.
 | `prefer-readonly-array-param` | off | Non-mutating array parameters; opt-in syntactic heuristic | [H37](hazards.md) |
 | `require-tsdoc` | off | A function, method or function-valued member without a short TSDoc block; house style, opt-in | — |
 | `tsdoc-blank-line-before-tags` | off | A missing blank line between a TSDoc description and its first block tag; house style, opt-in | — |
-| `no-async-effect` | error | An `async` effect body, whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
+| `no-async-effect` | error | An `async` effect body (of `this.useEffect` or `this.useStoreEffect`), whose returned promise is taken for a cleanup and dropped | [H14](hazards.md) |
 | `no-async-transaction` | error | An `async` body given to `transaction()` (a value import from `@react-carburetor/core`) or `this.update()`, which closes the batch at the first `await` | [H17](hazards.md) |
 | `no-closure-in-update` | warn | A capturing inline callback passed to `this.update` in a recognized store member; pass a module-level mutator and its arguments to `this.update` instead | [H32](hazards.md) |
 | `no-computed-get-in-computed` | error | A computed reading a source with `get()`/`getData()` instead of its reader, so it registers no dependency and never invalidates | [H3](hazards.md) |
 | `no-computed-get-in-render` | error | A computed read with `get()` in render, which registers no subscription | [H2](hazards.md) |
 | `no-direct-data-write` | warn | A store writing to `this.data`, which records no path and invalidates everything | [H7](hazards.md) |
-| `no-duplicate-effect-name` | error | Two `this.useEffect` calls under one name, where the second overwrites the first one's cleanup | [H15](hazards.md) |
+| `no-duplicate-effect-name` | error | Two effects under one name (`this.useEffect` or `this.useStoreEffect`, which share one record), where the second overwrites the first one's cleanup | [H15](hazards.md) |
 | `no-escaping-tracked-data` | warn | Tracked data stored on the component or captured by a function that runs after the render | [H5](hazards.md) |
 | `no-external-data-mutation` | error | A write through `getData()`, which notifies nobody and mutates shared snapshots | [H8](hazards.md) |
 | `no-function-in-render` | warn | A function built in render for a DOM attribute/local/declaration or synchronous array callback; yields to H29/H30 at the same position | [H31](hazards.md) |

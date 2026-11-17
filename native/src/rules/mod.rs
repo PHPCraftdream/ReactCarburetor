@@ -371,9 +371,10 @@ pub(super) fn rule_possible(rule: &str, text: &str, bases: &Bases) -> bool {
             // `this.draft`, or the draft an `update` callback names whatever it is called.
             any(store) && (text.contains("draft") || text.contains("update"))
         }
-        effects::no_async_effect::RULE
-        | effects::no_duplicate_effect_name::RULE
-        | effects::require_effect_deps::RULE => text.contains("useEffect"),
+        effects::no_async_effect::RULE | effects::no_duplicate_effect_name::RULE => {
+            text.contains("useEffect") || text.contains("useStoreEffect")
+        }
+        effects::require_effect_deps::RULE => text.contains("useEffect"),
         boundaries::one_export_per_file::RULE => text.contains("export"),
         boundaries::no_async_transaction::RULE => {
             text.contains("transaction") || text.contains("update")

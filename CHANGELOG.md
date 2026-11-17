@@ -56,6 +56,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `no-parent-import` switched on without `roots` no longer stays silent: the plugin reports once per run that it
   checks nothing, and the native CLI rejects such a configuration.
 
+- `no-async-effect` also reports an `async` effect handed to `this.useStoreEffect` (inline, or a name bound to an
+  async function), and `no-duplicate-effect-name` counts `this.useStoreEffect` names, which share one record with
+  `this.useEffect`.
 - `require-module-function` and `require-subscription-disposal` no longer report code inside a callback handed to a
   test registrar (`describe`, `it`, `test`, the `before*`/`after*` hooks and their `.only`/`.skip`/`.each(...)`
   chains), when that name is a global or an import. Test files no longer need an `overrides` entry for them.
