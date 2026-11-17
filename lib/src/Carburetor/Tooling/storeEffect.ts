@@ -7,8 +7,9 @@ import {watchComputed} from "../Derived/watchComputed";
 /**
  * Runs a store effect now and after every change, each run after the previous run's cleanup.
  *
- * The subscription is made before the first run, so a change the effect itself causes is seen. The
- * returned cleanup stops the subscription and then runs the last run's cleanup.
+ * The subscription is made before the first run, so a change the effect itself causes is seen; a
+ * first run that throws stops it again before the error leaves, since no disposer reaches the
+ * caller. The returned cleanup stops the subscription and then runs the last run's cleanup.
  *
  * @param subscribe - starts watching; its callback gets the new and the previous value
  * @param current - the value right now, read once the subscription exists
@@ -29,7 +30,12 @@ const follow = <V>(
     };
     const stop = subscribe(run);
 
-    run(current(), undefined);
+    try {
+        run(current(), undefined);
+    } catch (error: unknown) {
+        stop();
+        throw error;
+    }
 
     return (): void => {
         stop();

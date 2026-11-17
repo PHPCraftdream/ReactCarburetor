@@ -1,6 +1,7 @@
 import * as React from 'react';
 import {act} from 'react';
 import {render} from '@testing-library/react';
+import {renderToString} from 'react-dom/server';
 import {AntiHookComponent, Carburetor, computed} from "@/Carburetor";
 
 interface ISettings {theme: string; lang: string; size: number}
@@ -122,5 +123,80 @@ describe('useStoreEffect', () => {
         act(() => { settings.paint('dark'); });
 
         expect(runs).toEqual(['dark']);
+    });
+
+    test('a new store in props cleans up the old run and follows the new store only', () => {
+        const first = newSettings();
+        const second = new Settings({theme: 'dark', lang: 'en', size: 1});
+        const log: string[] = [];
+        const applyTheme = (theme: string): (() => void) => {
+            log.push(`set ${theme}`);
+
+            return () => { log.push(`unset ${theme}`); };
+        };
+
+        class App extends AntiHookComponent<{settings: Settings}> {
+            protected useEffects(): void {
+                this.useStoreEffect('theme', this.props.settings, selectTheme, applyTheme);
+            }
+
+            public render() {
+                return <div/>;
+            }
+        }
+
+        const view = render(<App settings={first}/>);
+
+        view.rerender(<App settings={second}/>);
+        act(() => { first.paint('sepia'); });
+        act(() => { second.paint('blue'); });
+        view.unmount();
+
+        expect(log).toEqual(['set light', 'unset light', 'set dark', 'unset dark', 'set blue', 'unset blue']);
+    });
+
+    test('a server render runs no store effect', () => {
+        const settings = newSettings();
+        const runs: string[] = [];
+        const applyTheme = (theme: string): void => { runs.push(theme); };
+
+        class App extends AntiHookComponent {
+            protected useEffects(): void {
+                this.useStoreEffect('theme', settings, selectTheme, applyTheme);
+            }
+
+            public render() {
+                return <div>page</div>;
+            }
+        }
+
+        expect(renderToString(<App/>)).toContain('page');
+        act(() => { settings.paint('dark'); });
+        expect(runs).toEqual([]);
+    });
+
+    test('re-renders with the same arguments keep one watch and one run', () => {
+        const settings = newSettings();
+        const runs: string[] = [];
+        const applyTheme = (theme: string): void => { runs.push(theme); };
+
+        class App extends AntiHookComponent<{tick: number}> {
+            protected useEffects(): void {
+                this.useStoreEffect('theme', settings, selectTheme, applyTheme);
+            }
+
+            public render() {
+                return <div>{this.props.tick}</div>;
+            }
+        }
+
+        const view = render(<App tick={0}/>);
+
+        view.rerender(<App tick={1}/>);
+        view.rerender(<App tick={2}/>);
+        act(() => { settings.paint('dark'); });
+        view.unmount();
+
+        expect(runs).toEqual(['light', 'dark']);
     });
 });

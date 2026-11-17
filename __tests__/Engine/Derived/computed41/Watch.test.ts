@@ -1,4 +1,4 @@
-import {Carburetor, computed} from '@/Carburetor';
+import {Carburetor, computed, diagnostics, transaction} from '@/Carburetor';
 
 interface ICounter {count: number; label: string}
 
@@ -71,5 +71,63 @@ describe('computed.watch', () => {
 
         expect(first).toEqual([1]);
         expect(second).toEqual([1, 2]);
+    });
+
+    test('a body that throws reaches the failure handler and onChange does not run', () => {
+        const counter = new Counter({count: 0, label: 'a'});
+        const value = computed(read => {
+            const {count} = read(counter);
+            if (count === 1) throw new Error('odd');
+            return count;
+        });
+        const seen: number[] = [];
+        const failures: string[] = [];
+        diagnostics.setFailureHandler((_error, source) => { failures.push(source); });
+        const original = console.error;
+        console.error = (): void => undefined;
+        try {
+            const stop = value.watch((next) => { seen.push(next); });
+
+            counter.set(1);
+            counter.set(2);
+            stop();
+        } finally {
+            console.error = original;
+            diagnostics.setFailureHandler(undefined);
+        }
+
+        expect(seen).toEqual([2]);
+        expect(failures.length).toBeGreaterThan(0);
+    });
+
+    test('a transaction delivers one change for several writes', () => {
+        const counter = new Counter({count: 0, label: 'a'});
+        const value = computed(read => read(counter).count);
+        const seen: Array<[number, number]> = [];
+        const stop = value.watch((next, previous) => { seen.push([next, previous]); });
+
+        transaction(() => {
+            counter.set(1);
+            counter.set(2);
+            counter.set(3);
+        });
+        stop();
+
+        expect(seen).toEqual([[3, 0]]);
+    });
+
+    test('a watcher that disposes itself in onChange is not called again', () => {
+        const counter = new Counter({count: 0, label: 'a'});
+        const value = computed(read => read(counter).count);
+        const seen: number[] = [];
+        const stop = value.watch((next) => {
+            seen.push(next);
+            stop();
+        });
+
+        counter.set(1);
+        counter.set(2);
+
+        expect(seen).toEqual([1]);
     });
 });

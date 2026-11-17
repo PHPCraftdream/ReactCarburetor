@@ -1,5 +1,6 @@
 import {Carburetor, computed, storeEffect} from '@/Carburetor';
 import * as Engine from '@/Engine';
+import {S} from '@/Carburetor/Store/Diagnostics/Internal/StoreIdentity';
 
 interface ICounter {count: number; label: string}
 
@@ -10,6 +11,7 @@ const selectCount = (data: ICounter): number => data.count;
 class Counter extends Carburetor<ICounter> {
     public set(count: number): void { this.update(setCount, count); }
     public rename(label: string): void { this.update(setLabel, label); }
+    public subscriberCount(): number { return Object.keys(this[S.subscribers]).length; }
 }
 
 describe('storeEffect', () => {
@@ -65,6 +67,36 @@ describe('storeEffect', () => {
         stop();
         stop();
         expect(cleaned).toBe(1);
+    });
+
+    test('a first run that throws releases the watch before the error leaves', () => {
+        const store = new Counter({count: 0, label: 'a'});
+        const failure = new Error('effect failed');
+
+        expect(() => storeEffect(store, selectCount, () => { throw failure; })).toThrow(failure);
+        expect(store.subscriberCount()).toBe(0);
+    });
+
+    test('a later run that throws is isolated and the next change runs again', () => {
+        const store = new Counter({count: 0, label: 'a'});
+        const seen: number[] = [];
+        const original = console.error;
+        console.error = (): void => undefined;
+        try {
+            const stop = storeEffect(store, selectCount, (count) => {
+                seen.push(count);
+                if (count === 1) throw new Error('one');
+            });
+
+            store.set(1);
+            store.set(2);
+            stop();
+        } finally {
+            console.error = original;
+        }
+
+        expect(seen).toEqual([0, 1, 2]);
+        expect(store.subscriberCount()).toBe(0);
     });
 
     test('is the same function in the engine entry', () => {
