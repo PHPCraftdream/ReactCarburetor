@@ -246,7 +246,10 @@ mod tests {
 ",
         );
 
-        assert_eq!(lines(&diagnose(source, check)), [3, 7]);
+        // componentDidMount is visited with the class, before the effect callbacks.
+        let mut found = lines(&diagnose(source, check));
+        found.sort_unstable();
+        assert_eq!(found, [3, 7]);
     }
 
     #[test]

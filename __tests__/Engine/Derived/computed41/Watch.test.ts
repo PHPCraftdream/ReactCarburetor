@@ -1,5 +1,6 @@
-import {rstest} from '@rstest/core';
 import {Carburetor, computed, diagnostics, storeEffect, transaction} from '@/Carburetor';
+import {watchComputed} from '@/Carburetor/Derived/watchComputed';
+import type {IComputed} from '@/Carburetor/Models/Derived';
 
 interface ICounter {count: number; label: string}
 
@@ -108,19 +109,32 @@ describe('computed.watch', () => {
             if (count === 1) throw new Error('odd');
             return count;
         });
-        const subscribe = rstest.spyOn(value, 'subscribe');
-        const unsubscribe = rstest.spyOn(value, 'unsubscribe');
         const seen: number[] = [];
 
+        // A computed evaluates inside subscribe, so the throw leaves from there and rolls it back.
         expect(() => value.watch((next) => { seen.push(next); })).toThrow('odd');
         expect(() => storeEffect(value, (next) => { seen.push(next); })).toThrow('odd');
-
-        expect(subscribe).toHaveBeenCalledTimes(2);
-        expect(unsubscribe).toHaveBeenCalledTimes(2);
-        expect(unsubscribe.mock.calls.map(([id]) => id)).toEqual(subscribe.mock.results.map(({value: id}) => id));
+        expect(counter.subscriberCount()).toBe(0);
 
         counter.set(2);
         expect(seen).toEqual([]);
+    });
+
+    test('a source whose subscribe succeeds but whose first read throws is unsubscribed', () => {
+        const ids: string[] = [];
+        const released: string[] = [];
+        const source: IComputed<number> = {
+            getUID: () => 'source',
+            getVersion: () => 0,
+            get: () => { throw new Error('first read'); },
+            subscribe: () => { ids.push(`s${ids.length}`); return ids[ids.length - 1]!; },
+            unsubscribe: (id) => { released.push(id); },
+        };
+
+        expect(() => watchComputed(source, () => undefined)).toThrow('first read');
+        expect(() => storeEffect(source, () => undefined)).toThrow('first read');
+        expect(released).toEqual(ids);
+        expect(ids).toHaveLength(2);
     });
 
     test('a transaction delivers one change for several writes', () => {
