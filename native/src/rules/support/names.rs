@@ -4,7 +4,7 @@
 //! every function here answers `None` in that case rather than guessing, because a report a reader
 //! cannot verify is worse than no report.
 
-use oxc_ast::ast::{Expression, IdentifierReference, PropertyKey};
+use oxc_ast::ast::{CallExpression, Expression, IdentifierReference, PropertyKey};
 use oxc_semantic::{Semantic, SymbolId};
 
 /// The method name in `something.name(...)`, given the call's callee.
@@ -64,6 +64,17 @@ pub fn referenced_symbol(
         .reference_id
         .get()
         .and_then(|id| semantic.scoping().get_reference(id).symbol_id())
+}
+
+/// Whether a call is `storeEffect(store, select, effect)` or `storeEffect(computed, effect)`,
+/// called by name or through a namespace import (`Engine.storeEffect(...)`), never on `this`.
+pub fn is_store_effect(call: &CallExpression<'_>) -> bool {
+    let named = match unwrap_expression(&call.callee) {
+        Expression::Identifier(identifier) => identifier.name == "storeEffect",
+        callee => member_call_name(callee) == Some("storeEffect") && !called_on_this(callee),
+    };
+
+    named && matches!(call.arguments.len(), 2 | 3)
 }
 
 /// The expression with its type-level and syntactic wrappers removed.

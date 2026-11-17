@@ -24,7 +24,7 @@ use crate::rules::report;
 use crate::rules::support::bases::Bases;
 use crate::rules::support::closures::build_semantic;
 use crate::rules::support::names::{
-    called_on_this, member_call_name, property_key_name, unwrap_expression,
+    called_on_this, is_store_effect, member_call_name, property_key_name, unwrap_expression,
 };
 use crate::rules::support::walk::test_scope::retain_outside_tests;
 use crate::{Diagnostic, Source};
@@ -62,17 +62,6 @@ const STORE_EFFECT_MESSAGE: &str = "this storeEffect's disposer is discarded, so
     never be stopped: the store keeps it, and everything it closed over, for the lifetime of the \
     process, and its last cleanup never runs. Keep the disposer and call it when the owner is \
     done, or use useStoreEffect in a component.";
-
-/// Whether a call is `storeEffect(store, select, effect)` or `storeEffect(computed, effect)`,
-/// called by name or through a namespace import (`Engine.storeEffect(...)`).
-fn is_store_effect(call: &CallExpression<'_>) -> bool {
-    let named = match unwrap_expression(&call.callee) {
-        Expression::Identifier(identifier) => identifier.name == "storeEffect",
-        callee => member_call_name(callee) == Some("storeEffect") && !called_on_this(callee),
-    };
-
-    named && matches!(call.arguments.len(), 2 | 3)
-}
 
 /// Whether the expression is the literal `null`, `void 0`, or an unresolved (global) `undefined`;
 /// a resolved shadowing binding named `undefined` is unknown options, not nullish.

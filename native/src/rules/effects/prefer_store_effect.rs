@@ -9,16 +9,21 @@
 //!
 //! `storeEffect(store, select, effect)` started the same way is reported too: it is
 //! `useStoreEffect` without the component's bookkeeping. And a `storeEffect` or `watch` started in
-//! `render` subscribes again on every render, so it is reported with that reason.
+//! `render` subscribes again on every render, so it is reported with that reason; a function
+//! nested in `render` (an event handler) runs later, not on every render, and is not entered.
 
 use oxc_ast::ast::{
-    Argument, CallExpression, Class, ClassElement, Expression, Function, MethodDefinition, Program,
+    Argument, ArrowFunctionExpression, CallExpression, Class, ClassElement, Expression, Function,
+    MethodDefinition, Program,
 };
 use oxc_ast_visit::{walk, Visit};
+use oxc_syntax::scope::ScopeFlags;
 
 use crate::rules::report;
 use crate::rules::support::bases::Bases;
-use crate::rules::support::names::{called_on_this, member_call_name, property_key_name};
+use crate::rules::support::names::{
+    called_on_this, is_store_effect, member_call_name, property_key_name,
+};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under; the registry keys its severity by it.
@@ -43,16 +48,6 @@ fn callback_like(argument: &Argument<'_>) -> bool {
 
 const RENDER_MESSAGE: &str = "this subscription starts in render, so every render adds another one and none is ever stopped. this.useStoreEffect(name, store, select, effect) in useEffects follows the store once, for the component's lifetime.";
 
-/// Whether a call is `storeEffect(store, select, effect)` or `storeEffect(computed, effect)`.
-fn is_store_effect(call: &CallExpression<'_>) -> bool {
-    let named = match &call.callee {
-        Expression::Identifier(identifier) => identifier.name == "storeEffect",
-        callee => member_call_name(callee) == Some("storeEffect") && !called_on_this(callee),
-    };
-
-    named && matches!(call.arguments.len(), 2 | 3)
-}
-
 /// Whether a call is a store's `watch(select, onChange)` or a computed's `watch(onChange)`.
 fn is_store_watch(call: &CallExpression<'_>) -> bool {
     if member_call_name(&call.callee) != Some("watch") || called_on_this(&call.callee) {
@@ -71,9 +66,23 @@ struct Watches<'s> {
     source: &'s Source<'s>,
     diagnostics: Vec<Diagnostic>,
     message: &'static str,
+    /// Whether functions nested in the body are entered: not in `render`, where they are handlers.
+    nested: bool,
 }
 
 impl<'a> Visit<'a> for Watches<'_> {
+    fn visit_function(&mut self, function: &Function<'a>, flags: ScopeFlags) {
+        if self.nested {
+            walk::walk_function(self, function, flags);
+        }
+    }
+
+    fn visit_arrow_function_expression(&mut self, arrow: &ArrowFunctionExpression<'a>) {
+        if self.nested {
+            walk::walk_arrow_function_expression(self, arrow);
+        }
+    }
+
     fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
         if is_store_watch(call) || is_store_effect(call) {
             self.diagnostics.push(report(
@@ -103,6 +112,7 @@ impl Check<'_> {
             source: self.source,
             diagnostics: Vec::new(),
             message: MESSAGE,
+            nested: true,
         };
 
         match argument {
@@ -125,6 +135,7 @@ impl Check<'_> {
                 source: self.source,
                 diagnostics: Vec::new(),
                 message,
+                nested: message != RENDER_MESSAGE,
             };
 
             watches.visit_function_body(body);
@@ -262,6 +273,24 @@ mod tests {
 
         assert_eq!(lines(&found), [3, 4]);
         assert!(found[0].message.contains("starts in render"));
+    }
+
+    #[test]
+    fn a_handler_defined_in_render_is_not_entered() {
+        let source = concat!(
+            "class A extends AntiHookComponent {\n",
+            "    render() {\n",
+            "        const follow = () => settings.watch(selectTheme, applyTheme);\n",
+            "        return <button onClick={() => { this.stop = storeEffect(total, show); }} />;\n",
+            "    }\n",
+            "    componentDidMount() {\n",
+            "        this.items.forEach(function () { settings.watch(selectTheme, applyTheme); });\n",
+            "    }\n",
+            "}\n",
+        );
+
+        // componentDidMount still enters nested functions: they run while it does.
+        assert_eq!(lines(&diagnose(source, check)), [7]);
     }
 
     #[test]

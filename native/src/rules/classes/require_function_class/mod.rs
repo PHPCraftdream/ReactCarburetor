@@ -200,6 +200,58 @@ fn is_colour_style(property: &str) -> bool {
     property.ends_with("Color") || matches!(property, "color" | "background" | "fill" | "stroke")
 }
 
+/// Values that paint no colour of their own: an SVG's `fill: none`, inheritance, the text colour.
+const NO_COLOUR: &[&str] = &[
+    "none",
+    "inherit",
+    "initial",
+    "unset",
+    "revert",
+    "revert-layer",
+    "currentcolor",
+    "transparent",
+];
+
+/// CSS colour functions, lowercase.
+const COLOUR_FUNCTIONS: &[&str] = &[
+    "rgb",
+    "rgba",
+    "hsl",
+    "hsla",
+    "hwb",
+    "lab",
+    "lch",
+    "oklab",
+    "oklch",
+    "color",
+    "color-mix",
+    "light-dark",
+];
+
+/// Whether a value is a colour on its own: a hex, a colour function, a `var()`, or a bare word
+/// (a named colour). `url(…)`, gradients and shorthand lists are not.
+fn looks_like_colour(value: &str) -> bool {
+    let lower = value.to_ascii_lowercase();
+    lower.starts_with('#')
+        || lower.starts_with("var(")
+        || COLOUR_FUNCTIONS.iter().any(|function| {
+            lower
+                .strip_prefix(function)
+                .is_some_and(|rest| rest.starts_with('('))
+        })
+        || (!lower.is_empty() && lower.bytes().all(|byte| byte.is_ascii_alphabetic()))
+}
+
+/// Whether a literal style value paints around the Roles. `background` is a shorthand, so only a
+/// value that is a colour on its own counts there.
+fn paints_around_roles(property: &str, value: &str) -> bool {
+    let value = value.trim();
+    if is_role_value(value) || NO_COLOUR.contains(&value.to_ascii_lowercase().as_str()) {
+        return false;
+    }
+    property != "background" || looks_like_colour(value)
+}
+
 /// Whether a style value is exactly one Role: `var(--color-…)`.
 fn is_role_value(value: &str) -> bool {
     value
@@ -231,7 +283,7 @@ impl Finder<'_, '_> {
                 }
                 _ => continue,
             };
-            if !is_role_value(value) {
+            if paints_around_roles(name, value) {
                 self.report(
                     property.value.span().start,
                     format!(
@@ -242,8 +294,11 @@ impl Finder<'_, '_> {
         }
     }
 
-    /// An element whose `className` is one Function: every literal `data-*`/`aria-*` value its
-    /// state blocks select by must be one of the values they list.
+    /// An element whose `className` is one Function: a literal `data-*`/`aria-*` value its state
+    /// blocks select by must be one of the values they list. A Function that styles one value of
+    /// an attribute leaves the others to its base look (`data-state="idle"` next to a `busy`
+    /// block), and `aria-*="false"` is required by accessibility, so only an attribute with two or
+    /// more listed values is checked, and `"false"` never is for `aria-*`.
     fn states(&mut self, element: &JSXOpeningElement<'_>) {
         let attributes = element.attributes.iter().filter_map(|item| match item {
             JSXAttributeItem::Attribute(attribute) => Some(&**attribute),
@@ -271,7 +326,8 @@ impl Finder<'_, '_> {
             ) else {
                 continue;
             };
-            if !values.iter().any(|known| known == value) {
+            let is_default = values.len() < 2 || (name.starts_with("aria-") && value == "false");
+            if !is_default && !values.iter().any(|known| known == value) {
                 let at = attribute
                     .value
                     .as_ref()
@@ -289,14 +345,21 @@ impl Finder<'_, '_> {
         }
     }
 
-    /// The class props of a literal props object; other properties and spreads are not ours.
+    /// The class props and the literal `style` object of a literal props object; other properties
+    /// and spreads are not ours.
     fn object(&mut self, object: &ObjectExpression<'_>) {
         for property in &object.properties {
             let ObjectPropertyKind::ObjectProperty(property) = property else {
                 continue;
             };
-            if property_key_name(&property.key).is_some_and(is_class_prop) {
-                self.expression(&property.value);
+            match property_key_name(&property.key) {
+                Some(name) if is_class_prop(name) => self.expression(&property.value),
+                Some("style") => {
+                    if let Expression::ObjectExpression(style) = &property.value {
+                        self.style(style);
+                    }
+                }
+                _ => {}
             }
         }
     }

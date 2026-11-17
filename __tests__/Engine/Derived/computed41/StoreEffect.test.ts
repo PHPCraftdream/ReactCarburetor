@@ -128,6 +128,37 @@ describe('storeEffect', () => {
         expect(store.subscriberCount()).toBe(0);
     });
 
+    test('when both the cleanup and the run throw, the cleanup error is the one reported', () => {
+        const store = new Counter({count: 0, label: 'a'});
+        const seen: number[] = [];
+        const reported: unknown[] = [];
+        const original = console.error;
+        console.error = (): void => undefined;
+        diagnostics.setFailureHandler((error) => { reported.push(error); });
+        try {
+            const stop = storeEffect(store, selectCount, (count) => {
+                seen.push(count);
+                if (count === 1) throw new Error('run of 1');
+                return (): void => {
+                    if (count === 0) throw new Error('cleanup of 0');
+                };
+            });
+
+            store.set(1);
+            store.set(2);
+            stop();
+        } finally {
+            console.error = original;
+            diagnostics.setFailureHandler(undefined);
+        }
+
+        const messages = reported.map((entry) => (entry instanceof Error ? entry.message : String(entry)));
+        expect(seen).toEqual([0, 1, 2]);
+        expect(messages).toContain('cleanup of 0');
+        expect(messages).not.toContain('run of 1');
+        expect(store.subscriberCount()).toBe(0);
+    });
+
     test('is the same function in the engine entry', () => {
         expect(Engine.storeEffect).toBe(storeEffect);
     });

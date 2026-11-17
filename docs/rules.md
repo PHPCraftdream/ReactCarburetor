@@ -241,7 +241,7 @@ until your project changes shape.
 | `no-unrecognized-base` | warn | A class that uses the engine through an imported base class not listed in `componentBases`/`storeBases`, so no rule checks it; setup check | — |
 | `no-store-read-in-effect-deps` | warn | An effect dependency taken with `getData()`, which is compared only when the component re-renders for another reason, so the effect does not follow the store; use `useStoreEffect` | — |
 | `no-inline-store-effect` | error | A selector or effect written inline (an arrow, a function expression, a `.bind(...)`, or a function a constant of the same method holds) and handed to `useStoreEffect`, which re-subscribes and re-runs the effect on every render | — |
-| `prefer-store-effect` | warn | A store's `watch(select, onChange)`, a computed's `watch(onChange)` or a `storeEffect(...)` started by hand in a `this.useEffect` callback or `componentDidMount`, or started in `render`, where every render subscribes again; use `useStoreEffect` | — |
+| `prefer-store-effect` | warn | A store's `watch(select, onChange)`, a computed's `watch(onChange)` or a `storeEffect(...)` started by hand in a `this.useEffect` callback or `componentDidMount`, or started in `render` (not in a handler defined there), where every render subscribes again; use `useStoreEffect` | — |
 | `no-memo-over-store-read` | warn | `useMemo`/`useCallback` over hook-read values; derive in the selector or a `Computed` | [H33](hazards.md) |
 | `no-capturing-hook-selector` | warn | Inline hook selector captures render state; select whole record then pick, or use `AntiHookComponent#useCarburetor` without a selector | [H34](hazards.md) |
 | `one-export-per-file` | off | A second runtime-value export in one file; every file ships at most one value, type exports are unlimited | [H36](hazards.md) |
@@ -268,8 +268,8 @@ until your project changes shape.
 | `no-unknown-class-reference` | off¹ | An `@apply` class that is neither a Tailwind utility nor defined by the configured stylesheets, or a colour naming no Role | [Functional classes](#functional-classes) |
 | `no-duplicate-class` | off¹ | A second definition of a Palette token, Role, utility or Function | [Functional classes](#functional-classes) |
 | `no-conflicting-classes` | off¹ | Two classes of one `@apply` list that set the same property under the same variants (after expanding Functions, Patterns and Traits), so the order of `@apply` decides the value | [Functional classes](#functional-classes) |
-| `no-unused-class` | off | A Palette token no Role reads, a Role no colour Brick or `var()` uses, a Tone, Trait or Pattern no `@apply` names; off even with a `classes` section, for pruning | [Functional classes](#functional-classes) |
-| `require-function-class` | off¹ | A `className` (or `*ClassName` prop, literal spread object, `createElement`/`jsx` props object) that is not one Function written as a literal; a literal `data-*`/`aria-*` value no state block of the Function selects; a literal colour in an inline `style` | [Functional classes](#functional-classes) |
+| `no-unused-class` | off | A Palette token no Role reads, a Role no colour Brick or `var()` uses, a Tone, Trait or Pattern no `@apply` names; off even with a `classes` section, for pruning; reads only stylesheets, so a Role used only from markup counts as unused | [Functional classes](#functional-classes) |
+| `require-function-class` | off¹ | A `className` (or `*ClassName` prop, literal spread object, `createElement`/`jsx` props object) that is not one Function written as a literal; a literal `data-*`/`aria-*` value no state block of the Function selects, where the blocks list two or more values (`aria-*="false"` is never reported); a literal colour in a `style` object, keywords such as `none` and `currentColor` aside | [Functional classes](#functional-classes) |
 
 ¹ `error` once `.carburetorrc.json` has a `classes` section.
 

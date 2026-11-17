@@ -10,10 +10,26 @@ use crate::rules::classes::css::Project;
 use crate::rules::classes::testing::{CONFIG, REFERENCE};
 use crate::Source;
 
+/// A Function with two listed states, beside the reference stylesheet.
+const STATUS: &str = r#"@layer components {
+  .order-status { @apply pattern-card tone-surface-raised; }
+  .order-status[data-status="paid"] { @apply tone-accent-solid; }
+  .order-status[data-status="overdue"] { @apply tone-accent-outline; }
+  .order-status[aria-selected="true"] { @apply tone-accent-solid; }
+  .order-status[aria-selected="mixed"] { @apply tone-accent-outline; }
+}
+"#;
+
 /// Runs the rule over a TSX snippet against the reference stylesheet's index.
 fn diagnose(text: &str) -> Vec<(usize, usize, String)> {
     let config = Config::from_json(CONFIG).unwrap();
-    let project = Project::from_texts(&config, &[("styles/reference.css", REFERENCE)]);
+    let project = Project::from_texts(
+        &config,
+        &[
+            ("styles/reference.css", REFERENCE),
+            ("styles/status.css", STATUS),
+        ],
+    );
     let allocator = Allocator::default();
     let parsed = Parser::new(&allocator, text, SourceType::tsx()).parse();
     assert!(parsed.diagnostics.is_empty(), "{:?}", parsed.diagnostics);
@@ -198,14 +214,14 @@ const d = <div ClassName="px-4" />;
 #[test]
 fn literal_state_values_must_be_ones_the_state_blocks_select() {
     let text = r#"
-const a = <div className="user-card" data-state="busy" />;
-const b = <div className="user-card" data-state="idle" />;
-const c = <div className="user-card" aria-current="false" />;
-const d = <div className="user-card" aria-current />;
-const e = <div className="user-card" data-state={state} />;
-const f = <div className="user-card" data-other="x" />;
-const g = <div className="submit-button" data-state="idle" />;
-const h = <div data-state="idle" className={"user-card"} />;
+const a = <div className="order-status" data-status="paid" />;
+const b = <div className="order-status" data-status="payd" />;
+const c = <div className="order-status" aria-selected="false" />;
+const d = <div className="order-status" aria-selected="maybe" />;
+const e = <div className="order-status" data-status={status} />;
+const f = <div className="order-status" data-other="x" />;
+const g = <div className="submit-button" data-status="payd" />;
+const h = <div data-status="payd" className={"order-status"} />;
 "#;
     let findings = diagnose(text);
 
@@ -214,15 +230,27 @@ const h = <div data-state="idle" className={"user-card"} />;
             .iter()
             .map(|(line, _, _)| *line)
             .collect::<Vec<_>>(),
-        [3, 4, 9]
+        [3, 5, 9]
     );
     assert!(
         findings[0]
             .2
-            .contains(r#"data-state="idle" matches no state block of user-card, which selects data-state only by "busy""#),
+            .contains(r#"data-status="payd" matches no state block of order-status, which selects data-status only by "paid", "overdue""#),
         "{findings:?}"
     );
-    assert_eq!(findings[0].1, 49);
+    assert_eq!(findings[0].1, 53);
+}
+
+#[test]
+fn an_unstyled_default_state_is_not_reported() {
+    // user-card styles only data-state="busy" and aria-current="true": the rest is its base look.
+    let text = r#"
+const a = <div className="user-card" data-state="idle" />;
+const b = <div className="user-card" aria-current="false" />;
+const c = <div className="user-card" aria-current />;
+"#;
+
+    assert!(diagnose(text).is_empty(), "{:?}", diagnose(text));
 }
 
 #[test]
@@ -233,6 +261,11 @@ const b = <div style={{backgroundColor: `red`, borderTopColor: "rgb(0 0 0)"}} />
 const c = <div style={{color: "var(--color-accent-ink)"}} />;
 const d = <div style={{color: user.color, background: theme}} />;
 const e = <div style={styles} />;
+const f = <svg style={{fill: "none", stroke: "currentColor", color: "inherit", outlineColor: "transparent"}} />;
+const g = <div style={{background: "url(/a.png) no-repeat", backgroundColor: "Transparent"}} />;
+const h = <div style={{background: "#000"}} />;
+const i = <div {...{style: {color: "red"}}} />;
+const j = createElement("div", {style: {borderColor: "var(--palette-gray-100)"}});
 "##;
     let findings = diagnose(text);
 
@@ -241,7 +274,7 @@ const e = <div style={styles} />;
             .iter()
             .map(|(line, _, _)| *line)
             .collect::<Vec<_>>(),
-        [2, 3, 3]
+        [2, 3, 3, 9, 10, 11]
     );
     assert!(
         findings[0]

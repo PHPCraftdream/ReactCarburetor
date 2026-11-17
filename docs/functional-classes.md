@@ -87,10 +87,14 @@ and for the props object of `createElement` and the automatic runtime's `jsx` ca
 built elsewhere is not followed. State goes into `data-*` and `aria-*` attributes; on an element whose
 `className` is one Function, a literal value of an attribute that Function's state blocks select by
 must be one they list (`data-status="payd"` is reported when the blocks select `paid` and `open`).
-A block that selects by presence (`[data-busy]`) or another operator lets any value through. A literal
-colour in an inline `style` object (`style={{color: '#fff'}}`) paints around the Roles and is reported
-too; a value computed at run time, such as a colour the user picked, and a `var(--color-…)` Role are
-not.
+A block that selects by presence (`[data-busy]`) or another operator lets any value through. An
+attribute with one styled value is not checked, since its other values are the Function's base look
+(`data-state="idle"` beside a `busy` block), and `aria-*="false"` never is. A literal colour in an
+inline `style` object (`style={{color: '#fff'}}`), in spread props or in `createElement` props paints
+around the Roles and is reported too; a value computed at run time, such as a colour the user picked,
+a `var(--color-…)` Role, a keyword that paints no colour of its own (`none`, `inherit`,
+`currentColor`, `transparent`) and a `background` that is not a colour on its own (`url(…)`, a
+gradient) are not.
 
 ## A complete stylesheet
 
@@ -233,7 +237,8 @@ may carry `/* … */` comments; they are not read as classes.
   (`[mask-type:luminance]`) are understood.
 - Values of known prefixes are not validated, so a misspelt value of a real prefix (`order-staus`)
   reads as a Brick.
-- HTML, Vue and Svelte templates, `style={…}` props, and whether `data-*` values in markup match
-  the stylesheet's state selectors are not checked.
+- HTML, Vue and Svelte templates are not checked.
+- `no-unused-class` reads only the stylesheets: a Role used only from markup
+  (`style={{color: 'var(--color-accent-ink)'}}`) counts as unused.
 - Sizes, spacing and radii still come from Tailwind's default scale; the methodology adds no floors
   for them yet.

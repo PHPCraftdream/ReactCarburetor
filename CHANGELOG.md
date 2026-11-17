@@ -18,7 +18,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   off until `.carburetorrc.json` has a `classes` section naming the stylesheets, and report at
   `error` with it. `require-function-class` also reads `*ClassName` props, literal objects spread into an element and
   the props of `createElement`/`jsx` calls, checks a literal `data-*`/`aria-*` value against the values the
-  Function's state blocks select, and reports a literal colour in an inline `style` object. The binary reads the stylesheets once, in parallel, into a class index before any
+  Function's state blocks select (where they list two or more; `aria-*="false"` is never reported), and reports a
+  literal colour in a `style` object (keywords such as `none`, `currentColor` and `transparent` aside). The binary reads the stylesheets once, in parallel, into a class index before any
   file is checked; `--stdin` accepts a stylesheet buffer too. The plugin forwards the section, so
   `require-function-class` also reports through oxlint and ESLint once switched on in the host's
   config, and drops cached answers when a configured stylesheet changes. A stylesheet that does not
@@ -30,7 +31,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Classes are expanded through the index; properties Tailwind composes through its own variables are not compared.
 - `carburetor/no-unused-class` (functional classes, off even with a `classes` section): a Palette token no Role reads,
   a Role no colour Brick or `var()` uses, and a Tone, Trait or Pattern no `@apply` names, across the configured
-  stylesheets — for pruning. `--init-classes` writes palette steps for the dark theme only where a `[data-theme]`
+  stylesheets — for pruning; a Role used only from markup counts as unused. `--init-classes` writes palette steps for the dark theme only where a `[data-theme]`
   selector is configured, so its tokens and Roles pass it.
 - A `root` key in `.carburetorrc.json` moves the directory `ignore`, `overrides` and `classes.css`
   resolve against.
@@ -57,7 +58,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   computed's `watch(onChange)` started by hand in a `this.useEffect` callback or in `componentDidMount`, with a pointer
   to `useStoreEffect`, which runs the effect for the current value, keeps the disposer and orders the cleanups. A
   `storeEffect(...)` started the same way is reported too, and a `storeEffect` or `watch` started in `render`, where
-  every render would subscribe again.
+  every render would subscribe again; a handler defined in `render` runs later and is not entered.
 - `carburetor/no-unrecognized-base` (`warn` in the recommended preset): a class that extends a project base imported
   from another file, not listed in `componentBases`/`storeBases`, and plainly uses the engine (`this.useCarburetor`,
   `this.useEffect`, `useEffects`, `this.draft`, …) is reported once with the list to add the base to. Before, every
