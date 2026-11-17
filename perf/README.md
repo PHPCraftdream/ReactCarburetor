@@ -37,9 +37,10 @@ BENCH_JOBS=1 npm run bench                # one child at a time, timing-free sce
 npm run bench -- --shard 2/3              # the second of three cost-balanced parts of the selection
 ```
 
-The Performance validation workflow spreads the suite over one Windows runner per phase part —
-`gains`, `current` in four parts, `controls` in four, `previous` in seven — and a `native` runner
-for the lint-binary gates and the Rust benchmarks; every job is held to five minutes. `--shard i/n`
+The Performance validation workflow spreads the suite over one Linux runner per phase part —
+`gains`, `current` in four parts, `controls` in four, `previous` in seven — and a Windows `native`
+runner for the lint-binary gates and the Rust benchmarks; every job is held to five minutes, and
+all of them run at once (Windows runners queued four to six at a time). `--shard i/n`
 keeps whole groups together: entries that share a sample key, and a scale gate with its source.
 Groups go to the lightest part by their last serial cost, recorded per phase and entry in
 `perf/shards.json`; a new entry costs the median until the file is regenerated from a run's

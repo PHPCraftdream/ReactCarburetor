@@ -39,11 +39,12 @@ concurrency:
 
 jobs:
   # The suite is spread over one runner per phase part, each held to five minutes: a part that
-  # outgrows it fails instead of slowing every push. perf/shards.json holds the per-entry costs the
+  # outgrows it fails instead of slowing every push. The parts run on Linux, where the account gets
+  # enough concurrent runners for all of them at once; on Windows they queued four to six at a time. perf/shards.json holds the per-entry costs the
   # parts are balanced by (perf/harness/sampling.mjs, shardOf); regenerate it when parts drift.
   gates:
     name: ${{ matrix.phase }} ${{ matrix.shard }}
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     timeout-minutes: 5
     strategy:
       fail-fast: false
@@ -94,10 +95,10 @@ jobs:
       # contracts (blocking) with an informational timing comparison.
       - name: Measure the phase part
         run: |
-          $reference = if ($env:BENCH_PHASE -eq 'gains') { @('--gains-baseline', $env:BENCH_GAINS_BASELINE) } else { @('--baseline', $env:BENCH_BASELINE) }
-          $part = if ($env:BENCH_SHARD) { @('--shard', $env:BENCH_SHARD) } else { @() }
-          npm run bench:ci -- --phase $env:BENCH_PHASE @reference --runs $env:BENCH_RUNS @part
-          exit $LASTEXITCODE
+          if [ "$BENCH_PHASE" = gains ]; then reference=(--gains-baseline "$BENCH_GAINS_BASELINE"); else reference=(--baseline "$BENCH_BASELINE"); fi
+          part=()
+          if [ -n "$BENCH_SHARD" ]; then part=(--shard "$BENCH_SHARD"); fi
+          npm run bench:ci -- --phase "$BENCH_PHASE" "${reference[@]}" --runs "$BENCH_RUNS" "${part[@]}"
 
       - name: Upload exact samples, flags and command receipts
         if: always()
