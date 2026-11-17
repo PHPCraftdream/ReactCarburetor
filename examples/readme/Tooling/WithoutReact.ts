@@ -1,4 +1,4 @@
-import {Carburetor, computed} from '@react-carburetor/core/engine';
+import {Carburetor, computed, storeEffect, TEffectCleanup} from '@react-carburetor/core/engine';
 
 interface IProgress {done: number; total: number; label: string}
 
@@ -57,3 +57,21 @@ const stopWatching = progress.watch(selectDone, logDone);
 
 stopWatching();
 // #endregion watch
+
+// #region effect
+/** Shows a spinner for the label while it is current; the cleanup hides it again. */
+const showLabel = (label: string): TEffectCleanup => {
+    console.log(`start: ${label}`);
+
+    return (): void => console.log(`stop: ${label}`);
+};
+
+const selectLabel = (data: IProgress): string => data.label;
+
+// Runs now for 'deploy', then for each new label after the previous run's cleanup.
+const stopLabel = storeEffect(progress, selectLabel, showLabel);
+
+progress.rename('release'); // stop: deploy, start: release
+
+stopLabel();                // stop: release
+// #endregion effect

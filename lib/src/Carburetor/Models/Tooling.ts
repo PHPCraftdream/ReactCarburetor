@@ -1,5 +1,7 @@
 import type {CarburetorScope} from "../Component/Scope/CarburetorScope";
-import {TDisposer} from "./Base";
+import {TDisposer, TReadonly, TStoreEffect} from "./Base";
+import type {IComputed} from "./Derived";
+import type {ICarburetor, TSelector} from "./Store";
 
 /**
  * Identifies a carburetor inside a scope and knows how to build it.
@@ -149,4 +151,27 @@ export interface IDevToolsOptions {
     name?: string;
     /** Injectable for tests and for environments without the browser extension. */
     extension?: IDevToolsExtension;
+}
+
+/** The two forms of `storeEffect`: a store and a selection of it, or a computed value. */
+export interface IStoreEffect {
+    /**
+     * Runs `effect` with the selection now and again after each change of it.
+     *
+     * @param store - the store to follow
+     * @param select - what the effect depends on; compared like a `watch` selection
+     * @param effect - runs with the value and the one before it; what it returns is the run's cleanup
+     */
+    <T, R>(
+        store: Pick<ICarburetor<T>, 'getData' | 'watch'>,
+        select: TSelector<T, R>,
+        effect: TStoreEffect<TReadonly<R>>
+    ): TDisposer;
+    /**
+     * Runs `effect` with the computed value now and again after each change it delivers.
+     *
+     * @param computed - the derived value to follow, over any number of stores
+     * @param effect - runs with the value and the one before it; what it returns is the run's cleanup
+     */
+    <R>(computed: IComputed<R>, effect: TStoreEffect<R>): TDisposer;
 }

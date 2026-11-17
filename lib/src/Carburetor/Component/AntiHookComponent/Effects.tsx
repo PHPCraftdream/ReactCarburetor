@@ -4,8 +4,7 @@ import {C} from "../Models/ComponentSymbols";
 
 import {IDict, TEffect, TEffectDeps, TDisposer, TReadonly, TStoreEffect} from "../../Models/Base";
 import {IComputed} from "../../Models/Derived";
-import {watchComputed} from "../../Derived/watchComputed";
-import {startStoreEffect} from "../Models/startStoreEffect";
+import {storeEffect} from "../../Tooling/storeEffect";
 import {diagnostics} from "../../Store/Diagnostics/DiagnosticsInstance";
 import {AntiHookComponentReads} from "./Reads";
 import {shallowEqual} from "../shallowEqual";
@@ -148,9 +147,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
             const computed = source as IComputed<unknown>;
             const run = selectOrEffect as TStoreEffect<unknown>;
 
-            this.useEffect(name, () => startStoreEffect(
-                (onChange) => watchComputed(computed, onChange), () => computed.get(), run
-            ), [computed, run]);
+            this.useEffect(name, () => storeEffect(computed, run), [computed, run]);
 
             return;
         }
@@ -158,11 +155,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
         const store = source as Pick<ICarburetor<unknown>, 'getData' | 'watch'>;
         const select = selectOrEffect as TSelector<unknown, unknown>;
 
-        this.useEffect(name, () => startStoreEffect(
-            (onChange) => store.watch(select, onChange),
-            () => select(store.getData() as TReadonly<unknown>) as TReadonly<unknown>,
-            effect as TStoreEffect<TReadonly<unknown>>
-        ), [store, select, effect]);
+        this.useEffect(name, () => storeEffect(store, select, effect), [store, select, effect]);
     }
 
     /**

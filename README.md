@@ -1565,7 +1565,30 @@ const stopWatching = progress.watch(selectDone, logDone);
 stopWatching();
 ```
 
-An adapter for another UI library is the same two calls behind that library's own subscription
+`storeEffect(store, select, effect)`, or `storeEffect(computed, effect)`, is `useStoreEffect` without a
+component: the effect runs at once for the current value, then after each change, and what a run
+returns is cleaned up before the next run and when the returned disposer is called:
+
+<!-- example:file examples/readme/Tooling/WithoutReact.ts#effect -->
+```ts
+/** Shows a spinner for the label while it is current; the cleanup hides it again. */
+const showLabel = (label: string): TEffectCleanup => {
+    console.log(`start: ${label}`);
+
+    return (): void => console.log(`stop: ${label}`);
+};
+
+const selectLabel = (data: IProgress): string => data.label;
+
+// Runs now for 'deploy', then for each new label after the previous run's cleanup.
+const stopLabel = storeEffect(progress, selectLabel, showLabel);
+
+progress.rename('release'); // stop: deploy, start: release
+
+stopLabel();                // stop: release
+```
+
+An adapter for another UI library is the same calls behind that library's own subscription
 primitive. The class components, `connect()` and the hooks stay React-only: they are built on React's
 commit phase, not on a renderer-neutral one.
 

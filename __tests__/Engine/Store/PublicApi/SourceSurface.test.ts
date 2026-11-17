@@ -31,6 +31,7 @@ const PUBLIC_SURFACE = [
     'persist',
     'resourceState',
     'shallowEqual',
+    'storeEffect',
     'transaction',
     'waitForUpdate',
 ].sort();

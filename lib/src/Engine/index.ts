@@ -40,4 +40,5 @@ export * from '../Carburetor/Component/shallowEqual';
 export * from '../Carburetor/Tooling/CarburetorHistory';
 export * from '../Carburetor/Tooling/connectDevTools';
 export * from '../Carburetor/Tooling/persist';
+export * from '../Carburetor/Tooling/storeEffect';
 export * from '../Carburetor/Tooling/waitForUpdate';

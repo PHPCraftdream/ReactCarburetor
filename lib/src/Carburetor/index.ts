@@ -52,4 +52,5 @@ export * from './Component/shallowEqual';
 export * from './Tooling/CarburetorHistory';
 export * from './Tooling/connectDevTools';
 export * from './Tooling/persist';
+export * from './Tooling/storeEffect';
 export * from './Tooling/waitForUpdate';

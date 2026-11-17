@@ -28,6 +28,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   without a read in `render`, and what it returns is the run's cleanup. Before, a `getData()` dependency was compared
   only when something else re-rendered the component, so the field had to be read in `render` as well. The
   `AutosaveDraft` example uses it.
+- `storeEffect(store, select, effect)` and `storeEffect(computed, effect)`, from the main entry and `/engine`:
+  `useStoreEffect` without a component, for a server, a worker, an adapter or hooks code. The effect runs at once for
+  the current value and after each change; a run's returned cleanup runs before the next run and when the returned
+  disposer is called. `useStoreEffect` is built on it.
 - `computed.watch((next, previous) => ...)` returns a disposer and calls back after each change the computed delivers,
   like a store's `watch(select, onChange)`; before, a computed offered only `subscribe(callback)` with an id to
   unsubscribe and a callback that received no value.

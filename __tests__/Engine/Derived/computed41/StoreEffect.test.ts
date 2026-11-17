@@ -1,0 +1,73 @@
+import {Carburetor, computed, storeEffect} from '@/Carburetor';
+import * as Engine from '@/Engine';
+
+interface ICounter {count: number; label: string}
+
+const setCount = (draft: ICounter, count: number): void => { draft.count = count; };
+const setLabel = (draft: ICounter, label: string): void => { draft.label = label; };
+const selectCount = (data: ICounter): number => data.count;
+
+class Counter extends Carburetor<ICounter> {
+    public set(count: number): void { this.update(setCount, count); }
+    public rename(label: string): void { this.update(setLabel, label); }
+}
+
+describe('storeEffect', () => {
+    test('runs now and after each change of the selection, cleaning up the run before', () => {
+        const store = new Counter({count: 1, label: 'a'});
+        const seen: string[] = [];
+        const stop = storeEffect(store, selectCount, (count, previous) => {
+            seen.push(`run ${count} after ${String(previous)}`);
+            return (): void => { seen.push(`clean ${count}`); };
+        });
+
+        store.rename('b');
+        store.set(2);
+        stop();
+        store.set(3);
+
+        expect(seen).toEqual(['run 1 after undefined', 'clean 1', 'run 2 after 1', 'clean 2']);
+    });
+
+    test('follows a computed over several stores', () => {
+        const left = new Counter({count: 1, label: 'l'});
+        const right = new Counter({count: 2, label: 'r'});
+        const sum = computed<number>((read) => read(left).count + read(right).count);
+        const seen: number[] = [];
+        const stop = storeEffect(sum, (value) => { seen.push(value); });
+
+        left.set(5);
+        right.rename('x');
+        right.set(4);
+        stop();
+        left.set(0);
+
+        expect(seen).toEqual([3, 7, 9]);
+    });
+
+    test('a change the effect itself causes is followed', () => {
+        const store = new Counter({count: 0, label: 'a'});
+        const seen: number[] = [];
+        const stop = storeEffect(store, selectCount, (count) => {
+            seen.push(count);
+            if (count < 2) store.set(count + 1);
+        });
+
+        expect(seen).toEqual([0, 1, 2]);
+        stop();
+    });
+
+    test('a disposer called twice runs the last cleanup once', () => {
+        const store = new Counter({count: 0, label: 'a'});
+        let cleaned = 0;
+        const stop = storeEffect(store, selectCount, () => (): void => { cleaned++; });
+
+        stop();
+        stop();
+        expect(cleaned).toBe(1);
+    });
+
+    test('is the same function in the engine entry', () => {
+        expect(Engine.storeEffect).toBe(storeEffect);
+    });
+});
