@@ -169,6 +169,8 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
             const computed = source as IComputed<unknown>;
             const run = selectOrEffect as TStoreEffect<unknown>;
 
+            // This is useStoreEffect itself: the call prefer-store-effect points everyone else at.
+            // oxlint-disable-next-line carburetor/prefer-store-effect
             this.useEffect(name, () => storeEffect(computed, run), [computed, run]);
 
             return;
@@ -177,6 +179,7 @@ export abstract class AntiHookComponentEffects<P = {}, S = {}> extends AntiHookC
         const store = source as Pick<ICarburetor<unknown>, 'getData' | 'watch'>;
         const select = selectOrEffect as TSelector<unknown, unknown>;
 
+        // oxlint-disable-next-line carburetor/prefer-store-effect
         this.useEffect(name, () => storeEffect(store, select, effect), [store, select, effect]);
     }
 
