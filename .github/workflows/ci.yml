@@ -412,7 +412,7 @@ jobs:
         uses: actions/cache/restore@d4323d4df104b026a6aa633fdb11d772146be0bf # v4
         with:
           path: .native-verified
-          key: native-verified-${{ steps.rustc.outputs.version }}-${{ hashFiles('native/src/**', 'native/tests/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+          key: native-verified-${{ steps.rustc.outputs.version }}-${{ hashFiles('native/src/**', 'native/tests/**', 'native/tools/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
 
       # inputs.force_native is empty outside workflow_dispatch, so only an explicit
       # dispatch with the flag forces a rerun over an existing marker.
@@ -454,6 +454,12 @@ jobs:
         working-directory: native
         run: cargo clippy --locked --all-targets -- -D warnings
 
+      # The class rules read stylesheets; this builds the --init-classes scaffold with the real
+      # Tailwind v4 compiler (pinned in the script), so what they accept is what Tailwind builds.
+      - name: Tailwind compiles the class scaffold
+        if: steps.gate.outputs.run == 'true'
+        run: node native/tools/tailwindScaffold.mjs
+
       - name: Record the verified marker
         if: steps.gate.outputs.run == 'true'
         shell: bash
@@ -466,7 +472,7 @@ jobs:
         uses: actions/cache/save@d4323d4df104b026a6aa633fdb11d772146be0bf # v4
         with:
           path: .native-verified
-          key: native-verified-${{ steps.rustc.outputs.version }}-${{ hashFiles('native/src/**', 'native/tests/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
+          key: native-verified-${{ steps.rustc.outputs.version }}-${{ hashFiles('native/src/**', 'native/tests/**', 'native/tools/**', 'native/Cargo.toml', 'native/Cargo.lock', 'native/build.rs', 'rust-toolchain*') }}
 
   # The published platform packages: every leg builds, checks, runs, packs and installs one
   # binary. A reusable workflow, so a platform leg can also be run alone while it is tuned.
