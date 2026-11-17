@@ -50,19 +50,21 @@ jobs:
       matrix:
         include:
           - {phase: gains, shard: ''}
-          - {phase: current, shard: 1/3}
-          - {phase: current, shard: 2/3}
-          - {phase: current, shard: 3/3}
+          - {phase: current, shard: 1/4}
+          - {phase: current, shard: 2/4}
+          - {phase: current, shard: 3/4}
+          - {phase: current, shard: 4/4}
           - {phase: controls, shard: 1/4}
           - {phase: controls, shard: 2/4}
           - {phase: controls, shard: 3/4}
           - {phase: controls, shard: 4/4}
-          - {phase: previous, shard: 1/6}
-          - {phase: previous, shard: 2/6}
-          - {phase: previous, shard: 3/6}
-          - {phase: previous, shard: 4/6}
-          - {phase: previous, shard: 5/6}
-          - {phase: previous, shard: 6/6}
+          - {phase: previous, shard: 1/7}
+          - {phase: previous, shard: 2/7}
+          - {phase: previous, shard: 3/7}
+          - {phase: previous, shard: 4/7}
+          - {phase: previous, shard: 5/7}
+          - {phase: previous, shard: 6/7}
+          - {phase: previous, shard: 7/7}
     env:
       BENCH_BASELINE: ${{ inputs.baseline || '90829af804a64e0692abfb0917e03e281f49d9ef' }}
       BENCH_GAINS_BASELINE: ${{ inputs.gainsBaseline || 'acfd3e2b8e58210ce1076bf1683f666283216af5' }}
@@ -128,6 +130,8 @@ jobs:
             ~/.cargo/git
             native/target
           key: perf-cargo-windows-${{ hashFiles('native/Cargo.lock') }}
+          # A new lockfile still starts from the last build's dependencies.
+          restore-keys: perf-cargo-windows-
 
       # bench-scale-tool runs each workload the count pinned in native/bench-iters.txt, scaled by
       # BENCH_SCALE; the bench build is the release binary the gates below run. The timings are

@@ -101,7 +101,9 @@ const timingSummary = (title, rows, sink) => {
 const parseShard = text => {
     const match = /^(\d+)\/(\d+)$/.exec(String(text));
     const index = Number(match?.[1]), count = Number(match?.[2]);
-    if (!match || count < 1 || index < 1 || index > count) throw new Error(`--shard expects i/n with 1 <= i <= n, got ${text}`);
+    if (!match || count < 1 || index < 1 || index > count) {
+        throw new Error(`--shard expects i/n with 1 <= i <= n, got ${text}`);
+    }
     return {index, count};
 };
 
@@ -155,7 +157,10 @@ const shardOf = (entries, index, count, weights = {}, read = readScenario) => {
 };
 
 /** The per-phase entry costs perf/shards.json records. */
-const shardWeights = phase => JSON.parse(readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', 'shards.json'), 'utf8'))[phase] ?? {};
+const shardWeights = phase => {
+    const path = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'shards.json');
+    return JSON.parse(readFileSync(path, 'utf8'))[phase] ?? {};
+};
 
 export default {phaseBudget, classifySampling, demandByKey, elapsedRow, timingSummary, keyFor, concurrentKeys,
     parseShard, shardOf, shardWeights};

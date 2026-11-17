@@ -38,7 +38,7 @@ npm run bench -- --shard 2/3              # the second of three cost-balanced pa
 ```
 
 The Performance validation workflow spreads the suite over one Windows runner per phase part —
-`gains`, `current` in three parts, `controls` in four, `previous` in six — and a `native` runner
+`gains`, `current` in four parts, `controls` in four, `previous` in seven — and a `native` runner
 for the lint-binary gates and the Rust benchmarks; every job is held to five minutes. `--shard i/n`
 keeps whole groups together: entries that share a sample key, and a scale gate with its source.
 Groups go to the lightest part by their last serial cost, recorded per phase and entry in

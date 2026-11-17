@@ -1,6 +1,7 @@
 import {describe, expect, it} from '@rstest/core';
 import sampling from '../../../perf/harness/sampling.mjs';
-const {classifySampling, demandByKey, phaseBudget, elapsedRow, timingSummary, concurrentKeys, parseShard, shardOf} = sampling;
+const {classifySampling, demandByKey, phaseBudget, elapsedRow, timingSummary} = sampling;
+const {concurrentKeys, parseShard, shardOf} = sampling;
 
 // Scenario reader that reports clean, deterministic sources for every scenario name.
 const clean = (): string => '';
