@@ -323,12 +323,9 @@ export const persist = <T extends object>(
             return;
         }
         // A notification delivered after flush() wrote its version has nothing left to write.
+        // No window timer can be armed here: every write that catches the version up stops it.
         if (carburetor.getVersion() === lastSeenVersion) {
             pending = false;
-            if (cancelTimer !== undefined) {
-                cancelTimer();
-                cancelTimer = undefined;
-            }
             return;
         }
         if (!forced && throttleMs !== undefined) {

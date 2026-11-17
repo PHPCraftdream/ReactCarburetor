@@ -130,4 +130,36 @@ describe('computed.watch', () => {
 
         expect(seen).toEqual([1]);
     });
+
+    test('a watcher stopped inside a transaction is not called when it closes', () => {
+        const counter = new Counter({count: 0, label: 'a'});
+        const value = computed(read => read(counter).count);
+        const seen: number[] = [];
+        const stop = value.watch((next) => { seen.push(next); });
+
+        transaction(() => {
+            counter.set(1);
+            stop();
+        });
+
+        expect(seen).toEqual([]);
+    });
+
+    test('a watcher stopped by another during the same delivery is not called', () => {
+        const counter = new Counter({count: 0, label: 'a'});
+        const value = computed(read => read(counter).count);
+        const seen: string[] = [];
+        let stopSecond: () => void = () => undefined;
+        const stopFirst = value.watch((next) => {
+            seen.push(`first ${next}`);
+            stopSecond();
+        });
+        stopSecond = value.watch((next) => { seen.push(`second ${next}`); });
+
+        counter.set(1);
+        counter.set(2);
+        stopFirst();
+
+        expect(seen).toEqual(['first 1', 'first 2']);
+    });
 });

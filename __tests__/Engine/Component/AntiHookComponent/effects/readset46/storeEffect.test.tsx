@@ -199,4 +199,29 @@ describe('useStoreEffect', () => {
 
         expect(runs).toEqual(['light', 'dark']);
     });
+
+    test('a computed form re-rendered with the same arguments keeps its watch and run', () => {
+        const settings = newSettings();
+        const theme = computed((read) => read(settings).theme);
+        const runs: string[] = [];
+        const show = (value: string): void => { runs.push(value); };
+
+        class App extends AntiHookComponent<{tick: number}> {
+            protected useEffects(): void {
+                this.useStoreEffect('theme', theme, show);
+            }
+
+            public render() {
+                return <div>{this.props.tick}</div>;
+            }
+        }
+
+        const view = render(<App tick={0}/>);
+
+        view.rerender(<App tick={1}/>);
+        act(() => { settings.paint('dark'); });
+        view.unmount();
+
+        expect(runs).toEqual(['light', 'dark']);
+    });
 });

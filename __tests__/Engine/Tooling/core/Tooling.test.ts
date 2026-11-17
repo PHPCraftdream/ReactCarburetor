@@ -269,6 +269,23 @@ describe('connectDevTools', () => {
         dispose();
     });
 
+    test('a connection whose subscribe returns nothing still disconnects', () => {
+        const carburetor = new CounterCarburetor(getData());
+        const sent: string[] = [];
+        const connection: IDevToolsConnection = {
+            init: () => undefined,
+            send: (action: string) => { sent.push(action); },
+            subscribe: () => undefined,
+        };
+        const dispose = connectDevTools({counter: carburetor}, {extension: {connect: () => connection}});
+
+        carburetor.setValue(1);
+        expect(() => dispose()).not.toThrow();
+        carburetor.setValue(2);
+
+        expect(sent).toEqual(['counter/update']);
+    });
+
     test('a jump skips a disposed store and applies to the others', () => {
         const live = new CounterCarburetor(getData());
         const gone = new CounterCarburetor(getData());
