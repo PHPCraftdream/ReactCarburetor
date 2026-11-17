@@ -95,8 +95,8 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   checks nothing, and the native CLI rejects such a configuration.
 
 - `require-subscription-disposal` also reports a `watch` whose disposer is thrown away (`store.watch(select,
-  onChange);` or `computed.watch(onChange);` as a statement); a store watching itself (`this.watch`) and code in test
-  callbacks are left alone.
+  onChange);` or `computed.watch(onChange);` as a statement) and a `storeEffect(...)` statement, whose disposer would
+  also run the effect's last cleanup; a store watching itself (`this.watch`) and code in test callbacks are left alone.
 - `no-async-effect` also reports an `async` effect handed to `this.useStoreEffect` (inline, or a name bound to an
   async function), and `no-duplicate-effect-name` counts `this.useStoreEffect` names, which share one record with
   `this.useEffect`.

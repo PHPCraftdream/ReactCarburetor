@@ -257,7 +257,7 @@ until your project changes shape.
 | `require-hoisted-constant` | warn | A `Set`/`Map` of constants, or a string assembled only from constants (an import or a module-level `const` with literals), built inside a function on every call; build it once at module level | — |
 | `require-method-for-closure` | warn | A closure inside a class member that depends only on the class, rebuilt on every call of the member — declare it as a method | [H29](hazards.md) |
 | `require-module-function` | warn | A clean nested function needing no surrounding invocation state, or an eligible component member needing no class; configurable scope | [H30](hazards.md) |
-| `require-subscription-disposal` | warn | A subscription whose id is discarded, or a `watch` whose disposer is, so it can never be released | [H20](hazards.md) |
+| `require-subscription-disposal` | warn | A subscription whose id is discarded, or a `watch` or `storeEffect` whose disposer is, so it can never be released | [H20](hazards.md) |
 | `require-super-in-lifecycle` | error | A lifecycle override that skips `super`, disabling effects, cleanup or the props gate | [H12](hazards.md) |
 | `valid-palette-token` | off¹ | A `--palette-*` token in `@theme`, outside a theme selector block, misnamed or not a literal colour; a Palette reference from anything but a Role | [Functional classes](#functional-classes) |
 | `valid-color-role` | off¹ | A missing `--color-*: initial` reset; a Role name outside the grammar or the closed lists; a Role value other than one `var(--palette-…)`; an override of an undefined Role | [Functional classes](#functional-classes) |

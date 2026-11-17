@@ -58,6 +58,22 @@ fn is_foreign_watch(call: &CallExpression<'_>) -> bool {
         })
 }
 
+const STORE_EFFECT_MESSAGE: &str = "this storeEffect's disposer is discarded, so the effect can \
+    never be stopped: the store keeps it, and everything it closed over, for the lifetime of the \
+    process, and its last cleanup never runs. Keep the disposer and call it when the owner is \
+    done, or use useStoreEffect in a component.";
+
+/// Whether a call is `storeEffect(store, select, effect)` or `storeEffect(computed, effect)`,
+/// called by name or through a namespace import (`Engine.storeEffect(...)`).
+fn is_store_effect(call: &CallExpression<'_>) -> bool {
+    let named = match unwrap_expression(&call.callee) {
+        Expression::Identifier(identifier) => identifier.name == "storeEffect",
+        callee => member_call_name(callee) == Some("storeEffect") && !called_on_this(callee),
+    };
+
+    named && matches!(call.arguments.len(), 2 | 3)
+}
+
 /// Whether the expression is the literal `null`, `void 0`, or an unresolved (global) `undefined`;
 /// a resolved shadowing binding named `undefined` is unknown options, not nullish.
 fn is_explicit_nullish(expression: &Expression<'_>, scoping: &Scoping) -> bool {
@@ -129,6 +145,8 @@ impl<'a, 's> Visit<'a> for Check<'s> {
                 Some(MESSAGE)
             } else if is_foreign_watch(call) {
                 Some(WATCH_MESSAGE)
+            } else if is_store_effect(call) {
+                Some(STORE_EFFECT_MESSAGE)
             } else {
                 None
             };
@@ -364,6 +382,28 @@ mod tests {
         );
 
         assert_eq!(lines(&diagnose(source, check)), [1, 2]);
+    }
+
+    #[test]
+    fn a_discarded_store_effect_disposer_is_reported() {
+        let source = concat!(
+            "storeEffect(store, selectTitle, showTitle);\n",
+            "Engine.storeEffect(total, showTotal);\n",
+            "const stop = storeEffect(store, selectTitle, showTitle);\n",
+            "export const dispose = storeEffect(total, showTotal);\n",
+            "this.storeEffect(store, selectTitle, showTitle);\n",
+            "storeEffect(onlyOne);\n",
+        );
+
+        assert_eq!(lines(&diagnose(source, check)), [1, 2]);
+        assert!(diagnose(source, check)[0].message.contains("storeEffect's disposer"));
+    }
+
+    #[test]
+    fn a_discarded_store_effect_inside_a_test_is_not_reported() {
+        let source = "it('follows', () => {\n    storeEffect(store, selectTitle, showTitle);\n});\n";
+
+        assert!(diagnose(source, check).is_empty());
     }
 
     #[test]
