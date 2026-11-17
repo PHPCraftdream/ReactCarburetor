@@ -268,7 +268,7 @@ until your project changes shape.
 | `no-unknown-class-reference` | off¹ | An `@apply` class that is neither a Tailwind utility nor defined by the configured stylesheets, or a colour naming no Role | [Functional classes](#functional-classes) |
 | `no-duplicate-class` | off¹ | A second definition of a Palette token, Role, utility or Function | [Functional classes](#functional-classes) |
 | `no-conflicting-classes` | off¹ | Two classes of one `@apply` list that set the same property under the same variants (after expanding Functions, Patterns and Traits), so the order of `@apply` decides the value | [Functional classes](#functional-classes) |
-| `require-function-class` | off¹ | A `className` that is not one Function written as a literal | [Functional classes](#functional-classes) |
+| `require-function-class` | off¹ | A `className` (or `*ClassName` prop, literal spread object, `createElement`/`jsx` props object) that is not one Function written as a literal | [Functional classes](#functional-classes) |
 
 ¹ `error` once `.carburetorrc.json` has a `classes` section.
 

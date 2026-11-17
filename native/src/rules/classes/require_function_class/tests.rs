@@ -147,3 +147,38 @@ fn without_an_index_nothing_is_reported() {
 
     assert!(check_with_index(&parsed.program, &source, None).is_empty());
 }
+
+#[test]
+fn literal_spread_objects_create_element_and_class_name_props_are_checked() {
+    let text = r#"
+const a = <div {...{className: "px-4"}} />;
+const b = React.createElement("div", {className: "tone-accent-solid"});
+const c = createElement("div", {id: "x", className: "user-card"});
+const d = jsx("div", {className: "px-4 mt-2"});
+const e = <Field inputClassName="px-4" labelClassName="user-card" />;
+const f = <div {...{"className": `submit-button`}} />;
+"#;
+    let findings = diagnose(text);
+
+    assert_eq!(
+        findings.iter().map(|(line, _, _)| *line).collect::<Vec<_>>(),
+        [2, 3, 5, 6]
+    );
+    assert!(findings[0].2.contains("px-4 is a Tailwind utility"), "{findings:?}");
+    assert!(findings[1].2.contains("tone-accent-solid is a Tone"), "{findings:?}");
+    assert!(findings[2].2.contains("holds 2 classes"), "{findings:?}");
+    assert!(findings[3].2.contains("px-4 is a Tailwind utility"), "{findings:?}");
+}
+
+#[test]
+fn props_objects_built_elsewhere_and_other_calls_are_not_checked() {
+    let text = r#"
+const props = {className: "px-4"};
+const a = <div {...props} />;
+const b = React.createElement("div", props);
+const c = format("div", {className: "px-4"});
+const d = <div ClassName="px-4" />;
+"#;
+
+    assert!(diagnose(text).is_empty(), "{:?}", diagnose(text));
+}

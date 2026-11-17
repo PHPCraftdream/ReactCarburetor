@@ -81,7 +81,10 @@ export const Action = ({danger, status}: IActionProps) => (
 `className` is one Function written as a string literal, or a `?:` between literals (`undefined`
 and `null` are allowed as a branch). Template literals with expressions, `clsx(...)`, joined
 arrays, several names, Bricks, Traits, Patterns, Tones and names no stylesheet defines are
-reported. State goes into `data-*` and `aria-*` attributes.
+reported. The same holds for a component's class props (`inputClassName`, any prop ending in
+`ClassName`), for `className` in a literal object spread into an element (`{...{className: 'x'}}`),
+and for the props object of `createElement` and the automatic runtime's `jsx` calls. A props object
+built elsewhere is not followed. State goes into `data-*` and `aria-*` attributes.
 
 ## A complete stylesheet
 

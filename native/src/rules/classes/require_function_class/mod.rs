@@ -5,7 +5,8 @@
 //! blocks select.
 
 use oxc_ast::ast::{
-    Expression, JSXAttribute, JSXAttributeName, JSXAttributeValue, Program, StringLiteral,
+    Argument, CallExpression, Expression, JSXAttribute, JSXAttributeName, JSXAttributeValue,
+    JSXSpreadAttribute, ObjectExpression, ObjectPropertyKind, Program, StringLiteral,
 };
 use oxc_ast_visit::{walk, Visit};
 use oxc_span::GetSpan;
@@ -15,6 +16,7 @@ use crate::rules::classes::css::index::ClassIndex;
 use crate::rules::classes::css::scan::Floor;
 use crate::rules::report;
 use crate::rules::support::bases::Bases;
+use crate::rules::support::names::{member_call_name, property_key_name};
 use crate::{Diagnostic, Source};
 
 /// The id this rule reports under.
@@ -134,11 +136,63 @@ impl Finder<'_, '_> {
     }
 }
 
+/// Whether a prop carries a class name: `className`, or a component's `inputClassName`-style prop
+/// that hands one to an element inside.
+fn is_class_prop(name: &str) -> bool {
+    name == "className" || (name.ends_with("ClassName") && name.len() > "ClassName".len())
+}
+
+/// Whether a call creates an element from a props object: `createElement(type, props)`,
+/// `React.createElement(...)`, or the automatic runtime's `jsx`/`jsxs`/`_jsx`/`_jsxs`.
+fn creates_element(call: &CallExpression<'_>) -> bool {
+    let name = match &call.callee {
+        Expression::Identifier(identifier) => Some(identifier.name.as_str()),
+        callee => member_call_name(callee),
+    };
+
+    matches!(
+        name,
+        Some("createElement" | "jsx" | "jsxs" | "_jsx" | "_jsxs" | "jsxDEV" | "_jsxDEV")
+    )
+}
+
+impl Finder<'_, '_> {
+    /// The class props of a literal props object; other properties and spreads are not ours.
+    fn object(&mut self, object: &ObjectExpression<'_>) {
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else {
+                continue;
+            };
+            if property_key_name(&property.key).is_some_and(is_class_prop) {
+                self.expression(&property.value);
+            }
+        }
+    }
+}
+
 impl<'a> Visit<'a> for Finder<'_, '_> {
+    fn visit_jsx_spread_attribute(&mut self, spread: &JSXSpreadAttribute<'a>) {
+        if let Expression::ObjectExpression(object) = &spread.argument {
+            self.object(object);
+        }
+
+        walk::walk_jsx_spread_attribute(self, spread);
+    }
+
+    fn visit_call_expression(&mut self, call: &CallExpression<'a>) {
+        if creates_element(call) {
+            if let Some(Argument::ObjectExpression(props)) = call.arguments.get(1) {
+                self.object(props);
+            }
+        }
+
+        walk::walk_call_expression(self, call);
+    }
+
     fn visit_jsx_attribute(&mut self, attribute: &JSXAttribute<'a>) {
         let is_class_name = matches!(
             &attribute.name,
-            JSXAttributeName::Identifier(identifier) if identifier.name.as_str() == "className"
+            JSXAttributeName::Identifier(identifier) if is_class_prop(identifier.name.as_str())
         );
 
         if is_class_name {
