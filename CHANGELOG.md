@@ -86,9 +86,11 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
-- The bridge/binary protocol is now 2: the two new rule ids are part of the contract, so the plugin checks for a
-  `carburetor-lint` of the same release and says so when an older one is installed.
-
+- The bridge/binary protocol is now 2. The contract gained the rule ids added since 0.2.0
+  (`no-store-read-in-effect-deps`, `require-hoisted-constant`, `no-inline-store-effect`, `prefer-store-effect`,
+  `no-unrecognized-base` and the eleven functional-class rules), the `classes` and `root` config keys and the
+  `--init-classes` flag, so the plugin checks for a `carburetor-lint` of the same release and says so when an older one
+  is installed.
 - When the system refuses to start the native binary from inside the host (`spawnSync ... ENOMEM`, which
   `oxlint --type-aware` meets on Linux under the default overcommit heuristic), the error now names the cause and the
   two ways out: `vm.overcommit_memory=1` before linting, or `npx carburetor-lint`. README and troubleshooting
