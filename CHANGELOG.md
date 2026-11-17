@@ -87,6 +87,9 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   then ends the mirroring. Before, a notification cancelled by the disposal was not written until the disposer ran,
   and a throttled write came from a timer that outlived the store and could overwrite what a new instance under the
   same key had stored.
+- A DevTools time-travel jump skips a store disposed since `connectDevTools` was called and applies to the rest;
+  before, the disposed store threw in the middle of the jump, leaving the stores before it moved and the ones after it
+  not.
 - Calling a `persist` disposer a second time writes nothing, as the changelog for `flush` already promised; before,
   a change made between the two calls was written.
 

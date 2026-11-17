@@ -3,6 +3,7 @@ import {EDevToolsAction} from "../Models/Enums/EDevToolsAction";
 import {EDevToolsMessageType} from "../Models/Enums/EDevToolsMessageType";
 import {IInspectable} from "../Models/Store";
 import {IDevToolsExtension, IDevToolsMessage, IDevToolsOptions} from "../Models/Tooling";
+import {storeLifecycle} from "../Store/Diagnostics/Internal/StoreLifecycle";
 import {getUid} from "../Store/Utils/getUid";
 import {WILDCARD_PATH} from "../Store/Paths/WildcardPath";
 
@@ -21,7 +22,7 @@ const findExtension = (): IDevToolsExtension | undefined => {
  *
  * Every update publishes one action per notifying store. A time-travel jump is never
  * published back, even when a deferring scheduler delivers the matching update after
- * the jump has been applied.
+ * the jump has been applied. A jump skips a store already disposed and applies to the rest.
  *
  * @param carburetors - keyed by name; each name becomes a top-level key of the published state
  * @param options - `extension` replaces the auto-discovered Redux extension, `name` titles the connection
@@ -101,7 +102,9 @@ export const connectDevTools = (carburetors: IDict<IInspectable>, options: IDevT
 
         try {
             names.forEach((name: string) => {
-                if (Object.prototype.hasOwnProperty.call(next, name)) {
+                // A disposed store takes no state; skipping it keeps the jump whole for the rest.
+                if (Object.prototype.hasOwnProperty.call(next, name)
+                    && !storeLifecycle.isDisposed(carburetors[name])) {
                     carburetors[name].fromJSON(next[name]);
                     jumpedVersions[name] = carburetors[name].getVersion();
                 }

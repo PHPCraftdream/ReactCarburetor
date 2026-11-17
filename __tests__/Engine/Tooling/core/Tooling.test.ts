@@ -269,6 +269,25 @@ describe('connectDevTools', () => {
         dispose();
     });
 
+    test('a jump skips a disposed store and applies to the others', () => {
+        const live = new CounterCarburetor(getData());
+        const gone = new CounterCarburetor(getData());
+        const fake = createFakeExtension();
+        const dispose = connectDevTools({gone, live}, {extension: fake.extension});
+
+        gone.dispose();
+
+        expect(() => fake.emit({
+            type: EDevToolsMessageType.Dispatch,
+            payload: {type: EDevToolsAction.JumpToState},
+            state: JSON.stringify({gone: {value: 7, label: 'x'}, live: {value: 7, label: 'x'}}),
+        })).not.toThrow();
+        expect(live.getData()).toEqual({value: 7, label: 'x'});
+        expect(gone.getData()).toEqual(getData());
+
+        dispose();
+    });
+
     test('a deferred scheduler never publishes time travel as a new action', async () => {
         const carburetor = new CounterCarburetor(getData(), new ComponentUpdateThrottle(40));
         const fake = createFakeExtension();
